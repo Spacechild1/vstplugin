@@ -70,7 +70,7 @@ namespace VSTWindowFactory {
 }
 
 VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
-    std::cout << "try opening VSTWindowCocoa" << std::endl;
+    LOG_DEBUG("try opening VSTWindowCocoa");
     
     NSRect frame = NSMakeRect(0, 0, 200, 200);
     VSTEditorWindow *window = [[VSTEditorWindow alloc] initWithContentRect:frame
@@ -81,7 +81,7 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
     if (window){
         [window setPlugin:plugin];
         window_ = window;
-        std::cout << "created VSTWindowCocoa" << std::endl;
+        LOG_DEBUG("created VSTWindowCocoa");
     }
 }
 
@@ -92,7 +92,7 @@ VSTWindowCocoa::~VSTWindowCocoa(){
     plugin->closeEditor();
     [window_ close];
     [window_ release];
-    std::cout << "destroyed VSTWindowCocoa" << std::endl;
+    LOG_DEBUG("destroyed VSTWindowCocoa");
 }
 
 void * VSTWindowCocoa::getHandle(){
