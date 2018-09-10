@@ -1,0 +1,4 @@
+testplugins**
+*.dll
+*.o
+src/VST_SDK**
