@@ -1,0 +1,60 @@
+// VST2Plugin
+
+#include "VSTPlugin.h"
+
+#include "VST_SDK/VST2_SDK/pluginterfaces/vst2.x/aeffect.h"
+#include "VST_SDK/VST2_SDK/pluginterfaces/vst2.x/aeffectx.h"
+#include "VST_SDK/VST2_SDK/pluginterfaces/vst2.x/vstfxstore.h"
+
+// Plugin's entry point
+typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
+
+// AEffectDispatcherProc
+// AEffectProcessProc
+// AEffectSetParameterProc
+// AEffectGetParameterProc
+
+class VST2Plugin final : public VSTPlugin {
+public:
+    static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
+        VstInt32 index, VstInt32 value, void *ptr, float opt);
+
+    VST2Plugin(void* plugin);
+    ~VST2Plugin();
+    int getPluginVersion() const override;
+
+    void process(float **inputs, float **outputs, int nsamples) override;
+    void processDouble(double **inputs, double **outputs, int nsamples) override;
+    bool hasSinglePrecision() const override;
+    bool hasDoublePrecision() const override;
+    void pause() override;
+    void resume() override;
+    void setSampleRate(float sr) override;
+    void setBlockSize(int n) override;
+    int getNumInputs() const override;
+    int getNumOutputs() const override;
+
+    void setParameter(int index, float value) override;
+    float getParameter(int index) const override;
+    int getNumParameters() const override;
+    std::string getParameterName(int index) const override;
+
+    void setProgram(int program) override;
+    int getProgram() override;
+    int getNumPrograms() const override;
+    std::string getProgramName() const override;
+    void setProgramName(const std::string& name) override;
+
+    bool hasEditor() const override;
+    void openEditor(void *window) override;
+    void closeEditor() override;
+    void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+private:
+    bool hasFlag(VstAEffectFlags flag) const;
+    VstIntPtr dispatch(VstInt32 opCode,
+        VstInt32 index, VstInt32 value, void *ptr, float opt) const;
+    // data members
+    AEffect *plugin_ = nullptr;
+};
+
+

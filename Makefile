@@ -9,15 +9,15 @@
 #
 # make install PDDIR=/path/to/pure-data PDLIBDIR=./build
 
-lib.name = vsthost
+lib.name = vsthost~
 
 class.sources = src/vsthost~.cpp
 
-common.sources = src/vsthost.cpp
+common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
 
 # all extra files to be included in binary distribution of the library
 datafiles = 
 
-cflags = -Wno-unused -Wno-unused-parameter -std=c++14
+cflags = -Wno-unused -Wno-unused-parameter -std=c++14 -g
 
 include pd-lib-builder/Makefile.pdlibbuilder
