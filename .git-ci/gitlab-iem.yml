@@ -41,7 +41,7 @@ variables:
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends make puredata-dev puredata
     - export PD=/usr/bin/pd
-    - .git-ci/getvst.sh
+    - .git-ci/get_vst.sh
   script:
     - make
     - make install DESTDIR=$(pwd) pkglibdir=/
@@ -56,7 +56,7 @@ variables:
     - tar xvf Pd.tgz -C /Applications/
     - rm -f Pd.tgz
     - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
-    - .git-ci/getvst.sh
+    - .git-ci/get_vst.sh
   script:
     - make
     - make install DESTDIR=$(pwd) pkglibdir=/
@@ -73,7 +73,7 @@ variables:
     - unzip -q Pd.zip -d "${PROGRAMFILESX86}/pd"
     - mv -v "${PROGRAMFILESX86}/pd"/*/* "${PROGRAMFILESX86}/pd"
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
-    - .git-ci/getvst.sh
+    - .git-ci/get_vst.sh
   script:
     - make
     - make install DESTDIR=$(pwd) pkglibdir=/
@@ -90,7 +90,7 @@ variables:
     - unzip -q Pd.zip -d "${PROGRAMFILES}/pd"
     - mv -v "${PROGRAMFILES}/pd"/*/* "${PROGRAMFILES}/pd"
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
-    - .git-ci/getvst.sh
+    - .git-ci/get_vst.sh
   script:
     - make extension=m_amd64
     - make install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
