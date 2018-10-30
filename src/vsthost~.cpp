@@ -1,35 +1,91 @@
-#include "VSTPlugin.h"
+#include "VSTPluginInterface.h"
 
 #include "m_pd.h"
 
 #include <memory>
+#include <cstdio>
 
-// Pd wrapper
+#undef pd_class
+#define pd_class(x) (*(t_pd *)(x))
+#define classname(x) (class_getname(pd_class(x)))
 
+// VST parameter responder (for Pd GUI)
+static t_class *vstparam_class;
+
+struct t_vsthost;
+
+struct t_vstparam {
+    t_pd p_pd;
+    t_vsthost *p_owner;
+    t_symbol *p_name;
+    int p_index;
+};
+
+static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value);
+
+static void vstparam_float(t_vstparam *x, t_floatarg f){
+    vsthost_param_set(x->p_owner, x->p_index, f);
+}
+
+static void vstparam_set(t_vstparam *x, t_floatarg f){
+    // since t_vastparam is bound to the same symbol as the corresponding slider and number box,
+    // we must provide dummy methods like this to avoid errors.
+}
+
+static void vstparam_init(t_vstparam *x, t_vsthost *y, int index){
+    x->p_pd = vstparam_class;
+    x->p_owner = y;
+    x->p_index = index;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%lu-p-%d", (unsigned long)y, index);
+    x->p_name = gensym(buf);
+    pd_bind((t_pd *)x, x->p_name);
+    // post("parameter nr. %d: %s", index, x->p_name->s_name);
+}
+
+static void vstparam_free(t_vstparam *x){
+    pd_unbind((t_pd *)x, x->p_name);
+}
+
+static void vstparam_setup(void){
+    vstparam_class = class_new(gensym("__vstparam"), 0, 0, sizeof(t_vstparam), 0, A_NULL);
+    class_addfloat(vstparam_class, (t_method)vstparam_float);
+    class_addmethod(vstparam_class, (t_method)vstparam_set, gensym("set"), A_DEFFLOAT, 0);
+}
+
+// vsthost~ object
 static t_class *vsthost_class;
 
 struct t_vsthost {
-	// header
 	t_object x_obj;
 	t_sample x_f;
-	t_outlet *x_messout;
-
+    t_outlet *x_messout;
+    // VST plugin
     IVSTPlugin* x_plugin;
     int x_bypass;
     int x_blocksize;
     int x_sr;
-    // input
+    // Pd editor
+    t_canvas *x_editor;
+    int x_nparams;
+    t_vstparam *x_param_vec;
+    int x_generic;
+    // input signals from Pd
     int x_nin;
     t_float **x_invec;
+    // contiguous input buffer
     int x_inbufsize;
     char *x_inbuf;
+    // array of pointers into the input buffer
     int x_ninbuf;
     void **x_inbufvec;
-    // output
+    // output signals from Pd
     int x_nout;
     t_float **x_outvec;
+    // contiguous output buffer
     int x_outbufsize;
     char *x_outbuf;
+    // array of pointers into the output buffer
     int x_noutbuf;
     void **x_outbufvec;
 };
@@ -41,28 +97,31 @@ static bool vsthost_check(t_vsthost *x){
     if (x->x_plugin){
 		return true;
 	} else {
-		pd_error(x, "no plugin loaded!");
+        pd_error(x, "%s: no plugin loaded!", classname(x));
 		return false;
 	}
 }
 
 // close
 static void vsthost_close(t_vsthost *x){
-    freeVSTPlugin(x->x_plugin);
-    x->x_plugin = nullptr;
+    if (x->x_plugin){
+        freeVSTPlugin(x->x_plugin);
+        x->x_plugin = nullptr;
+    }
 }
 
 // open
-
-static void vsthost_updatebuffer(t_vsthost *x);
+static void vsthost_update_buffer(t_vsthost *x);
+static void vsthost_make_editor(t_vsthost *x);
 
 static void vsthost_open(t_vsthost *x, t_symbol *s){
     vsthost_close(x);
     IVSTPlugin *plugin = loadVSTPlugin(s->s_name);
     if (plugin){
-        plugin->setBlockSize(x->x_blocksize);
-        plugin->setSampleRate(x->x_sr);
-        plugin->resume();
+        post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
+        // plugin->setBlockSize(x->x_blocksize);
+        // plugin->setSampleRate(x->x_sr);
+        // plugin->resume();
         if (plugin->hasSinglePrecision()){
             post("plugin supports single precision");
         }
@@ -70,9 +129,11 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             post("plugin supports double precision");
         }
         x->x_plugin = plugin;
-        vsthost_updatebuffer(x);
+        vsthost_update_buffer(x);
+        vsthost_make_editor(x);
     } else {
-        pd_error(x, "couldn't open plugin %s", s->s_name);
+        post("no plugin");
+        pd_error(x, "%s: couldn't open plugin %s", classname(x), s->s_name);
     }
 }
 
@@ -82,47 +143,191 @@ static void vsthost_bypass(t_vsthost *x, t_floatarg f){
 }
 
 // editor
-static void vsthost_vis(t_vsthost *x, t_floatarg f){
-	if (!vsthost_check(x)) return;
-    if (f != 0){
-        x->x_plugin->createEditorWindow();
-    } else {
-        x->x_plugin->destroyEditorWindow();
+static void editor_mess(t_vsthost *x, t_symbol *sel, int argc = 0, t_atom *argv = 0){
+    pd_typedmess((t_pd *)x->x_editor, sel, argc, argv);
+}
+
+template<typename... T>
+static void editor_vmess(t_vsthost *x, t_symbol *sel, const char *fmt, T... args){
+    pd_vmess((t_pd *)x->x_editor, sel, (char *)fmt, args...);
+}
+
+static void vsthost_update_editor(t_vsthost *x){
+    if (!x->x_plugin->hasEditor() || x->x_generic){
+        int n = x->x_plugin->getNumParameters();
+        for (int i = 0; i < n; ++i){
+            float f = x->x_plugin->getParameter(i);
+            t_symbol *param = x->x_param_vec[i].p_name;
+            pd_vmess(param->s_thing, gensym("set"), (char *)"f", f);
+        }
     }
 }
 
-// parameters
-static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value){
+static void vsthost_make_editor(t_vsthost *x){
+    int nparams = x->x_plugin->getNumParameters();
+    int n = x->x_nparams;
+    for (int i = 0; i < n; ++i){
+        vstparam_free(&x->x_param_vec[i]);
+    }
+    x->x_param_vec = (t_vstparam *)resizebytes(x->x_param_vec, n * sizeof(t_vstparam), nparams * sizeof(t_vstparam));
+    x->x_nparams = nparams;
+    for (int i = 0; i < nparams; ++i){
+        vstparam_init(&x->x_param_vec[i], x, i);
+    }
+
+    editor_vmess(x, gensym("rename"), (char *)"s", gensym(x->x_plugin->getPluginName().c_str()));
+    editor_mess(x, gensym("clear"));
+    // slider
+    t_atom slider[21];
+    SETFLOAT(slider, 20);
+    SETFLOAT(slider+1, 20);
+    SETSYMBOL(slider+2, gensym("hsl"));
+    SETFLOAT(slider+3, 128);
+    SETFLOAT(slider+4, 15);
+    SETFLOAT(slider+5, 0);
+    SETFLOAT(slider+6, 1);
+    SETFLOAT(slider+7, 0);
+    SETFLOAT(slider+8, 0);
+    SETSYMBOL(slider+9, gensym("empty"));
+    SETSYMBOL(slider+10, gensym("empty"));
+    SETSYMBOL(slider+11, gensym("dummy"));
+    SETFLOAT(slider+12, -2);
+    SETFLOAT(slider+13, -8);
+    SETFLOAT(slider+14, 0);
+    SETFLOAT(slider+15, 10);
+    SETFLOAT(slider+16, -262144);
+    SETFLOAT(slider+17, -1);
+    SETFLOAT(slider+18, -1);
+    SETFLOAT(slider+19, -0);
+    SETFLOAT(slider+20, 1);
+    // numbox
+    t_atom numbox[21];
+    SETFLOAT(numbox, 30 + 128);
+    SETFLOAT(numbox+1, 10);
+    SETSYMBOL(numbox+2, gensym("nbx"));
+    SETFLOAT(numbox+3, 5);
+    SETFLOAT(numbox+4, 14);
+    SETFLOAT(numbox+5, 0);
+    SETFLOAT(numbox+6, 1);
+    SETFLOAT(numbox+7, 0);
+    SETFLOAT(numbox+8, 0);
+    SETSYMBOL(numbox+9, gensym("empty"));
+    SETSYMBOL(numbox+10, gensym("empty"));
+    SETSYMBOL(numbox+11, gensym("empty"));
+    SETFLOAT(numbox+12, 0);
+    SETFLOAT(numbox+13, -8);
+    SETFLOAT(numbox+14, 0);
+    SETFLOAT(numbox+15, 10);
+    SETFLOAT(numbox+16, -262144);
+    SETFLOAT(numbox+17, -1);
+    SETFLOAT(numbox+18, -1);
+    SETFLOAT(numbox+19, -0);
+    SETFLOAT(numbox+20, 256);
+
+    for (int i = 0; i < nparams; ++i){
+        // create slider
+        SETFLOAT(slider+1, 20 + i*35);
+        SETSYMBOL(slider+9, x->x_param_vec[i].p_name);
+        SETSYMBOL(slider+10, x->x_param_vec[i].p_name);
+        SETSYMBOL(slider+11, gensym(x->x_plugin->getParameterName(i).c_str()));
+        editor_mess(x, gensym("obj"), 21, slider);
+        // create number box
+        SETFLOAT(numbox+1, 20 + i*35);
+        SETSYMBOL(numbox+9, x->x_param_vec[i].p_name);
+        SETSYMBOL(numbox+10, x->x_param_vec[i].p_name);
+        editor_mess(x, gensym("obj"), 21, numbox);
+    }
+    float width = 240;
+    float height = nparams * 35 + 60;
+    editor_vmess(x, gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
+    editor_vmess(x, gensym("vis"), "i", 0);
+
+    vsthost_update_editor(x);
+}
+
+static void vsthost_vis(t_vsthost *x, t_floatarg f){
 	if (!vsthost_check(x)) return;
+    if (x->x_plugin->hasEditor() && !x->x_generic){
+        if (f != 0){
+            x->x_plugin->showEditorWindow();
+        } else {
+            x->x_plugin->hideEditorWindow();
+        }
+    } else {
+        editor_vmess(x, gensym("vis"), "i", (f != 0));
+    }
+}
+
+static void vsthost_click(t_vsthost *x){
+    vsthost_vis(x, 1);
+}
+
+// parameters
+static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
+	if (!vsthost_check(x)) return;
+    int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         x->x_plugin->setParameter(index, value);
+        if (!x->x_plugin->hasEditor() || x->x_generic){
+            float f = x->x_plugin->getParameter(index);
+            t_symbol *param = x->x_param_vec[index].p_name;
+            pd_vmess(param->s_thing, gensym("set"), (char *)"f", f);
+        }
 	} else {
-		pd_error(x, "parameter index out of range!");
+        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
 	}
 }
 
-static void vsthost_param_get(t_vsthost *x, t_floatarg index){
+static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
 	if (!vsthost_check(x)) return;
+    int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
 		t_atom msg[2];
 		SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
 		outlet_anything(x->x_messout, gensym("param_value"), 2, msg);
 	} else {
-		pd_error(x, "parameter index out of range!");
+        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
 	}
 }
 
-static void vsthost_param_getname(t_vsthost *x, t_floatarg index){
+static void vsthost_param_getname(t_vsthost *x, t_floatarg _index){
 	if (!vsthost_check(x)) return;
+    int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
 		t_atom msg[2];
 		SETFLOAT(&msg[0], index);
         SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterName(index).c_str()));
 		outlet_anything(x->x_messout, gensym("param_name"), 2, msg);
 	} else {
-		pd_error(x, "parameter index out of range!");
+        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
 	}
+}
+
+static void vsthost_param_getlabel(t_vsthost *x, t_floatarg _index){
+    if (!vsthost_check(x)) return;
+    int index = _index;
+    if (index >= 0 && index < x->x_plugin->getNumParameters()){
+        t_atom msg[2];
+        SETFLOAT(&msg[0], index);
+        SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterLabel(index).c_str()));
+        outlet_anything(x->x_messout, gensym("param_label"), 2, msg);
+    } else {
+        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
+    }
+}
+
+static void vsthost_param_getdisplay(t_vsthost *x, t_floatarg _index){
+    if (!vsthost_check(x)) return;
+    int index = _index;
+    if (index >= 0 && index < x->x_plugin->getNumParameters()){
+        t_atom msg[2];
+        SETFLOAT(&msg[0], index);
+        SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterDisplay(index).c_str()));
+        outlet_anything(x->x_messout, gensym("param_display"), 2, msg);
+    } else {
+        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
+    }
 }
 
 static void vsthost_param_count(t_vsthost *x){
@@ -142,12 +347,14 @@ static void vsthost_param_list(t_vsthost *x){
 }
 
 // programs
-static void vsthost_program_set(t_vsthost *x, t_floatarg number){
+static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
 	if (!vsthost_check(x)) return;
-    if (number >= 0 && number < x->x_plugin->getNumParameters()){
-        x->x_plugin->setProgram(number);
+    int index = _index;
+    if (index >= 0 && index < x->x_plugin->getNumPrograms()){
+        x->x_plugin->setProgram(index);
+        vsthost_update_editor(x);
 	} else {
-		pd_error(x, "program number out of range!");
+        pd_error(x, "%s: program number %d out of range!", classname(x), index);
 	}
 }
 
@@ -155,7 +362,7 @@ static void vsthost_program_get(t_vsthost *x){
 	if (!vsthost_check(x)) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
-	outlet_anything(x->x_messout, gensym("program_num"), 1, &msg);
+    outlet_anything(x->x_messout, gensym("program_number"), 1, &msg);
 }
 
 static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
@@ -163,11 +370,18 @@ static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
     x->x_plugin->setProgramName(name->s_name);
 }
 
-static void vsthost_program_getname(t_vsthost *x){
+static void vsthost_program_getname(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
 	if (!vsthost_check(x)) return;
-	t_atom msg;
-    SETSYMBOL(&msg, gensym(x->x_plugin->getProgramName().c_str()));
-	outlet_anything(x->x_messout, gensym("program_name"), 1, &msg);
+    t_atom msg[2];
+    if (argc){
+        int index = atom_getfloat(argv);
+        SETFLOAT(&msg[0], index);
+        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramNameIndexed(index).c_str()));
+    } else {
+        SETFLOAT(&msg[0], x->x_plugin->getProgram());
+        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramName().c_str()));
+    }
+    outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
 }
 
 static void vsthost_program_count(t_vsthost *x){
@@ -175,6 +389,29 @@ static void vsthost_program_count(t_vsthost *x){
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumPrograms());
 	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
+}
+
+static void vsthost_program_list(t_vsthost *x){
+#if 0
+    if (!vsthost_check(x)) return;
+    int old = x->x_plugin->getProgram();
+    int n = x->x_plugin->getNumPrograms();
+    for (int i = 0; i < n; ++i){
+        x->x_plugin->setProgram(i);
+        t_atom msg[2];
+        SETFLOAT(&msg[0], i);
+        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramName().c_str()));
+        outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
+    }
+    x->x_plugin->setProgram(old);
+#endif
+    int n = x->x_plugin->getNumPrograms();
+    t_atom msg[2];
+    for (int i = 0; i < n; ++i){
+        SETFLOAT(&msg[0], i);
+        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramNameIndexed(i).c_str()));
+        outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
+    }
 }
 
 // plugin version
@@ -193,48 +430,93 @@ static void vsthost_version(t_vsthost *x){
 static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     t_vsthost *x = (t_vsthost *)pd_new(vsthost_class);
 	
+    int generic = 0;
+    while (argc && argv->a_type == A_SYMBOL){
+        const char *flag = atom_getsymbol(argv)->s_name;
+        if (*flag == '-'){
+            switch (flag[1]){
+            case 'g':
+                generic = 1;
+                break;
+            default:
+                break;
+            }
+            argc--; argv++;
+        } else {
+            break;
+        }
+    }
 	int in = atom_getfloatarg(0, argc, argv);
 	int out = atom_getfloatarg(1, argc, argv);
     if (in < 1) in = 1;
     if (out < 1) out = 1;
-	for (int i = 0; i < in - 1; ++i){
+
+    // VST plugin
+    x->x_plugin = nullptr;
+    x->x_bypass = 0;
+    x->x_blocksize = 64;
+    x->x_sr = 44100;
+
+    // inputs (skip first):
+    for (int i = 1; i < in; ++i){
 		inlet_new(&x->x_obj, &x->x_obj.ob_pd, &s_signal, &s_signal);
 	}
+    x->x_nin = in;
+    x->x_invec = (t_float**)getbytes(sizeof(t_float*) * in);
+    // outlets:
 	for (int i = 0; i < out; ++i){
 		outlet_new(&x->x_obj, &s_signal);
 	}
-	post("in: %d, out: %d", in, out);
-	
-    x->x_plugin = nullptr;
-    x->x_bypass = 0;
-    x->x_blocksize = 0;
-    x->x_sr = 0;
-    x->x_nin = in;
-    x->x_invec = (t_float**)getbytes(sizeof(t_float*) * in);
-    x->x_inbufsize = in*sizeof(double)*64;
-    x->x_inbuf = (char *)getbytes(x->x_inbufsize);
-    x->x_ninbuf = in;
-    x->x_inbufvec = (void**)getbytes(in * sizeof(void *));
     x->x_nout = out;
     x->x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
-    x->x_outbufsize = out*sizeof(double)*64;
-    x->x_outbuf = (char *)getbytes(x->x_outbufsize);
-    x->x_noutbuf = out;
-    x->x_outbufvec = (void **)getbytes(out * sizeof(void *));
-	x->x_messout = outlet_new(&x->x_obj, 0); // message outlet
+
+    // Pd editor
+    glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
+    pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
+    x->x_editor = (t_canvas *)s__X.s_thing;
+    editor_vmess(x, gensym("pop"), "i", 0);
+    glob_setfilename(0, &s_, &s_);
+    x->x_nparams = 0;
+    x->x_param_vec = nullptr;
+    x->x_generic = generic;
+
+    // buffers
+    x->x_inbufsize = 0;
+    x->x_inbuf = nullptr;
+    x->x_ninbuf = 0;
+    x->x_inbufvec = nullptr;
+    x->x_outbufsize = 0;
+    x->x_outbuf = nullptr;
+    x->x_noutbuf = 0;
+    x->x_outbufvec = nullptr;
+
+    x->x_f = 0;
+    x->x_messout = outlet_new(&x->x_obj, 0);
     return (x);
 }
 
 // destructor
 static void vsthost_free(t_vsthost *x){
     vsthost_close(x);
-    freebytes(x->x_invec, sizeof(t_float*) * x->x_nin);
-    freebytes(x->x_outvec, sizeof(t_float*) * x->x_nout);
-    freebytes(x->x_inbuf, sizeof(double) * x->x_nin * x->x_blocksize);
-    freebytes(x->x_outbuf, sizeof(double) * x->x_nout * x->x_blocksize);
+    freebytes(x->x_invec, x->x_nin * sizeof(t_float*));
+    freebytes(x->x_outvec, x->x_nout * sizeof(t_float*));
+    freebytes(x->x_inbuf, x->x_inbufsize);
+    freebytes(x->x_outbuf, x->x_outbufsize);
+    freebytes(x->x_inbufvec, x->x_ninbuf * sizeof(void*));
+    freebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void*));
+    if (x->x_param_vec){
+        int n = x->x_nparams;
+        for (int i = 0; i < n; ++i){
+            vstparam_free(&x->x_param_vec[i]);
+        }
+        freebytes(x->x_param_vec, n * sizeof(t_vstparam));
+    }
 }
 
-static void vsthost_updatebuffer(t_vsthost *x){
+static void vsthost_update_buffer(t_vsthost *x){
+    // the input/output buffers must be large enough to fit both
+    // the number of Pd inlets/outlets and plugin inputs/outputs.
+    // this routine is called in the "dsp" method and when a plugin is loaded.
     int blocksize = x->x_blocksize;
     int nin = x->x_nin;
     int nout = x->x_nout;
@@ -248,15 +530,16 @@ static void vsthost_updatebuffer(t_vsthost *x){
     int noutbuf = std::max(pout, nout);
     int inbufsize = ninbuf * sizeof(double) * blocksize;
     int outbufsize = noutbuf * sizeof(double) * blocksize;
-    resizebytes(x->x_inbuf, x->x_inbufsize, inbufsize);
-    resizebytes(x->x_outbuf, x->x_outbufsize, outbufsize);
+    x->x_inbuf = (char*)resizebytes(x->x_inbuf, x->x_inbufsize, inbufsize);
+    x->x_outbuf = (char*)resizebytes(x->x_outbuf, x->x_outbufsize, outbufsize);
     x->x_inbufsize = inbufsize;
     x->x_outbufsize = outbufsize;
-    resizebytes(x->x_inbufvec, x->x_ninbuf * sizeof(void *), ninbuf * sizeof(void *));
-    resizebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void *), noutbuf * sizeof(void *));
+    x->x_inbufvec = (void**)resizebytes(x->x_inbufvec, x->x_ninbuf * sizeof(void *), ninbuf * sizeof(void *));
+    x->x_outbufvec = (void**)resizebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void *), noutbuf * sizeof(void *));
     x->x_ninbuf = ninbuf;
     x->x_noutbuf = noutbuf;
-    post("x_invec: %d, x_inbuf %d, x_inbufvec %d", x->x_invec, x->x_inbuf, x->x_inbufvec);
+    // post("x_invec: %d, x_inbuf %d, x_inbufvec %d", x->x_invec, x->x_inbuf, x->x_inbufvec);
+    // post("x_nin: %d, x_inbufsize %d, x_ninbufvec %d", x->x_nin, x->x_inbufsize, x->x_ninbuf);
 }
 
 // perform routine
@@ -268,29 +551,40 @@ static t_int *vsthost_perform(t_int *w){
     t_float ** invec = x->x_invec;
     int nout = x->x_nout;
     t_float ** outvec = x->x_outvec;
+    int ninbuf = x->x_ninbuf;
     void ** inbufvec = x->x_inbufvec;
+    int noutbuf = x->x_noutbuf;
     void ** outbufvec = x->x_outbufvec;
-    int offset = 0;
+    int out_offset = 0;
 
-    if (plugin && !x->x_bypass){
+    if (plugin && !x->x_bypass){  // process audio
         int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
-        offset = pout;
+        out_offset = pout;
+        // process in double precision if available
         if (plugin->hasDoublePrecision()){
-            // set buffer pointer
-            for (int i = 0; i < pin; ++i){
-                inbufvec[i] = ((double *)x->x_inbuf + i * n);
+            // prepare input buffer
+            for (int i = 0; i < ninbuf; ++i){
+                double *buf = (double *)x->x_inbuf + i * n;
+                inbufvec[i] = buf;
+                if (i < nin){  // copy from Pd input
+                    t_float *in = invec[i];
+                    for (int j = 0; j < n; ++j){
+                        buf[j] = in[j];
+                    }
+                } else {  // zero
+                    for (int j = 0; j < n; ++j){
+                        buf[j] = 0;
+                    }
+                }
             }
+        #if PD_FLOATSIZE == 64
+            // process (no need to buffer the output)
+            plugin->processDouble((double **)inbufvec, outvec, n);
+        #else
+            // set output buffer pointers
             for (int i = 0; i < pout; ++i){
                 outbufvec[i] = ((double *)x->x_outbuf + i * n);
-            }
-            // fill input buffer
-            for (int i = 0; i < nin && i < pin; ++i){
-                t_float *in = invec[i];
-                double *buf = (double *)inbufvec[i];
-                for (int j = 0; j < n; ++j){
-                    buf[j] = in[j];
-                }
             }
             // process
             plugin->processDouble((double **)inbufvec, (double **)outbufvec, n);
@@ -302,21 +596,30 @@ static t_int *vsthost_perform(t_int *w){
                     out[j] = buf[j];
                 }
             }
+        #endif
         } else {  // single precision
-            // set buffer pointer
-            for (int i = 0; i < pin; ++i){
-                inbufvec[i] = ((float *)x->x_inbuf + i * n);
+            // prepare input buffer
+            for (int i = 0; i < ninbuf; ++i){
+                float *buf = (float *)x->x_inbuf + i * n;
+                inbufvec[i] = buf;
+                if (i < nin){  // copy from Pd input
+                    t_float *in = invec[i];
+                    for (int j = 0; j < n; ++j){
+                        buf[j] = in[j];
+                    }
+                } else {  // zero
+                    for (int j = 0; j < n; ++j){
+                        buf[j] = 0;
+                    }
+                }
             }
+        #if PD_FLOATSIZE == 32
+            // process (no need to buffer the output)
+            plugin->process((float **)inbufvec, outvec, n);
+        #else
+            // set output buffer pointers
             for (int i = 0; i < pout; ++i){
                 outbufvec[i] = ((float *)x->x_outbuf + i * n);
-            }
-            // fill input buffer
-            for (int i = 0; i < nin && i < pin; ++i){
-                t_float *in = invec[i];
-                float *buf = (float *)inbufvec[i];
-                for (int j = 0; j < n; ++j){
-                    buf[j] = in[j];
-                }
             }
             // process
             plugin->process((float **)inbufvec, (float **)outbufvec, n);
@@ -328,29 +631,31 @@ static t_int *vsthost_perform(t_int *w){
                     out[j] = buf[j];
                 }
             }
+        #endif
         }
-    } else {
-        t_float *bufptr = (t_float *)x->x_inbuf;
-        offset = nin;
+    } else {  // just pass it through
+        t_float *buf = (t_float *)x->x_inbuf;
+        t_float *bufptr;
+        out_offset = nin;
         // copy input
+        bufptr = buf;
         for (int i = 0; i < nin && i < nout; ++i){
             t_float *in = invec[i];
-            t_float *buf = bufptr + i * n;
             for (int j = 0; j < n; ++j){
-                buf[j] = in[j];
+                *bufptr++ = in[j];
             }
         }
         // write output
+        bufptr = buf;
         for (int i = 0; i < nin && i < nout; ++i){
             t_float *out = outvec[i];
-            t_float *buf = bufptr + i * n;
             for (int j = 0; j < n; ++j){
-                out[j] = buf[j];
+                out[j] = *bufptr++;
             }
         }
     }
     // zero remaining outlets
-    for (int i = offset; i < nout; ++i){
+    for (int i = out_offset; i < nout; ++i){
         auto vec = x->x_outvec[i];
         for (int j = 0; j < n; ++j){
             vec[j] = 0;
@@ -379,7 +684,7 @@ static void vsthost_dsp(t_vsthost *x, t_signal **sp){
     for (int i = 0; i < nout; ++i){
         x->x_outvec[i] = sp[nin + i]->s_vec;
     }
-    vsthost_updatebuffer(x);
+    vsthost_update_buffer(x);
 }
 
 // setup function
@@ -396,20 +701,26 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
 	class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
 	// parameters
 	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_getname, gensym("param_getname"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_getlabel, gensym("param_getlabel"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_getdisplay, gensym("param_getdisplay"), A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
 	// programs
 	class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, 0);
-	class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
-	class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, 0);
-	class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_GIMME, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
 	// version
 	class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
+
+    vstparam_setup();
 }
 
 } // extern "C"

@@ -19,7 +19,7 @@ public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
         VstInt32 index, VstInt32 value, void *ptr, float opt);
 
-    VST2Plugin(void* plugin);
+    VST2Plugin(void* plugin, const std::string& path);
     ~VST2Plugin();
     int getPluginVersion() const override;
 
@@ -36,14 +36,17 @@ public:
 
     void setParameter(int index, float value) override;
     float getParameter(int index) const override;
-    int getNumParameters() const override;
     std::string getParameterName(int index) const override;
+    std::string getParameterLabel(int index) const override;
+    std::string getParameterDisplay(int index) const override;
+    int getNumParameters() const override;
 
     void setProgram(int program) override;
-    int getProgram() override;
-    int getNumPrograms() const override;
-    std::string getProgramName() const override;
     void setProgramName(const std::string& name) override;
+    int getProgram() override;
+    std::string getProgramName() const override;
+    std::string getProgramNameIndexed(int index) const override;
+    int getNumPrograms() const override;
 
     bool hasEditor() const override;
     void openEditor(void *window) override;
@@ -51,8 +54,8 @@ public:
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
 private:
     bool hasFlag(VstAEffectFlags flag) const;
-    VstIntPtr dispatch(VstInt32 opCode,
-        VstInt32 index, VstInt32 value, void *ptr, float opt) const;
+    VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstInt32 value = 0,
+                       void *ptr = 0, float opt = 0) const;
     // data members
     AEffect *plugin_ = nullptr;
 };
