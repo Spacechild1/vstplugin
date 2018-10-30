@@ -9,52 +9,10 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
-// VST parameter responder (for Pd GUI)
-static t_class *vstparam_class;
-
-struct t_vsthost;
-
-struct t_vstparam {
-    t_pd p_pd;
-    t_vsthost *p_owner;
-    t_symbol *p_name;
-    int p_index;
-};
-
-static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value);
-
-static void vstparam_float(t_vstparam *x, t_floatarg f){
-    vsthost_param_set(x->p_owner, x->p_index, f);
-}
-
-static void vstparam_set(t_vstparam *x, t_floatarg f){
-    // since t_vastparam is bound to the same symbol as the corresponding slider and number box,
-    // we must provide dummy methods like this to avoid errors.
-}
-
-static void vstparam_init(t_vstparam *x, t_vsthost *y, int index){
-    x->p_pd = vstparam_class;
-    x->p_owner = y;
-    x->p_index = index;
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%lu-p-%d", (unsigned long)y, index);
-    x->p_name = gensym(buf);
-    pd_bind((t_pd *)x, x->p_name);
-    // post("parameter nr. %d: %s", index, x->p_name->s_name);
-}
-
-static void vstparam_free(t_vstparam *x){
-    pd_unbind((t_pd *)x, x->p_name);
-}
-
-static void vstparam_setup(void){
-    vstparam_class = class_new(gensym("__vstparam"), 0, 0, sizeof(t_vstparam), 0, A_NULL);
-    class_addfloat(vstparam_class, (t_method)vstparam_float);
-    class_addmethod(vstparam_class, (t_method)vstparam_set, gensym("set"), A_DEFFLOAT, 0);
-}
-
 // vsthost~ object
 static t_class *vsthost_class;
+
+struct t_vstparam;
 
 struct t_vsthost {
 	t_object x_obj;
@@ -89,6 +47,61 @@ struct t_vsthost {
     int x_noutbuf;
     void **x_outbufvec;
 };
+
+// VST parameter responder (for Pd GUI)
+static t_class *vstparam_class;
+
+struct t_vstparam {
+    t_pd p_pd;
+    t_vsthost *p_owner;
+    t_symbol *p_name;
+    t_symbol *p_display;
+    int p_index;
+};
+
+static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value);
+
+static void vstparam_float(t_vstparam *x, t_floatarg f){
+    vsthost_param_set(x->p_owner, x->p_index, f);
+}
+
+static void vstparam_set(t_vstparam *x, t_floatarg f){
+    // this while set the slider and implicitly call vstparam_doset
+    pd_vmess(x->p_name->s_thing, gensym("set"), (char *)"f", f);
+}
+
+static void vstparam_doset(t_vstparam *x, t_floatarg f){
+    // this method updates the display next to the label
+    IVSTPlugin *plugin = x->p_owner->x_plugin;
+    int index = x->p_index;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s %s", plugin->getParameterDisplay(index).c_str(),
+             plugin->getParameterLabel(index).c_str());
+    pd_vmess(x->p_display->s_thing, gensym("label"), (char *)"s", gensym(buf));
+}
+
+static void vstparam_init(t_vstparam *x, t_vsthost *y, int index){
+    x->p_pd = vstparam_class;
+    x->p_owner = y;
+    x->p_index = index;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%lu-hsl-%d", (unsigned long)y, index);
+    x->p_name = gensym(buf);
+    pd_bind((t_pd *)x, x->p_name);
+    // post("parameter nr. %d: %s", index, x->p_name->s_name);
+    snprintf(buf, sizeof(buf), "%lu-cnv-%d", (unsigned long)y, index);
+    x->p_display = gensym(buf);
+}
+
+static void vstparam_free(t_vstparam *x){
+    pd_unbind((t_pd *)x, x->p_name);
+}
+
+static void vstparam_setup(void){
+    vstparam_class = class_new(gensym("__vstparam"), 0, 0, sizeof(t_vstparam), 0, A_NULL);
+    class_addfloat(vstparam_class, (t_method)vstparam_float);
+    class_addmethod(vstparam_class, (t_method)vstparam_doset, gensym("set"), A_DEFFLOAT, 0);
+}
 
 /**** public interface ****/
 
@@ -200,44 +213,41 @@ static void vsthost_make_editor(t_vsthost *x){
     SETFLOAT(slider+18, -1);
     SETFLOAT(slider+19, -0);
     SETFLOAT(slider+20, 1);
-    // numbox
-    t_atom numbox[21];
-    SETFLOAT(numbox, 30 + 128);
-    SETFLOAT(numbox+1, 10);
-    SETSYMBOL(numbox+2, gensym("nbx"));
-    SETFLOAT(numbox+3, 5);
-    SETFLOAT(numbox+4, 14);
-    SETFLOAT(numbox+5, 0);
-    SETFLOAT(numbox+6, 1);
-    SETFLOAT(numbox+7, 0);
-    SETFLOAT(numbox+8, 0);
-    SETSYMBOL(numbox+9, gensym("empty"));
-    SETSYMBOL(numbox+10, gensym("empty"));
-    SETSYMBOL(numbox+11, gensym("empty"));
-    SETFLOAT(numbox+12, 0);
-    SETFLOAT(numbox+13, -8);
-    SETFLOAT(numbox+14, 0);
-    SETFLOAT(numbox+15, 10);
-    SETFLOAT(numbox+16, -262144);
-    SETFLOAT(numbox+17, -1);
-    SETFLOAT(numbox+18, -1);
-    SETFLOAT(numbox+19, -0);
-    SETFLOAT(numbox+20, 256);
+    // label
+    t_atom label[16];
+    SETFLOAT(label, 30 + 128);
+    SETFLOAT(label+1, 10);
+    SETSYMBOL(label+2, gensym("cnv"));
+    SETFLOAT(label+3, 1);
+    SETFLOAT(label+4, 1);
+    SETFLOAT(label+5, 1);
+    SETSYMBOL(label+6, gensym("empty"));
+    SETSYMBOL(label+7, gensym("empty"));
+    SETSYMBOL(label+8, gensym("empty"));
+    SETFLOAT(label+9, 0);
+    SETFLOAT(label+10, 8);
+    SETFLOAT(label+11, 0);
+    SETFLOAT(label+12, 10);
+    SETFLOAT(label+13, -262144);
+    SETFLOAT(label+14, -66577);
+    SETFLOAT(label+15, 0);
 
     for (int i = 0; i < nparams; ++i){
         // create slider
         SETFLOAT(slider+1, 20 + i*35);
         SETSYMBOL(slider+9, x->x_param_vec[i].p_name);
         SETSYMBOL(slider+10, x->x_param_vec[i].p_name);
-        SETSYMBOL(slider+11, gensym(x->x_plugin->getParameterName(i).c_str()));
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%d: %s", i, x->x_plugin->getParameterName(i).c_str());
+        SETSYMBOL(slider+11, gensym(buf));
         editor_mess(x, gensym("obj"), 21, slider);
         // create number box
-        SETFLOAT(numbox+1, 20 + i*35);
-        SETSYMBOL(numbox+9, x->x_param_vec[i].p_name);
-        SETSYMBOL(numbox+10, x->x_param_vec[i].p_name);
-        editor_mess(x, gensym("obj"), 21, numbox);
+        SETFLOAT(label+1, 20 + i*35);
+        SETSYMBOL(label+6, x->x_param_vec[i].p_display);
+        SETSYMBOL(label+7, x->x_param_vec[i].p_display);
+        editor_mess(x, gensym("obj"), 16, label);
     }
-    float width = 240;
+    float width = 280;
     float height = nparams * 35 + 60;
     editor_vmess(x, gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
     editor_vmess(x, gensym("vis"), "i", 0);
@@ -269,9 +279,7 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         x->x_plugin->setParameter(index, value);
         if (!x->x_plugin->hasEditor() || x->x_generic){
-            float f = x->x_plugin->getParameter(index);
-            t_symbol *param = x->x_param_vec[index].p_name;
-            pd_vmess(param->s_thing, gensym("set"), (char *)"f", f);
+            vstparam_set(&x->x_param_vec[index], value);
         }
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
