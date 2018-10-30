@@ -18,6 +18,9 @@ common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
 # all extra files to be included in binary distribution of the library
 datafiles = 
 
-cflags = -Wno-unused -Wno-unused-parameter -std=c++11 -g
+VST2INCLUDEDIR = src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x/
+
+cflags = -Wno-unused -Wno-unused-parameter -std=c++11 -g \
+	-I"${VST2INCLUDEDIR}"
 
 include pd-lib-builder/Makefile.pdlibbuilder
