@@ -5,3 +5,4 @@ SDKURL="https://download.steinberg.net/sdk_downloads/vstsdk3611_22_10_2018_build
 curl -s -o "${OUTFILE}" "${SDKURL}"
 
 unzip -q "${OUTFILE}" -d src
+rm -f "${OUTFILE}"
