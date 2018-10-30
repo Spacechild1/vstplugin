@@ -20,7 +20,10 @@ datafiles =
 
 VST2INCLUDEDIR = src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x/
 
-cflags = -Wno-unused -Wno-unused-parameter -std=c++11 -g \
-	-I"${VST2INCLUDEDIR}"
+cflags = -Wno-unused -Wno-unused-parameter \
+	-std=c++11 \
+	-g \
+	-I"${VST2INCLUDEDIR}" \
+	$(empty)
 
 include pd-lib-builder/Makefile.pdlibbuilder
