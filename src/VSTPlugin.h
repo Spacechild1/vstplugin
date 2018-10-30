@@ -9,12 +9,13 @@ class VSTPlugin : public IVSTPlugin {
 public:
     VSTPlugin(const std::string& path);
     ~VSTPlugin();
-    std::string getPluginName() const override final;
 
     void showEditorWindow() override final;
     void hideEditorWindow() override final;
+protected:
+    std::string getBaseName() const;
 private:
-    std::string name_;
+    std::string path_;
     HWND editorHwnd_ = nullptr;
     std::thread editorThread_;
     void threadFunction();

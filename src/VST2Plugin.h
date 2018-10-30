@@ -21,6 +21,7 @@ public:
 
     VST2Plugin(void* plugin, const std::string& path);
     ~VST2Plugin();
+    std::string getPluginName() const override;
     int getPluginVersion() const override;
 
     void process(float **inputs, float **outputs, int nsamples) override;

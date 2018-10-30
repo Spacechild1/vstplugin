@@ -96,27 +96,14 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
 
 /*//////////// VST PLUGIN ///////////*/
 
-VSTPlugin::VSTPlugin(const std::string& path){
-    auto sep = path.find_last_of("\\/");
-    auto dot = path.find_last_of('.');
-    if (sep == std::string::npos){
-        sep = -1;
-    }
-    if (dot == std::string::npos){
-        dot = path.size();
-    }
-    name_ = path.substr(sep + 1, dot - sep - 1);
-}
+VSTPlugin::VSTPlugin(const std::string& path)
+    : path_(path){}
 
 VSTPlugin::~VSTPlugin(){
     if (editorThread_.joinable()){
         closeWindow(editorHwnd_);
         editorThread_.join();
     }
-}
-
-std::string VSTPlugin::getPluginName() const {
-    return name_;
 }
 
 void VSTPlugin::showEditorWindow(){
@@ -143,6 +130,19 @@ void VSTPlugin::hideEditorWindow(){
         closeWindow(editorHwnd_);
         editorThread_.join();
     }
+}
+
+// protected
+std::string VSTPlugin::getBaseName() const {
+    auto sep = path_.find_last_of("\\/");
+    auto dot = path_.find_last_of('.');
+    if (sep == std::string::npos){
+        sep = -1;
+    }
+    if (dot == std::string::npos){
+        dot = path_.size();
+    }
+    return path_.substr(sep + 1, dot - sep - 1);
 }
 
 // private

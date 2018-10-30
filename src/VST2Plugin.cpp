@@ -13,6 +13,18 @@ VST2Plugin::~VST2Plugin(){
     // dispatch(effClose, 0, 0, NULL, 0.f);
 }
 
+std::string VST2Plugin::getPluginName() const {
+    char buf[256];
+    buf[0] = 0;
+    dispatch(effGetEffectName, 0, 0, buf);
+    std::string name(buf);
+    if (name.size()){
+        return name;
+    } else {
+        return getBaseName();
+    }
+}
+
 int VST2Plugin::getPluginVersion() const {
     return plugin_->version;
 }
