@@ -85,11 +85,11 @@ static void vstparam_init(t_vstparam *x, t_vsthost *y, int index){
     x->p_owner = y;
     x->p_index = index;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%lx-hsl-%d", y, index);
+    snprintf(buf, sizeof(buf), "%p-hsl-%d", y, index);
     x->p_name = gensym(buf);
     pd_bind((t_pd *)x, x->p_name);
     // post("parameter nr. %d: %s", index, x->p_name->s_name);
-    snprintf(buf, sizeof(buf), "%lx-cnv-%d", y, index);
+    snprintf(buf, sizeof(buf), "%p-cnv-%d", y, index);
     x->p_display = gensym(buf);
 }
 
