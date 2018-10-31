@@ -17,7 +17,7 @@ typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
 class VST2Plugin final : public VSTPlugin {
 public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
-        VstInt32 index, VstInt32 value, void *ptr, float opt);
+        VstInt32 index, VstIntPtr value, void *ptr, float opt);
 
     VST2Plugin(void* plugin, const std::string& path);
     ~VST2Plugin();
