@@ -8,6 +8,7 @@
 // #include "tchar.h"
 
 # include <windows.h>
+#if _WIN32
 static std::wstring widen(const std::string& s){
     if (s.empty()){
         return std::wstring();
@@ -28,6 +29,7 @@ static std::string shorten(const std::wstring& s){
     WideCharToMultiByte(CP_UTF8, 0, s.data(), s.size(), &buf[0], n, NULL, NULL);
     return buf;
 }
+#endif
 
 
 /*//////////// VST PLUGIN ///////////*/
