@@ -119,14 +119,20 @@ void VSTPlugin::threadFunction(){
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
-    HMODULE handle = LoadLibraryW(widen(path).c_str());
-    if (handle == NULL){
+    vstPluginFuncPtr mainEntryPoint = NULL;
+#if _WIN32
+    if (NULL == mainEntryPoint) {
+      HMODULE handle = LoadLibraryW(widen(path).c_str());
+      if (handle){
+        mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
+        if (mainEntryPoint == NULL){
+          mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+        }
+      } else {
         std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
-        return nullptr;
+      }
     }
-    vstPluginFuncPtr mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
-    if (mainEntryPoint == NULL){
-        mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+#endif
     }
     if (mainEntryPoint == NULL){
         std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
