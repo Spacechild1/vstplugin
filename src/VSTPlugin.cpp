@@ -8,6 +8,10 @@
 # include <process.h>
 # include <windows.h>
 #endif
+#ifdef DL_OPEN
+# include <dlfcn.h>
+#endif
+
 #if _WIN32
 static std::wstring widen(const std::string& s){
     if (s.empty()){
@@ -135,7 +139,21 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
       }
     }
 #endif
+#ifdef DL_OPEN
+    if (NULL == mainEntryPoint) {
+      void *handle = dlopen(path.c_str(), RTLD_NOW);
+      dlerror();
+      if(handle) {
+        mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
+        if (mainEntryPoint == NULL){
+          mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
+        }
+      } else {
+        std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
+      }
     }
+#endif
+
     if (mainEntryPoint == NULL){
         std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
         return nullptr;
