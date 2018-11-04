@@ -13,7 +13,7 @@ lib.name = vsthost~
 
 class.sources = src/vsthost~.cpp
 
-common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
+common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp src/VSTWindow.cpp
 
 # all extra files to be included in binary distribution of the library
 datafiles = 
