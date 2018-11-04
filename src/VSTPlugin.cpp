@@ -1,13 +1,15 @@
 #include "VSTPlugin.h"
 #include "VST2Plugin.h"
 
-#include <process.h>
 #include <iostream>
 #include <thread>
 
+#if _WIN32
+# include <process.h>
 // #include "tchar.h"
 
 # include <windows.h>
+#endif
 #if _WIN32
 static std::wstring widen(const std::string& s){
     if (s.empty()){
@@ -102,6 +104,7 @@ void VSTPlugin::threadFunction(){
     } else
       return;
 
+#ifdef _WIN32
     std::cout << "enter message loop!" << std::endl;
     MSG msg;
     int ret;
@@ -114,6 +117,7 @@ void VSTPlugin::threadFunction(){
         DispatchMessage(&msg);
     }
     std::cout << "exit message loop!" << std::endl;
+#endif
     win_ = nullptr;
 }
 
