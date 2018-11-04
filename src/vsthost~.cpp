@@ -701,28 +701,28 @@ extern "C" {
 void vsthost_tilde_setup(void)
 {
     vsthost_class = class_new(gensym("vsthost~"), (t_newmethod)vsthost_new, (t_method)vsthost_free,
-        sizeof(t_vsthost), 0, A_GIMME, 0);
+        sizeof(t_vsthost), 0, A_GIMME, A_NULL);
     CLASS_MAINSIGNALIN(vsthost_class, t_vsthost, x_f);
     class_addmethod(vsthost_class, (t_method)vsthost_dsp,
-        gensym("dsp"), A_CANT, 0);
-	class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, 0);
+        gensym("dsp"), A_CANT, A_NULL);
+	class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
-	class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
-	class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT, A_NULL);
+	class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
 	// parameters
-	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, 0);
-	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, 0);
-	class_addmethod(vsthost_class, (t_method)vsthost_param_getname, gensym("param_getname"), A_FLOAT, 0);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_getlabel, gensym("param_getlabel"), A_FLOAT, 0);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_getdisplay, gensym("param_getdisplay"), A_FLOAT, 0);
+	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, A_NULL);
+	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);
+	class_addmethod(vsthost_class, (t_method)vsthost_param_getname, gensym("param_getname"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_getlabel, gensym("param_getlabel"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_getdisplay, gensym("param_getdisplay"), A_FLOAT, A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
 	// programs
-	class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, 0);
+	class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, 0);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_GIMME, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_GIMME, A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
 	// version
