@@ -1,9 +1,8 @@
 #pragma once
 
 #include "VSTPluginInterface.h"
-
+#include "VSTWindow.h"
 #include <thread>
-#include <windows.h>
 
 class VSTPlugin : public IVSTPlugin {
 public:
@@ -16,7 +15,8 @@ protected:
     std::string getBaseName() const;
 private:
     std::string path_;
-    HWND editorHwnd_ = nullptr;
+    VSTWindow*win_;
     std::thread editorThread_;
+
     void threadFunction();
 };

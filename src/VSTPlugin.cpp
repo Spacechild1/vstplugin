@@ -7,6 +7,7 @@
 
 // #include "tchar.h"
 
+# include <windows.h>
 static std::wstring widen(const std::string& s){
     if (s.empty()){
         return std::wstring();
@@ -28,80 +29,17 @@ static std::string shorten(const std::wstring& s){
     return buf;
 }
 
-/*////////// EDITOR WINDOW //////////*/
-
-static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
-    if (Msg == WM_DESTROY){
-        PostQuitMessage(0);
-    }
-    return DefWindowProcW(hWnd, Msg, wParam, lParam);
-}
-
-void restoreWindow(HWND hwnd){
-    if (hwnd){
-        ShowWindow(hwnd, SW_RESTORE);
-        BringWindowToTop(hwnd);
-    }
-}
-
-void closeWindow(HWND hwnd){
-    if (hwnd){
-        PostMessage(hwnd, WM_CLOSE, 0, 0);
-    }
-}
-
-static void setWindowGeometry(HWND hwnd, int left, int top, int right, int bottom){
-    if (hwnd) {
-        RECT rc;
-        rc.left = left;
-        rc.top = top;
-        rc.right = right;
-        rc.bottom = bottom;
-        const auto style = GetWindowLongPtr(hwnd, GWL_STYLE);
-        const auto exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-        const BOOL fMenu = GetMenu(hwnd) != nullptr;
-        AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-        MoveWindow(hwnd, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-        // SetWindowPos(hwnd, HWND_TOP, 0, 0, rc.right-rc.left, rc.bottom-rc.top, 0);
-        std::cout << "resized Window to " << left << ", " << top << ", " << right << ", " << bottom << std::endl;
-    }
-}
-
-/*/////////// DLL MAIN //////////////*/
-
-static HINSTANCE hInstance = NULL;
-static WNDCLASSEXW VSTWindowClass;
-static bool bRegistered = false;
-
-extern "C" {
-BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
-    hInstance = hinstDLL;
-
-    if (!bRegistered){
-        memset(&VSTWindowClass, 0, sizeof(WNDCLASSEXW));
-        VSTWindowClass.cbSize = sizeof(WNDCLASSEXW);
-        VSTWindowClass.lpfnWndProc = VSTPluginEditorProc;
-        VSTWindowClass.hInstance = hInstance;
-        VSTWindowClass.lpszClassName = L"VST Plugin Editor Class";
-        if (!RegisterClassExW(&VSTWindowClass)){
-            std::cout << "couldn't register window class!" << std::endl;
-        } else {
-            std::cout << "registered window class!" << std::endl;
-            bRegistered = true;
-        }
-    }
-    return TRUE;
-}
-} // extern C
 
 /*//////////// VST PLUGIN ///////////*/
 
 VSTPlugin::VSTPlugin(const std::string& path)
-    : path_(path){}
+    : path_(path)
+    , win_(nullptr)
+{}
 
 VSTPlugin::~VSTPlugin(){
     if (editorThread_.joinable()){
-        closeWindow(editorHwnd_);
+        if(win_) delete win_; win_ = nullptr;
         editorThread_.join();
     }
 }
@@ -113,10 +51,10 @@ void VSTPlugin::showEditorWindow(){
     }
     // check if message queue is already running
     if (editorThread_.joinable()){
-        if (editorHwnd_) restoreWindow(editorHwnd_);
+        if(win_) win_->restore();
         return;
     }
-    editorHwnd_ = nullptr;
+    win_ = nullptr;
     editorThread_ = std::thread(&VSTPlugin::threadFunction, this);
 }
 
@@ -127,7 +65,7 @@ void VSTPlugin::hideEditorWindow(){
     }
     if (editorThread_.joinable()){
         closeEditor();
-        closeWindow(editorHwnd_);
+        if(win_) delete win_; win_ = nullptr;
         editorThread_.join();
     }
 }
@@ -149,25 +87,18 @@ std::string VSTPlugin::getBaseName() const {
 
 void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
-    editorHwnd_ = CreateWindowW(
-        VSTWindowClass.lpszClassName, L"VST Plugin Editor",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-        NULL, NULL, hInstance, NULL
-    );
-
+    win_ = VSTWindow::create("VST Plugin Editor");
     std::cout << "try open editor" << std::endl;
-    openEditor(editorHwnd_);
-    std::cout << "opened editor" << std::endl;
-    int left, top, right, bottom;
-    getEditorRect(left, top, right, bottom);
-    setWindowGeometry(editorHwnd_, left, top, right, bottom);
-
-    ShowWindow(editorHwnd_, SW_SHOW);
-    UpdateWindow(editorHwnd_);
-
-    // hack to bring Window to the top
-    ShowWindow(editorHwnd_, SW_MINIMIZE);
-    restoreWindow(editorHwnd_);
+    if(win_) {
+      int left, top, right, bottom;
+      openEditor(win_->getHandle());
+      std::cout << "opened editor" << std::endl;
+      getEditorRect(left, top, right, bottom);
+      win_->setGeometry(left, top, right, bottom);
+      win_->show();
+      win_->top();
+    } else
+      return;
 
     std::cout << "enter message loop!" << std::endl;
     MSG msg;
@@ -181,7 +112,7 @@ void VSTPlugin::threadFunction(){
         DispatchMessage(&msg);
     }
     std::cout << "exit message loop!" << std::endl;
-    editorHwnd_ = nullptr;
+    win_ = nullptr;
 }
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
