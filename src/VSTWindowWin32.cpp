@@ -36,7 +36,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
 }
 } // extern C
 
-class VSTWindowWin32 :: VSTWindow {
+
+class VSTWindowWin32 : public VSTWindow {
 private:
   HWND hwnd_ = nullptr;
 public:
@@ -83,3 +84,8 @@ public:
     UpdateWindow(hwnd_);
   }
 };
+namespace VSTWindowFactory {
+  VSTWindow* createWin32(const std::string&name) {
+    return new VSTWindowWin32(name);
+  }
+}

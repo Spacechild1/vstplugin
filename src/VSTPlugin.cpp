@@ -93,7 +93,7 @@ std::string VSTPlugin::getBaseName() const {
 
 void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
-    win_ = VSTWindow::create("VST Plugin Editor");
+    win_ = VSTWindowFactory::create("VST Plugin Editor");
     std::cout << "try open editor" << std::endl;
     if(win_) {
       int left, top, right, bottom;

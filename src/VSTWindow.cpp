@@ -1,12 +1,22 @@
 #include "VSTWindow.h"
-VSTWindow* VSTWindow::create(const std::string&name) {
-  return 0
+namespace VSTWindowFactory {
 #ifdef _WIN32
-    || (new VSTWindowWin32(name))
+  VSTWindow* createWin32(const std::string&name);
 #endif
-#ifdef _FOO
-    || (new VSTWindowFoo(name))
+#ifdef USE_WINDOW_FOO
+  VSTWindow* createFoo(const std::string&name);
 #endif
-  ;
-}
 
+  VSTWindow* create(const std::string&name) {
+    VSTWindow*win = nullptr;
+#ifdef _WIN32
+    win = createWin32(name);
+    if (win) return win;
+#endif
+#ifdef USE_WINDOW_FOO
+    win = createFoo(name);
+    if (win) return win;
+#endif
+    return nullptr;
+  }
+}
