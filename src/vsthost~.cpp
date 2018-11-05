@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <cstdio>
+#include <cstring>
 
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
@@ -133,18 +134,37 @@ static void vsthost_make_editor(t_vsthost *x);
 
 static void vsthost_open(t_vsthost *x, t_symbol *s){
     vsthost_close(x);
-    IVSTPlugin *plugin = loadVSTPlugin(s->s_name);
-    if (plugin){
-        post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
-        // plugin->setBlockSize(x->x_blocksize);
-        // plugin->setSampleRate(x->x_sr);
-        // plugin->resume();
-        x->x_plugin = plugin;
-        vsthost_update_buffer(x);
-        vsthost_make_editor(x);
+    char dirresult[MAXPDSTRING];
+    char *name;
+    const char *ext = ".dll";
+    int fd = -1;
+    if (strstr(s->s_name, ext)){
+        fd = canvas_open(x->x_editor, s->s_name, "", dirresult, &name, MAXPDSTRING, 1);
     } else {
-        post("no plugin");
-        pd_error(x, "%s: couldn't open plugin %s", classname(x), s->s_name);
+        fd = canvas_open(x->x_editor, s->s_name, ext, dirresult, &name, MAXPDSTRING, 1);
+    }
+    if (fd >= 0){
+        sys_close(fd);
+
+        char path[MAXPDSTRING];
+        snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
+        sys_bashfilename(path, path);
+
+        IVSTPlugin *plugin = loadVSTPlugin(path);
+        if (plugin){
+            post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
+            // plugin->setBlockSize(x->x_blocksize);
+            // plugin->setSampleRate(x->x_sr);
+            // plugin->resume();
+            x->x_plugin = plugin;
+            vsthost_update_buffer(x);
+            vsthost_make_editor(x);
+            return;
+        } else {
+            pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
+        }
+    } else {
+        pd_error(x, "%s: couldn't open \"%s\" - no such file!", classname(x), s->s_name);
     }
 }
 
