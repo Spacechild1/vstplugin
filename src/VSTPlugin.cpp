@@ -109,6 +109,7 @@ void VSTPlugin::threadFunction(){
     win_->run();
     std::cout << "exit message loop!" << std::endl;
 
+    delete win_;
     win_ = nullptr;
 }
 
