@@ -68,7 +68,7 @@ static void vstparam_float(t_vstparam *x, t_floatarg f){
 }
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
-    // this while set the slider and implicitly call vstparam_doset
+    // this will set the slider and implicitly call vstparam_doset
     pd_vmess(x->p_name->s_thing, gensym("set"), (char *)"f", f);
 }
 
@@ -201,9 +201,7 @@ static void vsthost_update_editor(t_vsthost *x){
     if (!x->x_plugin->hasEditor() || x->x_generic){
         int n = x->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
-            float f = x->x_plugin->getParameter(i);
-            t_symbol *param = x->x_param_vec[i].p_name;
-            pd_vmess(param->s_thing, gensym("set"), (char *)"f", f);
+            vstparam_set(&x->x_param_vec[i], x->x_plugin->getParameter(i));
         }
     }
 }
@@ -281,6 +279,7 @@ static void vsthost_make_editor(t_vsthost *x){
     }
     float width = 280;
     float height = nparams * 35 + 60;
+    if (height > 800) height = 800;
     editor_vmess(x, gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
     editor_vmess(x, gensym("vis"), "i", 0);
 
@@ -317,6 +316,7 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
 	if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
+        value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
         if (!x->x_plugin->hasEditor() || x->x_generic){
             vstparam_set(&x->x_param_vec[index], value);
