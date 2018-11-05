@@ -185,22 +185,81 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstInt32 value, void *ptr, float opt){
     // std::cout << "plugin requested opcode " << opcode << std::endl;
     switch(opcode) {
+    case audioMasterAutomate:
+        std::cout << "opcode: audioMasterAutomate" << std::endl;
+        break;
     case audioMasterVersion:
+        std::cout << "opcode: audioMasterVersion" << std::endl;
         return 2400;
+    case audioMasterCurrentId:
+        std::cout << "opcode: audioMasterCurrentId" << std::endl;
+        break;
     case audioMasterIdle:
+        std::cout << "opcode: audioMasterIdle" << std::endl;
         plugin->dispatcher(plugin, effEditIdle, 0, 0, NULL, 0.f);
         break;
     case audioMasterGetTime:
+        // std::cout << "opcode: audioMasterGetTime" << std::endl;
         break;
-    case audioMasterBeginEdit:
+    case audioMasterProcessEvents:
+        std::cout << "opcode: audioMasterProcessEvents" << std::endl;
         break;
-    case audioMasterEndEdit:
+    case audioMasterIOChanged:
+        std::cout << "opcode: audioMasterIOChanged" << std::endl;
+        break;
+    case audioMasterSizeWindow:
+        std::cout << "opcode: audioMasterSizeWindow" << std::endl;
+        break;
+    case audioMasterGetSampleRate:
+        std::cout << "opcode: audioMasterGetSampleRate" << std::endl;
+        break;
+    case audioMasterGetBlockSize:
+        std::cout << "opcode: audioMasterGetBlockSize" << std::endl;
+        break;
+    case audioMasterGetInputLatency:
+        std::cout << "opcode: audioMasterGetInputLatency" << std::endl;
+        break;
+    case audioMasterGetOutputLatency:
+        std::cout << "opcode: audioMasterGetOutputLatency" << std::endl;
         break;
     case audioMasterGetCurrentProcessLevel:
+        std::cout << "opcode: audioMasterGetCurrentProcessLevel" << std::endl;
         return kVstProcessLevelUnknown;
-    // Handle other opcodes here... there will be lots of them
+    case audioMasterGetAutomationState:
+        std::cout << "opcode: audioMasterGetAutomationState" << std::endl;
+        break;
+    case audioMasterGetVendorString:
+    case audioMasterGetProductString:
+    case audioMasterGetVendorVersion:
+    case audioMasterVendorSpecific:
+        std::cout << "opcode: vendor info" << std::endl;
+        break;
+    case audioMasterCanDo:
+        std::cout << "opcode: audioMasterCanDo " << (const char*)ptr << std::endl;
+        break;
+    case audioMasterGetLanguage:
+        std::cout << "opcode: audioMasterGetLanguage" << std::endl;
+        break;
+    case audioMasterGetDirectory:
+        std::cout << "opcode: audioMasterGetDirectory" << std::endl;
+        break;
+    case audioMasterUpdateDisplay:
+        std::cout << "opcode: audioMasterUpdateDisplay" << std::endl;
+        break;
+    case audioMasterBeginEdit:
+        std::cout << "opcode: audioMasterBeginEdit" << std::endl;
+        break;
+    case audioMasterEndEdit:
+        std::cout << "opcode: audioMasterEndEdit" << std::endl;
+        break;
+    case audioMasterOpenFileSelector:
+        std::cout << "opcode: audioMasterOpenFileSelector" << std::endl;
+        break;
+    case audioMasterCloseFileSelector:
+        std::cout << "opcode: audioMasterCloseFileSelector" << std::endl;
+        break;
     default:
-        std::cout << "plugin requested unknown opcode " << opcode << std::endl;
+        std::cout << "plugin requested unknown/deprecated opcode " << opcode << std::endl;
         return 0;
     }
     return 0; // ?
