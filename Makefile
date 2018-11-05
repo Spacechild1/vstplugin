@@ -18,6 +18,11 @@ common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp src/VSTWindow.cpp
 define forWindows
   class.sources += src/VSTWindowWin32.cpp
 endef
+define forLinux
+  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1
+endef
+
+
 # all extra files to be included in binary distribution of the library
 datafiles = 
 
