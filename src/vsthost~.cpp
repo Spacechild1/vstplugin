@@ -603,10 +603,6 @@ static t_int *vsthost_perform(t_int *w){
                     }
                 }
             }
-        #if PD_FLOATSIZE == 64
-            // process (no need to buffer the output)
-            plugin->processDouble((double **)inbufvec, outvec, n);
-        #else
             // set output buffer pointers
             for (int i = 0; i < pout; ++i){
                 outbufvec[i] = ((double *)x->x_outbuf + i * n);
@@ -621,7 +617,6 @@ static t_int *vsthost_perform(t_int *w){
                     out[j] = buf[j];
                 }
             }
-        #endif
         } else {  // single precision
             // prepare input buffer
             for (int i = 0; i < ninbuf; ++i){
@@ -638,10 +633,6 @@ static t_int *vsthost_perform(t_int *w){
                     }
                 }
             }
-        #if PD_FLOATSIZE == 32
-            // process (no need to buffer the output)
-            plugin->process((float **)inbufvec, outvec, n);
-        #else
             // set output buffer pointers
             for (int i = 0; i < pout; ++i){
                 outbufvec[i] = ((float *)x->x_outbuf + i * n);
@@ -656,7 +647,6 @@ static t_int *vsthost_perform(t_int *w){
                     out[j] = buf[j];
                 }
             }
-        #endif
         }
     } else {  // just pass it through
         t_float *buf = (t_float *)x->x_inbuf;
