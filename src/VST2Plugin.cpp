@@ -182,7 +182,7 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 
 // Main host callback
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
-    VstInt32 index, VstInt32 value, void *ptr, float opt){
+    VstInt32 index, VstIntPtr value, void *ptr, float opt){
     // std::cout << "plugin requested opcode " << opcode << std::endl;
     switch(opcode) {
     case audioMasterAutomate:
