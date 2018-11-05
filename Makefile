@@ -24,7 +24,7 @@ cflags = -Wno-unused -Wno-unused-parameter \
 	$(empty)
 
 define forWindows
-  class.sources += src/VSTWindowWin32.cpp
+  common.sources += src/VSTWindowWin32.cpp
 endef
 define forLinux
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1
