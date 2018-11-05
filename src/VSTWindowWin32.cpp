@@ -1,4 +1,5 @@
 #include "VSTWindow.h"
+
 #include <windows.h>
 #include <iostream>
 
@@ -9,31 +10,32 @@ static bool bRegistered = false;
 
 
 static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
-    if (Msg == WM_DESTROY){
-        PostQuitMessage(0);
-    }
-    return DefWindowProcW(hWnd, Msg, wParam, lParam);
+  if (Msg == WM_DESTROY){
+    PostQuitMessage(0);
+  }
+  return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
 
+
 extern "C" {
-BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
+  BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
     hInstance = hinstDLL;
 
     if (!bRegistered){
-        memset(&VSTWindowClass, 0, sizeof(WNDCLASSEXW));
-        VSTWindowClass.cbSize = sizeof(WNDCLASSEXW);
-        VSTWindowClass.lpfnWndProc = VSTPluginEditorProc;
-        VSTWindowClass.hInstance = hInstance;
-        VSTWindowClass.lpszClassName = L"VST Plugin Editor Class";
-        if (!RegisterClassExW(&VSTWindowClass)){
-            std::cout << "couldn't register window class!" << std::endl;
-        } else {
-            std::cout << "registered window class!" << std::endl;
-            bRegistered = true;
-        }
+      memset(&VSTWindowClass, 0, sizeof(WNDCLASSEXW));
+      VSTWindowClass.cbSize = sizeof(WNDCLASSEXW);
+      VSTWindowClass.lpfnWndProc = VSTPluginEditorProc;
+      VSTWindowClass.hInstance = hInstance;
+      VSTWindowClass.lpszClassName = L"VST Plugin Editor Class";
+      if (!RegisterClassExW(&VSTWindowClass)){
+        std::cout << "couldn't register window class!" << std::endl;
+      } else {
+        std::cout << "registered window class!" << std::endl;
+        bRegistered = true;
+      }
     }
     return TRUE;
-}
+  }
 } // extern C
 
 
@@ -84,6 +86,7 @@ public:
     UpdateWindow(hwnd_);
   }
 };
+
 namespace VSTWindowFactory {
   VSTWindow* createWin32(const std::string&name) {
     return new VSTWindowWin32(name);
