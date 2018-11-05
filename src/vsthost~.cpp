@@ -136,12 +136,6 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
         // plugin->setBlockSize(x->x_blocksize);
         // plugin->setSampleRate(x->x_sr);
         // plugin->resume();
-        if (plugin->hasSinglePrecision()){
-            post("plugin supports single precision");
-        }
-        if (plugin->hasDoublePrecision()){
-            post("plugin supports double precision");
-        }
         x->x_plugin = plugin;
         vsthost_update_buffer(x);
         vsthost_make_editor(x);
@@ -149,6 +143,20 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
         post("no plugin");
         pd_error(x, "%s: couldn't open plugin %s", classname(x), s->s_name);
     }
+}
+
+static void vsthost_info(t_vsthost *x){
+    if (!vsthost_check(x)) return;
+    post("name: %s", x->x_plugin->getPluginName().c_str());
+    post("version: %d", x->x_plugin->getPluginVersion());
+    post("input channels: %d", x->x_plugin->getNumInputs());
+    post("output channels: %d", x->x_plugin->getNumOutputs());
+    post("single precision: %s", x->x_plugin->hasSinglePrecision() ? "yes" : "no");
+    post("double precision: %s", x->x_plugin->hasDoublePrecision() ? "yes" : "no");
+    post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
+    post("number of parameters: %d", x->x_plugin->getNumParameters());
+    post("number of programs: %d", x->x_plugin->getNumPrograms());
+    post("");
 }
 
 // bypass
@@ -712,6 +720,7 @@ void vsthost_tilde_setup(void)
     CLASS_MAINSIGNALIN(vsthost_class, t_vsthost, x_f);
     class_addmethod(vsthost_class, (t_method)vsthost_dsp,
         gensym("dsp"), A_CANT, 0);
+    // plugin
 	class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, 0);
     class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
@@ -719,6 +728,8 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, 0);
     class_addmethod(vsthost_class, (t_method)vsthost_generic, gensym("generic"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_info, gensym("info"), A_NULL);
 	// parameters
 	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, 0);
@@ -734,8 +745,6 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_GIMME, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
-	// version
-	class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
 
     vstparam_setup();
 }
