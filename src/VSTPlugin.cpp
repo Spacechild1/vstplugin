@@ -100,8 +100,10 @@ VSTPlugin::VSTPlugin(const std::string& path)
     : path_(path){}
 
 VSTPlugin::~VSTPlugin(){
-    if (editorThread_.joinable()){
+    if (isEditorOpen()){
         closeWindow(editorHwnd_);
+    }
+    if (editorThread_.joinable()){
         editorThread_.join();
     }
 }
@@ -111,13 +113,16 @@ void VSTPlugin::showEditorWindow(){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
     }
-    // check if message queue is already running
-    if (editorThread_.joinable()){
-        if (editorHwnd_) restoreWindow(editorHwnd_);
+    // check if editor is already open
+    if (isEditorOpen()){
+        restoreWindow(editorHwnd_);
         return;
     }
-    editorHwnd_ = nullptr;
+    if (editorThread_.joinable()){  // Window has been closed
+        editorThread_.join();
+    }
     editorThread_ = std::thread(&VSTPlugin::threadFunction, this);
+    editorOpen_.store(true);
 }
 
 void VSTPlugin::hideEditorWindow(){
@@ -125,9 +130,11 @@ void VSTPlugin::hideEditorWindow(){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
     }
-    if (editorThread_.joinable()){
+    if (isEditorOpen()){
         closeEditor();
         closeWindow(editorHwnd_);
+    }
+    if (editorThread_.joinable()){
         editorThread_.join();
     }
 }
@@ -143,6 +150,10 @@ std::string VSTPlugin::getBaseName() const {
         dot = path_.size();
     }
     return path_.substr(sep + 1, dot - sep - 1);
+}
+
+bool VSTPlugin::isEditorOpen() const {
+    return editorOpen_.load();
 }
 
 // private
@@ -182,6 +193,7 @@ void VSTPlugin::threadFunction(){
     }
     std::cout << "exit message loop!" << std::endl;
     editorHwnd_ = nullptr;
+    editorOpen_.store(false);
 }
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
