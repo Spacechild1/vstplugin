@@ -95,15 +95,7 @@ void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
     win_ = VSTWindowFactory::create("VST Plugin Editor");
     std::cout << "try open editor" << std::endl;
-    if(win_) {
-      int left, top, right, bottom;
-      openEditor(win_->getHandle());
-      std::cout << "opened editor" << std::endl;
-      getEditorRect(left, top, right, bottom);
-      win_->setGeometry(left, top, right, bottom);
-      win_->show();
-      win_->top();
-    } else
+    if(!win_)
       return;
 
 #ifdef _WIN32
