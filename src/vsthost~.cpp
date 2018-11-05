@@ -23,6 +23,7 @@ struct t_vsthost {
     int x_bypass;
     int x_blocksize;
     int x_sr;
+    int x_dp; // use double precision
     // Pd editor
     t_canvas *x_editor;
     int x_nparams;
@@ -276,6 +277,10 @@ static void vsthost_generic(t_vsthost *x, t_floatarg f){
     x->x_generic = (f != 0);
 }
 
+static void vsthost_precision(t_vsthost *x, t_floatarg f){
+    x->x_dp = (f != 0);
+}
+
 // parameters
 static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
 	if (!vsthost_check(x)) return;
@@ -443,12 +448,19 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     t_vsthost *x = (t_vsthost *)pd_new(vsthost_class);
 	
     int generic = 0;
+    int dp = (PD_FLOATSIZE == 64); // double precision Pd defaults to double precision
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = atom_getsymbol(argv)->s_name;
         if (*flag == '-'){
             switch (flag[1]){
             case 'g':
                 generic = 1;
+                break;
+            case 'd':
+                dp = 1;
+                break;
+            case 's':
+                dp = 0;
                 break;
             default:
                 break;
@@ -468,6 +480,7 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_bypass = 0;
     x->x_blocksize = 64;
     x->x_sr = 44100;
+    x->x_dp = dp;
 
     // inputs (skip first):
     for (int i = 1; i < in; ++i){
@@ -573,8 +586,8 @@ static t_int *vsthost_perform(t_int *w){
         int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
         out_offset = pout;
-        // process in double precision if available
-        if (plugin->hasDoublePrecision()){
+        // process in double precision
+        if (x->x_dp && plugin->hasDoublePrecision()){
             // prepare input buffer
             for (int i = 0; i < ninbuf; ++i){
                 double *buf = (double *)x->x_inbuf + i * n;
@@ -714,6 +727,7 @@ void vsthost_tilde_setup(void)
 	class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
 	class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, 0);
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, 0);
     class_addmethod(vsthost_class, (t_method)vsthost_generic, gensym("generic"), A_FLOAT, 0);
 	// parameters
 	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, 0);
