@@ -319,7 +319,7 @@ static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_param_getname(t_vsthost *x, t_floatarg _index){
+static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
 	if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -332,7 +332,7 @@ static void vsthost_param_getname(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_param_getlabel(t_vsthost *x, t_floatarg _index){
+static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
     if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -345,7 +345,7 @@ static void vsthost_param_getlabel(t_vsthost *x, t_floatarg _index){
     }
 }
 
-static void vsthost_param_getdisplay(t_vsthost *x, t_floatarg _index){
+static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
     if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -369,9 +369,16 @@ static void vsthost_param_list(t_vsthost *x){
 	if (!vsthost_check(x)) return;
     int n = x->x_plugin->getNumParameters();
 	for (int i = 0; i < n; ++i){
-		vsthost_param_getname(x, i);
-		vsthost_param_get(x, i);
+        vsthost_param_name(x, i);
 	}
+}
+
+static void vsthost_param_dump(t_vsthost *x){
+    if (!vsthost_check(x)) return;
+    int n = x->x_plugin->getNumParameters();
+    for (int i = 0; i < n; ++i){
+        vsthost_param_get(x, i);
+    }
 }
 
 // programs
@@ -390,7 +397,7 @@ static void vsthost_program_get(t_vsthost *x){
 	if (!vsthost_check(x)) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
-    outlet_anything(x->x_messout, gensym("program_number"), 1, &msg);
+    outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
 
 static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
@@ -398,7 +405,7 @@ static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
     x->x_plugin->setProgramName(name->s_name);
 }
 
-static void vsthost_program_getname(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
 	if (!vsthost_check(x)) return;
     t_atom msg[2];
     if (argc){
@@ -420,19 +427,6 @@ static void vsthost_program_count(t_vsthost *x){
 }
 
 static void vsthost_program_list(t_vsthost *x){
-#if 0
-    if (!vsthost_check(x)) return;
-    int old = x->x_plugin->getProgram();
-    int n = x->x_plugin->getNumPrograms();
-    for (int i = 0; i < n; ++i){
-        x->x_plugin->setProgram(i);
-        t_atom msg[2];
-        SETFLOAT(&msg[0], i);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramName().c_str()));
-        outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
-    }
-    x->x_plugin->setProgram(old);
-#endif
     int n = x->x_plugin->getNumPrograms();
     t_atom msg[2];
     for (int i = 0; i < n; ++i){
@@ -736,16 +730,17 @@ void vsthost_tilde_setup(void)
 	// parameters
 	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, 0);
-	class_addmethod(vsthost_class, (t_method)vsthost_param_getname, gensym("param_getname"), A_FLOAT, 0);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_getlabel, gensym("param_getlabel"), A_FLOAT, 0);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_getdisplay, gensym("param_getdisplay"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_name, gensym("param_name"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_label, gensym("param_label"), A_FLOAT, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_display, gensym("param_display"), A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_dump, gensym("param_dump"), A_NULL);
 	// programs
 	class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, 0);
     class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, 0);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_GIMME, 0);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_name, gensym("program_name"), A_GIMME, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
 
