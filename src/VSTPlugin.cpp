@@ -5,8 +5,6 @@
 #include <iostream>
 #include <thread>
 
-// #include "tchar.h"
-
 static std::wstring widen(const std::string& s){
     if (s.empty()){
         return std::wstring();
@@ -62,28 +60,29 @@ static void setWindowGeometry(HWND hwnd, int left, int top, int right, int botto
         const BOOL fMenu = GetMenu(hwnd) != nullptr;
         AdjustWindowRectEx(&rc, style, fMenu, exStyle);
         MoveWindow(hwnd, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-        // SetWindowPos(hwnd, HWND_TOP, 0, 0, rc.right-rc.left, rc.bottom-rc.top, 0);
-        std::cout << "resized Window to " << left << ", " << top << ", " << right << ", " << bottom << std::endl;
     }
 }
 
 /*/////////// DLL MAIN //////////////*/
 
 static HINSTANCE hInstance = NULL;
-static WNDCLASSEXW VSTWindowClass;
 static bool bRegistered = false;
+#define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 
 extern "C" {
 BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
     hInstance = hinstDLL;
 
     if (!bRegistered){
-        memset(&VSTWindowClass, 0, sizeof(WNDCLASSEXW));
-        VSTWindowClass.cbSize = sizeof(WNDCLASSEXW);
-        VSTWindowClass.lpfnWndProc = VSTPluginEditorProc;
-        VSTWindowClass.hInstance = hInstance;
-        VSTWindowClass.lpszClassName = L"VST Plugin Editor Class";
-        if (!RegisterClassExW(&VSTWindowClass)){
+        WNDCLASSEXW wcex;
+        memset(&wcex, 0, sizeof(WNDCLASSEXW));
+        wcex.cbSize = sizeof(WNDCLASSEXW);
+        // wcex.style = CS_HREDRAW | CS_VREDRAW;
+        wcex.lpfnWndProc = VSTPluginEditorProc;
+        wcex.hInstance = hInstance;
+        wcex.hIcon = ExtractIconW(hInstance, L"pd.exe", 0);
+        wcex.lpszClassName = VST_EDITOR_CLASS_NAME;
+        if (!RegisterClassExW(&wcex)){
             std::cout << "couldn't register window class!" << std::endl;
         } else {
             std::cout << "registered window class!" << std::endl;
@@ -161,7 +160,7 @@ bool VSTPlugin::isEditorOpen() const {
 void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
     editorHwnd_ = CreateWindowW(
-        VSTWindowClass.lpszClassName, L"VST Plugin Editor",
+        VST_EDITOR_CLASS_NAME, widen(getPluginName()).c_str(),
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
         NULL, NULL, hInstance, NULL
     );
