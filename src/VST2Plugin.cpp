@@ -224,7 +224,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterGetCurrentProcessLevel:
         std::cout << "opcode: audioMasterGetCurrentProcessLevel" << std::endl;
-        return kVstProcessLevelUnknown;
+        break;
     case audioMasterGetAutomationState:
         std::cout << "opcode: audioMasterGetAutomationState" << std::endl;
         break;
