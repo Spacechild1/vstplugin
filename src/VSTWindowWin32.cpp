@@ -1,8 +1,9 @@
 #include "VSTWindow.h"
 
 #include <windows.h>
-#include <iostream>
+#include <process.h>
 
+#include <iostream>
 
 static HINSTANCE hInstance = NULL;
 static WNDCLASSEXW VSTWindowClass;
@@ -84,6 +85,19 @@ public:
   void show(void) {
     ShowWindow(hwnd_, SW_SHOW);
     UpdateWindow(hwnd_);
+  }
+
+  void run(void) {
+    MSG msg;
+    int ret;
+    while((ret = GetMessage(&msg, NULL, 0, 0))){
+      if (ret < 0){
+        // error
+        std::cout << "GetMessage: error" << std::endl;
+        break;
+      }
+      DispatchMessage(&msg);
+    }
   }
 };
 

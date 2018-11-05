@@ -14,6 +14,8 @@ public:
   virtual void show(void) = 0;
   virtual void restore(void) = 0; // un-minimize
   virtual void top(void) = 0; // bring window to top
+
+  virtual void run(void) = 0; // run the message queue (does not return until window is closed)
 };
 
 namespace VSTWindowFactory {

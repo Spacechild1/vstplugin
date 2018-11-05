@@ -5,7 +5,6 @@
 #include <thread>
 
 #if _WIN32
-# include <process.h>
 # include <windows.h>
 #endif
 #ifdef DL_OPEN
@@ -98,20 +97,18 @@ void VSTPlugin::threadFunction(){
     if(!win_)
       return;
 
-#ifdef _WIN32
+    int left, top, right, bottom;
+    openEditor(win_->getHandle());
+    std::cout << "opened editor" << std::endl;
+    getEditorRect(left, top, right, bottom);
+    win_->setGeometry(left, top, right, bottom);
+    win_->show();
+    win_->top();
+
     std::cout << "enter message loop!" << std::endl;
-    MSG msg;
-    int ret;
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
-            std::cout << "GetMessage: error" << std::endl;
-            break;
-        }
-        DispatchMessage(&msg);
-    }
+    win_->run();
     std::cout << "exit message loop!" << std::endl;
-#endif
+
     win_ = nullptr;
 }
 
