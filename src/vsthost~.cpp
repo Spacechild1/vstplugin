@@ -272,6 +272,10 @@ static void vsthost_click(t_vsthost *x){
     vsthost_vis(x, 1);
 }
 
+static void vsthost_generic(t_vsthost *x, t_floatarg f){
+    x->x_generic = (f != 0);
+}
+
 // parameters
 static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
 	if (!vsthost_check(x)) return;
@@ -710,6 +714,7 @@ void vsthost_tilde_setup(void)
 	class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
 	class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, 0);
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_generic, gensym("generic"), A_FLOAT, 0);
 	// parameters
 	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, 0);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, 0);
