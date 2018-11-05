@@ -198,21 +198,33 @@ void VSTPlugin::threadFunction(){
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
-    HMODULE handle = LoadLibraryW(widen(path).c_str());
-    if (handle == NULL){
+    HMODULE handle = nullptr;
+    // check for extension
+    auto ext = path.find_last_of('.');
+    if (ext != std::string::npos &&
+            ((path.find(".dll", ext) != std::string::npos)
+             || path.find(".DLL", ext) != std::string::npos)){
+        handle = LoadLibraryW(widen(path).c_str());
+    } else { // add extension
+        wchar_t buf[MAX_PATH];
+        snwprintf(buf, MAX_PATH, L"%S.dll", widen(path).c_str());
+        handle = LoadLibraryW(buf);
+    }
+
+    if (!handle){
         std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
         return nullptr;
     }
     vstPluginFuncPtr mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
-    if (mainEntryPoint == NULL){
+    if (!mainEntryPoint){
         mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
     }
-    if (mainEntryPoint == NULL){
+    if (!mainEntryPoint){
         std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
         return nullptr;
     }
     plugin = mainEntryPoint(&VST2Plugin::hostCallback);
-    if (plugin == NULL){
+    if (!plugin){
         std::cout << "loadVSTPlugin: couldn't initialize plugin" << std::endl;
         return nullptr;
     }
