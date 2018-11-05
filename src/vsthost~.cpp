@@ -117,8 +117,11 @@ static bool vsthost_check(t_vsthost *x){
 }
 
 // close
+static void vsthost_vis(t_vsthost *x, t_floatarg f);
+
 static void vsthost_close(t_vsthost *x){
     if (x->x_plugin){
+        vsthost_vis(x, 0);
         freeVSTPlugin(x->x_plugin);
         x->x_plugin = nullptr;
     }
