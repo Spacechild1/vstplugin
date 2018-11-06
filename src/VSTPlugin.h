@@ -1,10 +1,9 @@
 #pragma once
 
 #include "VSTPluginInterface.h"
-
+#include "VSTWindow.h"
 #include <thread>
 #include <atomic>
-#include <windows.h>
 
 class VSTPlugin : public IVSTPlugin {
 public:
@@ -18,7 +17,7 @@ protected:
     bool isEditorOpen() const;
 private:
     std::string path_;
-    HWND editorHwnd_{nullptr};
+    VSTWindow*win_{nullptr};
     std::thread editorThread_;
     std::atomic<bool> editorOpen_{false};
     void threadFunction();

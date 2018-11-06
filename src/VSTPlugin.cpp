@@ -1,10 +1,17 @@
 #include "VSTPlugin.h"
 #include "VST2Plugin.h"
 
-#include <process.h>
 #include <iostream>
 #include <thread>
 
+#if _WIN32
+# include <windows.h>
+#endif
+#ifdef DL_OPEN
+# include <dlfcn.h>
+#endif
+
+#if _WIN32
 static std::wstring widen(const std::string& s){
     if (s.empty()){
         return std::wstring();
@@ -25,85 +32,24 @@ static std::string shorten(const std::wstring& s){
     WideCharToMultiByte(CP_UTF8, 0, s.data(), s.size(), &buf[0], n, NULL, NULL);
     return buf;
 }
+#endif
 
-/*////////// EDITOR WINDOW //////////*/
-
-static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
-    if (Msg == WM_DESTROY){
-        PostQuitMessage(0);
-    }
-    return DefWindowProcW(hWnd, Msg, wParam, lParam);
-}
-
-void restoreWindow(HWND hwnd){
-    if (hwnd){
-        ShowWindow(hwnd, SW_RESTORE);
-        BringWindowToTop(hwnd);
-    }
-}
-
-void closeWindow(HWND hwnd){
-    if (hwnd){
-        PostMessage(hwnd, WM_CLOSE, 0, 0);
-    }
-}
-
-static void setWindowGeometry(HWND hwnd, int left, int top, int right, int bottom){
-    if (hwnd) {
-        RECT rc;
-        rc.left = left;
-        rc.top = top;
-        rc.right = right;
-        rc.bottom = bottom;
-        const auto style = GetWindowLongPtr(hwnd, GWL_STYLE);
-        const auto exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-        const BOOL fMenu = GetMenu(hwnd) != nullptr;
-        AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-        MoveWindow(hwnd, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-    }
-}
-
-/*/////////// DLL MAIN //////////////*/
-
-static HINSTANCE hInstance = NULL;
-static bool bRegistered = false;
-#define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
-
-extern "C" {
-BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
-    hInstance = hinstDLL;
-
-    if (!bRegistered){
-        WNDCLASSEXW wcex;
-        memset(&wcex, 0, sizeof(WNDCLASSEXW));
-        wcex.cbSize = sizeof(WNDCLASSEXW);
-        // wcex.style = CS_HREDRAW | CS_VREDRAW;
-        wcex.lpfnWndProc = VSTPluginEditorProc;
-        wcex.hInstance = hInstance;
-        wcex.hIcon = ExtractIconW(hInstance, L"pd.exe", 0);
-        wcex.lpszClassName = VST_EDITOR_CLASS_NAME;
-        if (!RegisterClassExW(&wcex)){
-            std::cout << "couldn't register window class!" << std::endl;
-        } else {
-            std::cout << "registered window class!" << std::endl;
-            bRegistered = true;
-        }
-    }
-    return TRUE;
-}
-} // extern C
 
 /*//////////// VST PLUGIN ///////////*/
 
 VSTPlugin::VSTPlugin(const std::string& path)
-    : path_(path){}
+    : path_(path)
+    , win_(nullptr)
+{}
 
 VSTPlugin::~VSTPlugin(){
-    if (isEditorOpen()){
-        closeWindow(editorHwnd_);
-    }
+#warning FIXXME deleting window
     if (editorThread_.joinable()){
         editorThread_.join();
+    }
+    if (isEditorOpen()){
+        delete win_;
+        win_ = nullptr;
     }
 }
 
@@ -114,8 +60,9 @@ void VSTPlugin::showEditorWindow(){
     }
     // check if editor is already open
     if (isEditorOpen()){
-        restoreWindow(editorHwnd_);
-        return;
+      if(win_)
+        win_->restore();
+      return;
     }
     if (editorThread_.joinable()){  // Window has been closed
         editorThread_.join();
@@ -131,7 +78,8 @@ void VSTPlugin::hideEditorWindow(){
     }
     if (isEditorOpen()){
         closeEditor();
-        closeWindow(editorHwnd_);
+        delete win_;
+        win_ = nullptr;
     }
     if (editorThread_.joinable()){
         editorThread_.join();
@@ -159,66 +107,72 @@ bool VSTPlugin::isEditorOpen() const {
 
 void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
-    editorHwnd_ = CreateWindowW(
-        VST_EDITOR_CLASS_NAME, widen(getPluginName()).c_str(),
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-        NULL, NULL, hInstance, NULL
-    );
-
+    win_ = VSTWindowFactory::create(getPluginName().c_str());
     std::cout << "try open editor" << std::endl;
-    openEditor(editorHwnd_);
-    std::cout << "opened editor" << std::endl;
+    if(!win_)
+      return;
+
     int left, top, right, bottom;
+    openEditor(win_->getHandle());
+    std::cout << "opened editor" << std::endl;
     getEditorRect(left, top, right, bottom);
-    setWindowGeometry(editorHwnd_, left, top, right, bottom);
-
-    ShowWindow(editorHwnd_, SW_SHOW);
-    UpdateWindow(editorHwnd_);
-
-    // hack to bring Window to the top
-    ShowWindow(editorHwnd_, SW_MINIMIZE);
-    restoreWindow(editorHwnd_);
+    win_->setGeometry(left, top, right, bottom);
+    win_->show();
+    win_->top();
 
     std::cout << "enter message loop!" << std::endl;
-    MSG msg;
-    int ret;
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
-            std::cout << "GetMessage: error" << std::endl;
-            break;
-        }
-        DispatchMessage(&msg);
-    }
+    win_->run();
     std::cout << "exit message loop!" << std::endl;
-    editorHwnd_ = nullptr;
+
+    delete win_;
+    win_ = nullptr;
     editorOpen_.store(false);
 }
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
-    HMODULE handle = nullptr;
-    // check for extension
-    auto ext = path.find_last_of('.');
-    if (ext != std::string::npos &&
-            ((path.find(".dll", ext) != std::string::npos)
-             || path.find(".DLL", ext) != std::string::npos)){
+    vstPluginFuncPtr mainEntryPoint = NULL;
+#if _WIN32
+    if (NULL == mainEntryPoint) {
+      HMODULE handle = nullptr;
+      auto ext = path.find_last_of('.');
+      if (ext != std::string::npos &&
+          ((path.find(".dll", ext) != std::string::npos)
+           || path.find(".DLL", ext) != std::string::npos)) {
         handle = LoadLibraryW(widen(path).c_str());
-    } else { // add extension
+      }
+      if (!handle) { // add extension
         wchar_t buf[MAX_PATH];
         snwprintf(buf, MAX_PATH, L"%S.dll", widen(path).c_str());
         handle = LoadLibraryW(buf);
-    }
+      }
 
-    if (!handle){
+      if (handle){
+        mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
+        if (mainEntryPoint == NULL){
+          mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+        }
+      } else {
         std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
-        return nullptr;
+      }
     }
-    vstPluginFuncPtr mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
-    if (!mainEntryPoint){
-        mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+#endif
+#ifdef DL_OPEN
+    if (NULL == mainEntryPoint) {
+      void *handle = dlopen(path.c_str(), RTLD_NOW);
+      dlerror();
+      if(handle) {
+        mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
+        if (mainEntryPoint == NULL){
+          mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
+        }
+      } else {
+        std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
+      }
     }
-    if (!mainEntryPoint){
+#endif
+
+    if (mainEntryPoint == NULL){
         std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
         return nullptr;
     }
