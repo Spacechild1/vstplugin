@@ -96,6 +96,10 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         if (!mainEntryPoint){
           mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
         }
+        if (!mainEntryPoint){
+          FreeLibrary(handle);
+        }
+
       } else {
         std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
       }
@@ -115,8 +119,6 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
         if(!bundle) {
           std::cout << "loadVSTPlugin: couldn't create bundle reference for " << path << std::endl;
-          CFRelease(pluginPathStringRef);
-          CFRelease(bundleUrl);
         }
       }
       if (bundle) {
@@ -128,7 +130,14 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
           mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
               CFSTR("main_macho"));
         }
+        if (!mainEntryPoint){
+          CFRelease( bundle );
+        }
       }
+      if (pluginPathStringRef)
+        CFRelease(pluginPathStringRef);
+      if (bundleUrl)
+        CFRelease(bundleUrl);
     }
 #endif
 #if DL_OPEN
@@ -140,6 +149,9 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
         if (!mainEntryPoint){
             mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
+        }
+        if (!mainEntryPoint){
+          dlclose(handle);
         }
       } else {
         std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
