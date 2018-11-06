@@ -60,9 +60,9 @@ void VSTPlugin::showEditorWindow(){
     }
     // check if editor is already open
     if (isEditorOpen()){
-      if(win_)
-        win_->restore();
-      return;
+        if (win_)
+            win_->restore();
+        return;
     }
     if (editorThread_.joinable()){  // Window has been closed
         editorThread_.join();
@@ -109,8 +109,8 @@ void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
     win_ = VSTWindowFactory::create(getPluginName().c_str());
     std::cout << "try open editor" << std::endl;
-    if(!win_)
-      return;
+    if (!win_)
+        return;
 
     int left, top, right, bottom;
     openEditor(win_->getHandle());
@@ -134,45 +134,45 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
     vstPluginFuncPtr mainEntryPoint = NULL;
 #if _WIN32
     if (NULL == mainEntryPoint) {
-      HMODULE handle = nullptr;
-      auto ext = path.find_last_of('.');
-      if (ext != std::string::npos &&
-          ((path.find(".dll", ext) != std::string::npos)
-           || path.find(".DLL", ext) != std::string::npos)) {
-        handle = LoadLibraryW(widen(path).c_str());
-      }
-      if (!handle) { // add extension
-        wchar_t buf[MAX_PATH];
-        snwprintf(buf, MAX_PATH, L"%S.dll", widen(path).c_str());
-        handle = LoadLibraryW(buf);
-      }
-
-      if (handle){
-        mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
-        if (mainEntryPoint == NULL){
-          mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+        HMODULE handle = nullptr;
+        auto ext = path.find_last_of('.');
+        if (ext != std::string::npos &&
+                ((path.find(".dll", ext) != std::string::npos)
+                || path.find(".DLL", ext) != std::string::npos)){
+            handle = LoadLibraryW(widen(path).c_str());
         }
-      } else {
-        std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
-      }
+        if (!handle) { // add extension
+            wchar_t buf[MAX_PATH];
+            snwprintf(buf, MAX_PATH, L"%S.dll", widen(path).c_str());
+            handle = LoadLibraryW(buf);
+        }
+
+        if (handle){
+            mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
+            if (!mainEntryPoint){
+                mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+            }
+        } else {
+            std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
+        }
     }
 #endif
 #ifdef DL_OPEN
     if (NULL == mainEntryPoint) {
-      void *handle = dlopen(path.c_str(), RTLD_NOW);
-      dlerror();
-      if(handle) {
-        mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
-        if (mainEntryPoint == NULL){
-          mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
+        void *handle = dlopen(path.c_str(), RTLD_NOW);
+        dlerror();
+        if(handle) {
+            mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
+            if (!mainEntryPoint){
+                mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
+            }
+        } else {
+            std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
         }
-      } else {
-        std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
-      }
     }
 #endif
 
-    if (mainEntryPoint == NULL){
+    if (!mainEntryPoint){
         std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
         return nullptr;
     }

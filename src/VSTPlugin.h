@@ -17,7 +17,7 @@ protected:
     bool isEditorOpen() const;
 private:
     std::string path_;
-    VSTWindow*win_{nullptr};
+    VSTWindow* win_{nullptr};
     std::thread editorThread_;
     std::atomic<bool> editorOpen_{false};
     void threadFunction();
