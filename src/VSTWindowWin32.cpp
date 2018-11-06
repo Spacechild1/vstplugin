@@ -1,10 +1,6 @@
-#include "VSTWindow.h"
-
-#include <windows.h>
-#include <process.h>
+#include "VSTWindowWin32.h"
 
 #include <iostream>
-
 
 static std::wstring widen(const std::string& s){
     if (s.empty()){
@@ -52,70 +48,99 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
 } // extern C
 
 
-class VSTWindowWin32 : public VSTWindow {
-private:
-    HWND hwnd_ = nullptr;
-public:
-    VSTWindowWin32(const std::string&name){
-        hwnd_ = CreateWindowW(
-              VST_EDITOR_CLASS_NAME, widen(name).c_str(),
-              WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-              NULL, NULL, hInstance, NULL
-        );
-    }
+VSTWindowWin32::VSTWindowWin32(IVSTPlugin& plugin){
+    bRunning_.store(true);
+    thread_ = std::thread(&VSTWindowWin32::threadFunction, this, &plugin);
+    std::cout << "created VSTWindowWin32" << std::endl;
+}
 
-    ~VSTWindowWin32(){
+VSTWindowWin32::~VSTWindowWin32(){
+    if (isRunning()){
         PostMessage(hwnd_, WM_CLOSE, 0, 0);
     }
-
-    void* getHandle() override {
-        return hwnd_;
+    if (thread_.joinable()){
+        thread_.join();
     }
+    std::cout << "destroyed VSTWindowWin32" << std::endl;
+}
 
-    void setGeometry(int left, int top, int right, int bottom) override {
-        RECT rc;
-        rc.left = left;
-        rc.top = top;
-        rc.right = right;
-        rc.bottom = bottom;
-        const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
-        const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
-        const BOOL fMenu = GetMenu(hwnd_) != nullptr;
-        AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-        MoveWindow(hwnd_, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-    }
+void VSTWindowWin32::setGeometry(int left, int top, int right, int bottom){
+    RECT rc;
+    rc.left = left;
+    rc.top = top;
+    rc.right = right;
+    rc.bottom = bottom;
+    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
+    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
+    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
+    AdjustWindowRectEx(&rc, style, fMenu, exStyle);
+    MoveWindow(hwnd_, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+}
 
-    void restore() override {
-        ShowWindow(hwnd_, SW_RESTORE);
-        BringWindowToTop(hwnd_);
-    }
+void VSTWindowWin32::show(){
+    ShowWindow(hwnd_, SW_SHOW);
+    UpdateWindow(hwnd_);
+}
 
-    void top() override {
-        ShowWindow(hwnd_, SW_MINIMIZE);
-        restore();
-    }
+void VSTWindowWin32::hide(){
+    ShowWindow(hwnd_, SW_HIDE);
+    UpdateWindow(hwnd_);
+}
 
-    void show() override {
-        ShowWindow(hwnd_, SW_SHOW);
-        UpdateWindow(hwnd_);
-    }
+void VSTWindowWin32::minimize(){
+    ShowWindow(hwnd_, SW_MINIMIZE);
+    UpdateWindow(hwnd_);
+}
 
-    void run() override {
-        MSG msg;
-        int ret;
-        while((ret = GetMessage(&msg, NULL, 0, 0))){
-          if (ret < 0){
+void VSTWindowWin32::restore(){
+    ShowWindow(hwnd_, SW_RESTORE);
+    BringWindowToTop(hwnd_);
+}
+
+void VSTWindowWin32::bringToTop(){
+    minimize();
+    restore();
+}
+
+void VSTWindowWin32::run(){
+    MSG msg;
+    int ret;
+    while((ret = GetMessage(&msg, NULL, 0, 0))){
+        if (ret < 0){
             // error
             std::cout << "GetMessage: error" << std::endl;
             break;
-          }
-          DispatchMessage(&msg);
         }
+        DispatchMessage(&msg);
     }
-};
+}
+
+void VSTWindowWin32::threadFunction(IVSTPlugin *plugin){
+    std::cout << "enter thread" << std::endl;
+    hwnd_ = CreateWindowW(
+          VST_EDITOR_CLASS_NAME, widen(plugin->getPluginName()).c_str(),
+          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+          NULL, NULL, hInstance, NULL
+    );
+
+    int left, top, right, bottom;
+    std::cout << "try open editor" << std::endl;
+    plugin->openEditor(getHandle());
+    std::cout << "opened editor" << std::endl;
+    plugin->getEditorRect(left, top, right, bottom);
+    setGeometry(left, top, right, bottom);
+    show();
+    bringToTop();
+
+    std::cout << "enter message loop!" << std::endl;
+    run();
+    plugin->closeEditor();
+    bRunning_.store(false);
+    std::cout << "exit message loop!" << std::endl;
+}
 
 namespace VSTWindowFactory {
-    VSTWindow* createWin32(const std::string&name) {
-        return new VSTWindowWin32(name);
+    VSTWindow* createWin32(IVSTPlugin& plugin) {
+        return new VSTWindowWin32(plugin);
     }
 }

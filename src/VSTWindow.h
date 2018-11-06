@@ -1,7 +1,6 @@
 #pragma once
 
-#include <string>
-#include <memory>
+#include "VSTPluginInterface.h"
 
 class VSTWindow {
 public:
@@ -12,12 +11,16 @@ public:
     virtual void setGeometry(int left, int top, int right, int bottom) = 0;
 
     virtual void show() = 0;
+    virtual void hide() = 0;
+    virtual void minimize() = 0;
     virtual void restore() = 0; // un-minimize
-    virtual void top() = 0; // bring window to top
+    virtual void bringToTop() = 0;
 
-    virtual void run() = 0; // run the message queue (does not return until window is closed)
+    virtual bool isRunning() const = 0; // message loop still running?
+protected:
+    virtual void run() = 0; // start the message loop
 };
 
 namespace VSTWindowFactory {
-    VSTWindow* create(const std::string&name);
+    VSTWindow* create(IVSTPlugin& plugin);
 }

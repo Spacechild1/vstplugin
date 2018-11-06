@@ -1,19 +1,19 @@
 #include "VSTWindow.h"
 namespace VSTWindowFactory {
 #ifdef _WIN32
-    VSTWindow* createWin32(const std::string&name);
+    VSTWindow* createWin32(IVSTPlugin& plugin);
 #endif
 #ifdef USE_WINDOW_FOO
-    VSTWindow* createFoo(const std::string&name);
+    VSTWindow* createFoo(IVSTPlugin& plugin);
 #endif
 
-    VSTWindow* create(const std::string&name){
+    VSTWindow* create(IVSTPlugin& plugin){
         VSTWindow *win = nullptr;
     #ifdef _WIN32
-        win = createWin32(name);
+        win = createWin32(plugin);
     #endif
     #ifdef USE_WINDOW_FOO
-        win = createFoo(name);
+        win = createFoo(plugin);
     #endif
         return win;
     }

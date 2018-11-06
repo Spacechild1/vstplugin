@@ -39,19 +39,7 @@ static std::string shorten(const std::wstring& s){
 
 VSTPlugin::VSTPlugin(const std::string& path)
     : path_(path)
-    , win_(nullptr)
 {}
-
-VSTPlugin::~VSTPlugin(){
-#warning FIXXME deleting window
-    if (editorThread_.joinable()){
-        editorThread_.join();
-    }
-    if (isEditorOpen()){
-        delete win_;
-        win_ = nullptr;
-    }
-}
 
 void VSTPlugin::showEditorWindow(){
     if (!hasEditor()){
@@ -59,16 +47,11 @@ void VSTPlugin::showEditorWindow(){
         return;
     }
     // check if editor is already open
-    if (isEditorOpen()){
-        if (win_)
-            win_->restore();
-        return;
+    if (win_ && win_->isRunning()){
+        win_->restore();
+    } else {
+        win_ = std::unique_ptr<VSTWindow>(VSTWindowFactory::create(*this));
     }
-    if (editorThread_.joinable()){  // Window has been closed
-        editorThread_.join();
-    }
-    editorThread_ = std::thread(&VSTPlugin::threadFunction, this);
-    editorOpen_.store(true);
 }
 
 void VSTPlugin::hideEditorWindow(){
@@ -76,14 +59,7 @@ void VSTPlugin::hideEditorWindow(){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
     }
-    if (isEditorOpen()){
-        closeEditor();
-        delete win_;
-        win_ = nullptr;
-    }
-    if (editorThread_.joinable()){
-        editorThread_.join();
-    }
+    win_ = nullptr;
 }
 
 // protected
@@ -99,35 +75,6 @@ std::string VSTPlugin::getBaseName() const {
     return path_.substr(sep + 1, dot - sep - 1);
 }
 
-bool VSTPlugin::isEditorOpen() const {
-    return editorOpen_.load();
-}
-
-// private
-
-void VSTPlugin::threadFunction(){
-    std::cout << "enter thread" << std::endl;
-    win_ = VSTWindowFactory::create(getPluginName().c_str());
-    std::cout << "try open editor" << std::endl;
-    if (!win_)
-        return;
-
-    int left, top, right, bottom;
-    openEditor(win_->getHandle());
-    std::cout << "opened editor" << std::endl;
-    getEditorRect(left, top, right, bottom);
-    win_->setGeometry(left, top, right, bottom);
-    win_->show();
-    win_->top();
-
-    std::cout << "enter message loop!" << std::endl;
-    win_->run();
-    std::cout << "exit message loop!" << std::endl;
-
-    delete win_;
-    win_ = nullptr;
-    editorOpen_.store(false);
-}
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
