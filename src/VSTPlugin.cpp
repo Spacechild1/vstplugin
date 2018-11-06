@@ -85,7 +85,7 @@ std::string VSTPlugin::getBaseName() const {
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
-    vstPluginFuncPtr mainEntryPoint = NULL;
+    vstPluginFuncPtr mainEntryPoint = nullptr;
 #ifdef _WIN32
     HMODULE handle = LoadLibraryW(widen(path).c_str());
     if (handle){
@@ -114,7 +114,6 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
       }
     }
     if (bundle) {
-      vstPluginFuncPtr mainEntryPoint = NULL;
       mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
           CFSTR("VSTPluginMain"));
       // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
