@@ -13,7 +13,7 @@ lib.name = vsthost~
 
 class.sources = src/vsthost~.cpp
 
-common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp src/VSTWindow.cpp
+common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
 
 VST2DIR = src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x/
 

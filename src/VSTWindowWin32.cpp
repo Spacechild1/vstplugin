@@ -140,7 +140,7 @@ void VSTWindowWin32::threadFunction(IVSTPlugin *plugin){
 }
 
 namespace VSTWindowFactory {
-    VSTWindow* createWin32(IVSTPlugin& plugin) {
+    IVSTWindow* createWin32(IVSTPlugin& plugin) {
         return new VSTWindowWin32(plugin);
     }
 }

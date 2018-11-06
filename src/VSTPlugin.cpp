@@ -41,7 +41,7 @@ VSTPlugin::VSTPlugin(const std::string& path)
     : path_(path)
 {}
 
-void VSTPlugin::showEditorWindow(){
+void VSTPlugin::createWindow(){
     if (!hasEditor()){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
@@ -50,11 +50,11 @@ void VSTPlugin::showEditorWindow(){
     if (win_ && win_->isRunning()){
         win_->restore();
     } else {
-        win_ = std::unique_ptr<VSTWindow>(VSTWindowFactory::create(*this));
+        win_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(*this));
     }
 }
 
-void VSTPlugin::hideEditorWindow(){
+void VSTPlugin::destroyWindow(){
     if (!hasEditor()){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
@@ -141,3 +141,24 @@ void freeVSTPlugin(IVSTPlugin *plugin){
         delete plugin;
     }
 }
+
+namespace VSTWindowFactory {
+#ifdef _WIN32
+    IVSTWindow* createWin32(IVSTPlugin& plugin);
+#endif
+#ifdef USE_WINDOW_FOO
+    IVSTWindow* createFoo(IVSTPlugin& plugin);
+#endif
+
+    IVSTWindow* create(IVSTPlugin& plugin){
+        IVSTWindow *win = nullptr;
+    #ifdef _WIN32
+        win = createWin32(plugin);
+    #endif
+    #ifdef USE_WINDOW_FOO
+        win = createFoo(plugin);
+    #endif
+        return win;
+    }
+}
+

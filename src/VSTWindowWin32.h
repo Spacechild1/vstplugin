@@ -1,11 +1,11 @@
-#include "VSTWindow.h"
+#include "VSTPluginInterface.h"
 
 #include <windows.h>
 #include <process.h>
 #include <atomic>
 #include <thread>
 
-class VSTWindowWin32 : public VSTWindow {
+class VSTWindowWin32 : public IVSTWindow {
 public:
     VSTWindowWin32(IVSTPlugin& plugin);
 

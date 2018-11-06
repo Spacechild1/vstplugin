@@ -2,6 +2,25 @@
 
 #include <string>
 
+class IVSTWindow {
+public:
+    virtual ~IVSTWindow() {}
+
+    virtual void* getHandle() = 0; // get system-specific handle to the window
+
+    virtual void setGeometry(int left, int top, int right, int bottom) = 0;
+
+    virtual void show() = 0;
+    virtual void hide() = 0;
+    virtual void minimize() = 0;
+    virtual void restore() = 0; // un-minimize
+    virtual void bringToTop() = 0;
+
+    virtual bool isRunning() const = 0; // message loop still running?
+protected:
+    virtual void run() = 0; // start the message loop
+};
+
 class IVSTPlugin {
 public:
     virtual ~IVSTPlugin(){}
@@ -36,9 +55,11 @@ public:
     virtual bool hasEditor() const = 0;
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
-    virtual void showEditorWindow() = 0;
-    virtual void hideEditorWindow() = 0;
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
+
+    virtual void createWindow() = 0;
+    virtual void destroyWindow() = 0;
+    virtual IVSTWindow *getWindow() = 0;
 };
 
 IVSTPlugin* loadVSTPlugin(const std::string& path);

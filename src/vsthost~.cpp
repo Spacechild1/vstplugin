@@ -290,9 +290,9 @@ static void vsthost_vis(t_vsthost *x, t_floatarg f){
 	if (!vsthost_check(x)) return;
     if (x->x_plugin->hasEditor() && !x->x_generic){
         if (f != 0){
-            x->x_plugin->showEditorWindow();
+            x->x_plugin->createWindow();
         } else {
-            x->x_plugin->hideEditorWindow();
+            x->x_plugin->destroyWindow();
         }
     } else {
         editor_vmess(x, gensym("vis"), "i", (f != 0));
