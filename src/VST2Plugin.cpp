@@ -176,7 +176,7 @@ bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
 }
 
 VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
-    VstInt32 index, VstInt32 value, void *ptr, float opt) const {
+    VstInt32 index, VstIntPtr value, void *ptr, float opt) const {
     return (plugin_->dispatcher)(plugin_, opCode, index, value, ptr, opt);
 }
 
