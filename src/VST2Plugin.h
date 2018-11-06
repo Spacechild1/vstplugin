@@ -56,7 +56,7 @@ public:
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
 private:
     bool hasFlag(VstAEffectFlags flag) const;
-    VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstInt32 value = 0,
+    VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
                        void *ptr = 0, float opt = 0) const;
     // data members
     AEffect *plugin_ = nullptr;
