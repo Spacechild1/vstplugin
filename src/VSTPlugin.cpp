@@ -86,10 +86,12 @@ std::string VSTPlugin::getBaseName() const {
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
     vstPluginFuncPtr mainEntryPoint = nullptr;
+    bool openedlib = false;
 #ifdef _WIN32
     if(!mainEntryPoint) {
       HMODULE handle = LoadLibraryW(widen(path).c_str());
       if (handle) {
+        openedlib = true;
         mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
         if (!mainEntryPoint){
           mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
@@ -118,6 +120,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         }
       }
       if (bundle) {
+        openedlib = true;
         mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
             CFSTR("VSTPluginMain"));
         // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
@@ -133,6 +136,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
       void *handle = dlopen(path.c_str(), RTLD_NOW);
       dlerror();
       if(handle) {
+        openedlib = true;
         mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
         if (!mainEntryPoint){
             mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
@@ -142,6 +146,9 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
       }
     }
 #endif
+
+    if (!openedlib) // we already printed an error if finding/opening the plugin filed
+        return nullptr;
 
     if (!mainEntryPoint){
         std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
