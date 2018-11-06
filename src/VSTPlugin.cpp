@@ -108,7 +108,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
       // Open the bundle
       bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
       if(!bundle) {
-        std::cout << "loadVSTPlugin: couldn't create bundle reference for " path << std::endl;
+        std::cout << "loadVSTPlugin: couldn't create bundle reference for " << path << std::endl;
         CFRelease(pluginPathStringRef);
         CFRelease(bundleUrl);
       }
