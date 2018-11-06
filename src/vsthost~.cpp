@@ -464,11 +464,14 @@ static void vsthost_version(t_vsthost *x){
 /**** private ****/
 
 // constructor
+// usage: vsthost~ [flags...] [file] inlets (default=2) outlets (default=2)
 static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     t_vsthost *x = (t_vsthost *)pd_new(vsthost_class);
 	
-    int generic = 0;
-    int dp = (PD_FLOATSIZE == 64); // double precision Pd defaults to double precision
+    int generic = 0; // use generic Pd editor
+    int dp = (PD_FLOATSIZE == 64); // default precision
+    t_symbol *file = nullptr; // plugin to load (optional)
+
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = atom_getsymbol(argv)->s_name;
         if (*flag == '-'){
@@ -487,11 +490,13 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
             }
             argc--; argv++;
         } else {
+            file = argv->a_w.w_symbol;
+            argc--; argv++;
             break;
         }
     }
-	int in = atom_getfloatarg(0, argc, argv);
-	int out = atom_getfloatarg(1, argc, argv);
+    int in = atom_getfloatarg(0, argc, argv); // signal inlets
+    int out = atom_getfloatarg(1, argc, argv); // signal outlets
     if (in < 1) in = 2;
     if (out < 1) out = 2;
 
@@ -537,6 +542,10 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
 
     x->x_f = 0;
     x->x_messout = outlet_new(&x->x_obj, 0);
+
+    if (file){
+        vsthost_open(x, file);
+    }
     return (x);
 }
 
