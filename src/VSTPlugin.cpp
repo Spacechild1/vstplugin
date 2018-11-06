@@ -92,51 +92,54 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
       if (handle) {
         mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
         if (!mainEntryPoint){
-            mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
+          mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
         }
-    } else {
+      } else {
         std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
+      }
     }
 #endif
 #if defined __APPLE__
     if(!mainEntryPoint) {
-    // Create a path to the bundle
-    // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
-    CFStringRef pluginPathStringRef = CFStringCreateWithCString(NULL,
-        path.c_str(), kCFStringEncodingUTF8);
-    CFURLRef bundleUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-        pluginPathStringRef, kCFURLPOSIXPathStyle, true);
-    CFBundleRef bundle = nullptr;
-    if(bundleUrl) {
-      // Open the bundle
-      bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
-      if(!bundle) {
-        std::cout << "loadVSTPlugin: couldn't create bundle reference for " << path << std::endl;
-        CFRelease(pluginPathStringRef);
-        CFRelease(bundleUrl);
+      // Create a path to the bundle
+      // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
+      CFStringRef pluginPathStringRef = CFStringCreateWithCString(NULL,
+          path.c_str(), kCFStringEncodingUTF8);
+      CFURLRef bundleUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
+          pluginPathStringRef, kCFURLPOSIXPathStyle, true);
+      CFBundleRef bundle = nullptr;
+      if(bundleUrl) {
+        // Open the bundle
+        bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
+        if(!bundle) {
+          std::cout << "loadVSTPlugin: couldn't create bundle reference for " << path << std::endl;
+          CFRelease(pluginPathStringRef);
+          CFRelease(bundleUrl);
+        }
       }
-    }
-    if (bundle) {
-      mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
-          CFSTR("VSTPluginMain"));
-      // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
-      if(!mainEntryPoint) {
+      if (bundle) {
+        mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
+            CFSTR("VSTPluginMain"));
+        // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
+        if(!mainEntryPoint) {
           mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
               CFSTR("main_macho"));
+        }
       }
     }
 #endif
 #if DL_OPEN
     if(!mainEntryPoint) {
-    void *handle = dlopen(path.c_str(), RTLD_NOW);
-    dlerror();
-    if(handle) {
+      void *handle = dlopen(path.c_str(), RTLD_NOW);
+      dlerror();
+      if(handle) {
         mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
         if (!mainEntryPoint){
             mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
         }
-    } else {
+      } else {
         std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
+      }
     }
 #endif
 
