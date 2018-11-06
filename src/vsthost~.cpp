@@ -492,8 +492,8 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     }
 	int in = atom_getfloatarg(0, argc, argv);
 	int out = atom_getfloatarg(1, argc, argv);
-    if (in < 1) in = 1;
-    if (out < 1) out = 1;
+    if (in < 1) in = 2;
+    if (out < 1) out = 2;
 
     // VST plugin
     x->x_plugin = nullptr;
