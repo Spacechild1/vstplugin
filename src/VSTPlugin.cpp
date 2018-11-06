@@ -43,9 +43,13 @@ VSTPlugin::VSTPlugin(const std::string& path)
 {}
 
 VSTPlugin::~VSTPlugin(){
+#warning FIXXME deleting window
     if (editorThread_.joinable()){
-        if(win_) delete win_; win_ = nullptr;
         editorThread_.join();
+    }
+    if (isEditorOpen()){
+        delete win_;
+        win_ = nullptr;
     }
 }
 
@@ -54,13 +58,17 @@ void VSTPlugin::showEditorWindow(){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
     }
-    // check if message queue is already running
-    if (editorThread_.joinable()){
-        if(win_) win_->restore();
-        return;
+    // check if editor is already open
+    if (isEditorOpen()){
+      if(win_)
+        win_->restore();
+      return;
     }
-    win_ = nullptr;
+    if (editorThread_.joinable()){  // Window has been closed
+        editorThread_.join();
+    }
     editorThread_ = std::thread(&VSTPlugin::threadFunction, this);
+    editorOpen_.store(true);
 }
 
 void VSTPlugin::hideEditorWindow(){
@@ -68,9 +76,12 @@ void VSTPlugin::hideEditorWindow(){
         std::cout << "plugin doesn't have editor!" << std::endl;
         return;
     }
-    if (editorThread_.joinable()){
+    if (isEditorOpen()){
         closeEditor();
-        if(win_) delete win_; win_ = nullptr;
+        delete win_;
+        win_ = nullptr;
+    }
+    if (editorThread_.joinable()){
         editorThread_.join();
     }
 }
@@ -88,11 +99,15 @@ std::string VSTPlugin::getBaseName() const {
     return path_.substr(sep + 1, dot - sep - 1);
 }
 
+bool VSTPlugin::isEditorOpen() const {
+    return editorOpen_.load();
+}
+
 // private
 
 void VSTPlugin::threadFunction(){
     std::cout << "enter thread" << std::endl;
-    win_ = VSTWindowFactory::create("VST Plugin Editor");
+    win_ = VSTWindowFactory::create(getPluginName().c_str());
     std::cout << "try open editor" << std::endl;
     if(!win_)
       return;
@@ -111,6 +126,7 @@ void VSTPlugin::threadFunction(){
 
     delete win_;
     win_ = nullptr;
+    editorOpen_.store(false);
 }
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
@@ -118,7 +134,19 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
     vstPluginFuncPtr mainEntryPoint = NULL;
 #if _WIN32
     if (NULL == mainEntryPoint) {
-      HMODULE handle = LoadLibraryW(widen(path).c_str());
+      HMODULE handle = nullptr;
+      auto ext = path.find_last_of('.');
+      if (ext != std::string::npos &&
+          ((path.find(".dll", ext) != std::string::npos)
+           || path.find(".DLL", ext) != std::string::npos)) {
+        handle = LoadLibraryW(widen(path).c_str());
+      }
+      if (!handle) { // add extension
+        wchar_t buf[MAX_PATH];
+        snwprintf(buf, MAX_PATH, L"%S.dll", widen(path).c_str());
+        handle = LoadLibraryW(buf);
+      }
+
       if (handle){
         mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
         if (mainEntryPoint == NULL){
@@ -149,7 +177,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         return nullptr;
     }
     plugin = mainEntryPoint(&VST2Plugin::hostCallback);
-    if (plugin == NULL){
+    if (!plugin){
         std::cout << "loadVSTPlugin: couldn't initialize plugin" << std::endl;
         return nullptr;
     }

@@ -3,6 +3,7 @@
 #include "VSTPluginInterface.h"
 #include "VSTWindow.h"
 #include <thread>
+#include <atomic>
 
 class VSTPlugin : public IVSTPlugin {
 public:
@@ -13,10 +14,11 @@ public:
     void hideEditorWindow() override final;
 protected:
     std::string getBaseName() const;
+    bool isEditorOpen() const;
 private:
     std::string path_;
-    VSTWindow*win_;
+    VSTWindow*win_{nullptr};
     std::thread editorThread_;
-
+    std::atomic<bool> editorOpen_{false};
     void threadFunction();
 };

@@ -2,6 +2,7 @@
 testplugins**
 src/VST_SDK**
 build**
+*.qbs*
 
 # Created by https://www.gitignore.io/api/c++,emacs
 # Edit at https://www.gitignore.io/?templates=c++,emacs

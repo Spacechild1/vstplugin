@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <cstdio>
+#include <cstring>
 
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
@@ -23,6 +24,7 @@ struct t_vsthost {
     int x_bypass;
     int x_blocksize;
     int x_sr;
+    int x_dp; // use double precision
     // Pd editor
     t_canvas *x_editor;
     int x_nparams;
@@ -66,7 +68,7 @@ static void vstparam_float(t_vstparam *x, t_floatarg f){
 }
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
-    // this while set the slider and implicitly call vstparam_doset
+    // this will set the slider and implicitly call vstparam_doset
     pd_vmess(x->p_name->s_thing, gensym("set"), (char *)"f", f);
 }
 
@@ -116,8 +118,11 @@ static bool vsthost_check(t_vsthost *x){
 }
 
 // close
+static void vsthost_vis(t_vsthost *x, t_floatarg f);
+
 static void vsthost_close(t_vsthost *x){
     if (x->x_plugin){
+        vsthost_vis(x, 0);
         freeVSTPlugin(x->x_plugin);
         x->x_plugin = nullptr;
     }
@@ -129,25 +134,52 @@ static void vsthost_make_editor(t_vsthost *x);
 
 static void vsthost_open(t_vsthost *x, t_symbol *s){
     vsthost_close(x);
-    IVSTPlugin *plugin = loadVSTPlugin(s->s_name);
-    if (plugin){
-        post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
-        // plugin->setBlockSize(x->x_blocksize);
-        // plugin->setSampleRate(x->x_sr);
-        // plugin->resume();
-        if (plugin->hasSinglePrecision()){
-            post("plugin supports single precision");
-        }
-        if (plugin->hasDoublePrecision()){
-            post("plugin supports double precision");
-        }
-        x->x_plugin = plugin;
-        vsthost_update_buffer(x);
-        vsthost_make_editor(x);
+    char dirresult[MAXPDSTRING];
+    char *name;
+    const char *ext = ".dll";
+    int fd = -1;
+    if (strstr(s->s_name, ext)){
+        fd = canvas_open(x->x_editor, s->s_name, "", dirresult, &name, MAXPDSTRING, 1);
     } else {
-        post("no plugin");
-        pd_error(x, "%s: couldn't open plugin %s", classname(x), s->s_name);
+        fd = canvas_open(x->x_editor, s->s_name, ext, dirresult, &name, MAXPDSTRING, 1);
     }
+    if (fd >= 0){
+        sys_close(fd);
+
+        char path[MAXPDSTRING];
+        snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
+        sys_bashfilename(path, path);
+
+        IVSTPlugin *plugin = loadVSTPlugin(path);
+        if (plugin){
+            post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
+            // plugin->setBlockSize(x->x_blocksize);
+            // plugin->setSampleRate(x->x_sr);
+            // plugin->resume();
+            x->x_plugin = plugin;
+            vsthost_update_buffer(x);
+            vsthost_make_editor(x);
+            return;
+        } else {
+            pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
+        }
+    } else {
+        pd_error(x, "%s: couldn't open \"%s\" - no such file!", classname(x), s->s_name);
+    }
+}
+
+static void vsthost_info(t_vsthost *x){
+    if (!vsthost_check(x)) return;
+    post("name: %s", x->x_plugin->getPluginName().c_str());
+    post("version: %d", x->x_plugin->getPluginVersion());
+    post("input channels: %d", x->x_plugin->getNumInputs());
+    post("output channels: %d", x->x_plugin->getNumOutputs());
+    post("single precision: %s", x->x_plugin->hasSinglePrecision() ? "yes" : "no");
+    post("double precision: %s", x->x_plugin->hasDoublePrecision() ? "yes" : "no");
+    post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
+    post("number of parameters: %d", x->x_plugin->getNumParameters());
+    post("number of programs: %d", x->x_plugin->getNumPrograms());
+    post("");
 }
 
 // bypass
@@ -169,9 +201,7 @@ static void vsthost_update_editor(t_vsthost *x){
     if (!x->x_plugin->hasEditor() || x->x_generic){
         int n = x->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
-            float f = x->x_plugin->getParameter(i);
-            t_symbol *param = x->x_param_vec[i].p_name;
-            pd_vmess(param->s_thing, gensym("set"), (char *)"f", f);
+            vstparam_set(&x->x_param_vec[i], x->x_plugin->getParameter(i));
         }
     }
 }
@@ -249,6 +279,7 @@ static void vsthost_make_editor(t_vsthost *x){
     }
     float width = 280;
     float height = nparams * 35 + 60;
+    if (height > 800) height = 800;
     editor_vmess(x, gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
     editor_vmess(x, gensym("vis"), "i", 0);
 
@@ -272,11 +303,20 @@ static void vsthost_click(t_vsthost *x){
     vsthost_vis(x, 1);
 }
 
+static void vsthost_generic(t_vsthost *x, t_floatarg f){
+    x->x_generic = (f != 0);
+}
+
+static void vsthost_precision(t_vsthost *x, t_floatarg f){
+    x->x_dp = (f != 0);
+}
+
 // parameters
 static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
 	if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
+        value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
         if (!x->x_plugin->hasEditor() || x->x_generic){
             vstparam_set(&x->x_param_vec[index], value);
@@ -299,7 +339,7 @@ static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_param_getname(t_vsthost *x, t_floatarg _index){
+static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
 	if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -312,7 +352,7 @@ static void vsthost_param_getname(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_param_getlabel(t_vsthost *x, t_floatarg _index){
+static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
     if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -325,7 +365,7 @@ static void vsthost_param_getlabel(t_vsthost *x, t_floatarg _index){
     }
 }
 
-static void vsthost_param_getdisplay(t_vsthost *x, t_floatarg _index){
+static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
     if (!vsthost_check(x)) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -349,9 +389,16 @@ static void vsthost_param_list(t_vsthost *x){
 	if (!vsthost_check(x)) return;
     int n = x->x_plugin->getNumParameters();
 	for (int i = 0; i < n; ++i){
-		vsthost_param_getname(x, i);
-		vsthost_param_get(x, i);
+        vsthost_param_name(x, i);
 	}
+}
+
+static void vsthost_param_dump(t_vsthost *x){
+    if (!vsthost_check(x)) return;
+    int n = x->x_plugin->getNumParameters();
+    for (int i = 0; i < n; ++i){
+        vsthost_param_get(x, i);
+    }
 }
 
 // programs
@@ -370,7 +417,7 @@ static void vsthost_program_get(t_vsthost *x){
 	if (!vsthost_check(x)) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
-    outlet_anything(x->x_messout, gensym("program_number"), 1, &msg);
+    outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
 
 static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
@@ -378,7 +425,7 @@ static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
     x->x_plugin->setProgramName(name->s_name);
 }
 
-static void vsthost_program_getname(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
 	if (!vsthost_check(x)) return;
     t_atom msg[2];
     if (argc){
@@ -400,19 +447,6 @@ static void vsthost_program_count(t_vsthost *x){
 }
 
 static void vsthost_program_list(t_vsthost *x){
-#if 0
-    if (!vsthost_check(x)) return;
-    int old = x->x_plugin->getProgram();
-    int n = x->x_plugin->getNumPrograms();
-    for (int i = 0; i < n; ++i){
-        x->x_plugin->setProgram(i);
-        t_atom msg[2];
-        SETFLOAT(&msg[0], i);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramName().c_str()));
-        outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
-    }
-    x->x_plugin->setProgram(old);
-#endif
     int n = x->x_plugin->getNumPrograms();
     t_atom msg[2];
     for (int i = 0; i < n; ++i){
@@ -439,12 +473,19 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     t_vsthost *x = (t_vsthost *)pd_new(vsthost_class);
 	
     int generic = 0;
+    int dp = (PD_FLOATSIZE == 64); // double precision Pd defaults to double precision
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = atom_getsymbol(argv)->s_name;
         if (*flag == '-'){
             switch (flag[1]){
             case 'g':
                 generic = 1;
+                break;
+            case 'd':
+                dp = 1;
+                break;
+            case 's':
+                dp = 0;
                 break;
             default:
                 break;
@@ -464,6 +505,7 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_bypass = 0;
     x->x_blocksize = 64;
     x->x_sr = 44100;
+    x->x_dp = dp;
 
     // inputs (skip first):
     for (int i = 1; i < in; ++i){
@@ -569,8 +611,8 @@ static t_int *vsthost_perform(t_int *w){
         int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
         out_offset = pout;
-        // process in double precision if available
-        if (plugin->hasDoublePrecision()){
+        // process in double precision
+        if (x->x_dp && plugin->hasDoublePrecision()){
             // prepare input buffer
             for (int i = 0; i < ninbuf; ++i){
                 double *buf = (double *)x->x_inbuf + i * n;
@@ -586,10 +628,6 @@ static t_int *vsthost_perform(t_int *w){
                     }
                 }
             }
-        #if PD_FLOATSIZE == 64
-            // process (no need to buffer the output)
-            plugin->processDouble((double **)inbufvec, outvec, n);
-        #else
             // set output buffer pointers
             for (int i = 0; i < pout; ++i){
                 outbufvec[i] = ((double *)x->x_outbuf + i * n);
@@ -604,7 +642,6 @@ static t_int *vsthost_perform(t_int *w){
                     out[j] = buf[j];
                 }
             }
-        #endif
         } else {  // single precision
             // prepare input buffer
             for (int i = 0; i < ninbuf; ++i){
@@ -621,10 +658,6 @@ static t_int *vsthost_perform(t_int *w){
                     }
                 }
             }
-        #if PD_FLOATSIZE == 32
-            // process (no need to buffer the output)
-            plugin->process((float **)inbufvec, outvec, n);
-        #else
             // set output buffer pointers
             for (int i = 0; i < pout; ++i){
                 outbufvec[i] = ((float *)x->x_outbuf + i * n);
@@ -639,7 +672,6 @@ static t_int *vsthost_perform(t_int *w){
                     out[j] = buf[j];
                 }
             }
-        #endif
         }
     } else {  // just pass it through
         t_float *buf = (t_float *)x->x_inbuf;
@@ -703,30 +735,33 @@ void vsthost_tilde_setup(void)
     vsthost_class = class_new(gensym("vsthost~"), (t_newmethod)vsthost_new, (t_method)vsthost_free,
         sizeof(t_vsthost), 0, A_GIMME, A_NULL);
     CLASS_MAINSIGNALIN(vsthost_class, t_vsthost, x_f);
-    class_addmethod(vsthost_class, (t_method)vsthost_dsp,
-        gensym("dsp"), A_CANT, A_NULL);
-	class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_dsp, gensym("dsp"), A_CANT, A_NULL);
+    // plugin
+    class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT, A_NULL);
-	class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, A_NULL);
+	class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
+    class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_generic, gensym("generic"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_info, gensym("info"), A_NULL);
 	// parameters
-	class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, A_NULL);
-	class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);
-	class_addmethod(vsthost_class, (t_method)vsthost_param_getname, gensym("param_getname"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_getlabel, gensym("param_getlabel"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_getdisplay, gensym("param_getdisplay"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_name, gensym("param_name"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_label, gensym("param_label"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_display, gensym("param_display"), A_FLOAT, A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_dump, gensym("param_dump"), A_NULL);
 	// programs
-	class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_getname, gensym("program_getname"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_name, gensym("program_name"), A_GIMME, A_NULL);
 	class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
-	// version
-	class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
 
     vstparam_setup();
 }
