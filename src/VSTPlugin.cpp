@@ -87,8 +87,9 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
     vstPluginFuncPtr mainEntryPoint = nullptr;
 #ifdef _WIN32
-    HMODULE handle = LoadLibraryW(widen(path).c_str());
-    if (handle){
+    if(!mainEntryPoint) {
+      HMODULE handle = LoadLibraryW(widen(path).c_str());
+      if (handle) {
         mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
         if (!mainEntryPoint){
             mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
@@ -96,7 +97,9 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
     } else {
         std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
     }
-#elif defined __APPLE__
+#endif
+#if defined __APPLE__
+    if(!mainEntryPoint) {
     // Create a path to the bundle
     // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
     CFStringRef pluginPathStringRef = CFStringCreateWithCString(NULL,
@@ -122,7 +125,9 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
               CFSTR("main_macho"));
       }
     }
-#elif DL_OPEN
+#endif
+#if DL_OPEN
+    if(!mainEntryPoint) {
     void *handle = dlopen(path.c_str(), RTLD_NOW);
     dlerror();
     if(handle) {
