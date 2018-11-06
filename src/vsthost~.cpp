@@ -136,13 +136,8 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
     vsthost_close(x);
     char dirresult[MAXPDSTRING];
     char *name;
-    const char *ext = ".dll";
-    int fd = -1;
-    if (strstr(s->s_name, ext)){
-        fd = canvas_open(x->x_editor, s->s_name, "", dirresult, &name, MAXPDSTRING, 1);
-    } else {
-        fd = canvas_open(x->x_editor, s->s_name, ext, dirresult, &name, MAXPDSTRING, 1);
-    }
+    std::string vstpath = makeVSTPluginFilePath(s->s_name);
+    int fd = canvas_open(x->x_editor, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
     if (fd >= 0){
         sys_close(fd);
 

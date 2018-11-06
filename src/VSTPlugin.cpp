@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <thread>
+#include <cstring>
 
 #if _WIN32
 # include <windows.h>
@@ -79,43 +80,26 @@ std::string VSTPlugin::getBaseName() const {
 IVSTPlugin* loadVSTPlugin(const std::string& path){
     AEffect *plugin = nullptr;
     vstPluginFuncPtr mainEntryPoint = NULL;
-#if _WIN32
-    if (NULL == mainEntryPoint) {
-        HMODULE handle = nullptr;
-        auto ext = path.find_last_of('.');
-        if (ext != std::string::npos &&
-                ((path.find(".dll", ext) != std::string::npos)
-                || path.find(".DLL", ext) != std::string::npos)){
-            handle = LoadLibraryW(widen(path).c_str());
+#ifdef _WIN32
+    HMODULE handle = LoadLibraryW(widen(path).c_str());
+    if (handle){
+        mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
+        if (!mainEntryPoint){
+            mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
         }
-        if (!handle) { // add extension
-            wchar_t buf[MAX_PATH];
-            snwprintf(buf, MAX_PATH, L"%S.dll", widen(path).c_str());
-            handle = LoadLibraryW(buf);
-        }
-
-        if (handle){
-            mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
-            if (!mainEntryPoint){
-                mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "main"));
-            }
-        } else {
-            std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
-        }
+    } else {
+        std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
     }
-#endif
-#ifdef DL_OPEN
-    if (NULL == mainEntryPoint) {
-        void *handle = dlopen(path.c_str(), RTLD_NOW);
-        dlerror();
-        if(handle) {
-            mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
-            if (!mainEntryPoint){
-                mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
-            }
-        } else {
-            std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
+#elif DL_OPEN
+    void *handle = dlopen(path.c_str(), RTLD_NOW);
+    dlerror();
+    if(handle) {
+        mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "VSTPluginMain"));
+        if (!mainEntryPoint){
+            mainEntryPoint = (vstPluginFuncPtr)(dlsym(handle, "main"));
         }
+    } else {
+        std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
     }
 #endif
 
@@ -129,10 +113,9 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         return nullptr;
     }
     if (plugin->magic != kEffectMagic){
-        std::cout << "loadVSTPlugin: bad magic number!" << std::endl;
+        std::cout << "loadVSTPlugin: not a VST plugin!" << std::endl;
         return nullptr;
     }
-    std::cout << "loadVSTPlugin: successfully loaded plugin" << std::endl;
     return new VST2Plugin(plugin, path);
 }
 
@@ -154,11 +137,33 @@ namespace VSTWindowFactory {
         IVSTWindow *win = nullptr;
     #ifdef _WIN32
         win = createWin32(plugin);
-    #endif
-    #ifdef USE_WINDOW_FOO
+    #elif defined(USE_WINDOW_FOO)
         win = createFoo(plugin);
     #endif
         return win;
     }
 }
 
+std::string makeVSTPluginFilePath(const std::string& name){
+    auto ext = name.find_last_of('.');
+#ifdef _WIN32
+    // myplugin -> myplugin.dll
+    if (ext == std::string::npos || name.find(".dll", ext) == std::string::npos){
+        return name + ".dll";
+    }
+#elif defined(__linux__)
+    // myplugin -> myplugin.so
+    if (ext == std::string::npos || name.find(".so", ext) == std::string::npos){
+        return name + ".so";
+    }
+#elif defined(__APPLE__)
+    // myplugin -> myplugin.vst/Contents/MacOS/myplugin
+    if (ext == std::string::npos || name.find(".vst", ext) == std::string::npos){
+        auto slash = name.find_last_of('/');
+        std::string basename = (slash == std::string::npos) ? name : name.substr(slash+1);
+        return name + ".vst/Contents/MacOS/" + basename;
+    }
+#endif
+    // return unchanged
+    return name;
+}
