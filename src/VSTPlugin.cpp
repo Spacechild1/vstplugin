@@ -13,6 +13,7 @@
 #endif
 
 #if defined __APPLE__
+# include <CoreFoundation/CoreFoundation.h>
 # include <mach-o/dyld.h>
 # include <unistd.h>
 #endif
