@@ -14,8 +14,7 @@ VST2Plugin::~VST2Plugin(){
 }
 
 std::string VST2Plugin::getPluginName() const {
-    char buf[256];
-    buf[0] = 0;
+    char buf[256] = {0};
     dispatch(effGetEffectName, 0, 0, buf);
     std::string name(buf);
     if (name.size()){
@@ -85,22 +84,19 @@ float VST2Plugin::getParameter(int index) const {
 }
 
 std::string VST2Plugin::getParameterName(int index) const {
-    char buf[256];
-    buf[0] = 0;
+    char buf[256] = {0};
     dispatch(effGetParamName, index, 0, buf);
     return std::string(buf);
 }
 
 std::string VST2Plugin::getParameterLabel(int index) const {
-    char buf[256];
-    buf[0] = 0;
+    char buf[256] = {0};
     dispatch(effGetParamLabel, index, 0, buf);
     return std::string(buf);
 }
 
 std::string VST2Plugin::getParameterDisplay(int index) const {
-    char buf[256];
-    buf[0] = 0;
+    char buf[256] = {0};
     dispatch(effGetParamDisplay, index, 0, buf);
     return std::string(buf);
 }
@@ -127,15 +123,13 @@ int VST2Plugin::getProgram(){
 }
 
 std::string VST2Plugin::getProgramName() const {
-    char buf[256];
-    buf[0] = 0;
+    char buf[256] = {0};
     dispatch(effGetProgramName, 0, 0, buf);
     return std::string(buf);
 }
 
 std::string VST2Plugin::getProgramNameIndexed(int index) const {
-    char buf[256];
-    buf[0] = 0;
+    char buf[256] = {0};
     dispatch(effGetProgramNameIndexed, index, 0, buf);
     return std::string(buf);
 }
