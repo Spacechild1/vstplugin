@@ -10,7 +10,7 @@ VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
 }
 
 VST2Plugin::~VST2Plugin(){
-    // dispatch(effClose, 0, 0, NULL, 0.f);
+    dispatch(effClose);
 }
 
 std::string VST2Plugin::getPluginName() const {
