@@ -107,7 +107,7 @@ void VSTWindowWin32::run(){
     int ret;
     while((ret = GetMessage(&msg, NULL, 0, 0))){
         if (ret < 0){
-            // error
+                // error
             std::cout << "GetMessage: error" << std::endl;
             break;
         }
@@ -118,10 +118,10 @@ void VSTWindowWin32::run(){
 void VSTWindowWin32::threadFunction(IVSTPlugin *plugin){
     std::cout << "enter thread" << std::endl;
     hwnd_ = CreateWindowW(
-          VST_EDITOR_CLASS_NAME, widen(plugin->getPluginName()).c_str(),
-          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-          NULL, NULL, hInstance, NULL
-    );
+        VST_EDITOR_CLASS_NAME, widen(plugin->getPluginName()).c_str(),
+        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+        NULL, NULL, hInstance, NULL
+        );
 
     int left, top, right, bottom;
     std::cout << "try open editor" << std::endl;

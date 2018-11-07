@@ -5,7 +5,7 @@
 #include <memory>
 
 class VSTPlugin : public IVSTPlugin {
-public:
+ public:
     VSTPlugin(const std::string& path);
 
     void createWindow() override final;
@@ -13,9 +13,9 @@ public:
     IVSTWindow *getWindow() override final {
         return win_.get();
     }
-protected:
+ protected:
     std::string getBaseName() const;
-private:
+ private:
     std::string path_;
     std::unique_ptr<IVSTWindow> win_;
 };

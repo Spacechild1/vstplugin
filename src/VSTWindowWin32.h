@@ -6,7 +6,7 @@
 #include <thread>
 
 class VSTWindowWin32 : public IVSTWindow {
-public:
+ public:
     VSTWindowWin32(IVSTPlugin& plugin);
 
     ~VSTWindowWin32();
@@ -26,9 +26,9 @@ public:
     bool isRunning() const override {
         return bRunning_.load();
     }
-protected:
+ protected:
     void run() override;
-private:
+ private:
     HWND hwnd_{nullptr};
     std::thread thread_;
     std::atomic<bool> bRunning_{false};

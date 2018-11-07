@@ -3,7 +3,7 @@
 #include <string>
 
 class IVSTWindow {
-public:
+ public:
     virtual ~IVSTWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
@@ -17,12 +17,12 @@ public:
     virtual void bringToTop() = 0;
 
     virtual bool isRunning() const = 0; // message loop still running?
-protected:
+ protected:
     virtual void run() = 0; // start the message loop
 };
 
 class IVSTPlugin {
-public:
+ public:
     virtual ~IVSTPlugin(){}
     virtual std::string getPluginName() const = 0;
     virtual int getPluginVersion() const = 0;
