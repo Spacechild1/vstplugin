@@ -3,7 +3,7 @@
 #include <string>
 
 class IVSTWindow {
-public:
+ public:
     virtual ~IVSTWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
@@ -18,7 +18,7 @@ public:
 };
 
 class IVSTPlugin {
-public:
+ public:
     virtual ~IVSTPlugin(){}
     virtual std::string getPluginName() const = 0;
     virtual int getPluginVersion() const = 0;

@@ -76,7 +76,7 @@ int VST2Plugin::getNumOutputs() const {
 
 void VST2Plugin::setParameter(int index, float value){
     plugin_->setParameter(plugin_, index, value);
-    // update();
+        // update();
 }
 
 float VST2Plugin::getParameter(int index) const {
@@ -108,7 +108,7 @@ int VST2Plugin::getNumParameters() const {
 void VST2Plugin::setProgram(int program){
     if (program >= 0 && program < getNumPrograms()){
         dispatch(effSetProgram, 0, program);
-        // update();
+            // update();
     } else {
         std::cout << "program number out of range!" << std::endl;
     }
@@ -177,7 +177,7 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 // Main host callback
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
-    // std::cout << "plugin requested opcode " << opcode << std::endl;
+        // std::cout << "plugin requested opcode " << opcode << std::endl;
     switch(opcode) {
     case audioMasterAutomate:
         std::cout << "opcode: audioMasterAutomate" << std::endl;
@@ -193,7 +193,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         plugin->dispatcher(plugin, effEditIdle, 0, 0, NULL, 0.f);
         break;
     case audioMasterGetTime:
-        // std::cout << "opcode: audioMasterGetTime" << std::endl;
+            // std::cout << "opcode: audioMasterGetTime" << std::endl;
         break;
     case audioMasterProcessEvents:
         std::cout << "opcode: audioMasterProcessEvents" << std::endl;
@@ -258,4 +258,3 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     }
     return 0; // ?
 }
-

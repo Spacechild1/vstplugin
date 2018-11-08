@@ -106,15 +106,15 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
 #endif
 #if defined __APPLE__
     if(!mainEntryPoint) {
-        // Create a path to the bundle
-        // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
+            // Create a path to the bundle
+            // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
         CFStringRef pluginPathStringRef = CFStringCreateWithCString(NULL,
             path.c_str(), kCFStringEncodingUTF8);
         CFURLRef bundleUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
             pluginPathStringRef, kCFURLPOSIXPathStyle, true);
         CFBundleRef bundle = nullptr;
         if(bundleUrl) {
-            // Open the bundle
+                // Open the bundle
             bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
             if(!bundle) {
                 std::cout << "loadVSTPlugin: couldn't create bundle reference for " << path << std::endl;
@@ -124,7 +124,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
             openedlib = true;
             mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
                 CFSTR("VSTPluginMain"));
-            // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
+                // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
             if(!mainEntryPoint) {
                 mainEntryPoint = (vstPluginFuncPtr)CFBundleGetFunctionPointerForName(bundle,
                     CFSTR("main_macho"));
@@ -193,11 +193,11 @@ namespace VSTWindowFactory {
 
     IVSTWindow* create(IVSTPlugin& plugin){
         IVSTWindow *win = nullptr;
-    #ifdef _WIN32
+#ifdef _WIN32
         win = createWin32(plugin);
-    #elif defined(USE_WINDOW_FOO)
+#elif defined(USE_WINDOW_FOO)
         win = createFoo(plugin);
-    #endif
+#endif
         return win;
     }
 }
@@ -205,23 +205,23 @@ namespace VSTWindowFactory {
 std::string makeVSTPluginFilePath(const std::string& name){
     auto ext = name.find_last_of('.');
 #ifdef _WIN32
-    // myplugin -> myplugin.dll
+        // myplugin -> myplugin.dll
     if (ext == std::string::npos || name.find(".dll", ext) == std::string::npos){
         return name + ".dll";
     }
 #elif defined(__linux__)
-    // myplugin -> myplugin.so
+        // myplugin -> myplugin.so
     if (ext == std::string::npos || name.find(".so", ext) == std::string::npos){
         return name + ".so";
     }
 #elif defined(__APPLE__)
-    // myplugin -> myplugin.vst/Contents/MacOS/myplugin
+        // myplugin -> myplugin.vst/Contents/MacOS/myplugin
     if (ext == std::string::npos || name.find(".vst", ext) == std::string::npos){
         auto slash = name.find_last_of('/');
         std::string basename = (slash == std::string::npos) ? name : name.substr(slash+1);
         return name + ".vst/Contents/MacOS/" + basename;
     }
 #endif
-    // return unchanged
+        // return unchanged
     return name;
 }

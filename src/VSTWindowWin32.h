@@ -4,7 +4,7 @@
 #include <process.h>
 
 class VSTWindowWin32 : public IVSTWindow {
-public:
+ public:
     VSTWindowWin32(IVSTPlugin& plugin);
 
     ~VSTWindowWin32();
@@ -20,7 +20,7 @@ public:
     void minimize() override;
     void restore() override;
     void bringToTop() override;
-private:
+ private:
     HWND hwnd_{nullptr};
     IVSTPlugin *plugin_{nullptr};
 };
