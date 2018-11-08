@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
+
 static std::wstring widen(const std::string& s){
     if (s.empty()){
         return std::wstring();
@@ -12,8 +14,6 @@ static std::wstring widen(const std::string& s){
     MultiByteToWideChar(CP_UTF8, 0, s.data(), s.size(), &buf[0], n);
     return buf;
 }
-
-#define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 
 static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
     if (Msg == WM_CLOSE){
@@ -36,6 +36,9 @@ namespace VSTWindowFactory {
             wcex.cbSize = sizeof(WNDCLASSEXW);
             wcex.lpfnWndProc = VSTPluginEditorProc;
             wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
+            wchar_t exeFileName[MAX_PATH];
+            GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
+            wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
             if (!RegisterClassExW(&wcex)){
                 std::cout << "couldn't register window class!" << std::endl;
             } else {
