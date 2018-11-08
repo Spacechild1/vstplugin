@@ -144,11 +144,21 @@ void freeVSTPlugin(IVSTPlugin *plugin){
 namespace VSTWindowFactory {
 #ifdef _WIN32
     IVSTWindow* createWin32();
+    void initializeWin32();
 #endif
 #ifdef USE_WINDOW_FOO
+    void initializedFoo();
     IVSTWindow* createFoo();
 #endif
-
+        // initialize
+    void initialize(){
+#ifdef _WIN32
+        initializeWin32();
+#elif defined(USE_WINDOW_FOO)
+        initializeFoo();
+#endif
+    }
+        // create
     IVSTWindow* create(){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32

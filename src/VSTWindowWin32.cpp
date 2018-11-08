@@ -14,8 +14,6 @@ static std::wstring widen(const std::string& s){
 }
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
-static HINSTANCE hInstance = NULL;
-static bool bRegistered = false;
 
 static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
     if (Msg == WM_CLOSE){
@@ -29,35 +27,30 @@ static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LP
     return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
 
-
-extern "C" {
-BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
-    hInstance = hinstDLL;
-
-    if (!bRegistered){
-        WNDCLASSEXW wcex;
-        memset(&wcex, 0, sizeof(WNDCLASSEXW));
-        wcex.cbSize = sizeof(WNDCLASSEXW);
-        wcex.lpfnWndProc = VSTPluginEditorProc;
-        wcex.hInstance = hInstance;
-        wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
-        if (!RegisterClassExW(&wcex)){
-            std::cout << "couldn't register window class!" << std::endl;
-        } else {
-            std::cout << "registered window class!" << std::endl;
-            bRegistered = true;
+namespace VSTWindowFactory {
+    void initializeWin32(){
+        static bool initialized = false;
+        if (!initialized){
+            WNDCLASSEXW wcex;
+            memset(&wcex, 0, sizeof(WNDCLASSEXW));
+            wcex.cbSize = sizeof(WNDCLASSEXW);
+            wcex.lpfnWndProc = VSTPluginEditorProc;
+            wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
+            if (!RegisterClassExW(&wcex)){
+                std::cout << "couldn't register window class!" << std::endl;
+            } else {
+                std::cout << "registered window class!" << std::endl;
+                initialized = true;
+            }
         }
     }
-    return TRUE;
 }
-} // extern C
-
 
 VSTWindowWin32::VSTWindowWin32(){
     hwnd_ = CreateWindowW(
           VST_EDITOR_CLASS_NAME, L"Untitled",
           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-          NULL, NULL, hInstance, NULL
+          NULL, NULL, NULL, NULL
     );
     std::cout << "created VSTWindowWin32" << std::endl;
 }

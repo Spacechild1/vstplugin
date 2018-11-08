@@ -839,6 +839,8 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
 
     vstparam_setup();
+
+    VSTWindowFactory::initialize();
 }
 
 } // extern "C"

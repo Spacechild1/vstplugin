@@ -20,6 +20,7 @@ class IVSTWindow {
 
 // creates a platform dependend window
 namespace VSTWindowFactory {
+    void initialize();
     IVSTWindow* create();
 }
 
