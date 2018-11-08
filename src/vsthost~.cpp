@@ -37,11 +37,7 @@ static void runMessageLoop(){}
 // vsthost~ object
 static t_class *vsthost_class;
 
-struct t_vstparam;
-
-struct t_vstthread {
-    std::thread thread;
-};
+struct t_vsteditor;
 
 struct t_vsthost {
 	t_object x_obj;
@@ -49,16 +45,12 @@ struct t_vsthost {
     t_outlet *x_messout;
         // VST plugin
     IVSTPlugin* x_plugin;
-    t_vstthread* x_thread;
     int x_bypass;
     int x_blocksize;
     int x_sr;
     int x_dp; // use double precision
-        // Pd editor
-    t_canvas *x_editor;
-    int x_nparams;
-    t_vstparam *x_param_vec;
-    int x_generic;
+        // editor
+    t_vsteditor *x_editor;
         // input signals from Pd
     int x_nin;
     t_float **x_invec;
@@ -77,6 +69,19 @@ struct t_vsthost {
         // array of pointers into the output buffer
     int x_noutbuf;
     void **x_outbufvec;
+};
+
+struct t_vstparam;
+
+class t_vsteditor {
+ public:
+    std::thread e_thread;
+    std::unique_ptr<IVSTWindow> e_window;
+    int e_generic = 0;
+        // pd editor
+    t_canvas *e_canvas = nullptr;
+    int e_nparams = 0;
+    t_vstparam *e_param_vec = nullptr;
 };
 
 // VST parameter responder (for Pd GUI)
@@ -152,8 +157,14 @@ static void vsthost_vis(t_vsthost *x, t_floatarg f);
 static void vsthost_close(t_vsthost *x){
     if (x->x_plugin){
         vsthost_vis(x, 0);
+        x->x_editor->e_window = nullptr;
+        if (x->x_editor->e_thread.joinable()){
+            x->x_editor->e_thread.join();
+        }
+        std::cout << "try to close VST plugin" << std::endl;
         freeVSTPlugin(x->x_plugin);
         x->x_plugin = nullptr;
+        std::cout << "VST plugin closed" << std::endl;
     }
 }
 
@@ -161,14 +172,31 @@ static void vsthost_close(t_vsthost *x){
 static void vsthost_update_buffer(t_vsthost *x);
 static void vsthost_make_editor(t_vsthost *x);
 
-static void thread_function(std::promise<IVSTPlugin *> promise, const char *path){
+static void vstthread_function(std::promise<IVSTPlugin *> promise, const char *path, t_vsthost *x){
     std::cout << "enter thread" << std::endl;
     IVSTPlugin *plugin = loadVSTPlugin(path);
-    if (plugin){
-        plugin->createWindow();
+    if (!plugin){
+        promise.set_value(nullptr);
+        return;
+    }
+    bool wantWindow = plugin->hasEditor() && !x->x_editor->e_generic;
+    if (wantWindow){
+        x->x_editor->e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create());
     }
     promise.set_value(plugin);
-    runMessageLoop();
+    if (wantWindow){
+        x->x_editor->e_window->setTitle(plugin->getPluginName());
+        plugin->openEditor(x->x_editor->e_window->getHandle());
+        int left, top, right, bottom;
+        plugin->getEditorRect(left, top, right, bottom);
+        x->x_editor->e_window->setGeometry(left, top, right, bottom);
+
+        std::cout << "enter message loop" << std::endl;
+        runMessageLoop();
+        std::cout << "exit message loop" << std::endl;
+
+        plugin->closeEditor();
+    }
     std::cout << "exit thread" << std::endl;
 }
 
@@ -177,7 +205,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
     char dirresult[MAXPDSTRING];
     char *name;
     std::string vstpath = makeVSTPluginFilePath(s->s_name);
-    int fd = canvas_open(x->x_editor, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+    int fd = canvas_open(x->x_editor->e_canvas, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
     if (fd >= 0){
         sys_close(fd);
 
@@ -187,10 +215,11 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
 
         std::promise<IVSTPlugin *>promise;
         auto future = promise.get_future();
-        x->x_thread->thread = std::thread(thread_function, std::move(promise), path);
+        x->x_editor->e_thread = std::thread(vstthread_function, std::move(promise), path, x);
         auto plugin = future.get();
 
         if (plugin){
+            std::cout << "got plugin" << std::endl;
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
                 // plugin->setBlockSize(x->x_blocksize);
                 // plugin->setSampleRate(x->x_sr);
@@ -198,6 +227,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             x->x_plugin = plugin;
             vsthost_update_buffer(x);
             vsthost_make_editor(x);
+            std::cout << "done open" << std::endl;
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
         }
@@ -226,38 +256,40 @@ static void vsthost_bypass(t_vsthost *x, t_floatarg f){
 }
 
 // editor
-static void editor_mess(t_vsthost *x, t_symbol *sel, int argc = 0, t_atom *argv = 0){
-    pd_typedmess((t_pd *)x->x_editor, sel, argc, argv);
+static void editor_mess(t_vsteditor *x, t_symbol *sel, int argc = 0, t_atom *argv = 0){
+    pd_typedmess((t_pd *)x->e_canvas, sel, argc, argv);
 }
 
 template<typename... T>
-static void editor_vmess(t_vsthost *x, t_symbol *sel, const char *fmt, T... args){
-    pd_vmess((t_pd *)x->x_editor, sel, (char *)fmt, args...);
+static void editor_vmess(t_vsteditor *x, t_symbol *sel, const char *fmt, T... args){
+    pd_vmess((t_pd *)x->e_canvas, sel, (char *)fmt, args...);
 }
 
 static void vsthost_update_editor(t_vsthost *x){
-    if (!x->x_plugin->hasEditor() || x->x_generic){
+    if (!x->x_plugin->hasEditor() || x->x_editor->e_generic){
         int n = x->x_plugin->getNumParameters();
+        t_vstparam *params = x->x_editor->e_param_vec;
         for (int i = 0; i < n; ++i){
-            vstparam_set(&x->x_param_vec[i], x->x_plugin->getParameter(i));
+            vstparam_set(&params[i], x->x_plugin->getParameter(i));
         }
     }
 }
 
 static void vsthost_make_editor(t_vsthost *x){
     int nparams = x->x_plugin->getNumParameters();
-    int n = x->x_nparams;
+    t_vsteditor *e = x->x_editor;
+    int n = e->e_nparams;
     for (int i = 0; i < n; ++i){
-        vstparam_free(&x->x_param_vec[i]);
+        vstparam_free(&e->e_param_vec[i]);
     }
-    x->x_param_vec = (t_vstparam *)resizebytes(x->x_param_vec, n * sizeof(t_vstparam), nparams * sizeof(t_vstparam));
-    x->x_nparams = nparams;
+    e->e_param_vec = (t_vstparam *)resizebytes(e->e_param_vec, n * sizeof(t_vstparam), nparams * sizeof(t_vstparam));
+    e->e_nparams = nparams;
     for (int i = 0; i < nparams; ++i){
-        vstparam_init(&x->x_param_vec[i], x, i);
+        vstparam_init(&e->e_param_vec[i], x, i);
     }
 
-    editor_vmess(x, gensym("rename"), (char *)"s", gensym(x->x_plugin->getPluginName().c_str()));
-    editor_mess(x, gensym("clear"));
+    editor_vmess(e, gensym("rename"), (char *)"s", gensym(x->x_plugin->getPluginName().c_str()));
+    editor_mess(e, gensym("clear"));
         // slider
     t_atom slider[21];
     SETFLOAT(slider, 20);
@@ -303,37 +335,37 @@ static void vsthost_make_editor(t_vsthost *x){
     for (int i = 0; i < nparams; ++i){
             // create slider
         SETFLOAT(slider+1, 20 + i*35);
-        SETSYMBOL(slider+9, x->x_param_vec[i].p_name);
-        SETSYMBOL(slider+10, x->x_param_vec[i].p_name);
+        SETSYMBOL(slider+9, e->e_param_vec[i].p_name);
+        SETSYMBOL(slider+10, e->e_param_vec[i].p_name);
         char buf[64];
         snprintf(buf, sizeof(buf), "%d: %s", i, x->x_plugin->getParameterName(i).c_str());
         SETSYMBOL(slider+11, gensym(buf));
-        editor_mess(x, gensym("obj"), 21, slider);
+        editor_mess(e, gensym("obj"), 21, slider);
             // create number box
         SETFLOAT(label+1, 20 + i*35);
-        SETSYMBOL(label+6, x->x_param_vec[i].p_display);
-        SETSYMBOL(label+7, x->x_param_vec[i].p_display);
-        editor_mess(x, gensym("obj"), 16, label);
+        SETSYMBOL(label+6, e->e_param_vec[i].p_display);
+        SETSYMBOL(label+7, e->e_param_vec[i].p_display);
+        editor_mess(e, gensym("obj"), 16, label);
     }
     float width = 280;
     float height = nparams * 35 + 60;
     if (height > 800) height = 800;
-    editor_vmess(x, gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
-    editor_vmess(x, gensym("vis"), "i", 0);
+    editor_vmess(e, gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
+    editor_vmess(e, gensym("vis"), "i", 0);
 
     vsthost_update_editor(x);
 }
 
 static void vsthost_vis(t_vsthost *x, t_floatarg f){
 	if (!vsthost_check(x)) return;
-    if (x->x_plugin->hasEditor() && !x->x_generic){
+    if (x->x_editor->e_window){
         if (f != 0){
-            x->x_plugin->createWindow();
+            x->x_editor->e_window->bringToTop();
         } else {
-            x->x_plugin->destroyWindow();
+            x->x_editor->e_window->hide();
         }
     } else {
-        editor_vmess(x, gensym("vis"), "i", (f != 0));
+        editor_vmess(x->x_editor, gensym("vis"), "i", (f != 0));
     }
 }
 
@@ -352,8 +384,8 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
-        if (!x->x_plugin->hasEditor() || x->x_generic){
-            vstparam_set(&x->x_param_vec[index], value);
+        if (!x->x_plugin->hasEditor() || x->x_editor->e_generic){
+            vstparam_set(&x->x_editor->e_param_vec[index], value);
         }
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
@@ -545,7 +577,6 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_blocksize = 64;
     x->x_sr = 44100;
     x->x_dp = dp;
-    x->x_thread = new t_vstthread{};
 
         // inputs (skip first):
     for (int i = 1; i < in; ++i){
@@ -561,14 +592,13 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
 
         // Pd editor
+    t_vsteditor *e = x->x_editor = new t_vsteditor{};
     glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
     pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
-    x->x_editor = (t_canvas *)s__X.s_thing;
-    editor_vmess(x, gensym("pop"), "i", 0);
+    e->e_canvas = (t_canvas *)s__X.s_thing;
+    editor_vmess(e, gensym("pop"), "i", 0);
     glob_setfilename(0, &s_, &s_);
-    x->x_nparams = 0;
-    x->x_param_vec = nullptr;
-    x->x_generic = generic;
+    e->e_generic = generic;
 
         // buffers
     x->x_inbufsize = 0;
@@ -598,16 +628,15 @@ static void vsthost_free(t_vsthost *x){
     freebytes(x->x_outbuf, x->x_outbufsize);
     freebytes(x->x_inbufvec, x->x_ninbuf * sizeof(void*));
     freebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void*));
-    if (x->x_param_vec){
-        int n = x->x_nparams;
+    if (x->x_editor->e_param_vec){
+        int n = x->x_editor->e_nparams;
+        t_vstparam *params = x->x_editor->e_param_vec;
         for (int i = 0; i < n; ++i){
-            vstparam_free(&x->x_param_vec[i]);
+            vstparam_free(&params[i]);
         }
-        freebytes(x->x_param_vec, n * sizeof(t_vstparam));
+        freebytes(params, n * sizeof(t_vstparam));
     }
-    if (x->x_thread){
-        delete x->x_thread;
-    }
+    delete x->x_editor;
 }
 
 static void vsthost_update_buffer(t_vsthost *x){
