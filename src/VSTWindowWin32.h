@@ -2,8 +2,6 @@
 
 #include <windows.h>
 #include <process.h>
-#include <atomic>
-#include <thread>
 
 class VSTWindowWin32 : public IVSTWindow {
 public:
@@ -22,16 +20,7 @@ public:
     void minimize() override;
     void restore() override;
     void bringToTop() override;
-
-    bool isRunning() const override {
-        return bRunning_.load();
-    }
-protected:
-    void run() override;
 private:
     HWND hwnd_{nullptr};
-    std::thread thread_;
-    std::atomic<bool> bRunning_{false};
-
-    void threadFunction(IVSTPlugin *plugin);
+    IVSTPlugin *plugin_{nullptr};
 };

@@ -48,19 +48,28 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
 } // extern C
 
 
-VSTWindowWin32::VSTWindowWin32(IVSTPlugin& plugin){
-    bRunning_.store(true);
-    thread_ = std::thread(&VSTWindowWin32::threadFunction, this, &plugin);
+VSTWindowWin32::VSTWindowWin32(IVSTPlugin& plugin)
+    : plugin_(&plugin){
+    hwnd_ = CreateWindowW(
+          VST_EDITOR_CLASS_NAME, widen(plugin_->getPluginName()).c_str(),
+          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+          NULL, NULL, hInstance, NULL
+    );
+
+    int left, top, right, bottom;
+    std::cout << "try open editor" << std::endl;
+    plugin_->openEditor(getHandle());
+    std::cout << "opened editor" << std::endl;
+    plugin_->getEditorRect(left, top, right, bottom);
+    setGeometry(left, top, right, bottom);
+    show();
+    bringToTop();
     std::cout << "created VSTWindowWin32" << std::endl;
 }
 
 VSTWindowWin32::~VSTWindowWin32(){
-    if (isRunning()){
-        PostMessage(hwnd_, WM_CLOSE, 0, 0);
-    }
-    if (thread_.joinable()){
-        thread_.join();
-    }
+    plugin_->closeEditor();
+    PostMessage(hwnd_, WM_CLOSE, 0, 0);
     std::cout << "destroyed VSTWindowWin32" << std::endl;
 }
 
@@ -100,43 +109,6 @@ void VSTWindowWin32::restore(){
 void VSTWindowWin32::bringToTop(){
     minimize();
     restore();
-}
-
-void VSTWindowWin32::run(){
-    MSG msg;
-    int ret;
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
-            std::cout << "GetMessage: error" << std::endl;
-            break;
-        }
-        DispatchMessage(&msg);
-    }
-}
-
-void VSTWindowWin32::threadFunction(IVSTPlugin *plugin){
-    std::cout << "enter thread" << std::endl;
-    hwnd_ = CreateWindowW(
-          VST_EDITOR_CLASS_NAME, widen(plugin->getPluginName()).c_str(),
-          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-          NULL, NULL, hInstance, NULL
-    );
-
-    int left, top, right, bottom;
-    std::cout << "try open editor" << std::endl;
-    plugin->openEditor(getHandle());
-    std::cout << "opened editor" << std::endl;
-    plugin->getEditorRect(left, top, right, bottom);
-    setGeometry(left, top, right, bottom);
-    show();
-    bringToTop();
-
-    std::cout << "enter message loop!" << std::endl;
-    run();
-    plugin->closeEditor();
-    bRunning_.store(false);
-    std::cout << "exit message loop!" << std::endl;
 }
 
 namespace VSTWindowFactory {

@@ -54,7 +54,7 @@ void VSTPlugin::createWindow(){
         return;
     }
     // check if editor is already open
-    if (win_ && win_->isRunning()){
+    if (win_){
         win_->restore();
     } else {
         win_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(*this));

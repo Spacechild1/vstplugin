@@ -15,10 +15,6 @@ public:
     virtual void minimize() = 0;
     virtual void restore() = 0; // un-minimize
     virtual void bringToTop() = 0;
-
-    virtual bool isRunning() const = 0; // message loop still running?
-protected:
-    virtual void run() = 0; // start the message loop
 };
 
 class IVSTPlugin {

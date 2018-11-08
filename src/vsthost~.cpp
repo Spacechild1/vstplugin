@@ -5,6 +5,30 @@
 #include <memory>
 #include <cstdio>
 #include <cstring>
+#include <atomic>
+#include <thread>
+#include <condition_variable>
+#include <mutex>
+#include <future>
+#include <iostream>
+
+#ifdef _WIN32
+#include <windows.h>
+static void runMessageLoop(){
+    MSG msg;
+    int ret;
+    while((ret = GetMessage(&msg, NULL, 0, 0))){
+        if (ret < 0){
+            // error
+            std::cout << "GetMessage: error" << std::endl;
+            break;
+        }
+        DispatchMessage(&msg);
+    }
+}
+#else
+static void runMessageLoop(){}
+#endif
 
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
@@ -15,12 +39,17 @@ static t_class *vsthost_class;
 
 struct t_vstparam;
 
+struct t_vstthread {
+    std::thread thread;
+};
+
 struct t_vsthost {
 	t_object x_obj;
 	t_sample x_f;
     t_outlet *x_messout;
     // VST plugin
     IVSTPlugin* x_plugin;
+    t_vstthread* x_thread;
     int x_bypass;
     int x_blocksize;
     int x_sr;
@@ -132,6 +161,17 @@ static void vsthost_close(t_vsthost *x){
 static void vsthost_update_buffer(t_vsthost *x);
 static void vsthost_make_editor(t_vsthost *x);
 
+static void thread_function(std::promise<IVSTPlugin *> promise, const char *path){
+    std::cout << "enter thread" << std::endl;
+    IVSTPlugin *plugin = loadVSTPlugin(path);
+    if (plugin){
+        plugin->createWindow();
+    }
+    promise.set_value(plugin);
+    runMessageLoop();
+    std::cout << "exit thread" << std::endl;
+}
+
 static void vsthost_open(t_vsthost *x, t_symbol *s){
     vsthost_close(x);
     char dirresult[MAXPDSTRING];
@@ -145,7 +185,11 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
         snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
         sys_bashfilename(path, path);
 
-        IVSTPlugin *plugin = loadVSTPlugin(path);
+        std::promise<IVSTPlugin *>promise;
+        auto future = promise.get_future();
+        x->x_thread->thread = std::thread(thread_function, std::move(promise), path);
+        auto plugin = future.get();
+
         if (plugin){
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
             // plugin->setBlockSize(x->x_blocksize);
@@ -154,7 +198,6 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             x->x_plugin = plugin;
             vsthost_update_buffer(x);
             vsthost_make_editor(x);
-            return;
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
         }
@@ -506,6 +549,7 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_blocksize = 64;
     x->x_sr = 44100;
     x->x_dp = dp;
+    x->x_thread = new t_vstthread{};
 
     // inputs (skip first):
     for (int i = 1; i < in; ++i){
@@ -564,6 +608,9 @@ static void vsthost_free(t_vsthost *x){
             vstparam_free(&x->x_param_vec[i]);
         }
         freebytes(x->x_param_vec, n * sizeof(t_vstparam));
+    }
+    if (x->x_thread){
+        delete x->x_thread;
     }
 }
 
