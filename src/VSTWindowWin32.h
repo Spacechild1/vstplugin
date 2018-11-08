@@ -5,14 +5,14 @@
 
 class VSTWindowWin32 : public IVSTWindow {
  public:
-    VSTWindowWin32(IVSTPlugin& plugin);
-
+    VSTWindowWin32();
     ~VSTWindowWin32();
 
     void* getHandle() override {
         return hwnd_;
     }
 
+    void setTitle(const std::string& title) override;
     void setGeometry(int left, int top, int right, int bottom) override;
 
     void show() override;
@@ -22,5 +22,4 @@ class VSTWindowWin32 : public IVSTWindow {
     void bringToTop() override;
  private:
     HWND hwnd_{nullptr};
-    IVSTPlugin *plugin_{nullptr};
 };

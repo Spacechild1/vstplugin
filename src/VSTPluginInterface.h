@@ -8,6 +8,7 @@ class IVSTWindow {
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
 
+    virtual void setTitle(const std::string& title) = 0;
     virtual void setGeometry(int left, int top, int right, int bottom) = 0;
 
     virtual void show() = 0;
@@ -16,6 +17,11 @@ class IVSTWindow {
     virtual void restore() = 0; // un-minimize
     virtual void bringToTop() = 0;
 };
+
+// creates a platform dependend window
+namespace VSTWindowFactory {
+    IVSTWindow* create();
+}
 
 class IVSTPlugin {
  public:
@@ -52,10 +58,6 @@ class IVSTPlugin {
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
-
-    virtual void createWindow() = 0;
-    virtual void destroyWindow() = 0;
-    virtual IVSTWindow *getWindow() = 0;
 };
 
 // expects a path to the actual plugin file (e.g. "myplugin.dll" on Windows,

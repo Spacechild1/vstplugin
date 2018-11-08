@@ -3,7 +3,7 @@
 #include <iostream>
 
 VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
-    : VSTPlugin(path), plugin_((AEffect*)plugin)
+    : plugin_((AEffect*)plugin), path_(path)
 {
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
@@ -164,6 +164,18 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 }
 
 // private
+std::string VST2Plugin::getBaseName() const {
+    auto sep = path_.find_last_of("\\/");
+    auto dot = path_.find_last_of('.');
+    if (sep == std::string::npos){
+        sep = -1;
+    }
+    if (dot == std::string::npos){
+        dot = path_.size();
+    }
+    return path_.substr(sep + 1, dot - sep - 1);
+}
+
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;

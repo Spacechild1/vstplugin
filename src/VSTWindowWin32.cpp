@@ -18,8 +18,13 @@ static HINSTANCE hInstance = NULL;
 static bool bRegistered = false;
 
 static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
+    if (Msg == WM_CLOSE){
+        ShowWindow(hWnd, SW_HIDE); // don't destroy Window when closed
+        return true;
+    }
     if (Msg == WM_DESTROY){
         PostQuitMessage(0);
+        std::cout << "WM_DESTROY" << std::endl;
     }
     return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
@@ -48,29 +53,22 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved){
 } // extern C
 
 
-VSTWindowWin32::VSTWindowWin32(IVSTPlugin& plugin)
-    : plugin_(&plugin){
+VSTWindowWin32::VSTWindowWin32(){
     hwnd_ = CreateWindowW(
-          VST_EDITOR_CLASS_NAME, widen(plugin_->getPluginName()).c_str(),
+          VST_EDITOR_CLASS_NAME, L"Untitled",
           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, hInstance, NULL
     );
-
-    int left, top, right, bottom;
-    std::cout << "try open editor" << std::endl;
-    plugin_->openEditor(getHandle());
-    std::cout << "opened editor" << std::endl;
-    plugin_->getEditorRect(left, top, right, bottom);
-    setGeometry(left, top, right, bottom);
-    show();
-    bringToTop();
     std::cout << "created VSTWindowWin32" << std::endl;
 }
 
 VSTWindowWin32::~VSTWindowWin32(){
-    plugin_->closeEditor();
-    PostMessage(hwnd_, WM_CLOSE, 0, 0);
+    PostMessage(hwnd_, WM_DESTROY, 0, 0);
     std::cout << "destroyed VSTWindowWin32" << std::endl;
+}
+
+void VSTWindowWin32::setTitle(const std::string& title){
+    SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
 void VSTWindowWin32::setGeometry(int left, int top, int right, int bottom){
@@ -112,7 +110,7 @@ void VSTWindowWin32::bringToTop(){
 }
 
 namespace VSTWindowFactory {
-    IVSTWindow* createWin32(IVSTPlugin& plugin) {
-        return new VSTWindowWin32(plugin);
+    IVSTWindow* createWin32() {
+        return new VSTWindowWin32();
     }
 }

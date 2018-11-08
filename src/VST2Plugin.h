@@ -1,6 +1,6 @@
 // VST2Plugin
 
-#include "VSTPlugin.h"
+#include "VSTPluginInterface.h"
 
 #include "aeffect.h"
 #include "aeffectx.h"
@@ -14,7 +14,7 @@ typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
 // AEffectSetParameterProc
 // AEffectGetParameterProc
 
-class VST2Plugin final : public VSTPlugin {
+class VST2Plugin final : public IVSTPlugin {
  public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
         VstInt32 index, VstIntPtr value, void *ptr, float opt);
@@ -55,9 +55,11 @@ class VST2Plugin final : public VSTPlugin {
     void closeEditor() override;
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
  private:
+    std::string getBaseName() const;
     bool hasFlag(VstAEffectFlags flag) const;
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
         // data members
     AEffect *plugin_ = nullptr;
+    std::string path_;
 };

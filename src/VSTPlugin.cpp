@@ -1,4 +1,3 @@
-#include "VSTPlugin.h"
 #include "VST2Plugin.h"
 
 #include <iostream>
@@ -40,47 +39,6 @@ static std::string shorten(const std::wstring& s){
     return buf;
 }
 #endif
-
-
-/*//////////// VST PLUGIN ///////////*/
-
-VSTPlugin::VSTPlugin(const std::string& path)
-    : path_(path)
-{}
-
-void VSTPlugin::createWindow(){
-    if (!hasEditor()){
-        std::cout << "plugin doesn't have editor!" << std::endl;
-        return;
-    }
-    // check if editor is already open
-    if (win_){
-        win_->restore();
-    } else {
-        win_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(*this));
-    }
-}
-
-void VSTPlugin::destroyWindow(){
-    if (!hasEditor()){
-        std::cout << "plugin doesn't have editor!" << std::endl;
-        return;
-    }
-    win_ = nullptr;
-}
-
-// protected
-std::string VSTPlugin::getBaseName() const {
-    auto sep = path_.find_last_of("\\/");
-    auto dot = path_.find_last_of('.');
-    if (sep == std::string::npos){
-        sep = -1;
-    }
-    if (dot == std::string::npos){
-        dot = path_.size();
-    }
-    return path_.substr(sep + 1, dot - sep - 1);
-}
 
 
 IVSTPlugin* loadVSTPlugin(const std::string& path){
@@ -185,18 +143,18 @@ void freeVSTPlugin(IVSTPlugin *plugin){
 
 namespace VSTWindowFactory {
 #ifdef _WIN32
-    IVSTWindow* createWin32(IVSTPlugin& plugin);
+    IVSTWindow* createWin32();
 #endif
 #ifdef USE_WINDOW_FOO
-    IVSTWindow* createFoo(IVSTPlugin& plugin);
+    IVSTWindow* createFoo();
 #endif
 
-    IVSTWindow* create(IVSTPlugin& plugin){
+    IVSTWindow* create(){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
-        win = createWin32(plugin);
+        win = createWin32();
 #elif defined(USE_WINDOW_FOO)
-        win = createFoo(plugin);
+        win = createFoo();
 #endif
         return win;
     }
