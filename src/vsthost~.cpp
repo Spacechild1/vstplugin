@@ -157,10 +157,13 @@ static void vsthost_vis(t_vsthost *x, t_floatarg f);
 static void vsthost_close(t_vsthost *x){
     if (x->x_plugin){
         vsthost_vis(x, 0);
+            // deleting the window will terminate the message loop
         x->x_editor->e_window = nullptr;
+            // then join the thread (will call plugin->closeEditor())
         if (x->x_editor->e_thread.joinable()){
             x->x_editor->e_thread.join();
         }
+            // finally free the plugin
         std::cout << "try to close VST plugin" << std::endl;
         freeVSTPlugin(x->x_plugin);
         x->x_plugin = nullptr;
@@ -177,14 +180,14 @@ static void vstthread_function(std::promise<IVSTPlugin *> promise, const char *p
     IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
         promise.set_value(nullptr);
+        std::cout << "exit thread" << std::endl;
         return;
     }
-    bool wantWindow = plugin->hasEditor() && !x->x_editor->e_generic;
-    if (wantWindow){
+    if (plugin->hasEditor() && !x->x_editor->e_generic){
         x->x_editor->e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create());
     }
     promise.set_value(plugin);
-    if (wantWindow){
+    if (x->x_editor->e_window){
         x->x_editor->e_window->setTitle(plugin->getPluginName());
         plugin->openEditor(x->x_editor->e_window->getHandle());
         int left, top, right, bottom;
@@ -230,6 +233,10 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             std::cout << "done open" << std::endl;
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
+        }
+            // no window -> no message loop
+        if (!x->x_editor->e_window){
+            x->x_editor->e_thread.join();
         }
     } else {
         pd_error(x, "%s: couldn't open \"%s\" - no such file!", classname(x), s->s_name);
