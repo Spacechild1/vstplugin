@@ -224,9 +224,9 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
         if (plugin){
             std::cout << "got plugin" << std::endl;
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
-                // plugin->setBlockSize(x->x_blocksize);
-                // plugin->setSampleRate(x->x_sr);
-                // plugin->resume();
+            plugin->setBlockSize(x->x_blocksize);
+            plugin->setSampleRate(x->x_sr);
+            // plugin->resume();
             x->x_plugin = plugin;
             vsthost_update_buffer(x);
             vsthost_make_editor(x);
