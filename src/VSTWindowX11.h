@@ -1,6 +1,7 @@
 #include "VSTPluginInterface.h"
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
 class VSTWindowX11 : public IVSTWindow {
  public:

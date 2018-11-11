@@ -26,6 +26,14 @@ VSTWindowX11::VSTWindowX11(){
 		// intercept request to delete window when being closed
     XSetWMProtocols(display_, window_, &wmDelete_, 1);
 
+    XClassHint *ch = XAllocClassHint();
+    if (ch){
+		ch->res_name = (char *)"VST Editor";
+		ch->res_class = (char *)"VST Editor Window";
+		XSetClassHint(display_, window_, ch);
+		XFree(ch);
+	}
+
     std::cout << "created VSTWindowX11: " << window_ << std::endl;
 }
 
