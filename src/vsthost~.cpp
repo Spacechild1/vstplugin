@@ -12,24 +12,6 @@
 #include <future>
 #include <iostream>
 
-#ifdef _WIN32
-#include <windows.h>
-static void runMessageLoop(){
-    MSG msg;
-    int ret;
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
-            std::cout << "GetMessage: error" << std::endl;
-            break;
-        }
-        DispatchMessage(&msg);
-    }
-}
-#else
-static void runMessageLoop(){}
-#endif
-
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
@@ -195,7 +177,7 @@ static void vstthread_function(std::promise<IVSTPlugin *> promise, const char *p
         x->x_editor->e_window->setGeometry(left, top, right, bottom);
 
         std::cout << "enter message loop" << std::endl;
-        runMessageLoop();
+        x->x_editor->e_window->run();
         std::cout << "exit message loop" << std::endl;
 
         plugin->closeEditor();

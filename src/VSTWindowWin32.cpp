@@ -63,6 +63,19 @@ VSTWindowWin32::~VSTWindowWin32(){
     std::cout << "destroyed VSTWindowWin32" << std::endl;
 }
 
+void VSTWindowWin32::run(){
+	MSG msg;
+    int ret;
+    while((ret = GetMessage(&msg, NULL, 0, 0))){
+        if (ret < 0){
+            // error
+            std::cout << "GetMessage: error" << std::endl;
+            break;
+        }
+        DispatchMessage(&msg);
+    }
+}
+
 void VSTWindowWin32::setTitle(const std::string& title){
     SetWindowTextW(hwnd_, widen(title).c_str());
 }
