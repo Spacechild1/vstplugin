@@ -273,7 +273,7 @@ static void editor_vmess(t_vsteditor *x, t_symbol *sel, const char *fmt, T... ar
 }
 
 static void vsthost_update_editor(t_vsthost *x){
-    if (!x->x_plugin->hasEditor() || x->x_editor->e_generic){
+    if (!x->x_editor->e_window){
         int n = x->x_plugin->getNumParameters();
         t_vstparam *params = x->x_editor->e_param_vec;
         for (int i = 0; i < n; ++i){
@@ -391,7 +391,7 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
-        if (!x->x_plugin->hasEditor() || x->x_editor->e_generic){
+        if (!x->x_editor->e_window){
             vstparam_set(&x->x_editor->e_param_vec[index], value);
         }
 	} else {
