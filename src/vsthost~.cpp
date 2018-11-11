@@ -822,7 +822,7 @@ void vsthost_tilde_setup(void)
         // plugin
     class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
+    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, A_NULL);
