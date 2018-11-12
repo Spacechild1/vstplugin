@@ -4,7 +4,11 @@
 #include <cstring>
 
 namespace VSTWindowFactory {
-    void initializeX11(){}
+    void initializeX11(){
+		if (!XInitThreads()){
+			std::cout << "XInitThreads failed!" << std::endl;
+		}
+	}
 }
 
 VSTWindowX11::VSTWindowX11(){
