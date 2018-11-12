@@ -334,7 +334,6 @@ version = 0.5.0
 ################################################################################
 ################################################################################
 
-
 # GNU make version 3.81 (2006) or higher is required because of the following:
 # - function 'info'
 # - variable '.DEFAULT_GOAL'
@@ -351,6 +350,68 @@ externalsdir ?= ..
 
 # variable you can use to check if Makefile.pdlibbuilder is already included
 Makefile.pdlibbuilder = true
+
+################################################################################
+### platform detection #########################################################
+################################################################################
+
+
+#=== operating system ==========================================================
+
+
+# The following systems are defined: Linux, Darwin, Windows. GNU and
+# GNU/kFreeBSD are treated as Linux to get the same options.
+
+uname := $(shell uname)
+
+ifeq ($(findstring $(uname), Linux GNU GNU/kFreeBSD), $(uname))
+  system = Linux
+endif
+
+ifeq ($(uname), Darwin)
+  system = Darwin
+endif
+
+ifeq ($(filter MINGW% MSYS%, $(uname)), $(uname)) 
+  system = Windows
+endif
+
+# Unfortunately not all Mingw versions provide a link cc > gcc, therefore
+# gcc is hardcoded here (but not if CC is redefined).
+ifeq ($(system), Windows)
+  ifeq ($(origin CC), default)
+    CC = gcc
+  endif
+endif
+
+# evaluate possible system-specific multiline defines from library makefile
+$(eval $(for$(system)))
+
+
+# TODO: Cygwin, Android
+
+
+#=== architecture ==============================================================
+
+
+# native architecture of the build machine
+build.arch := $(shell uname -m)
+
+# Target architecture as reported by compiler. Give precedence to eventual
+# user-defined compiler. The first field of <cpu>-<vendor>-<os> is extracted.
+ifneq ($(origin CXX), default)
+  dumpmachine.cpu = $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
+else
+  dumpmachine.cpu = $(firstword $(subst -, ,$(shell $(CC) -dumpmachine)))
+endif
+
+# Target architecture as reported by compiler is only used for Windows at the
+# moment. For other systems this still has to be tested.
+ifeq ($(system), Windows)
+  target.arch = $(dumpmachine.cpu)
+else
+  target.arch = $(build.arch)
+endif
 
 
 ################################################################################
@@ -423,70 +484,6 @@ ifdef shared.sources
 else
   shared.lib =
 endif
-
-
-################################################################################
-### platform detection #########################################################
-################################################################################
-
-
-#=== operating system ==========================================================
-
-
-# The following systems are defined: Linux, Darwin, Windows. GNU and
-# GNU/kFreeBSD are treated as Linux to get the same options.
-
-uname := $(shell uname)
-
-ifeq ($(findstring $(uname), Linux GNU GNU/kFreeBSD), $(uname))
-  system = Linux
-endif
-
-ifeq ($(uname), Darwin)
-  system = Darwin
-endif
-
-ifeq ($(filter MINGW% MSYS%, $(uname)), $(uname)) 
-  system = Windows
-endif
-
-# Unfortunately not all Mingw versions provide a link cc > gcc, therefore
-# gcc is hardcoded here (but not if CC is redefined).
-ifeq ($(system), Windows)
-  ifeq ($(origin CC), default)
-    CC = gcc
-  endif
-endif
-
-# evaluate possible system-specific multiline defines from library makefile
-$(eval $(for$(system)))
-
-
-# TODO: Cygwin, Android
-
-
-#=== architecture ==============================================================
-
-
-# native architecture of the build machine
-build.arch := $(shell uname -m)
-
-# Target architecture as reported by compiler. Give precedence to eventual
-# user-defined compiler. The first field of <cpu>-<vendor>-<os> is extracted.
-ifneq ($(origin CXX), default)
-  dumpmachine.cpu = $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
-else
-  dumpmachine.cpu = $(firstword $(subst -, ,$(shell $(CC) -dumpmachine)))
-endif
-
-# Target architecture as reported by compiler is only used for Windows at the
-# moment. For other systems this still has to be tested.
-ifeq ($(system), Windows)
-  target.arch = $(dumpmachine.cpu)
-else
-  target.arch = $(build.arch)
-endif
-
 
 ################################################################################
 ### variables per platform #####################################################
