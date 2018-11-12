@@ -8,6 +8,7 @@ class IVSTWindow {
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
 	virtual void run() = 0; // run a message loop for this window
+	// virtual void quit() = 0; // post quit message
 
     virtual void setTitle(const std::string& title) = 0;
     virtual void setGeometry(int left, int top, int right, int bottom) = 0;
@@ -21,8 +22,10 @@ class IVSTWindow {
 
 // creates a platform dependend window
 namespace VSTWindowFactory {
+		// call this once before you create any windows. not thread safe (yet)
     void initialize();
-    IVSTWindow* create();
+		// make a new window. on some platforms you need to pass a context (e.g. Display* on X11)
+    IVSTWindow* create(void *context = nullptr);
 }
 
 class IVSTPlugin {

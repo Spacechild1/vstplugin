@@ -146,9 +146,9 @@ namespace VSTWindowFactory {
     IVSTWindow* createWin32();
     void initializeWin32();
 #endif
-#ifdef __linux__
+#ifdef USE_X11
     void initializeX11();
-    IVSTWindow* createX11();
+    IVSTWindow* createX11(void *display);
 #endif
         // initialize
     void initialize(){
@@ -160,12 +160,12 @@ namespace VSTWindowFactory {
 #endif
     }
         // create
-    IVSTWindow* create(){
+    IVSTWindow* create(void *context){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
         win = createWin32();
-#elif defined(__linux__)
-        win = createX11();
+#elif defined(USE_X11)
+        win = createX11(context);
 #endif
         return win;
     }
