@@ -1,16 +1,17 @@
 #include "VSTPluginInterface.h"
 
-#include <windows.h>
-#include <process.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
-class VSTWindowWin32 : public IVSTWindow {
+class VSTWindowX11 : public IVSTWindow {
  public:
-    VSTWindowWin32();
-    ~VSTWindowWin32();
+    VSTWindowX11();
+    ~VSTWindowX11();
 
     void* getHandle() override {
-        return hwnd_;
+        return (void*)window_;
     }
+
     void run() override;
 
     void setTitle(const std::string& title) override;
@@ -22,5 +23,9 @@ class VSTWindowWin32 : public IVSTWindow {
     void restore() override;
     void bringToTop() override;
  private:
-    HWND hwnd_{nullptr};
+    Display *display_{nullptr};
+    Window window_{0};
+    Atom wmProtocols_;
+    Atom wmDelete_;
+    Atom wmQuit_; // custom quit message
 };

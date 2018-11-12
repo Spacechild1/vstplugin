@@ -7,6 +7,7 @@ class IVSTWindow {
     virtual ~IVSTWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
+	virtual void run() = 0; // run a message loop for this window
 
     virtual void setTitle(const std::string& title) = 0;
     virtual void setGeometry(int left, int top, int right, int bottom) = 0;

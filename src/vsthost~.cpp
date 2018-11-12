@@ -11,24 +11,6 @@
 #include <iostream>
 #include <vector>
 
-#ifdef _WIN32
-#include <windows.h>
-static void runMessageLoop(){
-    MSG msg;
-    int ret;
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
-            std::cout << "GetMessage: error" << std::endl;
-            break;
-        }
-        DispatchMessage(&msg);
-    }
-}
-#else
-static void runMessageLoop(){}
-#endif
-
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
@@ -132,7 +114,7 @@ class t_vsteditor {
  public:
     t_vsteditor(bool generic);
         // try to open the plugin in a new thread and start the message loop (if needed)
-    std::future<IVSTPlugin*> open_via_thread(const char* path);
+    IVSTPlugin* open_via_thread(const char* path);
         // terminate the message loop and wait for the thread to finish
     void close_thread();
         // setup the generic Pd editor
@@ -143,9 +125,6 @@ class t_vsteditor {
     void vis(bool v);
     IVSTWindow *window(){
         return e_window.get();
-    }
-    bool generic() const {
-        return e_generic;
     }
     t_canvas *canvas(){
         return e_canvas;
@@ -184,7 +163,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         std::cout << "exit thread" << std::endl;
         return;
     }
-    if (plugin->hasEditor() && !generic()){
+    if (plugin->hasEditor() && !e_generic){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create());
     }
     promise.set_value(plugin);
@@ -196,7 +175,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         e_window->setGeometry(left, top, right, bottom);
 
         std::cout << "enter message loop" << std::endl;
-        runMessageLoop();
+        e_window->run();
         std::cout << "exit message loop" << std::endl;
 
         plugin->closeEditor();
@@ -205,11 +184,11 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
 }
 
 
-std::future<IVSTPlugin *> t_vsteditor::open_via_thread(const char *path){
+IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
     std::promise<IVSTPlugin *> promise;
     auto future = promise.get_future();
     e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
-    return future;
+    return future.get();
 }
 
 void t_vsteditor::close_thread(){
@@ -310,7 +289,7 @@ void t_vsteditor::update(t_vsthost *x){
 }
 
 void t_vsteditor::set_param(int index, float value){
-    if (index >= 0 && index < (int)e_params.size()){
+    if (!e_window && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
     }
 }
@@ -356,13 +335,13 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
         char path[MAXPDSTRING];
         snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
         sys_bashfilename(path, path);
-            // load VST plugin via thread
-        IVSTPlugin *plugin = x->x_editor->open_via_thread(path).get();
+            // load VST plugin in new thread
+        IVSTPlugin *plugin = x->x_editor->open_via_thread(path);
         if (plugin){
             std::cout << "got plugin" << std::endl;
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
-                // plugin->setBlockSize(x->x_blocksize);
-                // plugin->setSampleRate(x->x_sr);
+            plugin->setBlockSize(x->x_blocksize);
+            plugin->setSampleRate(x->x_sr);
                 // plugin->resume();
             x->x_plugin = plugin;
             x->update_buffer();
@@ -419,9 +398,7 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
-        if (!x->x_plugin->hasEditor() || x->x_editor->generic()){
-            x->x_editor->set_param(index, value);
-        }
+        x->x_editor->set_param(index, value);
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
 	}
@@ -846,7 +823,7 @@ void vsthost_tilde_setup(void)
         // plugin
     class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT);
+    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, A_NULL);

@@ -146,16 +146,17 @@ namespace VSTWindowFactory {
     IVSTWindow* createWin32();
     void initializeWin32();
 #endif
-#ifdef USE_WINDOW_FOO
-    void initializedFoo();
-    IVSTWindow* createFoo();
+#ifdef __linux__
+    void initializeX11();
+    IVSTWindow* createX11();
 #endif
         // initialize
     void initialize(){
 #ifdef _WIN32
         initializeWin32();
-#elif defined(USE_WINDOW_FOO)
-        initializeFoo();
+#endif
+#ifdef __linux__
+        initializeX11();
 #endif
     }
         // create
@@ -163,8 +164,8 @@ namespace VSTWindowFactory {
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
         win = createWin32();
-#elif defined(USE_WINDOW_FOO)
-        win = createFoo();
+#elif defined(__linux__)
+        win = createX11();
 #endif
         return win;
     }

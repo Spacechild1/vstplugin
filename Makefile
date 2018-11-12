@@ -27,7 +27,9 @@ define forWindows
   common.sources += src/VSTWindowWin32.cpp
 endef
 define forLinux
+  common.sources += src/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1
+  ldflags += -L/usr/X11R6/lib -lX11
 endef
 
 
