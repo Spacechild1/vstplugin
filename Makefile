@@ -31,6 +31,11 @@ define forLinux
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1
   ldflags += -L/usr/X11R6/lib -lX11
 endef
+define forDarwin
+ common.sources += src/VSTWindowCocoa.mm
+ cflags += -fno-objc-arc
+ ldflags += -framework Cocoa
+endef
 
 
 # all extra files to be included in binary distribution of the library

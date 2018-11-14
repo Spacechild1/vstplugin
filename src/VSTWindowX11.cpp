@@ -9,6 +9,13 @@ namespace VSTWindowFactory {
 			std::cout << "XInitThreads failed!" << std::endl;
 		}
 	}
+    IVSTWindow* createX11(void *context) {
+		if (context){
+			return new VSTWindowX11((Display *)context);
+		} else {
+			return nullptr;
+		}
+    }
 }
 
 VSTWindowX11::VSTWindowX11(Display *display)
@@ -115,14 +122,4 @@ void VSTWindowX11::bringToTop(){
 	minimize();
 	restore();
     std::cout << "VSTWindowX11::bringToTop" << std::endl;
-}
-
-namespace VSTWindowFactory {
-    IVSTWindow* createX11(void *context) {
-		if (context){
-			return new VSTWindowX11((Display *)context);
-		} else {
-			return nullptr;
-		}
-    }
 }

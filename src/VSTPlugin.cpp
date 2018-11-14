@@ -142,13 +142,18 @@ void freeVSTPlugin(IVSTPlugin *plugin){
 }
 
 namespace VSTWindowFactory {
+        // forward declarations
 #ifdef _WIN32
-    IVSTWindow* createWin32();
+    IVSTWindow * createWin32();
     void initializeWin32();
 #endif
 #ifdef USE_X11
     void initializeX11();
-    IVSTWindow* createX11(void *display);
+    IVSTWindow * createX11(void *display);
+#endif
+#ifdef __APPLE__
+    void initializeCocoa();
+    IVSTWindow * createCocoa();
 #endif
         // initialize
     void initialize(){
@@ -158,12 +163,17 @@ namespace VSTWindowFactory {
 #ifdef __linux__
         initializeX11();
 #endif
+#ifdef __APPLE__
+        initializeCocoa();
+#endif
     }
         // create
     IVSTWindow* create(void *context){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
         win = createWin32();
+#elif defined(__APPLE__)
+        win = createCocoa();
 #elif defined(USE_X11)
         win = createX11(context);
 #endif

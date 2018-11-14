@@ -195,7 +195,6 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         int left, top, right, bottom;
         plugin->getEditorRect(left, top, right, bottom);
         e_window->setGeometry(left, top, right, bottom);
-
         std::cout << "enter message loop" << std::endl;
         e_window->run();
         std::cout << "exit message loop" << std::endl;
