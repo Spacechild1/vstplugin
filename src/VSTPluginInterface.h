@@ -66,11 +66,11 @@ class IVSTPlugin {
 };
 
 // expects a path to the actual plugin file (e.g. "myplugin.dll" on Windows,
-// "myplugin.so" on Linux, "myplugin.vst/Contents/MacOS/myplugin" on Apple).
-// use 'makeVSTPluginFilePath' for a cross platform solution
+// "myplugin.so" on Linux, "myplugin.vst" on Apple).
+// use 'makeVSTPluginFilePath' to avoid typing the extension
 IVSTPlugin* loadVSTPlugin(const std::string& path);
 
 void freeVSTPlugin(IVSTPlugin* plugin);
 
-// check the path and append platform specific extensions (if needed)
+// check the path and append platform specific extension (if needed)
 std::string makeVSTPluginFilePath(const std::string& path);

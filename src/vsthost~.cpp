@@ -350,12 +350,21 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
     char dirresult[MAXPDSTRING];
     char *name;
     std::string vstpath = makeVSTPluginFilePath(s->s_name);
+#ifdef __APPLE__
+    const char *bundleinfo = "/Contents/Info.plist";
+    vstpath += bundleinfo; // on MacOS VSTs are bundles but canvas_open needs a real file
+#endif
     int fd = canvas_open(x->x_editor->canvas(), vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
     if (fd >= 0){
         sys_close(fd);
-
         char path[MAXPDSTRING];
         snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
+#ifdef __APPLE__
+        char *find = strstr(path, bundleinfo);
+        if (find){
+            *find = 0; // restore the bundle path
+        }
+#endif
         sys_bashfilename(path, path);
             // load VST plugin in new thread
         IVSTPlugin *plugin = x->x_editor->open_via_thread(path);
