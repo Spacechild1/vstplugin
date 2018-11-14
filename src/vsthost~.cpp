@@ -22,7 +22,7 @@
 // vsthost~ object
 static t_class *vsthost_class;
 
-struct t_vsteditor;
+class t_vsteditor;
 
 struct t_vsthost {
 	t_object x_obj;
