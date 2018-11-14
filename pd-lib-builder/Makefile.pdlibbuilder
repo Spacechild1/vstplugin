@@ -914,6 +914,11 @@ endef
 %.o:: %.cpp
 	$(call make-object-file,cxx)
 
+%.o:: %.m
+	$(call make-object-file,c)
+
+%.o:: %.mm
+	$(call make-object-file,cxx)
 
 #=== explicit prerequisites for class executables ==============================
 
