@@ -55,7 +55,8 @@ struct t_vsthost {
     int x_noutbuf;
     void **x_outbufvec;
         // helper methods
-    bool check();
+    bool check_plugin();
+    void check_precision();
     void update_buffer();
 };
 
@@ -223,7 +224,7 @@ void t_vsteditor::close_thread(){
 }
 
 void t_vsteditor::setup(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 
     int nparams = x->x_plugin->getNumParameters();
     e_params.clear();
@@ -300,7 +301,7 @@ void t_vsteditor::setup(t_vsthost *x){
 }
 
 void t_vsteditor::update(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 
     if (!x->x_plugin->hasEditor() || e_generic){
         int n = x->x_plugin->getNumParameters();
@@ -375,6 +376,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             plugin->setSampleRate(x->x_sr);
                 // plugin->resume();
             x->x_plugin = plugin;
+            x->check_precision();
             x->update_buffer();
             x->x_editor->setup(x);
             std::cout << "done open" << std::endl;
@@ -391,7 +393,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
 }
 
 static void vsthost_info(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     post("name: %s", x->x_plugin->getPluginName().c_str());
     post("version: %d", x->x_plugin->getPluginVersion());
     post("input channels: %d", x->x_plugin->getNumInputs());
@@ -409,7 +411,7 @@ static void vsthost_bypass(t_vsthost *x, t_floatarg f){
 }
 
 static void vsthost_vis(t_vsthost *x, t_floatarg f){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     x->x_editor->vis(f);
 }
 
@@ -418,13 +420,13 @@ static void vsthost_click(t_vsthost *x){
 }
 
 static void vsthost_precision(t_vsthost *x, t_floatarg f){
-    if (!x->check()) return;
     x->x_dp = (f != 0);
+    x->check_precision();
 }
 
 // parameters
 static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
@@ -436,7 +438,7 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
 }
 
 static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
 		t_atom msg[2];
@@ -449,7 +451,7 @@ static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
 		t_atom msg[2];
@@ -462,7 +464,7 @@ static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         t_atom msg[2];
@@ -475,7 +477,7 @@ static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         t_atom msg[2];
@@ -488,14 +490,14 @@ static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_count(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumParameters());
 	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
 static void vsthost_param_list(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
 	for (int i = 0; i < n; ++i){
         vsthost_param_name(x, i);
@@ -503,7 +505,7 @@ static void vsthost_param_list(t_vsthost *x){
 }
 
 static void vsthost_param_dump(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
     for (int i = 0; i < n; ++i){
         vsthost_param_get(x, i);
@@ -512,7 +514,7 @@ static void vsthost_param_dump(t_vsthost *x){
 
 // programs
 static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumPrograms()){
         x->x_plugin->setProgram(index);
@@ -523,19 +525,19 @@ static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_program_get(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
     outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
 
 static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     x->x_plugin->setProgramName(name->s_name);
 }
 
 static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     t_atom msg[2];
     if (argc){
         int index = atom_getfloat(argv);
@@ -549,7 +551,7 @@ static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *ar
 }
 
 static void vsthost_program_count(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumPrograms());
 	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
@@ -567,7 +569,7 @@ static void vsthost_program_list(t_vsthost *x){
 
 // plugin version
 static void vsthost_version(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int version = x->x_plugin->getPluginVersion();
 	t_atom msg;
 	SETFLOAT(&msg, version);
@@ -578,12 +580,25 @@ static void vsthost_version(t_vsthost *x){
 /**** private ****/
 
 // helper methods
-bool t_vsthost::check(){
+bool t_vsthost::check_plugin(){
     if (x_plugin){
         return true;
     } else {
         pd_error(this, "%s: no plugin loaded!", classname(this));
         return false;
+    }
+}
+
+void t_vsthost::check_precision(){
+    if (x_plugin){
+        if (x_dp && !x_plugin->hasDoublePrecision()){
+            post("%s: '%s' doesn't support double precision, using single precision instead",
+                 classname(this), x_plugin->getPluginName().c_str());
+        }
+        else if (!x_dp && !x_plugin->hasSinglePrecision()){ // very unlikely...
+            post("%s: '%s' doesn't support single precision, using double precision instead",
+                 classname(this), x_plugin->getPluginName().c_str());
+        }
     }
 }
 
