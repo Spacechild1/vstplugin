@@ -43,11 +43,11 @@ void VST2Plugin::processDouble(double **inputs,
 }
 
 bool VST2Plugin::hasSinglePrecision() const {
-    return plugin_->processReplacing != nullptr;
+    return plugin_->flags & effFlagsCanReplacing;
 }
 
 bool VST2Plugin::hasDoublePrecision() const {
-    return plugin_->processDoubleReplacing != nullptr;
+    return plugin_->flags & effFlagsCanDoubleReplacing;
 }
 
 void VST2Plugin::resume(){
