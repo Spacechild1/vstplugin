@@ -594,17 +594,14 @@ void t_vsthost::check_precision(){
         if (!x_plugin->hasSinglePrecision() && !x_plugin->hasDoublePrecision()) {
             post("%s: '%s' doesn't support single or double precision, bypassing",
                 classname(this), x_plugin->getPluginName().c_str());
-            x_bypass = true;
         }
         if (x_dp && !x_plugin->hasDoublePrecision()){
             post("%s: '%s' doesn't support double precision, using single precision instead",
                  classname(this), x_plugin->getPluginName().c_str());
-            x_dp = false;
         }
         else if (!x_dp && !x_plugin->hasSinglePrecision()){ // very unlikely...
             post("%s: '%s' doesn't support single precision, using double precision instead",
                  classname(this), x_plugin->getPluginName().c_str());
-            x_dp = true;
         }
     }
 }
