@@ -2,9 +2,9 @@
 
 #include "VSTPluginInterface.h"
 
-#include "aeffect.h"
+//#include "aeffect.h"
 #include "aeffectx.h"
-#include "vstfxstore.h"
+//#include "vstfxstore.h"
 
 // Plugin's entry point
 typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
