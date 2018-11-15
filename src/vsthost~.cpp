@@ -741,8 +741,15 @@ static t_int *vsthost_perform(t_int *w){
         int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
         out_offset = pout;
+            // check processing precision (single or double)
+        bool dp = x->x_dp;
+        if (dp && !plugin->hasDoublePrecision()){
+            dp = false;
+        } else if (!dp && !plugin->hasSinglePrecision()){ // very unlikely...
+            dp = true;
+        }
             // process in double precision
-        if (x->x_dp && plugin->hasDoublePrecision()){
+        if (dp){
                 // prepare input buffer
             for (int i = 0; i < ninbuf; ++i){
                 double *buf = (double *)x->x_inbuf + i * n;
