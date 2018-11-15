@@ -741,11 +741,12 @@ static t_int *vsthost_perform(t_int *w){
     void ** outbufvec = x->x_outbufvec;
     int out_offset = 0;
     bool dp = x->x_dp;
+    bool bypass = plugin ? x->x_bypass : true;
 
-    if(plugin && !x->x_bypass) {
+    if(plugin && !bypass) {
             // check processing precision (single or double)
         if (!plugin->hasSinglePrecision() && !plugin->hasDoublePrecision()) {
-            x->x_bypass = true;
+            bypass = true;
         } else if (dp && !plugin->hasDoublePrecision()){
             dp = false;
         } else if (!dp && !plugin->hasSinglePrecision()){ // very unlikely...
@@ -753,7 +754,7 @@ static t_int *vsthost_perform(t_int *w){
         }
     }
 
-    if (plugin && !x->x_bypass){  // process audio
+    if (!bypass){  // process audio
         int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
         out_offset = pout;
