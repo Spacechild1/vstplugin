@@ -28,6 +28,14 @@ namespace VSTWindowFactory {
     IVSTWindow* create(void *context = nullptr);
 }
 
+class VSTChunkData {
+ public:
+    VSTChunkData(char *_data = nullptr, size_t _size = 0)
+        : data(_data), size(_size){}
+    char *data;
+    size_t size;
+};
+
 class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
@@ -54,10 +62,15 @@ class IVSTPlugin {
 
     virtual void setProgram(int index) = 0;
     virtual void setProgramName(const std::string& name) = 0;
-    virtual int getProgram() = 0;
+    virtual int getProgram() const = 0;
     virtual std::string getProgramName() const = 0;
     virtual std::string getProgramNameIndexed(int index) const = 0;
     virtual int getNumPrograms() const = 0;
+
+    virtual void setProgramData(const VSTChunkData& data) = 0;
+    virtual VSTChunkData getProgramData() const;
+    virtual void setBankData(const VSTChunkData& data) = 0;
+    virtual VSTChunkData getBankData() const;
 
     virtual bool hasEditor() const = 0;
     virtual void openEditor(void *window) = 0;

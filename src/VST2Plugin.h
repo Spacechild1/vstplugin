@@ -45,10 +45,15 @@ class VST2Plugin final : public IVSTPlugin {
 
     void setProgram(int program) override;
     void setProgramName(const std::string& name) override;
-    int getProgram() override;
+    int getProgram() const override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
     int getNumPrograms() const override;
+
+    void setProgramData(const VSTChunkData& data) override;
+    VSTChunkData getProgramData() const override;
+    void setBankData(const VSTChunkData& data) override;
+    VSTChunkData getBankData() const override;
 
     bool hasEditor() const override;
     void openEditor(void *window) override;
@@ -56,6 +61,8 @@ class VST2Plugin final : public IVSTPlugin {
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
  private:
     std::string getBaseName() const;
+    void setChunkData(const VSTChunkData& data, bool program);
+    VSTChunkData getChunkData(bool program) const;
     bool hasFlag(VstAEffectFlags flag) const;
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;

@@ -76,7 +76,6 @@ int VST2Plugin::getNumOutputs() const {
 
 void VST2Plugin::setParameter(int index, float value){
     plugin_->setParameter(plugin_, index, value);
-        // update();
 }
 
 float VST2Plugin::getParameter(int index) const {
@@ -107,7 +106,9 @@ int VST2Plugin::getNumParameters() const {
 
 void VST2Plugin::setProgram(int program){
     if (program >= 0 && program < getNumPrograms()){
+        dispatch(effBeginSetProgram);
         dispatch(effSetProgram, 0, program);
+        dispatch(effEndSetProgram);
             // update();
     } else {
         std::cout << "program number out of range!" << std::endl;
@@ -118,7 +119,7 @@ void VST2Plugin::setProgramName(const std::string& name){
     dispatch(effSetProgramName, 0, 0, (void*)name.c_str());
 }
 
-int VST2Plugin::getProgram(){
+int VST2Plugin::getProgram() const {
     return dispatch(effGetProgram, 0, 0, NULL, 0.f);
 }
 
@@ -136,6 +137,28 @@ std::string VST2Plugin::getProgramNameIndexed(int index) const {
 
 int VST2Plugin::getNumPrograms() const {
     return plugin_->numPrograms;
+}
+
+void VST2Plugin::setProgramData(const VSTChunkData& data){
+    VstPatchChunkInfo info;
+    if (dispatch(effBeginLoadProgram, 0, 0, &info)){
+        std::cout << "version: " << info.version << ", id: " << info.pluginUniqueID
+                  << ", pluginVersion: " << info.pluginVersion << ", num elements: "
+                  << info.numElements << std::endl;
+    }
+    setChunkData(data, true);
+}
+
+VSTChunkData VST2Plugin::getProgramData() const {
+    return getChunkData(true);
+}
+
+void VST2Plugin::setBankData(const VSTChunkData& data){
+    setChunkData(data, false);
+}
+
+VSTChunkData VST2Plugin::getBankData() const {
+    return getChunkData(false);
 }
 
 bool VST2Plugin::hasEditor() const {
@@ -176,6 +199,15 @@ std::string VST2Plugin::getBaseName() const {
     return path_.substr(sep + 1, dot - sep - 1);
 }
 
+void VST2Plugin::setChunkData(const VSTChunkData &data, bool program){
+    dispatch(effSetChunk, program, data.size, data.data);
+}
+
+VSTChunkData VST2Plugin::getChunkData(bool program) const {
+    char *data = nullptr;
+    int size = dispatch(effGetChunk, program, 0, &data);
+    return VSTChunkData(data, size);
+}
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;

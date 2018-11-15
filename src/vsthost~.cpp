@@ -10,6 +10,8 @@
 #include <future>
 #include <iostream>
 #include <vector>
+#include <io.h>
+#include <sys/fcntl.h>
 
 #ifdef USE_X11
 # include <X11/Xlib.h>
@@ -567,6 +569,51 @@ static void vsthost_program_list(t_vsthost *x){
     }
 }
 
+static void vsthost_program_read(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char buf[MAXPDSTRING], *bufptr;
+    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", buf, &bufptr, MAXPDSTRING, 1);
+    if (fd < 0){
+        pd_error(x, "%s: couldn't open file '%s'", classname(x), s->s_name);
+        return;
+    }
+    auto fsize = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, 0);
+    char *fdata = (char *)malloc(fsize);
+    auto readbytes = read(fd, fdata, fsize);
+    if (readbytes > 0){
+        std::cout << "read " << readbytes << " bytes" << std::endl;
+        x->x_plugin->setProgramData(VSTChunkData(fdata, readbytes));
+        std::cout << "program data set" << std::endl;
+    } else {
+        pd_error(x, "%s: couldn't read file '%s'", classname(x), s->s_name);
+    }
+
+    free(fdata);
+    sys_close(fd);
+
+}
+
+static void vsthost_program_write(t_vsthost *x, t_symbol *s){
+    char buf[MAXPDSTRING];
+    canvas_makefilename(x->x_editor->canvas(), s->s_name, buf, MAXPDSTRING);
+    int fd = sys_open(buf, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd < 0){
+        pd_error(x, "%s: couldn't create file '%s'", classname(x), s->s_name);
+        return;
+    }
+    auto chunk = x->x_plugin->getProgramData();
+    if (chunk.size){
+        if (write(fd, chunk.data, chunk.size) < 0){
+            pd_error(x, "%s: couldn't write to file '%s'", classname(x), s->s_name);
+        }
+    } else {
+        pd_error(x, "%s: couldn't get data from plugin", classname(x));
+    }
+
+    sys_close(fd);
+}
+
 // plugin version
 static void vsthost_version(t_vsthost *x){
     if (!x->check_plugin()) return;
@@ -898,6 +945,8 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_program_name, gensym("program_name"), A_GIMME, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
 
