@@ -10,8 +10,7 @@
 #include <future>
 #include <iostream>
 #include <vector>
-#include <io.h>
-#include <sys/fcntl.h>
+#include <fcntl.h>
 
 #ifdef USE_X11
 # include <X11/Xlib.h>
