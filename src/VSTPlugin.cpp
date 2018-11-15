@@ -146,9 +146,9 @@ namespace VSTWindowFactory {
     IVSTWindow* createWin32();
     void initializeWin32();
 #endif
-#ifdef __linux__
+#ifdef USE_X11
     void initializeX11();
-    IVSTWindow* createX11();
+    IVSTWindow* createX11(void *display);
 #endif
         // initialize
     void initialize(){
@@ -160,37 +160,32 @@ namespace VSTWindowFactory {
 #endif
     }
         // create
-    IVSTWindow* create(){
+    IVSTWindow* create(void *context){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
         win = createWin32();
-#elif defined(__linux__)
-        win = createX11();
+#elif defined(USE_X11)
+        win = createX11(context);
 #endif
         return win;
     }
 }
 
 std::string makeVSTPluginFilePath(const std::string& name){
-    auto ext = name.find_last_of('.');
+    auto dot = name.find_last_of('.');
 #ifdef _WIN32
-        // myplugin -> myplugin.dll
-    if (ext == std::string::npos || name.find(".dll", ext) == std::string::npos){
-        return name + ".dll";
-    }
+    const char *ext = ".dll";
 #elif defined(__linux__)
-        // myplugin -> myplugin.so
-    if (ext == std::string::npos || name.find(".so", ext) == std::string::npos){
-        return name + ".so";
-    }
+    const char *ext = ".so";
 #elif defined(__APPLE__)
-        // myplugin -> myplugin.vst/Contents/MacOS/myplugin
-    if (ext == std::string::npos || name.find(".vst", ext) == std::string::npos){
-        auto slash = name.find_last_of('/');
-        std::string basename = (slash == std::string::npos) ? name : name.substr(slash+1);
-        return name + ".vst/Contents/MacOS/" + basename;
-    }
-#endif
-        // return unchanged
+    const char *ext = ".vst";
+#else
+    std::cout << "makeVSTPluginFilePath: unknown platform!" << std::endl;
     return name;
+#endif
+    if (dot == std::string::npos || name.find(ext, dot) == std::string::npos){
+        return name + ext;
+    } else {
+        return name; // already has proper extension, return unchanged
+    }
 }

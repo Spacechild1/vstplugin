@@ -4,15 +4,15 @@
 #include <cstring>
 
 namespace VSTWindowFactory {
-    void initializeX11(){}
+    void initializeX11(){
+		if (!XInitThreads()){
+			std::cout << "XInitThreads failed!" << std::endl;
+		}
+	}
 }
 
-VSTWindowX11::VSTWindowX11(){
-	display_ = XOpenDisplay(NULL);
-	if (!display_){
-		std::cout << "couldn't open display" << std::endl;
-		return;
-	}
+VSTWindowX11::VSTWindowX11(Display *display)
+	: display_(display){
 	int s = DefaultScreen(display_);
 	window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
 				10, 10, 100, 100,
@@ -38,11 +38,6 @@ VSTWindowX11::VSTWindowX11(){
 }
 
 VSTWindowX11::~VSTWindowX11(){
-#if 0
-	std::cout << "about to destroy VSTWindowX11" << std::endl;
-	XDestroyWindow(display_, window_);
-    std::cout << "destroyed VSTWindowX11" << std::endl;
-#endif
 		// post quit message
 	XClientMessageEvent event;
 	memset(&event, 0, sizeof(XClientMessageEvent));
@@ -51,6 +46,9 @@ VSTWindowX11::~VSTWindowX11(){
 	event.format = 32;
 	XSendEvent(display_, window_, 0, 0, (XEvent*)&event);
     XFlush(display_);
+    std::cout << "about to destroy VSTWindowX11" << std::endl;
+	XDestroyWindow(display_, window_);
+    std::cout << "destroyed VSTWindowX11" << std::endl;
 }
 
 void VSTWindowX11::run(){
@@ -72,8 +70,6 @@ void VSTWindowX11::run(){
 			}
 		}
 	}
-	std::cout << "closing display" << std::endl;
-	XCloseDisplay(display_);
 }
 
 void VSTWindowX11::setTitle(const std::string& title){
@@ -122,7 +118,11 @@ void VSTWindowX11::bringToTop(){
 }
 
 namespace VSTWindowFactory {
-    IVSTWindow* createX11() {
-        return new VSTWindowX11();
+    IVSTWindow* createX11(void *context) {
+		if (context){
+			return new VSTWindowX11((Display *)context);
+		} else {
+			return nullptr;
+		}
     }
 }

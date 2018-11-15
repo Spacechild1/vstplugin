@@ -28,7 +28,7 @@ define forWindows
 endef
 define forLinux
   common.sources += src/VSTWindowX11.cpp
-  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1
+  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1
   ldflags += -L/usr/X11R6/lib -lX11
 endef
 

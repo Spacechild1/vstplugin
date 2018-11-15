@@ -11,6 +11,10 @@
 #include <iostream>
 #include <vector>
 
+#ifdef USE_X11
+# include <X11/Xlib.h>
+#endif
+
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
@@ -18,7 +22,7 @@
 // vsthost~ object
 static t_class *vsthost_class;
 
-struct t_vsteditor;
+class t_vsteditor;
 
 struct t_vsthost {
 	t_object x_obj;
@@ -113,6 +117,7 @@ static void vstparam_setup(){
 class t_vsteditor {
  public:
     t_vsteditor(bool generic);
+    ~t_vsteditor();
         // try to open the plugin in a new thread and start the message loop (if needed)
     IVSTPlugin* open_via_thread(const char* path);
         // terminate the message loop and wait for the thread to finish
@@ -143,16 +148,33 @@ class t_vsteditor {
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
     t_canvas *e_canvas = nullptr;
+    void *e_context = nullptr;
     std::vector<t_vstparam> e_params;
 };
 
 t_vsteditor::t_vsteditor(bool generic)
     : e_generic(generic){
+#if USE_X11
+	if (!generic){
+		e_context = XOpenDisplay(NULL);
+		if (!e_context){
+			std::cout << "couldn't open display" << std::endl;
+		}
+	}
+#endif
     glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
     pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
     e_canvas = (t_canvas *)s__X.s_thing;
     send_vmess(gensym("pop"), "i", 0);
     glob_setfilename(0, &s_, &s_);
+}
+
+t_vsteditor::~t_vsteditor(){
+#ifdef USE_X11
+	if (e_context){
+		XCloseDisplay((Display *)e_context);
+	}
+#endif
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
@@ -164,7 +186,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         return;
     }
     if (plugin->hasEditor() && !e_generic){
-        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create());
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(e_context));
     }
     promise.set_value(plugin);
     if (e_window){
@@ -328,12 +350,21 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
     char dirresult[MAXPDSTRING];
     char *name;
     std::string vstpath = makeVSTPluginFilePath(s->s_name);
+#ifdef __APPLE__
+    const char *bundleinfo = "/Contents/Info.plist";
+    vstpath += bundleinfo; // on MacOS VSTs are bundles but canvas_open needs a real file
+#endif
     int fd = canvas_open(x->x_editor->canvas(), vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
     if (fd >= 0){
         sys_close(fd);
-
         char path[MAXPDSTRING];
         snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
+#ifdef __APPLE__
+        char *find = strstr(path, bundleinfo);
+        if (find){
+            *find = 0; // restore the bundle path
+        }
+#endif
         sys_bashfilename(path, path);
             // load VST plugin in new thread
         IVSTPlugin *plugin = x->x_editor->open_via_thread(path);

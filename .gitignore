@@ -6,6 +6,9 @@ build**
 *.pd_darwin
 *.pd_linux
 
+# MacOS
+*.DS_STORE
+
 # Created by https://www.gitignore.io/api/c++,emacs
 # Edit at https://www.gitignore.io/?templates=c++,emacs
 
