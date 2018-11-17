@@ -699,6 +699,10 @@ bool t_vsthost::check_plugin(){
 
 void t_vsthost::check_precision(){
     if (x_plugin){
+        if (!x_plugin->hasSinglePrecision() && !x_plugin->hasDoublePrecision()) {
+            post("%s: '%s' doesn't support single or double precision, bypassing",
+                classname(this), x_plugin->getPluginName().c_str());
+        }
         if (x_dp && !x_plugin->hasDoublePrecision()){
             post("%s: '%s' doesn't support double precision, using single precision instead",
                  classname(this), x_plugin->getPluginName().c_str());
@@ -844,18 +848,24 @@ static t_int *vsthost_perform(t_int *w){
     int noutbuf = x->x_noutbuf;
     void ** outbufvec = x->x_outbufvec;
     int out_offset = 0;
+    bool dp = x->x_dp;
+    bool bypass = plugin ? x->x_bypass : true;
 
-    if (plugin && !x->x_bypass){  // process audio
-        int pin = plugin->getNumInputs();
-        int pout = plugin->getNumOutputs();
-        out_offset = pout;
+    if(plugin && !bypass) {
             // check processing precision (single or double)
-        bool dp = x->x_dp;
-        if (dp && !plugin->hasDoublePrecision()){
+        if (!plugin->hasSinglePrecision() && !plugin->hasDoublePrecision()) {
+            bypass = true;
+        } else if (dp && !plugin->hasDoublePrecision()){
             dp = false;
         } else if (!dp && !plugin->hasSinglePrecision()){ // very unlikely...
             dp = true;
         }
+    }
+
+    if (!bypass){  // process audio
+        int pin = plugin->getNumInputs();
+        int pout = plugin->getNumOutputs();
+        out_offset = pout;
             // process in double precision
         if (dp){
                 // prepare input buffer
