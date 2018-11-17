@@ -53,9 +53,9 @@ class VST2Plugin final : public IVSTPlugin {
 
     bool hasChunkData() const override;
     void setProgramChunkData(const void *data, size_t size) override;
-    void getProgramChunkData(void **data, size_t *size) const;
+    void getProgramChunkData(void **data, size_t *size) const override;
     void setBankChunkData(const void *data, size_t size) override;
-    void getBankChunkData(void **data, size_t *size) const;
+    void getBankChunkData(void **data, size_t *size) const override;
 
     bool readProgramFile(const std::string& path) override;
     bool readProgramData(const char *data, size_t size) override;
