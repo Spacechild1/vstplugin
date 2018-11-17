@@ -364,8 +364,8 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     header[6] = getNumParameters();
 
     char prgName[28];
-    strncpy(prgName, getProgramName().c_str(), 28);
-    prgName[27] = 0;
+    strncpy(prgName, getProgramName().c_str(), 27);
+    prgName[27] = '\0';
 
     if (!hasChunkData()){
             // parameters
