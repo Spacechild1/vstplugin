@@ -4,7 +4,7 @@
 
 //#include "aeffect.h"
 #include "aeffectx.h"
-//#include "vstfxstore.h"
+// #include "vstfxstore.h"
 
 // Plugin's entry point
 typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
@@ -24,6 +24,7 @@ class VST2Plugin final : public IVSTPlugin {
 
     std::string getPluginName() const override;
     int getPluginVersion() const override;
+    int getPluginUniqueID() const override;
 
     void process(float **inputs, float **outputs, int nsamples) override;
     void processDouble(double **inputs, double **outputs, int nsamples) override;
@@ -45,10 +46,31 @@ class VST2Plugin final : public IVSTPlugin {
 
     void setProgram(int program) override;
     void setProgramName(const std::string& name) override;
-    int getProgram() override;
+    int getProgram() const override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
     int getNumPrograms() const override;
+
+    bool hasChunkData() const override;
+    void setProgramChunkData(const void *data, size_t size) override;
+    void getProgramChunkData(void **data, size_t *size) const override;
+    void setBankChunkData(const void *data, size_t size) override;
+    void getBankChunkData(void **data, size_t *size) const override;
+
+    bool readProgramFile(const std::string& path) override;
+    bool readProgramData(const char *data, size_t size) override;
+    bool readProgramData(const std::string& buffer) override {
+        return readProgramData(buffer.data(), buffer.size());
+    }
+    void writeProgramFile(const std::string& path) override;
+    void writeProgramData(std::string& buffer) override;
+    bool readBankFile(const std::string& path) override;
+    bool readBankData(const char *data, size_t size) override;
+    bool readBankData(const std::string& buffer) override {
+        return readBankData(buffer.data(), buffer.size());
+    }
+    void writeBankFile(const std::string& path) override;
+    void writeBankData(std::string& buffer) override;
 
     bool hasEditor() const override;
     void openEditor(void *window) override;
