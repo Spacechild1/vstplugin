@@ -573,6 +573,7 @@ static void vsthost_program_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom 
     std::string buffer;
     buffer.resize(argc);
     for (int i = 0; i < argc; ++i){
+           // first clamp to 0-255, then assign to char (not 100% portable...)
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     if (x->x_plugin->readProgramData(buffer)){
@@ -590,6 +591,7 @@ static void vsthost_program_data(t_vsthost *x){
     std::vector<t_atom> atoms;
     atoms.resize(n);
     for (int i = 0; i < n; ++i){
+            // first convert to range 0-255, then assign to t_float (not 100% portable...)
         SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
     }
     outlet_anything(x->x_messout, gensym("program_data"), n, atoms.data());
@@ -627,6 +629,7 @@ static void vsthost_bank_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *ar
     std::string buffer;
     buffer.resize(argc);
     for (int i = 0; i < argc; ++i){
+            // first clamp to 0-255, then assign to char (not 100% portable...)
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     if (x->x_plugin->readBankData(buffer)){
@@ -644,6 +647,7 @@ static void vsthost_bank_data(t_vsthost *x){
     std::vector<t_atom> atoms;
     atoms.resize(n);
     for (int i = 0; i < n; ++i){
+            // first convert to range 0-255, then assign to t_float (not 100% portable...)
         SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
     }
     outlet_anything(x->x_messout, gensym("bank_data"), n, atoms.data());
