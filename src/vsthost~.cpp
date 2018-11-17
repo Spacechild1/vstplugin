@@ -10,7 +10,6 @@
 #include <future>
 #include <iostream>
 #include <vector>
-#include <fcntl.h>
 
 #ifdef USE_X11
 # include <X11/Xlib.h>
@@ -568,49 +567,112 @@ static void vsthost_program_list(t_vsthost *x){
     }
 }
 
+// read/write FX programs
+static void vsthost_program_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    buffer.resize(argc);
+    for (int i = 0; i < argc; ++i){
+        buffer[i] = (unsigned char)atom_getfloat(argv + i);
+    }
+    if (x->x_plugin->readProgramData(buffer)){
+        x->x_editor->update(x);
+    } else {
+        pd_error(x, "%s: bad FX program data", classname(x));
+    }
+}
+
+static void vsthost_program_data(t_vsthost *x){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    x->x_plugin->writeProgramData(buffer);
+    int n = buffer.size();
+    std::vector<t_atom> atoms;
+    atoms.resize(n);
+    for (int i = 0; i < n; ++i){
+        SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
+    }
+    outlet_anything(x->x_messout, gensym("program_data"), n, atoms.data());
+}
+
 static void vsthost_program_read(t_vsthost *x, t_symbol *s){
     if (!x->check_plugin()) return;
-    char buf[MAXPDSTRING], *bufptr;
-    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", buf, &bufptr, MAXPDSTRING, 1);
+    char dir[MAXPDSTRING], *name;
+    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
-        pd_error(x, "%s: couldn't open file '%s'", classname(x), s->s_name);
+        pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
         return;
     }
-    auto fsize = lseek(fd, 0, SEEK_END);
-    lseek(fd, 0, 0);
-    char *fdata = (char *)malloc(fsize);
-    auto readbytes = read(fd, fdata, fsize);
-    if (readbytes > 0){
-        std::cout << "read " << readbytes << " bytes" << std::endl;
-        x->x_plugin->setProgramData(VSTChunkData(fdata, readbytes));
-        std::cout << "program data set" << std::endl;
-    } else {
-        pd_error(x, "%s: couldn't read file '%s'", classname(x), s->s_name);
-    }
-
-    free(fdata);
     sys_close(fd);
-
+    char path[MAXPDSTRING];
+    snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
+    sys_bashfilename(path, path);
+    if (x->x_plugin->readProgramFile(path)){
+        x->x_editor->update(x);
+    } else {
+        pd_error(x, "%s: bad FX program file '%s'", classname(x), s->s_name);
+    }
 }
 
 static void vsthost_program_write(t_vsthost *x, t_symbol *s){
-    char buf[MAXPDSTRING];
-    canvas_makefilename(x->x_editor->canvas(), s->s_name, buf, MAXPDSTRING);
-    int fd = sys_open(buf, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (!x->check_plugin()) return;
+    char path[MAXPDSTRING];
+    canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
+    x->x_plugin->writeProgramFile(path);
+}
+
+// read/write FX banks
+static void vsthost_bank_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    buffer.resize(argc);
+    for (int i = 0; i < argc; ++i){
+        buffer[i] = (unsigned char)atom_getfloat(argv + i);
+    }
+    if (x->x_plugin->readBankData(buffer)){
+        x->x_editor->update(x);
+    } else {
+        pd_error(x, "%s: bad FX bank data", classname(x));
+    }
+}
+
+static void vsthost_bank_data(t_vsthost *x){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    x->x_plugin->writeBankData(buffer);
+    int n = buffer.size();
+    std::vector<t_atom> atoms;
+    atoms.resize(n);
+    for (int i = 0; i < n; ++i){
+        SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
+    }
+    outlet_anything(x->x_messout, gensym("bank_data"), n, atoms.data());
+}
+
+static void vsthost_bank_read(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char dir[MAXPDSTRING], *name;
+    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
-        pd_error(x, "%s: couldn't create file '%s'", classname(x), s->s_name);
+        pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
         return;
     }
-    auto chunk = x->x_plugin->getProgramData();
-    if (chunk.size){
-        if (write(fd, chunk.data, chunk.size) < 0){
-            pd_error(x, "%s: couldn't write to file '%s'", classname(x), s->s_name);
-        }
-    } else {
-        pd_error(x, "%s: couldn't get data from plugin", classname(x));
-    }
-
     sys_close(fd);
+    char path[MAXPDSTRING];
+    snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
+    sys_bashfilename(path, path);
+    if (x->x_plugin->readBankFile(path)){
+        x->x_editor->update(x);
+    } else {
+        pd_error(x, "%s: bad FX bank file '%s'", classname(x), s->s_name);
+    }
+}
+
+static void vsthost_bank_write(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char path[MAXPDSTRING];
+    canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
+    x->x_plugin->writeBankFile(path);
 }
 
 // plugin version
@@ -944,8 +1006,16 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_program_name, gensym("program_name"), A_GIMME, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
+        // read/write fx programs
+    class_addmethod(vsthost_class, (t_method)vsthost_program_setdata, gensym("program_setdata"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_data, gensym("program_data"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
+        // read/write fx banks
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_setdata, gensym("bank_setdata"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_data, gensym("bank_data"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_read, gensym("bank_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
 

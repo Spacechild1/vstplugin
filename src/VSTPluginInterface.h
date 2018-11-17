@@ -28,19 +28,12 @@ namespace VSTWindowFactory {
     IVSTWindow* create(void *context = nullptr);
 }
 
-class VSTChunkData {
- public:
-    VSTChunkData(char *_data = nullptr, size_t _size = 0)
-        : data(_data), size(_size){}
-    char *data;
-    size_t size;
-};
-
 class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
     virtual std::string getPluginName() const = 0;
     virtual int getPluginVersion() const = 0;
+    virtual int getPluginUniqueID() const = 0;
 
     virtual void process(float **inputs, float **outputs, int nsamples) = 0;
     virtual void processDouble(double **inputs, double **outputs, int nsamples) = 0;
@@ -67,10 +60,22 @@ class IVSTPlugin {
     virtual std::string getProgramNameIndexed(int index) const = 0;
     virtual int getNumPrograms() const = 0;
 
-    virtual void setProgramData(const VSTChunkData& data) = 0;
-    virtual VSTChunkData getProgramData() const;
-    virtual void setBankData(const VSTChunkData& data) = 0;
-    virtual VSTChunkData getBankData() const;
+    virtual bool hasChunkData() const = 0;
+    virtual void setProgramChunkData(const void *data, size_t size) = 0;
+    virtual void getProgramChunkData(void **data, size_t *size) const = 0;
+    virtual void setBankChunkData(const void *data, size_t size) = 0;
+    virtual void getBankChunkData(void **data, size_t *size) const = 0;
+
+    virtual bool readProgramFile(const std::string& path) = 0;
+    virtual bool readProgramData(const char *data, size_t size) = 0;
+    virtual bool readProgramData(const std::string& buffer) = 0;
+    virtual void writeProgramFile(const std::string& path) = 0;
+    virtual void writeProgramData(std::string& buffer) = 0;
+    virtual bool readBankFile(const std::string& path) = 0;
+    virtual bool readBankData(const char *data, size_t size) = 0;
+    virtual bool readBankData(const std::string& buffer) = 0;
+    virtual void writeBankFile(const std::string& path) = 0;
+    virtual void writeBankData(std::string& buffer) = 0;
 
     virtual bool hasEditor() const = 0;
     virtual void openEditor(void *window) = 0;

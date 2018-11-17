@@ -4,7 +4,7 @@
 
 //#include "aeffect.h"
 #include "aeffectx.h"
-//#include "vstfxstore.h"
+#include "vstfxstore.h"
 
 // Plugin's entry point
 typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
@@ -24,6 +24,7 @@ class VST2Plugin final : public IVSTPlugin {
 
     std::string getPluginName() const override;
     int getPluginVersion() const override;
+    int getPluginUniqueID() const override;
 
     void process(float **inputs, float **outputs, int nsamples) override;
     void processDouble(double **inputs, double **outputs, int nsamples) override;
@@ -50,10 +51,26 @@ class VST2Plugin final : public IVSTPlugin {
     std::string getProgramNameIndexed(int index) const override;
     int getNumPrograms() const override;
 
-    void setProgramData(const VSTChunkData& data) override;
-    VSTChunkData getProgramData() const override;
-    void setBankData(const VSTChunkData& data) override;
-    VSTChunkData getBankData() const override;
+    bool hasChunkData() const override;
+    void setProgramChunkData(const void *data, size_t size) override;
+    void getProgramChunkData(void **data, size_t *size) const;
+    void setBankChunkData(const void *data, size_t size) override;
+    void getBankChunkData(void **data, size_t *size) const;
+
+    bool readProgramFile(const std::string& path) override;
+    bool readProgramData(const char *data, size_t size) override;
+    bool readProgramData(const std::string& buffer) override {
+        return readProgramData(buffer.data(), buffer.size());
+    }
+    void writeProgramFile(const std::string& path) override;
+    void writeProgramData(std::string& buffer) override;
+    bool readBankFile(const std::string& path) override;
+    bool readBankData(const char *data, size_t size) override;
+    bool readBankData(const std::string& buffer) override {
+        return readBankData(buffer.data(), buffer.size());
+    }
+    void writeBankFile(const std::string& path) override;
+    void writeBankData(std::string& buffer) override;
 
     bool hasEditor() const override;
     void openEditor(void *window) override;
@@ -61,8 +78,6 @@ class VST2Plugin final : public IVSTPlugin {
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
  private:
     std::string getBaseName() const;
-    void setChunkData(const VSTChunkData& data, bool program);
-    VSTChunkData getChunkData(bool program) const;
     bool hasFlag(VstAEffectFlags flag) const;
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
