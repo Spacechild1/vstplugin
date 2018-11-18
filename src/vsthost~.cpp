@@ -408,6 +408,13 @@ static void vsthost_info(t_vsthost *x){
 
 static void vsthost_bypass(t_vsthost *x, t_floatarg f){
     x->x_bypass = (f != 0);
+    if (x->x_plugin){
+        if (x->x_bypass){
+            x->x_plugin->suspend();
+        } else {
+            x->x_plugin->resume();
+        }
+    }
 }
 
 static void vsthost_vis(t_vsthost *x, t_floatarg f){
