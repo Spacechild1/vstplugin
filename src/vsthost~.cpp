@@ -118,16 +118,16 @@ static void vstparam_setup(){
 // VST editor
 class t_vsteditor {
  public:
-    t_vsteditor(bool generic);
+    t_vsteditor(t_vsthost &owner, bool generic);
     ~t_vsteditor();
         // try to open the plugin in a new thread and start the message loop (if needed)
     IVSTPlugin* open_via_thread(const char* path);
         // terminate the message loop and wait for the thread to finish
     void close_thread();
         // setup the generic Pd editor
-    void setup(t_vsthost *x);
+    void setup();
         // update the parameter displays
-    void update(t_vsthost *x);
+    void update();
     void set_param(int index, float value);
     void vis(bool v);
     IVSTWindow *window(){
@@ -146,6 +146,7 @@ class t_vsteditor {
     }
     void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
         // data
+    t_vsthost *e_owner;
     std::thread e_thread;
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
@@ -154,8 +155,8 @@ class t_vsteditor {
     std::vector<t_vstparam> e_params;
 };
 
-t_vsteditor::t_vsteditor(bool generic)
-    : e_generic(generic){
+t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
+    : e_owner(&owner), e_generic(generic){
 #if USE_X11
 	if (!generic){
 		e_context = XOpenDisplay(NULL);
@@ -203,11 +204,16 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         LOG_DEBUG("exit message loop");
 
         plugin->closeEditor();
+            // some plugins expect to released in the same thread where they have been created
+        LOG_DEBUG("try to close VST plugin");
+        freeVSTPlugin(e_owner->x_plugin);
+        e_owner->x_plugin = nullptr;
+        LOG_DEBUG("VST plugin closed");
     }
     LOG_DEBUG("exit thread");
 }
 
-
+// creates a new thread where the plugin is created and the message loop runs (if needed)
 IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
     std::promise<IVSTPlugin *> promise;
     auto future = promise.get_future();
@@ -216,24 +222,24 @@ IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
 }
 
 void t_vsteditor::close_thread(){
-        // destroying the window will terminate the message loop
+        // destroying the window will terminate the message loop and release the plugin
     e_window = nullptr;
-        // now join the thread (will call plugin->closeEditor())
+        // now join the thread
     if (e_thread.joinable()){
         e_thread.join();
     }
 }
 
-void t_vsteditor::setup(t_vsthost *x){
-    if (!x->check_plugin()) return;
+void t_vsteditor::setup(){
+    if (!e_owner->check_plugin()) return;
 
-    int nparams = x->x_plugin->getNumParameters();
+    int nparams = e_owner->x_plugin->getNumParameters();
     e_params.clear();
     e_params.reserve(nparams);
     for (int i = 0; i < nparams; ++i){
-        e_params.emplace_back(x, i);
+        e_params.emplace_back(e_owner, i);
     }
-    send_vmess(gensym("rename"), (char *)"s", gensym(x->x_plugin->getPluginName().c_str()));
+    send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
     send_mess(gensym("clear"));
         // slider
     t_atom slider[21];
@@ -283,7 +289,7 @@ void t_vsteditor::setup(t_vsthost *x){
         SETSYMBOL(slider+9, e_params[i].p_name);
         SETSYMBOL(slider+10, e_params[i].p_name);
         char buf[64];
-        snprintf(buf, sizeof(buf), "%d: %s", i, x->x_plugin->getParameterName(i).c_str());
+        snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create number box
@@ -298,16 +304,16 @@ void t_vsteditor::setup(t_vsthost *x){
     send_vmess(gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
     send_vmess(gensym("vis"), "i", 0);
 
-    update(x);
+    update();
 }
 
-void t_vsteditor::update(t_vsthost *x){
-    if (!x->check_plugin()) return;
+void t_vsteditor::update(){
+    if (!e_owner->check_plugin()) return;
 
-    if (!x->x_plugin->hasEditor() || e_generic){
-        int n = x->x_plugin->getNumParameters();
+    if (!e_owner->x_plugin->hasEditor() || e_generic){
+        int n = e_owner->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
-            set_param(i, x->x_plugin->getParameter(i));
+            set_param(i, e_owner->x_plugin->getParameter(i));
         }
     }
 }
@@ -336,13 +342,15 @@ void t_vsteditor::vis(bool v){
 static void vsthost_close(t_vsthost *x){
     if (x->x_plugin){
         x->x_editor->vis(0);
-            // first close the thread
+            // first close the thread (might already free the plugin)
         x->x_editor->close_thread();
-            // then free the plugin
-        LOG_DEBUG("try to close VST plugin");
-        freeVSTPlugin(x->x_plugin);
-        x->x_plugin = nullptr;
-        LOG_DEBUG("VST plugin closed");
+            // then free the plugin if necessary
+        if (x->x_plugin){
+            LOG_DEBUG("try to close VST plugin");
+            freeVSTPlugin(x->x_plugin);
+            x->x_plugin = nullptr;
+            LOG_DEBUG("VST plugin closed");
+        }
     }
 }
 
@@ -377,7 +385,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             x->x_plugin = plugin;
             x->check_precision();
             x->update_buffer();
-            x->x_editor->setup(x);
+            x->x_editor->setup();
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
         }
@@ -523,7 +531,7 @@ static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumPrograms()){
         x->x_plugin->setProgram(index);
-        x->x_editor->update(x);
+        x->x_editor->update();
 	} else {
         pd_error(x, "%s: program number %d out of range!", classname(x), index);
 	}
@@ -582,7 +590,7 @@ static void vsthost_program_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom 
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     if (x->x_plugin->readProgramData(buffer)){
-        x->x_editor->update(x);
+        x->x_editor->update();
     } else {
         pd_error(x, "%s: bad FX program data", classname(x));
     }
@@ -615,7 +623,7 @@ static void vsthost_program_read(t_vsthost *x, t_symbol *s){
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
     sys_bashfilename(path, path);
     if (x->x_plugin->readProgramFile(path)){
-        x->x_editor->update(x);
+        x->x_editor->update();
     } else {
         pd_error(x, "%s: bad FX program file '%s'", classname(x), s->s_name);
     }
@@ -638,7 +646,7 @@ static void vsthost_bank_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *ar
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     if (x->x_plugin->readBankData(buffer)){
-        x->x_editor->update(x);
+        x->x_editor->update();
     } else {
         pd_error(x, "%s: bad FX bank data", classname(x));
     }
@@ -671,7 +679,7 @@ static void vsthost_bank_read(t_vsthost *x, t_symbol *s){
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
     sys_bashfilename(path, path);
     if (x->x_plugin->readBankFile(path)){
-        x->x_editor->update(x);
+        x->x_editor->update();
     } else {
         pd_error(x, "%s: bad FX bank file '%s'", classname(x), s->s_name);
     }
@@ -808,7 +816,7 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
 
         // editor
-    x->x_editor = new t_vsteditor(generic);
+    x->x_editor = new t_vsteditor(*x, generic);
 
         // buffers
     x->x_inbufsize = 0;
