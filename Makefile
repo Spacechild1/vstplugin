@@ -34,6 +34,6 @@ endef
 
 
 # all extra files to be included in binary distribution of the library
-datafiles = 
+datafiles = vsthost~-help.pd
 
 include pd-lib-builder/Makefile.pdlibbuilder
