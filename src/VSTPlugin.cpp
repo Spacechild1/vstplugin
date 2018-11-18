@@ -14,8 +14,8 @@
 # include <unistd.h>
 #endif
 
-#if _WIN32
-static std::wstring widen(const std::string& s){
+#ifdef _WIN32
+std::wstring widen(const std::string& s){
     if (s.empty()){
         return std::wstring();
     }
@@ -25,7 +25,7 @@ static std::wstring widen(const std::string& s){
     MultiByteToWideChar(CP_UTF8, 0, s.data(), s.size(), &buf[0], n);
     return buf;
 }
-static std::string shorten(const std::wstring& s){
+std::string shorten(const std::wstring& s){
     if (s.empty()){
         return std::string();
     }

@@ -5,16 +5,7 @@
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 
-static std::wstring widen(const std::string& s){
-    if (s.empty()){
-        return std::wstring();
-    }
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), s.size(), NULL, 0);
-    std::wstring buf;
-    buf.resize(n);
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), s.size(), &buf[0], n);
-    return buf;
-}
+std::wstring widen(const std::string& s); // VSTPlugin.cpp
 
 static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
     if (Msg == WM_CLOSE){
