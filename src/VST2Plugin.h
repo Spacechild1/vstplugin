@@ -30,12 +30,17 @@ class VST2Plugin final : public IVSTPlugin {
     void processDouble(double **inputs, double **outputs, int nsamples) override;
     bool hasSinglePrecision() const override;
     bool hasDoublePrecision() const override;
-    void pause() override;
+    void suspend() override;
     void resume() override;
     void setSampleRate(float sr) override;
     void setBlockSize(int n) override;
     int getNumInputs() const override;
     int getNumOutputs() const override;
+    bool isSynth() const override;
+    bool hasTail() const override;
+    int getTailSize() const override;
+    bool hasBypass() const override;
+    void setBypass(bool bypass) override;
 
     void setParameter(int index, float value) override;
     float getParameter(int index) const override;
@@ -79,6 +84,7 @@ class VST2Plugin final : public IVSTPlugin {
  private:
     std::string getBaseName() const;
     bool hasFlag(VstAEffectFlags flag) const;
+    bool canDo(const char *what) const;
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
         // data members

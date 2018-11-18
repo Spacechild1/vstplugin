@@ -39,12 +39,17 @@ class IVSTPlugin {
     virtual void processDouble(double **inputs, double **outputs, int nsamples) = 0;
     virtual bool hasSinglePrecision() const = 0;
     virtual bool hasDoublePrecision() const = 0;
-    virtual void pause() = 0;
+    virtual void suspend() = 0;
     virtual void resume() = 0;
     virtual void setSampleRate(float sr) = 0;
     virtual void setBlockSize(int n) = 0;
     virtual int getNumInputs() const = 0;
     virtual int getNumOutputs() const = 0;
+    virtual bool isSynth() const = 0;
+    virtual bool hasTail() const = 0;
+    virtual int getTailSize() const = 0;
+    virtual bool hasBypass() const = 0;
+    virtual void setBypass(bool bypass) = 0;
 
     virtual void setParameter(int index, float value) = 0;
     virtual float getParameter(int index) const = 0;

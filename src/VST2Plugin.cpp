@@ -168,12 +168,12 @@ bool VST2Plugin::hasDoublePrecision() const {
     return plugin_->flags & effFlagsCanDoubleReplacing;
 }
 
-void VST2Plugin::resume(){
-    dispatch(effMainsChanged, 0, 1);
+void VST2Plugin::suspend(){
+    dispatch(effMainsChanged, 0, 0);
 }
 
-void VST2Plugin::pause(){
-    dispatch(effMainsChanged, 0, 0);
+void VST2Plugin::resume(){
+    dispatch(effMainsChanged, 0, 1);
 }
 
 void VST2Plugin::setSampleRate(float sr){
@@ -190,6 +190,26 @@ int VST2Plugin::getNumInputs() const {
 
 int VST2Plugin::getNumOutputs() const {
     return plugin_->numOutputs;
+}
+
+bool VST2Plugin::isSynth() const {
+    return hasFlag(effFlagsIsSynth);
+}
+
+bool VST2Plugin::hasTail() const {
+    return !hasFlag(effFlagsNoSoundInStop);
+}
+
+int VST2Plugin::getTailSize() const {
+    return dispatch(effGetTailSize);
+}
+
+bool VST2Plugin::hasBypass() const {
+    return canDo("bypass");
+}
+
+void VST2Plugin::setBypass(bool bypass){
+    dispatch(effSetBypass, 0, bypass);
 }
 
 void VST2Plugin::setParameter(int index, float value){
@@ -616,6 +636,10 @@ std::string VST2Plugin::getBaseName() const {
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;
+}
+
+bool VST2Plugin::canDo(const char *what) const {
+    return dispatch(effCanDo, 0, 0, (void *)what) > 0;
 }
 
 VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
