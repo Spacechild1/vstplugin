@@ -107,12 +107,12 @@ static float bytes_to_float(const char *bytes){
 /*----------- fxProgram and fxBank file structures (see vstfxstore.h)-------------*/
 const size_t fxProgramHeaderSize = 56;  // 7 * VstInt32 + 28 character program name
 const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
-// replacements for multicharacter constants
-#define cMagic (bytes_to_int32("CcnK"))
-#define fMagic (bytes_to_int32("FxCk"))
-#define bankMagic (bytes_to_int32("FxBk"))
-#define chunkPresetMagic (bytes_to_int32("FPCh"))
-#define chunkBankMagic (bytes_to_int32("FBCh"))
+// magic numbers (using CCONST macro from aeffect.h to avoid multicharacter constants)
+#define cMagic CCONST('C', 'c', 'n', 'K')
+#define fMagic CCONST('F', 'x', 'C', 'k')
+#define bankMagic CCONST('F', 'x', 'B', 'k')
+#define chunkPresetMagic CCONST('F', 'P', 'C', 'h')
+#define chunkBankMagic CCONST('F', 'B', 'C', 'h')
 
 /*/////////////////////// VST2Plugin /////////////////////////////*/
 
