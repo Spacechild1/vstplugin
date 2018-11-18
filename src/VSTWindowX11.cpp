@@ -1,12 +1,12 @@
 #include "VSTWindowX11.h"
+#include "Utility.h"
 
-#include <iostream>
 #include <cstring>
 
 namespace VSTWindowFactory {
     void initializeX11(){
 		if (!XInitThreads()){
-			std::cout << "XInitThreads failed!" << std::endl;
+            LOG_WARNING("XInitThreads failed!");
 		}
 	}
 }
@@ -34,7 +34,7 @@ VSTWindowX11::VSTWindowX11(Display *display)
 		XFree(ch);
 	}
 
-    std::cout << "created VSTWindowX11: " << window_ << std::endl;
+    LOG_DEBUG("created VSTWindowX11: " << window_);
 }
 
 VSTWindowX11::~VSTWindowX11(){
@@ -46,9 +46,9 @@ VSTWindowX11::~VSTWindowX11(){
 	event.format = 32;
 	XSendEvent(display_, window_, 0, 0, (XEvent*)&event);
     XFlush(display_);
-    std::cout << "about to destroy VSTWindowX11" << std::endl;
+    LOG_DEBUG("about to destroy VSTWindowX11");
 	XDestroyWindow(display_, window_);
-    std::cout << "destroyed VSTWindowX11" << std::endl;
+    LOG_DEBUG("destroyed VSTWindowX11");
 }
 
 void VSTWindowX11::run(){
@@ -61,12 +61,12 @@ void VSTWindowX11::run(){
 			auto& msg = e.xclient;
 			if (msg.message_type == wmProtocols_ && (Atom)msg.data.l[0] == wmDelete_){
 				hide(); // only hide window
-				std::cout << "window closed!" << std::endl;
+                LOG_DEBUG("X11: window closed!");
 			} else if (msg.message_type == wmQuit_){
 				running = false; // quit event loop
-				std::cout << "quit" << std::endl;
+                LOG_DEBUG("X11: quit");
 			} else {
-				std::cout << "unknown client message" << std::endl;
+                LOG_DEBUG("X11: unknown client message");
 			}
 		}
 	}
@@ -76,14 +76,14 @@ void VSTWindowX11::setTitle(const std::string& title){
 	XStoreName(display_, window_, title.c_str());
 	XSetIconName(display_, window_, title.c_str());
 	XFlush(display_);
-	std::cout << "VSTWindowX11::setTitle: " << title << std::endl;
+    LOG_DEBUG("VSTWindowX11::setTitle: " << title);
 }
 
 void VSTWindowX11::setGeometry(int left, int top, int right, int bottom){
 	XMoveResizeWindow(display_, window_, left, top, right-left, bottom-top);
 	XFlush(display_);
-	std::cout << "VSTWindowX11::setGeometry: " << left << " " << top << " "
-		<< right << " " << bottom << std::endl;
+    LOG_DEBUG("VSTWindowX11::setGeometry: " << left << " " << top << " "
+        << right << " " << bottom);
 }
 
 void VSTWindowX11::show(){
@@ -114,7 +114,7 @@ void VSTWindowX11::restore(){
 void VSTWindowX11::bringToTop(){
 	minimize();
 	restore();
-    std::cout << "VSTWindowX11::bringToTop" << std::endl;
+    LOG_DEBUG("VSTWindowX11::bringToTop");
 }
 
 namespace VSTWindowFactory {

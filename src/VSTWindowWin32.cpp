@@ -1,6 +1,7 @@
 #include "VSTWindowWin32.h"
+#include "Utility.h"
 
-#include <iostream>
+#include <cstring>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 
@@ -22,7 +23,7 @@ static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LP
     }
     if (Msg == WM_DESTROY){
         PostQuitMessage(0);
-        std::cout << "WM_DESTROY" << std::endl;
+        LOG_DEBUG("WM_DESTROY");
     }
     return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
@@ -40,9 +41,9 @@ namespace VSTWindowFactory {
             GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
             wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
             if (!RegisterClassExW(&wcex)){
-                std::cout << "couldn't register window class!" << std::endl;
+                LOG_WARNING("couldn't register window class!");
             } else {
-                std::cout << "registered window class!" << std::endl;
+                LOG_DEBUG("registered window class!");
                 initialized = true;
             }
         }
@@ -55,12 +56,12 @@ VSTWindowWin32::VSTWindowWin32(){
           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, NULL, NULL
     );
-    std::cout << "created VSTWindowWin32" << std::endl;
+    LOG_DEBUG("created VSTWindowWin32");
 }
 
 VSTWindowWin32::~VSTWindowWin32(){
     PostMessage(hwnd_, WM_DESTROY, 0, 0);
-    std::cout << "destroyed VSTWindowWin32" << std::endl;
+    LOG_DEBUG("destroyed VSTWindowWin32");
 }
 
 void VSTWindowWin32::run(){
@@ -69,7 +70,7 @@ void VSTWindowWin32::run(){
     while((ret = GetMessage(&msg, NULL, 0, 0))){
         if (ret < 0){
             // error
-            std::cout << "GetMessage: error" << std::endl;
+            LOG_WARNING("GetMessage: error");
             break;
         }
         DispatchMessage(&msg);

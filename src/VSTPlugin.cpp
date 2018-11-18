@@ -1,8 +1,5 @@
 #include "VST2Plugin.h"
-
-#include <iostream>
-#include <thread>
-#include <cstring>
+#include "Utility.h"
 
 #if _WIN32
 # include <windows.h>
@@ -58,7 +55,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
                 FreeLibrary(handle);
             }
         } else {
-            std::cout << "loadVSTPlugin: couldn't open " << path << "" << std::endl;
+            LOG_ERROR("loadVSTPlugin: LoadLibrary failed for " << path);
         }
     }
 #endif
@@ -75,7 +72,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
                 // Open the bundle
             bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
             if(!bundle) {
-                std::cout << "loadVSTPlugin: couldn't create bundle reference for " << path << std::endl;
+                LOG_ERROR("loadVSTPlugin: couldn't create bundle reference for " << path);
             }
         }
         if (bundle) {
@@ -111,7 +108,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
                 dlclose(handle);
             }
         } else {
-            std::cout << "loadVSTPlugin: couldn't dlopen " << path << "" << std::endl;
+            LOG_ERROR("loadVSTPlugin: couldn't dlopen " << path);
         }
     }
 #endif
@@ -120,16 +117,16 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         return nullptr;
 
     if (!mainEntryPoint){
-        std::cout << "loadVSTPlugin: couldn't find entry point in VST plugin" << std::endl;
+        LOG_ERROR("loadVSTPlugin: couldn't find entry point in VST plugin");
         return nullptr;
     }
     plugin = mainEntryPoint(&VST2Plugin::hostCallback);
     if (!plugin){
-        std::cout << "loadVSTPlugin: couldn't initialize plugin" << std::endl;
+        LOG_ERROR("loadVSTPlugin: couldn't initialize plugin");
         return nullptr;
     }
     if (plugin->magic != kEffectMagic){
-        std::cout << "loadVSTPlugin: not a VST plugin!" << std::endl;
+        LOG_ERROR("loadVSTPlugin: not a VST plugin!");
         return nullptr;
     }
     return new VST2Plugin(plugin, path);
@@ -180,7 +177,7 @@ std::string makeVSTPluginFilePath(const std::string& name){
 #elif defined(__APPLE__)
     const char *ext = ".vst";
 #else
-    std::cout << "makeVSTPluginFilePath: unknown platform!" << std::endl;
+    LOG_ERROR("makeVSTPluginFilePath: unknown platform!");
     return name;
 #endif
     if (dot == std::string::npos || name.find(ext, dot) == std::string::npos){

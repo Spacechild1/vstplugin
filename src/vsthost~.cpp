@@ -1,4 +1,5 @@
 #include "VSTPluginInterface.h"
+#include "Utility.h"
 
 #include "m_pd.h"
 
@@ -159,7 +160,7 @@ t_vsteditor::t_vsteditor(bool generic)
 	if (!generic){
 		e_context = XOpenDisplay(NULL);
 		if (!e_context){
-			std::cout << "couldn't open display" << std::endl;
+            LOG_WARNING("couldn't open display");
 		}
 	}
 #endif
@@ -179,11 +180,11 @@ t_vsteditor::~t_vsteditor(){
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
-    std::cout << "enter thread" << std::endl;
+    LOG_DEBUG("enter thread");
     IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
         promise.set_value(nullptr);
-        std::cout << "exit thread" << std::endl;
+        LOG_DEBUG("exit thread");
         return;
     }
     if (plugin->hasEditor() && !e_generic){
@@ -197,13 +198,13 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         plugin->getEditorRect(left, top, right, bottom);
         e_window->setGeometry(left, top, right, bottom);
 
-        std::cout << "enter message loop" << std::endl;
+        LOG_DEBUG("enter message loop");
         e_window->run();
-        std::cout << "exit message loop" << std::endl;
+        LOG_DEBUG("exit message loop");
 
         plugin->closeEditor();
     }
-    std::cout << "exit thread" << std::endl;
+    LOG_DEBUG("exit thread");
 }
 
 
@@ -338,10 +339,10 @@ static void vsthost_close(t_vsthost *x){
             // first close the thread
         x->x_editor->close_thread();
             // then free the plugin
-        std::cout << "try to close VST plugin" << std::endl;
+        LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(x->x_plugin);
         x->x_plugin = nullptr;
-        std::cout << "VST plugin closed" << std::endl;
+        LOG_DEBUG("VST plugin closed");
     }
 }
 
@@ -370,16 +371,13 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             // load VST plugin in new thread
         IVSTPlugin *plugin = x->x_editor->open_via_thread(path);
         if (plugin){
-            std::cout << "got plugin" << std::endl;
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
             plugin->setBlockSize(x->x_blocksize);
             plugin->setSampleRate(x->x_sr);
-                // plugin->resume();
             x->x_plugin = plugin;
             x->check_precision();
             x->update_buffer();
             x->x_editor->setup(x);
-            std::cout << "done open" << std::endl;
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
         }

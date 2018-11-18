@@ -21,6 +21,7 @@ cflags = -Wno-unused -Wno-unused-parameter \
 	-std=c++11 \
 	-g \
 	-I"${VST2DIR}" \
+	-DLOGLEVEL=3 \
 	$(empty)
 
 define forWindows

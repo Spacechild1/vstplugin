@@ -1,6 +1,6 @@
 #include "VST2Plugin.h"
+#include "Utility.h"
 
-#include <iostream>
 #include <fstream>
 
 /*------------------ endianess -------------------*/
@@ -249,7 +249,7 @@ void VST2Plugin::setProgram(int program){
         dispatch(effEndSetProgram);
             // update();
     } else {
-        std::cout << "program number out of range!" << std::endl;
+        LOG_WARNING("program number out of range!");
     }
 }
 
@@ -300,7 +300,7 @@ void VST2Plugin::getBankChunkData(void **data, size_t *size) const {
 bool VST2Plugin::readProgramFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){
-        std::cout << "VST2Plugin::readProgramFile: couldn't open file " << path << std::endl;
+        LOG_ERROR("VST2Plugin::readProgramFile: couldn't open file " << path);
         return false;
     }
     file.seekg(0, std::ios_base::end);
@@ -313,7 +313,7 @@ bool VST2Plugin::readProgramFile(const std::string& path){
 
 bool VST2Plugin::readProgramData(const char *data, size_t size){
     if (size < fxProgramHeaderSize){  // see vstfxstore.h
-        std::cout << "fxProgram: bad header size" << std::endl;
+        LOG_ERROR("fxProgram: bad header size");
         return false;
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
@@ -328,21 +328,21 @@ bool VST2Plugin::readProgramData(const char *data, size_t size){
     const char *prgName = data+28;
     const char *prgData = data + fxProgramHeaderSize;
     if (chunkMagic != cMagic){
-        std::cout << "fxProgram: bad format" << std::endl;
+        LOG_ERROR("fxProgram: bad format");
         return false;
     }
     if (totalSize > size){
-        std::cout << "fxProgram: too little data" << std::endl;
+        LOG_ERROR("fxProgram: too little data");
         return false;
     }
 
     if (fxMagic == fMagic){ // list of parameters
         if (hasChunkData()){
-            std::cout << "fxProgram: plugin expects chunk data" << std::endl;
+            LOG_ERROR("fxProgram: plugin expects chunk data");
             return false;
         }
         if (numParams * sizeof(float) > totalSize - fxProgramHeaderSize){
-            std::cout << "fxProgram: byte size doesn't match number of parameters" << std::endl;
+            LOG_ERROR("fxProgram: byte size doesn't match number of parameters");
             return false;
         }
         setProgramName(prgName);
@@ -352,18 +352,18 @@ bool VST2Plugin::readProgramData(const char *data, size_t size){
         }
     } else if (fxMagic == chunkPresetMagic){ // chunk data
         if (!hasChunkData()){
-            std::cout << "fxProgram: plugin doesn't expect chunk data" << std::endl;
+            LOG_ERROR("fxProgram: plugin doesn't expect chunk data");
             return false;
         }
         const size_t chunkSize = bytes_to_int32(prgData);
         if (chunkSize != totalSize - fxProgramHeaderSize - 4){
-            std::cout << "fxProgram: wrong chunk size" << std::endl;
+            LOG_ERROR("fxProgram: wrong chunk size");
             return false;
         }
         setProgramName(prgName);
         setProgramChunkData(prgData + 4, chunkSize);
     } else {
-        std::cout << "fxProgram: bad format" << std::endl;
+        LOG_ERROR("fxProgram: bad format");
         return false;
     }
     return true;
@@ -372,7 +372,7 @@ bool VST2Plugin::readProgramData(const char *data, size_t size){
 void VST2Plugin::writeProgramFile(const std::string& path){
     std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
     if (!file.is_open()){
-        std::cout << "VST2Plugin::writeProgramFile: couldn't create file " << path << std::endl;
+        LOG_ERROR("VST2Plugin::writeProgramFile: couldn't create file " << path);
         return;
     }
     std::string buffer;
@@ -421,7 +421,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
         getProgramChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
                 // shouldn't happen...
-            std::cout << "fxProgram bug: couldn't get chunk data" << std::endl;
+            LOG_ERROR("fxProgram bug: couldn't get chunk data");
             return;
         }
             // totalSize: header size + 'size' field + actual chunk data
@@ -447,7 +447,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
 bool VST2Plugin::readBankFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){
-        std::cout << "VST2Plugin::readBankFile: couldn't open file " << path << std::endl;
+        LOG_ERROR("VST2Plugin::readBankFile: couldn't open file " << path);
         return false;
     }
     file.seekg(0, std::ios_base::end);
@@ -460,7 +460,7 @@ bool VST2Plugin::readBankFile(const std::string& path){
 
 bool VST2Plugin::readBankData(const char *data, size_t size){
     if (size < fxBankHeaderSize){  // see vstfxstore.h
-        std::cout << "fxBank: bad header size" << std::endl;
+        LOG_ERROR("fxBank: bad header size");
         return false;
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
@@ -475,22 +475,22 @@ bool VST2Plugin::readBankData(const char *data, size_t size){
     const VstInt32 currentProgram = bytes_to_int32(data + 28);
     const char *bankData = data + fxBankHeaderSize;
     if (chunkMagic != cMagic){
-        std::cout << "fxBank: bad format" << std::endl;
+        LOG_ERROR("fxBank: bad format");
         return false;
     }
     if (totalSize > size){
-        std::cout << "fxBank: too little data" << std::endl;
+        LOG_ERROR("fxBank: too little data");
         return false;
     }
 
     if (fxMagic == bankMagic){ // list of parameters
         if (hasChunkData()){
-            std::cout << "fxBank: plugin expects chunk data" << std::endl;
+            LOG_ERROR("fxBank: plugin expects chunk data");
             return false;
         }
         const size_t programSize = fxProgramHeaderSize + getNumParameters() * sizeof(float);
         if (numPrograms * programSize > totalSize - fxBankHeaderSize){
-            std::cout << "fxBank: byte size doesn't match number of programs" << std::endl;
+            LOG_ERROR("fxBank: byte size doesn't match number of programs");
             return false;
         }
         for (int i = 0; i < numPrograms; ++i){
@@ -501,17 +501,17 @@ bool VST2Plugin::readBankData(const char *data, size_t size){
         setProgram(currentProgram);
     } else if (fxMagic == chunkBankMagic){ // chunk data
         if (!hasChunkData()){
-            std::cout << "fxBank: plugin doesn't expect chunk data" << std::endl;
+            LOG_ERROR("fxBank: plugin doesn't expect chunk data");
             return false;
         }
         const size_t chunkSize = bytes_to_int32(bankData);
         if (chunkSize != totalSize - fxBankHeaderSize - 4){
-            std::cout << "fxBank: wrong chunk size" << std::endl;
+            LOG_ERROR("fxBank: wrong chunk size");
             return false;
         }
         setBankChunkData(bankData + 4, chunkSize);
     } else {
-        std::cout << "fxBank: bad format" << std::endl;
+        LOG_ERROR("fxBank: bad format");
         return false;
     }
     return true;
@@ -520,7 +520,7 @@ bool VST2Plugin::readBankData(const char *data, size_t size){
 void VST2Plugin::writeBankFile(const std::string& path){
     std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
     if (!file.is_open()){
-        std::cout << "VST2Plugin::writeBankFile: couldn't create file " << path << std::endl;
+        LOG_ERROR("VST2Plugin::writeBankFile: couldn't create file " << path);
         return;
     }
     std::string buffer;
@@ -559,7 +559,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
             writeProgramData(progData);
             if (progData.size() != programSize){
                     // shouldn't happen...
-                std::cout << "fxBank bug: wrong program data size" << std::endl;
+                LOG_ERROR("fxBank bug: wrong program data size");
                 buffer.clear();
                 return;
             }
@@ -575,7 +575,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
         getBankChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
                 // shouldn't happen...
-            std::cout << "fxBank bug: couldn't get chunk data" << std::endl;
+            LOG_ERROR("fxBank bug: couldn't get chunk data");
             return;
         }
             // totalSize: header size + 'size' field + actual chunk data
@@ -617,7 +617,7 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
         right = erc->right;
         bottom = erc->bottom;
     } else {
-        std::cerr << "VST2Plugin::getEditorRect: bug!" << std::endl;
+        LOG_ERROR("VST2Plugin::getEditorRect: bug!");
     }
 }
 
@@ -650,83 +650,82 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 // Main host callback
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
-        // std::cout << "plugin requested opcode " << opcode << std::endl;
     switch(opcode) {
     case audioMasterAutomate:
-        std::cout << "opcode: audioMasterAutomate" << std::endl;
+        LOG_DEBUG("opcode: audioMasterAutomate");
         break;
     case audioMasterVersion:
-        std::cout << "opcode: audioMasterVersion" << std::endl;
+        LOG_DEBUG("opcode: audioMasterVersion");
         return 2400;
     case audioMasterCurrentId:
-        std::cout << "opcode: audioMasterCurrentId" << std::endl;
+        LOG_DEBUG("opcode: audioMasterCurrentId");
         break;
     case audioMasterIdle:
-        std::cout << "opcode: audioMasterIdle" << std::endl;
+        LOG_DEBUG("opcode: audioMasterIdle");
         plugin->dispatcher(plugin, effEditIdle, 0, 0, NULL, 0.f);
         break;
     case audioMasterGetTime:
-            // std::cout << "opcode: audioMasterGetTime" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetTime");
         break;
     case audioMasterProcessEvents:
-        std::cout << "opcode: audioMasterProcessEvents" << std::endl;
+        LOG_DEBUG("opcode: audioMasterProcessEvents");
         break;
     case audioMasterIOChanged:
-        std::cout << "opcode: audioMasterIOChanged" << std::endl;
+        LOG_DEBUG("opcode: audioMasterIOChanged");
         break;
     case audioMasterSizeWindow:
-        std::cout << "opcode: audioMasterSizeWindow" << std::endl;
+        LOG_DEBUG("opcode: audioMasterSizeWindow");
         break;
     case audioMasterGetSampleRate:
-        std::cout << "opcode: audioMasterGetSampleRate" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetSampleRate");
         break;
     case audioMasterGetBlockSize:
-        std::cout << "opcode: audioMasterGetBlockSize" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetBlockSize");
         break;
     case audioMasterGetInputLatency:
-        std::cout << "opcode: audioMasterGetInputLatency" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetInputLatency");
         break;
     case audioMasterGetOutputLatency:
-        std::cout << "opcode: audioMasterGetOutputLatency" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetOutputLatency");
         break;
     case audioMasterGetCurrentProcessLevel:
-        std::cout << "opcode: audioMasterGetCurrentProcessLevel" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetCurrentProcessLevel");
         break;
     case audioMasterGetAutomationState:
-        std::cout << "opcode: audioMasterGetAutomationState" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetAutomationState");
         break;
     case audioMasterGetVendorString:
     case audioMasterGetProductString:
     case audioMasterGetVendorVersion:
     case audioMasterVendorSpecific:
-        std::cout << "opcode: vendor info" << std::endl;
+        LOG_DEBUG("opcode: vendor info");
         break;
     case audioMasterCanDo:
-        std::cout << "opcode: audioMasterCanDo " << (const char*)ptr << std::endl;
+        LOG_DEBUG("opcode: audioMasterCanDo " << (const char*)ptr);
         break;
     case audioMasterGetLanguage:
-        std::cout << "opcode: audioMasterGetLanguage" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetLanguage");
         break;
     case audioMasterGetDirectory:
-        std::cout << "opcode: audioMasterGetDirectory" << std::endl;
+        LOG_DEBUG("opcode: audioMasterGetDirectory");
         break;
     case audioMasterUpdateDisplay:
-        std::cout << "opcode: audioMasterUpdateDisplay" << std::endl;
+        LOG_DEBUG("opcode: audioMasterUpdateDisplay");
         break;
     case audioMasterBeginEdit:
-        std::cout << "opcode: audioMasterBeginEdit" << std::endl;
+        LOG_DEBUG("opcode: audioMasterBeginEdit");
         break;
     case audioMasterEndEdit:
-        std::cout << "opcode: audioMasterEndEdit" << std::endl;
+        LOG_DEBUG("opcode: audioMasterEndEdit");
         break;
     case audioMasterOpenFileSelector:
-        std::cout << "opcode: audioMasterOpenFileSelector" << std::endl;
+        LOG_DEBUG("opcode: audioMasterOpenFileSelector");
         break;
     case audioMasterCloseFileSelector:
-        std::cout << "opcode: audioMasterCloseFileSelector" << std::endl;
+        LOG_DEBUG("opcode: audioMasterCloseFileSelector");
         break;
     default:
-        std::cout << "plugin requested unknown/deprecated opcode " << opcode << std::endl;
+        LOG_DEBUG("plugin requested unknown/deprecated opcode " << opcode);
         return 0;
     }
     return 0; // ?
