@@ -594,13 +594,13 @@ static void vsthost_midi_bend(t_vsthost *x, t_floatarg channel, t_floatarg bend)
 static void vsthost_midi_sysex(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
-    std::string sysex;
-    sysex.reserve(argc);
+    std::string data;
+    data.reserve(argc);
     for (int i = 0; i < argc; ++i){
-        sysex.push_back((unsigned char)atom_getfloat(argv+i));
+        data.push_back((unsigned char)atom_getfloat(argv+i));
     }
 
-    x->x_plugin->sendSysexEvent(VSTSysexEvent(sysex.data(), sysex.size()));
+    x->x_plugin->sendSysexEvent(VSTSysexEvent(std::move(data)));
 }
 
 // programs

@@ -250,8 +250,8 @@ void VST2Plugin::sendSysexEvent(const VSTSysexEvent &event){
     sysexevent.type = kVstSysExType;
     sysexevent.byteSize = sizeof(VstMidiSysexEvent);
     sysexevent.deltaFrames = event.delta;
-    sysexevent.dumpBytes = event.size;
-    sysexevent.sysexDump = (char *)event.data;
+    sysexevent.dumpBytes = event.data.size();
+    sysexevent.sysexDump = (char *)event.data.data();
 
     VstEvents vstevents;
     memset(&vstevents, 0, sizeof(VstEvents));

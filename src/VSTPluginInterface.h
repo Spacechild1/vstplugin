@@ -37,10 +37,13 @@ struct VSTMidiEvent {
 };
 
 struct VSTSysexEvent {
-    VSTSysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
-        : data(_data), size(_size), delta(_delta){}
-    const char *data;
-    size_t size;
+    VSTSysexEvent(const char *_data, size_t _size, int _delta = 0)
+        : data(_data, _size), delta(_delta){}
+    template <typename T>
+    VSTSysexEvent(T&& _data, int _delta = 0)
+        : data(std::forward<T>(_data)), delta(_delta){}
+    VSTSysexEvent() = default;
+    std::string data;
     int delta;
 };
 
