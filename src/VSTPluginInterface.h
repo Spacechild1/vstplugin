@@ -47,6 +47,14 @@ struct VSTSysexEvent {
     int delta;
 };
 
+class IVSTPluginListener {
+ public:
+    virtual ~IVSTPluginListener(){}
+    virtual void parameterAutomated(int index, float value) = 0;
+    virtual void midiEvent(const VSTMidiEvent& event) = 0;
+    virtual void sysexEvent(const VSTSysexEvent& event) = 0;
+};
+
 class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
@@ -69,6 +77,8 @@ class IVSTPlugin {
     virtual int getTailSize() const = 0;
     virtual bool hasBypass() const = 0;
     virtual void setBypass(bool bypass) = 0;
+
+    virtual void setListener(IVSTPluginListener *listener) = 0;
 
     virtual int getNumMidiInputChannels() const = 0;
     virtual int getNumMidiOutputChannels() const = 0;

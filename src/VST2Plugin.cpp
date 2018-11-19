@@ -119,6 +119,7 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
     : plugin_((AEffect*)plugin), path_(path)
 {
+    plugin_->user = this;
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
 }
@@ -691,17 +692,48 @@ bool VST2Plugin::canDo(const char *what) const {
     return dispatch(effCanDo, 0, 0, (void *)what) > 0;
 }
 
+void VST2Plugin::parameterAutomated(int index, float value){
+    if (listener_){
+        listener_->parameterAutomated(index, value);
+    }
+}
+
+void VST2Plugin::processEvents(VstEvents *events){
+    int n = events->numEvents;
+    for (int i = 0; i < n; ++i){
+        auto *event = events->events[i];
+        if (event->type == kVstMidiType){
+            auto *midiEvent = (VstMidiEvent *)event;
+            if (listener_){
+                auto *data = midiEvent->midiData;
+                listener_->midiEvent(VSTMidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
+            }
+        } else if (event->type == kVstSysExType){
+            auto *sysexEvent = (VstMidiSysexEvent *)event;
+            if (listener_){
+                listener_->sysexEvent(VSTSysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
+            }
+        } else {
+            LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");
+        }
+    }
+}
+
 VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt) const {
     return (plugin_->dispatcher)(plugin_, opCode, index, value, ptr, opt);
 }
 
 // Main host callback
+
+#define getuser(x) ((VST2Plugin *)(plugin->user))
+
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
     switch(opcode) {
     case audioMasterAutomate:
         LOG_DEBUG("opcode: audioMasterAutomate");
+        getuser(plugin)->parameterAutomated(index, opt);
         break;
     case audioMasterVersion:
         LOG_DEBUG("opcode: audioMasterVersion");
@@ -711,13 +743,14 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterIdle:
         LOG_DEBUG("opcode: audioMasterIdle");
-        plugin->dispatcher(plugin, effEditIdle, 0, 0, NULL, 0.f);
+        getuser(plugin)->dispatch(effEditIdle);
         break;
     case audioMasterGetTime:
         LOG_DEBUG("opcode: audioMasterGetTime");
         break;
     case audioMasterProcessEvents:
         LOG_DEBUG("opcode: audioMasterProcessEvents");
+        getuser(plugin)->processEvents((VstEvents *)ptr);
         break;
     case audioMasterIOChanged:
         LOG_DEBUG("opcode: audioMasterIOChanged");

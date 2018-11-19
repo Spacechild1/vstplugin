@@ -42,6 +42,10 @@ class VST2Plugin final : public IVSTPlugin {
     bool hasBypass() const override;
     void setBypass(bool bypass) override;
 
+    void setListener(IVSTPluginListener *listener) override {
+        listener_ = listener;
+    }
+
     int getNumMidiInputChannels() const override;
     int getNumMidiOutputChannels() const override;
     bool hasMidiInput() const override;
@@ -92,9 +96,12 @@ class VST2Plugin final : public IVSTPlugin {
     std::string getBaseName() const;
     bool hasFlag(VstAEffectFlags flag) const;
     bool canDo(const char *what) const;
+    void parameterAutomated(int index, float value);
+    void processEvents(VstEvents *events);
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
         // data members
     AEffect *plugin_ = nullptr;
+    IVSTPluginListener *listener_ = nullptr;
     std::string path_;
 };
