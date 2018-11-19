@@ -540,16 +540,8 @@ static void vsthost_midi_raw(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
     x->x_plugin->sendMidiEvent(event);
 }
 
-static void vsthost_midi_mess2(t_vsthost *x, int onset, int channel, int v){
-    t_atom atoms[2];
-    channel = std::max(1, std::min(16, (int)channel)) - 1;
-    v = std::max(0, std::min(127, v));
-    SETFLOAT(&atoms[0], channel + onset);
-    SETFLOAT(&atoms[1], v);
-    vsthost_midi_raw(x, 0, 2, atoms);
-}
-
-static void vsthost_midi_mess3(t_vsthost *x, int onset, int channel, int v1, int v2){
+// helper function
+static void vsthost_midi_mess(t_vsthost *x, int onset, int channel, int v1, int v2 = 0){
     t_atom atoms[3];
     channel = std::max(1, std::min(16, (int)channel)) - 1;
     v1 = std::max(0, std::min(127, v1));
@@ -561,34 +553,34 @@ static void vsthost_midi_mess3(t_vsthost *x, int onset, int channel, int v1, int
 }
 
 static void vsthost_midi_noteoff(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
-    vsthost_midi_mess3(x, 128, channel, pitch, velocity);
+    vsthost_midi_mess(x, 128, channel, pitch, velocity);
 }
 
 static void vsthost_midi_note(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
-    vsthost_midi_mess3(x, 144, channel, pitch, velocity);
+    vsthost_midi_mess(x, 144, channel, pitch, velocity);
 }
 
 static void vsthost_midi_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
-    vsthost_midi_mess3(x, 160, channel, pitch, pressure);
+    vsthost_midi_mess(x, 160, channel, pitch, pressure);
 }
 
 static void vsthost_midi_cc(t_vsthost *x, t_floatarg channel, t_floatarg ctl, t_floatarg value){
-    vsthost_midi_mess3(x, 176, channel, ctl, value);
+    vsthost_midi_mess(x, 176, channel, ctl, value);
 }
 
 static void vsthost_midi_program_change(t_vsthost *x, t_floatarg channel, t_floatarg program){
-   vsthost_midi_mess2(x, 192, channel, program);
+   vsthost_midi_mess(x, 192, channel, program);
 }
 
 static void vsthost_midi_channel_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pressure){
-    vsthost_midi_mess2(x, 208, channel, pressure);
+    vsthost_midi_mess(x, 208, channel, pressure);
 }
 
 static void vsthost_midi_bend(t_vsthost *x, t_floatarg channel, t_floatarg bend){
         // map from [-1.f, 1.f] to [0, 16383] (14 bit)
     int val = (bend + 1.f) * 8192.f; // 8192 is the center position
     val = std::max(0, std::min(16383, val));
-    vsthost_midi_mess3(x, 224, channel, val & 127, (val >> 7) & 127);
+    vsthost_midi_mess(x, 224, channel, val & 127, (val >> 7) & 127);
 }
 
 static void vsthost_midi_sysex(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
