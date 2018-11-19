@@ -28,6 +28,22 @@ namespace VSTWindowFactory {
     IVSTWindow* create(void *context = nullptr);
 }
 
+struct VSTMidiEvent {
+    VSTMidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
+        data[0] = status; data[1] = data1; data[2] = data2; delta = _delta;
+    }
+    char data[3];
+    int delta;
+};
+
+struct VSTSysexEvent {
+    VSTSysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
+        : data(_data), size(_size), delta(_delta){}
+    const char *data;
+    size_t size;
+    int delta;
+};
+
 class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
@@ -50,6 +66,13 @@ class IVSTPlugin {
     virtual int getTailSize() const = 0;
     virtual bool hasBypass() const = 0;
     virtual void setBypass(bool bypass) = 0;
+
+    virtual int getNumMidiInputChannels() const = 0;
+    virtual int getNumMidiOutputChannels() const = 0;
+    virtual bool hasMidiInput() const = 0;
+    virtual bool hasMidiOutput() const = 0;
+    virtual void sendMidiEvent(const VSTMidiEvent& event) = 0;
+    virtual void sendSysexEvent(const VSTSysexEvent& event) = 0;
 
     virtual void setParameter(int index, float value) = 0;
     virtual float getParameter(int index) const = 0;

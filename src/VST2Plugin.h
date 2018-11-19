@@ -42,6 +42,13 @@ class VST2Plugin final : public IVSTPlugin {
     bool hasBypass() const override;
     void setBypass(bool bypass) override;
 
+    int getNumMidiInputChannels() const override;
+    int getNumMidiOutputChannels() const override;
+    bool hasMidiInput() const override;
+    bool hasMidiOutput() const override;
+    void sendMidiEvent(const VSTMidiEvent& event) override;
+    void sendSysexEvent(const VSTSysexEvent& event) override;
+
     void setParameter(int index, float value) override;
     float getParameter(int index) const override;
     std::string getParameterName(int index) const override;

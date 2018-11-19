@@ -212,6 +212,55 @@ void VST2Plugin::setBypass(bool bypass){
     dispatch(effSetBypass, 0, bypass);
 }
 
+int VST2Plugin::getNumMidiInputChannels() const {
+    return dispatch(effGetNumMidiInputChannels);
+}
+
+int VST2Plugin::getNumMidiOutputChannels() const {
+    return dispatch(effGetNumMidiOutputChannels);
+}
+
+bool VST2Plugin::hasMidiInput() const {
+    return canDo("receiveVstMidiEvents");
+}
+
+bool VST2Plugin::hasMidiOutput() const {
+    return canDo("sendVstMidiEvents");
+}
+
+void VST2Plugin::sendMidiEvent(const VSTMidiEvent &event){
+    VstMidiEvent midievent;
+    memset(&midievent, 0, sizeof(VstMidiEvent));
+    midievent.type = kVstMidiType;
+    midievent.byteSize = sizeof(VstMidiEvent);
+    midievent.deltaFrames = event.delta;
+    memcpy(&midievent.midiData, &event.data, sizeof(event.data));
+
+    VstEvents vstevents;
+    memset(&vstevents, 0, sizeof(VstEvents));
+    vstevents.numEvents = 1;
+    vstevents.events[0] = (VstEvent *)&midievent;
+
+    dispatch(effProcessEvents, 0, 0, &vstevents);
+}
+
+void VST2Plugin::sendSysexEvent(const VSTSysexEvent &event){
+    VstMidiSysexEvent sysexevent;
+    memset(&sysexevent, 0, sizeof(VstMidiSysexEvent));
+    sysexevent.type = kVstSysExType;
+    sysexevent.byteSize = sizeof(VstMidiSysexEvent);
+    sysexevent.deltaFrames = event.delta;
+    sysexevent.dumpBytes = event.size;
+    sysexevent.sysexDump = (char *)event.data;
+
+    VstEvents vstevents;
+    memset(&vstevents, 0, sizeof(VstEvents));
+    vstevents.numEvents = 1;
+    vstevents.events[0] = (VstEvent *)&sysexevent;
+
+    dispatch(effProcessEvents, 0, 0, &vstevents);
+}
+
 void VST2Plugin::setParameter(int index, float value){
     plugin_->setParameter(plugin_, index, value);
 }
