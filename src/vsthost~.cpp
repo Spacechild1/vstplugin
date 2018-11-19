@@ -93,14 +93,15 @@ class t_vstparam {
     int p_index;
 };
 
-static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value);
+static void vsthost_param_doset(t_vsthost *x, int index, float value, bool automated);
 
+    // called when moving a slider in the generic GUI
 static void vstparam_float(t_vstparam *x, t_floatarg f){
-    vsthost_param_set(x->p_owner, x->p_index, f);
+    vsthost_param_doset(x->p_owner, x->p_index, f, true);
 }
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
-        // this method updates the display next to the label
+        // this method updates the display next to the label. implicitly called by t_vstparam::set
     IVSTPlugin *plugin = x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
@@ -116,7 +117,7 @@ static void vstparam_setup(){
 }
 
 // VST editor
-class t_vsteditor {
+class t_vsteditor : IVSTPluginListener {
  public:
     t_vsteditor(t_vsthost &owner, bool generic);
     ~t_vsteditor();
@@ -128,7 +129,9 @@ class t_vsteditor {
     void setup();
         // update the parameter displays
     void update();
-    void set_param(int index, float value);
+        // notify generic GUI for parameter changes
+    void set_param(int index, float value, bool automated = false);
+        // show/hide window
     void vis(bool v);
     IVSTWindow *window(){
         return e_window.get();
@@ -137,6 +140,11 @@ class t_vsteditor {
         return e_canvas;
     }
  private:
+        // plugin callbacks
+    void parameterAutomated(int index, float value) override;
+    void midiEvent(const VSTMidiEvent& event) override;
+    void sysexEvent(const VSTSysexEvent& event) override;
+        // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
         pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
     }
@@ -145,6 +153,7 @@ class t_vsteditor {
         pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
     void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
+    static void tick(t_vsteditor *x);
         // data
     t_vsthost *e_owner;
     std::thread e_thread;
@@ -153,6 +162,12 @@ class t_vsteditor {
     t_canvas *e_canvas = nullptr;
     void *e_context = nullptr;
     std::vector<t_vstparam> e_params;
+        // message out
+    t_clock *e_clock;
+    std::mutex e_mutex;
+    std::vector<std::pair<int, float>> e_automated;
+    std::vector<VSTMidiEvent> e_midi;
+    std::vector<VSTSysexEvent> e_sysex;
 };
 
 t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
@@ -170,6 +185,8 @@ t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
     e_canvas = (t_canvas *)s__X.s_thing;
     send_vmess(gensym("pop"), "i", 0);
     glob_setfilename(0, &s_, &s_);
+
+    e_clock = clock_new(this, (t_method)tick);
 }
 
 t_vsteditor::~t_vsteditor(){
@@ -178,6 +195,62 @@ t_vsteditor::~t_vsteditor(){
 		XCloseDisplay((Display *)e_context);
 	}
 #endif
+    clock_free(e_clock);
+}
+
+    // parameter automation notification will most likely come from the GUI thread
+void t_vsteditor::parameterAutomated(int index, float value){
+    e_mutex.lock();
+    e_automated.push_back(std::make_pair(index, value));
+    e_mutex.unlock();
+    sys_lock();
+    clock_delay(e_clock, 0);
+    sys_unlock();
+}
+
+    // MIDI and SysEx events should only be called from the audio thread
+void t_vsteditor::midiEvent(const VSTMidiEvent &event){
+    e_midi.push_back(event);
+    clock_delay(e_clock, 0);
+}
+
+void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
+    e_sysex.push_back(event);
+    clock_delay(e_clock, 0);
+}
+
+void t_vsteditor::tick(t_vsteditor *x){
+    t_outlet *outlet = x->e_owner->x_messout;
+        // automated parameters (needs thread synchronization):
+    x->e_mutex.lock();
+    for (auto& param : x->e_automated){
+        t_atom msg[2];
+        SETFLOAT(&msg[0], param.first); // index
+        SETFLOAT(&msg[1], param.second); // value
+        outlet_anything(outlet, gensym("param_automated"), 2, msg);
+    }
+    x->e_automated.clear();
+    x->e_mutex.unlock();
+        // midi events:
+    for (auto& midi : x->e_midi){
+        t_atom msg[3];
+        SETFLOAT(&msg[0], (unsigned char)midi.data[0]);
+        SETFLOAT(&msg[1], (unsigned char)midi.data[1]);
+        SETFLOAT(&msg[2], (unsigned char)midi.data[2]);
+        outlet_anything(outlet, gensym("midi"), 3, msg);
+    }
+    x->e_midi.clear();
+        // sysex events:
+    for (auto& sysex : x->e_sysex){
+        std::vector<t_atom> msg;
+        int n = sysex.data.size();
+        msg.resize(n);
+        for (int i = 0; i < n; ++i){
+            SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
+        }
+        outlet_anything(outlet, gensym("midi"), n, msg.data());
+    }
+    x->e_sysex.clear();
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
@@ -191,6 +264,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
     if (plugin->hasEditor() && !e_generic){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(e_context));
     }
+    plugin->setListener(this);
     promise.set_value(plugin);
     if (e_window){
         e_window->setTitle(plugin->getPluginName());
@@ -318,9 +392,14 @@ void t_vsteditor::update(){
     }
 }
 
-void t_vsteditor::set_param(int index, float value){
+    // automated: true if parameter change comes from the (generic) GUI
+void t_vsteditor::set_param(int index, float value, bool automated){
     if (!e_window && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
+        if (automated){
+            e_automated.push_back(std::make_pair(index, value));
+            clock_delay(e_clock, 0);
+        }
     }
 }
 
@@ -442,16 +521,20 @@ static void vsthost_precision(t_vsthost *x, t_floatarg f){
 }
 
 // parameters
-static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
+static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value){
     if (!x->check_plugin()) return;
-    int index = _index;
+    vsthost_param_doset(x, index, value, false);
+}
+
+    // automated: true if parameter was set from the (generic) GUI, false if set by message ("param_set")
+static void vsthost_param_doset(t_vsthost *x, int index, float value, bool automated){
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
-        x->x_editor->set_param(index, value);
-	} else {
+        x->x_editor->set_param(index, value, automated);
+    } else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
-	}
+    }
 }
 
 static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
