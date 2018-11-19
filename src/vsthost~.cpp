@@ -400,6 +400,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
 
 static void vsthost_info(t_vsthost *x){
     if (!x->check_plugin()) return;
+    post("~~~ VST plugin info ~~~");
     post("name: %s", x->x_plugin->getPluginName().c_str());
     post("version: %d", x->x_plugin->getPluginVersion());
     post("input channels: %d", x->x_plugin->getNumInputs());
@@ -409,6 +410,9 @@ static void vsthost_info(t_vsthost *x){
     post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
     post("number of parameters: %d", x->x_plugin->getNumParameters());
     post("number of programs: %d", x->x_plugin->getNumPrograms());
+    post("synth: %s", x->x_plugin->isSynth() ? "yes" : "no");
+    post("midi input: %s", x->x_plugin->hasMidiInput() ? "yes" : "no");
+    post("midi output: %s", x->x_plugin->hasMidiOutput() ? "yes" : "no");
     post("");
 }
 
@@ -523,6 +527,80 @@ static void vsthost_param_dump(t_vsthost *x){
     for (int i = 0; i < n; ++i){
         vsthost_param_get(x, i);
     }
+}
+
+// MIDI
+static void vsthost_midi_raw(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+
+    VSTMidiEvent event;
+    for (int i = 0; i < 3 && i < argc; ++i){
+        event.data[i] = atom_getfloat(argv + i);
+    }
+    x->x_plugin->sendMidiEvent(event);
+}
+
+static void vsthost_midi_mess2(t_vsthost *x, int onset, int channel, int v){
+    t_atom atoms[2];
+    channel = std::max(1, std::min(16, (int)channel)) - 1;
+    v = std::max(0, std::min(127, v));
+    SETFLOAT(&atoms[0], channel + onset);
+    SETFLOAT(&atoms[1], v);
+    vsthost_midi_raw(x, 0, 2, atoms);
+}
+
+static void vsthost_midi_mess3(t_vsthost *x, int onset, int channel, int v1, int v2){
+    t_atom atoms[3];
+    channel = std::max(1, std::min(16, (int)channel)) - 1;
+    v1 = std::max(0, std::min(127, v1));
+    v2 = std::max(0, std::min(127, v2));
+    SETFLOAT(&atoms[0], channel + onset);
+    SETFLOAT(&atoms[1], v1);
+    SETFLOAT(&atoms[2], v2);
+    vsthost_midi_raw(x, 0, 3, atoms);
+}
+
+static void vsthost_midi_noteoff(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    vsthost_midi_mess3(x, 128, channel, pitch, velocity);
+}
+
+static void vsthost_midi_note(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    vsthost_midi_mess3(x, 144, channel, pitch, velocity);
+}
+
+static void vsthost_midi_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
+    vsthost_midi_mess3(x, 160, channel, pitch, pressure);
+}
+
+static void vsthost_midi_cc(t_vsthost *x, t_floatarg channel, t_floatarg ctl, t_floatarg value){
+    vsthost_midi_mess3(x, 176, channel, ctl, value);
+}
+
+static void vsthost_midi_program_change(t_vsthost *x, t_floatarg channel, t_floatarg program){
+   vsthost_midi_mess2(x, 192, channel, program);
+}
+
+static void vsthost_midi_channel_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pressure){
+    vsthost_midi_mess2(x, 208, channel, pressure);
+}
+
+static void vsthost_midi_bend(t_vsthost *x, t_floatarg channel, t_floatarg bend){
+        // map from [-1.f, 1.f] to [0, 16383] (14 bit)
+    int val = (bend + 1.f) * 8192.f; // 8192 is the center position
+    val = std::max(0, std::min(16383, val));
+    vsthost_midi_mess3(x, 224, channel, val & 127, (val >> 7) & 127);
+}
+
+static void vsthost_midi_sysex(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+
+    std::string sysex;
+    sysex.reserve(argc);
+    for (int i = 0; i < argc; ++i){
+        sysex.push_back((unsigned char)atom_getfloat(argv+i));
+    }
+
+    x->x_plugin->sendSysexEvent(VSTSysexEvent(sysex.data(), sysex.size()));
 }
 
 // programs
@@ -1026,6 +1104,16 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_dump, gensym("param_dump"), A_NULL);
+        // midi
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_program_change, gensym("midi_program_change"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_aftertouch, gensym("midi_aftertouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_channel_aftertouch, gensym("midi_channel_aftertouch"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_sysex, gensym("midi_sysex"), A_GIMME, A_NULL);
         // programs
     class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
