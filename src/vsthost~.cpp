@@ -153,10 +153,12 @@ class t_vsteditor : IVSTPluginListener {
         pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
     void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
+    void set_clock();
     static void tick(t_vsteditor *x);
         // data
     t_vsthost *e_owner;
     std::thread e_thread;
+    std::thread::id e_mainthread;
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
     t_canvas *e_canvas = nullptr;
@@ -171,7 +173,7 @@ class t_vsteditor : IVSTPluginListener {
 };
 
 t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
-    : e_owner(&owner), e_generic(generic){
+    : e_owner(&owner), e_mainthread(std::this_thread::get_id()), e_generic(generic){
 #if USE_X11
 	if (!generic){
 		e_context = XOpenDisplay(NULL);
@@ -203,26 +205,40 @@ void t_vsteditor::parameterAutomated(int index, float value){
     e_mutex.lock();
     e_automated.push_back(std::make_pair(index, value));
     e_mutex.unlock();
-    sys_lock();
-    clock_delay(e_clock, 0);
-    sys_unlock();
+    set_clock();
 }
 
-    // MIDI and SysEx events should only be called from the audio thread
+    // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
 void t_vsteditor::midiEvent(const VSTMidiEvent &event){
+    e_mutex.lock();
     e_midi.push_back(event);
-    clock_delay(e_clock, 0);
+    e_mutex.unlock();
+    set_clock();
 }
 
 void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
+    e_mutex.lock();
     e_sysex.push_back(event);
+    e_mutex.unlock();
+    set_clock();
+}
+
+void t_vsteditor::set_clock(){
+        // sys_lock / sys_unlock are not recursive so we check if we are in the main thread
+    auto id = std::this_thread::get_id();
+    if (id != e_mainthread){
+        sys_lock();
+    }
     clock_delay(e_clock, 0);
+    if (id != e_mainthread){
+        sys_unlock();
+    }
 }
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
-        // automated parameters (needs thread synchronization):
     x->e_mutex.lock();
+        // automated parameters:
     for (auto& param : x->e_automated){
         t_atom msg[2];
         SETFLOAT(&msg[0], param.first); // index
@@ -230,7 +246,6 @@ void t_vsteditor::tick(t_vsteditor *x){
         outlet_anything(outlet, gensym("param_automated"), 2, msg);
     }
     x->e_automated.clear();
-    x->e_mutex.unlock();
         // midi events:
     for (auto& midi : x->e_midi){
         t_atom msg[3];
@@ -251,6 +266,8 @@ void t_vsteditor::tick(t_vsteditor *x){
         outlet_anything(outlet, gensym("midi"), n, msg.data());
     }
     x->e_sysex.clear();
+
+    x->e_mutex.unlock();
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
