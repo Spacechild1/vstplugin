@@ -227,11 +227,13 @@ void t_vsteditor::set_clock(){
         // sys_lock / sys_unlock are not recursive so we check if we are in the main thread
     auto id = std::this_thread::get_id();
     if (id != e_mainthread){
+        // LOG_DEBUG("lock");
         sys_lock();
     }
     clock_delay(e_clock, 0);
     if (id != e_mainthread){
         sys_unlock();
+        // LOG_DEBUG("unlocked");
     }
 }
 

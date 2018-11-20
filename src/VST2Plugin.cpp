@@ -116,9 +116,17 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 
 /*/////////////////////// VST2Plugin /////////////////////////////*/
 
+// initial size of VstEvents queue (can grow later as needed)
+#define DEFAULT_EVENT_QUEUE_SIZE 64
+
 VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
     : plugin_((AEffect*)plugin), path_(path)
 {
+        // create VstEvents structure holding VstEvent pointers
+    vstEvents_ = (VstEvents *)malloc(sizeof(VstEvents) + DEFAULT_EVENT_QUEUE_SIZE * sizeof(VstEvent *));
+    memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
+    vstEventQueueSize_ = DEFAULT_EVENT_QUEUE_SIZE;
+
     plugin_->user = this;
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
@@ -126,6 +134,9 @@ VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
 
 VST2Plugin::~VST2Plugin(){
     dispatch(effClose);
+
+    clearEventQueue();
+    free(vstEvents_);
 }
 
 std::string VST2Plugin::getPluginName() const {
@@ -149,16 +160,20 @@ int VST2Plugin::getPluginUniqueID() const {
 
 void VST2Plugin::process(float **inputs,
     float **outputs, VstInt32 sampleFrames){
+    processEventQueue();
     if (plugin_->processReplacing){
         (plugin_->processReplacing)(plugin_, inputs, outputs, sampleFrames);
     }
+    clearEventQueue();
 }
 
 void VST2Plugin::processDouble(double **inputs,
     double **outputs, VstInt32 sampleFrames){
+    processEventQueue();
     if (plugin_->processDoubleReplacing){
         (plugin_->processDoubleReplacing)(plugin_, inputs, outputs, sampleFrames);
     }
+    clearEventQueue();
 }
 
 bool VST2Plugin::hasSinglePrecision() const {
@@ -237,12 +252,9 @@ void VST2Plugin::sendMidiEvent(const VSTMidiEvent &event){
     midievent.deltaFrames = event.delta;
     memcpy(&midievent.midiData, &event.data, sizeof(event.data));
 
-    VstEvents vstevents;
-    memset(&vstevents, 0, sizeof(VstEvents));
-    vstevents.numEvents = 1;
-    vstevents.events[0] = (VstEvent *)&midievent;
+    midiQueue_.push_back(midievent);
 
-    dispatch(effProcessEvents, 0, 0, &vstevents);
+    vstEvents_->numEvents++;
 }
 
 void VST2Plugin::sendSysexEvent(const VSTSysexEvent &event){
@@ -252,14 +264,13 @@ void VST2Plugin::sendSysexEvent(const VSTSysexEvent &event){
     sysexevent.byteSize = sizeof(VstMidiSysexEvent);
     sysexevent.deltaFrames = event.delta;
     sysexevent.dumpBytes = event.data.size();
-    sysexevent.sysexDump = (char *)event.data.data();
+    sysexevent.sysexDump = (char *)malloc(sysexevent.dumpBytes);
+        // copy the sysex data (LATER figure out how to avoid this)
+    memcpy(sysexevent.sysexDump, event.data.data(), sysexevent.dumpBytes);
 
-    VstEvents vstevents;
-    memset(&vstevents, 0, sizeof(VstEvents));
-    vstevents.numEvents = 1;
-    vstevents.events[0] = (VstEvent *)&sysexevent;
+    sysexQueue_.push_back(sysexevent);
 
-    dispatch(effProcessEvents, 0, 0, &vstevents);
+    vstEvents_->numEvents++;
 }
 
 void VST2Plugin::setParameter(int index, float value){
@@ -704,6 +715,44 @@ void VST2Plugin::parameterAutomated(int index, float value){
     }
 }
 
+void VST2Plugin::processEventQueue(){
+    int numEvents = vstEvents_->numEvents;
+    while (numEvents > vstEventQueueSize_){
+        LOG_DEBUG("processEventQueue: grow (numEvents " << numEvents << ", old size " << vstEventQueueSize_<< ")");
+            // always grow (doubling the memory), never shrink
+        vstEvents_ = (VstEvents *)realloc(vstEvents_, sizeof(VstEvents) + 2 * vstEventQueueSize_ * sizeof(VstEvent *));
+        vstEventQueueSize_ *= 2;
+        memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
+        vstEvents_->numEvents = numEvents;
+    }
+        // set VstEvent pointers here to ensure they are all valid
+    int n = 0;
+    for (auto& midi : midiQueue_){
+        vstEvents_->events[n++] = (VstEvent *)&midi;
+    }
+    for (auto& sysex : sysexQueue_){
+        vstEvents_->events[n++] = (VstEvent *)&sysex;
+    }
+    if (n != numEvents){
+        LOG_ERROR("processEventQueue bug!");
+        return;
+    }
+        // always call this, even if there are no events. some plugins depend on this...
+    dispatch(effProcessEvents, 0, 0, vstEvents_);
+}
+
+void VST2Plugin::clearEventQueue(){
+        // clear midi events
+    midiQueue_.clear();
+        // clear sysex events
+    for (auto& sysex : sysexQueue_){
+        free(sysex.sysexDump);
+    }
+    sysexQueue_.clear();
+        // 'clear' VstEvents array
+    vstEvents_->numEvents = 0;
+}
+
 void VST2Plugin::processEvents(VstEvents *events){
     int n = events->numEvents;
     for (int i = 0; i < n; ++i){
@@ -756,7 +805,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         }
         break;
     case audioMasterGetTime:
-        LOG_DEBUG("opcode: audioMasterGetTime");
+        // LOG_DEBUG("opcode: audioMasterGetTime");
         break;
     case audioMasterProcessEvents:
         LOG_DEBUG("opcode: audioMasterProcessEvents");

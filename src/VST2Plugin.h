@@ -2,6 +2,8 @@
 
 #include "VSTPluginInterface.h"
 
+#include <vector>
+
 //#include "aeffect.h"
 #include "aeffectx.h"
 // #include "vstfxstore.h"
@@ -98,6 +100,10 @@ class VST2Plugin final : public IVSTPlugin {
     bool canDo(const char *what) const;
     bool canHostDo(const char *what) const;
     void parameterAutomated(int index, float value);
+        // VST events from host
+    void processEventQueue();
+    void clearEventQueue();
+        // VST events from plugin
     void processEvents(VstEvents *events);
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
@@ -105,4 +111,10 @@ class VST2Plugin final : public IVSTPlugin {
     AEffect *plugin_ = nullptr;
     IVSTPluginListener *listener_ = nullptr;
     std::string path_;
+        // buffers for incoming MIDI and SysEx events
+    std::vector<VstMidiEvent> midiQueue_;
+    std::vector<VstMidiSysexEvent> sysexQueue_;
+        // VstEvents is basically an array of VstEvent pointers
+    VstEvents *vstEvents_;
+    int vstEventQueueSize_ = 0;
 };
