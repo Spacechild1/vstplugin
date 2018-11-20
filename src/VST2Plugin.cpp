@@ -733,7 +733,9 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     switch(opcode) {
     case audioMasterAutomate:
         LOG_DEBUG("opcode: audioMasterAutomate");
-        getuser(plugin)->parameterAutomated(index, opt);
+        if (plugin->user){
+            getuser(plugin)->parameterAutomated(index, opt);
+        }
         break;
     case audioMasterVersion:
         LOG_DEBUG("opcode: audioMasterVersion");
@@ -743,14 +745,18 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterIdle:
         LOG_DEBUG("opcode: audioMasterIdle");
-        getuser(plugin)->dispatch(effEditIdle);
+        if (plugin->user){
+            getuser(plugin)->dispatch(effEditIdle);
+        }
         break;
     case audioMasterGetTime:
         LOG_DEBUG("opcode: audioMasterGetTime");
         break;
     case audioMasterProcessEvents:
         LOG_DEBUG("opcode: audioMasterProcessEvents");
-        getuser(plugin)->processEvents((VstEvents *)ptr);
+        if (plugin->user){
+            getuser(plugin)->processEvents((VstEvents *)ptr);
+        }
         break;
     case audioMasterIOChanged:
         LOG_DEBUG("opcode: audioMasterIOChanged");
