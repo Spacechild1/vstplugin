@@ -692,6 +692,12 @@ bool VST2Plugin::canDo(const char *what) const {
     return dispatch(effCanDo, 0, 0, (void *)what) > 0;
 }
 
+bool VST2Plugin::canHostDo(const char *what) const {
+    bool result = !strcmp(what, "sendVstMidiEvent")
+            || !strcmp(what, "receiveVstMidiEvent");
+    return result;
+}
+
 void VST2Plugin::parameterAutomated(int index, float value){
     if (listener_){
         listener_->parameterAutomated(index, value);
@@ -790,6 +796,9 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterCanDo:
         LOG_DEBUG("opcode: audioMasterCanDo " << (const char*)ptr);
+        if (plugin->user){
+            return getuser(plugin)->canHostDo((const char *)ptr);
+        }
         break;
     case audioMasterGetLanguage:
         LOG_DEBUG("opcode: audioMasterGetLanguage");

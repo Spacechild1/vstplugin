@@ -96,6 +96,7 @@ class VST2Plugin final : public IVSTPlugin {
     std::string getBaseName() const;
     bool hasFlag(VstAEffectFlags flag) const;
     bool canDo(const char *what) const;
+    bool canHostDo(const char *what) const;
     void parameterAutomated(int index, float value);
     void processEvents(VstEvents *events);
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
