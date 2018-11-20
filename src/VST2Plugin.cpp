@@ -222,11 +222,11 @@ int VST2Plugin::getNumMidiOutputChannels() const {
 }
 
 bool VST2Plugin::hasMidiInput() const {
-    return canDo("receiveVstMidiEvents");
+    return canDo("receiveVstMidiEvent");
 }
 
 bool VST2Plugin::hasMidiOutput() const {
-    return canDo("sendVstMidiEvents");
+    return canDo("sendVstMidiEvent");
 }
 
 void VST2Plugin::sendMidiEvent(const VSTMidiEvent &event){
