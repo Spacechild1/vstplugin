@@ -21,6 +21,7 @@ cflags = -Wno-unused -Wno-unused-parameter \
 	-std=c++11 \
 	-g \
 	-I"${VST2DIR}" \
+	-DLOGLEVEL=3 \
 	$(empty)
 
 define forWindows
@@ -39,6 +40,6 @@ endef
 
 
 # all extra files to be included in binary distribution of the library
-datafiles = 
+datafiles = vsthost~-help.pd
 
 include pd-lib-builder/Makefile.pdlibbuilder

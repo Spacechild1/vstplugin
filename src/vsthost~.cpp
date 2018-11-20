@@ -1,4 +1,5 @@
 #include "VSTPluginInterface.h"
+#include "Utility.h"
 
 #include "m_pd.h"
 
@@ -55,7 +56,8 @@ struct t_vsthost {
     int x_noutbuf;
     void **x_outbufvec;
         // helper methods
-    bool check();
+    bool check_plugin();
+    void check_precision();
     void update_buffer();
 };
 
@@ -116,16 +118,16 @@ static void vstparam_setup(){
 // VST editor
 class t_vsteditor {
  public:
-    t_vsteditor(bool generic);
+    t_vsteditor(t_vsthost &owner, bool generic);
     ~t_vsteditor();
         // try to open the plugin in a new thread and start the message loop (if needed)
     IVSTPlugin* open_via_thread(const char* path);
         // terminate the message loop and wait for the thread to finish
     void close_thread();
         // setup the generic Pd editor
-    void setup(t_vsthost *x);
+    void setup();
         // update the parameter displays
-    void update(t_vsthost *x);
+    void update();
     void set_param(int index, float value);
     void vis(bool v);
     IVSTWindow *window(){
@@ -144,6 +146,7 @@ class t_vsteditor {
     }
     void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
         // data
+    t_vsthost *e_owner;
     std::thread e_thread;
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
@@ -152,13 +155,13 @@ class t_vsteditor {
     std::vector<t_vstparam> e_params;
 };
 
-t_vsteditor::t_vsteditor(bool generic)
-    : e_generic(generic){
+t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
+    : e_owner(&owner), e_generic(generic){
 #if USE_X11
 	if (!generic){
 		e_context = XOpenDisplay(NULL);
 		if (!e_context){
-			std::cout << "couldn't open display" << std::endl;
+            LOG_WARNING("couldn't open display");
 		}
 	}
 #endif
@@ -178,11 +181,11 @@ t_vsteditor::~t_vsteditor(){
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
-    std::cout << "enter thread" << std::endl;
+    LOG_DEBUG("enter thread");
     IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
         promise.set_value(nullptr);
-        std::cout << "exit thread" << std::endl;
+        LOG_DEBUG("exit thread");
         return;
     }
     if (plugin->hasEditor() && !e_generic){
@@ -195,16 +198,22 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         int left, top, right, bottom;
         plugin->getEditorRect(left, top, right, bottom);
         e_window->setGeometry(left, top, right, bottom);
-        std::cout << "enter message loop" << std::endl;
+
+        LOG_DEBUG("enter message loop");
         e_window->run();
-        std::cout << "exit message loop" << std::endl;
+        LOG_DEBUG("exit message loop");
 
         plugin->closeEditor();
+            // some plugins expect to released in the same thread where they have been created
+        LOG_DEBUG("try to close VST plugin");
+        freeVSTPlugin(e_owner->x_plugin);
+        e_owner->x_plugin = nullptr;
+        LOG_DEBUG("VST plugin closed");
     }
-    std::cout << "exit thread" << std::endl;
+    LOG_DEBUG("exit thread");
 }
 
-
+// creates a new thread where the plugin is created and the message loop runs (if needed)
 IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
     std::promise<IVSTPlugin *> promise;
     auto future = promise.get_future();
@@ -213,24 +222,24 @@ IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
 }
 
 void t_vsteditor::close_thread(){
-        // destroying the window will terminate the message loop
+        // destroying the window will terminate the message loop and release the plugin
     e_window = nullptr;
-        // now join the thread (will call plugin->closeEditor())
+        // now join the thread
     if (e_thread.joinable()){
         e_thread.join();
     }
 }
 
-void t_vsteditor::setup(t_vsthost *x){
-    if (!x->check()) return;
+void t_vsteditor::setup(){
+    if (!e_owner->check_plugin()) return;
 
-    int nparams = x->x_plugin->getNumParameters();
+    int nparams = e_owner->x_plugin->getNumParameters();
     e_params.clear();
     e_params.reserve(nparams);
     for (int i = 0; i < nparams; ++i){
-        e_params.emplace_back(x, i);
+        e_params.emplace_back(e_owner, i);
     }
-    send_vmess(gensym("rename"), (char *)"s", gensym(x->x_plugin->getPluginName().c_str()));
+    send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
     send_mess(gensym("clear"));
         // slider
     t_atom slider[21];
@@ -280,7 +289,7 @@ void t_vsteditor::setup(t_vsthost *x){
         SETSYMBOL(slider+9, e_params[i].p_name);
         SETSYMBOL(slider+10, e_params[i].p_name);
         char buf[64];
-        snprintf(buf, sizeof(buf), "%d: %s", i, x->x_plugin->getParameterName(i).c_str());
+        snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create number box
@@ -295,16 +304,16 @@ void t_vsteditor::setup(t_vsthost *x){
     send_vmess(gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
     send_vmess(gensym("vis"), "i", 0);
 
-    update(x);
+    update();
 }
 
-void t_vsteditor::update(t_vsthost *x){
-    if (!x->check()) return;
+void t_vsteditor::update(){
+    if (!e_owner->check_plugin()) return;
 
-    if (!x->x_plugin->hasEditor() || e_generic){
-        int n = x->x_plugin->getNumParameters();
+    if (!e_owner->x_plugin->hasEditor() || e_generic){
+        int n = e_owner->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
-            set_param(i, x->x_plugin->getParameter(i));
+            set_param(i, e_owner->x_plugin->getParameter(i));
         }
     }
 }
@@ -333,13 +342,15 @@ void t_vsteditor::vis(bool v){
 static void vsthost_close(t_vsthost *x){
     if (x->x_plugin){
         x->x_editor->vis(0);
-            // first close the thread
+            // first close the thread (might already free the plugin)
         x->x_editor->close_thread();
-            // then free the plugin
-        std::cout << "try to close VST plugin" << std::endl;
-        freeVSTPlugin(x->x_plugin);
-        x->x_plugin = nullptr;
-        std::cout << "VST plugin closed" << std::endl;
+            // then free the plugin if necessary
+        if (x->x_plugin){
+            LOG_DEBUG("try to close VST plugin");
+            freeVSTPlugin(x->x_plugin);
+            x->x_plugin = nullptr;
+            LOG_DEBUG("VST plugin closed");
+        }
     }
 }
 
@@ -368,15 +379,13 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             // load VST plugin in new thread
         IVSTPlugin *plugin = x->x_editor->open_via_thread(path);
         if (plugin){
-            std::cout << "got plugin" << std::endl;
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
             plugin->setBlockSize(x->x_blocksize);
             plugin->setSampleRate(x->x_sr);
-                // plugin->resume();
             x->x_plugin = plugin;
+            x->check_precision();
             x->update_buffer();
-            x->x_editor->setup(x);
-            std::cout << "done open" << std::endl;
+            x->x_editor->setup();
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
         }
@@ -390,7 +399,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
 }
 
 static void vsthost_info(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     post("name: %s", x->x_plugin->getPluginName().c_str());
     post("version: %d", x->x_plugin->getPluginVersion());
     post("input channels: %d", x->x_plugin->getNumInputs());
@@ -405,10 +414,17 @@ static void vsthost_info(t_vsthost *x){
 
 static void vsthost_bypass(t_vsthost *x, t_floatarg f){
     x->x_bypass = (f != 0);
+    if (x->x_plugin){
+        if (x->x_bypass){
+            x->x_plugin->suspend();
+        } else {
+            x->x_plugin->resume();
+        }
+    }
 }
 
 static void vsthost_vis(t_vsthost *x, t_floatarg f){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     x->x_editor->vis(f);
 }
 
@@ -417,13 +433,13 @@ static void vsthost_click(t_vsthost *x){
 }
 
 static void vsthost_precision(t_vsthost *x, t_floatarg f){
-    if (!x->check()) return;
     x->x_dp = (f != 0);
+    x->check_precision();
 }
 
 // parameters
 static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
@@ -435,7 +451,7 @@ static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value)
 }
 
 static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
 		t_atom msg[2];
@@ -448,7 +464,7 @@ static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
 		t_atom msg[2];
@@ -461,7 +477,7 @@ static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         t_atom msg[2];
@@ -474,7 +490,7 @@ static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         t_atom msg[2];
@@ -487,14 +503,14 @@ static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
 }
 
 static void vsthost_param_count(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumParameters());
 	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
 static void vsthost_param_list(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
 	for (int i = 0; i < n; ++i){
         vsthost_param_name(x, i);
@@ -502,7 +518,7 @@ static void vsthost_param_list(t_vsthost *x){
 }
 
 static void vsthost_param_dump(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
     for (int i = 0; i < n; ++i){
         vsthost_param_get(x, i);
@@ -511,30 +527,30 @@ static void vsthost_param_dump(t_vsthost *x){
 
 // programs
 static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumPrograms()){
         x->x_plugin->setProgram(index);
-        x->x_editor->update(x);
+        x->x_editor->update();
 	} else {
         pd_error(x, "%s: program number %d out of range!", classname(x), index);
 	}
 }
 
 static void vsthost_program_get(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
     outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
 
 static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     x->x_plugin->setProgramName(name->s_name);
 }
 
 static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     t_atom msg[2];
     if (argc){
         int index = atom_getfloat(argv);
@@ -548,7 +564,7 @@ static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *ar
 }
 
 static void vsthost_program_count(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumPrograms());
 	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
@@ -564,9 +580,121 @@ static void vsthost_program_list(t_vsthost *x){
     }
 }
 
+// read/write FX programs
+static void vsthost_program_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    buffer.resize(argc);
+    for (int i = 0; i < argc; ++i){
+           // first clamp to 0-255, then assign to char (not 100% portable...)
+        buffer[i] = (unsigned char)atom_getfloat(argv + i);
+    }
+    if (x->x_plugin->readProgramData(buffer)){
+        x->x_editor->update();
+    } else {
+        pd_error(x, "%s: bad FX program data", classname(x));
+    }
+}
+
+static void vsthost_program_data(t_vsthost *x){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    x->x_plugin->writeProgramData(buffer);
+    int n = buffer.size();
+    std::vector<t_atom> atoms;
+    atoms.resize(n);
+    for (int i = 0; i < n; ++i){
+            // first convert to range 0-255, then assign to t_float (not 100% portable...)
+        SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
+    }
+    outlet_anything(x->x_messout, gensym("program_data"), n, atoms.data());
+}
+
+static void vsthost_program_read(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char dir[MAXPDSTRING], *name;
+    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
+    if (fd < 0){
+        pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
+        return;
+    }
+    sys_close(fd);
+    char path[MAXPDSTRING];
+    snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
+    sys_bashfilename(path, path);
+    if (x->x_plugin->readProgramFile(path)){
+        x->x_editor->update();
+    } else {
+        pd_error(x, "%s: bad FX program file '%s'", classname(x), s->s_name);
+    }
+}
+
+static void vsthost_program_write(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char path[MAXPDSTRING];
+    canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
+    x->x_plugin->writeProgramFile(path);
+}
+
+// read/write FX banks
+static void vsthost_bank_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    buffer.resize(argc);
+    for (int i = 0; i < argc; ++i){
+            // first clamp to 0-255, then assign to char (not 100% portable...)
+        buffer[i] = (unsigned char)atom_getfloat(argv + i);
+    }
+    if (x->x_plugin->readBankData(buffer)){
+        x->x_editor->update();
+    } else {
+        pd_error(x, "%s: bad FX bank data", classname(x));
+    }
+}
+
+static void vsthost_bank_data(t_vsthost *x){
+    if (!x->check_plugin()) return;
+    std::string buffer;
+    x->x_plugin->writeBankData(buffer);
+    int n = buffer.size();
+    std::vector<t_atom> atoms;
+    atoms.resize(n);
+    for (int i = 0; i < n; ++i){
+            // first convert to range 0-255, then assign to t_float (not 100% portable...)
+        SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
+    }
+    outlet_anything(x->x_messout, gensym("bank_data"), n, atoms.data());
+}
+
+static void vsthost_bank_read(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char dir[MAXPDSTRING], *name;
+    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
+    if (fd < 0){
+        pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
+        return;
+    }
+    sys_close(fd);
+    char path[MAXPDSTRING];
+    snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
+    sys_bashfilename(path, path);
+    if (x->x_plugin->readBankFile(path)){
+        x->x_editor->update();
+    } else {
+        pd_error(x, "%s: bad FX bank file '%s'", classname(x), s->s_name);
+    }
+}
+
+static void vsthost_bank_write(t_vsthost *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    char path[MAXPDSTRING];
+    canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
+    x->x_plugin->writeBankFile(path);
+}
+
 // plugin version
 static void vsthost_version(t_vsthost *x){
-    if (!x->check()) return;
+    if (!x->check_plugin()) return;
     int version = x->x_plugin->getPluginVersion();
 	t_atom msg;
 	SETFLOAT(&msg, version);
@@ -577,12 +705,29 @@ static void vsthost_version(t_vsthost *x){
 /**** private ****/
 
 // helper methods
-bool t_vsthost::check(){
+bool t_vsthost::check_plugin(){
     if (x_plugin){
         return true;
     } else {
         pd_error(this, "%s: no plugin loaded!", classname(this));
         return false;
+    }
+}
+
+void t_vsthost::check_precision(){
+    if (x_plugin){
+        if (!x_plugin->hasSinglePrecision() && !x_plugin->hasDoublePrecision()) {
+            post("%s: '%s' doesn't support single or double precision, bypassing",
+                classname(this), x_plugin->getPluginName().c_str());
+        }
+        if (x_dp && !x_plugin->hasDoublePrecision()){
+            post("%s: '%s' doesn't support double precision, using single precision instead",
+                 classname(this), x_plugin->getPluginName().c_str());
+        }
+        else if (!x_dp && !x_plugin->hasSinglePrecision()){ // very unlikely...
+            post("%s: '%s' doesn't support single precision, using double precision instead",
+                 classname(this), x_plugin->getPluginName().c_str());
+        }
     }
 }
 
@@ -671,7 +816,7 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
 
         // editor
-    x->x_editor = new t_vsteditor(generic);
+    x->x_editor = new t_vsteditor(*x, generic);
 
         // buffers
     x->x_inbufsize = 0;
@@ -720,13 +865,26 @@ static t_int *vsthost_perform(t_int *w){
     int noutbuf = x->x_noutbuf;
     void ** outbufvec = x->x_outbufvec;
     int out_offset = 0;
+    bool dp = x->x_dp;
+    bool bypass = plugin ? x->x_bypass : true;
 
-    if (plugin && !x->x_bypass){  // process audio
+    if(plugin && !bypass) {
+            // check processing precision (single or double)
+        if (!plugin->hasSinglePrecision() && !plugin->hasDoublePrecision()) {
+            bypass = true;
+        } else if (dp && !plugin->hasDoublePrecision()){
+            dp = false;
+        } else if (!dp && !plugin->hasSinglePrecision()){ // very unlikely...
+            dp = true;
+        }
+    }
+
+    if (!bypass){  // process audio
         int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
         out_offset = pout;
             // process in double precision
-        if (x->x_dp && plugin->hasDoublePrecision()){
+        if (dp){
                 // prepare input buffer
             for (int i = 0; i < ninbuf; ++i){
                 double *buf = (double *)x->x_inbuf + i * n;
@@ -875,6 +1033,16 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_program_name, gensym("program_name"), A_GIMME, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
+        // read/write fx programs
+    class_addmethod(vsthost_class, (t_method)vsthost_program_setdata, gensym("program_setdata"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_data, gensym("program_data"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
+        // read/write fx banks
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_setdata, gensym("bank_setdata"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_data, gensym("bank_data"), A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_read, gensym("bank_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
 
