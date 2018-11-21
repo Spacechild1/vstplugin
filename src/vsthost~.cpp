@@ -340,6 +340,7 @@ IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
     if (!plugin){
         return nullptr;
     }
+    plugin->setListener(this);
     if (plugin->hasEditor() && !e_generic){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin, e_context));
     }
