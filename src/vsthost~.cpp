@@ -200,11 +200,15 @@ t_vsteditor::~t_vsteditor(){
     clock_free(e_clock);
 }
 
-    // parameter automation notification will most likely come from the GUI thread
+    // parameter automation notification might come from another thread (VST plugin GUI) or the main thread (Pd editor)
 void t_vsteditor::parameterAutomated(int index, float value){
-    e_mutex.lock();
+    if (e_window){
+        e_mutex.lock();
+    }
     e_automated.push_back(std::make_pair(index, value));
-    e_mutex.unlock();
+    if (e_window){
+        e_mutex.unlock();
+    }
     set_clock();
 }
 
@@ -239,7 +243,9 @@ void t_vsteditor::set_clock(){
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
-    x->e_mutex.lock();
+    if (x->e_window){
+        x->e_mutex.lock();
+    }
         // automated parameters:
     for (auto& param : x->e_automated){
         t_atom msg[2];
@@ -268,8 +274,9 @@ void t_vsteditor::tick(t_vsteditor *x){
         outlet_anything(outlet, gensym("midi"), n, msg.data());
     }
     x->e_sysex.clear();
-
-    x->e_mutex.unlock();
+    if (x->e_window){
+        x->e_mutex.unlock();
+    }
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
@@ -416,8 +423,7 @@ void t_vsteditor::set_param(int index, float value, bool automated){
     if (!e_window && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
         if (automated){
-            e_automated.push_back(std::make_pair(index, value));
-            clock_delay(e_clock, 0);
+            parameterAutomated(index, value);
         }
     }
 }
