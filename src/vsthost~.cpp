@@ -20,6 +20,15 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
+// substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
+static void substitute_whitespace(char *buf){
+    for (char *c = buf; *c; c++){
+        if (*c == ' '){
+            *c = 160;
+        }
+    }
+}
+
 // vsthost~ object
 static t_class *vsthost_class;
 
@@ -93,19 +102,23 @@ class t_vstparam {
     int p_index;
 };
 
-static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value);
+static void vsthost_param_doset(t_vsthost *x, int index, float value, bool automated);
 
+    // called when moving a slider in the generic GUI
 static void vstparam_float(t_vstparam *x, t_floatarg f){
-    vsthost_param_set(x->p_owner, x->p_index, f);
+    vsthost_param_doset(x->p_owner, x->p_index, f, true);
 }
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
-        // this method updates the display next to the label
+        // this method updates the display next to the label. implicitly called by t_vstparam::set
     IVSTPlugin *plugin = x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
     snprintf(buf, sizeof(buf), "%s %s", plugin->getParameterDisplay(index).c_str(),
         plugin->getParameterLabel(index).c_str());
+#if 0 // it's very hard to actually open the label properties, so we don't care
+    substitute_whitespace(buf);
+#endif
     pd_vmess(x->p_display->s_thing, gensym("label"), (char *)"s", gensym(buf));
 }
 
@@ -116,7 +129,7 @@ static void vstparam_setup(){
 }
 
 // VST editor
-class t_vsteditor {
+class t_vsteditor : IVSTPluginListener {
  public:
     t_vsteditor(t_vsthost &owner, bool generic);
     ~t_vsteditor();
@@ -128,7 +141,9 @@ class t_vsteditor {
     void setup();
         // update the parameter displays
     void update();
-    void set_param(int index, float value);
+        // notify generic GUI for parameter changes
+    void set_param(int index, float value, bool automated = false);
+        // show/hide window
     void vis(bool v);
     IVSTWindow *window(){
         return e_window.get();
@@ -137,6 +152,11 @@ class t_vsteditor {
         return e_canvas;
     }
  private:
+        // plugin callbacks
+    void parameterAutomated(int index, float value) override;
+    void midiEvent(const VSTMidiEvent& event) override;
+    void sysexEvent(const VSTSysexEvent& event) override;
+        // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
         pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
     }
@@ -145,18 +165,27 @@ class t_vsteditor {
         pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
     void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
+    void set_clock();
+    static void tick(t_vsteditor *x);
         // data
     t_vsthost *e_owner;
     std::thread e_thread;
+    std::thread::id e_mainthread;
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
     t_canvas *e_canvas = nullptr;
     void *e_context = nullptr;
     std::vector<t_vstparam> e_params;
+        // message out
+    t_clock *e_clock;
+    std::mutex e_mutex;
+    std::vector<std::pair<int, float>> e_automated;
+    std::vector<VSTMidiEvent> e_midi;
+    std::vector<VSTSysexEvent> e_sysex;
 };
 
 t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
-    : e_owner(&owner), e_generic(generic){
+    : e_owner(&owner), e_mainthread(std::this_thread::get_id()), e_generic(generic){
 #if USE_X11
 	if (!generic){
 		e_context = XOpenDisplay(NULL);
@@ -170,6 +199,8 @@ t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
     e_canvas = (t_canvas *)s__X.s_thing;
     send_vmess(gensym("pop"), "i", 0);
     glob_setfilename(0, &s_, &s_);
+
+    e_clock = clock_new(this, (t_method)tick);
 }
 
 t_vsteditor::~t_vsteditor(){
@@ -178,6 +209,86 @@ t_vsteditor::~t_vsteditor(){
 		XCloseDisplay((Display *)e_context);
 	}
 #endif
+    clock_free(e_clock);
+}
+
+    // parameter automation notification might come from another thread (VST plugin GUI) or the main thread (Pd editor)
+void t_vsteditor::parameterAutomated(int index, float value){
+    if (e_window){
+        e_mutex.lock();
+    }
+    e_automated.push_back(std::make_pair(index, value));
+    if (e_window){
+        e_mutex.unlock();
+    }
+    set_clock();
+}
+
+    // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
+void t_vsteditor::midiEvent(const VSTMidiEvent &event){
+    e_mutex.lock();
+    e_midi.push_back(event);
+    e_mutex.unlock();
+    set_clock();
+}
+
+void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
+    e_mutex.lock();
+    e_sysex.push_back(event);
+    e_mutex.unlock();
+    set_clock();
+}
+
+void t_vsteditor::set_clock(){
+        // sys_lock / sys_unlock are not recursive so we check if we are in the main thread
+    auto id = std::this_thread::get_id();
+    if (id != e_mainthread){
+        // LOG_DEBUG("lock");
+        sys_lock();
+    }
+    clock_delay(e_clock, 0);
+    if (id != e_mainthread){
+        sys_unlock();
+        // LOG_DEBUG("unlocked");
+    }
+}
+
+void t_vsteditor::tick(t_vsteditor *x){
+    t_outlet *outlet = x->e_owner->x_messout;
+    if (x->e_window){
+        x->e_mutex.lock();
+    }
+        // automated parameters:
+    for (auto& param : x->e_automated){
+        t_atom msg[2];
+        SETFLOAT(&msg[0], param.first); // index
+        SETFLOAT(&msg[1], param.second); // value
+        outlet_anything(outlet, gensym("param_automated"), 2, msg);
+    }
+    x->e_automated.clear();
+        // midi events:
+    for (auto& midi : x->e_midi){
+        t_atom msg[3];
+        SETFLOAT(&msg[0], (unsigned char)midi.data[0]);
+        SETFLOAT(&msg[1], (unsigned char)midi.data[1]);
+        SETFLOAT(&msg[2], (unsigned char)midi.data[2]);
+        outlet_anything(outlet, gensym("midi"), 3, msg);
+    }
+    x->e_midi.clear();
+        // sysex events:
+    for (auto& sysex : x->e_sysex){
+        std::vector<t_atom> msg;
+        int n = sysex.data.size();
+        msg.resize(n);
+        for (int i = 0; i < n; ++i){
+            SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
+        }
+        outlet_anything(outlet, gensym("midi"), n, msg.data());
+    }
+    x->e_sysex.clear();
+    if (x->e_window){
+        x->e_mutex.unlock();
+    }
 }
 
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
@@ -191,6 +302,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
     if (plugin->hasEditor() && !e_generic){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(e_context));
     }
+    plugin->setListener(this);
     promise.set_value(plugin);
     if (e_window){
         e_window->setTitle(plugin->getPluginName());
@@ -290,6 +402,7 @@ void t_vsteditor::setup(){
         SETSYMBOL(slider+10, e_params[i].p_name);
         char buf[64];
         snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
+        substitute_whitespace(buf);
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create number box
@@ -318,9 +431,13 @@ void t_vsteditor::update(){
     }
 }
 
-void t_vsteditor::set_param(int index, float value){
+    // automated: true if parameter change comes from the (generic) GUI
+void t_vsteditor::set_param(int index, float value, bool automated){
     if (!e_window && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
+        if (automated){
+            parameterAutomated(index, value);
+        }
     }
 }
 
@@ -400,6 +517,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
 
 static void vsthost_info(t_vsthost *x){
     if (!x->check_plugin()) return;
+    post("~~~ VST plugin info ~~~");
     post("name: %s", x->x_plugin->getPluginName().c_str());
     post("version: %d", x->x_plugin->getPluginVersion());
     post("input channels: %d", x->x_plugin->getNumInputs());
@@ -409,6 +527,9 @@ static void vsthost_info(t_vsthost *x){
     post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
     post("number of parameters: %d", x->x_plugin->getNumParameters());
     post("number of programs: %d", x->x_plugin->getNumPrograms());
+    post("synth: %s", x->x_plugin->isSynth() ? "yes" : "no");
+    post("midi input: %s", x->x_plugin->hasMidiInput() ? "yes" : "no");
+    post("midi output: %s", x->x_plugin->hasMidiOutput() ? "yes" : "no");
     post("");
 }
 
@@ -438,16 +559,20 @@ static void vsthost_precision(t_vsthost *x, t_floatarg f){
 }
 
 // parameters
-static void vsthost_param_set(t_vsthost *x, t_floatarg _index, t_floatarg value){
+static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value){
     if (!x->check_plugin()) return;
-    int index = _index;
+    vsthost_param_doset(x, index, value, false);
+}
+
+    // automated: true if parameter was set from the (generic) GUI, false if set by message ("param_set")
+static void vsthost_param_doset(t_vsthost *x, int index, float value, bool automated){
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
         x->x_plugin->setParameter(index, value);
-        x->x_editor->set_param(index, value);
-	} else {
+        x->x_editor->set_param(index, value, automated);
+    } else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
-	}
+    }
 }
 
 static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
@@ -523,6 +648,72 @@ static void vsthost_param_dump(t_vsthost *x){
     for (int i = 0; i < n; ++i){
         vsthost_param_get(x, i);
     }
+}
+
+// MIDI
+static void vsthost_midi_raw(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+
+    VSTMidiEvent event;
+    for (int i = 0; i < 3 && i < argc; ++i){
+        event.data[i] = atom_getfloat(argv + i);
+    }
+    x->x_plugin->sendMidiEvent(event);
+}
+
+// helper function
+static void vsthost_midi_mess(t_vsthost *x, int onset, int channel, int v1, int v2 = 0){
+    t_atom atoms[3];
+    channel = std::max(1, std::min(16, (int)channel)) - 1;
+    v1 = std::max(0, std::min(127, v1));
+    v2 = std::max(0, std::min(127, v2));
+    SETFLOAT(&atoms[0], channel + onset);
+    SETFLOAT(&atoms[1], v1);
+    SETFLOAT(&atoms[2], v2);
+    vsthost_midi_raw(x, 0, 3, atoms);
+}
+
+static void vsthost_midi_noteoff(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    vsthost_midi_mess(x, 128, channel, pitch, velocity);
+}
+
+static void vsthost_midi_note(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    vsthost_midi_mess(x, 144, channel, pitch, velocity);
+}
+
+static void vsthost_midi_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
+    vsthost_midi_mess(x, 160, channel, pitch, pressure);
+}
+
+static void vsthost_midi_cc(t_vsthost *x, t_floatarg channel, t_floatarg ctl, t_floatarg value){
+    vsthost_midi_mess(x, 176, channel, ctl, value);
+}
+
+static void vsthost_midi_program_change(t_vsthost *x, t_floatarg channel, t_floatarg program){
+   vsthost_midi_mess(x, 192, channel, program);
+}
+
+static void vsthost_midi_channel_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pressure){
+    vsthost_midi_mess(x, 208, channel, pressure);
+}
+
+static void vsthost_midi_bend(t_vsthost *x, t_floatarg channel, t_floatarg bend){
+        // map from [-1.f, 1.f] to [0, 16383] (14 bit)
+    int val = (bend + 1.f) * 8192.f; // 8192 is the center position
+    val = std::max(0, std::min(16383, val));
+    vsthost_midi_mess(x, 224, channel, val & 127, (val >> 7) & 127);
+}
+
+static void vsthost_midi_sysex(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+
+    std::string data;
+    data.reserve(argc);
+    for (int i = 0; i < argc; ++i){
+        data.push_back((unsigned char)atom_getfloat(argv+i));
+    }
+
+    x->x_plugin->sendSysexEvent(VSTSysexEvent(std::move(data)));
 }
 
 // programs
@@ -1026,6 +1217,16 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_dump, gensym("param_dump"), A_NULL);
+        // midi
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_program_change, gensym("midi_program_change"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_aftertouch, gensym("midi_aftertouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_channel_aftertouch, gensym("midi_channel_aftertouch"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_midi_sysex, gensym("midi_sysex"), A_GIMME, A_NULL);
         // programs
     class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
