@@ -20,12 +20,16 @@ class IVSTWindow {
     virtual void bringToTop() = 0;
 };
 
+class IVSTPlugin;
+
 // creates a platform dependend window
 namespace VSTWindowFactory {
 		// call this once before you create any windows. not thread safe (yet)
     void initialize();
 		// make a new window. on some platforms you need to pass a context (e.g. Display* on X11)
-    IVSTWindow* create(void *context = nullptr);
+    IVSTWindow* create(IVSTPlugin *plugin, void *context = nullptr);
+        // poll the main loop (only needed for MacOS)
+    void mainLoopPoll();
 }
 
 class IVSTPlugin {

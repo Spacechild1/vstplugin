@@ -15,6 +15,14 @@
 #ifdef USE_X11
 # include <X11/Xlib.h>
 #endif
+#ifdef __APPLE__
+#define MAIN_LOOP_POLL_INT 50
+static t_clock *mainLoopClock = nullptr;
+static void mainLoopTick(void *x){
+    VSTWindowFactory::mainLoopPoll();
+    clock_delay(mainLoopClock, MAIN_LOOP_POLL_INT);
+}
+#endif
 
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
@@ -189,7 +197,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         return;
     }
     if (plugin->hasEditor() && !e_generic){
-        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(e_context));
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin, e_context));
     }
     promise.set_value(plugin);
     if (e_window){
@@ -206,7 +214,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         plugin->closeEditor();
             // some plugins expect to released in the same thread where they have been created
         LOG_DEBUG("try to close VST plugin");
-        freeVSTPlugin(e_owner->x_plugin);
+        freeVSTPlugin(plugin);
         e_owner->x_plugin = nullptr;
         LOG_DEBUG("VST plugin closed");
     }
@@ -215,19 +223,47 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
 
 // creates a new thread where the plugin is created and the message loop runs (if needed)
 IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
+#ifdef __APPLE__
+    IVSTPlugin *plugin = loadVSTPlugin(path);
+    if (!plugin){
+        return nullptr;
+    }
+    if (plugin->hasEditor() && !e_generic){
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin, e_context));
+    }
+    if (e_window){
+        e_window->setTitle(plugin->getPluginName());
+        int left, top, right, bottom;
+        plugin->getEditorRect(left, top, right, bottom);
+        e_window->setGeometry(left, top, right, bottom);
+        plugin->openEditor(e_window->getHandle());
+        e_window->hide(); // hack
+    }
+    return plugin;
+#else
     std::promise<IVSTPlugin *> promise;
     auto future = promise.get_future();
     e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
     return future.get();
+#endif
 }
 
 void t_vsteditor::close_thread(){
+#ifdef __APPLE__
+    e_window = nullptr;
+    e_owner->x_plugin->closeEditor();
+    LOG_DEBUG("try to close VST plugin");
+    freeVSTPlugin(e_owner->x_plugin);
+    e_owner->x_plugin = nullptr;
+    LOG_DEBUG("VST plugin closed");
+#else
         // destroying the window will terminate the message loop and release the plugin
     e_window = nullptr;
         // now join the thread
     if (e_thread.joinable()){
         e_thread.join();
     }
+#endif
 }
 
 void t_vsteditor::setup(){
@@ -328,8 +364,14 @@ void t_vsteditor::vis(bool v){
     if (e_window){
         if (v){
             e_window->bringToTop();
+        #ifdef __APPLE__
+            e_owner->x_plugin->openEditor(e_window->getHandle());
+        #endif
         } else {
             e_window->hide();
+        #ifdef __APPLE__
+            e_owner->x_plugin->closeEditor();
+        #endif
         }
     } else {
         send_vmess(gensym("vis"), "i", (int)v);
@@ -389,10 +431,12 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
         }
+    #ifndef __APPLE__
             // no window -> no message loop
         if (!x->x_editor->window()){
             x->x_editor->close_thread();
         }
+    #endif
     } else {
         pd_error(x, "%s: couldn't open \"%s\" - no such file!", classname(x), s->s_name);
     }
@@ -1047,6 +1091,10 @@ void vsthost_tilde_setup(void)
     vstparam_setup();
 
     VSTWindowFactory::initialize();
+#ifdef __APPLE__
+    mainLoopClock = clock_new(0, (t_method)mainLoopTick);
+    clock_delay(mainLoopClock, 0);
+#endif
 }
 
 } // extern "C"

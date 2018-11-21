@@ -1,29 +1,82 @@
-#include "VSTWindowCocoa.h"
+#import "VSTWindowCocoa.h"
+#include "Utility.h"
+
+#if __has_feature(objc_arc)
+#error This file must be compiled without ARC!
+#endif
 
 #include <iostream>
 
+@implementation VSTEditorWindow {
+}
+
+@synthesize plugin = _plugin;
+
+- (BOOL)windowShouldClose:(id)sender {
+    LOG_DEBUG("window should close");
+    [self orderOut:NSApp];
+    IVSTPlugin *plugin = [self plugin];
+    plugin->closeEditor();
+    return NO;
+}
+/*
+- (void)windowDidMiniaturize:(id)sender {
+    LOG_DEBUG("window miniaturized");
+}
+- (void)windowDidDeminiaturize:(id)sender {
+    LOG_DEBUG("window deminiaturized");    
+}
+*/
+@end
+
 namespace VSTWindowFactory {
     void initializeCocoa(){
-		
+        static bool initialized = false;
+        if (!initialized){
+            if (NSApp != nullptr){
+                LOG_WARNING("NSApp already initialized!");
+                return;
+            }
+                // NSApp will automatically point to the NSApplication singleton 
+            [NSApplication sharedApplication];
+            initialized = true;
+        }
 	}
-    IVSTWindow* createCocoa() {
-        return new VSTWindowCocoa();
+    IVSTWindow* createCocoa(IVSTPlugin *plugin) {
+        return new VSTWindowCocoa(plugin);
+    }
+    void mainLoopPollCocoa(){
+        bool loop = true;
+        do {
+            NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
+            NSEvent *event = [NSApp 
+                nextEventMatchingMask:NSAnyEventMask
+                untilDate:[[NSDate alloc] init]
+                inMode:NSDefaultRunLoopMode
+                dequeue:YES];
+            if (!event){
+                loop = false;
+            } else {
+                LOG_DEBUG("got event: " << [event type]);
+            }
+            [NSApp sendEvent:event];
+            [NSApp updateWindows];
+            [pool release];
+        } while (loop);
     }
 }
 
-VSTWindowCocoa::VSTWindowCocoa(){
+VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
     std::cout << "try opening VSTWindowCocoa" << std::endl;
-    [NSApplication sharedApplication];
-    app_ = NSApp;
+    
     NSRect frame = NSMakeRect(0, 0, 200, 200);
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
-                styleMask:NSTitledWindowMask
+    VSTEditorWindow *window = [[VSTEditorWindow alloc] initWithContentRect:frame
+                styleMask:(NSTitledWindowMask | NSClosableWindowMask 
+                | NSMiniaturizableWindowMask) 
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        std::cout << "made window" << std::endl;
-        [window setBackgroundColor:[NSColor blueColor]];
-        
+        [window setPlugin:plugin];
         window_ = window;
         std::cout << "created VSTWindowCocoa" << std::endl;
     }
@@ -36,43 +89,9 @@ VSTWindowCocoa::~VSTWindowCocoa(){
 
 void * VSTWindowCocoa::getHandle(){
     return [window_ contentView];
-    if (window_){
-        return window_.windowRef;
-    } else {
-        return nullptr;
-    }
 }
 
-void VSTWindowCocoa::run(){
-    return;
-#if 1
-// https://www.cocoawithlove.com/2009/01/demystifying-nsapplication-by.html
-    NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
-    
-    [app_ finishLaunching];
-    
-    bool running = true;
-    while (running){
-        [pool release];
-        pool =[[NSAutoreleasePool alloc] init];
-        
-        NSEvent *event = [app_ 
-            nextEventMatchingMask:NSAnyEventMask
-            untilDate:[NSDate distantFuture]
-            inMode:NSDefaultRunLoopMode
-            dequeue:YES];
-        // std::cout << "got event" << std::endl;
-        [app_ sendEvent:event];
-        [app_ updateWindows];
-    }
-    
-    [pool release];
-#else
-    while (true){
-        usleep(1000);
-    }
-#endif
-}
+void VSTWindowCocoa::run(){}
 
 void VSTWindowCocoa::setTitle(const std::string& title){
     NSString *name = @(title.c_str());
@@ -81,16 +100,21 @@ void VSTWindowCocoa::setTitle(const std::string& title){
 
 void VSTWindowCocoa::setGeometry(int left, int top, int right, int bottom){
         // in CoreGraphics y coordinates are "flipped" (0 = bottom)
-    NSRect frame = NSMakeRect(left, bottom, right-left, bottom-top);
+    NSRect content = NSMakeRect(left, bottom, right-left, bottom-top);
+    NSRect frame = [window_  frameRectForContentRect:content];
     [window_ setFrame:frame display:YES];
 }
 
 void VSTWindowCocoa::show(){
     [window_ makeKeyAndOrderFront:NSApp];
+    IVSTPlugin *plugin = [window_ plugin];
+    plugin->openEditor(getHandle());
 }
 
 void VSTWindowCocoa::hide(){
     [window_ orderOut:NSApp];
+    IVSTPlugin *plugin = [window_ plugin];
+    plugin->closeEditor();
 }
 
 void VSTWindowCocoa::minimize(){

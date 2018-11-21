@@ -150,7 +150,8 @@ namespace VSTWindowFactory {
 #endif
 #ifdef __APPLE__
     void initializeCocoa();
-    IVSTWindow * createCocoa();
+    IVSTWindow * createCocoa(IVSTPlugin *plugin);
+    void mainLoopPollCocoa();
 #endif
         // initialize
     void initialize(){
@@ -165,17 +166,25 @@ namespace VSTWindowFactory {
 #endif
     }
         // create
-    IVSTWindow* create(void *context){
+    IVSTWindow* create(IVSTPlugin *plugin, void *context){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
         win = createWin32();
 #elif defined(__APPLE__)
-        win = createCocoa();
+        win = createCocoa(plugin);
 #elif defined(USE_X11)
         win = createX11(context);
 #endif
         return win;
     }
+        // poll
+#ifdef __APPLE__
+    void mainLoopPoll(){
+        mainLoopPollCocoa();
+    }
+#else
+    void mainLoopPoll(){}
+#endif
 }
 
 std::string makeVSTPluginFilePath(const std::string& name){

@@ -2,9 +2,22 @@
 
 #import <Cocoa/Cocoa.h>
 
+@interface VSTEditorWindow : NSWindow {
+    IVSTPlugin *_plugin;
+}
+
+@property (nonatomic, readwrite) IVSTPlugin *plugin;
+
+- (BOOL)windowShouldClose:(id)sender;
+/*
+- (void)windowDidMiniaturize:(id)sender;
+- (void)windowDidDeminiaturize:(id)sender;
+*/
+@end
+
 class VSTWindowCocoa : public IVSTWindow {
  public:
-    VSTWindowCocoa();
+    VSTWindowCocoa(IVSTPlugin *plugin);
     ~VSTWindowCocoa();
 
     void* getHandle() override;
@@ -19,6 +32,5 @@ class VSTWindowCocoa : public IVSTWindow {
     void restore() override;
     void bringToTop() override;
  private:
-    NSWindow * window_{nullptr};
-    NSApplication * app_{nullptr};
+    VSTEditorWindow * window_{nullptr};
 };

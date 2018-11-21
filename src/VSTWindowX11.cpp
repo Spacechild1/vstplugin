@@ -5,9 +5,14 @@
 
 namespace VSTWindowFactory {
     void initializeX11(){
-		if (!XInitThreads()){
-            LOG_WARNING("XInitThreads failed!");
-		}
+        static bool initialized = false;
+        if (!initialized){
+            if (!XInitThreads()){
+                LOG_WARNING("XInitThreads failed!");
+            } else {
+                initialized = true;
+            }
+        }
 	}
     IVSTWindow* createX11(void *context) {
 		if (context){
