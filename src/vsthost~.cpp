@@ -20,6 +20,15 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
+// substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
+static void substitute_whitespace(char *buf){
+    for (char *c = buf; *c; c++){
+        if (*c == ' '){
+            *c = 160;
+        }
+    }
+}
+
 // vsthost~ object
 static t_class *vsthost_class;
 
@@ -107,6 +116,9 @@ static void vstparam_set(t_vstparam *x, t_floatarg f){
     char buf[64];
     snprintf(buf, sizeof(buf), "%s %s", plugin->getParameterDisplay(index).c_str(),
         plugin->getParameterLabel(index).c_str());
+#if 0 // it's very hard to actually open the label properties, so we don't care
+    substitute_whitespace(buf);
+#endif
     pd_vmess(x->p_display->s_thing, gensym("label"), (char *)"s", gensym(buf));
 }
 
@@ -390,6 +402,7 @@ void t_vsteditor::setup(){
         SETSYMBOL(slider+10, e_params[i].p_name);
         char buf[64];
         snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
+        substitute_whitespace(buf);
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create number box
