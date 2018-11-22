@@ -88,6 +88,7 @@ class IVSTPlugin {
     virtual void sendSysexEvent(const VSTSysexEvent& event) = 0;
 
     virtual void setParameter(int index, float value) = 0;
+    virtual bool setParameter(int index, const std::string& str) = 0;
     virtual float getParameter(int index) const = 0;
     virtual std::string getParameterName(int index) const = 0;
     virtual std::string getParameterLabel(int index) const = 0;

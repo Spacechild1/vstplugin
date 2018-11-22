@@ -277,6 +277,10 @@ void VST2Plugin::setParameter(int index, float value){
     plugin_->setParameter(plugin_, index, value);
 }
 
+bool VST2Plugin::setParameter(int index, const std::string &str){
+    return dispatch(effString2Parameter, index, 0, (void *)str.c_str());
+}
+
 float VST2Plugin::getParameter(int index) const {
     return (plugin_->getParameter)(plugin_, index);
 }

@@ -56,6 +56,7 @@ class VST2Plugin final : public IVSTPlugin {
     void sendSysexEvent(const VSTSysexEvent& event) override;
 
     void setParameter(int index, float value) override;
+    bool setParameter(int index, const std::string& str) override;
     float getParameter(int index) const override;
     std::string getParameterName(int index) const override;
     std::string getParameterLabel(int index) const override;
