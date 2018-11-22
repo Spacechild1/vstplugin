@@ -33,6 +33,10 @@ namespace VSTWindowFactory {
     void initializeCocoa(){
         static bool initialized = false;
         if (!initialized){
+                // make foreground application
+            ProcessSerialNumber psn = {0, kCurrentProcess};
+            TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+                // check if someone already created NSApp (just out of curiousity)
             if (NSApp != nullptr){
                 LOG_WARNING("NSApp already initialized!");
                 return;
@@ -57,7 +61,7 @@ namespace VSTWindowFactory {
             if (!event){
                 loop = false;
             } else {
-                LOG_DEBUG("got event: " << [event type]);
+                // LOG_DEBUG("got event: " << [event type]);
             }
             [NSApp sendEvent:event];
             [NSApp updateWindows];
@@ -106,13 +110,13 @@ void VSTWindowCocoa::setGeometry(int left, int top, int right, int bottom){
 }
 
 void VSTWindowCocoa::show(){
-    [window_ makeKeyAndOrderFront:NSApp];
+    [window_ makeKeyAndOrderFront:nil];
     IVSTPlugin *plugin = [window_ plugin];
     plugin->openEditor(getHandle());
 }
 
 void VSTWindowCocoa::hide(){
-    [window_ orderOut:NSApp];
+    [window_ orderOut:nil];
     IVSTPlugin *plugin = [window_ plugin];
     plugin->closeEditor();
 }
