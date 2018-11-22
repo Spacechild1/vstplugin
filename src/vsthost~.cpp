@@ -203,7 +203,10 @@ class t_vsteditor : IVSTPluginListener {
 };
 
 t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
-    : e_owner(&owner), e_mainthread(std::this_thread::get_id()), e_generic(generic){
+    : e_owner(&owner), e_generic(generic){
+#if VSTTHREADS
+    e_mainthread = std::this_thread::get_id();
+#endif
     glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
     pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
     e_canvas = (t_canvas *)s__X.s_thing;
