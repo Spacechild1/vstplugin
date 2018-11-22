@@ -413,9 +413,11 @@ void t_vsteditor::close_plugin(){
     }
 }
 
-const int xoffset = 20;
-const int yoffset = 20;
-const int maxparams = 16;
+const int xoffset = 30;
+const int yoffset = 30;
+const int maxparams = 16; // max. number of params per column
+const int row_width = 128 + 10 + 128; // slider + symbol atom + label
+const int col_height = 40;
 
 void t_vsteditor::setup(){
     if (!e_owner->check_plugin()) return;
@@ -430,7 +432,7 @@ void t_vsteditor::setup(){
     send_mess(gensym("clear"));
         // slider: #X obj 25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1;
     t_atom slider[21];
-    SETFLOAT(slider, xoffset);
+    SETFLOAT(slider, 0); // temp
     SETFLOAT(slider+1, 0); // temp
     SETSYMBOL(slider+2, gensym("hsl"));
     SETFLOAT(slider+3, 128);
@@ -453,7 +455,7 @@ void t_vsteditor::setup(){
     SETFLOAT(slider+20, 1);
         // display: #X symbolatom 165 79 10 0 0 1 label rcv snd, f 10;
     t_atom display[9];
-    SETFLOAT(display, xoffset + 10 + 128);
+    SETFLOAT(display, 0); // temp
     SETFLOAT(display+1,0); // temp
     SETFLOAT(display+2, 10);
     SETFLOAT(display+3, 0);
@@ -463,9 +465,19 @@ void t_vsteditor::setup(){
     SETSYMBOL(display+7, gensym("rcv")); // temp
     SETSYMBOL(display+8, gensym("snd")); // temp
 
+    int ncolumns = nparams / maxparams + ((nparams % maxparams) != 0);
+    if (!ncolumns) ncolumns = 1; // just to prevent division by zero
+    int nrows = nparams / ncolumns + ((nparams % ncolumns) != 0);
+    post("ncolumns: %d, nrows: %d", ncolumns, nrows);
+
     for (int i = 0; i < nparams; ++i){
+        int col = i / nrows;
+        int row = i % nrows;
+        int xpos = xoffset + col * row_width;
+        int ypos = yoffset + row * col_height;
             // create slider
-        SETFLOAT(slider+1, yoffset + i*35);
+        SETFLOAT(slider, xpos);
+        SETFLOAT(slider+1, ypos);
         SETSYMBOL(slider+9, e_params[i].p_slider);
         SETSYMBOL(slider+10, e_params[i].p_slider);
         char buf[64];
@@ -474,15 +486,16 @@ void t_vsteditor::setup(){
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create display
-        SETFLOAT(display+1, 20 + i*35);
+        SETFLOAT(display, xpos + 128 + 10); // slider + space
+        SETFLOAT(display+1, ypos);
         SETSYMBOL(display+6, gensym(e_owner->x_plugin->getParameterLabel(i).c_str()));
         SETSYMBOL(display+7, e_params[i].p_display_rcv);
         SETSYMBOL(display+8, e_params[i].p_display_snd);
         send_mess(gensym("symbolatom"), 9, display);
     }
-    float width = 280;
-    float height = nparams * 35 + 60;
-    if (height > 800) height = 800;
+    float width = row_width * ncolumns + 2 * xoffset;
+    float height = nrows * col_height + 2 * yoffset;
+    if (width > 1000) width = 1000;
     send_vmess(gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
     send_vmess(gensym("vis"), "i", 0);
 
