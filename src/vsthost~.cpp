@@ -420,7 +420,12 @@ const int row_width = 128 + 10 + 128; // slider + symbol atom + label
 const int col_height = 40;
 
 void t_vsteditor::setup(){
-    if (!e_owner->check_plugin()) return;
+    if (e_window){
+        return;
+    }
+
+    send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
+    send_mess(gensym("clear"));
 
     int nparams = e_owner->x_plugin->getNumParameters();
     e_params.clear();
@@ -428,8 +433,6 @@ void t_vsteditor::setup(){
     for (int i = 0; i < nparams; ++i){
         e_params.emplace_back(e_owner, i);
     }
-    send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
-    send_mess(gensym("clear"));
         // slider: #X obj 25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1;
     t_atom slider[21];
     SETFLOAT(slider, 0); // temp
