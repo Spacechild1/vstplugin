@@ -12,9 +12,6 @@
 #include <iostream>
 #include <vector>
 
-#ifdef USE_X11
-# include <X11/Xlib.h>
-#endif
 #ifdef __APPLE__
 #define MAIN_LOOP_POLL_INT 50
 static t_clock *mainLoopClock = nullptr;
@@ -182,7 +179,6 @@ class t_vsteditor : IVSTPluginListener {
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
     t_canvas *e_canvas = nullptr;
-    void *e_context = nullptr;
     std::vector<t_vstparam> e_params;
         // message out
     t_clock *e_clock;
@@ -194,14 +190,6 @@ class t_vsteditor : IVSTPluginListener {
 
 t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
     : e_owner(&owner), e_mainthread(std::this_thread::get_id()), e_generic(generic){
-#if USE_X11
-	if (!generic){
-		e_context = XOpenDisplay(NULL);
-		if (!e_context){
-            LOG_WARNING("couldn't open display");
-		}
-	}
-#endif
     glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
     pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
     e_canvas = (t_canvas *)s__X.s_thing;
@@ -212,11 +200,6 @@ t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
 }
 
 t_vsteditor::~t_vsteditor(){
-#ifdef USE_X11
-	if (e_context){
-		XCloseDisplay((Display *)e_context);
-	}
-#endif
     clock_free(e_clock);
 }
 
@@ -308,7 +291,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         return;
     }
     if (plugin->hasEditor() && !e_generic){
-        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin, e_context));
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
     }
     plugin->setListener(this);
     promise.set_value(plugin);
@@ -342,7 +325,7 @@ IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
     }
     plugin->setListener(this);
     if (plugin->hasEditor() && !e_generic){
-        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin, e_context));
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
     }
     if (e_window){
         e_window->setTitle(plugin->getPluginName());
