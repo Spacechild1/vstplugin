@@ -1,4 +1,4 @@
-#N canvas 806 72 635 710 10;
+#N canvas 297 18 635 710 10;
 #X obj 23 461 vsthost~;
 #X text 21 106 [flags...] \, [file] \, inlets (=2) \, outlets (=2)
 ;
@@ -243,13 +243,11 @@ f 44;
 #X text 30 184 -d: prefer double precision;
 #X text 182 647 parameters;
 #X text 278 649 FX programs/banks;
-#N canvas 700 31 726 520 parameter 0;
-#X obj 38 47 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+#N canvas 388 79 726 520 parameter 0;
+#X obj 86 68 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
-#X obj 17 25 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
-#X obj 17 70 swap;
-#X obj 17 91 pack;
+#X obj 17 21 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0.03 256;
 #X msg 17 116 param_set \$1 \$2;
 #X obj 38 213 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
@@ -267,9 +265,8 @@ f 44;
 #X msg 53 363 param_display \$1;
 #X msg 65 460 param_dump;
 #X obj 17 498 s \$0-msg;
-#X text 96 46 index;
-#X text 80 23 value;
-#X text 123 117 set parameter;
+#X text 144 67 index;
+#X text 123 103 set parameter;
 #X text 84 148 index;
 #X text 115 172 get parameter;
 #X text 131 239 get parameter name;
@@ -283,25 +280,39 @@ dB \, ms), f 33;
 #X text 139 399 get number of parameters;
 #X text 140 460 dump parameter state (index + value);
 #X text 139 434 list all parameters (index + name);
-#X connect 0 0 2 1;
-#X connect 1 0 2 0;
-#X connect 2 0 3 0;
-#X connect 2 1 3 1;
-#X connect 3 0 4 0;
-#X connect 4 0 16 0;
-#X connect 5 0 12 0;
-#X connect 6 0 16 0;
-#X connect 7 0 16 0;
-#X connect 8 0 16 0;
-#X connect 9 0 8 0;
-#X connect 10 0 13 0;
+#X obj 17 90 list prepend;
+#X symbolatom 25 43 10 0 0 0 - - -, f 10;
+#X text 80 19 float value (0.0 - 1.0);
+#X text 120 118 (index \, value);
+#X text 224 73 a VST parameter can take two forms:;
+#X text 93 42 string value (not supported by all plugins);
+#X text 225 131 see [param_set <f> <f>( and [param_get <f>(;
+#X text 227 209 see [param_get <f> <s>( and [param_display <f>(;
+#X text 226 155 2) a string representation which is mainly used for
+display \, but many plugins also allow you to set the parameter in
+this way. it corresponds to the symbol box in the generic editor.,
+f 47;
+#X text 224 93 1) a 'normalized' float value which is always in the
+range 0 to 1 and corresponds to the slider position in the generic
+editor., f 47;
+#X connect 0 0 28 1;
+#X connect 1 0 28 0;
+#X connect 2 0 14 0;
+#X connect 3 0 10 0;
+#X connect 4 0 14 0;
+#X connect 5 0 14 0;
+#X connect 6 0 14 0;
+#X connect 7 0 6 0;
+#X connect 8 0 11 0;
+#X connect 9 0 12 0;
+#X connect 10 0 14 0;
 #X connect 11 0 14 0;
-#X connect 12 0 16 0;
-#X connect 13 0 16 0;
-#X connect 14 0 16 0;
-#X connect 15 0 16 0;
+#X connect 12 0 14 0;
+#X connect 13 0 14 0;
+#X connect 28 0 2 0;
+#X connect 29 0 28 0;
 #X restore 185 671 pd parameter;
-#N canvas 818 6 669 774 program 0;
+#N canvas 607 37 669 774 program 1;
 #X obj 23 333 s \$0-msg;
 #X msg 23 56 program_set;
 #X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
@@ -347,9 +358,6 @@ dB \, ms), f 33;
 #X text 150 237 get name of current program;
 #X text 23 362 read/write presets files:;
 #X obj 24 569 s \$0-msg;
-#X text 23 378 .FXP and .FXB files are in a standard format recognized
-by all conforming VST hosts \, so you can easily exchange your presets
-between Pd and other hosts (e.g. your favourite DAW);
 #X text 25 597 your can also deal with the raw .FXP / .FXB data \,
 e.g. to build your own preset management in Pd:, f 49;
 #N canvas 738 177 650 433 preset-management 0;
@@ -401,7 +409,7 @@ your own preset banks in Pd, f 47;
 #X connect 20 0 19 0;
 #X connect 22 0 21 0;
 #X connect 23 0 18 0;
-#X restore 327 608 pd preset-management;
+#X restore 327 604 pd preset-management;
 #X msg 40 690 program_data;
 #X text 38 669 get program data as list of bytes;
 #X text 27 629 set program data as list of bytes;
@@ -413,6 +421,9 @@ your own preset banks in Pd, f 47;
 #X obj 28 717 s \$0-msg;
 #X obj 269 721 s \$0-msg;
 #X text 169 147 set name of current program;
+#X text 23 378 .FXP and .FXB files are a standard format recognized
+by all conforming VST hosts \, so you can easily exchange your presets
+between Pd and other hosts (e.g. your favourite DAW);
 #X connect 1 0 0 0;
 #X connect 2 0 1 0;
 #X connect 4 0 0 0;
@@ -435,10 +446,10 @@ your own preset banks in Pd, f 47;
 #X connect 27 0 32 0;
 #X connect 31 0 28 0;
 #X connect 32 0 28 0;
-#X connect 42 0 50 0;
-#X connect 45 0 50 0;
-#X connect 48 0 51 0;
-#X connect 49 0 51 0;
+#X connect 41 0 49 0;
+#X connect 44 0 49 0;
+#X connect 47 0 50 0;
+#X connect 48 0 50 0;
 #X restore 279 671 pd program;
 #X text 20 15 [vsthost~]: an external to load VST plugins in Pd.;
 #X text 20 42 if the plugin has a GUI it is shown in a native window
@@ -451,7 +462,7 @@ your own preset banks in Pd, f 47;
 #X text 22 252 signal inlets (the leftmost inlet also takes messages)
 ;
 #X text 23 203 NOTE: the default precision is the same as Pd;
-#N canvas 0 50 609 465 midi 0;
+#N canvas 672 104 609 465 midi 0;
 #X obj 33 442 s \$0-msg;
 #X msg 33 34 midi_raw <list>;
 #X msg 51 111 midi_note 1 60 127;

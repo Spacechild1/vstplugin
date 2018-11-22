@@ -74,7 +74,9 @@ struct t_vsthost {
         // array of pointers into the output buffer
     int x_noutbuf;
     void **x_outbufvec;
-        // helper methods
+        // methods
+    void set_param(int index, float param, bool automated);
+    void set_param(int index, const char *s, bool automated);
     bool check_plugin();
     void check_precision();
     void update_buffer();
@@ -90,33 +92,42 @@ class t_vstparam {
         : p_owner(x), p_index(index){
         p_pd = vstparam_class;
         char buf[64];
+            // slider
         snprintf(buf, sizeof(buf), "%p-hsl-%d", x, index);
-        p_name = gensym(buf);
-        pd_bind(&p_pd, p_name);
-            // post("parameter nr. %d: %s", index, x->p_name->s_name);
-        snprintf(buf, sizeof(buf), "%p-cnv-%d", x, index);
-        p_display = gensym(buf);
+        p_slider = gensym(buf);
+        pd_bind(&p_pd, p_slider);
+            // display
+        snprintf(buf, sizeof(buf), "%p-d-%d-snd", x, index);
+        p_display_snd = gensym(buf);
+        pd_bind(&p_pd, p_display_snd);
+        snprintf(buf, sizeof(buf), "%p-d-%d-rcv", x, index);
+        p_display_rcv = gensym(buf);
     }
     ~t_vstparam(){
-        pd_unbind(&p_pd, p_name);
+        pd_unbind(&p_pd, p_slider);
+        pd_unbind(&p_pd, p_display_snd);
     }
         // this will set the slider and implicitly call vstparam_set
     void set(t_floatarg f){
-        pd_vmess(p_name->s_thing, gensym("set"), (char *)"f", f);
+        pd_vmess(p_slider->s_thing, gensym("set"), (char *)"f", f);
     }
 
     t_pd p_pd;
     t_vsthost *p_owner;
-    t_symbol *p_name;
-    t_symbol *p_display;
+    t_symbol *p_slider;
+    t_symbol *p_display_rcv;
+    t_symbol *p_display_snd;
     int p_index;
 };
 
-static void vsthost_param_doset(t_vsthost *x, int index, float value, bool automated);
-
     // called when moving a slider in the generic GUI
 static void vstparam_float(t_vstparam *x, t_floatarg f){
-    vsthost_param_doset(x->p_owner, x->p_index, f, true);
+    x->p_owner->set_param(x->p_index, f, true);
+}
+
+    // called when entering something in the symbol atom
+static void vstparam_symbol(t_vstparam *x, t_symbol *s){
+    x->p_owner->set_param(x->p_index, s->s_name, true);
 }
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
@@ -124,17 +135,14 @@ static void vstparam_set(t_vstparam *x, t_floatarg f){
     IVSTPlugin *plugin = x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s %s", plugin->getParameterDisplay(index).c_str(),
-        plugin->getParameterLabel(index).c_str());
-#if 0 // it's very hard to actually open the label properties, so we don't care
-    substitute_whitespace(buf);
-#endif
-    pd_vmess(x->p_display->s_thing, gensym("label"), (char *)"s", gensym(buf));
+    snprintf(buf, sizeof(buf), "%s", plugin->getParameterDisplay(index).c_str());
+    pd_vmess(x->p_display_rcv->s_thing, gensym("set"), (char *)"s", gensym(buf));
 }
 
 static void vstparam_setup(){
     vstparam_class = class_new(gensym("__vstparam"), 0, 0, sizeof(t_vstparam), 0, A_NULL);
     class_addfloat(vstparam_class, (t_method)vstparam_float);
+    class_addsymbol(vstparam_class, (t_method)vstparam_symbol);
     class_addmethod(vstparam_class, (t_method)vstparam_set, gensym("set"), A_DEFFLOAT, 0);
 }
 
@@ -152,7 +160,7 @@ class t_vsteditor : IVSTPluginListener {
         // update the parameter displays
     void update();
         // notify generic GUI for parameter changes
-    void set_param(int index, float value, bool automated = false);
+    void param_changed(int index, float value, bool automated = false);
         // show/hide window
     void vis(bool v);
     IVSTWindow *window(){
@@ -405,6 +413,10 @@ void t_vsteditor::close_plugin(){
     }
 }
 
+const int xoffset = 20;
+const int yoffset = 20;
+const int maxparams = 16;
+
 void t_vsteditor::setup(){
     if (!e_owner->check_plugin()) return;
 
@@ -416,10 +428,10 @@ void t_vsteditor::setup(){
     }
     send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
     send_mess(gensym("clear"));
-        // slider
+        // slider: #X obj 25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1;
     t_atom slider[21];
-    SETFLOAT(slider, 20);
-    SETFLOAT(slider+1, 20);
+    SETFLOAT(slider, xoffset);
+    SETFLOAT(slider+1, 0); // temp
     SETSYMBOL(slider+2, gensym("hsl"));
     SETFLOAT(slider+3, 128);
     SETFLOAT(slider+4, 15);
@@ -427,9 +439,9 @@ void t_vsteditor::setup(){
     SETFLOAT(slider+6, 1);
     SETFLOAT(slider+7, 0);
     SETFLOAT(slider+8, 0);
-    SETSYMBOL(slider+9, gensym("empty"));
-    SETSYMBOL(slider+10, gensym("empty"));
-    SETSYMBOL(slider+11, gensym("dummy"));
+    SETSYMBOL(slider+9, gensym("snd")); // temp
+    SETSYMBOL(slider+10, gensym("rcv")); // temp
+    SETSYMBOL(slider+11, gensym("label")); // temp
     SETFLOAT(slider+12, -2);
     SETFLOAT(slider+13, -8);
     SETFLOAT(slider+14, 0);
@@ -439,40 +451,34 @@ void t_vsteditor::setup(){
     SETFLOAT(slider+18, -1);
     SETFLOAT(slider+19, -0);
     SETFLOAT(slider+20, 1);
-        // label
-    t_atom label[16];
-    SETFLOAT(label, 30 + 128);
-    SETFLOAT(label+1, 10);
-    SETSYMBOL(label+2, gensym("cnv"));
-    SETFLOAT(label+3, 1);
-    SETFLOAT(label+4, 1);
-    SETFLOAT(label+5, 1);
-    SETSYMBOL(label+6, gensym("empty"));
-    SETSYMBOL(label+7, gensym("empty"));
-    SETSYMBOL(label+8, gensym("empty"));
-    SETFLOAT(label+9, 0);
-    SETFLOAT(label+10, 8);
-    SETFLOAT(label+11, 0);
-    SETFLOAT(label+12, 10);
-    SETFLOAT(label+13, -262144);
-    SETFLOAT(label+14, -66577);
-    SETFLOAT(label+15, 0);
+        // display: #X symbolatom 165 79 10 0 0 1 label rcv snd, f 10;
+    t_atom display[9];
+    SETFLOAT(display, xoffset + 10 + 128);
+    SETFLOAT(display+1,0); // temp
+    SETFLOAT(display+2, 10);
+    SETFLOAT(display+3, 0);
+    SETFLOAT(display+4, 0);
+    SETFLOAT(display+5, 1);
+    SETSYMBOL(display+6, gensym("")); // temp
+    SETSYMBOL(display+7, gensym("rcv")); // temp
+    SETSYMBOL(display+8, gensym("snd")); // temp
 
     for (int i = 0; i < nparams; ++i){
             // create slider
-        SETFLOAT(slider+1, 20 + i*35);
-        SETSYMBOL(slider+9, e_params[i].p_name);
-        SETSYMBOL(slider+10, e_params[i].p_name);
+        SETFLOAT(slider+1, yoffset + i*35);
+        SETSYMBOL(slider+9, e_params[i].p_slider);
+        SETSYMBOL(slider+10, e_params[i].p_slider);
         char buf[64];
         snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
         substitute_whitespace(buf);
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
-            // create number box
-        SETFLOAT(label+1, 20 + i*35);
-        SETSYMBOL(label+6, e_params[i].p_display);
-        SETSYMBOL(label+7, e_params[i].p_display);
-        send_mess(gensym("obj"), 16, label);
+            // create display
+        SETFLOAT(display+1, 20 + i*35);
+        SETSYMBOL(display+6, gensym(e_owner->x_plugin->getParameterLabel(i).c_str()));
+        SETSYMBOL(display+7, e_params[i].p_display_rcv);
+        SETSYMBOL(display+8, e_params[i].p_display_snd);
+        send_mess(gensym("symbolatom"), 9, display);
     }
     float width = 280;
     float height = nparams * 35 + 60;
@@ -489,13 +495,13 @@ void t_vsteditor::update(){
     if (!e_owner->x_plugin->hasEditor() || e_generic){
         int n = e_owner->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
-            set_param(i, e_owner->x_plugin->getParameter(i));
+            param_changed(i, e_owner->x_plugin->getParameter(i));
         }
     }
 }
 
     // automated: true if parameter change comes from the (generic) GUI
-void t_vsteditor::set_param(int index, float value, bool automated){
+void t_vsteditor::param_changed(int index, float value, bool automated){
     if (!e_window && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
         if (automated){
@@ -614,19 +620,45 @@ static void vsthost_precision(t_vsthost *x, t_floatarg f){
 }
 
 // parameters
-static void vsthost_param_set(t_vsthost *x, t_floatarg index, t_floatarg value){
+static void vsthost_param_set(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
-    vsthost_param_doset(x, index, value, false);
+    if (argc < 2){
+        pd_error(x, "%s: 'param_set' expects two arguments (index + float/symbol)", classname(x));
+    }
+    int index = atom_getfloat(argv);
+    switch (argv[1].a_type){
+    case A_FLOAT:
+        x->set_param(index, argv[1].a_w.w_float, false);
+        break;
+    case A_SYMBOL:
+        x->set_param(index, argv[1].a_w.w_symbol->s_name, false);
+        break;
+    default:
+        pd_error(x, "%s: second argument for 'param_set' must be a float or symbol", classname(x));
+        break;
+    }
 }
 
     // automated: true if parameter was set from the (generic) GUI, false if set by message ("param_set")
-static void vsthost_param_doset(t_vsthost *x, int index, float value, bool automated){
-    if (index >= 0 && index < x->x_plugin->getNumParameters()){
+void t_vsthost::set_param(int index, float value, bool automated){
+    if (index >= 0 && index < x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
-        x->x_plugin->setParameter(index, value);
-        x->x_editor->set_param(index, value, automated);
+        x_plugin->setParameter(index, value);
+        x_editor->param_changed(index, value, automated);
     } else {
-        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
+        pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
+    }
+}
+    // set from string
+void t_vsthost::set_param(int index, const char *s, bool automated){
+    if (index >= 0 && index < x_plugin->getNumParameters()){
+        if (!x_plugin->setParameter(index, s)){
+            pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
+        }
+            // some plugins don't just ignore bad string input but reset the parameter to some value...
+        x_editor->param_changed(index, x_plugin->getParameter(index), automated);
+    } else {
+        pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
     }
 }
 
@@ -1264,7 +1296,7 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_info, gensym("info"), A_NULL);
         // parameters
-    class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_name, gensym("param_name"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_label, gensym("param_label"), A_FLOAT, A_NULL);
