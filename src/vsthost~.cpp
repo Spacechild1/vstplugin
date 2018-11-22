@@ -14,11 +14,11 @@
 #endif
 
 #if VSTTHREADS
-#include <atomic>
-#include <thread>
-#include <future>
+# include <atomic>
+# include <thread>
+# include <future>
 #else // don't use VST GUI threads
-#define MAIN_LOOP_POLL_INT 50
+# define MAIN_LOOP_POLL_INT 20
 static t_clock *mainLoopClock = nullptr;
 static void mainLoopTick(void *x){
     VSTWindowFactory::mainLoopPoll();

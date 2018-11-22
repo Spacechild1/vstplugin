@@ -50,23 +50,22 @@ namespace VSTWindowFactory {
         return new VSTWindowCocoa(plugin);
     }
     void mainLoopPollCocoa(){
-        bool loop = true;
-        do {
-            NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
+        NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
+        while (true) {
             NSEvent *event = [NSApp 
                 nextEventMatchingMask:NSAnyEventMask
                 untilDate:[[NSDate alloc] init]
                 inMode:NSDefaultRunLoopMode
                 dequeue:YES];
-            if (!event){
-                loop = false;
-            } else {
+            if (event){
+                [NSApp sendEvent:event];
+                [NSApp updateWindows];
                 // LOG_DEBUG("got event: " << [event type]);
+            } else {
+                break;
             }
-            [NSApp sendEvent:event];
-            [NSApp updateWindows];
-            [pool release];
-        } while (loop);
+        }
+        [pool release];
     }
 }
 
