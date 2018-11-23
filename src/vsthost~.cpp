@@ -580,6 +580,55 @@ static void vsthost_precision(t_vsthost *x, t_floatarg f){
     x->check_precision();
 }
 
+// transport
+static void vsthost_tempo(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    if (f > 0){
+        x->x_plugin->setTempoBPM(f);
+    } else {
+        pd_error(x, "%s: tempo must greater than 0", classname(x));
+    }
+}
+
+static void vsthost_time_signature(t_vsthost *x, t_floatarg num, t_floatarg denom){
+    if (!x->check_plugin()) return;
+    if (num > 0 && denom > 0){
+        x->x_plugin->setTimeSignature(num, denom);
+    } else {
+        pd_error(x, "%s: bad time signature", classname(x));
+    }
+}
+
+static void vsthost_play(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->setTransportPlaying(f);
+}
+
+static void vsthost_cycle(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->setTransportCycleActive(f);
+}
+
+static void vsthost_cycle_range(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->setTransportCycleStart(f);
+}
+
+static void vsthost_cycle_end(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->setTransportCycleEnd(f);
+}
+
+static void vsthost_bar_pos(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->setTransportBarStartPosition(f);
+}
+
+static void vsthost_transport_pos(t_vsthost *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->setTransportPosition(f);
+}
+
 // parameters
 static void vsthost_param_set(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
@@ -1088,6 +1137,7 @@ static void vsthost_free(t_vsthost *x){
     freebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void*));
         // editor
     delete x->x_editor;
+    LOG_DEBUG("vsthost free");
 }
 
 // perform routine
@@ -1256,6 +1306,15 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_info, gensym("info"), A_NULL);
+        // transport
+    class_addmethod(vsthost_class, (t_method)vsthost_tempo, gensym("tempo"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_play, gensym("play"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_cycle, gensym("cycle"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_cycle_start, gensym("cycle_start"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_cycle_end, gensym("cycle_end"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_bar_pos, gensym("bar_pos"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_transport_pos, gensym("transport_pos"), A_FLOAT, A_NULL);
         // parameters
     class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);

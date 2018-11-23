@@ -506,6 +506,61 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X connect 13 0 0 0;
 #X restore 402 671 pd midi;
 #X text 398 650 MIDI messages;
+#N canvas 696 256 469 540 transport 0;
+#X obj 20 449 s \$0-msg;
+#X msg 20 48 tempo \$1;
+#X obj 20 26 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
+#X text 83 49 set tempo in BPM;
+#X msg 32 104 time_signature \$1 \$2;
+#X msg 32 78 4 4;
+#X msg 94 79 3 4;
+#X text 61 78 4/4;
+#X text 125 79 3/4;
+#X text 169 105 set time signature;
+#X msg 41 151 play \$1;
+#X obj 41 130 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+1;
+#X msg 51 201 cycle \$1;
+#X obj 51 181 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+1;
+#X msg 58 251 cycle_start \$1;
+#X obj 58 229 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X obj 64 276 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X msg 64 298 cycle_end \$1;
+#X msg 73 355 bar_pos \$1;
+#X obj 73 335 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X obj 81 390 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X msg 81 410 transport_pos \$1;
+#X text 100 150 play/pause;
+#X text 116 201 enable/disable cycling;
+#X text 158 250 cycle start position (in quarter notes);
+#X text 151 296 cycle end position (in quarter notes);
+#X text 147 355 start position in bar (in quarter notes);
+#X text 186 408 set transport position (in quarter notes);
+#X connect 1 0 0 0;
+#X connect 2 0 1 0;
+#X connect 4 0 0 0;
+#X connect 5 0 4 0;
+#X connect 6 0 4 0;
+#X connect 10 0 0 0;
+#X connect 11 0 10 0;
+#X connect 12 0 0 0;
+#X connect 13 0 12 0;
+#X connect 14 0 0 0;
+#X connect 15 0 14 0;
+#X connect 16 0 17 0;
+#X connect 17 0 0 0;
+#X connect 18 0 0 0;
+#X connect 19 0 18 0;
+#X connect 20 0 21 0;
+#X connect 21 0 0 0;
+#X restore 499 673 pd transport;
+#X text 497 650 transport;
 #X connect 0 0 2 0;
 #X connect 0 1 2 1;
 #X connect 0 2 16 0;
