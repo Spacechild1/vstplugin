@@ -48,6 +48,21 @@ class VST2Plugin final : public IVSTPlugin {
         listener_ = listener;
     }
 
+    void setTempoBPM(double tempo) override;
+    void setTimeSignature(int numerator, int denominator) override;
+    void setTransportPlaying(bool play) override;
+    void setTransportRecording(bool record) override;
+    void setTransportAutomationWriting(bool writing) override;
+    void setTransportAutomationReading(bool reading) override;
+    void setTransportCycleActive(bool active) override;
+    void setTransportCycleStart(double beat) override;
+    void setTransportCycleEnd(double beat) override;
+    void setTransportBarStartPosition(double beat) override;
+    void setTransportPosition(double beat) override;
+    double getTransportPosition() const override {
+        return timeInfo_.ppqPos;
+    }
+
     int getNumMidiInputChannels() const override;
     int getNumMidiOutputChannels() const override;
     bool hasMidiInput() const override;
@@ -101,21 +116,22 @@ class VST2Plugin final : public IVSTPlugin {
     bool canDo(const char *what) const;
     bool canHostDo(const char *what) const;
     void parameterAutomated(int index, float value);
-        // VST events from host
-    void processEventQueue();
-    void clearEventQueue();
-        // VST events from plugin
+    VstTimeInfo * getTimeInfo(VstInt32 flags);
+    void preProcess(int nsamples);
+    void postProcess();
+        // process VST events from plugin
     void processEvents(VstEvents *events);
+        // dispatch to plugin
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
         // data members
     AEffect *plugin_ = nullptr;
     IVSTPluginListener *listener_ = nullptr;
     std::string path_;
+    VstTimeInfo timeInfo_;
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;
     std::vector<VstMidiSysexEvent> sysexQueue_;
-        // VstEvents is basically an array of VstEvent pointers
-    VstEvents *vstEvents_;
-    int vstEventQueueSize_ = 0;
+    VstEvents *vstEvents_; // VstEvents is basically an array of VstEvent pointers
+    int vstEventBufferSize_ = 0;
 };

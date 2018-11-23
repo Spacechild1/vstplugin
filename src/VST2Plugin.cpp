@@ -122,10 +122,17 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
     : plugin_((AEffect*)plugin), path_(path)
 {
+    memset(&timeInfo_, 0, sizeof(timeInfo_));
+    timeInfo_.flags = kVstTransportPlaying;
+    timeInfo_.sampleRate = 44100;
+    timeInfo_.tempo = 120;
+    timeInfo_.timeSigNumerator = 4;
+    timeInfo_.timeSigDenominator = 4;
+
         // create VstEvents structure holding VstEvent pointers
     vstEvents_ = (VstEvents *)malloc(sizeof(VstEvents) + DEFAULT_EVENT_QUEUE_SIZE * sizeof(VstEvent *));
     memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
-    vstEventQueueSize_ = DEFAULT_EVENT_QUEUE_SIZE;
+    vstEventBufferSize_ = DEFAULT_EVENT_QUEUE_SIZE;
 
     plugin_->user = this;
     dispatch(effOpen);
@@ -135,7 +142,10 @@ VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
 VST2Plugin::~VST2Plugin(){
     dispatch(effClose);
 
-    clearEventQueue();
+        // clear sysex events
+    for (auto& sysex : sysexQueue_){
+        free(sysex.sysexDump);
+    }
     free(vstEvents_);
 }
 
@@ -160,20 +170,20 @@ int VST2Plugin::getPluginUniqueID() const {
 
 void VST2Plugin::process(float **inputs,
     float **outputs, VstInt32 sampleFrames){
-    processEventQueue();
+    preProcess(sampleFrames);
     if (plugin_->processReplacing){
         (plugin_->processReplacing)(plugin_, inputs, outputs, sampleFrames);
     }
-    clearEventQueue();
+    postProcess();
 }
 
 void VST2Plugin::processDouble(double **inputs,
     double **outputs, VstInt32 sampleFrames){
-    processEventQueue();
+    preProcess(sampleFrames);
     if (plugin_->processDoubleReplacing){
         (plugin_->processDoubleReplacing)(plugin_, inputs, outputs, sampleFrames);
     }
-    clearEventQueue();
+    postProcess();
 }
 
 bool VST2Plugin::hasSinglePrecision() const {
@@ -194,6 +204,8 @@ void VST2Plugin::resume(){
 
 void VST2Plugin::setSampleRate(float sr){
     dispatch(effSetSampleRate, 0, 0, NULL, sr);
+    timeInfo_.sampleRate = sr;
+    timeInfo_.samplePos = 0;
 }
 
 void VST2Plugin::setBlockSize(int n){
@@ -226,6 +238,75 @@ bool VST2Plugin::hasBypass() const {
 
 void VST2Plugin::setBypass(bool bypass){
     dispatch(effSetBypass, 0, bypass);
+}
+
+void VST2Plugin::setTempoBPM(double tempo){
+    if (tempo > 0) {
+        timeInfo_.tempo = tempo;
+    } else {
+        LOG_WARNING("setTempoBPM: tempo must be greater than 0!");
+    }
+}
+
+void VST2Plugin::setTimeSignature(int numerator, int denominator){
+    if (numerator > 0 && denominator > 0){
+        timeInfo_.timeSigNumerator = numerator;
+        timeInfo_.timeSigDenominator = denominator;
+    } else {
+        LOG_WARNING("setTimeSignature: bad time signature!");
+    }
+}
+
+void VST2Plugin::setTransportPlaying(bool play){
+    if (play != (bool)(timeInfo_.flags & kVstTransportPlaying)){
+        LOG_DEBUG("setTransportPlaying: " << play);
+        timeInfo_.flags ^= kVstTransportPlaying; // toggle
+        timeInfo_.flags |= kVstTransportChanged;
+    }
+}
+
+void VST2Plugin::setTransportRecording(bool record){
+    if (record != (bool)(timeInfo_.flags & kVstTransportRecording)){
+        LOG_DEBUG("setTransportRecording: " << record);
+        timeInfo_.flags ^= kVstTransportRecording; // toggle
+        timeInfo_.flags |= kVstTransportChanged;
+    }
+}
+
+void VST2Plugin::setTransportAutomationWriting(bool writing){
+    if (writing != (bool)(timeInfo_.flags & kVstAutomationWriting)){
+        timeInfo_.flags ^= kVstAutomationWriting; // toggle
+    }
+}
+
+void VST2Plugin::setTransportAutomationReading(bool reading){
+    if (reading != (bool)(timeInfo_.flags & kVstAutomationReading)){
+        timeInfo_.flags ^= kVstAutomationReading; // toggle
+    }
+}
+
+void VST2Plugin::setTransportCycleActive(bool active){
+    if (active != (bool)(timeInfo_.flags & kVstTransportCycleActive)){
+        LOG_DEBUG("setTransportCycleActive: " << active);
+        timeInfo_.flags ^= kVstTransportCycleActive; // toggle
+        timeInfo_.flags |= kVstTransportChanged;
+    }
+}
+
+void VST2Plugin::setTransportCycleStart(double beat){
+    timeInfo_.cycleStartPos = std::max(0.0, beat);
+}
+
+void VST2Plugin::setTransportCycleEnd(double beat){
+    timeInfo_.cycleEndPos = std::max(0.0, beat);
+}
+
+void VST2Plugin::setTransportBarStartPosition(double beat){
+    timeInfo_.barStartPos = std::max(0.0, beat);
+}
+
+void VST2Plugin::setTransportPosition(double beat){
+    timeInfo_.ppqPos = std::max(0.0, beat);
 }
 
 int VST2Plugin::getNumMidiInputChannels() const {
@@ -719,17 +800,70 @@ void VST2Plugin::parameterAutomated(int index, float value){
     }
 }
 
-void VST2Plugin::processEventQueue(){
+VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
+#if 0
+    LOG_DEBUG("request: " << flags);
+    if (flags & kVstNanosValid){
+        LOG_DEBUG("want system time");
+    }
+    if (flags & kVstPpqPosValid){
+        LOG_DEBUG("want quarter notes");
+    }
+    if (flags & kVstTempoValid){
+        LOG_DEBUG("want tempo");
+    }
+    if (flags & kVstBarsValid){
+        LOG_DEBUG("want bar start pos");
+    }
+    if (flags & kVstCyclePosValid){
+        LOG_DEBUG("want cycle pos");
+    }
+    if (flags & kVstTimeSigValid){
+        LOG_DEBUG("want time signature");
+    }
+#endif
+    if (flags & kVstSmpteValid){
+        LOG_DEBUG("want SMPTE");
+        LOG_WARNING("SMPTE not supported (yet)!");
+        return nullptr;
+    }
+    if (flags & kVstClockValid){
+            // samples to nearest midi clock
+        double clocks = timeInfo_.ppqPos * 24.0;
+        double fract = clocks - (long long)clocks;
+        if (fract > 0.5){
+            fract -= 1.0;
+        }
+        if (timeInfo_.tempo > 0){
+            timeInfo_.samplesToNextClock = fract / 24.0 * 60.0 / timeInfo_.tempo * timeInfo_.sampleRate;
+        } else {
+            timeInfo_.samplesToNextClock = 0;
+        }
+        LOG_DEBUG("want MIDI clock");
+    }
+    return &timeInfo_;
+}
+
+void VST2Plugin::preProcess(int nsamples){
+        // advance time (if playing):
+    if (timeInfo_.flags & kVstTransportPlaying){
+        timeInfo_.samplePos += nsamples; // sample position
+        double sec = (double)nsamples / timeInfo_.sampleRate;
+        timeInfo_.nanoSeconds += sec * 1e-009; // system time in nanoseconds
+        timeInfo_.ppqPos += sec / 60.f * timeInfo_.tempo; // beat position
+    }
+        // send MIDI events:
     int numEvents = vstEvents_->numEvents;
-    while (numEvents > vstEventQueueSize_){
-        LOG_DEBUG("processEventQueue: grow (numEvents " << numEvents << ", old size " << vstEventQueueSize_<< ")");
+        // resize buffer if needed
+    while (numEvents > vstEventBufferSize_){
+        LOG_DEBUG("vstEvents: grow (numEvents " << numEvents << ", old size " << vstEventBufferSize_<< ")");
             // always grow (doubling the memory), never shrink
-        vstEvents_ = (VstEvents *)realloc(vstEvents_, sizeof(VstEvents) + 2 * vstEventQueueSize_ * sizeof(VstEvent *));
-        vstEventQueueSize_ *= 2;
+        vstEvents_ = (VstEvents *)realloc(vstEvents_, sizeof(VstEvents) + 2 * vstEventBufferSize_ * sizeof(VstEvent *));
+        vstEventBufferSize_ *= 2;
         memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
         vstEvents_->numEvents = numEvents;
     }
-        // set VstEvent pointers here to ensure they are all valid
+        // set VstEvent pointers (do it right here to ensure they are all valid)
     int n = 0;
     for (auto& midi : midiQueue_){
         vstEvents_->events[n++] = (VstEvent *)&midi;
@@ -738,14 +872,14 @@ void VST2Plugin::processEventQueue(){
         vstEvents_->events[n++] = (VstEvent *)&sysex;
     }
     if (n != numEvents){
-        LOG_ERROR("processEventQueue bug!");
-        return;
+        LOG_ERROR("preProcess bug: wrong number of events!");
+    } else {
+            // always call this, even if there are no events. some plugins depend on this...
+        dispatch(effProcessEvents, 0, 0, vstEvents_);
     }
-        // always call this, even if there are no events. some plugins depend on this...
-    dispatch(effProcessEvents, 0, 0, vstEvents_);
 }
 
-void VST2Plugin::clearEventQueue(){
+void VST2Plugin::postProcess(){
         // clear midi events
     midiQueue_.clear();
         // clear sysex events
@@ -755,6 +889,9 @@ void VST2Plugin::clearEventQueue(){
     sysexQueue_.clear();
         // 'clear' VstEvents array
     vstEvents_->numEvents = 0;
+
+        // clear flag
+    timeInfo_.flags &= ~kVstTransportChanged;
 }
 
 void VST2Plugin::processEvents(VstEvents *events){
@@ -791,13 +928,13 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
     switch(opcode) {
     case audioMasterAutomate:
-        LOG_DEBUG("opcode: audioMasterAutomate");
+        // LOG_DEBUG("opcode: audioMasterAutomate");
         if (plugin->user){
             getuser(plugin)->parameterAutomated(index, opt);
         }
         break;
     case audioMasterVersion:
-        LOG_DEBUG("opcode: audioMasterVersion");
+        // LOG_DEBUG("opcode: audioMasterVersion");
         return 2400;
     case audioMasterCurrentId:
         LOG_DEBUG("opcode: audioMasterCurrentId");
@@ -810,9 +947,12 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterGetTime:
         // LOG_DEBUG("opcode: audioMasterGetTime");
+        if (plugin->user){
+            return (VstIntPtr)getuser(plugin)->getTimeInfo(value);
+        }
         break;
     case audioMasterProcessEvents:
-        LOG_DEBUG("opcode: audioMasterProcessEvents");
+        // LOG_DEBUG("opcode: audioMasterProcessEvents");
         if (plugin->user){
             getuser(plugin)->processEvents((VstEvents *)ptr);
         }

@@ -80,6 +80,19 @@ class IVSTPlugin {
 
     virtual void setListener(IVSTPluginListener *listener) = 0;
 
+    virtual void setTempoBPM(double tempo) = 0;
+    virtual void setTimeSignature(int numerator, int denominator) = 0;
+    virtual void setTransportPlaying(bool play) = 0;
+    virtual void setTransportRecording(bool record) = 0;
+    virtual void setTransportAutomationWriting(bool writing) = 0;
+    virtual void setTransportAutomationReading(bool reading) = 0;
+    virtual void setTransportCycleActive(bool active) = 0;
+    virtual void setTransportCycleStart(double beat) = 0;
+    virtual void setTransportCycleEnd(double beat) = 0;
+    virtual void setTransportBarStartPosition(double beat) = 0;
+    virtual void setTransportPosition(double beat) = 0;
+    virtual double getTransportPosition() const = 0;
+
     virtual int getNumMidiInputChannels() const = 0;
     virtual int getNumMidiOutputChannels() const = 0;
     virtual bool hasMidiInput() const = 0;
