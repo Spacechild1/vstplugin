@@ -1,4 +1,4 @@
-#N canvas 297 18 635 710 10;
+#N canvas 358 39 635 710 10;
 #X obj 23 461 vsthost~;
 #X text 21 106 [flags...] \, [file] \, inlets (=2) \, outlets (=2)
 ;
@@ -243,11 +243,11 @@ f 44;
 #X text 30 184 -d: prefer double precision;
 #X text 182 647 parameters;
 #X text 278 649 FX programs/banks;
-#N canvas 388 79 726 520 parameter 0;
+#N canvas 388 79 726 527 parameter 0;
 #X obj 86 68 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X obj 17 21 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0.03 256;
+-262144 -1 -1 0 256;
 #X msg 17 116 param_set \$1 \$2;
 #X obj 38 213 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
@@ -284,15 +284,15 @@ dB \, ms), f 33;
 #X symbolatom 25 43 10 0 0 0 - - -, f 10;
 #X text 80 19 float value (0.0 - 1.0);
 #X text 120 118 (index \, value);
-#X text 224 73 a VST parameter can take two forms:;
+#X text 229 71 a VST parameter can take two forms:;
 #X text 93 42 string value (not supported by all plugins);
-#X text 225 131 see [param_set <f> <f>( and [param_get <f>(;
-#X text 227 209 see [param_get <f> <s>( and [param_display <f>(;
-#X text 226 155 2) a string representation which is mainly used for
+#X text 230 129 see [param_set <f> <f>( and [param_get <f>(;
+#X text 232 207 see [param_get <f> <s>( and [param_display <f>(;
+#X text 231 153 2) a string representation which is mainly used for
 display \, but many plugins also allow you to set the parameter in
 this way. it corresponds to the symbol box in the generic editor.,
 f 47;
-#X text 224 93 1) a 'normalized' float value which is always in the
+#X text 229 91 1) a 'normalized' float value which is always in the
 range 0 to 1 and corresponds to the slider position in the generic
 editor., f 47;
 #X connect 0 0 28 1;
@@ -312,7 +312,7 @@ editor., f 47;
 #X connect 28 0 2 0;
 #X connect 29 0 28 0;
 #X restore 185 671 pd parameter;
-#N canvas 607 37 669 774 program 1;
+#N canvas 607 37 669 774 program 0;
 #X obj 23 333 s \$0-msg;
 #X msg 23 56 program_set;
 #X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
