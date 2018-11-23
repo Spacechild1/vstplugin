@@ -664,7 +664,7 @@ static void vsthost_cycle(t_vsthost *x, t_floatarg f){
     x->x_plugin->setTransportCycleActive(f);
 }
 
-static void vsthost_cycle_range(t_vsthost *x, t_floatarg f){
+static void vsthost_cycle_start(t_vsthost *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportCycleStart(f);
 }
