@@ -203,9 +203,13 @@ void VST2Plugin::resume(){
 }
 
 void VST2Plugin::setSampleRate(float sr){
-    dispatch(effSetSampleRate, 0, 0, NULL, sr);
-    timeInfo_.sampleRate = sr;
-    timeInfo_.samplePos = 0;
+    if (sr > 0){
+        dispatch(effSetSampleRate, 0, 0, NULL, sr);
+        timeInfo_.sampleRate = sr;
+        timeInfo_.samplePos = 0;
+    } else {
+        LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
+    }
 }
 
 void VST2Plugin::setBlockSize(int n){
