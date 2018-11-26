@@ -1,23 +1,10 @@
-#include "VSTPluginInterface.h"
-#include "Utility.h"
+#include "vstplugin~.h"
 
-#include "m_pd.h"
+#undef pd_class
+#define pd_class(x) (*(t_pd *)(x))
+#define classname(x) (class_getname(pd_class(x)))
 
-#include <memory>
-#include <cstdio>
-#include <cstring>
-#include <iostream>
-#include <vector>
-
-#ifndef VSTTHREADS
-#define VSTTHREADS 1
-#endif
-
-#if VSTTHREADS
-# include <atomic>
-# include <thread>
-# include <future>
-#else // don't use VST GUI threads
+#if !VSTTHREADS // don't use VST GUI threads
 # define MAIN_LOOP_POLL_INT 20
 static t_clock *mainLoopClock = nullptr;
 static void mainLoopTick(void *x){
@@ -25,10 +12,6 @@ static void mainLoopTick(void *x){
     clock_delay(mainLoopClock, MAIN_LOOP_POLL_INT);
 }
 #endif
-
-#undef pd_class
-#define pd_class(x) (*(t_pd *)(x))
-#define classname(x) (class_getname(pd_class(x)))
 
 // substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
 static void substitute_whitespace(char *buf){
@@ -39,87 +22,35 @@ static void substitute_whitespace(char *buf){
     }
 }
 
-// vstplugin~ object
-static t_class *vstplugin_class;
+/*--------------------- t_vstparam --------------------------*/
 
-class t_vsteditor;
-
-struct t_vstplugin {
-	t_object x_obj;
-	t_sample x_f;
-    t_outlet *x_messout;
-        // VST plugin
-    IVSTPlugin* x_plugin;
-    int x_bypass;
-    int x_blocksize;
-    int x_sr;
-    int x_gui;
-    int x_dp; // use double precision
-        // editor
-    t_vsteditor *x_editor;
-        // input signals from Pd
-    int x_nin;
-    t_float **x_invec;
-        // contiguous input buffer
-    int x_inbufsize;
-    char *x_inbuf;
-        // array of pointers into the input buffer
-    int x_ninbuf;
-    void **x_inbufvec;
-        // output signals from Pd
-    int x_nout;
-    t_float **x_outvec;
-        // contiguous output buffer
-    int x_outbufsize;
-    char *x_outbuf;
-        // array of pointers into the output buffer
-    int x_noutbuf;
-    void **x_outbufvec;
-        // methods
-    void set_param(int index, float param, bool automated);
-    void set_param(int index, const char *s, bool automated);
-    bool check_plugin();
-    void update_buffer();
-    void update_precision();
-};
-
-
-// VST parameter responder (for Pd GUI)
 static t_class *vstparam_class;
 
-class t_vstparam {
- public:
-    t_vstparam(t_vstplugin *x, int index)
-        : p_owner(x), p_index(index){
-        p_pd = vstparam_class;
-        char buf[64];
-            // slider
-        snprintf(buf, sizeof(buf), "%p-hsl-%d", x, index);
-        p_slider = gensym(buf);
-        pd_bind(&p_pd, p_slider);
-            // display
-        snprintf(buf, sizeof(buf), "%p-d-%d-snd", x, index);
-        p_display_snd = gensym(buf);
-        pd_bind(&p_pd, p_display_snd);
-        snprintf(buf, sizeof(buf), "%p-d-%d-rcv", x, index);
-        p_display_rcv = gensym(buf);
-    }
-    ~t_vstparam(){
-        pd_unbind(&p_pd, p_slider);
-        pd_unbind(&p_pd, p_display_snd);
-    }
-        // this will set the slider and implicitly call vstparam_set
-    void set(t_floatarg f){
-        pd_vmess(p_slider->s_thing, gensym("set"), (char *)"f", f);
-    }
+t_vstparam::t_vstparam(t_vstplugin *x, int index)
+    : p_owner(x), p_index(index){
+    p_pd = vstparam_class;
+    char buf[64];
+        // slider
+    snprintf(buf, sizeof(buf), "%p-hsl-%d", x, index);
+    p_slider = gensym(buf);
+    pd_bind(&p_pd, p_slider);
+        // display
+    snprintf(buf, sizeof(buf), "%p-d-%d-snd", x, index);
+    p_display_snd = gensym(buf);
+    pd_bind(&p_pd, p_display_snd);
+    snprintf(buf, sizeof(buf), "%p-d-%d-rcv", x, index);
+    p_display_rcv = gensym(buf);
+}
 
-    t_pd p_pd;
-    t_vstplugin *p_owner;
-    t_symbol *p_slider;
-    t_symbol *p_display_rcv;
-    t_symbol *p_display_snd;
-    int p_index;
-};
+t_vstparam::~t_vstparam(){
+    pd_unbind(&p_pd, p_slider);
+    pd_unbind(&p_pd, p_display_snd);
+}
+
+    // this will set the slider and implicitly call vstparam_set
+void t_vstparam::set(t_floatarg f){
+    pd_vmess(p_slider->s_thing, gensym("set"), (char *)"f", f);
+}
 
     // called when moving a slider in the generic GUI
 static void vstparam_float(t_vstparam *x, t_floatarg f){
@@ -147,68 +78,7 @@ static void vstparam_setup(){
     class_addmethod(vstparam_class, (t_method)vstparam_set, gensym("set"), A_DEFFLOAT, 0);
 }
 
-// VST editor
-class t_vsteditor : IVSTPluginListener {
- public:
-    t_vsteditor(t_vstplugin &owner);
-    ~t_vsteditor();
-        // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const char* path, bool gui);
-        // close the plugin (and terminate GUI thread if needed)
-    void close_plugin();
-        // setup the generic Pd editor
-    void setup();
-        // update the parameter displays
-    void update();
-        // notify generic GUI for parameter changes
-    void param_changed(int index, float value, bool automated = false);
-        // show/hide window
-    void vis(bool v);
-    IVSTWindow *window(){
-        return e_window.get();
-    }
-    t_canvas *canvas(){
-        return e_canvas;
-    }
- private:
-        // plugin callbacks
-    void parameterAutomated(int index, float value) override;
-    void midiEvent(const VSTMidiEvent& event) override;
-    void sysexEvent(const VSTSysexEvent& event) override;
-        // helper functions
-    void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
-        pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
-    }
-    template<typename... T>
-    void send_vmess(t_symbol *sel, const char *fmt, T... args){
-        pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
-    }
-#if VSTTHREADS
-        // open plugin in a new thread
-    void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
-#endif
-        // notify Pd (e.g. for MIDI event or GUI automation)
-    template<typename T, typename U>
-    void post_event(T& queue, U&& event);
-    static void tick(t_vsteditor *x);
-        // data
-    t_vstplugin *e_owner;
-#if VSTTHREADS
-    std::thread e_thread;
-    std::thread::id e_mainthread;
-#endif
-    std::unique_ptr<IVSTWindow> e_window;
-    t_canvas *e_canvas = nullptr;
-    std::vector<t_vstparam> e_params;
-        // outgoing messages:
-    t_clock *e_clock;
-#if VSTTHREADS
-    std::mutex e_mutex;
-#endif
-    std::vector<std::pair<int, float>> e_automated;
-    std::vector<VSTMidiEvent> e_midi;
-    std::vector<VSTSysexEvent> e_sysex;
-};
+/*-------------------- t_vsteditor ------------------------*/
 
 t_vsteditor::t_vsteditor(t_vstplugin &owner)
     : e_owner(&owner){
@@ -471,7 +341,6 @@ void t_vsteditor::setup(){
     int ncolumns = nparams / maxparams + ((nparams % maxparams) != 0);
     if (!ncolumns) ncolumns = 1; // just to prevent division by zero
     int nrows = nparams / ncolumns + ((nparams % ncolumns) != 0);
-    post("ncolumns: %d, nrows: %d", ncolumns, nrows);
 
     for (int i = 0; i < nparams; ++i){
         int col = i / nrows;
@@ -544,7 +413,7 @@ void t_vsteditor::vis(bool v){
     }
 }
 
-/**** public interface ****/
+/*---------------- t_vstplugin (public methods) ------------------*/
 
 // close
 static void vstplugin_close(t_vstplugin *x){
@@ -747,29 +616,6 @@ static void vstplugin_param_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
     default:
         pd_error(x, "%s: second argument for 'param_set' must be a float or symbol", classname(x));
         break;
-    }
-}
-
-    // automated: true if parameter was set from the (generic) GUI, false if set by message ("param_set")
-void t_vstplugin::set_param(int index, float value, bool automated){
-    if (index >= 0 && index < x_plugin->getNumParameters()){
-        value = std::max(0.f, std::min(1.f, value));
-        x_plugin->setParameter(index, value);
-        x_editor->param_changed(index, value, automated);
-    } else {
-        pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
-    }
-}
-    // set from string
-void t_vstplugin::set_param(int index, const char *s, bool automated){
-    if (index >= 0 && index < x_plugin->getNumParameters()){
-        if (!x_plugin->setParameter(index, s)){
-            pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
-        }
-            // some plugins don't just ignore bad string input but reset the parameter to some value...
-        x_editor->param_changed(index, x_plugin->getParameter(index), automated);
-    } else {
-        pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
     }
 }
 
@@ -1105,9 +951,33 @@ static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
     x->x_plugin->writeBankFile(path);
 }
 
-/*--------------------------------- private------------------------------------------*/
+/*---------------------------- t_vstplugin (internal methods) -------------------------------------*/
 
-// helper methods
+static t_class *vstplugin_class;
+
+// automated is true if parameter was set from the (generic) GUI, false if set by message ("param_set")
+void t_vstplugin::set_param(int index, float value, bool automated){
+    if (index >= 0 && index < x_plugin->getNumParameters()){
+        value = std::max(0.f, std::min(1.f, value));
+        x_plugin->setParameter(index, value);
+        x_editor->param_changed(index, value, automated);
+    } else {
+        pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
+    }
+}
+
+void t_vstplugin::set_param(int index, const char *s, bool automated){
+    if (index >= 0 && index < x_plugin->getNumParameters()){
+        if (!x_plugin->setParameter(index, s)){
+            pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
+        }
+            // some plugins don't just ignore bad string input but reset the parameter to some value...
+        x_editor->param_changed(index, x_plugin->getParameter(index), automated);
+    } else {
+        pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
+    }
+}
+
 bool t_vstplugin::check_plugin(){
     if (x_plugin){
         return true;
