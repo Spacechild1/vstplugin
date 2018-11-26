@@ -1149,6 +1149,15 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     if (in < 1) in = 2;
     if (out < 1) out = 2;
 
+        // initialize GUI backend (if needed)
+    if (!generic){
+        static bool initialized = false;
+        if (!initialized){
+            VSTWindowFactory::initialize();
+            initialized = true;
+        }
+    }
+
         // VST plugin
     x->x_plugin = nullptr;
     x->x_bypass = 0;
@@ -1421,7 +1430,6 @@ void vsthost_tilde_setup(void)
 
     vstparam_setup();
 
-    VSTWindowFactory::initialize();
 #if !VSTTHREADS
     mainLoopClock = clock_new(0, (t_method)mainLoopTick);
     clock_delay(mainLoopClock, 0);
