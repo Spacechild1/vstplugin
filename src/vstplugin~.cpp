@@ -53,6 +53,7 @@ struct t_vstplugin {
     int x_bypass;
     int x_blocksize;
     int x_sr;
+    int x_gui;
     int x_dp; // use double precision
         // editor
     t_vsteditor *x_editor;
@@ -79,6 +80,7 @@ struct t_vstplugin {
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
     void update_buffer();
+    void update_precision();
 };
 
 
@@ -148,10 +150,10 @@ static void vstparam_setup(){
 // VST editor
 class t_vsteditor : IVSTPluginListener {
  public:
-    t_vsteditor(t_vstplugin &owner, bool generic);
+    t_vsteditor(t_vstplugin &owner);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const char* path);
+    IVSTPlugin* open_plugin(const char* path, bool gui);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -196,7 +198,6 @@ class t_vsteditor : IVSTPluginListener {
     std::thread::id e_mainthread;
 #endif
     std::unique_ptr<IVSTWindow> e_window;
-    bool e_generic = false;
     t_canvas *e_canvas = nullptr;
     std::vector<t_vstparam> e_params;
         // outgoing messages:
@@ -209,8 +210,8 @@ class t_vsteditor : IVSTPluginListener {
     std::vector<VSTSysexEvent> e_sysex;
 };
 
-t_vsteditor::t_vsteditor(t_vstplugin &owner, bool generic)
-    : e_owner(&owner), e_generic(generic){
+t_vsteditor::t_vsteditor(t_vstplugin &owner)
+    : e_owner(&owner){
 #if VSTTHREADS
     e_mainthread = std::this_thread::get_id();
 #endif
@@ -357,10 +358,10 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
 }
 #endif
 
-IVSTPlugin* t_vsteditor::open_plugin(const char *path){
+IVSTPlugin* t_vsteditor::open_plugin(const char *path, bool gui){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
-    if (!e_generic){
+    if (gui){
         std::promise<IVSTPlugin *> promise;
         auto future = promise.get_future();
         e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
@@ -376,7 +377,7 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path){
     plugin->setListener(this);
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin->hasEditor() && !e_generic){
+    if (plugin->hasEditor() && gui){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
@@ -507,7 +508,7 @@ void t_vsteditor::setup(){
 void t_vsteditor::update(){
     if (!e_owner->check_plugin()) return;
 
-    if (!e_owner->x_plugin->hasEditor() || e_generic){
+    if (!e_window){
         int n = e_owner->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
@@ -551,8 +552,6 @@ static void vstplugin_close(t_vstplugin *x){
     x->x_editor->close_plugin();
 }
 
-static void vstplugin_precision(t_vstplugin *x, t_floatarg f);
-
 // open
 static void vstplugin_open(t_vstplugin *x, t_symbol *s){
     vstplugin_close(x);
@@ -576,13 +575,13 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
 #endif
         sys_bashfilename(path, path);
             // load VST plugin in new thread
-        IVSTPlugin *plugin = x->x_editor->open_plugin(path);
+        IVSTPlugin *plugin = x->x_editor->open_plugin(path, x->x_gui);
         if (plugin){
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
             plugin->setBlockSize(x->x_blocksize);
             plugin->setSampleRate(x->x_sr);
             x->x_plugin = plugin;
-            vstplugin_precision(x, x->x_dp);
+            x->update_precision();
             x->update_buffer();
             x->x_editor->setup();
         } else {
@@ -593,6 +592,25 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
     }
 }
 
+// plugin name
+static void vstplugin_name(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    t_symbol *name = gensym(x->x_plugin->getPluginName().c_str());
+    t_atom msg;
+    SETSYMBOL(&msg, name);
+    outlet_anything(x->x_messout, gensym("name"), 1, &msg);
+}
+
+// plugin version
+static void vstplugin_version(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    int version = x->x_plugin->getPluginVersion();
+    t_atom msg;
+    SETFLOAT(&msg, version);
+    outlet_anything(x->x_messout, gensym("version"), 1, &msg);
+}
+
+// print plugin info in Pd console
 static void vstplugin_info(t_vstplugin *x){
     if (!x->check_plugin()) return;
     post("~~~ VST plugin info ~~~");
@@ -611,6 +629,7 @@ static void vstplugin_info(t_vstplugin *x){
     post("");
 }
 
+// bypass the plugin
 static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
     x->x_bypass = (f != 0);
     if (x->x_plugin){
@@ -622,6 +641,7 @@ static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
     }
 }
 
+// show/hide editor window
 static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_editor->vis(f);
@@ -631,32 +651,22 @@ static void vstplugin_click(t_vstplugin *x){
     vstplugin_vis(x, 1);
 }
 
-static void vstplugin_precision(t_vstplugin *x, t_floatarg f){
-        // set desired precision
-    int dp = x->x_dp = (f != 0);
-        // check precision
-    if (x->x_plugin){
-        if (!x->x_plugin->hasPrecision(VSTProcessPrecision::Single) && !x->x_plugin->hasPrecision(VSTProcessPrecision::Double)) {
-            post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(x), x->x_plugin->getPluginName().c_str());
-            return;
-        }
-        if (x->x_dp && !x->x_plugin->hasPrecision(VSTProcessPrecision::Double)){
-            post("%s: '%s' doesn't support double precision, using single precision instead",
-                 classname(x), x->x_plugin->getPluginName().c_str());
-            dp = 0;
-        }
-        else if (!x->x_dp && !x->x_plugin->hasPrecision(VSTProcessPrecision::Single)){ // very unlikely...
-            post("%s: '%s' doesn't support single precision, using double precision instead",
-                 classname(x), x->x_plugin->getPluginName().c_str());
-            dp = 1;
-        }
-            // set the actual precision
-        x->x_plugin->setPrecision(dp ? VSTProcessPrecision::Double : VSTProcessPrecision::Single);
+// set processing precision (single or double)
+static void vstplugin_precision(t_vstplugin *x, t_symbol *s){
+    if (s == gensym("single")){
+        x->x_dp = 0;
+    } else if (s == gensym("double")){
+        x->x_dp = 1;
+    } else {
+        pd_error(x, "%s: bad argument to 'precision' message - must be 'single' or 'double'", classname(x));
+        return;
     }
+    x->update_precision();
 }
 
-// transport
+/*------------------------ transport----------------------------------*/
+
+// set tempo in BPM
 static void vstplugin_tempo(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     if (f > 0){
@@ -666,6 +676,7 @@ static void vstplugin_tempo(t_vstplugin *x, t_floatarg f){
     }
 }
 
+// set time signature
 static void vstplugin_time_signature(t_vstplugin *x, t_floatarg num, t_floatarg denom){
     if (!x->check_plugin()) return;
     if (num > 0 && denom > 0){
@@ -675,11 +686,13 @@ static void vstplugin_time_signature(t_vstplugin *x, t_floatarg num, t_floatarg 
     }
 }
 
+// play/stop
 static void vstplugin_play(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportPlaying(f);
 }
 
+// cycle
 static void vstplugin_cycle(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportCycleActive(f);
@@ -695,16 +708,19 @@ static void vstplugin_cycle_end(t_vstplugin *x, t_floatarg f){
     x->x_plugin->setTransportCycleEnd(f);
 }
 
+// set bar position (quarter notes)
 static void vstplugin_bar_pos(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportBarStartPosition(f);
 }
 
+// set transport position (quarter notes)
 static void vstplugin_transport_set(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportPosition(f);
 }
 
+// get current transport position
 static void vstplugin_transport_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     t_atom a;
@@ -712,7 +728,9 @@ static void vstplugin_transport_get(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("transport"), 1, &a);
 }
 
-// parameters
+/*------------------------------------ parameters ------------------------------------------*/
+
+// set parameter by float (0.0 - 1.0) or string (if supported)
 static void vstplugin_param_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     if (argc < 2){
@@ -755,6 +773,7 @@ void t_vstplugin::set_param(int index, const char *s, bool automated){
     }
 }
 
+// get parameter value
 static void vstplugin_param_get(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
@@ -768,6 +787,7 @@ static void vstplugin_param_get(t_vstplugin *x, t_floatarg _index){
 	}
 }
 
+// get parameter name
 static void vstplugin_param_name(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
@@ -781,6 +801,7 @@ static void vstplugin_param_name(t_vstplugin *x, t_floatarg _index){
 	}
 }
 
+// get parameter label (unit of measurement, e.g. ms or dB)
 static void vstplugin_param_label(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
@@ -794,6 +815,7 @@ static void vstplugin_param_label(t_vstplugin *x, t_floatarg _index){
     }
 }
 
+// get stringified parameter value
 static void vstplugin_param_display(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
@@ -807,6 +829,7 @@ static void vstplugin_param_display(t_vstplugin *x, t_floatarg _index){
     }
 }
 
+// number of parameters
 static void vstplugin_param_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
@@ -814,6 +837,7 @@ static void vstplugin_param_count(t_vstplugin *x){
 	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
+// list parameters (index + name)
 static void vstplugin_param_list(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
@@ -822,6 +846,7 @@ static void vstplugin_param_list(t_vstplugin *x){
 	}
 }
 
+// list parameter states (index + value)
 static void vstplugin_param_dump(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
@@ -830,7 +855,9 @@ static void vstplugin_param_dump(t_vstplugin *x){
     }
 }
 
-// MIDI
+/*------------------------------------- MIDI -----------------------------------------*/
+
+// send raw MIDI message
 static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
@@ -853,6 +880,7 @@ static void vstplugin_midi_mess(t_vstplugin *x, int onset, int channel, int v1, 
     vstplugin_midi_raw(x, 0, 3, atoms);
 }
 
+// send MIDI messages (convenience methods)
 static void vstplugin_midi_noteoff(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
     vstplugin_midi_mess(x, 128, channel, pitch, velocity);
 }
@@ -884,6 +912,7 @@ static void vstplugin_midi_bend(t_vstplugin *x, t_floatarg channel, t_floatarg b
     vstplugin_midi_mess(x, 224, channel, val & 127, (val >> 7) & 127);
 }
 
+// send MIDI SysEx message
 static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
@@ -896,7 +925,9 @@ static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *
     x->x_plugin->sendSysexEvent(VSTSysexEvent(std::move(data)));
 }
 
-// programs
+/* --------------------------------- programs --------------------------------- */
+
+// set the current program by index
 static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
@@ -908,6 +939,7 @@ static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
 	}
 }
 
+// get the current program index
 static void vstplugin_program_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
@@ -915,12 +947,14 @@ static void vstplugin_program_get(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
 
-static void vstplugin_program_setname(t_vstplugin *x, t_symbol* name){
+// set the name of the current program
+static void vstplugin_program_name_set(t_vstplugin *x, t_symbol* name){
     if (!x->check_plugin()) return;
     x->x_plugin->setProgramName(name->s_name);
 }
 
-static void vstplugin_program_name(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+// get the program name by index. no argument: get the name of the current program.
+static void vstplugin_program_name_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     t_atom msg[2];
     if (argc){
@@ -934,6 +968,7 @@ static void vstplugin_program_name(t_vstplugin *x, t_symbol *s, int argc, t_atom
     outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
 }
 
+// get number of programs
 static void vstplugin_program_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
@@ -941,6 +976,7 @@ static void vstplugin_program_count(t_vstplugin *x){
 	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
 }
 
+// list all programs (index + name)
 static void vstplugin_program_list(t_vstplugin *x){
     int n = x->x_plugin->getNumPrograms();
     t_atom msg[2];
@@ -951,8 +987,8 @@ static void vstplugin_program_list(t_vstplugin *x){
     }
 }
 
-// read/write FX programs
-static void vstplugin_program_setdata(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+// set program data (list of bytes)
+static void vstplugin_program_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     std::string buffer;
     buffer.resize(argc);
@@ -967,7 +1003,8 @@ static void vstplugin_program_setdata(t_vstplugin *x, t_symbol *s, int argc, t_a
     }
 }
 
-static void vstplugin_program_data(t_vstplugin *x){
+// get program data
+static void vstplugin_program_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     x->x_plugin->writeProgramData(buffer);
@@ -981,6 +1018,7 @@ static void vstplugin_program_data(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("program_data"), n, atoms.data());
 }
 
+// read program file (.FXP)
 static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
@@ -1000,6 +1038,7 @@ static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     }
 }
 
+// write program file (.FXP)
 static void vstplugin_program_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
@@ -1007,8 +1046,8 @@ static void vstplugin_program_write(t_vstplugin *x, t_symbol *s){
     x->x_plugin->writeProgramFile(path);
 }
 
-// read/write FX banks
-static void vstplugin_bank_setdata(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+// set bank data (list of bytes)
+static void vstplugin_bank_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     std::string buffer;
     buffer.resize(argc);
@@ -1023,7 +1062,8 @@ static void vstplugin_bank_setdata(t_vstplugin *x, t_symbol *s, int argc, t_atom
     }
 }
 
-static void vstplugin_bank_data(t_vstplugin *x){
+// get bank data
+static void vstplugin_bank_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     x->x_plugin->writeBankData(buffer);
@@ -1037,6 +1077,7 @@ static void vstplugin_bank_data(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("bank_data"), n, atoms.data());
 }
 
+// read bank file (.FXB)
 static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
@@ -1056,6 +1097,7 @@ static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
     }
 }
 
+// write bank file (.FXB)
 static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
@@ -1063,17 +1105,7 @@ static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
     x->x_plugin->writeBankFile(path);
 }
 
-// plugin version
-static void vstplugin_version(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    int version = x->x_plugin->getPluginVersion();
-	t_atom msg;
-	SETFLOAT(&msg, version);
-	outlet_anything(x->x_messout, gensym("version"), 1, &msg);
-}
-
-
-/**** private ****/
+/*--------------------------------- private------------------------------------------*/
 
 // helper methods
 bool t_vstplugin::check_plugin(){
@@ -1112,30 +1144,55 @@ void t_vstplugin::update_buffer(){
     x_noutbuf = noutbuf;
 }
 
+void t_vstplugin::update_precision(){
+        // set desired precision
+    int dp = x_dp;
+        // check precision
+    if (x_plugin){
+        if (!x_plugin->hasPrecision(VSTProcessPrecision::Single) && !x_plugin->hasPrecision(VSTProcessPrecision::Double)) {
+            post("%s: '%s' doesn't support single or double precision, bypassing",
+                classname(this), x_plugin->getPluginName().c_str());
+            return;
+        }
+        if (x_dp && !x_plugin->hasPrecision(VSTProcessPrecision::Double)){
+            post("%s: '%s' doesn't support double precision, using single precision instead",
+                 classname(this), x_plugin->getPluginName().c_str());
+            dp = 0;
+        }
+        else if (!x_dp && !x_plugin->hasPrecision(VSTProcessPrecision::Single)){ // very unlikely...
+            post("%s: '%s' doesn't support single precision, using double precision instead",
+                 classname(this), x_plugin->getPluginName().c_str());
+            dp = 1;
+        }
+            // set the actual precision
+        x_plugin->setPrecision(dp ? VSTProcessPrecision::Double : VSTProcessPrecision::Single);
+    }
+}
+
 // constructor
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
 static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     t_vstplugin *x = (t_vstplugin *)pd_new(vstplugin_class);
 
-    int generic = 0; // use generic Pd editor
-    int dp = (PD_FLOATSIZE == 64); // default precision
+#ifdef __APPLE__
+    int gui = 0; // use generic Pd GUI by default
+#else
+    int gui = 1; // use VST GUI by default
+#endif
+    int dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
     t_symbol *file = nullptr; // plugin to load (optional)
 
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = atom_getsymbol(argv)->s_name;
         if (*flag == '-'){
-            switch (flag[1]){
-            case 'g':
-                generic = 1;
-                break;
-            case 'd':
-                dp = 1;
-                break;
-            case 's':
+            if (!strcmp(flag, "-gui")){
+                gui = 1;
+            } else if (!strcmp(flag, "-nogui")){
+                gui = 0;
+            } else if (!strcmp(flag, "-sp")){
                 dp = 0;
-                break;
-            default:
-                break;
+            } else if (!strcmp(flag, "-dp")){
+                dp = 1;
             }
             argc--; argv++;
         } else {
@@ -1150,7 +1207,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     if (out < 1) out = 2;
 
         // initialize GUI backend (if needed)
-    if (!generic){
+    if (gui){
         static bool initialized = false;
         if (!initialized){
             VSTWindowFactory::initialize();
@@ -1163,6 +1220,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     x->x_bypass = 0;
     x->x_blocksize = 64;
     x->x_sr = 44100;
+    x->x_gui = gui;
     x->x_dp = dp;
 
         // inputs (skip first):
@@ -1179,7 +1237,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     x->x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
 
         // editor
-    x->x_editor = new t_vsteditor(*x, generic);
+    x->x_editor = new t_vsteditor(*x);
 
         // buffers
     x->x_inbufsize = 0;
@@ -1232,7 +1290,7 @@ static t_int *vstplugin_perform(t_int *w){
     bool dp = x->x_dp;
     bool bypass = plugin ? x->x_bypass : true;
 
-    if(plugin && !bypass) {
+    if (plugin && !bypass) {
             // check processing precision (single or double)
         if (!plugin->hasPrecision(VSTProcessPrecision::Single) && !plugin->hasPrecision(VSTProcessPrecision::Double)) {
             bypass = true;
@@ -1378,7 +1436,8 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_name, gensym("name"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_NULL);
         // transport
@@ -1413,18 +1472,18 @@ void vstplugin_tilde_setup(void)
         // programs
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_set, gensym("program_set"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_get, gensym("program_get"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_setname, gensym("program_setname"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_name, gensym("program_name"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_name_set, gensym("program_name_set"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_name_get, gensym("program_name_get"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_list, gensym("program_list"), A_NULL);
         // read/write fx programs
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_setdata, gensym("program_setdata"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_data, gensym("program_data"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_data_set, gensym("program_data_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_data_get, gensym("program_data_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
         // read/write fx banks
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_setdata, gensym("bank_setdata"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_data, gensym("bank_data"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_data_set, gensym("bank_data_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_data_get, gensym("bank_data_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_bank_read, gensym("bank_read"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
 
