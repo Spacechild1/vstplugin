@@ -1422,7 +1422,7 @@ void vsthost_tilde_setup(void)
     vstparam_setup();
 
     VSTWindowFactory::initialize();
-#ifdef __APPLE__
+#if !VSTTHREADS
     mainLoopClock = clock_new(0, (t_method)mainLoopTick);
     clock_delay(mainLoopClock, 0);
 #endif
