@@ -6,14 +6,24 @@
 #include <memory>
 #include <cstdio>
 #include <cstring>
-#include <atomic>
-#include <thread>
-#include <future>
 #include <iostream>
 #include <vector>
 
-#ifdef USE_X11
-# include <X11/Xlib.h>
+#ifndef VSTTHREADS
+#define VSTTHREADS 1
+#endif
+
+#if VSTTHREADS
+# include <atomic>
+# include <thread>
+# include <future>
+#else // don't use VST GUI threads
+# define MAIN_LOOP_POLL_INT 20
+static t_clock *mainLoopClock = nullptr;
+static void mainLoopTick(void *x){
+    VSTWindowFactory::mainLoopPoll();
+    clock_delay(mainLoopClock, MAIN_LOOP_POLL_INT);
+}
 #endif
 
 #undef pd_class
@@ -140,10 +150,10 @@ class t_vsteditor : IVSTPluginListener {
  public:
     t_vsteditor(t_vsthost &owner, bool generic);
     ~t_vsteditor();
-        // try to open the plugin in a new thread and start the message loop (if needed)
-    IVSTPlugin* open_via_thread(const char* path);
-        // terminate the message loop and wait for the thread to finish
-    void close_thread();
+        // open the plugin (and launch GUI thread if needed)
+    IVSTPlugin* open_plugin(const char* path);
+        // close the plugin (and terminate GUI thread if needed)
+    void close_plugin();
         // setup the generic Pd editor
     void setup();
         // update the parameter displays
@@ -171,35 +181,38 @@ class t_vsteditor : IVSTPluginListener {
     void send_vmess(t_symbol *sel, const char *fmt, T... args){
         pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
+#if VSTTHREADS
+        // open plugin in a new thread
     void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
-    void set_clock();
+#endif
+        // notify Pd (e.g. for MIDI event or GUI automation)
+    template<typename T, typename U>
+    void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
         // data
     t_vsthost *e_owner;
+#if VSTTHREADS
     std::thread e_thread;
     std::thread::id e_mainthread;
+#endif
     std::unique_ptr<IVSTWindow> e_window;
     bool e_generic = false;
     t_canvas *e_canvas = nullptr;
-    void *e_context = nullptr;
     std::vector<t_vstparam> e_params;
-        // message out
+        // outgoing messages:
     t_clock *e_clock;
+#if VSTTHREADS
     std::mutex e_mutex;
+#endif
     std::vector<std::pair<int, float>> e_automated;
     std::vector<VSTMidiEvent> e_midi;
     std::vector<VSTSysexEvent> e_sysex;
 };
 
 t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
-    : e_owner(&owner), e_mainthread(std::this_thread::get_id()), e_generic(generic){
-#if USE_X11
-	if (!generic){
-		e_context = XOpenDisplay(NULL);
-		if (!e_context){
-            LOG_WARNING("couldn't open display");
-		}
-	}
+    : e_owner(&owner), e_generic(generic){
+#if VSTTHREADS
+    e_mainthread = std::this_thread::get_id();
 #endif
     glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
     pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
@@ -211,60 +224,61 @@ t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
 }
 
 t_vsteditor::~t_vsteditor(){
-#ifdef USE_X11
-	if (e_context){
-		XCloseDisplay((Display *)e_context);
-	}
-#endif
     clock_free(e_clock);
 }
 
-    // parameter automation notification might come from another thread (VST plugin GUI) or the main thread (Pd editor)
-void t_vsteditor::parameterAutomated(int index, float value){
+    // post outgoing event (thread-safe if needed)
+template<typename T, typename U>
+void t_vsteditor::post_event(T& queue, U&& event){
+#if VSTTHREADS
+        // we only need to lock for GUI windows, but never for the generic Pd editor
     if (e_window){
         e_mutex.lock();
     }
-    e_automated.push_back(std::make_pair(index, value));
+#endif
+    queue.push_back(std::forward<U>(event));
+#if VSTTHREADS
     if (e_window){
         e_mutex.unlock();
     }
-    set_clock();
-}
-
-    // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
-void t_vsteditor::midiEvent(const VSTMidiEvent &event){
-    e_mutex.lock();
-    e_midi.push_back(event);
-    e_mutex.unlock();
-    set_clock();
-}
-
-void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
-    e_mutex.lock();
-    e_sysex.push_back(event);
-    e_mutex.unlock();
-    set_clock();
-}
-
-void t_vsteditor::set_clock(){
         // sys_lock / sys_unlock are not recursive so we check if we are in the main thread
     auto id = std::this_thread::get_id();
     if (id != e_mainthread){
         // LOG_DEBUG("lock");
         sys_lock();
     }
+#endif
     clock_delay(e_clock, 0);
+#if VSTTHREADS
     if (id != e_mainthread){
         sys_unlock();
         // LOG_DEBUG("unlocked");
     }
+#endif
+}
+
+    // parameter automation notification might come from another thread (VST plugin GUI).
+void t_vsteditor::parameterAutomated(int index, float value){
+    post_event(e_automated, std::make_pair(index, value));
+}
+
+    // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
+void t_vsteditor::midiEvent(const VSTMidiEvent &event){
+    post_event(e_midi, event);
+}
+
+void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
+    post_event(e_sysex, event);
 }
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
+#if VSTTHREADS
+        // we only need to lock for GUI windows, but never for the generic Pd editor
     if (x->e_window){
         x->e_mutex.lock();
     }
+#endif
         // automated parameters:
     for (auto& param : x->e_automated){
         t_atom msg[2];
@@ -293,30 +307,40 @@ void t_vsteditor::tick(t_vsteditor *x){
         outlet_anything(outlet, gensym("midi"), n, msg.data());
     }
     x->e_sysex.clear();
+#if VSTTHREADS
     if (x->e_window){
         x->e_mutex.unlock();
     }
+#endif
 }
 
+#if VSTTHREADS
+    // create plugin + editor GUI (in another thread)
 void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
     LOG_DEBUG("enter thread");
     IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
+            // signal main thread
         promise.set_value(nullptr);
         LOG_DEBUG("exit thread");
         return;
     }
-    if (plugin->hasEditor() && !e_generic){
-        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(e_context));
+        // create GUI window (if needed)
+    if (plugin->hasEditor()){
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
     }
+        // receive events from plugin
     plugin->setListener(this);
+        // return plugin to main thread
     promise.set_value(plugin);
+        // setup GUI window (if any)
     if (e_window){
         e_window->setTitle(plugin->getPluginName());
-        plugin->openEditor(e_window->getHandle());
         int left, top, right, bottom;
         plugin->getEditorRect(left, top, right, bottom);
         e_window->setGeometry(left, top, right, bottom);
+
+        plugin->openEditor(e_window->getHandle());
 
         LOG_DEBUG("enter message loop");
         e_window->run();
@@ -325,27 +349,66 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         plugin->closeEditor();
             // some plugins expect to released in the same thread where they have been created
         LOG_DEBUG("try to close VST plugin");
-        freeVSTPlugin(e_owner->x_plugin);
+        freeVSTPlugin(plugin);
         e_owner->x_plugin = nullptr;
         LOG_DEBUG("VST plugin closed");
     }
     LOG_DEBUG("exit thread");
 }
+#endif
 
-// creates a new thread where the plugin is created and the message loop runs (if needed)
-IVSTPlugin* t_vsteditor::open_via_thread(const char *path){
-    std::promise<IVSTPlugin *> promise;
-    auto future = promise.get_future();
-    e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
-    return future.get();
+IVSTPlugin* t_vsteditor::open_plugin(const char *path){
+#if VSTTHREADS
+        // creates a new thread where the plugin is created and the message loop runs
+    if (!e_generic){
+        std::promise<IVSTPlugin *> promise;
+        auto future = promise.get_future();
+        e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
+        return future.get();
+    }
+#endif
+        // create plugin in main thread
+    IVSTPlugin *plugin = loadVSTPlugin(path);
+    if (!plugin){
+        return nullptr;
+    }
+        // receive events from plugin
+    plugin->setListener(this);
+#if !VSTTHREADS
+        // create and setup GUI window in main thread (if needed)
+    if (plugin->hasEditor() && !e_generic){
+        e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        if (e_window){
+            e_window->setTitle(plugin->getPluginName());
+            int left, top, right, bottom;
+            plugin->getEditorRect(left, top, right, bottom);
+            e_window->setGeometry(left, top, right, bottom);
+
+            plugin->openEditor(e_window->getHandle());
+            e_window->hide(); // hack for some plugins on MacOS
+        }
+    }
+#endif
+    return plugin;
 }
 
-void t_vsteditor::close_thread(){
-        // destroying the window will terminate the message loop and release the plugin
+void t_vsteditor::close_plugin(){
+#if VSTTHREADS
+        // destroying the window (if any) might terminate the message loop and already release the plugin
     e_window = nullptr;
-        // now join the thread
+        // now join the thread (if any)
     if (e_thread.joinable()){
         e_thread.join();
+    }
+#endif
+        // do we still have a plugin? (e.g. Pd editor or !VSTTHREADS)
+    if (e_owner->x_plugin){
+        e_window = nullptr;
+        e_owner->x_plugin->closeEditor();
+        LOG_DEBUG("try to close VST plugin");
+        freeVSTPlugin(e_owner->x_plugin);
+        e_owner->x_plugin = nullptr;
+        LOG_DEBUG("VST plugin closed");
     }
 }
 
@@ -466,8 +529,14 @@ void t_vsteditor::vis(bool v){
     if (e_window){
         if (v){
             e_window->bringToTop();
+        #if !VSTTHREADS
+            e_owner->x_plugin->openEditor(e_window->getHandle());
+        #endif
         } else {
             e_window->hide();
+        #if !VSTTHREADS
+            e_owner->x_plugin->closeEditor();
+        #endif
         }
     } else {
         send_vmess(gensym("vis"), "i", (int)v);
@@ -478,18 +547,8 @@ void t_vsteditor::vis(bool v){
 
 // close
 static void vsthost_close(t_vsthost *x){
-    if (x->x_plugin){
-        x->x_editor->vis(0);
-            // first close the thread (might already free the plugin)
-        x->x_editor->close_thread();
-            // then free the plugin if necessary
-        if (x->x_plugin){
-            LOG_DEBUG("try to close VST plugin");
-            freeVSTPlugin(x->x_plugin);
-            x->x_plugin = nullptr;
-            LOG_DEBUG("VST plugin closed");
-        }
-    }
+    x->x_editor->vis(0);
+    x->x_editor->close_plugin();
 }
 
 static void vsthost_precision(t_vsthost *x, t_floatarg f);
@@ -517,7 +576,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
 #endif
         sys_bashfilename(path, path);
             // load VST plugin in new thread
-        IVSTPlugin *plugin = x->x_editor->open_via_thread(path);
+        IVSTPlugin *plugin = x->x_editor->open_plugin(path);
         if (plugin){
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
             plugin->setBlockSize(x->x_blocksize);
@@ -528,10 +587,6 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             x->x_editor->setup();
         } else {
             pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
-        }
-            // no window -> no message loop
-        if (!x->x_editor->window()){
-            x->x_editor->close_thread();
         }
     } else {
         pd_error(x, "%s: couldn't open \"%s\" - no such file!", classname(x), s->s_name);
@@ -1094,6 +1149,15 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     if (in < 1) in = 2;
     if (out < 1) out = 2;
 
+        // initialize GUI backend (if needed)
+    if (!generic){
+        static bool initialized = false;
+        if (!initialized){
+            VSTWindowFactory::initialize();
+            initialized = true;
+        }
+    }
+
         // VST plugin
     x->x_plugin = nullptr;
     x->x_bypass = 0;
@@ -1366,7 +1430,10 @@ void vsthost_tilde_setup(void)
 
     vstparam_setup();
 
-    VSTWindowFactory::initialize();
+#if !VSTTHREADS
+    mainLoopClock = clock_new(0, (t_method)mainLoopTick);
+    clock_delay(mainLoopClock, 0);
+#endif
 }
 
 } // extern "C"

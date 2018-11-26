@@ -5,14 +5,26 @@
 
 namespace VSTWindowFactory {
     void initializeX11(){
-		if (!XInitThreads()){
-            LOG_WARNING("XInitThreads failed!");
-		}
+        static bool initialized = false;
+        if (!initialized){
+            if (!XInitThreads()){
+                LOG_WARNING("XInitThreads failed!");
+            } else {
+                initialized = true;
+            }
+        }
 	}
+    IVSTWindow* createX11() {
+		return new VSTWindowX11();
+    }
 }
 
-VSTWindowX11::VSTWindowX11(Display *display)
-	: display_(display){
+VSTWindowX11::VSTWindowX11(){
+	display_ = XOpenDisplay(NULL);
+	if (!display_){
+		LOG_ERROR("VSTWindowX11: couldn't open display!");
+		return;
+	}
 	int s = DefaultScreen(display_);
 	window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
 				10, 10, 100, 100,
@@ -70,6 +82,7 @@ void VSTWindowX11::run(){
 			}
 		}
 	}
+	XCloseDisplay(display_);
 }
 
 void VSTWindowX11::setTitle(const std::string& title){
@@ -115,14 +128,4 @@ void VSTWindowX11::bringToTop(){
 	minimize();
 	restore();
     LOG_DEBUG("VSTWindowX11::bringToTop");
-}
-
-namespace VSTWindowFactory {
-    IVSTWindow* createX11(void *context) {
-		if (context){
-			return new VSTWindowX11((Display *)context);
-		} else {
-			return nullptr;
-		}
-    }
 }

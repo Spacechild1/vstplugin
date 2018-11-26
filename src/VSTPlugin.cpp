@@ -1,14 +1,14 @@
 #include "VST2Plugin.h"
 #include "Utility.h"
 
-#if _WIN32
+#ifdef _WIN32
 # include <windows.h>
 #endif
-#ifdef DL_OPEN
+#if DL_OPEN
 # include <dlfcn.h>
 #endif
 
-#if defined __APPLE__
+#ifdef __APPLE__
 # include <CoreFoundation/CoreFoundation.h>
 # include <mach-o/dyld.h>
 # include <unistd.h>
@@ -139,33 +139,52 @@ void freeVSTPlugin(IVSTPlugin *plugin){
 }
 
 namespace VSTWindowFactory {
+        // forward declarations
 #ifdef _WIN32
-    IVSTWindow* createWin32();
+    IVSTWindow * createWin32();
     void initializeWin32();
 #endif
-#ifdef USE_X11
+#if USE_X11
     void initializeX11();
-    IVSTWindow* createX11(void *display);
+    IVSTWindow * createX11();
+#endif
+#ifdef __APPLE__
+    void initializeCocoa();
+    IVSTWindow * createCocoa(IVSTPlugin *plugin);
+    void mainLoopPollCocoa();
 #endif
         // initialize
     void initialize(){
 #ifdef _WIN32
         initializeWin32();
 #endif
-#ifdef __linux__
+#if USE_X11
         initializeX11();
+#endif
+#ifdef __APPLE__
+        initializeCocoa();
 #endif
     }
         // create
-    IVSTWindow* create(void *context){
+    IVSTWindow* create(IVSTPlugin *plugin){
         IVSTWindow *win = nullptr;
 #ifdef _WIN32
         win = createWin32();
-#elif defined(USE_X11)
-        win = createX11(context);
+#elif defined(__APPLE__)
+        win = createCocoa(plugin);
+#elif USE_X11
+        win = createX11();
 #endif
         return win;
     }
+        // poll
+#ifdef __APPLE__
+    void mainLoopPoll(){
+        mainLoopPollCocoa();
+    }
+#else
+    void mainLoopPoll(){}
+#endif
 }
 
 std::string makeVSTPluginFilePath(const std::string& name){

@@ -39,6 +39,9 @@ namespace VSTWindowFactory {
             }
         }
     }
+    IVSTWindow* createWin32() {
+        return new VSTWindowWin32();
+    }
 }
 
 VSTWindowWin32::VSTWindowWin32(){
@@ -108,10 +111,4 @@ void VSTWindowWin32::restore(){
 void VSTWindowWin32::bringToTop(){
     minimize();
     restore();
-}
-
-namespace VSTWindowFactory {
-    IVSTWindow* createWin32() {
-        return new VSTWindowWin32();
-    }
 }

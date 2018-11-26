@@ -5,7 +5,7 @@
 
 class VSTWindowX11 : public IVSTWindow {
  public:
-    VSTWindowX11(Display *display);
+    VSTWindowX11();
     ~VSTWindowX11();
 
     void* getHandle() override {
