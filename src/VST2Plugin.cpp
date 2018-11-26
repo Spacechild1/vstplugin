@@ -186,12 +186,17 @@ void VST2Plugin::processDouble(double **inputs,
     postProcess();
 }
 
-bool VST2Plugin::hasSinglePrecision() const {
-    return plugin_->flags & effFlagsCanReplacing;
+bool VST2Plugin::hasPrecision(VSTProcessPrecision precision) const {
+    if (precision == VSTProcessPrecision::Single){
+        return plugin_->flags & effFlagsCanReplacing;
+    } else {
+        return plugin_->flags & effFlagsCanDoubleReplacing;
+    }
 }
 
-bool VST2Plugin::hasDoublePrecision() const {
-    return plugin_->flags & effFlagsCanDoubleReplacing;
+void VST2Plugin::setPrecision(VSTProcessPrecision precision){
+    dispatch(effSetProcessPrecision, 0,
+             precision == VSTProcessPrecision::Single ?  kVstProcessPrecision32 : kVstProcessPrecision64);
 }
 
 void VST2Plugin::suspend(){

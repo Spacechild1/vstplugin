@@ -30,8 +30,8 @@ class VST2Plugin final : public IVSTPlugin {
 
     void process(float **inputs, float **outputs, int nsamples) override;
     void processDouble(double **inputs, double **outputs, int nsamples) override;
-    bool hasSinglePrecision() const override;
-    bool hasDoublePrecision() const override;
+    bool hasPrecision(VSTProcessPrecision precision) const override;
+    void setPrecision(VSTProcessPrecision precision) override;
     void suspend() override;
     void resume() override;
     void setSampleRate(float sr) override;
