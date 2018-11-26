@@ -1,4 +1,4 @@
-# Makefile to build library 'vsthost~' for Pure Data.
+# Makefile to build library 'vstplugin~' for Pure Data.
 # Needs Makefile.pdlibbuilder as helper makefile for platform-dependent build
 # settings and rules.
 #
@@ -9,9 +9,9 @@
 #
 # make install PDDIR=/path/to/pure-data PDLIBDIR=./build
 
-lib.name = vsthost~
+lib.name = vstplugin~
 
-class.sources = src/vsthost~.cpp
+class.sources = src/vstplugin~.cpp
 
 common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
 
@@ -41,6 +41,6 @@ endef
 
 
 # all extra files to be included in binary distribution of the library
-datafiles = vsthost~-help.pd
+datafiles = vstplugin~-help.pd
 
 include pd-lib-builder/Makefile.pdlibbuilder

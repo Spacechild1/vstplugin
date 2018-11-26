@@ -1,5 +1,5 @@
 #N canvas 358 39 635 710 10;
-#X obj 23 461 vsthost~;
+#X obj 23 461 vstplugin~;
 #X text 21 106 [flags...] \, [file] \, inlets (=2) \, outlets (=2)
 ;
 #N canvas 346 106 450 485 output 0;
@@ -78,7 +78,7 @@
 #X connect 11 0 9 0;
 #X connect 12 0 8 0;
 #X connect 13 0 9 0;
-#X coords 0 -1 1 1 60 100 2 100 100;
+#X coords 0 -1 1 1 70 100 2 100 100;
 #X restore 23 332 pd open;
 #X msg 187 385 open \$1;
 #X obj 187 340 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
@@ -98,7 +98,7 @@
 #X msg 231 594 info;
 #N canvas 91 200 1137 481 message-outlet 0;
 #X obj 9 46 inlet;
-#X obj 36 91 print vsthost~;
+#X obj 36 91 print vstplugin~;
 #X obj 9 67 t a a;
 #X obj 10 141 unpack f f;
 #X floatatom 10 162 5 0 0 0 - - -, f 5;
@@ -213,9 +213,9 @@ f 44;
 #X connect 64 0 65 0;
 #X connect 64 1 66 0;
 #X connect 69 0 57 0;
-#X restore 68 483 pd message-outlet;
+#X restore 80 483 pd message-outlet;
 #X obj 187 623 s \$0-msg;
-#X obj 32 438 r \$0-msg;
+#X obj 29 438 r \$0-msg;
 #X text 246 385 open a plugin (absolute or relative path);
 #X text 245 410 close the plugin;
 #X text 253 451 show/hide editor;
@@ -225,18 +225,18 @@ f 44;
 #X text 269 594 print plugin info to console;
 #X text 23 132 flags:;
 #N canvas 257 167 307 371 examples 0;
-#X text 24 55 [vsthost~];
+#X text 24 55 [vstplugin~];
 #X text 26 76 2 in \, 2 out;
-#X text 25 103 [vsthost~ 4 4];
+#X text 25 103 [vstplugin~ 4 4];
 #X text 27 123 4 in \, 4 out;
-#X text 26 223 [vsthost~ -d 2 4];
+#X text 26 223 [vstplugin~ -d 2 4];
 #X text 28 244 2 in \, 4 out \, request double precision;
 #X text 27 307 64 in \, 64 out \, open 'myplugin';
-#X text 25 280 [vsthost~ myplugin 64 64];
-#X text 26 152 [vsthost~ -g myplugin]];
+#X text 25 280 [vstplugin~ myplugin 64 64];
+#X text 26 152 [vstplugin~ -g myplugin]];
 #X text 29 173 2 in \, 2 out \, open 'myplugin' with generic editor
 , f 28;
-#X text 24 21 [vsthost~] creation argument examples:;
+#X text 24 21 [vstplugin~] creation argument examples:;
 #X restore 146 84 pd examples;
 #X text 28 151 -g: always use generic editor;
 #X text 29 169 -s: prefer single precision;
@@ -451,13 +451,14 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X connect 47 0 50 0;
 #X connect 48 0 50 0;
 #X restore 279 671 pd program;
-#X text 20 15 [vsthost~]: an external to load VST plugins in Pd.;
+#X text 20 15 [vstplugin~]: an external to load VST plugins in Pd.
+;
 #X text 20 42 if the plugin has a GUI it is shown in a native window
 \, otherwise a 'generic' Pd editor is created.;
 #X text 22 83 creation arguments:;
 #X text 21 233 inlets:;
 #X text 22 283 outlets:;
-#X text 81 461 message output:;
+#X text 90 461 message output:;
 #X text 22 301 signal outlets + message outlet;
 #X text 22 252 signal inlets (the leftmost inlet also takes messages)
 ;

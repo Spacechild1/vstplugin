@@ -1,5 +1,5 @@
 # vsthost specific ignores
-testplugins**
+test**
 src/VST_SDK**
 build**
 *.qbs*

@@ -39,12 +39,12 @@ static void substitute_whitespace(char *buf){
     }
 }
 
-// vsthost~ object
-static t_class *vsthost_class;
+// vstplugin~ object
+static t_class *vstplugin_class;
 
 class t_vsteditor;
 
-struct t_vsthost {
+struct t_vstplugin {
 	t_object x_obj;
 	t_sample x_f;
     t_outlet *x_messout;
@@ -87,7 +87,7 @@ static t_class *vstparam_class;
 
 class t_vstparam {
  public:
-    t_vstparam(t_vsthost *x, int index)
+    t_vstparam(t_vstplugin *x, int index)
         : p_owner(x), p_index(index){
         p_pd = vstparam_class;
         char buf[64];
@@ -112,7 +112,7 @@ class t_vstparam {
     }
 
     t_pd p_pd;
-    t_vsthost *p_owner;
+    t_vstplugin *p_owner;
     t_symbol *p_slider;
     t_symbol *p_display_rcv;
     t_symbol *p_display_snd;
@@ -148,7 +148,7 @@ static void vstparam_setup(){
 // VST editor
 class t_vsteditor : IVSTPluginListener {
  public:
-    t_vsteditor(t_vsthost &owner, bool generic);
+    t_vsteditor(t_vstplugin &owner, bool generic);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
     IVSTPlugin* open_plugin(const char* path);
@@ -190,7 +190,7 @@ class t_vsteditor : IVSTPluginListener {
     void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
         // data
-    t_vsthost *e_owner;
+    t_vstplugin *e_owner;
 #if VSTTHREADS
     std::thread e_thread;
     std::thread::id e_mainthread;
@@ -209,7 +209,7 @@ class t_vsteditor : IVSTPluginListener {
     std::vector<VSTSysexEvent> e_sysex;
 };
 
-t_vsteditor::t_vsteditor(t_vsthost &owner, bool generic)
+t_vsteditor::t_vsteditor(t_vstplugin &owner, bool generic)
     : e_owner(&owner), e_generic(generic){
 #if VSTTHREADS
     e_mainthread = std::this_thread::get_id();
@@ -546,16 +546,16 @@ void t_vsteditor::vis(bool v){
 /**** public interface ****/
 
 // close
-static void vsthost_close(t_vsthost *x){
+static void vstplugin_close(t_vstplugin *x){
     x->x_editor->vis(0);
     x->x_editor->close_plugin();
 }
 
-static void vsthost_precision(t_vsthost *x, t_floatarg f);
+static void vstplugin_precision(t_vstplugin *x, t_floatarg f);
 
 // open
-static void vsthost_open(t_vsthost *x, t_symbol *s){
-    vsthost_close(x);
+static void vstplugin_open(t_vstplugin *x, t_symbol *s){
+    vstplugin_close(x);
     char dirresult[MAXPDSTRING];
     char *name;
     std::string vstpath = makeVSTPluginFilePath(s->s_name);
@@ -582,7 +582,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             plugin->setBlockSize(x->x_blocksize);
             plugin->setSampleRate(x->x_sr);
             x->x_plugin = plugin;
-            vsthost_precision(x, x->x_dp);
+            vstplugin_precision(x, x->x_dp);
             x->update_buffer();
             x->x_editor->setup();
         } else {
@@ -593,7 +593,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
     }
 }
 
-static void vsthost_info(t_vsthost *x){
+static void vstplugin_info(t_vstplugin *x){
     if (!x->check_plugin()) return;
     post("~~~ VST plugin info ~~~");
     post("name: %s", x->x_plugin->getPluginName().c_str());
@@ -611,7 +611,7 @@ static void vsthost_info(t_vsthost *x){
     post("");
 }
 
-static void vsthost_bypass(t_vsthost *x, t_floatarg f){
+static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
     x->x_bypass = (f != 0);
     if (x->x_plugin){
         if (x->x_bypass){
@@ -622,16 +622,16 @@ static void vsthost_bypass(t_vsthost *x, t_floatarg f){
     }
 }
 
-static void vsthost_vis(t_vsthost *x, t_floatarg f){
+static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_editor->vis(f);
 }
 
-static void vsthost_click(t_vsthost *x){
-    vsthost_vis(x, 1);
+static void vstplugin_click(t_vstplugin *x){
+    vstplugin_vis(x, 1);
 }
 
-static void vsthost_precision(t_vsthost *x, t_floatarg f){
+static void vstplugin_precision(t_vstplugin *x, t_floatarg f){
         // set desired precision
     int dp = x->x_dp = (f != 0);
         // check precision
@@ -657,7 +657,7 @@ static void vsthost_precision(t_vsthost *x, t_floatarg f){
 }
 
 // transport
-static void vsthost_tempo(t_vsthost *x, t_floatarg f){
+static void vstplugin_tempo(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     if (f > 0){
         x->x_plugin->setTempoBPM(f);
@@ -666,7 +666,7 @@ static void vsthost_tempo(t_vsthost *x, t_floatarg f){
     }
 }
 
-static void vsthost_time_signature(t_vsthost *x, t_floatarg num, t_floatarg denom){
+static void vstplugin_time_signature(t_vstplugin *x, t_floatarg num, t_floatarg denom){
     if (!x->check_plugin()) return;
     if (num > 0 && denom > 0){
         x->x_plugin->setTimeSignature(num, denom);
@@ -675,37 +675,37 @@ static void vsthost_time_signature(t_vsthost *x, t_floatarg num, t_floatarg deno
     }
 }
 
-static void vsthost_play(t_vsthost *x, t_floatarg f){
+static void vstplugin_play(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportPlaying(f);
 }
 
-static void vsthost_cycle(t_vsthost *x, t_floatarg f){
+static void vstplugin_cycle(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportCycleActive(f);
 }
 
-static void vsthost_cycle_start(t_vsthost *x, t_floatarg f){
+static void vstplugin_cycle_start(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportCycleStart(f);
 }
 
-static void vsthost_cycle_end(t_vsthost *x, t_floatarg f){
+static void vstplugin_cycle_end(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportCycleEnd(f);
 }
 
-static void vsthost_bar_pos(t_vsthost *x, t_floatarg f){
+static void vstplugin_bar_pos(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportBarStartPosition(f);
 }
 
-static void vsthost_transport_set(t_vsthost *x, t_floatarg f){
+static void vstplugin_transport_set(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportPosition(f);
 }
 
-static void vsthost_transport_get(t_vsthost *x){
+static void vstplugin_transport_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     t_atom a;
     SETFLOAT(&a, x->x_plugin->getTransportPosition());
@@ -713,7 +713,7 @@ static void vsthost_transport_get(t_vsthost *x){
 }
 
 // parameters
-static void vsthost_param_set(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vstplugin_param_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     if (argc < 2){
         pd_error(x, "%s: 'param_set' expects two arguments (index + float/symbol)", classname(x));
@@ -733,7 +733,7 @@ static void vsthost_param_set(t_vsthost *x, t_symbol *s, int argc, t_atom *argv)
 }
 
     // automated: true if parameter was set from the (generic) GUI, false if set by message ("param_set")
-void t_vsthost::set_param(int index, float value, bool automated){
+void t_vstplugin::set_param(int index, float value, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
         x_plugin->setParameter(index, value);
@@ -743,7 +743,7 @@ void t_vsthost::set_param(int index, float value, bool automated){
     }
 }
     // set from string
-void t_vsthost::set_param(int index, const char *s, bool automated){
+void t_vstplugin::set_param(int index, const char *s, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
         if (!x_plugin->setParameter(index, s)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
@@ -755,7 +755,7 @@ void t_vsthost::set_param(int index, const char *s, bool automated){
     }
 }
 
-static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
+static void vstplugin_param_get(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -768,7 +768,7 @@ static void vsthost_param_get(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
+static void vstplugin_param_name(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -781,7 +781,7 @@ static void vsthost_param_name(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
+static void vstplugin_param_label(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -794,7 +794,7 @@ static void vsthost_param_label(t_vsthost *x, t_floatarg _index){
     }
 }
 
-static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
+static void vstplugin_param_display(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
@@ -807,31 +807,31 @@ static void vsthost_param_display(t_vsthost *x, t_floatarg _index){
     }
 }
 
-static void vsthost_param_count(t_vsthost *x){
+static void vstplugin_param_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumParameters());
 	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
-static void vsthost_param_list(t_vsthost *x){
+static void vstplugin_param_list(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
 	for (int i = 0; i < n; ++i){
-        vsthost_param_name(x, i);
+        vstplugin_param_name(x, i);
 	}
 }
 
-static void vsthost_param_dump(t_vsthost *x){
+static void vstplugin_param_dump(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
     for (int i = 0; i < n; ++i){
-        vsthost_param_get(x, i);
+        vstplugin_param_get(x, i);
     }
 }
 
 // MIDI
-static void vsthost_midi_raw(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
     VSTMidiEvent event;
@@ -842,7 +842,7 @@ static void vsthost_midi_raw(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
 }
 
 // helper function
-static void vsthost_midi_mess(t_vsthost *x, int onset, int channel, int v1, int v2 = 0){
+static void vstplugin_midi_mess(t_vstplugin *x, int onset, int channel, int v1, int v2 = 0){
     t_atom atoms[3];
     channel = std::max(1, std::min(16, (int)channel)) - 1;
     v1 = std::max(0, std::min(127, v1));
@@ -850,41 +850,41 @@ static void vsthost_midi_mess(t_vsthost *x, int onset, int channel, int v1, int 
     SETFLOAT(&atoms[0], channel + onset);
     SETFLOAT(&atoms[1], v1);
     SETFLOAT(&atoms[2], v2);
-    vsthost_midi_raw(x, 0, 3, atoms);
+    vstplugin_midi_raw(x, 0, 3, atoms);
 }
 
-static void vsthost_midi_noteoff(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
-    vsthost_midi_mess(x, 128, channel, pitch, velocity);
+static void vstplugin_midi_noteoff(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    vstplugin_midi_mess(x, 128, channel, pitch, velocity);
 }
 
-static void vsthost_midi_note(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
-    vsthost_midi_mess(x, 144, channel, pitch, velocity);
+static void vstplugin_midi_note(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    vstplugin_midi_mess(x, 144, channel, pitch, velocity);
 }
 
-static void vsthost_midi_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
-    vsthost_midi_mess(x, 160, channel, pitch, pressure);
+static void vstplugin_midi_aftertouch(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
+    vstplugin_midi_mess(x, 160, channel, pitch, pressure);
 }
 
-static void vsthost_midi_cc(t_vsthost *x, t_floatarg channel, t_floatarg ctl, t_floatarg value){
-    vsthost_midi_mess(x, 176, channel, ctl, value);
+static void vstplugin_midi_cc(t_vstplugin *x, t_floatarg channel, t_floatarg ctl, t_floatarg value){
+    vstplugin_midi_mess(x, 176, channel, ctl, value);
 }
 
-static void vsthost_midi_program_change(t_vsthost *x, t_floatarg channel, t_floatarg program){
-   vsthost_midi_mess(x, 192, channel, program);
+static void vstplugin_midi_program_change(t_vstplugin *x, t_floatarg channel, t_floatarg program){
+   vstplugin_midi_mess(x, 192, channel, program);
 }
 
-static void vsthost_midi_channel_aftertouch(t_vsthost *x, t_floatarg channel, t_floatarg pressure){
-    vsthost_midi_mess(x, 208, channel, pressure);
+static void vstplugin_midi_channel_aftertouch(t_vstplugin *x, t_floatarg channel, t_floatarg pressure){
+    vstplugin_midi_mess(x, 208, channel, pressure);
 }
 
-static void vsthost_midi_bend(t_vsthost *x, t_floatarg channel, t_floatarg bend){
+static void vstplugin_midi_bend(t_vstplugin *x, t_floatarg channel, t_floatarg bend){
         // map from [-1.f, 1.f] to [0, 16383] (14 bit)
     int val = (bend + 1.f) * 8192.f; // 8192 is the center position
     val = std::max(0, std::min(16383, val));
-    vsthost_midi_mess(x, 224, channel, val & 127, (val >> 7) & 127);
+    vstplugin_midi_mess(x, 224, channel, val & 127, (val >> 7) & 127);
 }
 
-static void vsthost_midi_sysex(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
     std::string data;
@@ -897,7 +897,7 @@ static void vsthost_midi_sysex(t_vsthost *x, t_symbol *s, int argc, t_atom *argv
 }
 
 // programs
-static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
+static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumPrograms()){
@@ -908,19 +908,19 @@ static void vsthost_program_set(t_vsthost *x, t_floatarg _index){
 	}
 }
 
-static void vsthost_program_get(t_vsthost *x){
+static void vstplugin_program_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
     outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
 
-static void vsthost_program_setname(t_vsthost *x, t_symbol* name){
+static void vstplugin_program_setname(t_vstplugin *x, t_symbol* name){
     if (!x->check_plugin()) return;
     x->x_plugin->setProgramName(name->s_name);
 }
 
-static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vstplugin_program_name(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     t_atom msg[2];
     if (argc){
@@ -934,14 +934,14 @@ static void vsthost_program_name(t_vsthost *x, t_symbol *s, int argc, t_atom *ar
     outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
 }
 
-static void vsthost_program_count(t_vsthost *x){
+static void vstplugin_program_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getNumPrograms());
 	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
 }
 
-static void vsthost_program_list(t_vsthost *x){
+static void vstplugin_program_list(t_vstplugin *x){
     int n = x->x_plugin->getNumPrograms();
     t_atom msg[2];
     for (int i = 0; i < n; ++i){
@@ -952,7 +952,7 @@ static void vsthost_program_list(t_vsthost *x){
 }
 
 // read/write FX programs
-static void vsthost_program_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vstplugin_program_setdata(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     std::string buffer;
     buffer.resize(argc);
@@ -967,7 +967,7 @@ static void vsthost_program_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom 
     }
 }
 
-static void vsthost_program_data(t_vsthost *x){
+static void vstplugin_program_data(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     x->x_plugin->writeProgramData(buffer);
@@ -981,7 +981,7 @@ static void vsthost_program_data(t_vsthost *x){
     outlet_anything(x->x_messout, gensym("program_data"), n, atoms.data());
 }
 
-static void vsthost_program_read(t_vsthost *x, t_symbol *s){
+static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
     int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
@@ -1000,7 +1000,7 @@ static void vsthost_program_read(t_vsthost *x, t_symbol *s){
     }
 }
 
-static void vsthost_program_write(t_vsthost *x, t_symbol *s){
+static void vstplugin_program_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
     canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
@@ -1008,7 +1008,7 @@ static void vsthost_program_write(t_vsthost *x, t_symbol *s){
 }
 
 // read/write FX banks
-static void vsthost_bank_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *argv){
+static void vstplugin_bank_setdata(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     std::string buffer;
     buffer.resize(argc);
@@ -1023,7 +1023,7 @@ static void vsthost_bank_setdata(t_vsthost *x, t_symbol *s, int argc, t_atom *ar
     }
 }
 
-static void vsthost_bank_data(t_vsthost *x){
+static void vstplugin_bank_data(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     x->x_plugin->writeBankData(buffer);
@@ -1037,7 +1037,7 @@ static void vsthost_bank_data(t_vsthost *x){
     outlet_anything(x->x_messout, gensym("bank_data"), n, atoms.data());
 }
 
-static void vsthost_bank_read(t_vsthost *x, t_symbol *s){
+static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
     int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
@@ -1056,7 +1056,7 @@ static void vsthost_bank_read(t_vsthost *x, t_symbol *s){
     }
 }
 
-static void vsthost_bank_write(t_vsthost *x, t_symbol *s){
+static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
     canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
@@ -1064,7 +1064,7 @@ static void vsthost_bank_write(t_vsthost *x, t_symbol *s){
 }
 
 // plugin version
-static void vsthost_version(t_vsthost *x){
+static void vstplugin_version(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int version = x->x_plugin->getPluginVersion();
 	t_atom msg;
@@ -1076,7 +1076,7 @@ static void vsthost_version(t_vsthost *x){
 /**** private ****/
 
 // helper methods
-bool t_vsthost::check_plugin(){
+bool t_vstplugin::check_plugin(){
     if (x_plugin){
         return true;
     } else {
@@ -1085,7 +1085,7 @@ bool t_vsthost::check_plugin(){
     }
 }
 
-void t_vsthost::update_buffer(){
+void t_vstplugin::update_buffer(){
         // the input/output buffers must be large enough to fit both
         // the number of Pd inlets/outlets and plugin inputs/outputs.
         // this routine is called in the "dsp" method and when a plugin is loaded.
@@ -1113,9 +1113,9 @@ void t_vsthost::update_buffer(){
 }
 
 // constructor
-// usage: vsthost~ [flags...] [file] inlets (default=2) outlets (default=2)
-static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
-    t_vsthost *x = (t_vsthost *)pd_new(vsthost_class);
+// usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
+static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
+    t_vstplugin *x = (t_vstplugin *)pd_new(vstplugin_class);
 
     int generic = 0; // use generic Pd editor
     int dp = (PD_FLOATSIZE == 64); // default precision
@@ -1195,14 +1195,14 @@ static void *vsthost_new(t_symbol *s, int argc, t_atom *argv){
     x->x_messout = outlet_new(&x->x_obj, 0);
 
     if (file){
-        vsthost_open(x, file);
+        vstplugin_open(x, file);
     }
     return (x);
 }
 
 // destructor
-static void vsthost_free(t_vsthost *x){
-    vsthost_close(x);
+static void vstplugin_free(t_vstplugin *x){
+    vstplugin_close(x);
         // buffers
     freebytes(x->x_invec, x->x_nin * sizeof(t_float*));
     freebytes(x->x_outvec, x->x_nout * sizeof(t_float*));
@@ -1212,12 +1212,12 @@ static void vsthost_free(t_vsthost *x){
     freebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void*));
         // editor
     delete x->x_editor;
-    LOG_DEBUG("vsthost free");
+    LOG_DEBUG("vstplugin free");
 }
 
 // perform routine
-static t_int *vsthost_perform(t_int *w){
-    t_vsthost *x = (t_vsthost *)(w[1]);
+static t_int *vstplugin_perform(t_int *w){
+    t_vstplugin *x = (t_vstplugin *)(w[1]);
     int n = (int)(w[2]);
     auto plugin = x->x_plugin;
     int nin = x->x_nin;
@@ -1342,10 +1342,10 @@ static t_int *vsthost_perform(t_int *w){
 }
 
 // dsp callback
-static void vsthost_dsp(t_vsthost *x, t_signal **sp){
+static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
     t_float sr = sp[0]->s_sr;
-    dsp_add(vsthost_perform, 2, x, blocksize);
+    dsp_add(vstplugin_perform, 2, x, blocksize);
     x->x_blocksize = blocksize;
     x->x_sr = sr;
     if (x->x_plugin){
@@ -1366,67 +1366,67 @@ static void vsthost_dsp(t_vsthost *x, t_signal **sp){
 // setup function
 extern "C" {
 
-void vsthost_tilde_setup(void)
+void vstplugin_tilde_setup(void)
 {
-    vsthost_class = class_new(gensym("vsthost~"), (t_newmethod)vsthost_new, (t_method)vsthost_free,
-        sizeof(t_vsthost), 0, A_GIMME, A_NULL);
-    CLASS_MAINSIGNALIN(vsthost_class, t_vsthost, x_f);
-    class_addmethod(vsthost_class, (t_method)vsthost_dsp, gensym("dsp"), A_CANT, A_NULL);
+    vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)vstplugin_new, (t_method)vstplugin_free,
+        sizeof(t_vstplugin), 0, A_GIMME, A_NULL);
+    CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
         // plugin
-    class_addmethod(vsthost_class, (t_method)vsthost_open, gensym("open"), A_SYMBOL, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_close, gensym("close"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bypass, gensym("bypass"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_vis, gensym("vis"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_click, gensym("click"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_precision, gensym("precision"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_version, gensym("version"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_info, gensym("info"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_NULL);
         // transport
-    class_addmethod(vsthost_class, (t_method)vsthost_tempo, gensym("tempo"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_play, gensym("play"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_cycle, gensym("cycle"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_cycle_start, gensym("cycle_start"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_cycle_end, gensym("cycle_end"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bar_pos, gensym("bar_pos"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_transport_get, gensym("transport_get"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_play, gensym("play"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_cycle, gensym("cycle"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_cycle_start, gensym("cycle_start"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_cycle_end, gensym("cycle_end"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bar_pos, gensym("bar_pos"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_transport_get, gensym("transport_get"), A_NULL);
         // parameters
-    class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_GIMME, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_name, gensym("param_name"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_label, gensym("param_label"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_display, gensym("param_display"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_count, gensym("param_count"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_list, gensym("param_list"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_param_dump, gensym("param_dump"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_set, gensym("param_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_name, gensym("param_name"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_label, gensym("param_label"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_display, gensym("param_display"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_count, gensym("param_count"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_list, gensym("param_list"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_dump, gensym("param_dump"), A_NULL);
         // midi
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_program_change, gensym("midi_program_change"), A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_aftertouch, gensym("midi_aftertouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_channel_aftertouch, gensym("midi_channel_aftertouch"), A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_midi_sysex, gensym("midi_sysex"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_program_change, gensym("midi_program_change"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_aftertouch, gensym("midi_aftertouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_channel_aftertouch, gensym("midi_channel_aftertouch"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_sysex, gensym("midi_sysex"), A_GIMME, A_NULL);
         // programs
-    class_addmethod(vsthost_class, (t_method)vsthost_program_set, gensym("program_set"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_get, gensym("program_get"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_setname, gensym("program_setname"), A_SYMBOL, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_name, gensym("program_name"), A_GIMME, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_count, gensym("program_count"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_list, gensym("program_list"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_set, gensym("program_set"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_get, gensym("program_get"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_setname, gensym("program_setname"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_name, gensym("program_name"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_count, gensym("program_count"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_list, gensym("program_list"), A_NULL);
         // read/write fx programs
-    class_addmethod(vsthost_class, (t_method)vsthost_program_setdata, gensym("program_setdata"), A_GIMME, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_data, gensym("program_data"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_setdata, gensym("program_setdata"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_data, gensym("program_data"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
         // read/write fx banks
-    class_addmethod(vsthost_class, (t_method)vsthost_bank_setdata, gensym("bank_setdata"), A_GIMME, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bank_data, gensym("bank_data"), A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bank_read, gensym("bank_read"), A_SYMBOL, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_setdata, gensym("bank_setdata"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_data, gensym("bank_data"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_read, gensym("bank_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
 
