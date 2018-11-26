@@ -645,9 +645,16 @@ static void vsthost_bar_pos(t_vsthost *x, t_floatarg f){
     x->x_plugin->setTransportBarStartPosition(f);
 }
 
-static void vsthost_transport_pos(t_vsthost *x, t_floatarg f){
+static void vsthost_transport_set(t_vsthost *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_plugin->setTransportPosition(f);
+}
+
+static void vsthost_transport_get(t_vsthost *x){
+    if (!x->check_plugin()) return;
+    t_atom a;
+    SETFLOAT(&a, x->x_plugin->getTransportPosition());
+    outlet_anything(x->x_messout, gensym("transport"), 1, &a);
 }
 
 // parameters
@@ -1318,7 +1325,8 @@ void vsthost_tilde_setup(void)
     class_addmethod(vsthost_class, (t_method)vsthost_cycle_start, gensym("cycle_start"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_cycle_end, gensym("cycle_end"), A_FLOAT, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_bar_pos, gensym("bar_pos"), A_FLOAT, A_NULL);
-    class_addmethod(vsthost_class, (t_method)vsthost_transport_pos, gensym("transport_pos"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
+    class_addmethod(vsthost_class, (t_method)vsthost_transport_get, gensym("transport_get"), A_NULL);
         // parameters
     class_addmethod(vsthost_class, (t_method)vsthost_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vsthost_class, (t_method)vsthost_param_get, gensym("param_get"), A_FLOAT, A_NULL);
