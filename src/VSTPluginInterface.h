@@ -55,6 +55,11 @@ class IVSTPluginListener {
     virtual void sysexEvent(const VSTSysexEvent& event) = 0;
 };
 
+enum class VSTProcessPrecision {
+    Single,
+    Double
+};
+
 class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
@@ -64,8 +69,8 @@ class IVSTPlugin {
 
     virtual void process(float **inputs, float **outputs, int nsamples) = 0;
     virtual void processDouble(double **inputs, double **outputs, int nsamples) = 0;
-    virtual bool hasSinglePrecision() const = 0;
-    virtual bool hasDoublePrecision() const = 0;
+    virtual bool hasPrecision(VSTProcessPrecision precision) const = 0;
+    virtual void setPrecision(VSTProcessPrecision precision) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
     virtual void setSampleRate(float sr) = 0;

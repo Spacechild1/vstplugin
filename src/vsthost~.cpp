@@ -68,7 +68,6 @@ struct t_vsthost {
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
-    void check_precision();
     void update_buffer();
 };
 
@@ -493,6 +492,8 @@ static void vsthost_close(t_vsthost *x){
     }
 }
 
+static void vsthost_precision(t_vsthost *x, t_floatarg f);
+
 // open
 static void vsthost_open(t_vsthost *x, t_symbol *s){
     vsthost_close(x);
@@ -522,7 +523,7 @@ static void vsthost_open(t_vsthost *x, t_symbol *s){
             plugin->setBlockSize(x->x_blocksize);
             plugin->setSampleRate(x->x_sr);
             x->x_plugin = plugin;
-            x->check_precision();
+            vsthost_precision(x, x->x_dp);
             x->update_buffer();
             x->x_editor->setup();
         } else {
@@ -544,8 +545,8 @@ static void vsthost_info(t_vsthost *x){
     post("version: %d", x->x_plugin->getPluginVersion());
     post("input channels: %d", x->x_plugin->getNumInputs());
     post("output channels: %d", x->x_plugin->getNumOutputs());
-    post("single precision: %s", x->x_plugin->hasSinglePrecision() ? "yes" : "no");
-    post("double precision: %s", x->x_plugin->hasDoublePrecision() ? "yes" : "no");
+    post("single precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Single) ? "yes" : "no");
+    post("double precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Double) ? "yes" : "no");
     post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
     post("number of parameters: %d", x->x_plugin->getNumParameters());
     post("number of programs: %d", x->x_plugin->getNumPrograms());
@@ -576,8 +577,28 @@ static void vsthost_click(t_vsthost *x){
 }
 
 static void vsthost_precision(t_vsthost *x, t_floatarg f){
-    x->x_dp = (f != 0);
-    x->check_precision();
+        // set desired precision
+    int dp = x->x_dp = (f != 0);
+        // check precision
+    if (x->x_plugin){
+        if (!x->x_plugin->hasPrecision(VSTProcessPrecision::Single) && !x->x_plugin->hasPrecision(VSTProcessPrecision::Double)) {
+            post("%s: '%s' doesn't support single or double precision, bypassing",
+                classname(x), x->x_plugin->getPluginName().c_str());
+            return;
+        }
+        if (x->x_dp && !x->x_plugin->hasPrecision(VSTProcessPrecision::Double)){
+            post("%s: '%s' doesn't support double precision, using single precision instead",
+                 classname(x), x->x_plugin->getPluginName().c_str());
+            dp = 0;
+        }
+        else if (!x->x_dp && !x->x_plugin->hasPrecision(VSTProcessPrecision::Single)){ // very unlikely...
+            post("%s: '%s' doesn't support single precision, using double precision instead",
+                 classname(x), x->x_plugin->getPluginName().c_str());
+            dp = 1;
+        }
+            // set the actual precision
+        x->x_plugin->setPrecision(dp ? VSTProcessPrecision::Double : VSTProcessPrecision::Single);
+    }
 }
 
 // transport
@@ -1002,23 +1023,6 @@ bool t_vsthost::check_plugin(){
     }
 }
 
-void t_vsthost::check_precision(){
-    if (x_plugin){
-        if (!x_plugin->hasSinglePrecision() && !x_plugin->hasDoublePrecision()) {
-            post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(this), x_plugin->getPluginName().c_str());
-        }
-        if (x_dp && !x_plugin->hasDoublePrecision()){
-            post("%s: '%s' doesn't support double precision, using single precision instead",
-                 classname(this), x_plugin->getPluginName().c_str());
-        }
-        else if (!x_dp && !x_plugin->hasSinglePrecision()){ // very unlikely...
-            post("%s: '%s' doesn't support single precision, using double precision instead",
-                 classname(this), x_plugin->getPluginName().c_str());
-        }
-    }
-}
-
 void t_vsthost::update_buffer(){
         // the input/output buffers must be large enough to fit both
         // the number of Pd inlets/outlets and plugin inputs/outputs.
@@ -1159,11 +1163,11 @@ static t_int *vsthost_perform(t_int *w){
 
     if(plugin && !bypass) {
             // check processing precision (single or double)
-        if (!plugin->hasSinglePrecision() && !plugin->hasDoublePrecision()) {
+        if (!plugin->hasPrecision(VSTProcessPrecision::Single) && !plugin->hasPrecision(VSTProcessPrecision::Double)) {
             bypass = true;
-        } else if (dp && !plugin->hasDoublePrecision()){
+        } else if (dp && !plugin->hasPrecision(VSTProcessPrecision::Double)){
             dp = false;
-        } else if (!dp && !plugin->hasSinglePrecision()){ // very unlikely...
+        } else if (!dp && !plugin->hasPrecision(VSTProcessPrecision::Single)){ // very unlikely...
             dp = true;
         }
     }
