@@ -11,11 +11,6 @@
 // Plugin's entry point
 typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
 
-// AEffectDispatcherProc
-// AEffectProcessProc
-// AEffectSetParameterProc
-// AEffectGetParameterProc
-
 class VST2Plugin final : public IVSTPlugin {
  public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
@@ -125,6 +120,8 @@ class VST2Plugin final : public IVSTPlugin {
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *ptr = 0, float opt = 0) const;
         // data members
+    VstIntPtr callback(VstInt32 opcode, VstInt32 index,
+                           VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
     IVSTPluginListener *listener_ = nullptr;
     std::string path_;

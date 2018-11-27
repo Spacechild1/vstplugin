@@ -931,16 +931,22 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 
 // Main host callback
 
-#define getuser(x) ((VST2Plugin *)(plugin->user))
-
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
+    if (plugin && plugin->user){
+        return ((VST2Plugin *)(plugin->user))->callback(opcode, index, value, ptr, opt);
+    } else if (opcode == audioMasterVersion){
+        return 2400;
+    } else {
+        return 0;
+    }
+}
+
+VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *ptr, float opt){
     switch(opcode) {
     case audioMasterAutomate:
         // LOG_DEBUG("opcode: audioMasterAutomate");
-        if (plugin->user){
-            getuser(plugin)->parameterAutomated(index, opt);
-        }
+        parameterAutomated(index, opt);
         break;
     case audioMasterVersion:
         // LOG_DEBUG("opcode: audioMasterVersion");
@@ -950,21 +956,14 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterIdle:
         LOG_DEBUG("opcode: audioMasterIdle");
-        if (plugin->user){
-            getuser(plugin)->dispatch(effEditIdle);
-        }
+        dispatch(effEditIdle);
         break;
     case audioMasterGetTime:
         // LOG_DEBUG("opcode: audioMasterGetTime");
-        if (plugin->user){
-            return (VstIntPtr)getuser(plugin)->getTimeInfo(value);
-        }
-        break;
+        return (VstIntPtr)getTimeInfo(value);
     case audioMasterProcessEvents:
         // LOG_DEBUG("opcode: audioMasterProcessEvents");
-        if (plugin->user){
-            getuser(plugin)->processEvents((VstEvents *)ptr);
-        }
+        processEvents((VstEvents *)ptr);
         break;
     case audioMasterIOChanged:
         LOG_DEBUG("opcode: audioMasterIOChanged");
@@ -998,10 +997,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         break;
     case audioMasterCanDo:
         LOG_DEBUG("opcode: audioMasterCanDo " << (const char*)ptr);
-        if (plugin->user){
-            return getuser(plugin)->canHostDo((const char *)ptr);
-        }
-        break;
+        return canHostDo((const char *)ptr);
     case audioMasterGetLanguage:
         LOG_DEBUG("opcode: audioMasterGetLanguage");
         break;
