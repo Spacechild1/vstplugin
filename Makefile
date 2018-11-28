@@ -19,9 +19,8 @@ VST2DIR = src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x/
 
 cflags = -Wno-unused -Wno-unused-parameter \
 	-std=c++11 \
-	-g \
 	-I"${VST2DIR}" \
-	-DLOGLEVEL=3 \
+	-DLOGLEVEL=2 \
 	$(empty)
 
 define forWindows
