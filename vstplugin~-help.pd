@@ -43,7 +43,7 @@
 #X connect 18 0 14 0;
 #X connect 19 0 15 0;
 #X coords 0 -1 1 1 120 180 2 100 100;
-#X restore 22 467 pd output;
+#X restore 22 481 pd output;
 #N canvas 219 289 450 355 open 0;
 #X obj 36 294 outlet~;
 #X obj 91 294 outlet~;
@@ -78,20 +78,20 @@
 #X connect 13 0 9 0;
 #X coords 0 -1 1 1 70 100 2 100 100;
 #X restore 23 290 pd open;
-#X msg 187 331 open \$1;
-#X obj 187 286 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X msg 192 329 open \$1;
+#X obj 192 284 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 187 306 openpanel;
-#X msg 195 355 close;
-#X msg 203 397 vis \$1;
-#X obj 203 377 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 192 304 openpanel;
+#X msg 200 353 close;
+#X msg 208 395 vis \$1;
+#X obj 208 375 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 210 440 bypass \$1;
-#X obj 210 420 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X msg 215 438 bypass \$1;
+#X obj 215 418 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 216 484 precision \$1;
-#X msg 224 532 version;
-#X msg 233 556 info;
+#X msg 225 514 precision \$1;
+#X msg 238 562 version;
+#X msg 247 586 info;
 #N canvas 91 200 1137 481 message-outlet 0;
 #X obj 9 46 inlet;
 #X obj 36 91 print vstplugin~;
@@ -209,15 +209,15 @@ f 44;
 #X connect 64 0 65 0;
 #X connect 64 1 66 0;
 #X connect 69 0 57 0;
-#X restore 80 441 pd message-outlet;
-#X obj 187 581 s \$0-msg;
+#X restore 80 455 pd message-outlet;
+#X obj 192 612 s \$0-msg;
 #X obj 29 396 r \$0-msg;
-#X text 246 331 open a plugin (absolute or relative path);
-#X text 245 356 close the plugin;
-#X text 253 397 show/hide editor;
-#X text 279 438 bypass on/off;
-#X text 283 532 get plugin version;
-#X text 271 556 print plugin info to console;
+#X text 251 329 open a plugin (absolute or relative path);
+#X text 250 354 close the plugin;
+#X text 258 395 show/hide editor;
+#X text 284 436 bypass on/off;
+#X text 297 562 get plugin version;
+#X text 285 586 print plugin info to console;
 #X text 23 92 flags:;
 #N canvas 723 210 307 412 examples 0;
 #X text 24 55 [vstplugin~];
@@ -233,8 +233,8 @@ f 44;
 28;
 #X text 26 223 [vstplugin~ -dp 2 4];
 #X restore 146 44 pd examples;
-#X text 182 605 parameters;
-#X text 278 607 FX programs/banks;
+#X text 189 636 parameters;
+#X text 269 637 FX programs/banks;
 #N canvas 388 79 726 527 parameter 0;
 #X obj 86 68 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
@@ -303,8 +303,133 @@ editor., f 47;
 #X connect 13 0 14 0;
 #X connect 28 0 2 0;
 #X connect 29 0 28 0;
-#X restore 185 629 pd parameter;
-#N canvas 607 37 669 774 program 0;
+#X restore 190 659 pd parameter;
+#X text 20 15 [vstplugin~]: an external to load VST plugins in Pd.
+;
+#X text 22 43 creation arguments:;
+#X text 21 182 inlets:;
+#X text 22 232 outlets:;
+#X text 90 437 message output:;
+#X text 22 250 signal outlets + message outlet;
+#X text 22 201 signal inlets (the leftmost inlet also takes messages)
+;
+#N canvas 672 104 609 465 midi 0;
+#X obj 33 442 s \$0-msg;
+#X msg 33 34 midi_raw <list>;
+#X msg 51 111 midi_note 1 60 127;
+#X msg 62 147 midi_noteoff 1 60;
+#X msg 70 205 midi_cc 1 64 \$1;
+#X msg 70 182 127;
+#X msg 102 182 0;
+#X msg 40 59 midi_sysex <list>;
+#X msg 76 264 midi_bend 1 \$1;
+#X obj 79 240 hsl 128 15 -1 1 0 0 empty empty empty -2 -8 0 10 -262144
+-1 -1 0 1;
+#X obj 82 296 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X msg 82 316 midi_program_change 1 \$1;
+#X msg 87 355 midi_aftertouch 1 60 127;
+#X msg 95 395 midi_channel_aftertouch 1 127;
+#X text 136 35 send raw MIDI message (list of bytes);
+#X text 155 59 send MIDI system exclusive message (list of bytes);
+#X text 49 89 convenience methods:;
+#X text 179 111 note on: channel (1-16) \, pitch \, velocity;
+#X text 182 148 note off: channel \, pitch \, [velocity];
+#X text 182 205 CC: channel \, number \, value;
+#X text 129 183 (sustain pedal on/off);
+#X text 175 265 pitchbend: channel \, bend (-1 to 1);
+#X text 241 316 program change: channel \, program;
+#X text 250 353 polyphonic aftertouch: channel \, pitch \, pressure
+;
+#X text 282 396 channel aftertouch: channel \, pressure;
+#X connect 1 0 0 0;
+#X connect 2 0 0 0;
+#X connect 3 0 0 0;
+#X connect 4 0 0 0;
+#X connect 5 0 4 0;
+#X connect 6 0 4 0;
+#X connect 7 0 0 0;
+#X connect 8 0 0 0;
+#X connect 9 0 8 0;
+#X connect 10 0 11 0;
+#X connect 11 0 0 0;
+#X connect 12 0 0 0;
+#X connect 13 0 0 0;
+#X restore 384 659 pd midi;
+#X text 380 638 MIDI messages;
+#N canvas 814 225 469 439 transport 0;
+#X obj 22 299 s \$0-msg;
+#X msg 22 78 tempo \$1;
+#X obj 22 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
+#X msg 34 137 time_signature \$1 \$2;
+#X msg 34 111 4 4;
+#X msg 96 112 3 4;
+#X text 63 111 4/4;
+#X text 127 112 3/4;
+#X msg 43 184 play \$1;
+#X obj 43 163 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+1;
+#X obj 51 211 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X msg 59 262 transport_get;
+#X msg 51 229 transport_set \$1;
+#X text 102 183 start/stop sequencing;
+#X text 19 17 these methods provide timing information to the VST plugin
+so you can use arpeggiators \, step sequencers etc.;
+#X text 168 113 set time signature (default is 4/4);
+#X text 152 261 get current transport position;
+#X text 158 228 set transport position (1.0 = one quarter note)*;
+#X text 20 337 *) this often doesn't work as expected. I have to do
+more experiments to find out how to jump to arbitrary transport positions
+and force the plugin to sync immediately.;
+#X text 86 57 set the tempo in BPM. this is also relevant for certain
+plugin parameters \, e.g. a delay time measured in quarter notes.,
+f 51;
+#X text 20 377 to simply 'rewind' the sequencer \, [transport_set 0
+\, reset( should always work.;
+#X connect 1 0 0 0;
+#X connect 2 0 1 0;
+#X connect 3 0 0 0;
+#X connect 4 0 3 0;
+#X connect 5 0 3 0;
+#X connect 8 0 0 0;
+#X connect 9 0 8 0;
+#X connect 10 0 12 0;
+#X connect 11 0 0 0;
+#X connect 12 0 0 0;
+#X restore 469 660 pd transport;
+#X text 467 638 transport/timing;
+#X msg 233 538 name;
+#X text 270 539 get plugin name;
+#X text 28 110 -gui: use the VST plugin GUI (default on Windows and
+Linux);
+#X text 28 126 -nogui: use the generic Pd GUI (default MacOS);
+#X text 311 514 change preferred processing precision;
+#N canvas 637 341 397 212 gui 0;
+#X text 15 16 vstplugin~ GUI:;
+#X text 14 120 on MacOS \, however \, because of technical limitations
+the GUI must run on the main thread - which happens to be the audio
+thread in Pd... until we've found a better solution you are adviced
+to keep the editor window closed in low-latency realtime situations
+to avoid audio hick-ups.;
+#X text 14 75 on Windows and Linux \, the GUI window runs in its own
+thread which means that automating the GUI shouldn't have a noticable
+effect on audio performance.;
+#X text 14 40 if the plugin has a GUI editor it can be shown in a native
+window \, otherwise a 'generic' Pd editor is created.;
+#X restore 403 121 pd gui;
+#X text 400 102 learn more:;
+#X text 28 143 -sp: prefer single precision (default on single precision
+Pd), f 67;
+#X text 29 159 -dp: prefer double precision (default on double precision
+Pd), f 66;
+#X msg 225 492 symbol single;
+#X msg 316 492 symbol double;
+#X text 21 66 [flags...] \, [file] \, inlets (=2) \, outlets (=2);
+#X msg 221 465 reset;
+#X text 263 464 reset the plugin (e.g. clear delay lines);
+#N canvas 607 37 669 774 preset 0;
 #X obj 23 333 s \$0-msg;
 #X msg 23 56 program_set;
 #X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
@@ -442,145 +567,7 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X connect 50 0 42 0;
 #X connect 51 0 43 0;
 #X connect 52 0 43 0;
-#X restore 279 629 pd program;
-#X text 20 15 [vstplugin~]: an external to load VST plugins in Pd.
-;
-#X text 22 43 creation arguments:;
-#X text 21 182 inlets:;
-#X text 22 232 outlets:;
-#X text 90 419 message output:;
-#X text 22 250 signal outlets + message outlet;
-#X text 22 201 signal inlets (the leftmost inlet also takes messages)
-;
-#N canvas 672 104 609 465 midi 0;
-#X obj 33 442 s \$0-msg;
-#X msg 33 34 midi_raw <list>;
-#X msg 51 111 midi_note 1 60 127;
-#X msg 62 147 midi_noteoff 1 60;
-#X msg 70 205 midi_cc 1 64 \$1;
-#X msg 70 182 127;
-#X msg 102 182 0;
-#X msg 40 59 midi_sysex <list>;
-#X msg 76 264 midi_bend 1 \$1;
-#X obj 79 240 hsl 128 15 -1 1 0 0 empty empty empty -2 -8 0 10 -262144
--1 -1 0 1;
-#X obj 82 296 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X msg 82 316 midi_program_change 1 \$1;
-#X msg 87 355 midi_aftertouch 1 60 127;
-#X msg 95 395 midi_channel_aftertouch 1 127;
-#X text 136 35 send raw MIDI message (list of bytes);
-#X text 155 59 send MIDI system exclusive message (list of bytes);
-#X text 49 89 convenience methods:;
-#X text 179 111 note on: channel (1-16) \, pitch \, velocity;
-#X text 182 148 note off: channel \, pitch \, [velocity];
-#X text 182 205 CC: channel \, number \, value;
-#X text 129 183 (sustain pedal on/off);
-#X text 175 265 pitchbend: channel \, bend (-1 to 1);
-#X text 241 316 program change: channel \, program;
-#X text 250 353 polyphonic aftertouch: channel \, pitch \, pressure
-;
-#X text 282 396 channel aftertouch: channel \, pressure;
-#X connect 1 0 0 0;
-#X connect 2 0 0 0;
-#X connect 3 0 0 0;
-#X connect 4 0 0 0;
-#X connect 5 0 4 0;
-#X connect 6 0 4 0;
-#X connect 7 0 0 0;
-#X connect 8 0 0 0;
-#X connect 9 0 8 0;
-#X connect 10 0 11 0;
-#X connect 11 0 0 0;
-#X connect 12 0 0 0;
-#X connect 13 0 0 0;
-#X restore 402 629 pd midi;
-#X text 398 608 MIDI messages;
-#N canvas 696 256 469 540 transport 0;
-#X obj 20 470 s \$0-msg;
-#X msg 20 48 tempo \$1;
-#X obj 20 26 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
-#X text 83 49 set tempo in BPM;
-#X msg 32 104 time_signature \$1 \$2;
-#X msg 32 78 4 4;
-#X msg 94 79 3 4;
-#X text 61 78 4/4;
-#X text 125 79 3/4;
-#X text 169 105 set time signature;
-#X msg 41 151 play \$1;
-#X obj 41 130 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X msg 51 201 cycle \$1;
-#X obj 51 181 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X msg 58 251 cycle_start \$1;
-#X obj 58 229 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X obj 64 276 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X msg 64 298 cycle_end \$1;
-#X msg 73 355 bar_pos \$1;
-#X obj 73 335 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X obj 81 390 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X text 100 150 play/pause;
-#X text 116 201 enable/disable cycling;
-#X text 158 250 cycle start position (in quarter notes);
-#X text 151 296 cycle end position (in quarter notes);
-#X text 147 355 start position in bar (in quarter notes);
-#X text 192 408 set transport position (in quarter notes);
-#X msg 85 441 transport_get;
-#X text 178 440 get current transport position (in quarter notes);
-#X msg 81 408 transport_set \$1;
-#X connect 1 0 0 0;
-#X connect 2 0 1 0;
-#X connect 4 0 0 0;
-#X connect 5 0 4 0;
-#X connect 6 0 4 0;
-#X connect 10 0 0 0;
-#X connect 11 0 10 0;
-#X connect 12 0 0 0;
-#X connect 13 0 12 0;
-#X connect 14 0 0 0;
-#X connect 15 0 14 0;
-#X connect 16 0 17 0;
-#X connect 17 0 0 0;
-#X connect 18 0 0 0;
-#X connect 19 0 18 0;
-#X connect 20 0 29 0;
-#X connect 27 0 0 0;
-#X connect 29 0 0 0;
-#X restore 499 631 pd transport;
-#X text 497 608 transport/timing;
-#X msg 219 508 name;
-#X text 256 509 get plugin name;
-#X text 28 110 -gui: use the VST plugin GUI (default on Windows and
-Linux);
-#X text 28 126 -nogui: use the generic Pd GUI (default MacOS);
-#X text 302 484 change preferred processing precision;
-#N canvas 637 341 397 212 gui 0;
-#X text 15 16 vstplugin~ GUI:;
-#X text 14 120 on MacOS \, however \, because of technical limitations
-the GUI must run on the main thread - which happens to be the audio
-thread in Pd... until we've found a better solution you are adviced
-to keep the editor window closed in low-latency realtime situations
-to avoid audio hick-ups.;
-#X text 14 75 on Windows and Linux \, the GUI window runs in its own
-thread which means that automating the GUI shouldn't have a noticable
-effect on audio performance.;
-#X text 14 40 if the plugin has a GUI editor it can be shown in a native
-window \, otherwise a 'generic' Pd editor is created.;
-#X restore 403 121 pd gui;
-#X text 400 102 learn more:;
-#X text 28 143 -sp: prefer single precision (default on single precision
-Pd), f 67;
-#X text 29 159 -dp: prefer double precision (default on double precision
-Pd), f 66;
-#X msg 216 462 symbol single;
-#X msg 307 462 symbol double;
-#X text 21 66 [flags...] \, [file] \, inlets (=2) \, outlets (=2);
+#X restore 295 659 pd preset;
 #X connect 0 0 1 0;
 #X connect 0 1 1 1;
 #X connect 0 2 14 0;
@@ -598,6 +585,7 @@ Pd), f 66;
 #X connect 12 0 15 0;
 #X connect 13 0 15 0;
 #X connect 16 0 0 0;
-#X connect 40 0 15 0;
+#X connect 39 0 15 0;
+#X connect 48 0 11 0;
 #X connect 49 0 11 0;
-#X connect 50 0 11 0;
+#X connect 51 0 15 0;
