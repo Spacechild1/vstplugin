@@ -52,7 +52,6 @@ class VST2Plugin final : public IVSTPlugin {
     void setTransportCycleActive(bool active) override;
     void setTransportCycleStart(double beat) override;
     void setTransportCycleEnd(double beat) override;
-    void setTransportBarStartPosition(double beat) override;
     void setTransportPosition(double beat) override;
     double getTransportPosition() const override {
         return timeInfo_.ppqPos;
@@ -113,7 +112,7 @@ class VST2Plugin final : public IVSTPlugin {
     void parameterAutomated(int index, float value);
     VstTimeInfo * getTimeInfo(VstInt32 flags);
     void preProcess(int nsamples);
-    void postProcess();
+    void postProcess(int nsample);
         // process VST events from plugin
     void processEvents(VstEvents *events);
         // dispatch to plugin

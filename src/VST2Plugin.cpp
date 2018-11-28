@@ -2,6 +2,7 @@
 #include "Utility.h"
 
 #include <fstream>
+#include <cmath>
 
 /*------------------ endianess -------------------*/
     // endianess check taken from Pure Data (d_osc.c)
@@ -123,11 +124,13 @@ VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
     : plugin_((AEffect*)plugin), path_(path)
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
-    timeInfo_.flags = kVstTransportPlaying;
     timeInfo_.sampleRate = 44100;
     timeInfo_.tempo = 120;
     timeInfo_.timeSigNumerator = 4;
     timeInfo_.timeSigDenominator = 4;
+    timeInfo_.flags = kVstNanosValid | kVstPpqPosValid | kVstTempoValid
+            | kVstBarsValid | kVstCyclePosValid | kVstTimeSigValid | kVstClockValid
+            | kVstTransportChanged;
 
         // create VstEvents structure holding VstEvent pointers
     vstEvents_ = (VstEvents *)malloc(sizeof(VstEvents) + DEFAULT_EVENT_QUEUE_SIZE * sizeof(VstEvent *));
@@ -174,7 +177,7 @@ void VST2Plugin::process(float **inputs,
     if (plugin_->processReplacing){
         (plugin_->processReplacing)(plugin_, inputs, outputs, sampleFrames);
     }
-    postProcess();
+    postProcess(sampleFrames);
 }
 
 void VST2Plugin::processDouble(double **inputs,
@@ -183,7 +186,7 @@ void VST2Plugin::processDouble(double **inputs,
     if (plugin_->processDoubleReplacing){
         (plugin_->processDoubleReplacing)(plugin_, inputs, outputs, sampleFrames);
     }
-    postProcess();
+    postProcess(sampleFrames);
 }
 
 bool VST2Plugin::hasPrecision(VSTProcessPrecision precision) const {
@@ -210,8 +213,10 @@ void VST2Plugin::resume(){
 void VST2Plugin::setSampleRate(float sr){
     if (sr > 0){
         dispatch(effSetSampleRate, 0, 0, NULL, sr);
-        timeInfo_.sampleRate = sr;
-        timeInfo_.samplePos = 0;
+        if (sr != timeInfo_.sampleRate){
+            timeInfo_.sampleRate = sr;
+            setTransportPosition(0);
+        }
     } else {
         LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
     }
@@ -252,6 +257,7 @@ void VST2Plugin::setBypass(bool bypass){
 void VST2Plugin::setTempoBPM(double tempo){
     if (tempo > 0) {
         timeInfo_.tempo = tempo;
+        timeInfo_.flags |= kVstTransportChanged;
     } else {
         LOG_WARNING("setTempoBPM: tempo must be greater than 0!");
     }
@@ -261,6 +267,7 @@ void VST2Plugin::setTimeSignature(int numerator, int denominator){
     if (numerator > 0 && denominator > 0){
         timeInfo_.timeSigNumerator = numerator;
         timeInfo_.timeSigDenominator = denominator;
+        timeInfo_.flags |= kVstTransportChanged;
     } else {
         LOG_WARNING("setTimeSignature: bad time signature!");
     }
@@ -285,12 +292,14 @@ void VST2Plugin::setTransportRecording(bool record){
 void VST2Plugin::setTransportAutomationWriting(bool writing){
     if (writing != (bool)(timeInfo_.flags & kVstAutomationWriting)){
         timeInfo_.flags ^= kVstAutomationWriting; // toggle
+        timeInfo_.flags |= kVstTransportChanged;
     }
 }
 
 void VST2Plugin::setTransportAutomationReading(bool reading){
     if (reading != (bool)(timeInfo_.flags & kVstAutomationReading)){
         timeInfo_.flags ^= kVstAutomationReading; // toggle
+        timeInfo_.flags |= kVstTransportChanged;
     }
 }
 
@@ -304,18 +313,20 @@ void VST2Plugin::setTransportCycleActive(bool active){
 
 void VST2Plugin::setTransportCycleStart(double beat){
     timeInfo_.cycleStartPos = std::max(0.0, beat);
+    timeInfo_.flags |= kVstTransportChanged;
 }
 
 void VST2Plugin::setTransportCycleEnd(double beat){
     timeInfo_.cycleEndPos = std::max(0.0, beat);
-}
-
-void VST2Plugin::setTransportBarStartPosition(double beat){
-    timeInfo_.barStartPos = std::max(0.0, beat);
+    timeInfo_.flags |= kVstTransportChanged;
 }
 
 void VST2Plugin::setTransportPosition(double beat){
-    timeInfo_.ppqPos = std::max(0.0, beat);
+    timeInfo_.ppqPos = std::max(beat, 0.0); // musical position
+    double sec = timeInfo_.ppqPos / timeInfo_.tempo * 60.0;
+    timeInfo_.nanoSeconds = sec * 1e-009; // system time in nanoseconds
+    timeInfo_.samplePos = sec * timeInfo_.sampleRate; // sample position
+    timeInfo_.flags |= kVstTransportChanged;
 }
 
 int VST2Plugin::getNumMidiInputChannels() const {
@@ -810,19 +821,22 @@ void VST2Plugin::parameterAutomated(int index, float value){
 }
 
 VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
+    double beatsPerBar = (double)timeInfo_.timeSigNumerator / (double)timeInfo_.timeSigDenominator * 4.0;
+        // starting position of current bar in beats (e.g. 4.0 for 4.25 in case of 4/4)
+    timeInfo_.barStartPos = std::floor(timeInfo_.ppqPos / beatsPerBar) * beatsPerBar;
 #if 0
     LOG_DEBUG("request: " << flags);
     if (flags & kVstNanosValid){
-        LOG_DEBUG("want system time");
+        LOG_DEBUG("want system time" << timeInfo_.nanoSeconds * 1e009);
     }
     if (flags & kVstPpqPosValid){
-        LOG_DEBUG("want quarter notes");
+        LOG_DEBUG("want quarter notes " << timeInfo_.ppqPos);
     }
     if (flags & kVstTempoValid){
         LOG_DEBUG("want tempo");
     }
     if (flags & kVstBarsValid){
-        LOG_DEBUG("want bar start pos");
+        LOG_DEBUG("want bar start pos " << timeInfo_.barStartPos);
     }
     if (flags & kVstCyclePosValid){
         LOG_DEBUG("want cycle pos");
@@ -854,13 +868,6 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
 }
 
 void VST2Plugin::preProcess(int nsamples){
-        // advance time (if playing):
-    if (timeInfo_.flags & kVstTransportPlaying){
-        timeInfo_.samplePos += nsamples; // sample position
-        double sec = (double)nsamples / timeInfo_.sampleRate;
-        timeInfo_.nanoSeconds += sec * 1e-009; // system time in nanoseconds
-        timeInfo_.ppqPos += sec / 60.f * timeInfo_.tempo; // beat position
-    }
         // send MIDI events:
     int numEvents = vstEvents_->numEvents;
         // resize buffer if needed
@@ -888,7 +895,7 @@ void VST2Plugin::preProcess(int nsamples){
     }
 }
 
-void VST2Plugin::postProcess(){
+void VST2Plugin::postProcess(int nsamples){
         // clear midi events
     midiQueue_.clear();
         // clear sysex events
@@ -899,6 +906,13 @@ void VST2Plugin::postProcess(){
         // 'clear' VstEvents array
     vstEvents_->numEvents = 0;
 
+        // advance time (if playing):
+    if (timeInfo_.flags & kVstTransportPlaying){
+        timeInfo_.samplePos += nsamples; // sample position
+        double sec = (double)nsamples / timeInfo_.sampleRate;
+        timeInfo_.nanoSeconds += sec * 1e-009; // system time in nanoseconds
+        timeInfo_.ppqPos += sec / 60.0 * timeInfo_.tempo;
+    }
         // clear flag
     timeInfo_.flags &= ~kVstTransportChanged;
 }

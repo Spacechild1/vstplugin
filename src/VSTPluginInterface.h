@@ -98,7 +98,6 @@ class IVSTPlugin {
     virtual void setTransportCycleActive(bool active) = 0;
     virtual void setTransportCycleStart(double beat) = 0;
     virtual void setTransportCycleEnd(double beat) = 0;
-    virtual void setTransportBarStartPosition(double beat) = 0;
     virtual void setTransportPosition(double beat) = 0;
     virtual double getTransportPosition() const = 0;
 

@@ -577,12 +577,6 @@ static void vstplugin_cycle_end(t_vstplugin *x, t_floatarg f){
     x->x_plugin->setTransportCycleEnd(f);
 }
 
-// set bar position (quarter notes)
-static void vstplugin_bar_pos(t_vstplugin *x, t_floatarg f){
-    if (!x->check_plugin()) return;
-    x->x_plugin->setTransportBarStartPosition(f);
-}
-
 // set transport position (quarter notes)
 static void vstplugin_transport_set(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
@@ -1314,10 +1308,11 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_play, gensym("play"), A_FLOAT, A_NULL);
+#if 0
     class_addmethod(vstplugin_class, (t_method)vstplugin_cycle, gensym("cycle"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_cycle_start, gensym("cycle_start"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_cycle_end, gensym("cycle_end"), A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bar_pos, gensym("bar_pos"), A_FLOAT, A_NULL);
+#endif
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_get, gensym("transport_get"), A_NULL);
         // parameters
