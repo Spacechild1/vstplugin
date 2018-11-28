@@ -510,6 +510,13 @@ static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
     }
 }
 
+// reset the plugin
+static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    x->x_plugin->suspend();
+    x->x_plugin->resume();
+}
+
 // show/hide editor window
 static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
@@ -1298,6 +1305,7 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_SYMBOL, A_NULL);
