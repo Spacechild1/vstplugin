@@ -86,6 +86,7 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
 }
 
 VSTWindowCocoa::~VSTWindowCocoa(){
+    [window_ close];
     [window_ release];
     std::cout << "destroyed VSTWindowCocoa" << std::endl;
 }
