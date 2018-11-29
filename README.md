@@ -4,7 +4,6 @@ vstplugin~ 0.1-alpha
 *** WARNING: this is an alpha release, some things may change in the future ***
 
 with vstplugin~ you can load VST plugins within Pd on Windows, MacOS and Linux.
-it provides both a generic editor and a native window to show the plugin GUI.
 
 features:
 * load any kind of VST plugin (audio effect, MIDI effect, soft synth etc.)
