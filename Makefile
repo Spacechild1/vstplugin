@@ -18,6 +18,7 @@ common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
 VST2DIR = src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x/
 
 cflags = -Wno-unused -Wno-unused-parameter \
+	-g \
 	-std=c++11 \
 	-I"${VST2DIR}" \
 	-DLOGLEVEL=2 \
