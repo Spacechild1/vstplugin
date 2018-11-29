@@ -1,5 +1,4 @@
-==============================================================================
-*** vstplugin~ 0.1-alpha ***
+vstplugin~ 0.1-alpha
 ==============================================================================
 
 *** WARNING: this is an alpha release, some things may change in the future ***
