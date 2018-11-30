@@ -856,6 +856,10 @@ static void vstplugin_program_data_get(t_vstplugin *x){
     std::string buffer;
     x->x_plugin->writeProgramData(buffer);
     int n = buffer.size();
+    if (!n){
+        pd_error(x, "%s: couldn't get program data", classname(x));
+        return;
+    }
     std::vector<t_atom> atoms;
     atoms.resize(n);
     for (int i = 0; i < n; ++i){
@@ -915,6 +919,10 @@ static void vstplugin_bank_data_get(t_vstplugin *x){
     std::string buffer;
     x->x_plugin->writeBankData(buffer);
     int n = buffer.size();
+    if (!n){
+        pd_error(x, "%s: couldn't get bank data", classname(x));
+        return;
+    }
     std::vector<t_atom> atoms;
     atoms.resize(n);
     for (int i = 0; i < n; ++i){
