@@ -20,7 +20,7 @@ NOTE: currently only VST2.x plugins are supported but VST3 support will come soo
 
 see vstplugin~-help.pd for detailed instructions.
 
-please report any issues or feature requests to https://git.iem.at/ressi/vstplugin/issues
+please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues
 
 ==============================================================================
 
