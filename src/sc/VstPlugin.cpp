@@ -1,37 +1,29 @@
-#include "SC_PlugIn.h"
+#include "SC_PlugIn.hpp"
 
 static InterfaceTable *ft;
 
-struct VstPlugin : public Unit {
+class VstPlugin : public SCUnit {
+public:
 	VstPlugin();
 	~VstPlugin(){}
+	void next(int inNumSamples);
 };
 
-static void VstPlugin_next(VstPlugin* unit, int inNumSamples);
-
 VstPlugin::VstPlugin(){
-	VstPlugin *unit = this;
-	SETCALC(VstPlugin_next);
-	VstPlugin_next(unit, 1);
+	set_calc_function<VstPlugin, &VstPlugin::next>();
 }
 
-void VstPlugin_next(VstPlugin* unit, int inNumSamples) {
-    float *left = IN(0);
-    float *right = IN(1);
-    float *out = OUT(0);
-    
-    for (int i = 0; i < inNumSamples; i++) {
-        out[i] = left[i] + right[i];
-    }
+void VstPlugin::next(int inNumSamples){
+	const float *left = in(0);
+	const float *right = in(1);
+	float *result = out(0);
+
+	for (int i = 0; i < inNumSamples; i++){
+		result[i] = left[i] + right[i];
+	}
 }
 
-void VstPlugin_Ctor(VstPlugin* unit) {
-	unit = new(unit) VstPlugin();
-}
-
-void VstPlugin_Dtor(VstPlugin* unit) {
-	unit->~VstPlugin();
-}
+DEFINE_XTORS(VstPlugin)
 
 // the entry point is called by the host when the plug-in is loaded
 PluginLoad(VstPluginUGens) {
