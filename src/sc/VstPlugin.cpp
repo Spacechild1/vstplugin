@@ -1,34 +1,41 @@
-#include "SC_PlugIn.hpp"
+#include "SC_PlugIn.h"
 
 static InterfaceTable *ft;
 
-struct VstPlugin : public SCUnit {
-public:
-    VstPlugin() {
-        // New way of setting calc function.
-        set_calc_function<VstPlugin, &VstPlugin::next>();
-        next(1);
-    }
-	~VstPlugin(){
-		
-    }
-private:
-
-    // Calc function
-    void next(int inNumSamples) {
-        const float* left = in(0);
-        const float* right = in(1);
-        float* out_l = out(0);
-        float* out_r = out(1);
-
-        for (int i = 0; i < inNumSamples; i++) {
-            out_l[i] = left[i];
-            out_r[i] = right[i];
-        }
-    }
+struct VstPlugin : public Unit {
+	VstPlugin();
+	~VstPlugin(){}
 };
 
-PluginLoad(VstPlugin) {
-    ft = inTable;
-    registerUnit<VstPlugin>(ft, "VstPlugin");
+static void VstPlugin_next(VstPlugin* unit, int inNumSamples);
+
+VstPlugin::VstPlugin(){
+	VstPlugin *unit = this;
+	SETCALC(VstPlugin_next);
+	VstPlugin_next(unit, 1);
+}
+
+void VstPlugin_next(VstPlugin* unit, int inNumSamples) {
+    float *left = IN(0);
+    float *right = IN(1);
+    float *out = OUT(0);
+    
+    for (int i = 0; i < inNumSamples; i++) {
+        out[i] = left[i] + right[i];
+    }
+}
+
+void VstPlugin_Ctor(VstPlugin* unit) {
+	unit = new(unit) VstPlugin();
+}
+
+void VstPlugin_Dtor(VstPlugin* unit) {
+	unit->~VstPlugin();
+}
+
+// the entry point is called by the host when the plug-in is loaded
+PluginLoad(VstPluginUGens) {
+    // InterfaceTable *inTable implicitly given as argument to the load function
+    ft = inTable; // store pointer to InterfaceTable
+    DefineDtorUnit(VstPlugin);
 }
