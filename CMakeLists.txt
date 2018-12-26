@@ -1,13 +1,32 @@
+if(UNIX AND NOT APPLE)
+set(LINUX TRUE)
+endif()
+
+
 set(FILENAME "VstPlugin.cpp") #specify the .cpp file here
 cmake_minimum_required (VERSION 2.8)
 get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project name from the filename
 # set(PROJECT "my_name") #alternatively set project name manually
 message(STATUS "Project name is ${PROJECT}")
 project (${PROJECT})
-add_definitions(-D_WIN32)
+message(STATUS "SC_PATH is ${SC_PATH}")
+# SuperCollider API:
 include_directories(${SC_PATH}/include/plugin_interface)
 include_directories(${SC_PATH}/include/common)
+include_directories(${SC_PATH}/plugin_interface)
 include_directories(${SC_PATH}/common)
+
+# VST2 SDK:
+include_directories(src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x)
+
+include_directories(src)
+include_directories(src/sc)
+
+add_definitions(-DLOGLEVEL=3 -DLOGFUNCTION=SCLog)
+
+if(LINUX)
+add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
+endif()
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
 if(APPLE OR MINGW)
@@ -25,8 +44,16 @@ endif()
 
 option(CPP14 "Build with c++14." ON)
 
+option(TEST_PLUGIN "Test Plugin:")
+
+add_definitions(-DTEST_PLUGIN="${TEST_PLUGIN}")
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(CMAKE_COMPILER_IS_CLANG 1)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX)
+add_definitions(-Wl,--no-undefined)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
@@ -83,7 +110,13 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-add_library(${PROJECT} MODULE ${FILENAME})
+add_library(${PROJECT} MODULE src/sc/${FILENAME} src/VST2Plugin.cpp src/VSTPlugin.cpp src/VSTWindowX11.cpp)
+target_link_libraries(${PROJECT} )
+
+if (LINUX)
+target_link_libraries(${PROJECT} -ldl -L/usr/X11R6/lib -lX11)
+endif()
+
 if (MINGW)
 # target_link_libraries(${PROJECT} "-static-libgcc -static-libstdc++")
 endif()
