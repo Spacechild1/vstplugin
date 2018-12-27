@@ -21,6 +21,7 @@ public:
 	template<typename T>
 	Log& operator<<(T&& t){
 		stream_ << std::move(t);
+        return *this;
 	}
 private:
 	std::ostringstream stream_;
