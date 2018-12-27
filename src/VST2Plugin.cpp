@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <cmath>
+#include <algorithm>
 
 /*------------------ endianess -------------------*/
     // endianess check taken from Pure Data (d_osc.c)
