@@ -1,14 +1,14 @@
-if(UNIX AND NOT APPLE)
-set(LINUX TRUE)
-endif()
-
-
 set(FILENAME "VstPlugin.cpp") #specify the .cpp file here
 cmake_minimum_required (VERSION 2.8)
 get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project name from the filename
 # set(PROJECT "my_name") #alternatively set project name manually
 message(STATUS "Project name is ${PROJECT}")
 project (${PROJECT})
+
+if(UNIX AND NOT APPLE AND NOT MINGW)
+set(LINUX TRUE)
+endif()
+
 message(STATUS "SC_PATH is ${SC_PATH}")
 # SuperCollider API:
 include_directories(${SC_PATH}/include/plugin_interface)
@@ -24,12 +24,8 @@ include_directories(src/sc)
 
 add_definitions(-DLOGLEVEL=3 -DLOGFUNCTION=SCLog)
 
-if(LINUX)
-add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
-endif()
-
 set(CMAKE_SHARED_MODULE_PREFIX "")
-if(APPLE OR MINGW)
+if(APPLE OR MINGW OR WIN32)
 set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
 endif()
 
@@ -110,16 +106,25 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-add_library(${PROJECT} MODULE src/sc/${FILENAME} src/VST2Plugin.cpp src/VSTPlugin.cpp src/VSTWindowX11.cpp)
-target_link_libraries(${PROJECT} )
-
+add_library(${PROJECT} MODULE src/sc/${FILENAME} src/VST2Plugin.cpp src/VSTPlugin.cpp)
 if (LINUX)
-target_link_libraries(${PROJECT} -ldl -L/usr/X11R6/lib -lX11)
+    add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
+    target_sources(${PROJECT} PUBLIC src/VSTWindowX11.cpp)
+    target_link_libraries(${PROJECT} -ldl -L/usr/X11R6/lib -lX11)
+endif()
+if (MINGW OR WIN32)
+    add_definitions(-DVSTTHREADS=1)
+    target_sources(${PROJECT} PUBLIC src/VSTWindowWin32.cpp)
+endif()
+if (MINGW)
+    target_link_libraries(${PROJECT} "-static-libgcc -static-libstdc++")
+endif()
+if (APPLE)
+    add_definitions(-fno-objc-arc -DVSTTHREADS=0)
+    target_sources(${PROJECT} PUBLIC src/VSTWindowCocoa.cpp)
+    target_link_libraries(${PROJECT} -framework Cocoa)
 endif()
 
-if (MINGW)
-# target_link_libraries(${PROJECT} "-static-libgcc -static-libstdc++")
-endif()
 if(SUPERNOVA)
     add_library(${PROJECT}_supernova MODULE ${FILENAME})
     set_property(TARGET ${PROJECT}_supernova
