@@ -172,20 +172,20 @@ int VST2Plugin::getPluginUniqueID() const {
     return plugin_->uniqueID;
 }
 
-void VST2Plugin::process(float **inputs,
+void VST2Plugin::process(const float **inputs,
     float **outputs, VstInt32 sampleFrames){
     preProcess(sampleFrames);
     if (plugin_->processReplacing){
-        (plugin_->processReplacing)(plugin_, inputs, outputs, sampleFrames);
+        (plugin_->processReplacing)(plugin_, (float **)inputs, outputs, sampleFrames);
     }
     postProcess(sampleFrames);
 }
 
-void VST2Plugin::processDouble(double **inputs,
+void VST2Plugin::processDouble(const double **inputs,
     double **outputs, VstInt32 sampleFrames){
     preProcess(sampleFrames);
     if (plugin_->processDoubleReplacing){
-        (plugin_->processDoubleReplacing)(plugin_, inputs, outputs, sampleFrames);
+        (plugin_->processDoubleReplacing)(plugin_, (double **)inputs, outputs, sampleFrames);
     }
     postProcess(sampleFrames);
 }
