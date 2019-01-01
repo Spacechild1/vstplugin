@@ -3,6 +3,7 @@ test**
 src/VST_SDK**
 build**
 *.qbs*
+*.vs
 *.pd_darwin
 *.pd_linux
 

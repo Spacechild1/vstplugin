@@ -1,4 +1,4 @@
-set(FILENAME "VstPlugin.cpp") #specify the .cpp file here
+set(FILENAME "VstPluginUGen.cpp") #specify the .cpp file here
 cmake_minimum_required (VERSION 2.8)
 get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project name from the filename
 # set(PROJECT "my_name") #alternatively set project name manually
@@ -20,7 +20,6 @@ include_directories(${SC_PATH}/common)
 include_directories(src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x)
 
 include_directories(src)
-include_directories(src/sc)
 
 add_definitions(-DLOGLEVEL=3 -DLOGFUNCTION=SCLog)
 
@@ -39,8 +38,6 @@ if (SUPERNOVA)
 endif()
 
 option(CPP14 "Build with c++14." ON)
-
-option(TEST_PLUGIN "Test Plugin:")
 
 add_definitions(-DTEST_PLUGIN="${TEST_PLUGIN}")
 
@@ -106,7 +103,7 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-add_library(${PROJECT} MODULE src/sc/${FILENAME} src/VST2Plugin.cpp src/VSTPlugin.cpp)
+add_library(${PROJECT} MODULE src/${FILENAME} src/VST2Plugin.cpp src/VSTPlugin.cpp)
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
     target_sources(${PROJECT} PUBLIC src/VSTWindowX11.cpp)
