@@ -119,7 +119,7 @@ endif()
 if (APPLE)
     add_definitions(-fno-objc-arc -DVSTTHREADS=0)
     target_sources(${PROJECT} PUBLIC src/VSTWindowCocoa.mm)
-    target_link_libraries(${PROJECT} -framework Cocoa)
+    target_link_libraries(${PROJECT} "-framework Cocoa")
 endif()
 
 if(SUPERNOVA)
