@@ -49,7 +49,7 @@ variables:
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
-    - make -C VERBOSE=1 build
+    - make -C build VERBOSE=1
 
 .build:macos: &build_macos
   tags:
@@ -67,7 +67,7 @@ variables:
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
-    - make -C VERBOSE=1 build
+    - make -C build VERBOSE=1
 
 .build:w32: &build_w32
   stage: build
@@ -87,7 +87,7 @@ variables:
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
-    # - make -C VERBOSE=1 build
+    # - make -C build VERBOSE=1
 
 .build:w64: &build_w64
   stage: build
@@ -107,7 +107,7 @@ variables:
   script:
     - make extension=m_amd64 VST2DIR="${VST2DIR}"
     - make install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
-    # - make -C VERBOSE=1 build
+    # - make -C build VERBOSE=1
 
 #######################################################################
 ### the actual jobs: (linux,macos,windows)*(release,snapshot)
