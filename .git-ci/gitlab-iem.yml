@@ -41,7 +41,7 @@ variables:
   image: gcc
   stage: build
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends make puredata-dev puredata
+    - apt-get update && apt-get install -y --no-install-recommends make cmake puredata-dev puredata
     - export PD=/usr/bin/pd
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git
@@ -49,7 +49,7 @@ variables:
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
-    - make -C build
+    - make -C VERBOSE=1 build
 
 .build:macos: &build_macos
   tags:
@@ -67,7 +67,7 @@ variables:
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
-    - make -C build
+    - make -C VERBOSE=1 build
 
 .build:w32: &build_w32
   stage: build
@@ -83,11 +83,11 @@ variables:
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git
-    - cmake -H. -Bbuild -DSC_PATH=supercollider
+    # - cmake -H. -Bbuild -DSC_PATH=supercollider
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
-    - make -C build
+    # - make -C VERBOSE=1 build
 
 .build:w64: &build_w64
   stage: build
@@ -103,11 +103,11 @@ variables:
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git
-    - cmake -H. -Bbuild -DSC_PATH=supercollider
+    # - cmake -H. -Bbuild -DSC_PATH=supercollider
   script:
     - make extension=m_amd64 VST2DIR="${VST2DIR}"
     - make install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
-    - make -C build
+    # - make -C VERBOSE=1 build
 
 #######################################################################
 ### the actual jobs: (linux,macos,windows)*(release,snapshot)
