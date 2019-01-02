@@ -9,15 +9,17 @@ if(UNIX AND NOT APPLE AND NOT MINGW)
 set(LINUX TRUE)
 endif()
 
-message(STATUS "SC_PATH is ${SC_PATH}")
 # SuperCollider API:
+message(STATUS "SC_PATH is ${SC_PATH}")
 include_directories(${SC_PATH}/include/plugin_interface)
 include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/plugin_interface)
 include_directories(${SC_PATH}/common)
 
 # VST2 SDK:
-include_directories(src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x)
+set(VST2DIR "src/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
+message(STATUS "VST2DIR is ${VST2DIR}")
+include_directories(${VST2DIR}/pluginterfaces/vst2.x)
 
 include_directories(src)
 
@@ -38,8 +40,6 @@ if (SUPERNOVA)
 endif()
 
 option(CPP14 "Build with c++14." ON)
-
-add_definitions(-DTEST_PLUGIN="${TEST_PLUGIN}")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(CMAKE_COMPILER_IS_CLANG 1)
