@@ -1198,7 +1198,7 @@ static t_int *vstplugin_perform(t_int *w){
                 outbufvec[i] = ((double *)x->x_outbuf + i * n);
             }
                 // process
-            plugin->processDouble((double **)inbufvec, (double **)outbufvec, n);
+            plugin->processDouble((const double **)inbufvec, (double **)outbufvec, n);
                 // read from output buffer
             for (int i = 0; i < nout && i < pout; ++i){
                 t_float *out = outvec[i];
@@ -1228,7 +1228,7 @@ static t_int *vstplugin_perform(t_int *w){
                 outbufvec[i] = ((float *)x->x_outbuf + i * n);
             }
                 // process
-            plugin->process((float **)inbufvec, (float **)outbufvec, n);
+            plugin->process((const float **)inbufvec, (float **)outbufvec, n);
                 // read from output buffer
             for (int i = 0; i < nout && i < pout; ++i){
                 t_float *out = outvec[i];
