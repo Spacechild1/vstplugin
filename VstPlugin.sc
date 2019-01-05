@@ -211,9 +211,10 @@ VstPlugin : Synth {
 		this.prMidiMsg(224, chan, lsb, msb);
 	}
 	midiMsg { arg status, data1=0, data2=0;
-		this.sendMsg('/midi_msg', status, data1, data2);
+		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2));
 	}
 	midiSysex { arg msg;
+		(msg.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw;};
 		this.sendMsg('/midi_sysex', msg);
 	}
 	// transport
@@ -236,8 +237,8 @@ VstPlugin : Synth {
 	sendMsg { arg cmd ... args;
 		server.sendBundle(0, ['/u_cmd', nodeID, 2, cmd] ++ args);
 	}
-	prMidiMsg { arg type, chn, data1=0, data2=0;
-		var status = (chn - 1).clip(0, 15) + type;
+	prMidiMsg { arg hiStatus, lowStatus, data1=0, data2=0;
+		var status = hiStatus.asInt + lowStatus.asInt.clip(0, 15);
 		this.midiMsg(status, data1, data2);
 	}
 	*msg2string { arg msg, onset=0;

@@ -541,10 +541,13 @@ void vst_bank_data_get(Unit *unit, sc_msg_iter *args) {
 
 
 void vst_midi_msg(Unit *unit, sc_msg_iter *args) {
-	int32 status = args->geti();
-	int32 data1 = args->geti();
-	int32 data2 = args->geti();
-	static_cast<VstPluginUGen*>(unit)->sendMidiMsg(status, data1, data2);
+	char data[4];
+	int32 len = args->getbsize();
+	if (len > 4) {
+		Print("vst_midi_msg: midi message too long (%d bytes)\n", len);
+	}
+	args->getb(data, len);
+	static_cast<VstPluginUGen*>(unit)->sendMidiMsg(data[0], data[1], data[2]);
 }
 
 void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
