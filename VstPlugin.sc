@@ -1,7 +1,7 @@
 VstPluginUGen : MultiOutUGen {
-	*ar { arg input, nout=2, gui=0, bypass=0;
+	*ar { arg input, nout=2, bypass=0;
 		var nin = input.isArray.if {input.size} {input.notNil.asInt};
-		^this.multiNewList([\audio, nout, gui, bypass, nin] ++ input);
+		^this.multiNewList([\audio, nout, bypass, nin] ++ input);
 	}
 	init { arg nout ... theInputs;
 		inputs = theInputs;
@@ -19,6 +19,7 @@ VstPluginUGen : MultiOutUGen {
 
 VstPlugin : Synth {
 	// public
+	var <loaded;
 	var <name;
 	var <numInputs;
 	var <numOutputs;
@@ -28,16 +29,16 @@ VstPlugin : Synth {
 	var <midiOutput;
 	var <programs;
 	var <currentProgram;
-	var <parameters;
+	var <parameterNames;
+	var <parameterLabels;
 	// private
-	var paramFunc;
-	var paramNameFunc;
-	var programNameFunc;
-	var programFunc;
+	var oscFuncs;
+	var useVstGui;
+	var useParamDisplay;
 
-	*def { arg name, nin=2, nout=2, gui=false;
+	*makeSynthDef { arg name, nin=2, nout=2;
 		^SynthDef.new(name, {arg in, out, bypass=0;
-			var vst = VstPluginUGen.ar(In.ar(in, nin.max(1)), nout.max(1), gui.asInt, bypass);
+			var vst = VstPluginUGen.ar(In.ar(in, nin.max(1)), nout.max(1), bypass);
 			// "vst synth index: %".format(vst.isArray.if {vst[0].source.synthIndex} {vst.source.synthIndex}).postln;
 			Out.ar(out, vst);
 		});
@@ -45,28 +46,42 @@ VstPlugin : Synth {
 	*new { arg defName, args, target, addAction=\addToHead;
 		^super.new(defName, args, target, addAction).init;
 	}
+	*newPaused { arg defName, args, target, addAction=\addToHead;
+		^super.newPaused(defName, args, target, addAction).init;
+	}
+	*replace { arg nodeToReplace, defName, args, sameID=false;
+		^super.replace(nodeToReplace, defName, args, sameID).init;
+	}
 	init {
 		this.onFree({
 			this.prFree();
 		});
-		paramFunc = OSCFunc({ arg msg;
+		loaded = false;
+		oscFuncs = List.new;
+		oscFuncs.add(OSCFunc({ arg msg;
 			// "param %: %".format(msg[3].asInt, msg[4]).postln;
-		}, '/vst_param', argTemplate: [nodeID, 2]);
-		paramNameFunc = OSCFunc({ arg msg;
+		}, '/vst_param', argTemplate: [nodeID, 2]));
+		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
-			parameters[index] = name;
-		}, '/vst_param_name', argTemplate: [nodeID, 2]);
-		programFunc = OSCFunc({ arg msg;
+			parameterNames[index] = name;
+		}, '/vst_param_name', argTemplate: [nodeID, 2]));
+		oscFuncs.add(OSCFunc({ arg msg;
+			var index, name;
+			index = msg[3].asInt;
+			name = VstPlugin.msg2string(msg, 1);
+			parameterLabels[index] = name;
+		}, '/vst_param_label', argTemplate: [nodeID, 2]));
+		oscFuncs.add(OSCFunc({ arg msg;
 			currentProgram = msg[3].asInt;
-		}, '/vst_program', argTemplate: [nodeID, 2]);
-		programNameFunc = OSCFunc({ arg msg;
+		}, '/vst_program', argTemplate: [nodeID, 2]));
+		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			programs[index] = name;
-		}, '/vst_program_name', argTemplate: [nodeID, 2]);
+		}, '/vst_program_name', argTemplate: [nodeID, 2]));
 	}
 	free { arg sendFlag=true;
 		this.prFree();
@@ -74,30 +89,44 @@ VstPlugin : Synth {
 	}
 	prFree {
 		"VstPlugin freed!".postln;
-		paramFunc.free;
-		paramNameFunc.free;
-		programFunc.free;
-		programFunc.free;
+		oscFuncs.do({ arg func;
+			func.free;
+		});
 	}
 	info {
-		"---".postln;
-		"name: %".format(name).postln;
-		"num inputs: %, num outputs: %".format(numInputs, numOutputs).postln;
-		"midi input: %, midi output: %".format(midiInput, midiOutput).postln;
-		"parameters (%):".format(parameters.size).postln;
-		parameters.do({ arg item, i;
-			"[%] %".format(i, item).postln;
-		});
-		"programs (%):".format(programs.size).postln;
-		programs.do({ arg item, i;
-			"[%] %".format(i, item).postln;
-		});
-		// todo
+		loaded.if {
+			"---".postln;
+			"name: %".format(name).postln;
+			"num inputs: %, num outputs: %".format(numInputs, numOutputs).postln;
+			"midi input: %, midi output: %".format(midiInput, midiOutput).postln;
+			"parameters (%):".format(this.numParameters).postln;
+			this.numParameters.do({ arg i;
+				var label;
+				label = (parameterLabels[i].size > 0).if { "(%)".format(parameterLabels[i]) };
+				"[%] % %".format(i, parameterNames[i], label ?? "").postln;
+			});
+			"programs (%):".format(programs.size).postln;
+			programs.do({ arg item, i;
+				"[%] %".format(i, item).postln;
+			});
+		} {
+			"---".postln;
+			"no plugin loaded!".postln;
+		}
 	}
-	open { arg path, onSuccess, onFail;
+	open { arg path, onSuccess, onFail, vstGui=false, paramDisplay=false, info=false;
+		var flags;
 		// the UGen will respond to the '/open' message with the following messages:
 		OSCFunc.new({arg msg;
-			msg[3].asBoolean.if {onSuccess.value(this);} {this.prOnFail; onFail.value(this)};
+			msg[3].asBoolean.if {
+				loaded = true;
+				info.if { this.info };
+				onSuccess.value(this);
+			} {
+				loaded = false;
+				this.prOnFail;
+				onFail.value(this)
+			};
 		}, '/vst_open', argTemplate: [nodeID, 2]).oneShot;
 		OSCFunc.new({arg msg; name = VstPlugin.msg2string(msg)}, '/vst_name', argTemplate: [nodeID, 2]).oneShot;
 		OSCFunc.new({arg msg; numInputs = msg[3].asInt}, '/vst_nin', argTemplate: [nodeID, 2]).oneShot;
@@ -106,16 +135,25 @@ VstPlugin : Synth {
 		OSCFunc.new({arg msg; midiOutput = msg[3].asBoolean}, '/vst_midiout', argTemplate: [nodeID, 2]).oneShot;
 		OSCFunc.new({arg msg; programs = Array.fill(msg[3].asInt, nil)}, '/vst_nprograms', argTemplate: [nodeID, 2]).oneShot;
 		OSCFunc.new({arg msg; currentProgram = msg[3].asInt}, '/vst_program', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; parameters = Array.fill(msg[3].asInt, nil)}, '/vst_nparams', argTemplate: [nodeID, 2]).oneShot;
-
-		this.sendMsg('/open', path);
+		OSCFunc.new({arg msg;
+			var n = msg[3].asInt; parameterNames = Array.fill(n, nil); parameterLabels = Array.fill(n, nil);
+		}, '/vst_nparams', argTemplate: [nodeID, 2]).oneShot;
+		useVstGui = vstGui.asBoolean;
+		useParamDisplay = paramDisplay.asBoolean;
+		flags = useVstGui.asInt | (useParamDisplay.asInt << 1);
+		this.sendMsg('/open', flags, path);
 	}
 	prOnFail {
 		"open plugin failed!".postln;
-		name = nil; numInputs = nil; numOutputs = nil; midiInput = nil; midiOutput = nil; parameters = nil; programs = nil;
+		name = nil; numInputs = nil; numOutputs = nil; midiInput = nil; midiOutput = nil;
+		parameterNames = nil; parameterLabels = nil; programs = nil;
 	}
 	close {
+		loaded = false;
 		this.sendMsg('/close');
+	}
+	showGui { arg show;
+		useVstGui.if { this.sendMsg('/vis', show.asInt) };
 	}
 	// parameters
 	setParameter { arg index, value;
@@ -128,7 +166,7 @@ VstPlugin : Synth {
 		this.mapParam(index, -1);
 	}
 	numParameters {
-		^parameters.size;
+		^parameterNames.size;
 	}
 	// programs and banks
 	numPrograms {

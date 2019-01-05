@@ -1,14 +1,29 @@
 #include "SC_PlugIn.hpp"
 #include "VSTPluginInterface.h"
 
+#ifndef VSTTHREADS
+#define VSTTHREADS 1
+#endif
+
+#if VSTTHREADS
+#include <atomic>
+#include <thread>
+#include <future>
+#endif
+
 class VstPluginUGen : public SCUnit {
 public:
+	const uint32 FlagVstGui = 1;
+	const uint32 FlagParamDisplay = 2;
+
 	VstPluginUGen();
 	~VstPluginUGen();
 	bool check();
-	void open(const char *path);
+    void open(const char *path, uint32 flags);
 	void close();
+	void showEditor(bool show);
 	void reset();
+	void next(int inNumSamples);
 	// param
 	void setParam(int32 index, float value);
 	void mapParam(int32 index, int32 bus);
@@ -32,16 +47,15 @@ public:
 	void setTransportPlaying(bool play);
 	void setTransportPos(float pos);
 	void getTransportPos();
-
-	void next(int inNumSamples);
 private:
 	struct Param {
 		float value;
 		int32 bus;
-	};
+    };
+    IVSTPlugin* tryOpenPlugin(const char *path, bool gui);
 	// helper methods
 	const float *input(int i) const {
-		return in(i + 3);
+		return in(i + 2);
 	}
 	int numInChannels() const {
 		return numInChannels_;
@@ -63,8 +77,16 @@ private:
 	float **outBufVec_ = nullptr;
 	Param *paramVec_ = nullptr;
 	int numInChannels_ = 0;
-	bool gui_ = false;
+    bool vstGui_ = false;
+	bool paramDisplay_ = false;
 	bool bypass_ = false;
+    std::unique_ptr<IVSTWindow> window_;
+    // threading
+#if VSTTHREADS
+    void threadFunction(std::promise<IVSTPlugin *> promise, const char *path);
+    std::thread thread_;
+    std::mutex mutex_;
+#endif
 };
 
 template<typename T>

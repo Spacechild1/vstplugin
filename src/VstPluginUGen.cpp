@@ -1,4 +1,5 @@
 #include "VstPluginUGen.h"
+#include "Utility.h"
 
 static InterfaceTable *ft;
 
@@ -15,19 +16,18 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 }
 
 VstPluginUGen::VstPluginUGen(){
-	gui_ = in0(0);
-	bypass_ = in0(1);
-	numInChannels_ = std::max<int>(0, in0(2));
+	bypass_ = in0(0);
+	numInChannels_ = std::max<int>(0, in0(1));
 
 	set_calc_function<VstPluginUGen, &VstPluginUGen::next>();
 }
 
 VstPluginUGen::~VstPluginUGen(){
+	close();
 	if (buf_) RTFree(mWorld, buf_);
 	if (inBufVec_) RTFree(mWorld, inBufVec_);
 	if (outBufVec_) RTFree(mWorld, outBufVec_);
 	if (paramVec_) RTFree(mWorld, paramVec_);
-	if (plugin_) freeVSTPlugin(plugin_);
 }
 
 bool VstPluginUGen::check(){
@@ -41,19 +41,51 @@ bool VstPluginUGen::check(){
 }
 
 void VstPluginUGen::close() {
-	if (plugin_){
-		freeVSTPlugin(plugin_);
-	}
+#if VSTTHREADS
+        // destroying the window (if any) might terminate the message loop and already release the plugin
+    window_ = nullptr;
+        // now join the thread (if any)
+    if (thread_.joinable()){
+        thread_.join();
+		LOG_DEBUG("thread joined");
+    }
+#endif
+        // do we still have a plugin? (e.g. SC editor or !VSTTHREADS)
+    if (plugin_){
+        window_ = nullptr;
+        plugin_->closeEditor();
+        freeVSTPlugin(plugin_);
+        plugin_ = nullptr;
+    }
+	LOG_DEBUG("VST plugin closed");
 }
 
-void VstPluginUGen::open(const char *path){
-	close();
-	plugin_ = loadVSTPlugin(makeVSTPluginFilePath(path));
-	if (plugin_){
-		// Print("loaded '%s'!\n", path);
+void VstPluginUGen::open(const char *path, uint32 flags){
+    close();
+    bool vstGui = flags & FlagVstGui;
+	// initialize GUI backend (if needed)
+	if (vstGui) {
+		static bool initialized = false;
+		if (!initialized) {
+			VSTWindowFactory::initialize();
+			initialized = true;
+		}
+	}
+	LOG_DEBUG("try loading plugin");
+    plugin_ = tryOpenPlugin(path, vstGui);
+    if (plugin_){
+        vstGui_ = vstGui;
+        paramDisplay_ = flags & FlagParamDisplay;
+		LOG_DEBUG("loaded " << path);
 		int blockSize = bufferSize();
 		plugin_->setSampleRate(sampleRate());
 		plugin_->setBlockSize(blockSize);
+		if (plugin_->hasPrecision(VSTProcessPrecision::Single)) {
+			plugin_->setPrecision(VSTProcessPrecision::Single);
+		}
+		else {
+			Print("warning: plugin '%s' doesn't support single precision processing - bypassing!\n", path);
+		}
 		// allocate additional buffers for missing inputs/outputs
 		int nin = plugin_->getNumInputs();
 		int nout = plugin_->getNumOutputs();
@@ -100,10 +132,145 @@ void VstPluginUGen::open(const char *path){
 	}
 }
 
+IVSTPlugin* VstPluginUGen::tryOpenPlugin(const char *path, bool gui){
+#if VSTTHREADS
+        // creates a new thread where the plugin is created and the message loop runs
+    if (gui){
+        std::promise<IVSTPlugin *> promise;
+        auto future = promise.get_future();
+		LOG_DEBUG("started thread");
+        thread_ = std::thread(&VstPluginUGen::threadFunction, this, std::move(promise), path);
+        return future.get();
+    }
+#endif
+        // create plugin in main thread
+    IVSTPlugin *plugin = loadVSTPlugin(path);
+        // receive events from plugin
+    // TODO: plugin->setListener();
+#if !VSTTHREADS
+        // create and setup GUI window in main thread (if needed)
+    if (plugin && plugin->hasEditor() && gui){
+        window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        if (window_){
+            window_->setTitle(plugin->getPluginName());
+            int left, top, right, bottom;
+            plugin->getEditorRect(left, top, right, bottom);
+            window_->setGeometry(left, top, right, bottom);
+        }
+    }
+#endif
+    return plugin;
+}
+
+void VstPluginUGen::threadFunction(std::promise<IVSTPlugin *> promise, const char *path){
+    IVSTPlugin *plugin = loadVSTPlugin(path);
+    if (!plugin){
+            // signal main thread
+        promise.set_value(nullptr);
+        return;
+    }
+        // create GUI window (if needed)
+    if (plugin->hasEditor()){
+        window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+    }
+        // receive events from plugin
+    // TODO: plugin->setListener();
+        // return plugin to main thread
+    promise.set_value(plugin);
+        // setup GUI window (if any)
+    if (window_){
+        window_->setTitle(plugin->getPluginName());
+        int left, top, right, bottom;
+        plugin->getEditorRect(left, top, right, bottom);
+        window_->setGeometry(left, top, right, bottom);
+
+        plugin->openEditor(window_->getHandle());
+
+        window_->run();
+
+        plugin->closeEditor();
+            // some plugins expect to released in the same thread where they have been created
+        freeVSTPlugin(plugin);
+		plugin_ = nullptr;
+    }
+}
+
+void VstPluginUGen::showEditor(bool show) {
+	if (plugin_ && window_) {
+		if (show) {
+			LOG_DEBUG("show editor");
+			window_->bringToTop();
+#if !VSTTHREADS
+			/* if we're single threaded we open/close the editor on demand
+			to make sure no unwanted GUI drawing is happening behind the scenes
+			(for some reason, on macOS parameter automation would cause redraws
+			even if the window is hidden)
+			*/
+			plugin_->openEditor(window_->getHandle());
+#endif
+		}
+		else {
+			LOG_DEBUG("hide editor");
+			window_->hide();
+#if !VSTTHREADS
+			plugin_->closeEditor();
+#endif
+		}
+	}
+}
+
 void VstPluginUGen::reset() {
 	if (check()) {
 		plugin_->suspend();
 		plugin_->resume();
+	}
+}
+
+// perform routine
+void VstPluginUGen::next(int inNumSamples) {
+	int nin = numInChannels();
+	int nout = numOutChannels();
+	int offset = 0;
+	bool bypass = in0(0);
+	// only reset plugin when bypass changed from true to false
+	if (!bypass && (bypass != bypass_)) {
+		reset();
+	}
+	bypass_ = bypass;
+
+	if (plugin_ && !bypass && plugin_->hasPrecision(VSTProcessPrecision::Single)) {
+		int nparam = plugin_->getNumParameters();
+		for (int i = 0; i < nparam; ++i) {
+			int bus = paramVec_[i].bus;
+			if (bus >= 0) {
+				float value = readControlBus(bus);
+				if (value != paramVec_[i].value) {
+					plugin_->setParameter(i, value);
+					paramVec_[i].value = value;
+				}
+			}
+		}
+		plugin_->process(inBufVec_, outBufVec_, inNumSamples);
+		offset = plugin_->getNumOutputs();
+	}
+	else {
+		int n = std::min(nin, nout);
+		// bypass
+		for (int chn = 0; chn < n; ++chn) {
+			const float *_in = input(chn);
+			float *_out = out(chn);
+			for (int i = 0; i < inNumSamples; ++i) {
+				_out[i] = _in[i];
+			}
+		}
+		offset = n;
+	}
+	// zero remaining outlets
+	for (int chn = offset; chn < nout; ++chn) {
+		float *output = out(chn);
+		for (int i = 0; i < inNumSamples; ++i) {
+			output[i] = 0;
+		}
 	}
 }
 
@@ -283,52 +450,6 @@ void VstPluginUGen::getTransportPos() {
 	}
 }
 
-// perform routine
-void VstPluginUGen::next(int inNumSamples){
-	int nin = numInChannels();
-	int nout = numOutChannels();
-	int offset = 0;
-	bool bypass = in0(1);
-	if (bypass != bypass_) {
-		reset();
-		bypass_ = bypass;
-	}
-	
-	if (plugin_ && !bypass_){
-		int nparam = plugin_->getNumParameters();
-		for (int i = 0; i < nparam; ++i) {
-			int bus = paramVec_[i].bus;
-			if (bus >= 0) {
-				float value = readControlBus(bus);
-				if (value != paramVec_[i].value) {
-					plugin_->setParameter(i, value);
-					paramVec_[i].value = value;
-				}
-			}
-		}
-		plugin_->process(inBufVec_, outBufVec_, inNumSamples);
-		offset = plugin_->getNumOutputs();
-	} else {
-		int n = std::min(nin, nout);
-		// bypass
-		for (int chn = 0; chn < n; ++chn){
-			const float *_in = input(chn);
-			float *_out = out(chn);
-			for (int i = 0; i < inNumSamples; ++i){
-				_out[i] = _in[i];
-			}
-		}
-		offset = n;
-	}
-	// zero remaining outlets
-	for (int chn = offset; chn < nout; ++chn){
-		float *output = out(chn);
-		for (int i = 0; i < inNumSamples; ++i){
-			output[i] = 0;
-		}
-	}
-}
-
 // helper methods
 
 float VstPluginUGen::readControlBus(int32 num) {
@@ -341,9 +462,11 @@ float VstPluginUGen::readControlBus(int32 num) {
 }
 
 void VstPluginUGen::sendPluginInfo() {
-	float nameBuf[256];
-	int nameLen = string2floatArray(plugin_->getPluginName(), nameBuf, 256);
-	sendMsg("/vst_name", nameLen, nameBuf);
+    const int maxSize = 64;
+    float buf[maxSize];
+
+    int nameLen = string2floatArray(plugin_->getPluginName(), buf, maxSize);
+    sendMsg("/vst_name", nameLen, buf);
 	sendMsg("/vst_nin", plugin_->getNumInputs());
 	sendMsg("/vst_nout", plugin_->getNumOutputs());
 	sendMsg("/vst_midiin", plugin_->hasMidiInput());
@@ -351,20 +474,24 @@ void VstPluginUGen::sendPluginInfo() {
 	sendMsg("/vst_nprograms", plugin_->getNumPrograms());
 	// send parameter info
 	int nparams = plugin_->getNumParameters();
-	sendMsg("/vst_nparams", nparams);
-	const int maxSize = 256;
-	float buf[maxSize + 1];
+    sendMsg("/vst_nparams", nparams);
+	// send parameter names
 	for (int i = 0; i < nparams; ++i) {
 		// msg format: index, len, characters...
 		buf[0] = i;
-		int len = string2floatArray(plugin_->getParameterName(i), buf + 1, maxSize);
-		sendMsg("/vst_param_name", len+1, buf);
+        int len = string2floatArray(plugin_->getParameterName(i), buf + 1, maxSize - 1);
+		sendMsg("/vst_param_name", len + 1, buf);
+	}
+	// send parameter labels
+	for (int i = 0; i < nparams; ++i) {
+		// msg format: index, len, characters...
+		buf[0] = i;
+        int len = string2floatArray(plugin_->getParameterLabel(i), buf + 1, maxSize - 1);
+		sendMsg("/vst_param_label", len + 1, buf);
 	}
 }
 
 void VstPluginUGen::sendPrograms() {
-	const int maxSize = 256;
-	float buf[maxSize+1];
 	int current = plugin_->getProgram();
 	bool changed = false;
 	int nprograms = plugin_->getNumPrograms();
@@ -377,8 +504,8 @@ void VstPluginUGen::sendPrograms() {
 }
 
 bool VstPluginUGen::sendProgram(int32 num) {
-	const int maxSize = 256;
-	float buf[maxSize + 1];
+    const int maxSize = 64;
+    float buf[maxSize];
 	bool changed = false;
 	auto name = plugin_->getProgramNameIndexed(num);
 	// some old plugins don't support indexed program name lookup
@@ -389,7 +516,7 @@ bool VstPluginUGen::sendProgram(int32 num) {
 	}
 	// msg format: index, len, characters...
 	buf[0] = num;
-	int len = string2floatArray(name, buf + 1, maxSize);
+    int len = string2floatArray(name, buf + 1, maxSize - 1);
 	sendMsg("/vst_program_name", len + 1, buf);
 	return changed;
 }
@@ -403,19 +530,22 @@ void VstPluginUGen::sendParameters() {
 }
 
 void VstPluginUGen::sendMsg(const char *cmd, float f) {
+	// LOG_DEBUG("sending msg: " << cmd);
 	SendNodeReply(&mParent->mNode, mParentIndex, cmd, 1, &f);
 }
 
 void VstPluginUGen::sendMsg(const char *cmd, int n, const float *data) {
+	// LOG_DEBUG("sending msg: " << cmd);
 	SendNodeReply(&mParent->mNode, mParentIndex, cmd, n, data);
 }
 
 // unit command callbacks
 
 void vst_open(Unit *unit, sc_msg_iter *args) {
+    uint32 flags = args->geti();
 	const char *path = args->gets();
 	if (path) {
-		static_cast<VstPluginUGen*>(unit)->open(path);
+        static_cast<VstPluginUGen*>(unit)->open(path, flags);
 	}
 	else {
 		Print("vst_open: expecting string argument!\n");
@@ -424,6 +554,11 @@ void vst_open(Unit *unit, sc_msg_iter *args) {
 
 void vst_close(Unit *unit, sc_msg_iter *args) {
 	static_cast<VstPluginUGen*>(unit)->close();
+}
+
+void vst_vis(Unit *unit, sc_msg_iter *args) {
+	bool show = args->geti();
+	static_cast<VstPluginUGen*>(unit)->showEditor(show);
 }
 
 void vst_param_set(Unit *unit, sc_msg_iter *args) {
@@ -610,6 +745,7 @@ PluginLoad(VstPluginUGen) {
 	DefineDtorCantAliasUnit(VstPluginUGen);
 	DefineCmd(open);
 	DefineCmd(close);
+	DefineCmd(vis);
 	DefineCmd(param_set);
 	DefineCmd(param_map);
 	DefineCmd(program_set);
