@@ -77,7 +77,7 @@ variables:
   variables:
     IEMCI_CONFIGURATIONS: mingw32
   before_script:
-    - pacman -S cmake
+    - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
     - rm -rf "${PROGRAMFILESX86}/pd"; mkdir -p "${PROGRAMFILESX86}/pd"
     - unzip -q Pd.zip -d "${PROGRAMFILESX86}/pd"
@@ -98,7 +98,7 @@ variables:
   variables:
     IEMCI_CONFIGURATIONS: mingw64
   before_script:
-    - pacman -S cmake
+    - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
     - rm -rf "${PROGRAMFILES}/pd"; mkdir -p "${PROGRAMFILES}/pd"
     - unzip -q Pd.zip -d "${PROGRAMFILES}/pd"
