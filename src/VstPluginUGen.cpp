@@ -162,6 +162,7 @@ IVSTPlugin* VstPluginUGen::tryOpenPlugin(const char *path, bool gui){
     return plugin;
 }
 
+#if VSTTHREADS
 void VstPluginUGen::threadFunction(std::promise<IVSTPlugin *> promise, const char *path){
     IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
@@ -194,6 +195,7 @@ void VstPluginUGen::threadFunction(std::promise<IVSTPlugin *> promise, const cha
 		plugin_ = nullptr;
     }
 }
+#endif
 
 void VstPluginUGen::showEditor(bool show) {
 	if (plugin_ && window_) {
