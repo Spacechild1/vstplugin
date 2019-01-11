@@ -124,8 +124,8 @@ void VstPluginUGen::open(const char *path, uint32 flags){
 		}
 		sendPluginInfo();
 		sendPrograms();
-		sendParameters();
 		sendMsg("/vst_open", 1);
+		sendParameters(); // after open!
 	} else {
 		Print("couldn't load '%s'!\n", path);
 		sendMsg("/vst_open", 0);
@@ -278,27 +278,46 @@ void VstPluginUGen::next(int inNumSamples) {
 
 void VstPluginUGen::setParam(int32 index, float value) {
 	if (check()) {
-		index = clip<int32>(index, 0, plugin_->getNumParameters() - 1);
-		plugin_->setParameter(index, value);
-		paramVec_[index].value = value;
-		paramVec_[index].bus = -1; // invalidate bus num
+		if (index >= 0 && index < plugin_->getNumParameters()) {
+			plugin_->setParameter(index, value);
+			paramVec_[index].value = value;
+			paramVec_[index].bus = -1; // invalidate bus num
+			if (paramDisplay_) {
+				const int maxSize = 64;
+				float buf[maxSize];
+				buf[0] = index;
+				int len = string2floatArray(plugin_->getParameterDisplay(index), buf + 1, maxSize - 1);
+				sendMsg("/vst_param_display", len + 1, buf);
+			}
+		}
+		else {
+			LOG_WARNING("VstPluginUGen: parameter index " << index << " out of range!");
+		}
 	}
 }
 
 void VstPluginUGen::mapParam(int32 index, int32 bus) {
 	if (check()) {
-		index = clip<int32>(index, 0, plugin_->getNumParameters() - 1);
-		paramVec_[index].bus = std::max<int32>(-1, bus);
+		if (index >= 0 && index < plugin_->getNumParameters()) {
+			paramVec_[index].bus = std::max<int32>(-1, bus);
+		}
+		else {
+			LOG_WARNING("VstPluginUGen: parameter index " << index << " out of range!");
+		}
 	}
 }
 
 // program/bank
 void VstPluginUGen::setProgram(int32 index) {
 	if (check()) {
-		index = clip<int32>(index, 0, plugin_->getNumPrograms());
-		plugin_->setProgram(index);
-		sendMsg("/vst_program", index);
-		sendParameters();
+		if (index >= 0 && index < plugin_->getNumPrograms()) {
+			plugin_->setProgram(index);
+			sendMsg("/vst_program", index);
+			sendParameters();
+		}
+		else {
+			LOG_WARNING("VstPluginUGen: program number " << index << " out of range!");
+		}
 	}
 }
 void VstPluginUGen::setProgramName(const char *name) {
@@ -469,6 +488,7 @@ void VstPluginUGen::sendPluginInfo() {
 
     int nameLen = string2floatArray(plugin_->getPluginName(), buf, maxSize);
     sendMsg("/vst_name", nameLen, buf);
+	sendMsg("/vst_editor", (float)plugin_->hasEditor());
 	sendMsg("/vst_nin", plugin_->getNumInputs());
 	sendMsg("/vst_nout", plugin_->getNumOutputs());
 	sendMsg("/vst_midiin", plugin_->hasMidiInput());
@@ -485,11 +505,13 @@ void VstPluginUGen::sendPluginInfo() {
 		sendMsg("/vst_param_name", len + 1, buf);
 	}
 	// send parameter labels
-	for (int i = 0; i < nparams; ++i) {
-		// msg format: index, len, characters...
-		buf[0] = i;
-        int len = string2floatArray(plugin_->getParameterLabel(i), buf + 1, maxSize - 1);
-		sendMsg("/vst_param_label", len + 1, buf);
+	if (paramDisplay_) {
+		for (int i = 0; i < nparams; ++i) {
+			// msg format: index, len, characters...
+			buf[0] = i;
+			int len = string2floatArray(plugin_->getParameterLabel(i), buf + 1, maxSize - 1);
+			sendMsg("/vst_param_label", len + 1, buf);
+		}
 	}
 }
 
@@ -524,10 +546,17 @@ bool VstPluginUGen::sendProgram(int32 num) {
 }
 
 void VstPluginUGen::sendParameters() {
+	const int maxSize = 64;
+	float buf[maxSize];
 	int nparam = plugin_->getNumParameters();
 	for (int i = 0; i < nparam; ++i) {
-		float buf[2] = { (float)i, plugin_->getParameter(i) };
+		buf[0] = i;
+		buf[1] = plugin_->getParameter(i);
 		sendMsg("/vst_param", 2, buf);
+		if (paramDisplay_) {
+			int len = string2floatArray(plugin_->getParameterDisplay(i), buf + 1, maxSize - 1);
+			sendMsg("/vst_param_display", len + 1, buf);
+		}
 	}
 }
 
