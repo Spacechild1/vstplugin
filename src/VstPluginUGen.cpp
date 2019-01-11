@@ -35,7 +35,7 @@ bool VstPluginUGen::check(){
 		return true;
 	}
 	else {
-		Print("VstPluginUGen: no plugin!\n");
+		LOG_WARNING("VstPluginUGen: no plugin!");
 		return false;
 	}
 }
@@ -84,7 +84,7 @@ void VstPluginUGen::open(const char *path, uint32 flags){
 			plugin_->setPrecision(VSTProcessPrecision::Single);
 		}
 		else {
-			Print("warning: plugin '%s' doesn't support single precision processing - bypassing!\n", path);
+			LOG_WARNING("VstPluginUGen: plugin '" << plugin_->getPluginName() << "' doesn't support single precision processing - bypassing!");
 		}
 		// allocate additional buffers for missing inputs/outputs
 		int nin = plugin_->getNumInputs();
@@ -127,7 +127,7 @@ void VstPluginUGen::open(const char *path, uint32 flags){
 		sendMsg("/vst_open", 1);
 		sendParameters(); // after open!
 	} else {
-		Print("couldn't load '%s'!\n", path);
+		LOG_WARNING("VstPluginUGen: couldn't load " << path);
 		sendMsg("/vst_open", 0);
 	}
 }
@@ -332,7 +332,7 @@ void VstPluginUGen::readProgram(const char *path) {
 			sendParameters();
 		}
 		else {
-			Print("couldn't read program file '%s'\n", path);
+			LOG_WARNING("VstPluginUGen: couldn't read program file '" << path << "'");
 		}
 	}
 }
@@ -347,7 +347,7 @@ void VstPluginUGen::setProgramData(const char *data, int32 n) {
 			sendParameters();
 		}
 		else {
-			Print("couldn't read program data\n");
+			LOG_WARNING("VstPluginUGen: couldn't read program data");
 		}
 	}
 }
@@ -358,7 +358,7 @@ void VstPluginUGen::getProgramData() {
 		int len = data.size();
 		if (len) {
 			if ((len * sizeof(float)) > 8000) {
-				Print("program data size (%d) probably too large for UDP packet\n", len);
+				LOG_WARNING("program data size (" << len << ") probably too large for UDP packet");
 			}
 			float *buf = (float *)RTAlloc(mWorld, sizeof(float) * len);
 			if (buf) {
@@ -369,11 +369,11 @@ void VstPluginUGen::getProgramData() {
 				RTFree(mWorld, buf);
 			}
 			else {
-				Print("RTAlloc failed!\n");
+				LOG_ERROR("RTAlloc failed!");
 			}
 		}
 		else {
-			Print("couldn't write program data\n");
+			LOG_WARNING("VstPluginUGen: couldn't write program data");
 		}
 	}
 }
@@ -385,7 +385,7 @@ void VstPluginUGen::readBank(const char *path) {
 			sendMsg("/vst_program", plugin_->getProgram());
 		}
 		else {
-			Print("couldn't read bank file '%s'\n", path);
+			LOG_WARNING("VstPluginUGen: couldn't read bank file '" << path << "'");
 		}
 	}
 }
@@ -402,7 +402,7 @@ void VstPluginUGen::setBankData(const char *data, int32 n) {
 			sendMsg("/vst_program", plugin_->getProgram());
 		}
 		else {
-			Print("couldn't read bank data\n");
+			LOG_WARNING("VstPluginUGen: couldn't read bank data");
 		}
 	}
 }
@@ -413,7 +413,7 @@ void VstPluginUGen::getBankData() {
 		int len = data.size();
 		if (len) {
 			if ((len * sizeof(float)) > 8000) {
-				Print("bank data size (%d) probably too large for UDP packet\n", len);
+				LOG_WARNING("bank data size (" << len << ") probably too large for UDP packet");
 			}
 			float *buf = (float *)RTAlloc(mWorld, sizeof(float) * len);
 			if (buf) {
@@ -424,11 +424,11 @@ void VstPluginUGen::getBankData() {
 				RTFree(mWorld, buf);
 			}
 			else {
-				Print("RTAlloc failed!\n");
+				LOG_ERROR("RTAlloc failed!");
 			}
 		}
 		else {
-			Print("couldn't write bank data\n");
+			LOG_WARNING("VstPluginUGen: couldn't write bank data");
 		}
 	}
 }
@@ -579,7 +579,7 @@ void vst_open(Unit *unit, sc_msg_iter *args) {
         static_cast<VstPluginUGen*>(unit)->open(path, flags);
 	}
 	else {
-		Print("vst_open: expecting string argument!\n");
+		LOG_WARNING("vst_open: expecting string argument!");
 	}
 }
 
@@ -615,7 +615,7 @@ void vst_program_name(Unit *unit, sc_msg_iter *args) {
 		static_cast<VstPluginUGen*>(unit)->setProgramName(name);
 	}
 	else {
-		Print("vst_program_name: expecting string argument!\n");
+		LOG_WARNING("vst_program_name: expecting string argument!");
 	}
 }
 
@@ -625,7 +625,7 @@ void vst_program_read(Unit *unit, sc_msg_iter *args) {
 		static_cast<VstPluginUGen*>(unit)->readProgram(path);
 	}
 	else {
-		Print("vst_program_read: expecting string argument!\n");
+		LOG_WARNING("vst_program_read: expecting string argument!");
 	}
 }
 
@@ -635,7 +635,7 @@ void vst_program_write(Unit *unit, sc_msg_iter *args) {
 		static_cast<VstPluginUGen*>(unit)->writeProgram(path);
 	}
 	else {
-		Print("vst_program_write: expecting string argument!\n");
+		LOG_WARNING("vst_program_write: expecting string argument!");
 	}
 }
 
@@ -650,11 +650,11 @@ void vst_program_data_set(Unit *unit, sc_msg_iter *args) {
 			RTFree(unit->mWorld, buf);
 		}
 		else {
-			Print("vst_program_data_set: RTAlloc failed!\n");
+			LOG_ERROR("vst_program_data_set: RTAlloc failed!");
 		}
 	}
 	else {
-		Print("vst_program_data_set: no data!\n");
+		LOG_WARNING("vst_program_data_set: no data!");
 	}
 }
 
@@ -668,7 +668,7 @@ void vst_bank_read(Unit *unit, sc_msg_iter *args) {
 		static_cast<VstPluginUGen*>(unit)->readBank(path);
 	}
 	else {
-		Print("vst_bank_read: expecting string argument!\n");
+		LOG_WARNING("vst_bank_read: expecting string argument!");
 	}
 }
 
@@ -678,7 +678,7 @@ void vst_bank_write(Unit *unit, sc_msg_iter *args) {
 		static_cast<VstPluginUGen*>(unit)->writeBank(path);
 	}
 	else {
-		Print("vst_bank_write: expecting string argument!\n");
+		LOG_WARNING("vst_bank_write: expecting string argument!");
 	}
 }
 
@@ -693,11 +693,11 @@ void vst_bank_data_set(Unit *unit, sc_msg_iter *args) {
 			RTFree(unit->mWorld, buf);
 		}
 		else {
-			Print("vst_bank_data_set: RTAlloc failed!\n");
+			LOG_ERROR("vst_bank_data_set: RTAlloc failed!");
 		}
 	}
 	else {
-		Print("vst_bank_data_set: no data!\n");
+		LOG_WARNING("vst_bank_data_set: no data!");
 	}
 }
 
@@ -710,7 +710,7 @@ void vst_midi_msg(Unit *unit, sc_msg_iter *args) {
 	char data[4];
 	int32 len = args->getbsize();
 	if (len > 4) {
-		Print("vst_midi_msg: midi message too long (%d bytes)\n", len);
+		LOG_WARNING("vst_midi_msg: midi message too long (" << len << " bytes)");
 	}
 	args->getb(data, len);
 	static_cast<VstPluginUGen*>(unit)->sendMidiMsg(data[0], data[1], data[2]);
@@ -727,11 +727,11 @@ void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
 			RTFree(unit->mWorld, buf);
 		}
 		else {
-			Print("vst_midi_sysex: RTAlloc failed!\n");
+			LOG_ERROR("vst_midi_sysex: RTAlloc failed!");
 		}
 	}
 	else {
-		Print("vst_midi_sysex: no data!\n");
+		LOG_WARNING("vst_midi_sysex: no data!");
 	}
 }
 
