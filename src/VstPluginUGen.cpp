@@ -89,8 +89,8 @@ void VstPluginUGen::open(const char *path, uint32 flags){
 		// allocate additional buffers for missing inputs/outputs
 		int nin = plugin_->getNumInputs();
 		int nout = plugin_->getNumOutputs();
-		int inDiff = std::max<int>(0, numInChannels() - nin);
-		int outDiff = std::max<int>(0, numOutChannels() - nout);
+		int inDiff = std::max<int>(0, nin - numInChannels());
+		int outDiff = std::max<int>(0, nout - numOutChannels());
 		// resize buffer (LATER check result of RTRealloc)
 		int bufSize = (inDiff + outDiff) * blockSize * sizeof(float);
 		buf_ = (float *)RTRealloc(mWorld, buf_, bufSize);
