@@ -763,6 +763,10 @@ void vst_transport_get(Unit *unit, sc_msg_iter *args) {
 	static_cast<VstPluginUGen*>(unit)->getTransportPos();
 }
 
+void vst_poll(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
+    VSTWindowFactory::mainLoopPoll();
+}
+
 void VstPluginUGen_Ctor(VstPluginUGen* unit){
 	new(unit)VstPluginUGen();
 }
@@ -799,4 +803,6 @@ PluginLoad(VstPluginUGen) {
 	DefineCmd(transport_play);
 	DefineCmd(transport_set);
 	DefineCmd(transport_get);
+
+    DefinePlugInCmd("vst_poll", vst_poll, 0);
 }
