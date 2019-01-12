@@ -144,7 +144,7 @@ IVSTPlugin* VstPluginUGen::tryOpenPlugin(const char *path, bool gui){
     }
 #endif
         // create plugin in main thread
-    IVSTPlugin *plugin = loadVSTPlugin(path);
+    IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
         // receive events from plugin
     // TODO: plugin->setListener();
 #if !VSTTHREADS
