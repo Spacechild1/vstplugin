@@ -42,6 +42,8 @@ bool VstPluginUGen::check(){
 
 void VstPluginUGen::close() {
 #if VSTTHREADS
+        // close editor *before* destroying the window
+    if (plugin_) plugin_->closeEditor();
         // destroying the window (if any) might terminate the message loop and already release the plugin
     window_ = nullptr;
         // now join the thread (if any)
@@ -52,8 +54,9 @@ void VstPluginUGen::close() {
 #endif
         // do we still have a plugin? (e.g. SC editor or !VSTTHREADS)
     if (plugin_){
+		    // close editor *before* destroying the window
+		plugin_->closeEditor();
         window_ = nullptr;
-        plugin_->closeEditor();
         freeVSTPlugin(plugin_);
         plugin_ = nullptr;
     }
