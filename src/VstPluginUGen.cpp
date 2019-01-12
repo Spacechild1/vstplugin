@@ -68,11 +68,16 @@ void VstPluginUGen::open(const char *path, uint32 flags){
     bool vstGui = flags & FlagVstGui;
 	// initialize GUI backend (if needed)
 	if (vstGui) {
+    #ifdef __APPLE__
+        LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
+        vstGui = false;
+    #else
 		static bool initialized = false;
 		if (!initialized) {
 			VSTWindowFactory::initialize();
 			initialized = true;
 		}
+    #endif
 	}
 	LOG_DEBUG("try loading plugin");
     plugin_ = tryOpenPlugin(path, vstGui);
