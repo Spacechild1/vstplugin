@@ -253,9 +253,10 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, bool gui){
             int left, top, right, bottom;
             plugin->getEditorRect(left, top, right, bottom);
             e_window->setGeometry(left, top, right, bottom);
-
+            // don't open the editor on macOS (see VSTWindowCocoa.mm)
+#ifndef __APPLE__
             plugin->openEditor(e_window->getHandle());
-            e_window->hide(); // hack for some plugins on MacOS
+#endif
         }
     }
 #endif
@@ -401,14 +402,8 @@ void t_vsteditor::vis(bool v){
     if (e_window){
         if (v){
             e_window->bringToTop();
-        #if !VSTTHREADS
-            e_owner->x_plugin->openEditor(e_window->getHandle());
-        #endif
         } else {
             e_window->hide();
-        #if !VSTTHREADS
-            e_owner->x_plugin->closeEditor();
-        #endif
         }
     } else {
         send_vmess(gensym("vis"), "i", (int)v);

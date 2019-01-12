@@ -159,6 +159,10 @@ IVSTPlugin* VstPluginUGen::tryOpenPlugin(const char *path, bool gui){
             int left, top, right, bottom;
             plugin->getEditorRect(left, top, right, bottom);
             window_->setGeometry(left, top, right, bottom);
+            // don't open the editor on macOS (see VSTWindowCocoa.mm)
+#ifndef __APPLE__
+            plugin->openEditor(window_->getHandle());
+#endif
         }
     }
 #endif
@@ -203,23 +207,10 @@ void VstPluginUGen::threadFunction(std::promise<IVSTPlugin *> promise, const cha
 void VstPluginUGen::showEditor(bool show) {
 	if (plugin_ && window_) {
 		if (show) {
-			LOG_DEBUG("show editor");
 			window_->bringToTop();
-#if !VSTTHREADS
-			/* if we're single threaded we open/close the editor on demand
-			to make sure no unwanted GUI drawing is happening behind the scenes
-			(for some reason, on macOS parameter automation would cause redraws
-			even if the window is hidden)
-			*/
-			plugin_->openEditor(window_->getHandle());
-#endif
 		}
 		else {
-			LOG_DEBUG("hide editor");
 			window_->hide();
-#if !VSTTHREADS
-			plugin_->closeEditor();
-#endif
 		}
 	}
 }
