@@ -164,7 +164,7 @@ IVSTPlugin* VstPluginUGen::tryOpenPlugin(const char *path, bool gui){
 
 #if VSTTHREADS
 void VstPluginUGen::threadFunction(std::promise<IVSTPlugin *> promise, const char *path){
-    IVSTPlugin *plugin = loadVSTPlugin(path);
+    IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
     if (!plugin){
             // signal main thread
         promise.set_value(nullptr);
