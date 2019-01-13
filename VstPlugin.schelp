@@ -1,0 +1,398 @@
+TITLE:: VstPlugin
+summary:: load VST plugins and use them as Synths
+categories:: Server>Nodes, Server>Abstractions
+related:: Classes/Synth, Classes/Node, Classes/SynthDef
+
+DESCRIPTION::
+
+With VstPlugin you can load VST plugins on all platforms and use them to generate or process sounds on an audio bus.
+
+warning::Please read the sections about link::#Realtime-Safety:: and link::#Other Caveats:: ::
+
+The class is derived from Synth and can be created and used similarly but it expects a special kind of SynthDef (see class method code::makeSynthDef::).
+The SynthDef specifies the number of input and output channels and whether the output bus content should be replaced:
+code::
+// creates a SynthDef for plugins with 2 inputs, 2 outputs, summing into the output bus
+VstPlugin.makeSynthDef(\test, nin: 2, nout: 2, replace: false).add;
+::
+You can create a VstPlugin instance with the class method code::new:::
+code::
+// creates a VstPlugin which reads from Bus 'a' and writes to Bus 'b'
+f = VstPlugin.new(\test, [\in, a, \out, b]);
+::
+And here's how to actually open a plugin:
+code::
+// watch the console for information or error messages
+f.open("/path/to/plugin", info: true);
+// open the GUI window:
+f.showGui; 
+::
+
+subsection:: Replacing VS Non-Replacing
+
+As a rule of thumb you would use replacing mode for serial processing and non-replacing mode for parallel processing.
+Serial processing would typically read and write on the same bus (replacing the old output with the new one) while parallel processing would often write (accumulate) to a different bus than where it reads from.
+With VstPlugin you can effectively create complex serial and/or parallel FX chains just like in a DAW like REAPER.
+Here's a complete example for a simple serial FX chain:
+code::
+(
+// load a sound buffer as the test signal:
+b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+
+// create a 2-channel audio FX bus:
+c = Bus.audio(s, 2);
+
+// make a SynthDef for plugins which can be inserted into the FX bus:
+VstPlugin.makeSynthDef(\testFX, nin: 2, nout: 2, replace: true).add;
+
+// play the soundfile and route it to the FX bus:
+d = SynthDef(\testSignal, {| out = 0, bufnum = 0 |
+    Out.ar(out,
+        PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum), loop: 1, doneAction: Done.freeSelf).dup * 0.5
+    )
+}).play(s, [\out, c, \bufnum, b]);
+
+// route the FX bus to your audio output to hear the unmodified test signal:
+e = SynthDef(\testOut, {| in = 0, out = 0 |
+	Out.ar(out, In.ar(in, 2))
+}).play(d, [\in, c, \out, 0], addAction: \addAfter);
+
+)
+
+// insert a plugin (adding it *after* d but *before* e):
+f = VstPlugin.new(\testFX, [\in, c, \out, c], d, addAction: \addAfter);
+f.open("/path/to/first/plugin", info: true); // actually open the plugin (watch the console for errors)
+f.showGui; // this should open a window with a simple GUI for your plugin - try it out!
+
+// insert another plugin (after the first one):
+g = VstPlugin.new(\testFX, [\in, c, \out, c], d, addAction: \addAfter);
+g.open("/path/to/second/plugin", info: true);
+g.showGui;
+
+f.set(\bypass, 1); // bypass first plugin
+g.set(\bypass, 1); // bypass second plugin
+
+::
+
+subsection:: Parameter Automation and Preset Management
+
+It is possible to automate plugin parameters programatically:
+
+code::
+// set a single parameter value (always normalized to the range 0.0 - 1.0):
+f.setParameter(0, 0.3);
+
+// map a parameter to a control bus:
+u = Bus.control(s, 1);
+f.mapParameter(1, u);
+u.set(0.7);
+::
+
+You can read/write preset files to set all parameters at once:
+code::
+// write current plugin state to a preset file. You can actually choose any extension but .fxp is quite common and will be recognized by most DAWs.
+f.writeProgram("/preset/file/path/test.fxp");
+
+// ... mess around with the plugin ...
+f.showGui;
+
+// restore previous state:
+f.readProgram("/preset/file/path/text.fxp");
+::
+
+It's also possible to get/set the raw plugin state as an Int8Array if you want to build your own preset management:
+code::
+// get plugin state as Int8Array:
+f.getProgramData({ arg data; d = data;});
+
+// ... mess around with the plugin ...
+f.showGui;
+
+// restore previous state:
+f.setProgramData(d);
+::
+
+subsection:: GUI
+
+The code::gui:: argument to the code::open:: method specifies the type of GUI to instantiate: 
+
+code::
+f.open("/path/to/plugin", gui: \vst);
+::
+
+The default value code::\sc:: creates a generic Qt GUI in the Language which communicates with the Server via OSC messages.
+
+On Windows and Linux you can choose code::\vst:: instead to get a native window on the server containing the 'real' VST plugin editor.
+note:: Unfortunately, this is not possible (yet) on macOS for technical reasons.::
+
+Use code::\none:: if you don't need any GUI to save some ressources.
+
+subsection:: Realtime-Safety
+
+The following operations are not realtime-safe (don't execute within some guaranteed time) for various technical reasons:
+list::
+## opening/closing a plugin
+## reading/writing program/bank files
+::
+and to a lesser extend:
+list::
+## setting/getting program/dank data
+## sending/receiving sysex data
+::
+
+You are adviced to open your plugins in advance to avoid audio glitches during a performance. Unlike other type of Synths, VstPlugin is not meant to be created/destroyed on the fly.
+
+subsection:: Other Caveats
+
+Whenever you open a VST plugin, the server sends all relevant information (e.g. parameter and program names) as OSC messages to the VstPlugin instance.
+
+In case of plugins with emphasis::lots:: of parameters or when loading many plugins at once you might experience dropped OSC messages when using UDP.
+You can try to add some delay between loading plugins or switch to TCP to mitigate this problem.
+
+CLASSMETHODS::
+
+METHOD:: makeSynthDef
+This method creates a special kind of SynthDef which can be used to create VstPlugin instances.
+
+E.g. you only need a single SynthDef for all plugins with 2 input channels, 2 output channels, not-replacing:
+code::
+VstPlugin.makeSynthDef(\stereo, 2, 2, false).add; // don't forget to add!
+f = VstPlugin.new(\stereo); // make a stereo plugin
+g = VstPlugin.new(\stereo); // make another stereo plugin
+::
+
+ARGUMENT:: name
+the name of the SynthDef.
+
+ARGUMENT:: nin
+number of input channels. This cannot be changed later!
+
+ARGUMENT:: nout
+number of output channels. This cannot be changed later!
+
+ARGUMENT:: replace
+Choose if the plugin should overwrite the content of the output bus, see link::#Replacing VS Non-Replacing::.
+This cannot be changed later!
+
+
+METHOD:: new
+Create a new VstPlugin instance, similar to link::Classes/Synth#*new::
+
+ARGUMENT:: defName
+The name of a SynthDef created with link::#*makeSynthDef::
+
+ARGUMENT:: args
+An optional Array specifying initial values for the SynthDef's arguments.
+The following arguments are possible:
+definitionlist::
+## \in || input bus number
+## \out || output bus number (maybe be the same as input bus, see link::#Replacing VS Non-Replacing::)
+## \bypass || 1: true, 0: false
+::
+
+ARGUMENT:: target
+the target
+
+ARGUMENT:: addAction
+the add action
+
+PRIVATE:: msg2string
+
+METHOD:: newPaused
+See link::Classes/Synth#*newPaused::
+
+METHOD:: replace
+See link::Classes/Synth#*replace::
+
+
+INSTANCEMETHODS::
+
+PRIVATE:: prFree, prClear, init, sendMsg, prClearGui, prMidiMsg
+
+METHOD:: open
+open a VST plugin.
+
+ARGUMENT:: path
+path to the plugin (with or without extension).
+
+ARGUMENT:: onSuccess
+a function to be called if the plugin could be loaded successfully.
+
+ARGUMENT:: onFail
+a function to be called if the plugin could not be loaded.
+
+ARGUMENT:: gui
+the type of GUI to use.
+definitionlist::
+## \sc || (the default) create a generic Qt GUI in the Language.
+## \vst || create a native window with the original VST editor on the Server. note::This doesn't work (yet) on macOS!::
+## \none || use no GUI at all.
+::
+
+ARGUMENT:: paramDisplay
+send string representations of the plugin parameters whenever they are set with code::setParameter::. Disable this to reduce OSC traffic.
+
+ARGUMENT:: info
+print plugin info to the console after being loaded successfully.
+
+METHOD:: close
+close the current plugin (but don't free the Synth!). You can open another plugin later.
+
+METHOD:: reset
+reset the plugin. (E.g. this might clear the delay lines in a reverb plugin.)
+
+METHOD:: free
+see link::Classes/Synth#-free::. Will automatically close the plugin.
+
+METHOD:: showGui
+shows/hides the GUI window.
+
+subsection:: Plugin Info
+
+METHOD:: loaded
+returns:: is a plugin currently loaded?
+
+METHOD:: info
+print plugin info to the console.
+
+METHOD:: name
+returns:: the name of the currently loaded plugin.
+
+METHOD:: numInputs
+the number of input channels of the currently loaded plugin (doesn't have to match the actual number of inputs of VstPlugin).
+
+METHOD:: numOutputs
+returns:: the number of output channels of the currently loaded plugin (doesn't have to match the actual number of outputs of VstPlugin).
+
+METHOD:: hasEditor
+returns:: does the currently loaded plugin have an editor?
+
+METHOD:: singlePrecision
+returns:: if the plugin supports single precision.
+
+METHOD:: doublePrecision
+returns:: if the plugin supports double precision (only for information, currently we only use single precision for processing).
+
+subsection:: Parameters
+
+METHOD:: numParameters
+returns:: the number of parameters.
+
+METHOD:: parameterNames
+returns:: the parameter names as an Array of Strings.
+
+METHOD:: parameterLabels
+returns:: the parameter labels (units of measurement) as an Array of Strings.
+
+METHOD:: setParameter
+set the value of a plugin parameter. The value is always normalized to the range 0.0 - 1.0. 
+
+If the parameter has been mapped to a control bus, it will be automatically unmapped.
+
+METHOD:: mapParameter
+map a parameter to a control bus.
+
+METHOD:: unmapParameter
+unmap a parameter from a control bus.
+
+subsection:: Preset Management
+
+METHOD:: numPrograms
+returns:: the number of available plugin programs.
+
+METHOD:: programs
+returns:: the available programs as an Array of Strings.
+
+METHOD:: currentProgram
+returns:: the index of the currently active program.
+
+METHOD:: setProgram
+change the program by index.
+
+METHOD:: setProgramName
+change the name of the current program.
+
+METHOD:: readProgram
+read a program file (usually .FXP).
+
+METHOD:: writeProgram
+write a program file (usually .FXP).
+
+METHOD:: setProgramData
+set the current program state as an link::Classes/Int8Array::.
+
+METHOD:: getProgramData
+get the current program state as an link::Classes/Int8Array::.
+
+ARGUMENT:: action
+will be called with the data as the first argument.
+
+METHOD:: readBank
+read a bank file (usually .FXB).
+
+METHOD:: writeBank
+write a bank file (usually .FXB).
+
+METHOD:: setBankData
+set the current bank state as an link::Classes/Int8Array::.
+
+METHOD:: getBankData
+get the current bank state as an link::Classes/Int8Array::.
+
+ARGUMENT:: action
+will be called with the data as the first argument.
+
+subsection:: MIDI
+
+METHOD:: midiInput
+returns:: does the plugin receive MIDI?
+
+METHOD:: midiOutput
+returns:: does the plugin send MIDI?
+
+METHOD:: midiNoteOn
+send a MIDI note on message.
+
+METHOD:: midiNoteOff
+send a MIDI note off message.
+
+METHOD:: midiControl
+send a MIDI CC message.
+
+METHOD:: midiBend
+send a MIDI pitch bend message. code::val:: must be in the range 0 - 16383.
+
+METHOD:: midiPolyTouch
+send a polyphonic aftertouch message.
+
+METHOD:: midiTouch
+send a MIDI channel aftertouch message.
+
+METHOD:: midiProgram
+send a MIDI program change message.
+
+METHOD:: midiMsg
+send a raw MIDI message with 2-3 bytes (status, data1, data2).
+
+METHOD:: midiSysex
+send a system exclusive message as an link::Classes/Int8Array::.
+
+subsection:: Transport
+
+METHOD:: setPlaying
+set the transport playing state to true or false. Only necessary for VST plugins which do some kind of sequencing.
+
+METHOD:: setTempo
+set the tempo in BPM (beats per minute).
+
+METHOD:: setTimeSignature
+set the time signature, e.g. 3/4 -> num = 3, denom = 4.
+
+METHOD:: setTransportPos
+set the current transport position (in quarter notes).
+
+METHOD:: getTransportPos
+get the current transport position (in quarter notes).
+
+ARGUMENT:: action
+a function to be called with the transport position.
