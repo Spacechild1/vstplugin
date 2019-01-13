@@ -18,6 +18,7 @@ VstPluginUGen : MultiOutUGen {
 }
 
 VstPlugin : Synth {
+	classvar counter = 0;
 	// public
 	var <loaded;
 	var <name;
@@ -37,11 +38,11 @@ VstPlugin : Synth {
 	var useParamDisplay;
 	var scGui;
 
-	*makeSynthDef { arg name, nin=2, nout=2;
+	*makeSynthDef { arg name, nin=2, nout=2, replace=false;
+		name = name ?? {"vst__%".format(counter = counter + 1)};
 		^SynthDef.new(name, {arg in, out, bypass=0;
 			var vst = VstPluginUGen.ar(In.ar(in, nin.max(1)), nout.max(1), bypass);
-			// "vst synth index: %".format(vst.isArray.if {vst[0].source.synthIndex} {vst.source.synthIndex}).postln;
-			Out.ar(out, vst);
+			replace.if { ReplaceOut.ar(out, vst) } { Out.ar(out, vst) };
 		});
 	}
 	*new { arg defName, args, target, addAction=\addToHead;
