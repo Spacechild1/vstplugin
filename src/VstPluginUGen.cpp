@@ -586,6 +586,10 @@ void vst_close(Unit *unit, sc_msg_iter *args) {
 	static_cast<VstPluginUGen*>(unit)->close();
 }
 
+void vst_reset(Unit *unit, sc_msg_iter *args) {
+	static_cast<VstPluginUGen*>(unit)->reset();
+}
+
 void vst_vis(Unit *unit, sc_msg_iter *args) {
 	bool show = args->geti();
 	static_cast<VstPluginUGen*>(unit)->showEditor(show);
@@ -779,6 +783,7 @@ PluginLoad(VstPluginUGen) {
 	DefineDtorCantAliasUnit(VstPluginUGen);
 	DefineCmd(open);
 	DefineCmd(close);
+	DefineCmd(reset);
 	DefineCmd(vis);
 	DefineCmd(param_set);
 	DefineCmd(param_map);
