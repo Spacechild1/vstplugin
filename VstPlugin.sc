@@ -180,6 +180,9 @@ VstPlugin : Synth {
 		this.prClear();
 		this.prClearGui();
 	}
+	reset {
+		this.sendMsg('/reset');
+	}
 	// parameters
 	setParameter { arg index, value;
 		((index >= 0) && (index < this.numParameters)).if {
@@ -301,6 +304,9 @@ VstPlugin : Synth {
 	}
 	setPlaying { arg b;
 		this.sendMsg('/transport_play', b.asInt);
+	}
+	setTransportPos { arg pos;
+		this.sendMsg('/transport_set', pos);
 	}
 	getTransportPos { arg action;
 		OSCFunc({ arg msg;
