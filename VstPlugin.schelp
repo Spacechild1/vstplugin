@@ -249,29 +249,29 @@ shows/hides the GUI window.
 
 subsection:: Plugin Info
 
-METHOD:: loaded
-returns:: is a plugin currently loaded?
-
 METHOD:: info
 print plugin info to the console.
 
+METHOD:: loaded
+returns:: if a plugin is currently loaded.
+
 METHOD:: name
-returns:: the name of the currently loaded plugin.
+returns:: the name of the plugin.
 
 METHOD:: numInputs
-the number of input channels of the currently loaded plugin (doesn't have to match the actual number of inputs of VstPlugin).
+returns:: the number of input channels (doesn't have to match the actual number of inputs of VstPlugin).
 
 METHOD:: numOutputs
-returns:: the number of output channels of the currently loaded plugin (doesn't have to match the actual number of outputs of VstPlugin).
+returns:: the number of output channels (doesn't have to match the actual number of outputs of VstPlugin).
 
 METHOD:: hasEditor
-returns:: does the currently loaded plugin have an editor?
+returns:: if the plugin has an editor.
 
 METHOD:: singlePrecision
 returns:: if the plugin supports single precision.
 
 METHOD:: doublePrecision
-returns:: if the plugin supports double precision (only for information, currently we only use single precision for processing).
+returns:: if the plugin supports double precision (only for information, currently we only support single precision processing).
 
 subsection:: Parameters
 
