@@ -290,12 +290,13 @@ void VstPluginUGen::next(int inNumSamples) {
             Fill(inNumSamples, inBufVec_[i], 0.f);
         }
     }
+#if 0
     // zero remaining input buffer
     int ninputs = plugin_ ? plugin_->getNumInputs() : 0;
     for (int i = nin; i < ninputs; ++i){
         Fill(inNumSamples, inBufVec_[i], 0.f);
     }
-
+#endif
 	if (plugin_ && !bypass && plugin_->hasPrecision(VSTProcessPrecision::Single)) {
         // update parameters
         int maxControlChannel = mWorld->mNumControlBusChannels;
