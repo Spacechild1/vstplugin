@@ -59,6 +59,7 @@ private:
 	void sendPluginInfo();
 	void sendPrograms();
 	bool sendProgram(int32 num);
+	void sendCurrentProgram();
 	void sendParameters();
 	void sendMsg(const char *cmd, float f);
 	void sendMsg(const char *cmd, int n, const float *data);

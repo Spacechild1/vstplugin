@@ -391,12 +391,13 @@ void VstPluginUGen::setProgram(int32 index) {
 void VstPluginUGen::setProgramName(const char *name) {
 	if (check()) {
 		plugin_->setProgramName(name);
-		sendProgram(plugin_->getProgram());
+		sendCurrentProgram();
 	}
 }
 void VstPluginUGen::readProgram(const char *path) {
 	if (check()) {
 		if (plugin_->readProgramFile(path)) {
+			sendCurrentProgram();
 			sendParameters();
 		}
 		else {
@@ -412,6 +413,7 @@ void VstPluginUGen::writeProgram(const char *path) {
 void VstPluginUGen::setProgramData(const char *data, int32 n) {
 	if (check()) {
 		if (plugin_->readProgramData(data, n)) {
+			sendCurrentProgram();
 			sendParameters();
 		}
 		else {
@@ -611,6 +613,16 @@ bool VstPluginUGen::sendProgram(int32 num) {
     int len = string2floatArray(name, buf + 1, maxSize - 1);
 	sendMsg("/vst_program_name", len + 1, buf);
 	return changed;
+}
+
+void VstPluginUGen::sendCurrentProgram() {
+	const int maxSize = 64;
+	float buf[maxSize];
+	auto name = plugin_->getProgramName();
+	// msg format: index, len, characters...
+	buf[0] = plugin_->getProgram();
+	int len = string2floatArray(name, buf + 1, maxSize - 1);
+	sendMsg("/vst_pgmn", len + 1, buf);
 }
 
 void VstPluginUGen::sendParameters() {
