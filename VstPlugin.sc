@@ -334,7 +334,7 @@ VstPlugin : Synth {
 	}
 	// internal
 	sendMsg { arg cmd ... args;
-		server.sendBundle(0, ['/u_cmd', nodeID, 2, cmd] ++ args);
+		server.sendMsg('/u_cmd', nodeID, 2, cmd, *args);
 	}
 	prMidiMsg { arg hiStatus, lowStatus, data1=0, data2=0;
 		var status = hiStatus.asInt + lowStatus.asInt.clip(0, 15);
