@@ -34,10 +34,12 @@ VstPlugin : Synth {
 	var useParamDisplay;
 	var scGui;
 
-	*makeSynthDef {
-		^SynthDef.new(\__vstplugin__, {arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
-			VstPluginUGen.ar(nin, nout, in, out, bypass, replace);
-		}, [\ir, \ir, nil, nil, nil, nil]);
+	*initClass {
+		StartUp.add {
+			SynthDef.new(\__vstplugin__, {arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
+				VstPluginUGen.ar(nin, nout, in, out, bypass, replace);
+			}, [\ir, \ir, nil, nil, nil, nil]).add;
+		}
 	}
 	*new { arg args, target, addAction=\addToHead;
 		^super.new(\__vstplugin__, args, target, addAction).init;
