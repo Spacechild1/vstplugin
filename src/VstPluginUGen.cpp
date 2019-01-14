@@ -16,8 +16,15 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 }
 
 VstPluginUGen::VstPluginUGen(){
-	bypass_ = in0(0);
-	numInChannels_ = std::max<int>(0, in0(1));
+    numInChannels_ = std::max<int>(0, in0(0));
+    numOutChannels_ = std::max<int>(0, in0(1));
+
+    inBus_ = mWorld->mAudioBus;
+    inBusTouched_ = mWorld->mAudioBusTouched;
+    outBus_ = mWorld->mAudioBus;
+    outBusTouched_ = mWorld->mAudioBusTouched;
+
+    resizeBuffer();
 
 	set_calc_function<VstPluginUGen, &VstPluginUGen::next>();
 }
@@ -38,6 +45,41 @@ bool VstPluginUGen::check(){
 		LOG_WARNING("VstPluginUGen: no plugin!");
 		return false;
 	}
+}
+
+void VstPluginUGen::resizeBuffer(){
+    int blockSize = bufferSize();
+    int nin = numInChannels_;
+    int nout = numOutChannels_;
+    if (plugin_){
+        nin = std::max<int>(nin, plugin_->getNumInputs());
+        nout = std::max<int>(nout, plugin_->getNumOutputs());
+    }
+    int bufSize = (nin + nout) * blockSize * sizeof(float);
+    buf_ = (float *)RTRealloc(mWorld, buf_, bufSize);
+    if (!buf_){
+        LOG_WARNING("RTRealloc failed!");
+        return;
+    }
+    memset(buf_, 0, bufSize);
+    // input buffer array
+    inBufVec_ = (float **)RTRealloc(mWorld, inBufVec_, nin * sizeof(float *));
+    if (!inBufVec_){
+        LOG_WARNING("RTRealloc failed!");
+        return;
+    }
+    for (int i = 0; i < nin; ++i){
+        inBufVec_[i] = &buf_[i * blockSize];
+    }
+    // output buffer array
+    outBufVec_ = (float **)RTRealloc(mWorld, outBufVec_, nout * sizeof(float *));
+    if (!outBufVec_){
+        LOG_WARNING("RTRealloc failed!");
+        return;
+    }
+    for (int i = 0; i < nout; ++i) {
+        outBufVec_[i] = &buf_[(i + nin) * blockSize];
+    }
 }
 
 void VstPluginUGen::close() {
@@ -94,42 +136,18 @@ void VstPluginUGen::open(const char *path, uint32 flags){
 		else {
 			LOG_WARNING("VstPluginUGen: plugin '" << plugin_->getPluginName() << "' doesn't support single precision processing - bypassing!");
 		}
-		// allocate additional buffers for missing inputs/outputs
-		int nin = plugin_->getNumInputs();
-		int nout = plugin_->getNumOutputs();
-		int inDiff = std::max<int>(0, nin - numInChannels());
-		int outDiff = std::max<int>(0, nout - numOutChannels());
-		// resize buffer (LATER check result of RTRealloc)
-		int bufSize = (inDiff + outDiff) * blockSize * sizeof(float);
-		buf_ = (float *)RTRealloc(mWorld, buf_, bufSize);
-		memset(buf_, 0, bufSize);
-		// input buffer array
-		inBufVec_ = (const float **)RTRealloc(mWorld, inBufVec_, nin * sizeof(float *));
-		for (int i = 0; i < nin; ++i){
-			if (i < numInChannels()) {
-				inBufVec_[i] = input(i);
-			}
-			else {
-				inBufVec_[i] = &buf_[(i - inDiff) * blockSize];
-			}
-		}
-		// output buffer array
-		outBufVec_ = (float **)RTRealloc(mWorld, outBufVec_, nout * sizeof(float *));
-		for (int i = 0; i < nout; ++i) {
-			if (i < numOutChannels()) {
-				outBufVec_[i] = out(i);
-			}
-			else {
-				outBufVec_[i] = &buf_[(i - outDiff + inDiff) * blockSize];
-			}
-		}
+        resizeBuffer();
 		// allocate arrays for parameter values/states
 		int nParams = plugin_->getNumParameters();
 		paramVec_ = (Param *)RTRealloc(mWorld, paramVec_, nParams * sizeof(Param));
-		for (int i = 0; i < nParams; ++i) {
-			paramVec_[i].value = 0;
-			paramVec_[i].bus = -1;
-		}
+        if (paramVec_){
+            for (int i = 0; i < nParams; ++i) {
+                paramVec_[i].value = 0;
+                paramVec_[i].bus = -1;
+            }
+        } else {
+            LOG_WARNING("RTRealloc failed!");
+        }
 		sendPluginInfo();
 		sendPrograms();
 		sendMsg("/vst_open", 1);
@@ -229,50 +247,101 @@ void VstPluginUGen::reset() {
 
 // perform routine
 void VstPluginUGen::next(int inNumSamples) {
-	int nin = numInChannels();
-	int nout = numOutChannels();
-	int offset = 0;
-	bool bypass = in0(0);
-	// only reset plugin when bypass changed from true to false
-	if (!bypass && (bypass != bypass_)) {
-		reset();
-	}
-	bypass_ = bypass;
+    if (!(buf_ && inBufVec_ && outBufVec_)) return;
+    int nin = numInChannels_;
+    int nout = numOutChannels_;
+    int32 maxChannel = mWorld->mNumAudioBusChannels;
+    int32 bufCounter = mWorld->mBufCounter;
+    int32 bufLength = mWorld->mBufLength;
+    int32 inBusNum = in0(2);
+    int32 outBusNum = in0(3);
+    bool bypass = in0(4);
+    bool replace = in0(5);
+
+    // check input and output bus
+    if (inBusNum != inBusNum_){
+        if (inBusNum >= 0 && (inBusNum + nin) < maxChannel){
+            inBusNum_ = inBusNum;
+            inBus_ = mWorld->mAudioBus + inBusNum * bufLength;
+            inBusTouched_ = mWorld->mAudioBusTouched + inBusNum;
+        }
+    }
+    if (outBusNum != outBusNum_){
+        if (outBusNum >= 0 && (outBusNum + nout) < maxChannel){
+            outBusNum_ = outBusNum;
+            outBus_ = mWorld->mAudioBus + outBusNum * bufLength;
+            outBusTouched_ = mWorld->mAudioBusTouched + outBusNum;
+        }
+    }
+
+    // only reset plugin when bypass changed from true to false
+    if (!bypass && (bypass != bypass_)) {
+        reset();
+    }
+    bypass_ = bypass;
+
+    // copy from input bus to input buffer
+    float *inBus = inBus_;
+    for (int i = 0; i < nin; ++i, inBus += bufLength){
+        AudioBusGuard<true> guard (this, inBusNum_ + i, maxChannel);
+        if (guard.isValid && inBusTouched_[i] == bufCounter){
+            Copy(inNumSamples, inBufVec_[i], inBus);
+        } else {
+            Fill(inNumSamples, inBufVec_[i], 0.f);
+        }
+    }
+    // zero remaining input buffer
+    int ninputs = plugin_ ? plugin_->getNumInputs() : 0;
+    for (int i = nin; i < ninputs; ++i){
+        Fill(inNumSamples, inBufVec_[i], 0.f);
+    }
 
 	if (plugin_ && !bypass && plugin_->hasPrecision(VSTProcessPrecision::Single)) {
-		int nparam = plugin_->getNumParameters();
+        // update parameters
+        int maxControlChannel = mWorld->mNumControlBusChannels;
+        int nparam = plugin_->getNumParameters();
 		for (int i = 0; i < nparam; ++i) {
 			int bus = paramVec_[i].bus;
 			if (bus >= 0) {
-				float value = readControlBus(bus);
+                float value = readControlBus(bus, maxControlChannel);
 				if (value != paramVec_[i].value) {
 					plugin_->setParameter(i, value);
 					paramVec_[i].value = value;
 				}
 			}
 		}
-		plugin_->process(inBufVec_, outBufVec_, inNumSamples);
-		offset = plugin_->getNumOutputs();
+        // process
+		plugin_->process((const float **)inBufVec_, outBufVec_, inNumSamples);
+        // write output buffer to output bus
+        float *outBus = outBus_;
+        for (int i = 0; i < nout; ++i, outBus += bufLength) {
+            AudioBusGuard<false> guard (this, outBusNum_ + i, maxChannel);
+            if (guard.isValid) {
+                if (!replace && outBusTouched_[i] == bufCounter){
+                    Accum(inNumSamples, outBus, outBufVec_[i]);
+                } else {
+                    Copy(inNumSamples, outBus, outBufVec_[i]);
+                    outBusTouched_[i] = bufCounter;
+                }
+            }
+        }
 	}
-	else {
-		int n = std::min(nin, nout);
-		// bypass
-		for (int chn = 0; chn < n; ++chn) {
-			const float *_in = input(chn);
-			float *_out = out(chn);
-			for (int i = 0; i < inNumSamples; ++i) {
-				_out[i] = _in[i];
-			}
-		}
-		offset = n;
-	}
-	// zero remaining outlets
-	for (int chn = offset; chn < nout; ++chn) {
-		float *output = out(chn);
-		for (int i = 0; i < inNumSamples; ++i) {
-			output[i] = 0;
-		}
-	}
+    else {
+        // bypass (write input buffer to output bus)
+        int n = std::min(nin, nout);
+        float *outBus = outBus_;
+        for (int i = 0; i < n; ++i, outBus += bufLength) {
+            AudioBusGuard<false> guard (this, outBusNum_ + i, maxChannel);
+            if (guard.isValid) {
+                if (!replace && outBusTouched_[i] == bufCounter){
+                    Accum(inNumSamples, outBus, inBufVec_[i]);
+                } else {
+                    Copy(inNumSamples, outBus, inBufVec_[i]);
+                    outBusTouched_[i] = bufCounter;
+                }
+            }
+        }
+    }
 }
 
 void VstPluginUGen::setParam(int32 index, float value) {
@@ -472,8 +541,8 @@ void VstPluginUGen::getTransportPos() {
 
 // helper methods
 
-float VstPluginUGen::readControlBus(int32 num) {
-	if (num >= 0 && num < mWorld->mNumControlBusChannels) {
+float VstPluginUGen::readControlBus(int32 num, int32 maxChannel) {
+    if (num >= 0 && num < maxChannel) {
 		return mWorld->mControlBus[num];
 	}
 	else {

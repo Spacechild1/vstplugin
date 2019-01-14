@@ -9,18 +9,22 @@ With VstPlugin you can load VST plugins on all platforms and use them to generat
 
 warning::Please read the sections about link::#Realtime-Safety:: and link::#Other Caveats:: ::
 
-The class is derived from Synth and can be created and used similarly but it expects a special kind of SynthDef (see class method code::makeSynthDef::).
-The SynthDef specifies the number of input and output channels and whether the output bus content should be replaced:
+The class is derived from Synth and can be created and used similarly except you don't provide a SynthDef name. VstPlugin uses a special kind of SynthDef which must be created via the class method code::makeSynthDef:::
 code::
-// creates a SynthDef for plugins with 2 inputs, 2 outputs, summing into the output bus
-VstPlugin.makeSynthDef(\test, nin: 2, nout: 2, replace: false).add;
+// create and add the special SynthDef:
+VstPlugin.makeSynthDef.add;
 ::
-You can create a VstPlugin instance with the class method code::new:::
+Now you can create VstPlugin instances via the class method code::new:::
 code::
-// creates a VstPlugin which reads from Bus 'a' and writes to Bus 'b'
-f = VstPlugin.new(\test, [\in, a, \out, b]);
+// create a VstPlugin with 2 input channels and 2 output channels which reads from Bus 3 and writes to Bus 0, not bypassed and not replacing:
+f = VstPlugin.new([\nin, 2, \nout, 2, \in, 3, \out, 0, \bypass, 0, \replace, 0], s, addAction: \addToHead);
+
+// most arguments have default values so you can achieve the same result with:
+f = VstPlugin.new([\in, 3, \out, 0]);
 ::
-And here's how to actually open a plugin:
+All arguments except \nin and \nout can be changed later with code::set::, code::map::, etc. See the link::Classes/Node:: helpfile.
+
+Here's how to actually open a plugin:
 code::
 // watch the console for information or error messages
 f.open("/path/to/plugin", info: true);
@@ -28,22 +32,23 @@ f.open("/path/to/plugin", info: true);
 f.showGui; 
 ::
 
-subsection:: Replacing VS Non-Replacing
+subsection:: Replacing VS Summing
 
-As a rule of thumb you would use replacing mode for serial processing and non-replacing mode for parallel processing.
-Serial processing would typically read and write on the same bus (replacing the old output with the new one) while parallel processing would often write (accumulate) to a different bus than where it reads from.
+The code::\replace:: argument specifies whether the output bus content should be replaced or summed.
+
+As a rule of thumb you would use replacing for serial processing and summing for parallel processing.
+Serial processing would typically read and write on the same bus (replacing the old output with the new one) while parallel processing would often write to a different bus than where it reads from.
 With VstPlugin you can effectively create complex serial and/or parallel FX chains just like in a DAW like REAPER.
 Here's a complete example for a simple serial FX chain:
 code::
 (
+VstPlugin.makeSynthDef.add;
+
 // load a sound buffer as the test signal:
 b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
 
 // create a 2-channel audio FX bus:
 c = Bus.audio(s, 2);
-
-// make a SynthDef for plugins which can be inserted into the FX bus:
-VstPlugin.makeSynthDef(\testFX, nin: 2, nout: 2, replace: true).add;
 
 // play the soundfile and route it to the FX bus:
 d = SynthDef(\testSignal, {| out = 0, bufnum = 0 |
@@ -60,12 +65,13 @@ e = SynthDef(\testOut, {| in = 0, out = 0 |
 )
 
 // insert a plugin (adding it *after* d but *before* e):
-f = VstPlugin.new(\testFX, [\in, c, \out, c], d, addAction: \addAfter);
-f.open("/path/to/first/plugin", info: true); // actually open the plugin (watch the console for errors)
-f.showGui; // this should open a window with a simple GUI for your plugin - try it out!
+f = VstPlugin.new([\in, c, \out, c, \replace, 1], d, addAction: \addAfter);
+// actually open the plugin (watch the console for errors)
+f.open("/path/to/first/plugin", info: true);
+f.showGui; // this should open a window with a simple GUI - try it out!
 
 // insert another plugin (after the first one):
-g = VstPlugin.new(\testFX, [\in, c, \out, c], d, addAction: \addAfter);
+g = VstPlugin.new([\in, c, \out, c, \replace, 1], d, addAction: \addAfter);
 g.open("/path/to/second/plugin", info: true);
 g.showGui;
 
@@ -76,7 +82,7 @@ g.set(\bypass, 1); // bypass second plugin
 
 subsection:: Parameter Automation and Preset Management
 
-It is possible to automate plugin parameters programatically:
+It is possible to automate plugin parameters programmatically:
 
 code::
 // set a single parameter value (always normalized to the range 0.0 - 1.0):
@@ -100,7 +106,7 @@ f.showGui;
 f.readProgram("/preset/file/path/text.fxp");
 ::
 
-It's also possible to get/set the raw plugin state as an Int8Array if you want to build your own preset management:
+It's also possible to get/set the raw plugin state as an link::Classes/Int8Array:: if you want to build your own preset management:
 code::
 // get plugin state as Int8Array:
 f.getProgramData({ arg data; d = data;});
@@ -152,42 +158,28 @@ You can try to add some delay between loading plugins or switch to TCP to mitiga
 CLASSMETHODS::
 
 METHOD:: makeSynthDef
-This method creates a special kind of SynthDef which can be used to create VstPlugin instances.
-
-E.g. you only need a single SynthDef for all plugins with 2 input channels, 2 output channels, not-replacing:
+This method creates a special kind of SynthDef which is used internally. You need to call this once before you create any instances of VstPlugin.
 code::
-VstPlugin.makeSynthDef(\stereo, 2, 2, false).add; // don't forget to add!
-f = VstPlugin.new(\stereo); // make a stereo plugin
-g = VstPlugin.new(\stereo); // make another stereo plugin
+VstPlugin.makeSynthDef.add; // don't forget to add!
+// now you can create instances:
+f = VstPlugin.new;
+g = VstPlugin.new;
+// ... etc ...
 ::
-
-ARGUMENT:: name
-the name of the SynthDef.
-
-ARGUMENT:: nin
-number of input channels. This cannot be changed later!
-
-ARGUMENT:: nout
-number of output channels. This cannot be changed later!
-
-ARGUMENT:: replace
-Choose if the plugin should overwrite the content of the output bus, see link::#Replacing VS Non-Replacing::.
-This cannot be changed later!
-
 
 METHOD:: new
 Create a new VstPlugin instance, similar to link::Classes/Synth#*new::
-
-ARGUMENT:: defName
-The name of a SynthDef created with link::#*makeSynthDef::
 
 ARGUMENT:: args
 An optional Array specifying initial values for the SynthDef's arguments.
 The following arguments are possible:
 definitionlist::
+## \nin || number of input channels (cannot be changed later)
+## \nout || number of output channels (cannot be changed later)
 ## \in || input bus number
-## \out || output bus number (maybe be the same as input bus, see link::#Replacing VS Non-Replacing::)
+## \out || output bus number (may be the same as the input bus)
 ## \bypass || 1: true, 0: false
+## \replace || 1: true, 0: false (see link::#Replacing VS Summing::)
 ::
 
 ARGUMENT:: target
@@ -196,14 +188,13 @@ the target
 ARGUMENT:: addAction
 the add action
 
-PRIVATE:: msg2string
-
 METHOD:: newPaused
 See link::Classes/Synth#*newPaused::
 
 METHOD:: replace
 See link::Classes/Synth#*replace::
 
+PRIVATE:: msg2string
 
 INSTANCEMETHODS::
 

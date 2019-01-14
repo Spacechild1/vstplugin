@@ -1,20 +1,10 @@
-VstPluginUGen : MultiOutUGen {
-	*ar { arg input, nout=2, bypass=0;
-		var nin = input.isArray.if {input.size} {input.notNil.asInt};
-		^this.multiNewList([\audio, nout, bypass, nin] ++ input);
+VstPluginUGen : UGen {
+	*ar { arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
+		^this.multiNewList([\audio, nin, nout, in, out, bypass, replace]);
 	}
-	init { arg nout ... theInputs;
+	init { arg ... theInputs;
 		inputs = theInputs;
-		^this.initOutputs(nout, rate);
 	}
-	checkInputs {
-		inputs.do({ arg item, i;
-			(i > 2).if {(item.rate != \audio).if {
-                ^"input % must be audio rate".format(i).throw;
-			}};
-		});
-        ^this.checkValidInputs;
-    }
 }
 
 VstPlugin : Synth {
@@ -38,21 +28,19 @@ VstPlugin : Synth {
 	var useParamDisplay;
 	var scGui;
 
-	*makeSynthDef { arg name, nin=2, nout=2, replace=false;
-		name = name ?? {"vst__%".format(counter = counter + 1)};
-		^SynthDef.new(name, {arg in, out, bypass=0;
-			var vst = VstPluginUGen.ar(In.ar(in, nin.max(1)), nout.max(1), bypass);
-			replace.if { ReplaceOut.ar(out, vst) } { Out.ar(out, vst) };
-		});
+	*makeSynthDef {
+		^SynthDef.new(\__vstplugin__, {arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
+			VstPluginUGen.ar(nin, nout, in, out, bypass, replace);
+		}, [\ir, \ir, nil, nil, nil, nil]);
 	}
-	*new { arg defName, args, target, addAction=\addToHead;
-		^super.new(defName, args, target, addAction).init;
+	*new { arg args, target, addAction=\addToHead;
+		^super.new(\__vstplugin__, args, target, addAction).init;
 	}
-	*newPaused { arg defName, args, target, addAction=\addToHead;
-		^super.newPaused(defName, args, target, addAction).init;
+	*newPaused { arg args, target, addAction=\addToHead;
+		^super.newPaused(\__vstplugin__, args, target, addAction).init;
 	}
-	*replace { arg nodeToReplace, defName, args, sameID=false;
-		^super.replace(nodeToReplace, defName, args, sameID).init;
+	*replace { arg nodeToReplace, args, sameID=false;
+		^super.replace(nodeToReplace, \__vstplugin__, args, sameID).init;
 	}
 	init {
 		this.onFree({

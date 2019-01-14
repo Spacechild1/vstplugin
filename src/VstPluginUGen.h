@@ -53,17 +53,9 @@ private:
 		int32 bus;
     };
     IVSTPlugin* tryOpenPlugin(const char *path, bool gui);
-	// helper methods
-	const float *input(int i) const {
-		return in(i + 2);
-	}
-	int numInChannels() const {
-		return numInChannels_;
-	}
-	int numOutChannels() const {
-		return numOutputs();
-	}
-	float readControlBus(int32 num);
+    // helper methods
+    float readControlBus(int32 num, int32 maxChannel);
+    void resizeBuffer();
 	void sendPluginInfo();
 	void sendPrograms();
 	bool sendProgram(int32 num);
@@ -72,11 +64,21 @@ private:
 	void sendMsg(const char *cmd, int n, const float *data);
 	// data members
 	IVSTPlugin *plugin_ = nullptr;
-	float *buf_ = nullptr;
-	const float **inBufVec_ = nullptr;
+    float *buf_ = nullptr;
+
+    int numInChannels_ = 0;
+    int32 inBusNum_ = 0;
+    float *inBus_ = nullptr;
+    int32 *inBusTouched_ = nullptr;
+	float **inBufVec_ = nullptr;
+
+    int numOutChannels_ = 0;
+    int32 outBusNum_ = 0;
+    float *outBus_ = nullptr;
+    int32 *outBusTouched_ = nullptr;
 	float **outBufVec_ = nullptr;
-	Param *paramVec_ = nullptr;
-	int numInChannels_ = 0;
+
+    Param *paramVec_ = nullptr;
     bool vstGui_ = false;
 	bool paramDisplay_ = false;
 	bool bypass_ = false;
@@ -93,3 +95,42 @@ template<typename T>
 T clip(T in, T lo, T hi) {
 	return std::max<T>(lo, std::min<T>(hi, in));
 }
+
+template <bool LockShared>
+struct AudioBusGuard
+{
+    AudioBusGuard(const Unit * unit, int32 currentChannel, int32 maxChannel):
+        unit(unit),
+        mCurrentChannel(currentChannel),
+        isValid(currentChannel < maxChannel)
+    {
+        if (isValid)
+            lock();
+    }
+
+    ~AudioBusGuard()
+    {
+        if (isValid)
+            unlock();
+    }
+
+    void lock()
+    {
+        if (LockShared)
+            ACQUIRE_BUS_AUDIO_SHARED(mCurrentChannel);
+        else
+            ACQUIRE_BUS_AUDIO(mCurrentChannel);
+    }
+
+    void unlock()
+    {
+        if (LockShared)
+            RELEASE_BUS_AUDIO_SHARED(mCurrentChannel);
+        else
+            RELEASE_BUS_AUDIO(mCurrentChannel);
+    }
+
+    const Unit * unit;
+    const int32 mCurrentChannel;
+    const bool isValid;
+};
