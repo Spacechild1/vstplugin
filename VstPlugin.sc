@@ -116,16 +116,23 @@ VstPlugin : Synth {
 	info {
 		loaded.if {
 			"---".postln;
-			"name: %".format(name).postln;
+			"name: '%'".format(name).postln;
 			"editor: %".format(hasEditor).postln;
-			"num inputs: %, num outputs: %".format(numInputs, numOutputs).postln;
-			"midi input: %, midi output: %".format(midiInput, midiOutput).postln;
+			"input channels: %".format(numInputs).postln;
+			"output channels: %".format(numOutputs).postln;
+			"single precision: %".format(singlePrecision).postln;
+			"double precision: %".format(doublePrecision).postln;
+			"MIDI input: %".format(midiInput).postln;
+			"MIDI output: %".format(midiOutput).postln;
+			"synth: %".format(isSynth).postln;
+			"".postln;
 			"parameters (%):".format(this.numParameters).postln;
 			this.numParameters.do({ arg i;
 				var label;
 				label = (parameterLabels[i].size > 0).if { "(%)".format(parameterLabels[i]) };
 				"[%] % %".format(i, parameterNames[i], label ?? "").postln;
 			});
+			"".postln;
 			"programs (%):".format(programs.size).postln;
 			programs.do({ arg item, i;
 				"[%] %".format(i, item).postln;
