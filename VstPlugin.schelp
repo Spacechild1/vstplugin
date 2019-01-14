@@ -6,15 +6,14 @@ related:: Classes/Synth, Classes/Node, Classes/SynthDef
 DESCRIPTION::
 
 With VstPlugin you can load VST plugins on all platforms and use them to generate or process sounds on an audio bus.
+The class is derived from link::Classes/Synth:: and can be created and used similarly except you don't have to provide a SynthDef name.
 
 warning::Please read the sections about link::#Realtime-Safety:: and link::#Other Caveats:: ::
 
-The class is derived from Synth and can be created and used similarly except you don't provide a SynthDef name. VstPlugin uses a special kind of SynthDef which must be created via the class method code::makeSynthDef:::
-code::
-// create and add the special SynthDef:
-VstPlugin.makeSynthDef.add;
-::
-Now you can create VstPlugin instances via the class method code::new:::
+A VstPlugin instance processes audio by reading from an audio bus, sending the content to the VST plugin and writing the new signal either to the same or another audio bus.
+You can specify whether you want to sum into the bus or rather replace its content (see link::#Serial VS Parallel::). 
+
+You can create VstPlugin instances via the class method code::new:::
 code::
 // create a VstPlugin with 2 input channels and 2 output channels which reads from Bus 3 and writes to Bus 0, not bypassed and not replacing:
 f = VstPlugin.new([\nin, 2, \nout, 2, \in, 3, \out, 0, \bypass, 0, \replace, 0], s, addAction: \addToHead);
@@ -22,27 +21,30 @@ f = VstPlugin.new([\nin, 2, \nout, 2, \in, 3, \out, 0, \bypass, 0, \replace, 0],
 // most arguments have default values so you can achieve the same result with:
 f = VstPlugin.new([\in, 3, \out, 0]);
 ::
-All arguments except \nin and \nout can be changed later with code::set::, code::map::, etc. See the link::Classes/Node:: helpfile.
-
-Here's how to actually open a plugin:
+All arguments except code::\nin:: and code::\nout:: can be changed later with code::set::, code::map::, etc. See the link::Classes/Node:: helpfile.
+code::
+f.set(\bypass, 1); // bypass
+::
+Here's how to actually open a VST plugin:
 code::
 // watch the console for information or error messages
 f.open("/path/to/plugin", info: true);
 // open the GUI window:
 f.showGui; 
 ::
+If no plugin is loaded, audio is passed through unchanged, just like setting code::\bypass:: to 1.
 
-subsection:: Replacing VS Summing
+subsection:: Serial VS Parallel
 
-The code::\replace:: argument specifies whether the output bus content should be replaced or summed.
+With emphasis::serial processing::, plugins would typically read and write on the same bus (replacing the old output with the new one) while with emphasis::parallel processing::, plugins read from (possibly different) input busses and sum into a common output bus.
 
-As a rule of thumb you would use replacing for serial processing and summing for parallel processing.
-Serial processing would typically read and write on the same bus (replacing the old output with the new one) while parallel processing would often write to a different bus than where it reads from.
-With VstPlugin you can effectively create complex serial and/or parallel FX chains just like in a DAW like REAPER.
+The code::\replace:: argument specifies whether the old content in the output bus should be replaced or not. A non-zero value means replacing (like link::Classes/ReplaceOut::), zero means summing (like link::Classes/Out::). As a rule of thumb, you would often use replacing with serial processing and non-replacing (summing) with parallel processing.
+
+Since a single instance of VstPlugin represents a link::Classes/Node:: on the link::Classes/Server::, you can freely interconnect several VST plugins and form complex serial and/or parallel FX chains just like in a DAW like REAPER.
+
 Here's a complete example for a simple serial FX chain:
 code::
 (
-VstPlugin.makeSynthDef.add;
 
 // load a sound buffer as the test signal:
 b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
@@ -157,16 +159,6 @@ You can try to add some delay between loading plugins or switch to TCP to mitiga
 
 CLASSMETHODS::
 
-METHOD:: makeSynthDef
-This method creates a special kind of SynthDef which is used internally. You need to call this once before you create any instances of VstPlugin.
-code::
-VstPlugin.makeSynthDef.add; // don't forget to add!
-// now you can create instances:
-f = VstPlugin.new;
-g = VstPlugin.new;
-// ... etc ...
-::
-
 METHOD:: new
 Create a new VstPlugin instance, similar to link::Classes/Synth#*new::
 
@@ -179,7 +171,7 @@ definitionlist::
 ## \in || input bus number
 ## \out || output bus number (may be the same as the input bus)
 ## \bypass || 1: true, 0: false
-## \replace || 1: true, 0: false (see link::#Replacing VS Summing::)
+## \replace || 1: true, 0: false (see link::#Serial VS Parallel::)
 ::
 
 ARGUMENT:: target
@@ -190,6 +182,18 @@ the add action
 
 METHOD:: newPaused
 See link::Classes/Synth#*newPaused::
+
+METHOD:: after
+See link::Classes/Synth#*after::
+
+METHOD:: before
+See link::Classes/Synth#*before::
+
+METHOD:: head
+See link::Classes/Synth#*head::
+
+METHOD:: tail
+See link::Classes/Synth#*tail::
 
 METHOD:: replace
 See link::Classes/Synth#*replace::
