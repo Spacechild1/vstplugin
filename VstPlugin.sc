@@ -8,11 +8,17 @@ VstPluginUGen : UGen {
 }
 
 VstPlugin : Synth {
-	classvar counter = 0;
+	classvar fHasEditor = 1;
+	classvar fIsSynth = 2;
+	classvar fSinglePrecision = 4;
+	classvar fDoublePrecision = 8;
+	classvar fMidiInput = 16;
+	classvar fMidiOutput = 32;
 	// public
 	var <loaded;
 	var <name;
 	var <hasEditor;
+	var <isSynth;
 	var <numInputs;
 	var <numOutputs;
 	var <singlePrecision;
@@ -48,41 +54,47 @@ VstPlugin : Synth {
 		});
 		loaded = false;
 		oscFuncs = List.new;
+		// parameter value:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, value;
 			index = msg[3].asInt;
 			value = msg[4].asFloat;
 			// we have to defer the method call to the AppClock!
 			{scGui.notNil.if { scGui.paramValue(index, value) }}.defer;
-		}, '/vst_param', argTemplate: [nodeID, 2]));
+		}, '/vst_pv', argTemplate: [nodeID, 2]));
+		// parameter display:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, string;
 			index = msg[3].asInt;
 			string = VstPlugin.msg2string(msg, 1);
 			// we have to defer the method call to the AppClock!
 			{scGui.notNil.if { scGui.paramDisplay(index, string) }}.defer;
-		}, '/vst_param_display', argTemplate: [nodeID, 2]));
+		}, '/vst_pd', argTemplate: [nodeID, 2]));
+		// parameter name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			parameterNames[index] = name;
-		}, '/vst_param_name', argTemplate: [nodeID, 2]));
+		}, '/vst_pn', argTemplate: [nodeID, 2]));
+		// parameter label:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			parameterLabels[index] = name;
-		}, '/vst_param_label', argTemplate: [nodeID, 2]));
+		}, '/vst_pl', argTemplate: [nodeID, 2]));
+		// current program:
 		oscFuncs.add(OSCFunc({ arg msg;
 			currentProgram = msg[3].asInt;
-		}, '/vst_program', argTemplate: [nodeID, 2]));
+		}, '/vst_pgm', argTemplate: [nodeID, 2]));
+		// program name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			programs[index] = name;
-		}, '/vst_program_name', argTemplate: [nodeID, 2]));
+		}, '/vst_pgmn', argTemplate: [nodeID, 2]));
 	}
 	free { arg sendFlag=true;
 		this.prFree();
@@ -127,17 +139,27 @@ VstPlugin : Synth {
 		var flags;
 		this.prClearGui();
 		// the UGen will respond to the '/open' message with the following messages:
-		OSCFunc.new({arg msg; name = VstPlugin.msg2string(msg)}, '/vst_name', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; hasEditor = msg[3].asBoolean}, '/vst_editor', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; numInputs = msg[3].asInt}, '/vst_nin', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; numOutputs = msg[3].asInt}, '/vst_nout', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; midiInput = msg[3].asBoolean}, '/vst_midiin', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; midiOutput = msg[3].asBoolean}, '/vst_midiout', argTemplate: [nodeID, 2]).oneShot;
-		OSCFunc.new({arg msg; programs = Array.fill(msg[3].asInt, nil)}, '/vst_nprograms', argTemplate: [nodeID, 2]).oneShot;
 		OSCFunc.new({arg msg;
-			var n = msg[3].asInt; parameterNames = Array.fill(n, nil); parameterLabels = Array.fill(n, nil);
-		}, '/vst_nparams', argTemplate: [nodeID, 2]).oneShot;
-		// the /open message is sent after all the other messages above and after parameter names and program names
+			name = VstPlugin.msg2string(msg)
+		}, '/vst_name', argTemplate: [nodeID, 2]).oneShot;
+		OSCFunc.new({arg msg;
+			var nparam, npgm, flags;
+			numInputs = msg[3].asInt;
+			numOutputs = msg[4].asInt;
+			nparam = msg[5].asInt;
+			npgm = msg[6].asInt;
+			flags = msg[7].asInt;
+			parameterNames = Array.fill(nparam, nil);
+			parameterLabels = Array.fill(nparam, nil);
+			programs = Array.fill(npgm, nil);
+			hasEditor = (flags & fHasEditor).asBoolean;
+			isSynth = (flags & fIsSynth).asBoolean;
+			singlePrecision = (flags & fSinglePrecision).asBoolean;
+			doublePrecision = (flags & fDoublePrecision).asBoolean;
+			midiInput = (flags & fMidiInput).asBoolean;
+			midiOutput = (flags & fMidiOutput).asBoolean;
+		}, '/vst_info', argTemplate: [nodeID, 2]).oneShot;
+		// the /vst_open message is sent after /vst_name and /vst_info and after parameter names and program names
 		// but *before* parameter values are sent (so the GUI has a chance to respond to it)
 		OSCFunc.new({arg msg;
 			msg[3].asBoolean.if {
@@ -157,8 +179,10 @@ VstPlugin : Synth {
 		this.sendMsg('/open', flags, path);
 	}
 	prClear {
-		loaded = false; name = nil; numInputs = nil; numOutputs = nil; midiInput = nil; midiOutput = nil;
-		parameterNames = nil; parameterLabels = nil; programs = nil; currentProgram = nil; hasEditor = nil;
+		loaded = false; name = nil; numInputs = nil; numOutputs = nil;
+		singlePrecision = nil; doublePrecision = nil; hasEditor = nil;
+		midiInput = nil; midiOutput = nil; isSynth = nil;
+		parameterNames = nil; parameterLabels = nil; programs = nil; currentProgram = nil;
 	}
 	prClearGui {
 		scGui.notNil.if { {scGui.view.remove}.defer }; scGui = nil;
@@ -200,7 +224,6 @@ VstPlugin : Synth {
 	setProgram { arg index;
 		((index >= 0) && (index < this.numPrograms)).if {
 			this.sendMsg('/program_set', index);
-			currentProgram = index;
 		} {
 			^"program number % out of range".format(index).throw;
 		};
@@ -226,7 +249,7 @@ VstPlugin : Synth {
 				data.add(msg[i + 3]);
 			});
 			action.value(data);
-		}, '/vst_program_data', argTemplate: [nodeID]).oneShot;
+		}, '/vst_pgm_data', argTemplate: [nodeID]).oneShot;
 		this.sendMsg('/program_data_get');
 	}
 	readBank { arg path;

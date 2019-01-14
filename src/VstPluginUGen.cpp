@@ -107,7 +107,7 @@ void VstPluginUGen::close() {
 
 void VstPluginUGen::open(const char *path, uint32 flags){
     close();
-    bool vstGui = flags & FlagVstGui;
+    bool vstGui = flags & Flags::VstGui;
 	// initialize GUI backend (if needed)
 	if (vstGui) {
     #ifdef __APPLE__
@@ -125,7 +125,7 @@ void VstPluginUGen::open(const char *path, uint32 flags){
     plugin_ = tryOpenPlugin(path, vstGui);
     if (plugin_){
         vstGui_ = vstGui;
-        paramDisplay_ = flags & FlagParamDisplay;
+        paramDisplay_ = flags & Flags::ParamDisplay;
 		LOG_DEBUG("loaded " << path);
 		int blockSize = bufferSize();
 		plugin_->setSampleRate(sampleRate());
@@ -355,7 +355,7 @@ void VstPluginUGen::setParam(int32 index, float value) {
 				float buf[maxSize];
 				buf[0] = index;
 				int len = string2floatArray(plugin_->getParameterDisplay(index), buf + 1, maxSize - 1);
-				sendMsg("/vst_param_display", len + 1, buf);
+				sendMsg("/vst_pd", len + 1, buf);
 			}
 		}
 		else {
@@ -380,7 +380,7 @@ void VstPluginUGen::setProgram(int32 index) {
 	if (check()) {
 		if (index >= 0 && index < plugin_->getNumPrograms()) {
 			plugin_->setProgram(index);
-			sendMsg("/vst_program", index);
+			sendMsg("/vst_pgm", index);
 			sendParameters();
 		}
 		else {
@@ -435,7 +435,7 @@ void VstPluginUGen::getProgramData() {
 				for (int i = 0; i < len; ++i) {
 					buf[i] = data[i];
 				}
-				sendMsg("/vst_program_data", len, buf);
+				sendMsg("/vst_pgm_data", len, buf);
 				RTFree(mWorld, buf);
 			}
 			else {
@@ -452,7 +452,7 @@ void VstPluginUGen::readBank(const char *path) {
 		if (plugin_->readBankFile(path)) {
 			sendPrograms();
 			sendParameters();
-			sendMsg("/vst_program", plugin_->getProgram());
+			sendMsg("/vst_pgm", plugin_->getProgram());
 		}
 		else {
 			LOG_WARNING("VstPluginUGen: couldn't read bank file '" << path << "'");
@@ -469,7 +469,7 @@ void VstPluginUGen::setBankData(const char *data, int32 n) {
 		if (plugin_->readBankData(data, n)) {
 			sendPrograms();
 			sendParameters();
-			sendMsg("/vst_program", plugin_->getProgram());
+			sendMsg("/vst_pgm", plugin_->getProgram());
 		}
 		else {
 			LOG_WARNING("VstPluginUGen: couldn't read bank data");
@@ -556,23 +556,32 @@ void VstPluginUGen::sendPluginInfo() {
     const int maxSize = 64;
     float buf[maxSize];
 
+	// send plugin name:
     int nameLen = string2floatArray(plugin_->getPluginName(), buf, maxSize);
     sendMsg("/vst_name", nameLen, buf);
-	sendMsg("/vst_editor", (float)plugin_->hasEditor());
-	sendMsg("/vst_nin", plugin_->getNumInputs());
-	sendMsg("/vst_nout", plugin_->getNumOutputs());
-	sendMsg("/vst_midiin", plugin_->hasMidiInput());
-	sendMsg("/vst_midiout", plugin_->hasMidiOutput());
-	sendMsg("/vst_nprograms", plugin_->getNumPrograms());
-	// send parameter info
+
+	// send plugin info (nin, nout, nparams, nprograms, flags):
+	uint32 flags = 0;
+	flags |= plugin_->hasEditor() << HasEditor;
+	flags |= plugin_->isSynth() << IsSynth;
+	flags |= plugin_->hasPrecision(VSTProcessPrecision::Single) << SinglePrecision;
+	flags |= plugin_->hasPrecision(VSTProcessPrecision::Double) << DoublePrecision;
+	flags |= plugin_->hasMidiInput() << MidiInput;
+	flags |= plugin_->hasMidiOutput() << MidiOutput;
 	int nparams = plugin_->getNumParameters();
-    sendMsg("/vst_nparams", nparams);
+	buf[0] = plugin_->getNumInputs();
+	buf[1] = plugin_->getNumOutputs();
+	buf[2] = nparams;
+	buf[3] = plugin_->getNumPrograms();
+	buf[4] = flags;
+	sendMsg("/vst_info", 5, buf);
+
 	// send parameter names
 	for (int i = 0; i < nparams; ++i) {
 		// msg format: index, len, characters...
 		buf[0] = i;
         int len = string2floatArray(plugin_->getParameterName(i), buf + 1, maxSize - 1);
-		sendMsg("/vst_param_name", len + 1, buf);
+		sendMsg("/vst_pn", len + 1, buf);
 	}
 	// send parameter labels
 	if (paramDisplay_) {
@@ -580,7 +589,7 @@ void VstPluginUGen::sendPluginInfo() {
 			// msg format: index, len, characters...
 			buf[0] = i;
 			int len = string2floatArray(plugin_->getParameterLabel(i), buf + 1, maxSize - 1);
-			sendMsg("/vst_param_label", len + 1, buf);
+			sendMsg("/vst_pl", len + 1, buf);
 		}
 	}
 }
@@ -611,7 +620,7 @@ bool VstPluginUGen::sendProgram(int32 num) {
 	// msg format: index, len, characters...
 	buf[0] = num;
     int len = string2floatArray(name, buf + 1, maxSize - 1);
-	sendMsg("/vst_program_name", len + 1, buf);
+	sendMsg("/vst_pgmn", len + 1, buf);
 	return changed;
 }
 
@@ -632,10 +641,10 @@ void VstPluginUGen::sendParameters() {
 	for (int i = 0; i < nparam; ++i) {
 		buf[0] = i;
 		buf[1] = plugin_->getParameter(i);
-		sendMsg("/vst_param", 2, buf);
+		sendMsg("/vst_pv", 2, buf);
 		if (paramDisplay_) {
 			int len = string2floatArray(plugin_->getParameterDisplay(i), buf + 1, maxSize - 1);
-			sendMsg("/vst_param_display", len + 1, buf);
+			sendMsg("/vst_pd", len + 1, buf);
 		}
 	}
 }

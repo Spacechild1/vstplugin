@@ -11,11 +11,24 @@
 #include <future>
 #endif
 
+namespace Flags {
+	const uint32 VstGui = 1;
+	const uint32 ParamDisplay = 2;
+}
+
+enum PluginInfo {
+	HasEditor = 0,
+	IsSynth,
+	SinglePrecision,
+	DoublePrecision,
+	MidiInput,
+	MidiOutput,
+	SysexInput,
+	SysexOutput
+};
+
 class VstPluginUGen : public SCUnit {
 public:
-	const uint32 FlagVstGui = 1;
-	const uint32 FlagParamDisplay = 2;
-
 	VstPluginUGen();
 	~VstPluginUGen();
 	bool check();
