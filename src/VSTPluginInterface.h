@@ -71,8 +71,8 @@ class IVSTPlugin {
     virtual int getPluginVersion() const = 0;
     virtual int getPluginUniqueID() const = 0;
 
-    virtual void process(float **inputs, float **outputs, int nsamples) = 0;
-    virtual void processDouble(double **inputs, double **outputs, int nsamples) = 0;
+    virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
+    virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;
     virtual bool hasPrecision(VSTProcessPrecision precision) const = 0;
     virtual void setPrecision(VSTProcessPrecision precision) = 0;
     virtual void suspend() = 0;

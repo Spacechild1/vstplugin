@@ -16,6 +16,7 @@
 variables:
   PDVERSION: 0.49-0
   VST2DIR: /tmp/vst2sdk
+  SC_PATH: /tmp/supercollider
   PDLIBNAME: "${CI_PROJECT_NAME}~"
 
 #######################################################################
@@ -41,12 +42,15 @@ variables:
   image: gcc
   stage: build
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends make puredata-dev puredata
+    - apt-get update && apt-get install -y --no-install-recommends make cmake puredata-dev puredata
     - export PD=/usr/bin/pd
     - .git-ci/get_vst.sh "${VST2DIR}"
+    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
+    - make -C build VERBOSE=1
 
 .build:macos: &build_macos
   tags:
@@ -59,9 +63,12 @@ variables:
     - rm -f Pd.tgz
     - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
     - .git-ci/get_vst.sh "${VST2DIR}"
+    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
+    - make -C build VERBOSE=1
 
 .build:w32: &build_w32
   stage: build
@@ -70,15 +77,19 @@ variables:
   variables:
     IEMCI_CONFIGURATIONS: mingw32
   before_script:
+    - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
     - rm -rf "${PROGRAMFILESX86}/pd"; mkdir -p "${PROGRAMFILESX86}/pd"
     - unzip -q Pd.zip -d "${PROGRAMFILESX86}/pd"
     - mv -v "${PROGRAMFILESX86}/pd"/*/* "${PROGRAMFILESX86}/pd"
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
+    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
+    - make -C build VERBOSE=1
 
 .build:w64: &build_w64
   stage: build
@@ -87,15 +98,19 @@ variables:
   variables:
     IEMCI_CONFIGURATIONS: mingw64
   before_script:
+    - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
     - rm -rf "${PROGRAMFILES}/pd"; mkdir -p "${PROGRAMFILES}/pd"
     - unzip -q Pd.zip -d "${PROGRAMFILES}/pd"
     - mv -v "${PROGRAMFILES}/pd"/*/* "${PROGRAMFILES}/pd"
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
+    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
   script:
     - make extension=m_amd64 VST2DIR="${VST2DIR}"
     - make install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
+    - make -C build VERBOSE=1
 
 #######################################################################
 ### the actual jobs: (linux,macos,windows)*(release,snapshot)

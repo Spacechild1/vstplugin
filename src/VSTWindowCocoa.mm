@@ -112,6 +112,11 @@ void VSTWindowCocoa::setGeometry(int left, int top, int right, int bottom){
 void VSTWindowCocoa::show(){
     [window_ makeKeyAndOrderFront:nil];
     IVSTPlugin *plugin = [window_ plugin];
+    /* we open/close the editor on demand to make sure no unwanted
+     * GUI drawing is happening behind the scenes
+     * (for some reason, on macOS parameter automation would cause
+     * redraws even if the window is hidden)
+    */
     plugin->openEditor(getHandle());
 }
 

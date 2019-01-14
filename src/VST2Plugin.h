@@ -23,8 +23,8 @@ class VST2Plugin final : public IVSTPlugin {
     int getPluginVersion() const override;
     int getPluginUniqueID() const override;
 
-    void process(float **inputs, float **outputs, int nsamples) override;
-    void processDouble(double **inputs, double **outputs, int nsamples) override;
+	void process(const float **inputs, float **outputs, int nsamples) override;
+    void processDouble(const double **inputs, double **outputs, int nsamples) override;
     bool hasPrecision(VSTProcessPrecision precision) const override;
     void setPrecision(VSTProcessPrecision precision) override;
     void suspend() override;
@@ -130,4 +130,5 @@ class VST2Plugin final : public IVSTPlugin {
     std::vector<VstMidiSysexEvent> sysexQueue_;
     VstEvents *vstEvents_; // VstEvents is basically an array of VstEvent pointers
     int vstEventBufferSize_ = 0;
+    bool vstTimeWarned_ = false;
 };

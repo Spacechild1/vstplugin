@@ -64,9 +64,8 @@ VSTWindowX11::~VSTWindowX11(){
 }
 
 void VSTWindowX11::run(){
-	bool running = true;
 	XEvent e;
-    while (running){
+    while (true){
 	    XNextEvent(display_, &e);
 			// https://stackoverflow.com/questions/10792361/how-do-i-gracefully-exit-an-x11-event-loop
 	    if (e.type == ClientMessage){
@@ -75,8 +74,8 @@ void VSTWindowX11::run(){
 				hide(); // only hide window
                 LOG_DEBUG("X11: window closed!");
 			} else if (msg.message_type == wmQuit_){
-				running = false; // quit event loop
                 LOG_DEBUG("X11: quit");
+                break; // quit event loop
 			} else {
                 LOG_DEBUG("X11: unknown client message");
 			}

@@ -217,7 +217,6 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         e_window->run();
         LOG_DEBUG("exit message loop");
 
-        plugin->closeEditor();
             // some plugins expect to released in the same thread where they have been created
         LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(plugin);
@@ -254,9 +253,10 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, bool gui){
             int left, top, right, bottom;
             plugin->getEditorRect(left, top, right, bottom);
             e_window->setGeometry(left, top, right, bottom);
-
+            // don't open the editor on macOS (see VSTWindowCocoa.mm)
+#ifndef __APPLE__
             plugin->openEditor(e_window->getHandle());
-            e_window->hide(); // hack for some plugins on MacOS
+#endif
         }
     }
 #endif
@@ -265,6 +265,8 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, bool gui){
 
 void t_vsteditor::close_plugin(){
 #if VSTTHREADS
+        // close editor *before* destroying the window
+	if (e_owner->x_plugin) e_owner->x_plugin->closeEditor();
         // destroying the window (if any) might terminate the message loop and already release the plugin
     e_window = nullptr;
         // now join the thread (if any)
@@ -274,8 +276,9 @@ void t_vsteditor::close_plugin(){
 #endif
         // do we still have a plugin? (e.g. Pd editor or !VSTTHREADS)
     if (e_owner->x_plugin){
-        e_window = nullptr;
+		    // close editor *before* destroying the window
         e_owner->x_plugin->closeEditor();
+        e_window = nullptr;
         LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(e_owner->x_plugin);
         e_owner->x_plugin = nullptr;
@@ -399,14 +402,8 @@ void t_vsteditor::vis(bool v){
     if (e_window){
         if (v){
             e_window->bringToTop();
-        #if !VSTTHREADS
-            e_owner->x_plugin->openEditor(e_window->getHandle());
-        #endif
         } else {
             e_window->hide();
-        #if !VSTTHREADS
-            e_owner->x_plugin->closeEditor();
-        #endif
         }
     } else {
         send_vmess(gensym("vis"), "i", (int)v);
@@ -1206,7 +1203,7 @@ static t_int *vstplugin_perform(t_int *w){
                 outbufvec[i] = ((double *)x->x_outbuf + i * n);
             }
                 // process
-            plugin->processDouble((double **)inbufvec, (double **)outbufvec, n);
+            plugin->processDouble((const double **)inbufvec, (double **)outbufvec, n);
                 // read from output buffer
             for (int i = 0; i < nout && i < pout; ++i){
                 t_float *out = outvec[i];
@@ -1236,7 +1233,7 @@ static t_int *vstplugin_perform(t_int *w){
                 outbufvec[i] = ((float *)x->x_outbuf + i * n);
             }
                 // process
-            plugin->process((float **)inbufvec, (float **)outbufvec, n);
+            plugin->process((const float **)inbufvec, (float **)outbufvec, n);
                 // read from output buffer
             for (int i = 0; i < nout && i < pout; ++i){
                 t_float *out = outvec[i];
