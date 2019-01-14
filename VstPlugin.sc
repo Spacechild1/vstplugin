@@ -47,6 +47,18 @@ VstPlugin : Synth {
 	*newPaused { arg args, target, addAction=\addToHead;
 		^super.newPaused(\__vstplugin__, args, target, addAction).init;
 	}
+	*after { arg aNode, args;
+		^super.after(aNode, \__vstplugin__, args).init;
+	}
+	*before { arg aNode, args;
+		^super.before(aNode, \__vstplugin__, args).init;
+	}
+	*head { arg aGroup, args;
+		^super.head(aGroup, \__vstplugin__, args).init;
+	}
+	*tail { arg aGroup, args;
+		^super.tail(aGroup, \__vstplugin__, args).init;
+	}
 	*replace { arg nodeToReplace, args, sameID=false;
 		^super.replace(nodeToReplace, \__vstplugin__, args, sameID).init;
 	}
