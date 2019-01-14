@@ -256,13 +256,16 @@ METHOD:: numOutputs
 returns:: the number of output channels (doesn't have to match the actual number of outputs of VstPlugin).
 
 METHOD:: hasEditor
-returns:: if the plugin has an editor.
+returns:: whether the plugin has an editor.
 
 METHOD:: singlePrecision
-returns:: if the plugin supports single precision.
+returns:: whether the plugin supports single precision.
 
 METHOD:: doublePrecision
-returns:: if the plugin supports double precision (only for information, currently we only support single precision processing).
+returns:: whether the plugin supports double precision (only for information, currently we only support single precision processing).
+
+METHOD:: isSynth
+returns:: whether the plugin is a soft synth.
 
 subsection:: Parameters
 
@@ -336,10 +339,10 @@ will be called with the data as the first argument.
 subsection:: MIDI
 
 METHOD:: midiInput
-returns:: does the plugin receive MIDI?
+returns:: whether the plugin receives MIDI messages.
 
 METHOD:: midiOutput
-returns:: does the plugin send MIDI?
+returns:: whether the plugin sends MIDI messages.
 
 METHOD:: midiNoteOn
 send a MIDI note on message.
