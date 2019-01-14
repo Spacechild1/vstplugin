@@ -847,9 +847,10 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
     }
 #endif
     if (flags & kVstSmpteValid){
-        LOG_DEBUG("want SMPTE");
-        LOG_WARNING("SMPTE not supported (yet)!");
-        return nullptr;
+        if (!vstTimeWarned_){
+            LOG_WARNING("SMPTE not supported (yet)!");
+            vstTimeWarned_ = true;
+        }
     }
     if (flags & kVstClockValid){
             // samples to nearest midi clock
