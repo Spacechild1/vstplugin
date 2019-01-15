@@ -166,9 +166,11 @@ VstPlugin : Synth {
 	}
 	open { arg path, onSuccess, onFail, gui=\sc, paramDisplay=true, info=false;
 		var flags;
+		this.prClear();
 		this.prClearGui();
 		// the UGen will respond to the '/open' message with the following messages:
 		OSCFunc.new({arg msg;
+			loaded = true;
 			name = VstPlugin.msg2string(msg)
 		}, '/vst_name', argTemplate: [nodeID, ugenID]).oneShot;
 		OSCFunc.new({arg msg;
@@ -193,15 +195,12 @@ VstPlugin : Synth {
 		// but *before* parameter values are sent (so the GUI has a chance to respond to it)
 		OSCFunc.new({arg msg;
 			msg[3].asBoolean.if {
-				loaded = true;
 				// make SC editor if needed/wanted (deferred to AppClock!)
 				(gui != \none && (gui == \sc || hasEditor.not)).if { {scGui = VstPluginGui.new(this, paramDisplay)}.defer };
 				// print info if wanted
 				info.if { this.info };
 				onSuccess.value(this);
 			} {
-				loaded = false;
-				this.prClear();
 				onFail.value(this);
 			};
 		}, '/vst_open', argTemplate: [nodeID, ugenID]).oneShot;
