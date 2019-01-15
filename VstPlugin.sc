@@ -27,6 +27,7 @@ VstPlugin : Synth {
 	var <midiOutput;
 	var <programs;
 	var <currentProgram;
+	var <parameterValues;
 	var <parameterNames;
 	var <parameterLabels;
 	// private
@@ -73,6 +74,7 @@ VstPlugin : Synth {
 			var index, value;
 			index = msg[3].asInt;
 			value = msg[4].asFloat;
+			parameterValues[index] = value;
 			// we have to defer the method call to the AppClock!
 			{scGui.notNil.if { scGui.paramValue(index, value) }}.defer;
 		}, '/vst_pv', argTemplate: [nodeID, 2]));
@@ -170,6 +172,7 @@ VstPlugin : Synth {
 			nparam = msg[5].asInt;
 			npgm = msg[6].asInt;
 			flags = msg[7].asInt;
+			parameterValues = Array.fill(nparam, 0);
 			parameterNames = Array.fill(nparam, nil);
 			parameterLabels = Array.fill(nparam, nil);
 			programs = Array.fill(npgm, nil);
@@ -203,7 +206,8 @@ VstPlugin : Synth {
 		loaded = false; name = nil; numInputs = nil; numOutputs = nil;
 		singlePrecision = nil; doublePrecision = nil; hasEditor = nil;
 		midiInput = nil; midiOutput = nil; isSynth = nil;
-		parameterNames = nil; parameterLabels = nil; programs = nil; currentProgram = nil;
+		parameterValues = nil; parameterNames = nil; parameterLabels = nil;
+		programs = nil; currentProgram = nil;
 	}
 	prClearGui {
 		scGui.notNil.if { {scGui.view.remove}.defer }; scGui = nil;
@@ -219,6 +223,7 @@ VstPlugin : Synth {
 	// parameters
 	setParameter { arg index, value;
 		((index >= 0) && (index < this.numParameters)).if {
+			parameterValues[index] = value;
 			this.sendMsg('/param_set', index, value);
 			scGui.notNil.if { scGui.paramValue(index, value) };
 		} {

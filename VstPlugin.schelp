@@ -96,7 +96,14 @@ f.mapParameter(1, u);
 u.set(0.7);
 ::
 
-You can read/write preset files to set all parameters at once:
+Use link::#-parameterValues:: to get the current parameter states as an Array:
+
+code::
+f.setParameter(0, 0.7);
+f.parameterValues;
+::
+
+You can read/write preset files to save/recall VST programs and banks:
 code::
 // write current plugin state to a preset file. You can actually choose any extension but .fxp is quite common and will be recognized by most DAWs.
 f.writeProgram("/preset/file/path/test.fxp");
@@ -119,6 +126,9 @@ f.showGui;
 // restore previous state:
 f.setProgramData(d);
 ::
+
+
+note::While for most simple plugins you could just work with the Array obtained through code::parameterValues::, complex plugins might have additional state which is only available via the program and bank methods.::
 
 subsection:: GUI
 
@@ -275,6 +285,9 @@ subsection:: Parameters
 
 METHOD:: numParameters
 returns:: the number of parameters.
+
+METHOD:: parameterValues
+returns:: the current parameter values as an Array of numbers. note::Parameters mapped to a control bus show their last explicitly set value, emphasis::not:: the current value of the bus!::
 
 METHOD:: parameterNames
 returns:: the parameter names as an Array of Strings.
