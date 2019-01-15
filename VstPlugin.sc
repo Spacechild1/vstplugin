@@ -14,6 +14,8 @@ VstPlugin : Synth {
 	classvar fDoublePrecision = 8;
 	classvar fMidiInput = 16;
 	classvar fMidiOutput = 32;
+
+	classvar ugenID = -1;
 	// public
 	var <loaded;
 	var <name;
@@ -37,9 +39,13 @@ VstPlugin : Synth {
 
 	*initClass {
 		StartUp.add {
-			SynthDef.new(\__vstplugin__, {arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
+			var def;
+			def = SynthDef.new(\__vstplugin__, {arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
 				VstPluginUGen.ar(nin, nout, in, out, bypass, replace);
 			}, [\ir, \ir, nil, nil, nil, nil]).add;
+			def.children.do { arg item, i;
+				(item.class == VstPluginUGen).if { ugenID = i };
+			};
 		}
 	}
 	*new { arg args, target, addAction=\addToHead;
@@ -77,7 +83,7 @@ VstPlugin : Synth {
 			parameterValues[index] = value;
 			// we have to defer the method call to the AppClock!
 			{scGui.notNil.if { scGui.paramValue(index, value) }}.defer;
-		}, '/vst_pv', argTemplate: [nodeID, 2]));
+		}, '/vst_pv', argTemplate: [nodeID, ugenID]));
 		// parameter display:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, string;
@@ -85,32 +91,32 @@ VstPlugin : Synth {
 			string = VstPlugin.msg2string(msg, 1);
 			// we have to defer the method call to the AppClock!
 			{scGui.notNil.if { scGui.paramDisplay(index, string) }}.defer;
-		}, '/vst_pd', argTemplate: [nodeID, 2]));
+		}, '/vst_pd', argTemplate: [nodeID, ugenID]));
 		// parameter name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			parameterNames[index] = name;
-		}, '/vst_pn', argTemplate: [nodeID, 2]));
+		}, '/vst_pn', argTemplate: [nodeID, ugenID]));
 		// parameter label:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			parameterLabels[index] = name;
-		}, '/vst_pl', argTemplate: [nodeID, 2]));
+		}, '/vst_pl', argTemplate: [nodeID, ugenID]));
 		// current program:
 		oscFuncs.add(OSCFunc({ arg msg;
 			currentProgram = msg[3].asInt;
-		}, '/vst_pgm', argTemplate: [nodeID, 2]));
+		}, '/vst_pgm', argTemplate: [nodeID, ugenID]));
 		// program name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = VstPlugin.msg2string(msg, 1);
 			programs[index] = name;
-		}, '/vst_pgmn', argTemplate: [nodeID, 2]));
+		}, '/vst_pgmn', argTemplate: [nodeID, ugenID]));
 	}
 	free { arg sendFlag=true;
 		this.prFree();
@@ -164,7 +170,7 @@ VstPlugin : Synth {
 		// the UGen will respond to the '/open' message with the following messages:
 		OSCFunc.new({arg msg;
 			name = VstPlugin.msg2string(msg)
-		}, '/vst_name', argTemplate: [nodeID, 2]).oneShot;
+		}, '/vst_name', argTemplate: [nodeID, ugenID]).oneShot;
 		OSCFunc.new({arg msg;
 			var nparam, npgm, flags;
 			numInputs = msg[3].asInt;
@@ -182,7 +188,7 @@ VstPlugin : Synth {
 			doublePrecision = (flags & fDoublePrecision).asBoolean;
 			midiInput = (flags & fMidiInput).asBoolean;
 			midiOutput = (flags & fMidiOutput).asBoolean;
-		}, '/vst_info', argTemplate: [nodeID, 2]).oneShot;
+		}, '/vst_info', argTemplate: [nodeID, ugenID]).oneShot;
 		// the /vst_open message is sent after /vst_name and /vst_info and after parameter names and program names
 		// but *before* parameter values are sent (so the GUI has a chance to respond to it)
 		OSCFunc.new({arg msg;
@@ -198,7 +204,7 @@ VstPlugin : Synth {
 				this.prClear();
 				onFail.value(this);
 			};
-		}, '/vst_open', argTemplate: [nodeID, 2]).oneShot;
+		}, '/vst_open', argTemplate: [nodeID, ugenID]).oneShot;
 		flags = (gui == \vst).asInt | (paramDisplay.asBoolean.asInt << 1);
 		this.sendMsg('/open', flags, path);
 	}
@@ -296,7 +302,7 @@ VstPlugin : Synth {
 				data.add(msg[i + 3]);
 			});
 			action.value(data);
-		}, '/vst_bank_data', argTemplate: [nodeID, 2]).oneShot;
+		}, '/vst_bank_data', argTemplate: [nodeID, ugenID]).oneShot;
 		this.sendMsg('/bank_data_get');
 	}
 	// midi
@@ -348,12 +354,12 @@ VstPlugin : Synth {
 	getTransportPos { arg action;
 		OSCFunc({ arg msg;
 			action.value(msg[3]);
-		}, '/vst_transport', argTemplate: [nodeID, 2]).oneShot;
+		}, '/vst_transport', argTemplate: [nodeID, ugenID]).oneShot;
 		this.sendMsg('/transport_get');
 	}
 	// internal
 	sendMsg { arg cmd ... args;
-		server.sendMsg('/u_cmd', nodeID, 2, cmd, *args);
+		server.sendMsg('/u_cmd', nodeID, ugenID, cmd, *args);
 	}
 	prMidiMsg { arg hiStatus, lowStatus, data1=0, data2=0;
 		var status = hiStatus.asInt + lowStatus.asInt.clip(0, 15);
