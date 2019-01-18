@@ -30,11 +30,13 @@ enum PluginInfo {
 };
 
 class VstPlugin : public SCUnit {
+	static const uint32 MagicNumber = 0xDEADAFFE;
 public:
 	VstPlugin();
 	~VstPlugin();
 	IVSTPlugin *plugin();
 	bool check();
+	bool valid();
     void open(const char *path, uint32 flags);
 	void close();
 	void showEditor(bool show);
@@ -83,6 +85,7 @@ private:
 	void sendMsg(const char *cmd, float f);
 	void sendMsg(const char *cmd, int n, const float *data);
 	// data members
+	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
     float *buf_ = nullptr;
 

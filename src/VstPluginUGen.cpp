@@ -20,7 +20,7 @@ VstPlugin::VstPlugin(){
 	numOutChannels_ = numOutputs();
 	parameterControlOnset_ = inChannelOnset_ + numInChannels_;
 	numParameterControls_ = (int)(numInputs() - parameterControlOnset_) / 2;
-	LOG_VERBOSE("num in: " << numInChannels_ << ", num out: " << numOutChannels_ << ", num controls: " << numParameterControls_);
+	// LOG_DEBUG("num in: " << numInChannels_ << ", num out: " << numOutChannels_ << ", num controls: " << numParameterControls_);
     resizeBuffer();
 
 	set_calc_function<VstPlugin, &VstPlugin::next>();
@@ -44,6 +44,17 @@ bool VstPlugin::check(){
 	}
 	else {
 		LOG_WARNING("VstPlugin: no plugin!");
+		return false;
+	}
+}
+
+bool VstPlugin::valid() {
+	if (magic_ == MagicNumber) {
+		return true;
+	}
+	else {
+		LOG_WARNING("VstPlugin (" << mParent->mNode.mID << ", " << mParentIndex << ") not ready!");
+		// LOG_VERBOSE("magic is " << magic_);
 		return false;
 	}
 }
@@ -681,8 +692,11 @@ void VstPlugin::sendMsg(const char *cmd, int n, const float *data) {
 
 // unit command callbacks
 
+#define CHECK {if (!static_cast<VstPlugin*>(unit)->valid()) return; }
+
 void vst_open(Unit *unit, sc_msg_iter *args) {
-    uint32 flags = args->geti();
+	CHECK;
+	uint32 flags = args->geti();
 	const char *path = args->gets();
 	if (path) {
         static_cast<VstPlugin*>(unit)->open(path, flags);
@@ -693,20 +707,24 @@ void vst_open(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_close(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	static_cast<VstPlugin*>(unit)->close();
 }
 
 void vst_reset(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	static_cast<VstPlugin*>(unit)->reset();
 }
 
 void vst_vis(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	bool show = args->geti();
 	static_cast<VstPlugin*>(unit)->showEditor(show);
 }
 
 // set parameters given as pairs of index and value
 void vst_set(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	auto vst = static_cast<VstPlugin*>(unit);
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
@@ -722,6 +740,7 @@ void vst_set(Unit *unit, sc_msg_iter *args) {
 
 // set parameters given as triples of index, count and values
 void vst_setn(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	auto vst = static_cast<VstPlugin*>(unit);
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
@@ -741,12 +760,14 @@ void vst_setn(Unit *unit, sc_msg_iter *args) {
 
 // get a single parameter at index
 void vst_get(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int32 index = args->geti(-1);
 	static_cast<VstPlugin*>(unit)->getParam(index);
 }
 
 // get a number of parameters starting from index
 void vst_getn(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int32 index = args->geti();
 	int32 count = args->geti();
 	static_cast<VstPlugin*>(unit)->getParamN(index, count);
@@ -754,6 +775,7 @@ void vst_getn(Unit *unit, sc_msg_iter *args) {
 
 // map parameters to control busses
 void vst_map(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	auto vst = static_cast<VstPlugin*>(unit);
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
@@ -773,6 +795,7 @@ void vst_map(Unit *unit, sc_msg_iter *args) {
 
 // unmap parameters from control busses
 void vst_unmap(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	auto vst = static_cast<VstPlugin*>(unit);
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
@@ -795,16 +818,19 @@ void vst_unmap(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_program_set(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int32 index = args->geti();
 	static_cast<VstPlugin*>(unit)->setProgram(index);
 }
 
 void vst_program_get(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int32 index = args->geti();
 	static_cast<VstPlugin*>(unit)->setProgram(index);
 }
 
 void vst_program_name(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	const char *name = args->gets();
 	if (name) {
 		static_cast<VstPlugin*>(unit)->setProgramName(name);
@@ -815,6 +841,7 @@ void vst_program_name(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_program_read(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	const char *path = args->gets();
 	if (path) {
 		static_cast<VstPlugin*>(unit)->readProgram(path);
@@ -825,6 +852,7 @@ void vst_program_read(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_program_write(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	const char *path = args->gets();
 	if (path) {
 		static_cast<VstPlugin*>(unit)->writeProgram(path);
@@ -835,6 +863,7 @@ void vst_program_write(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_program_data_set(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int len = args->getbsize();
 	if (len > 0) {
 		// LATER avoid unnecessary copying
@@ -854,10 +883,12 @@ void vst_program_data_set(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_program_data_get(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	static_cast<VstPlugin*>(unit)->getProgramData();
 }
 
 void vst_bank_read(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	const char *path = args->gets();
 	if (path) {
 		static_cast<VstPlugin*>(unit)->readBank(path);
@@ -868,6 +899,7 @@ void vst_bank_read(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_bank_write(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	const char *path = args->gets();
 	if (path) {
 		static_cast<VstPlugin*>(unit)->writeBank(path);
@@ -878,6 +910,7 @@ void vst_bank_write(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_bank_data_set(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int len = args->getbsize();
 	if (len > 0) {
 		// LATER avoid unnecessary copying
@@ -897,11 +930,13 @@ void vst_bank_data_set(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_bank_data_get(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	static_cast<VstPlugin*>(unit)->getBankData();
 }
 
 
 void vst_midi_msg(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	char data[4];
 	int32 len = args->getbsize();
 	if (len > 4) {
@@ -912,6 +947,7 @@ void vst_midi_msg(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int len = args->getbsize();
 	if (len > 0) {
 		// LATER avoid unnecessary copying
@@ -931,27 +967,32 @@ void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
 }
 
 void vst_tempo(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	float bpm = args->getf();
 	static_cast<VstPlugin*>(unit)->setTempo(bpm);
 }
 
 void vst_time_sig(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int32 num = args->geti();
 	int32 denom = args->geti();
 	static_cast<VstPlugin*>(unit)->setTimeSig(num, denom);
 }
 
 void vst_transport_play(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	int play = args->geti();
 	static_cast<VstPlugin*>(unit)->setTransportPlaying(play);
 }
 
 void vst_transport_set(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	float pos = args->getf();
 	static_cast<VstPlugin*>(unit)->setTransportPos(pos);
 }
 
 void vst_transport_get(Unit *unit, sc_msg_iter *args) {
+	CHECK;
 	static_cast<VstPlugin*>(unit)->getTransportPos();
 }
 
