@@ -5,7 +5,8 @@ related:: Classes/VstPlugin
 
 DESCRIPTION::
 
-Together with link::Classes/VstPlugin:: you can load VST plugins on all platforms and use them inside your SynthDefs.
+This class is used to control a specific link::Classes/VstPlugin:: instance in a link::Classes/Synth::, so you can
+link::#-open:: plugins, show the GUI, change programs, send link::#MIDI:: messages, etc.
 
 warning::Please read the sections about link::#Realtime-Safety:: and link::#Other Caveats:: ::
 
@@ -49,9 +50,9 @@ SynthDef(\insert2, { arg bus;
 
 subsection:: Parameter Automation and Preset Management
 
-It is possible to automate plugin parameters with UGens or Synth controls, see the code::params:: argument in link::Classes/VstPlugin#*ar::.
+It is possible to automate plugin parameters with UGens or Synth controls via the code::params:: argument in link::Classes/VstPlugin#*ar::.
 
-Additionally, there are ways to directly set/map parameters with VstPluginController:
+Additionally, you can set parameters directly with link::#-set:: and link::#-setn:: or map them to control busses with link::#-map:::
 
 code::
 // set parameter 3 to value 0.5:
@@ -65,15 +66,24 @@ code::
 ~ctl.set(0.7);
 ::
 
-It is possible to get the current parameter state:
+Use link::#-get:: and link::#-getn:: to obtain current parameter values:
 code::
 // get the current value of parameter 3 and post it to the console:
-~.fx.get(3, {arg f; f.postln;});
+~fx.get(3, {arg f; f.postln;});
+::
+
+Change programs with link::#-setProgram:::
+
+code::
+// check for available programs:
+~fx.programs.postln;
+// switch to program 4:
+~fx.setProgram(4);
 ::
 
 You can read/write preset files to save/recall VST programs and banks:
 code::
-// write current plugin state to a preset file. You can actually choose any extension but .fxp is quite common and will be recognized by most DAWs.
+// write current plugin state to a preset file.
 ~fx.writeProgram("/preset/file/path/test.fxp");
 
 // ... mess around with the plugin ...
@@ -83,7 +93,7 @@ code::
 ~fx.readProgram("/preset/file/path/text.fxp");
 ::
 
-It's also possible to get/set the raw plugin state link::Classes/Int8Array:: if you want to build your own preset management:
+It's also possible to get/set the raw plugin state as an link::Classes/Int8Array:::
 code::
 // get plugin state as Int8Array:
 ~fx.getProgramData({ arg data; d = data;});
@@ -97,7 +107,7 @@ code::
 
 subsection:: GUI
 
-The code::gui:: argument to the code::open:: method specifies the type of GUI to instantiate: 
+The code::gui:: argument to the link::#-open:: method specifies the type of GUI to instantiate: 
 
 code::
 f.open("/path/to/plugin", gui: \vst);
@@ -106,7 +116,7 @@ f.open("/path/to/plugin", gui: \vst);
 The default value code::\sc:: creates a generic Qt GUI in the Language which communicates with the Server via OSC messages.
 
 On Windows and Linux you can choose code::\vst:: instead to get a native window on the server containing the 'real' VST plugin editor.
-note:: Unfortunately, this is not possible (yet) on macOS for technical reasons.::
+note:: Unfortunately, this is not possible (yet?) on macOS for technical reasons.::
 
 Use code::\none:: if you don't need any GUI to save some ressources.
 
@@ -123,11 +133,11 @@ list::
 ## sending/receiving sysex data
 ::
 
-You are adviced to open your plugins in advance to avoid possible audio glitches.
+For now you are adviced to open your plugins in advance to avoid possible audio dropouts.
 
 subsection:: Other Caveats
 
-Whenever you open a VST plugin, the server sends all relevant information (e.g. parameter and program names) as OSC messages to the VstPlugin instance.
+Whenever you open a VST plugin, the Server sends all relevant information (e.g. parameter and program names) as OSC messages to the VstPluginController instance.
 
 In case of plugins with emphasis::lots:: of parameters or when loading many plugins at once you might experience dropped OSC messages when using UDP.
 You can try to add some delay between loading plugins or switch to TCP to mitigate this problem.
@@ -138,13 +148,15 @@ METHOD:: new
 Create a new VstPluginController.
 
 ARGUMENT:: synth
-the synth
+the link::Classes/Synth:: containing the link::Classes/VstPlugin:: you want to control.
 
 ARGUMENT:: id
-the target
+a symbol or number which uniquely identifies the link::Classes/VstPlugin:: within the link::Classes/SynthDef::.
+If this is code::nil::, VstPluginController will take the first instance it can find. This means you don't need an emphasis::id:: if there's only one VstPlugin in the SynthDef.
 
 ARGUMENT:: synthDef
-the synthDef
+the synth's link::Classes/SynthDef::. This is only needed if the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::.
+Otherwise it can be automatically deduced from the emphasis::synth:: argument.
 
 PRIVATE:: msg2string
 
@@ -426,3 +438,112 @@ get the current transport position (in quarter notes).
 
 ARGUMENT:: action
 a function which is called with the transport position.
+
+EXAMPLES::
+
+Build a serial FX chain:
+code::
+(
+// a simple insert FX:
+SynthDef.new(\insert, {arg bus, bypass=0;
+	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2, bypass));
+}).add;
+
+b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+
+c = Bus.audio(s, 2);
+
+// send test signal to audio bus 'c'
+d = SynthDef(\input, {| out = 0, bufnum = 0 |
+    Out.ar(out,
+        PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum), loop: 1).dup * 0.5
+    )
+}).play(s, [\out, c, \bufnum, b]);
+
+// send audio bus 'c' to output
+e = SynthDef(\output, {| in = 0, out = 0 |
+	Out.ar(out, In.ar(in, 2))
+}).play(d, [\in, c, \out, 0], addAction: \addAfter);
+
+)
+
+// add an insert FX to audio bus 'c':
+f = VstPluginController(Synth(\insert, [\bus, c], d, addAction: \addAfter));
+// load a plugin:
+f.open("/path/to/plugin", info: true);
+f.showGui;
+f.synth.set(\bypass, 1); // bypass FX
+f.synth.free; // remove from FX chain
+
+// add another insert FX (after 'f'):
+g = VstPluginController(Synth(\insert, [\bus, c], f.synth, addAction: \addAfter));
+// load a plugin:
+g.open("/path/to/plugin", info: true);
+g.showGui;
+g.synth.set(\bypass, 1); // bypass FX
+g.synth.free; // remove from FX chain
+
+// change the FX order dynamically, e.g. move 'g' before 'f':
+g.synth.moveBefore(f.synth);
+::
+You can also create fixed FX chains by using several VstPlugins inside a SynthDef:
+code::
+(
+// an insert FX with two plugins in series:
+SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
+	var sig = In.ar(bus, 2);
+	sig = VstPlugin.ar(sig, 2, bypass1, id: \fx1);
+	sig = VstPlugin.ar(sig, 2, bypass2, id: \fx2);
+	ReplaceOut.ar(bus, sig);
+}).add;
+)
+
+(
+~synth = Synth(\insert2, [\bus, c], d, addAction: \addAfter);
+// get handles to the individual VST plugins:
+~fx1 = VstPluginController(~synth, \fx1);
+~fx2 = VstPluginController(~synth, \fx2);
+)
+
+// load plugins
+~fx1.open("/path/to/plugin", info: true);
+~fx2.open("/path/to/plugin", info: true);
+
+~fx1.showGui;
+~fx2.showGui;
+
+// bypass FX
+~synth.set(\bypass1, 1);
+~synth.set(\bypass2, 1);
+
+~synth.free; // remove FX
+::
+Automate parameters via control busses:
+code::
+~ctl = Bus.control;
+~lfo = {Out.kr(~ctl, SinOsc.kr(0.25, 0, 0.5, 0.5))}.play;
+// modulate the first parameter of ~fx1 by mapping it to ~ctl:
+~fx1.map(0, ~ctl);
+// unmap it
+~fx1.unmap(0);
+::
+Automate parameters inside the SynthDef:
+code::
+(
+SynthDef.new(\insert3, {arg bus, rate=0.25, bypass=0;
+	var lfo, sig;
+	lfo = SinOsc.kr(rate, 0, 0.5, 0.5);
+	// parameter 0 will be modulated by a SinOsc
+	sig = VstPlugin.ar(In.ar(bus, 2), 2, params: [0, lfo]);
+	Out.ar(bus, sig);
+}).add;
+)
+
+~fx3 = VstPluginController(Synth.new(\insert3, [\bus, c], d, addAction: \addAfter));
+
+~fx3.open("/path/to/plugin", info: true);
+
+~fx3.synth.set(\rate, 0.9); // change modulation rate
+~fx3.synth.set(\bypass, 1); // bypass
+~fx3.synth.free; // release FX
+::

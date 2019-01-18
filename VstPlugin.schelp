@@ -1,11 +1,10 @@
 TITLE:: VstPlugin
-summary:: load VST plugins on all platforms
+summary:: use VST plugins within SuperCollider on all platforms
 related:: Classes/VstPluginController
 categories:: UGens
 
 DESCRIPTION::
-This UGen represents a single VST plugin instance on the Server. See the helpfile of link::Classes/VstPluginController:: for how to control it from the SuperCollider Language.
-
+This UGen represents a single VST plugin instance on the Server. See the helpfile of link::Classes/VstPluginController:: for how to control it from the SuperCollider language.
 
 CLASSMETHODS::
 
