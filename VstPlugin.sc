@@ -273,14 +273,14 @@ VstPluginController {
 	}
 	map { arg ...args;
 		var nargs = List.new;
-		args.pairsDo({ arg index, bus;
+		args.pairsDo { arg index, bus;
 			bus = bus.asBus;
 			(bus.rate == \control).if {
-				nargs.addAll(index, bus.index, bus.numChannels);
+				nargs.addAll([index, bus.index, bus.numChannels]);
 			} {
 				^"bus must be control rate!".throw;
 			}
-		});
+		};
 		this.sendMsg('/map', *nargs);
 	}
 	unmap { arg ...args;
