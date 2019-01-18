@@ -30,7 +30,7 @@ enum PluginInfo {
 };
 
 class VstPlugin : public SCUnit {
-	static const uint32 MagicNumber = 0xDEADAFFE;
+	static const uint32 MagicNumber = 0x5da815bc;
 public:
 	VstPlugin();
 	~VstPlugin();
