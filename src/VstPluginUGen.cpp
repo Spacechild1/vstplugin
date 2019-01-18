@@ -143,7 +143,7 @@ void VstPlugin::open(const char *path, uint32 flags){
 		paramVec_ = (Param *)RTRealloc(mWorld, paramVec_, nParams * sizeof(Param));
         if (paramVec_){
             for (int i = 0; i < nParams; ++i) {
-                paramVec_[i].value = 0;
+				paramVec_[i].value = std::numeric_limits<float>::quiet_NaN();
                 paramVec_[i].bus = -1;
             }
         } else {

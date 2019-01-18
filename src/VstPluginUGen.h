@@ -11,6 +11,8 @@
 #include <future>
 #endif
 
+#include <limits>
+
 namespace Flags {
 	const uint32 VstGui = 1;
 	const uint32 ParamDisplay = 2;
