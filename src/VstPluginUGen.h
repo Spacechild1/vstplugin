@@ -27,10 +27,11 @@ enum PluginInfo {
 	SysexOutput
 };
 
-class VstPluginUGen : public SCUnit {
+class VstPlugin : public SCUnit {
 public:
-	VstPluginUGen();
-	~VstPluginUGen();
+	VstPlugin();
+	~VstPlugin();
+	IVSTPlugin *plugin();
 	bool check();
     void open(const char *path, uint32 flags);
 	void close();
@@ -39,7 +40,10 @@ public:
 	void next(int inNumSamples);
 	// param
 	void setParam(int32 index, float value);
+	void getParam(int32 index);
+	void getParamN(int32 index, int32 count);
 	void mapParam(int32 index, int32 bus);
+	void unmapParam(int32 index);
 	// program/bank
 	void setProgram(int32 index);
 	void setProgramName(const char *name);
@@ -81,18 +85,15 @@ private:
     float *buf_ = nullptr;
 
     int numInChannels_ = 0;
-    int32 inBusNum_ = 0;
-    float *inBus_ = nullptr;
-    int32 *inBusTouched_ = nullptr;
-	float **inBufVec_ = nullptr;
+	static const int inChannelOnset_ = 2;
+	const float **inBufVec_ = nullptr;
 
     int numOutChannels_ = 0;
-    int32 outBusNum_ = 0;
-    float *outBus_ = nullptr;
-    int32 *outBusTouched_ = nullptr;
 	float **outBufVec_ = nullptr;
 
     Param *paramVec_ = nullptr;
+	int numParameterControls_ = 0;
+	int parameterControlOnset_ = 0;
     bool vstGui_ = false;
 	bool paramDisplay_ = false;
 	bool bypass_ = false;

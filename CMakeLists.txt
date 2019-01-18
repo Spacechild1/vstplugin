@@ -1,7 +1,7 @@
 set(FILENAME "VstPluginUGen.cpp") #specify the .cpp file here
 cmake_minimum_required (VERSION 2.8)
-get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project name from the filename
-# set(PROJECT "my_name") #alternatively set project name manually
+# get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project name from the filename
+set(PROJECT "VstPlugin") #alternatively set project name manually
 message(STATUS "Project name is ${PROJECT}")
 project (${PROJECT})
 

@@ -1,13 +1,21 @@
-VstPluginUGen : UGen {
-	*ar { arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
-		^this.multiNewList([\audio, nin, nout, in, out, bypass, replace]);
+VstPlugin : MultiOutUGen {
+	var <id;
+	*ar { arg input, numOut=1, bypass=0, params, id;
+		var numIn = 0;
+		input.notNil.if {
+			numIn = input.isArray.if {input.size} { 1 };
+		}
+		^this.multiNewList([\audio, id, numOut, bypass, numIn] ++ input ++ params);
 	}
-	init { arg ... theInputs;
+	*kr { ^this.shouldNotImplement(thisMethod) }
+	init { arg theID, numOut ... theInputs;
+		id = theID;
 		inputs = theInputs;
+		^this.initOutputs(numOut, rate)
 	}
 }
 
-VstPlugin : Synth {
+VstPluginController {
 	classvar fHasEditor = 1;
 	classvar fIsSynth = 2;
 	classvar fSinglePrecision = 4;
@@ -15,8 +23,9 @@ VstPlugin : Synth {
 	classvar fMidiInput = 16;
 	classvar fMidiOutput = 32;
 
-	classvar ugenID = -1;
 	// public
+	var <synth;
+	var <synthIndex;
 	var <loaded;
 	var <name;
 	var <hasEditor;
@@ -29,7 +38,6 @@ VstPlugin : Synth {
 	var <midiOutput;
 	var <programs;
 	var <currentProgram;
-	var <parameterValues;
 	var <parameterNames;
 	var <parameterLabels;
 	// private
@@ -37,98 +45,89 @@ VstPlugin : Synth {
 	var useParamDisplay;
 	var scGui;
 
-	*initClass {
-		StartUp.add {
-			var def;
-			def = SynthDef.new(\__vstplugin__, {arg nin=2, nout=2, in=0, out=0, bypass=0, replace=0;
-				VstPluginUGen.ar(nin, nout, in, out, bypass, replace);
-			}, [\ir, \ir, nil, nil, nil, nil]).add;
-			def.children.do { arg item, i;
-				(item.class == VstPluginUGen).if { ugenID = i };
+	*new { arg synth, id, synthDef;
+		var synthIndex;
+		// if the synthDef is nil, we try to get it from the global SynthDescLib
+		synthDef.isNil.if {
+			var desc;
+			desc = SynthDescLib.global.at(synth.defName);
+			desc.isNil.if { ^"couldn't find synthDef in global SynthDescLib!".throw };
+			synthDef = desc.def;
+		};
+		// walk the list of UGens and get the VstPlugin instance which matches the given ID.
+		// if 'id' is nil, pick the first instance. throw an error if no VstPlugin is found.
+		synthDef.children.do { arg ugen, index;
+			(ugen.class == VstPlugin).if {
+				(id.isNil || (ugen.id == id)).if {
+					^super.new.init(synth, id, synthDef, index);
+				}
 			};
-		}
+		};
+		id.isNil.if {^"synth doesn't contain a VstPlugin!".throw;}
+		{^"synth doesn't contain a VstPlugin with ID '%'".format(id).throw;}
 	}
-	*new { arg args, target, addAction=\addToHead;
-		^super.new(\__vstplugin__, args, target, addAction).init;
-	}
-	*newPaused { arg args, target, addAction=\addToHead;
-		^super.newPaused(\__vstplugin__, args, target, addAction).init;
-	}
-	*after { arg aNode, args;
-		^super.after(aNode, \__vstplugin__, args).init;
-	}
-	*before { arg aNode, args;
-		^super.before(aNode, \__vstplugin__, args).init;
-	}
-	*head { arg aGroup, args;
-		^super.head(aGroup, \__vstplugin__, args).init;
-	}
-	*tail { arg aGroup, args;
-		^super.tail(aGroup, \__vstplugin__, args).init;
-	}
-	*replace { arg nodeToReplace, args, sameID=false;
-		^super.replace(nodeToReplace, \__vstplugin__, args, sameID).init;
-	}
-	init {
-		this.onFree({
-			this.prFree();
-		});
+	init { arg theSynth, id, synthDef, theIndex;
+		synth = theSynth;
+		synthIndex = theIndex;
 		loaded = false;
 		oscFuncs = List.new;
-		// parameter value:
+		// parameter value in response to program/bank changes:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, value;
-			index = msg[3].asInt;
-			value = msg[4].asFloat;
-			parameterValues[index] = value;
 			// we have to defer the method call to the AppClock!
-			{scGui.notNil.if { scGui.paramValue(index, value) }}.defer;
-		}, '/vst_pv', argTemplate: [nodeID, ugenID]));
+			{scGui.notNil.if {
+				index = msg[3].asInt;
+				value = msg[4].asFloat;
+				scGui.paramValue(index, value)
+			}}.defer;
+		}, '/vst_pp', argTemplate: [synth.nodeID, synthIndex]));
 		// parameter display:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, string;
-			index = msg[3].asInt;
-			string = VstPlugin.msg2string(msg, 1);
 			// we have to defer the method call to the AppClock!
-			{scGui.notNil.if { scGui.paramDisplay(index, string) }}.defer;
-		}, '/vst_pd', argTemplate: [nodeID, ugenID]));
+			{scGui.notNil.if {
+				index = msg[3].asInt;
+				string = this.class.msg2string(msg, 4);
+				scGui.paramDisplay(index, string)
+			}}.defer;
+		}, '/vst_pd', argTemplate: [synth.nodeID, synthIndex]));
 		// parameter name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
-			name = VstPlugin.msg2string(msg, 1);
+			name = this.class.msg2string(msg, 4);
 			parameterNames[index] = name;
-		}, '/vst_pn', argTemplate: [nodeID, ugenID]));
+		}, '/vst_pn', argTemplate: [synth.nodeID, synthIndex]));
 		// parameter label:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
-			name = VstPlugin.msg2string(msg, 1);
+			name = this.class.msg2string(msg, 4);
 			parameterLabels[index] = name;
-		}, '/vst_pl', argTemplate: [nodeID, ugenID]));
+		}, '/vst_pl', argTemplate: [synth.nodeID, synthIndex]));
 		// current program:
 		oscFuncs.add(OSCFunc({ arg msg;
 			currentProgram = msg[3].asInt;
-		}, '/vst_pgm', argTemplate: [nodeID, ugenID]));
+		}, '/vst_pgm', argTemplate: [synth.nodeID, synthIndex]));
 		// program name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
-			name = VstPlugin.msg2string(msg, 1);
+			name = this.class.msg2string(msg, 4);
 			programs[index] = name;
-		}, '/vst_pgmn', argTemplate: [nodeID, ugenID]));
-	}
-	free { arg sendFlag=true;
-		this.prFree();
-		^super.free(sendFlag);
+		}, '/vst_pgmn', argTemplate: [synth.nodeID, synthIndex]));
+		// cleanup after synth has been freed:
+		synth.onFree { this.prFree };
 	}
 	prFree {
-		"VstPlugin freed!".postln;
-		oscFuncs.do({ arg func;
+		// "VstPluginController: synth freed!".postln;
+		oscFuncs.do { arg func;
 			func.free;
-		});
+		};
 		this.prClear();
 		this.prClearGui();
+		synth = nil;
+		synthIndex = nil;
 	}
 	showGui { arg show=true;
 		loaded.if {
@@ -149,16 +148,16 @@ VstPlugin : Synth {
 			"synth: %".format(isSynth).postln;
 			"".postln;
 			"parameters (%):".format(this.numParameters).postln;
-			this.numParameters.do({ arg i;
+			this.numParameters.do { arg i;
 				var label;
 				label = (parameterLabels[i].size > 0).if { "(%)".format(parameterLabels[i]) };
 				"[%] % %".format(i, parameterNames[i], label ?? "").postln;
-			});
+			};
 			"".postln;
 			"programs (%):".format(programs.size).postln;
-			programs.do({ arg item, i;
+			programs.do { arg item, i;
 				"[%] %".format(i, item).postln;
-			});
+			};
 		} {
 			"---".postln;
 			"no plugin loaded!".postln;
@@ -171,8 +170,8 @@ VstPlugin : Synth {
 		// the UGen will respond to the '/open' message with the following messages:
 		OSCFunc.new({arg msg;
 			loaded = true;
-			name = VstPlugin.msg2string(msg)
-		}, '/vst_name', argTemplate: [nodeID, ugenID]).oneShot;
+			name = this.class.msg2string(msg, 3)
+		}, '/vst_name', argTemplate: [synth.nodeID, synthIndex]).oneShot;
 		OSCFunc.new({arg msg;
 			var nparam, npgm, flags;
 			numInputs = msg[3].asInt;
@@ -180,7 +179,6 @@ VstPlugin : Synth {
 			nparam = msg[5].asInt;
 			npgm = msg[6].asInt;
 			flags = msg[7].asInt;
-			parameterValues = Array.fill(nparam, 0);
 			parameterNames = Array.fill(nparam, nil);
 			parameterLabels = Array.fill(nparam, nil);
 			programs = Array.fill(npgm, nil);
@@ -190,9 +188,10 @@ VstPlugin : Synth {
 			doublePrecision = (flags & fDoublePrecision).asBoolean;
 			midiInput = (flags & fMidiInput).asBoolean;
 			midiOutput = (flags & fMidiOutput).asBoolean;
-		}, '/vst_info', argTemplate: [nodeID, ugenID]).oneShot;
-		// the /vst_open message is sent after /vst_name and /vst_info and after parameter names and program names
-		// but *before* parameter values are sent (so the GUI has a chance to respond to it)
+		}, '/vst_info', argTemplate: [synth.nodeID, synthIndex]).oneShot;
+		/* the /vst_open message is sent after /vst_name and /vst_info
+		  and after parameter names and program names but *before*
+		  parameter values are sent (so the GUI has a chance to respond to it) */
 		OSCFunc.new({arg msg;
 			msg[3].asBoolean.if {
 				// make SC editor if needed/wanted (deferred to AppClock!)
@@ -203,7 +202,7 @@ VstPlugin : Synth {
 			} {
 				onFail.value(this);
 			};
-		}, '/vst_open', argTemplate: [nodeID, ugenID]).oneShot;
+		}, '/vst_open', argTemplate: [synth.nodeID, synthIndex]).oneShot;
 		flags = (gui == \vst).asInt | (paramDisplay.asBoolean.asInt << 1);
 		this.sendMsg('/open', flags, path);
 	}
@@ -211,11 +210,11 @@ VstPlugin : Synth {
 		loaded = false; name = nil; numInputs = nil; numOutputs = nil;
 		singlePrecision = nil; doublePrecision = nil; hasEditor = nil;
 		midiInput = nil; midiOutput = nil; isSynth = nil;
-		parameterValues = nil; parameterNames = nil; parameterLabels = nil;
+		parameterNames = nil; parameterLabels = nil;
 		programs = nil; currentProgram = nil;
 	}
 	prClearGui {
-		scGui.notNil.if { {scGui.view.remove}.defer }; scGui = nil;
+		scGui.notNil.if { {scGui.view.remove; scGui = nil}.defer };
 	}
 	close {
 		this.sendMsg('/close');
@@ -226,24 +225,66 @@ VstPlugin : Synth {
 		this.sendMsg('/reset');
 	}
 	// parameters
-	setParameter { arg index, value;
-		((index >= 0) && (index < this.numParameters)).if {
-			parameterValues[index] = value;
-			this.sendMsg('/param_set', index, value);
-			scGui.notNil.if { scGui.paramValue(index, value) };
-		} {
-			^"parameter index % out of range".format(index).throw;
+	set { arg ...args;
+		this.sendMsg('/set', *args);
+		scGui.notNil.if {
+			args.pairsDo { arg index, value;
+				((index >= 0) && (index < this.numParameters)).if {
+					scGui.paramValue(index, value)
+				};
+			};
 		};
 	}
-	mapParameter { arg index, bus;
-		((index >= 0) && (index < this.numParameters)).if {
-			this.sendMsg('/param_map', index, bus);
-		} {
-			^"parameter index % out of range".format(index).throw;
+	setn { arg ...args;
+		var nargs = List.new();
+		args.pairsDo { arg index, values;
+			values.isArray.if {
+				nargs.addAll([index, values.size]++ values);
+			} {
+				nargs.addAll([index, 1, values]);
+			};
+		};
+		this.sendMsg('/setn', *nargs);
+		scGui.notNil.if {
+			args.pairsDo { arg index, values;
+				values.do { arg f, i;
+					var idx = index + i;
+					((idx >= 0) && (idx < this.numParameters)).if {
+						scGui.paramValue(idx, f);
+					};
+				};
+			};
 		};
 	}
-	unmapParameter { arg index;
-		this.mapParam(index, -1);
+	get { arg index, action;
+		OSCFunc({ arg msg;
+			// msg: address, nodeID, index, value
+			action.value(msg[3]); // only pass value
+		}, '/vst_set', argTemplate: [synth.nodeID, synthIndex]).oneShot;
+		this.sendMsg('/get', index);
+	}
+	getn { arg index=0, count, action;
+		count = count ?? (this.numParameters - index);
+		OSCFunc({ arg msg;
+			// msg: address, nodeID, index, count, values...
+			action.value(msg[4..]); // only pass values
+		}, '/vst_setn', argTemplate: [synth.nodeID, synthIndex]).oneShot;
+		this.sendMsg('/getn', index, count);
+	}
+	map { arg ...args;
+		var nargs = List.new;
+		args.pairsDo({ arg index, bus;
+			bus = bus.asBus;
+			(bus.rate == \control).if {
+				nargs.addAll(index, bus.index, bus.numChannels);
+			} {
+				^"bus must be control rate!".throw;
+			}
+		});
+		this.sendMsg('/map', *nargs);
+	}
+	unmap { arg ...args;
+		this.sendMsg('/unmap', *args);
 	}
 	numParameters {
 		^parameterNames.size;
@@ -273,14 +314,9 @@ VstPlugin : Synth {
 	}
 	getProgramData { arg action;
 		OSCFunc({ arg msg;
-			var len, data;
-			len = msg.size - 3; // skip address, nodeID and index
-			data = Int8Array.new(len);
-			len.do({ arg i;
-				data.add(msg[i + 3]);
-			});
-			action.value(data);
-		}, '/vst_pgm_data', argTemplate: [nodeID]).oneShot;
+			// msg: address, nodeID, index, data...
+			action.value(Int8Array.newFrom(msg[3..]));
+		}, '/vst_pgm_data', argTemplate: [synth.nodeID, synthIndex]).oneShot;
 		this.sendMsg('/program_data_get');
 	}
 	readBank { arg path;
@@ -294,14 +330,9 @@ VstPlugin : Synth {
 	}
 	getBankData { arg action;
 		OSCFunc({ arg msg;
-			var len, data;
-			len = msg.size - 3; // skip address, nodeID and index
-			data = Int8Array.new(len);
-			len.do({ arg i;
-				data.add(msg[i + 3]);
-			});
-			action.value(data);
-		}, '/vst_bank_data', argTemplate: [nodeID, ugenID]).oneShot;
+			// msg: address, nodeID, index, data...
+			action.value(Int8Array.newFrom(msg[3..]));
+		}, '/vst_bank_data', argTemplate: [synth.nodeID, synthIndex]).oneShot;
 		this.sendMsg('/bank_data_get');
 	}
 	// midi
@@ -353,26 +384,19 @@ VstPlugin : Synth {
 	getTransportPos { arg action;
 		OSCFunc({ arg msg;
 			action.value(msg[3]);
-		}, '/vst_transport', argTemplate: [nodeID, ugenID]).oneShot;
+		}, '/vst_transport', argTemplate: [synth.nodeID, synthIndex]).oneShot;
 		this.sendMsg('/transport_get');
 	}
 	// internal
 	sendMsg { arg cmd ... args;
-		server.sendMsg('/u_cmd', nodeID, ugenID, cmd, *args);
+		synth.server.sendMsg('/u_cmd', synth.nodeID, synthIndex, cmd, *args);
 	}
 	prMidiMsg { arg hiStatus, lowStatus, data1=0, data2=0;
 		var status = hiStatus.asInt + lowStatus.asInt.clip(0, 15);
 		this.midiMsg(status, data1, data2);
 	}
 	*msg2string { arg msg, onset=0;
-		var len, string;
-		onset = onset + 3; // skip address, nodeID and synthIndex
-		len = msg.size - onset;
-		string = String.new(len);
-		len.do({ arg i;
-			string.add(msg[i + onset].asInt.asAscii);
-		});
-		^string;
+		^msg[onset..].collectAs({arg item; item.asInt.asAscii}, String);
 	}
 }
 
@@ -432,7 +456,7 @@ VstPluginGui {
 			display = StaticText.new();
 			paramDisplays.add(display);
 			slider = Slider.new(bounds: sliderWidth@sliderHeight).fixedHeight_(sliderHeight);
-			slider.action = {arg s; model.setParameter(i, s.value)};
+			slider.action = {arg s; model.set(i, s.value)};
 			paramSliders.add(slider);
 			unit = VLayout.new(
 				HLayout.new(name.align_(\left), nil, display.align_(\right), label.align_(\right)),
