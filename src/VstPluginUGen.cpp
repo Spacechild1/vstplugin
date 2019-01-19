@@ -162,12 +162,14 @@ void VstPlugin::close() {
 
 void VstPlugin::open(const char *path, uint32 flags){
     close();
+	bool scGui = flags & Flags::ScGui;
     bool vstGui = flags & Flags::VstGui;
 	// initialize GUI backend (if needed)
 	if (vstGui) {
     #ifdef __APPLE__
         LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
-        vstGui = false;
+		scGui = true;
+		vstGui = false;
     #else
 		static bool initialized = false;
 		if (!initialized) {
@@ -179,6 +181,7 @@ void VstPlugin::open(const char *path, uint32 flags){
 	LOG_DEBUG("try loading plugin");
     plugin_ = tryOpenPlugin(path, vstGui);
     if (plugin_){
+		scGui_ = scGui;
         vstGui_ = vstGui;
         paramDisplay_ = flags & Flags::ParamDisplay;
 		LOG_DEBUG("loaded " << path);
@@ -386,7 +389,7 @@ void VstPlugin::setParam(int32 index, float value) {
 			plugin_->setParameter(index, value);
 			paramVec_[index].value = value;
 			paramVec_[index].bus = -1; // invalidate bus num
-			if (paramDisplay_) {
+			if (scGui_ && paramDisplay_) {
 				const int maxSize = 64;
 				float buf[maxSize];
 				buf[0] = index;
@@ -722,16 +725,18 @@ void VstPlugin::sendCurrentProgram() {
 }
 
 void VstPlugin::sendParameters() {
-	const int maxSize = 64;
-	float buf[maxSize];
-	int nparam = plugin_->getNumParameters();
-	for (int i = 0; i < nparam; ++i) {
-		buf[0] = i;
-		buf[1] = plugin_->getParameter(i);
-		sendMsg("/vst_pp", 2, buf);
-		if (paramDisplay_) {
-			int len = string2floatArray(plugin_->getParameterDisplay(i), buf + 1, maxSize - 1);
-			sendMsg("/vst_pd", len + 1, buf);
+	if (scGui_) {
+		const int maxSize = 64;
+		float buf[maxSize];
+		int nparam = plugin_->getNumParameters();
+		for (int i = 0; i < nparam; ++i) {
+			buf[0] = i;
+			buf[1] = plugin_->getParameter(i);
+			sendMsg("/vst_pp", 2, buf);
+			if (paramDisplay_) {
+				int len = string2floatArray(plugin_->getParameterDisplay(i), buf + 1, maxSize - 1);
+				sendMsg("/vst_pd", len + 1, buf);
+			}
 		}
 	}
 }

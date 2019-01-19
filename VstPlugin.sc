@@ -222,7 +222,7 @@ VstPluginController {
 		OSCFunc.new({arg msg;
 			msg[3].asBoolean.if {
 				// make SC editor if needed/wanted (deferred to AppClock!)
-				(gui != \none && (gui == \sc || hasEditor.not)).if { {scGui = VstPluginGui.new(this, paramDisplay)}.defer };
+				(gui == \sc || (gui == \vst && hasEditor.not)).if { {scGui = VstPluginGui.new(this, paramDisplay)}.defer };
 				// print info if wanted
 				info.if { this.info };
 				onSuccess.value(this);
@@ -230,7 +230,11 @@ VstPluginController {
 				onFail.value(this);
 			};
 		}, '/vst_open', argTemplate: [synth.nodeID, synthIndex]).oneShot;
-		flags = (gui == \vst).asInt | (paramDisplay.asBoolean.asInt << 1);
+		flags = switch(gui)
+			{\sc} {1}
+			{\vst} {2}
+			{0};
+		flags = flags | (paramDisplay.asBoolean.asInt << 2);
 		this.sendMsg('/open', flags, path);
 	}
 	prClear {

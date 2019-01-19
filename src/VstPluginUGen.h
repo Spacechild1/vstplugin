@@ -9,13 +9,15 @@
 #include <atomic>
 #include <thread>
 #include <future>
+#include <vector>
 #endif
 
 #include <limits>
 
 namespace Flags {
-	const uint32 VstGui = 1;
-	const uint32 ParamDisplay = 2;
+	const uint32 ScGui = 1;
+	const uint32 VstGui = 2;
+	const uint32 ParamDisplay = 4;
 }
 
 enum PluginInfo {
@@ -104,6 +106,7 @@ private:
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
+	bool scGui_ = false;
 	bool vstGui_ = false;
 	bool paramDisplay_ = false;
 	bool bypass_ = false;
