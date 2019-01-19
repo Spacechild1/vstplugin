@@ -29,7 +29,20 @@ enum PluginInfo {
 	SysexOutput
 };
 
+class VstPlugin;
+
+class VstPluginListener : public IVSTPluginListener {
+public:
+	VstPluginListener(VstPlugin& owner);
+	void parameterAutomated(int index, float value) override;
+	void midiEvent(const VSTMidiEvent& midi) override;
+	void sysexEvent(const VSTSysexEvent& sysex) override;
+private:
+	VstPlugin *owner_ = nullptr;
+};
+
 class VstPlugin : public SCUnit {
+	friend class VstPluginListener;
 	static const uint32 MagicNumber = 0x5da815bc;
 public:
 	VstPlugin();
@@ -82,32 +95,38 @@ private:
 	bool sendProgram(int32 num);
 	void sendCurrentProgram();
 	void sendParameters();
+	void parameterAutomated(int32 index, float value);
+	void midiEvent(const VSTMidiEvent& midi);
+	void sysexEvent(const VSTSysexEvent& sysex);
 	void sendMsg(const char *cmd, float f);
 	void sendMsg(const char *cmd, int n, const float *data);
+
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
-    float *buf_ = nullptr;
+	bool vstGui_ = false;
+	bool paramDisplay_ = false;
+	bool bypass_ = false;
+	std::unique_ptr<IVSTWindow> window_;
+	std::unique_ptr<VstPluginListener> listener_;
 
+    float *buf_ = nullptr;
     int numInChannels_ = 0;
 	static const int inChannelOnset_ = 2;
 	const float **inBufVec_ = nullptr;
-
     int numOutChannels_ = 0;
 	float **outBufVec_ = nullptr;
-
     Param *paramVec_ = nullptr;
 	int numParameterControls_ = 0;
 	int parameterControlOnset_ = 0;
-    bool vstGui_ = false;
-	bool paramDisplay_ = false;
-	bool bypass_ = false;
-    std::unique_ptr<IVSTWindow> window_;
+
     // threading
 #if VSTTHREADS
     void threadFunction(std::promise<IVSTPlugin *> promise, const char *path);
     std::thread thread_;
+	std::thread::id threadID_;
     std::mutex mutex_;
+	std::vector<std::pair<int, float>> paramQueue_;
 #endif
 };
 

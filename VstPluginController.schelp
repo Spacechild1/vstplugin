@@ -331,6 +331,12 @@ code::
 ~fx.getn(action: {arg v; v.postln;});
 ::
 
+METHOD:: parameterAutomated
+the action to be called when parameters are automated from the VST plugin GUI.
+
+discussion::
+E.g. this can be helpful if you want to know the index of a parameter you're automating.
+
 subsection:: Preset Management
 
 METHOD:: numPrograms
@@ -418,6 +424,21 @@ send a raw MIDI message with 2-3 bytes (status, data1, data2).
 
 METHOD:: midiSysex
 send a system exclusive message as an link::Classes/Int8Array::.
+
+METHOD:: midiReceived
+the action to be called for MIDI messages sent by the plugin.
+
+discussion::
+The 3 bytes of the MIDI message are passed as invidual arguments:
+code::
+~fx.midiReceived = {arg ...msg; "got MIDI message %".format(msg)};
+::
+
+METHOD:: sysexReceived
+the action to be called for SysEx messages sent by the plugin.
+
+discussion::
+The SysEx data is passed to the action as an link::Classes/Int8Array::.
 
 subsection:: Transport
 

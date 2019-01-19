@@ -15,7 +15,51 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 	return len;
 }
 
+// VstPluginListener
+
+VstPluginListener::VstPluginListener(VstPlugin &owner)
+	: owner_(&owner) {}
+
+void VstPluginListener::parameterAutomated(int index, float value) {
+#if VSTTHREADS
+	std::lock_guard<std::mutex> guard(owner_->mutex_);
+	owner_->paramQueue_.emplace_back(index, value);
+#else
+	owner_->parameterAutomated(index, value);
+#endif
+}
+
+void VstPluginListener::midiEvent(const VSTMidiEvent& midi) {
+#if VSTTHREADS
+	// check if we're on the realtime thread, otherwise ignore it
+	if (std::this_thread::get_id() == owner_->threadID_) {
+#else
+	{
+#endif
+		owner_->midiEvent(midi);
+	}
+}
+
+void VstPluginListener::sysexEvent(const VSTSysexEvent& sysex) {
+#if VSTTHREADS
+	// check if we're on the realtime thread, otherwise ignore it
+	if (std::this_thread::get_id() == owner_->threadID_) {
+#else
+	{
+#endif
+		owner_->sysexEvent(sysex);
+	}
+}
+
+// VstPlugin
+
 VstPlugin::VstPlugin(){
+#if VSTTHREADS
+	threadID_ = std::this_thread::get_id();
+	// LOG_DEBUG("thread ID constructor: " << threadID_);
+#endif
+	listener_ = std::make_unique<VstPluginListener>(*this);
+
 	numInChannels_ = in0(1);
 	numOutChannels_ = numOutputs();
 	parameterControlOnset_ = inChannelOnset_ + numInChannels_;
@@ -54,7 +98,6 @@ bool VstPlugin::valid() {
 	}
 	else {
 		LOG_WARNING("VstPlugin (" << mParent->mNode.mID << ", " << mParentIndex << ") not ready!");
-		// LOG_VERBOSE("magic is " << magic_);
 		return false;
 	}
 }
@@ -184,7 +227,7 @@ IVSTPlugin* VstPlugin::tryOpenPlugin(const char *path, bool gui){
         // create plugin in main thread
     IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
         // receive events from plugin
-    // TODO: plugin->setListener();
+    plugin->setListener(listener_.get());
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin && plugin->hasEditor() && gui){
@@ -217,7 +260,7 @@ void VstPlugin::threadFunction(std::promise<IVSTPlugin *> promise, const char *p
         window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
     }
         // receive events from plugin
-    // TODO: plugin->setListener();
+    plugin->setListener(listener_.get());
         // return plugin to main thread
     promise.set_value(plugin);
         // setup GUI window (if any)
@@ -311,6 +354,17 @@ void VstPlugin::next(int inNumSamples) {
         // process
 		plugin_->process((const float **)inBufVec_, outBufVec_, inNumSamples);
 		offset = plugin_->getNumOutputs();
+
+#if VSTTHREADS
+		// send parameter automation notification (only if we have a VST editor window)
+		if (window_) {
+			std::lock_guard<std::mutex> guard(mutex_);
+			for (auto& p : paramQueue_) {
+				parameterAutomated(p.first, p.second);
+			}
+			paramQueue_.clear();
+		}
+#endif
 	}
     else {
         // bypass (copy input to output)
@@ -464,6 +518,7 @@ void VstPlugin::getProgramData() {
 			float *buf = (float *)RTAlloc(mWorld, sizeof(float) * len);
 			if (buf) {
 				for (int i = 0; i < len; ++i) {
+					// no need to cast to unsigned because SC's Int8Array is signed
 					buf[i] = data[i];
 				}
 				sendMsg("/vst_pgm_data", len, buf);
@@ -519,6 +574,7 @@ void VstPlugin::getBankData() {
 			float *buf = (float *)RTAlloc(mWorld, sizeof(float) * len);
 			if (buf) {
 				for (int i = 0; i < len; ++i) {
+					// no need to cast to unsigned because SC's Int8Array is signed
 					buf[i] = data[i];
 				}
 				sendMsg("/vst_bank_data", len, buf);
@@ -677,6 +733,37 @@ void VstPlugin::sendParameters() {
 			int len = string2floatArray(plugin_->getParameterDisplay(i), buf + 1, maxSize - 1);
 			sendMsg("/vst_pd", len + 1, buf);
 		}
+	}
+}
+
+void VstPlugin::parameterAutomated(int32 index, float value) {
+	float buf[2] = { (float)index, value };
+	sendMsg("/vst_pa", 2, buf);
+}
+
+void VstPlugin::midiEvent(const VSTMidiEvent& midi) {
+	float buf[3];
+	// we don't want negative values here
+	buf[0] = (unsigned char) midi.data[0];
+	buf[1] = (unsigned char) midi.data[1];
+	buf[2] = (unsigned char) midi.data[2];
+	sendMsg("/vst_midi", 3, buf);
+}
+
+void VstPlugin::sysexEvent(const VSTSysexEvent& sysex) {
+	auto& data = sysex.data;
+	int size = data.size();
+	float *buf = (float *)RTAlloc(mWorld, size * sizeof(float));
+	if (buf) {
+		for (int i = 0; i < size; ++i) {
+			// no need to cast to unsigned because SC's Int8Array is signed anyway
+			buf[i] = data[i];
+		}
+		sendMsg("/vst_sysex", size, buf);
+		RTFree(mWorld, buf);
+	}
+	else {
+		LOG_WARNING("RTAlloc failed!");
 	}
 }
 

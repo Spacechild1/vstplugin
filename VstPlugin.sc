@@ -40,6 +40,10 @@ VstPluginController {
 	var <currentProgram;
 	var <parameterNames;
 	var <parameterLabels;
+	// callbacks
+	var <>parameterAutomated;
+	var <>midiReceived;
+	var <>sysexReceived;
 	// private
 	var oscFuncs;
 	var useParamDisplay;
@@ -91,6 +95,15 @@ VstPluginController {
 				scGui.paramDisplay(index, string)
 			}}.defer;
 		}, '/vst_pd', argTemplate: [synth.nodeID, synthIndex]));
+		// parameter automated:
+		oscFuncs.add(OSCFunc({ arg msg;
+			var index, value;
+			parameterAutomated.notNil.if {
+				index = msg[3].asInt;
+				value = msg[4].asFloat;
+				parameterAutomated.value(index, value);
+			}
+		}, '/vst_pa', argTemplate: [synth.nodeID, synthIndex]));
 		// parameter name:
 		oscFuncs.add(OSCFunc({ arg msg;
 			var index, name;
@@ -116,6 +129,20 @@ VstPluginController {
 			name = this.class.msg2string(msg, 4);
 			programs[index] = name;
 		}, '/vst_pgmn', argTemplate: [synth.nodeID, synthIndex]));
+		// MIDI received:
+		oscFuncs.add(OSCFunc({ arg msg;
+			midiReceived.notNil.if {
+				// convert to integers and pass as args to action
+				midiReceived.value(*Int32Array.newFrom(msg[3..]));
+			}
+		}, '/vst_midi', argTemplate: [synth.nodeID, synthIndex]));
+		// sysex received:
+		oscFuncs.add(OSCFunc({ arg msg;
+			sysexReceived.notNil.if {
+				// convert to Int8Array and pass to action
+				sysexReceived.value(Int8Array.newFrom(msg[3..]));
+			}
+		}, '/vst_sysex', argTemplate: [synth.nodeID, synthIndex]));
 		// cleanup after synth has been freed:
 		synth.onFree { this.prFree };
 	}
@@ -310,6 +337,7 @@ VstPluginController {
 		this.sendMsg('/program_write', path);
 	}
 	setProgramData { arg data;
+		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.sendMsg('/program_data_set', data);
 	}
 	getProgramData { arg action;
@@ -326,6 +354,7 @@ VstPluginController {
 		this.sendMsg('/bank_write', path);
 	}
 	setBankData { arg data;
+		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.sendMsg('/bank_data_set', data);
 	}
 	getBankData { arg action;
@@ -365,7 +394,7 @@ VstPluginController {
 		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2));
 	}
 	midiSysex { arg msg;
-		(msg.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw;};
+		(msg.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.sendMsg('/midi_sysex', msg);
 	}
 	// transport
