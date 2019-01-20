@@ -96,7 +96,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
 #endif
 #if DL_OPEN
     if(!mainEntryPoint) {
-        void *handle = dlopen(path.c_str(), RTLD_NOW);
+        void *handle = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
         dlerror();
         if(handle) {
             openedlib = true;
