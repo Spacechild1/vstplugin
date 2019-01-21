@@ -21,6 +21,12 @@
 #include <future>
 #endif
 
+enum t_gui {
+    NO_GUI,
+    PD_GUI,
+    VST_GUI
+};
+
 class t_vsteditor;
 
 // vstplugin~ object (plain C struct without constructors/destructors!)
@@ -33,7 +39,7 @@ struct t_vstplugin {
     int x_bypass;
     int x_blocksize;
     int x_sr;
-    int x_gui;
+    t_gui x_gui;
     int x_dp; // use double precision
         // editor
     t_vsteditor *x_editor;
@@ -84,7 +90,7 @@ class t_vsteditor : IVSTPluginListener {
     t_vsteditor(t_vstplugin &owner);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const char* path, bool gui);
+    IVSTPlugin* open_plugin(const char* path, t_gui gui);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -122,6 +128,9 @@ class t_vsteditor : IVSTPluginListener {
     template<typename T, typename U>
     void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
+    bool pd_gui() const {
+        return !e_window && (e_owner->x_gui != NO_GUI);
+    }
         // data
     t_vstplugin *e_owner;
 #if VSTTHREADS

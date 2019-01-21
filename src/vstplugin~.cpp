@@ -227,13 +227,14 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
 }
 #endif
 
-IVSTPlugin* t_vsteditor::open_plugin(const char *path, bool gui){
+IVSTPlugin* t_vsteditor::open_plugin(const char *path, t_gui gui){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
-    if (gui){
+    if (gui == VST_GUI){
         std::promise<IVSTPlugin *> promise;
         auto future = promise.get_future();
         e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
+            // wait for thread to return the plugin
         return future.get();
     }
 #endif
@@ -246,7 +247,7 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, bool gui){
     plugin->setListener(this);
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin->hasEditor() && gui){
+    if (plugin->hasEditor() && gui == VST_GUI){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
@@ -289,7 +290,7 @@ const int row_width = 128 + 10 + 128; // slider + symbol atom + label
 const int col_height = 40;
 
 void t_vsteditor::setup(){
-    if (e_window){
+    if (!pd_gui()){
         return;
     }
 
@@ -376,19 +377,19 @@ void t_vsteditor::setup(){
 void t_vsteditor::update(){
     if (!e_owner->check_plugin()) return;
 
-    if (!e_window){
+    if (e_window){
+        e_window->update();
+    } else if (pd_gui()) {
         int n = e_owner->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
         }
-    } else {
-        e_window->update();
     }
 }
 
     // automated: true if parameter change comes from the (generic) GUI
 void t_vsteditor::param_changed(int index, float value, bool automated){
-    if (!e_window && index >= 0 && index < (int)e_params.size()){
+    if (pd_gui() && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
         if (automated){
             parameterAutomated(index, value);
@@ -403,7 +404,7 @@ void t_vsteditor::vis(bool v){
         } else {
             e_window->hide();
         }
-    } else {
+    } else if (pd_gui()) {
         send_vmess(gensym("vis"), "i", (int)v);
     }
 }
@@ -1049,9 +1050,9 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     t_vstplugin *x = (t_vstplugin *)pd_new(vstplugin_class);
 
 #ifdef __APPLE__
-    int gui = 0; // use generic Pd GUI by default
+    t_gui gui = PD_GUI; // use generic Pd GUI by default
 #else
-    int gui = 1; // use VST GUI by default
+    t_gui gui = VST_GUI; // use VST GUI by default
 #endif
     int dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
     t_symbol *file = nullptr; // plugin to load (optional)
@@ -1059,10 +1060,12 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = atom_getsymbol(argv)->s_name;
         if (*flag == '-'){
-            if (!strcmp(flag, "-gui")){
-                gui = 1;
+            if (!strcmp(flag, "-vstgui")){
+                gui = VST_GUI;
+            } else if (!strcmp(flag, "-pdgui")){
+                gui = PD_GUI;
             } else if (!strcmp(flag, "-nogui")){
-                gui = 0;
+                gui = NO_GUI;
             } else if (!strcmp(flag, "-sp")){
                 dp = 0;
             } else if (!strcmp(flag, "-dp")){
@@ -1081,7 +1084,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     if (out < 1) out = 2;
 
         // initialize GUI backend (if needed)
-    if (gui){
+    if (gui == VST_GUI){
         static bool initialized = false;
         if (!initialized){
             VSTWindowFactory::initialize();
