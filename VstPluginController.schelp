@@ -317,7 +317,7 @@ ARGUMENT:: index
 the starting index.
 
 ARGUMENT:: count
-the number of sequential parameter values. If it is code::nil::, you'll get all parameters starting from emphasis::index:: up to the last parameter.
+the number of sequential parameter values. If emphasis::count:: is negative, you'll get all parameters starting from emphasis::index:: up to the last parameter.
 
 ARGUMENT:: action
 a Function which will be evaluated with the values passed as an Array.
