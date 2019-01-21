@@ -85,11 +85,9 @@ t_vsteditor::t_vsteditor(t_vstplugin &owner)
 #if VSTTHREADS
     e_mainthread = std::this_thread::get_id();
 #endif
-    glob_setfilename(0, gensym("VST Plugin Editor"), canvas_getcurrentdir());
-    pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"siiiii", 0, 0, 100, 100, 10);
+    pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
     e_canvas = (t_canvas *)s__X.s_thing;
     send_vmess(gensym("pop"), "i", 0);
-    glob_setfilename(0, &s_, &s_);
 
     e_clock = clock_new(this, (t_method)tick);
 }
