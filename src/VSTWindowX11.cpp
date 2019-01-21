@@ -14,12 +14,14 @@ namespace VSTWindowFactory {
             }
         }
 	}
-    IVSTWindow* createX11() {
-		return new VSTWindowX11();
+    IVSTWindow* createX11(IVSTPlugin *plugin) {
+        return new VSTWindowX11(plugin);
     }
 }
 
-VSTWindowX11::VSTWindowX11(){
+VSTWindowX11::VSTWindowX11(IVSTPlugin *plugin)
+    : plugin_(plugin)
+{
 	display_ = XOpenDisplay(NULL);
 	if (!display_){
 		LOG_ERROR("VSTWindowX11: couldn't open display!");
@@ -58,9 +60,6 @@ VSTWindowX11::~VSTWindowX11(){
 	event.format = 32;
 	XSendEvent(display_, window_, 0, 0, (XEvent*)&event);
     XFlush(display_);
-    LOG_DEBUG("about to destroy VSTWindowX11");
-	XDestroyWindow(display_, window_);
-    LOG_DEBUG("destroyed VSTWindowX11");
 }
 
 void VSTWindowX11::run(){
@@ -75,12 +74,18 @@ void VSTWindowX11::run(){
                 LOG_DEBUG("X11: window closed!");
 			} else if (msg.message_type == wmQuit_){
                 LOG_DEBUG("X11: quit");
+
                 break; // quit event loop
 			} else {
                 LOG_DEBUG("X11: unknown client message");
 			}
 		}
 	}
+    // close the editor here (in the GUI thread and *before* the X11 window is destroyed)
+    plugin_->closeEditor();
+    LOG_DEBUG("about to destroy VSTWindowX11");
+    XDestroyWindow(display_, window_);
+    LOG_DEBUG("destroyed VSTWindowX11");
 	XCloseDisplay(display_);
 }
 

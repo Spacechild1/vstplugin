@@ -5,7 +5,7 @@
 
 class VSTWindowWin32 : public IVSTWindow {
  public:
-    VSTWindowWin32();
+    VSTWindowWin32(IVSTPlugin *plugin);
     ~VSTWindowWin32();
 
     void* getHandle() override {
@@ -22,5 +22,6 @@ class VSTWindowWin32 : public IVSTWindow {
     void restore() override;
     void bringToTop() override;
  private:
-    HWND hwnd_{nullptr};
+    HWND hwnd_ = nullptr;
+    IVSTPlugin *plugin_ = nullptr;
 };

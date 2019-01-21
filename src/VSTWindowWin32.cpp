@@ -39,12 +39,14 @@ namespace VSTWindowFactory {
             }
         }
     }
-    IVSTWindow* createWin32() {
-        return new VSTWindowWin32();
+    IVSTWindow* createWin32(IVSTPlugin *plugin) {
+        return new VSTWindowWin32(plugin);
     }
 }
 
-VSTWindowWin32::VSTWindowWin32(){
+VSTWindowWin32::VSTWindowWin32(IVSTPlugin *plugin)
+    : plugin_(plugin)
+{
     hwnd_ = CreateWindowW(
           VST_EDITOR_CLASS_NAME, L"Untitled",
           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
@@ -69,6 +71,9 @@ void VSTWindowWin32::run(){
         }
         DispatchMessage(&msg);
     }
+        // close the editor here (in the GUI thread).
+        // some plugins depend on this.
+    plugin_->closeEditor();
 }
 
 void VSTWindowWin32::setTitle(const std::string& title){

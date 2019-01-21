@@ -86,6 +86,10 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
 }
 
 VSTWindowCocoa::~VSTWindowCocoa(){
+        // close the editor *before* the window is destroyed.
+        // the destructor (like any other method of VSTWindowCocoa) must be called in the main thread
+    IVSTPlugin *plugin = [window_ plugin];
+    plugin->closeEditor();
     [window_ close];
     [window_ release];
     std::cout << "destroyed VSTWindowCocoa" << std::endl;

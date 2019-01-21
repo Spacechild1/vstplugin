@@ -139,8 +139,6 @@ void VstPlugin::resizeBuffer(){
 
 void VstPlugin::close() {
 #if VSTTHREADS
-        // close editor *before* destroying the window
-    if (plugin_) plugin_->closeEditor();
         // destroying the window (if any) might terminate the message loop and already release the plugin
     window_ = nullptr;
         // now join the thread (if any)
@@ -151,8 +149,6 @@ void VstPlugin::close() {
 #endif
         // do we still have a plugin? (e.g. SC editor or !VSTTHREADS)
     if (plugin_){
-		    // close editor *before* destroying the window
-		plugin_->closeEditor();
         window_ = nullptr;
         freeVSTPlugin(plugin_);
         plugin_ = nullptr;
@@ -274,10 +270,8 @@ void VstPlugin::threadFunction(std::promise<IVSTPlugin *> promise, const char *p
         window_->setGeometry(left, top, right, bottom);
 
         plugin->openEditor(window_->getHandle());
-
+            // run the event loop until the window is destroyed (which implicitly closes the editor)
         window_->run();
-
-        plugin->closeEditor();
             // some plugins expect to released in the same thread where they have been created
         freeVSTPlugin(plugin);
 		plugin_ = nullptr;

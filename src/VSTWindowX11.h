@@ -5,7 +5,7 @@
 
 class VSTWindowX11 : public IVSTWindow {
  public:
-    VSTWindowX11();
+    VSTWindowX11(IVSTPlugin* plugin);
     ~VSTWindowX11();
 
     void* getHandle() override {
@@ -23,8 +23,9 @@ class VSTWindowX11 : public IVSTWindow {
     void restore() override;
     void bringToTop() override;
  private:
-    Display *display_{nullptr};
-    Window window_{0};
+    Display *display_ = nullptr;
+    IVSTPlugin *plugin_ = nullptr;
+    Window window_ = 0;
     Atom wmProtocols_;
     Atom wmDelete_;
     Atom wmQuit_; // custom quit message

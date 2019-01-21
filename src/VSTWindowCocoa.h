@@ -32,5 +32,5 @@ class VSTWindowCocoa : public IVSTWindow {
     void restore() override;
     void bringToTop() override;
  private:
-    VSTEditorWindow * window_{nullptr};
+    VSTEditorWindow * window_ = nullptr;
 };
