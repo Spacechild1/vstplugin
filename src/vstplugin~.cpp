@@ -1283,8 +1283,10 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->x_blocksize = blocksize;
     x->x_sr = sr;
     if (x->x_plugin){
+        x->x_plugin->suspend();
         x->x_plugin->setBlockSize(blocksize);
         x->x_plugin->setSampleRate(sr);
+        x->x_plugin->resume();
     }
     int nin = x->x_nin;
     int nout = x->x_nout;
