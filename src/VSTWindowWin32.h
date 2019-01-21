@@ -21,6 +21,7 @@ class VSTWindowWin32 : public IVSTWindow {
     void minimize() override;
     void restore() override;
     void bringToTop() override;
+    void update() override;
  private:
     HWND hwnd_ = nullptr;
     IVSTPlugin *plugin_ = nullptr;

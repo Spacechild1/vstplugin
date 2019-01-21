@@ -462,6 +462,9 @@ void VstPlugin::setProgram(int32 index) {
 	if (check()) {
 		if (index >= 0 && index < plugin_->getNumPrograms()) {
 			plugin_->setProgram(index);
+            if (window_){
+                window_->update();
+            }
 			sendMsg("/vst_pgm", index);
 			sendParameters();
 		}
@@ -479,6 +482,9 @@ void VstPlugin::setProgramName(const char *name) {
 void VstPlugin::readProgram(const char *path) {
 	if (check()) {
 		if (plugin_->readProgramFile(path)) {
+            if (window_){
+                window_->update();
+            }
 			sendCurrentProgram();
 			sendParameters();
 		}
@@ -495,6 +501,9 @@ void VstPlugin::writeProgram(const char *path) {
 void VstPlugin::setProgramData(const char *data, int32 n) {
 	if (check()) {
 		if (plugin_->readProgramData(data, n)) {
+            if (window_){
+                window_->update();
+            }
 			sendCurrentProgram();
 			sendParameters();
 		}
@@ -533,6 +542,9 @@ void VstPlugin::getProgramData() {
 void VstPlugin::readBank(const char *path) {
 	if (check()) {
 		if (plugin_->readBankFile(path)) {
+            if (window_){
+                window_->update();
+            }
 			sendPrograms();
 			sendParameters();
 			sendMsg("/vst_pgm", plugin_->getProgram());
@@ -550,6 +562,9 @@ void VstPlugin::writeBank(const char *path) {
 void VstPlugin::setBankData(const char *data, int32 n) {
 	if (check()) {
 		if (plugin_->readBankData(data, n)) {
+            if (window_){
+                window_->update();
+            }
 			sendPrograms();
 			sendParameters();
 			sendMsg("/vst_pgm", plugin_->getProgram());

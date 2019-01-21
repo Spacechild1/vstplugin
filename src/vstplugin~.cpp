@@ -381,6 +381,8 @@ void t_vsteditor::update(){
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
         }
+    } else {
+        e_window->update();
     }
 }
 

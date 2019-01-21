@@ -117,3 +117,7 @@ void VSTWindowWin32::bringToTop(){
     minimize();
     restore();
 }
+
+void VSTWindowWin32::update(){
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}

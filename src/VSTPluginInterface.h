@@ -18,6 +18,7 @@ class IVSTWindow {
     virtual void minimize() = 0;
     virtual void restore() = 0; // un-minimize
     virtual void bringToTop() = 0;
+    virtual void update() {}
 };
 
 class IVSTPlugin;
