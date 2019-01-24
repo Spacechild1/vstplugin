@@ -83,6 +83,9 @@ public:
 	void setTransportPlaying(bool play);
 	void setTransportPos(float pos);
 	void getTransportPos();
+	// advanced
+	void canDo(const char *what);
+	void vendorSpecific(int32 index, int32 value, void *ptr, float opt);
 private:
 	struct Param {
 		float value;

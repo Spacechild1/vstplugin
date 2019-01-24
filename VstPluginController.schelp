@@ -211,10 +211,13 @@ METHOD:: info
 print plugin info to the console.
 
 METHOD:: loaded
-returns:: if a plugin is currently loaded.
+returns:: whether a plugin is currently loaded.
 
 METHOD:: name
 returns:: the name of the plugin.
+
+METHOD:: version
+returns:: the plugin version.
 
 METHOD:: numInputs
 returns:: the number of input channels (doesn't have to match the actual number of inputs of VstPlugin).
@@ -458,7 +461,40 @@ METHOD:: getTransportPos
 get the current transport position (in quarter notes).
 
 ARGUMENT:: action
-a function which is called with the transport position.
+will be called with current transport position.
+
+subsection:: Advanced
+
+METHOD:: canDo
+
+query the plugin for special capabilities.
+
+ARGUMENT:: what
+a string describing the capability. Some of these are documented in the VST SDK, but others are not.
+
+ARGUMENT:: action
+will be called with an Integer result.
+table::
+## 1 || yes
+## -1 || no
+## 0 || don't know
+::
+
+METHOD:: vendorMethod
+access special functionality of a plugin which is not available via the standard parameter interface.
+Generally, you have to know what you're doing, check the documentation of the plugin to see what data it expects
+
+ARGUMENT:: index
+an Integer.
+ARGUMENT:: value
+an Integer.
+ARGUMENT:: ptr
+some arbitrary data as an link::Classes/Int8Array::.
+ARGUMENT:: opt
+a Float.
+
+ARGUMENT:: action
+will be called with an Integer result. The meaning depends on the VST plugin.
 
 EXAMPLES::
 
