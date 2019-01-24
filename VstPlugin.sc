@@ -28,6 +28,7 @@ VstPluginController {
 	var <synthIndex;
 	var <loaded;
 	var <name;
+	var <version;
 	var <hasEditor;
 	var <isSynth;
 	var <numInputs;
@@ -165,6 +166,7 @@ VstPluginController {
 		loaded.if {
 			"---".postln;
 			"name: '%'".format(name).postln;
+			"version: %".format(version).postln;
 			"editor: %".format(hasEditor).postln;
 			"input channels: %".format(numInputs).postln;
 			"output channels: %".format(numOutputs).postln;
@@ -206,6 +208,7 @@ VstPluginController {
 			nparam = msg[5].asInt;
 			npgm = msg[6].asInt;
 			flags = msg[7].asInt;
+			version = msg[8].asInt;
 			parameterNames = Array.fill(nparam, nil);
 			parameterLabels = Array.fill(nparam, nil);
 			programs = Array.fill(npgm, nil);
@@ -238,7 +241,7 @@ VstPluginController {
 		this.sendMsg('/open', flags, path);
 	}
 	prClear {
-		loaded = false; name = nil; numInputs = nil; numOutputs = nil;
+		loaded = false; name = nil; version = nil; numInputs = nil; numOutputs = nil;
 		singlePrecision = nil; doublePrecision = nil; hasEditor = nil;
 		midiInput = nil; midiOutput = nil; isSynth = nil;
 		parameterNames = nil; parameterLabels = nil;

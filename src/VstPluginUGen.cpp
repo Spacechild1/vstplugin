@@ -659,7 +659,7 @@ void VstPlugin::sendPluginInfo() {
     int nameLen = string2floatArray(plugin_->getPluginName(), buf, maxSize);
     sendMsg("/vst_name", nameLen, buf);
 
-	// send plugin info (nin, nout, nparams, nprograms, flags):
+	// send plugin info (nin, nout, nparams, nprograms, flags, version):
 	uint32 flags = 0;
 	flags |= plugin_->hasEditor() << HasEditor;
 	flags |= plugin_->isSynth() << IsSynth;
@@ -673,7 +673,8 @@ void VstPlugin::sendPluginInfo() {
 	buf[2] = nparams;
 	buf[3] = plugin_->getNumPrograms();
 	buf[4] = flags;
-	sendMsg("/vst_info", 5, buf);
+	buf[5] = plugin_->getPluginVersion();
+	sendMsg("/vst_info", 6, buf);
 
 	// send parameter names
 	for (int i = 0; i < nparams; ++i) {
