@@ -127,35 +127,56 @@ void VstPlugin::resizeBuffer(){
     int blockSize = bufferSize();
     int nin = numInChannels_;
     int nout = numOutChannels_;
+	bool fail = false;
     if (plugin_){
         nin = std::max<int>(nin, plugin_->getNumInputs());
         nout = std::max<int>(nout, plugin_->getNumOutputs());
     }
-    int bufSize = (nin + nout) * blockSize * sizeof(float);
-    buf_ = (float *)RTRealloc(mWorld, buf_, bufSize);
-    if (!buf_){
-        LOG_WARNING("RTRealloc failed!");
-        return;
-    }
-    memset(buf_, 0, bufSize);
+	// buffer
+	{
+		int bufSize = (nin + nout) * blockSize * sizeof(float);
+		auto result = (float *)RTRealloc(mWorld, buf_, bufSize);
+		if (result) {
+			buf_ = result;
+			memset(buf_, 0, bufSize);
+		}
+		else {
+			fail = true;
+		}
+	}
     // input buffer array
-    inBufVec_ = (const float **)RTRealloc(mWorld, inBufVec_, nin * sizeof(float *));
-    if (!inBufVec_){
-        LOG_WARNING("RTRealloc failed!");
-        return;
-    }
-    for (int i = 0; i < nin; ++i){
-        inBufVec_[i] = &buf_[i * blockSize];
-    }
+	{
+		auto result = (const float **)RTRealloc(mWorld, inBufVec_, nin * sizeof(float *));
+		if (result) {
+			inBufVec_ = result;
+			for (int i = 0; i < nin; ++i) {
+				inBufVec_[i] = &buf_[i * blockSize];
+			}
+		}
+		else {
+			fail = true;
+		}
+	}
     // output buffer array
-    outBufVec_ = (float **)RTRealloc(mWorld, outBufVec_, nout * sizeof(float *));
-    if (!outBufVec_){
-        LOG_WARNING("RTRealloc failed!");
-        return;
-    }
-    for (int i = 0; i < nout; ++i) {
-        outBufVec_[i] = &buf_[(i + nin) * blockSize];
-    }
+	{
+		auto result = (float **)RTRealloc(mWorld, outBufVec_, nout * sizeof(float *));
+		if (result) {
+			outBufVec_ = result;
+			for (int i = 0; i < nout; ++i) {
+				outBufVec_[i] = &buf_[(i + nin) * blockSize];
+			}
+		}
+		else {
+			fail = true;
+		}
+	}
+	if (fail) {
+		LOG_ERROR("RTRealloc failed!");
+		RTFree(mWorld, buf_);
+		RTFree(mWorld, inBufVec_);
+		RTFree(mWorld, outBufVec_);
+		buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
+	}
 }
 
 void VstPlugin::close() {
@@ -214,14 +235,17 @@ void VstPlugin::open(const char *path, uint32 flags){
         resizeBuffer();
 		// allocate arrays for parameter values/states
 		int nParams = plugin_->getNumParameters();
-		paramStates_ = (Param *)RTRealloc(mWorld, paramStates_, nParams * sizeof(Param));
-        if (paramStates_){
+		auto result = (Param *)RTRealloc(mWorld, paramStates_, nParams * sizeof(Param));
+        if (result){
+			paramStates_ = result;
             for (int i = 0; i < nParams; ++i) {
 				paramStates_[i].value = std::numeric_limits<float>::quiet_NaN();
                 paramStates_[i].bus = -1;
             }
         } else {
-            LOG_WARNING("RTRealloc failed!");
+			RTFree(mWorld, paramStates_);
+			paramStates_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
         }
 		sendPluginInfo();
 		sendPrograms();
