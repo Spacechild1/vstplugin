@@ -2,6 +2,17 @@
 
 #include <string>
 
+// for intptr_t
+#ifdef _MSC_VER
+#ifdef _WIN64
+typedef __int64 intptr_t;
+#else
+typedef __int32 intptr_t;
+#endif
+#else
+#include <stdint.h>
+#endif
+
 class IVSTWindow {
  public:
     virtual ~IVSTWindow() {}
@@ -71,6 +82,8 @@ class IVSTPlugin {
     virtual std::string getPluginName() const = 0;
     virtual int getPluginVersion() const = 0;
     virtual int getPluginUniqueID() const = 0;
+    virtual int canDo(const char *what) const = 0;
+    virtual intptr_t vedorSpecific(int index, intptr_t value, void *ptr, float opt) = 0;
 
     virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
     virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;

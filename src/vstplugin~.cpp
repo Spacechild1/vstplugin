@@ -477,6 +477,39 @@ static void vstplugin_version(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("version"), 1, &msg);
 }
 
+// query plugin for capabilities
+static void vstplugin_can_do(t_vstplugin *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    int result = x->x_plugin->canDo(s->s_name);
+    t_atom msg[2];
+    SETSYMBOL(&msg[0], s);
+    SETFLOAT(&msg[1], result);
+    outlet_anything(x->x_messout, gensym("can_do"), 2, msg);
+}
+
+// vendor specific action
+static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    int index = atom_getfloatarg(0, argc, argv);
+    intptr_t value = atom_getfloatarg(1, argc, argv);
+    float opt = atom_getfloatarg(2, argc, argv);
+    char *data = nullptr;
+    int size = argc - 3;
+    if (size > 0){
+        data = (char *)getbytes(size);
+        for (int i = 0, j = 3; i < size; ++i, ++j){
+            data[i] = atom_getfloat(argv + j);
+        }
+    }
+    int result = x->x_plugin->vedorSpecific(index, value, data, opt);
+    t_atom msg;
+    SETFLOAT(&msg, result);
+    outlet_anything(x->x_messout, gensym("vendor_method"), 1, &msg);
+    if (data){
+        freebytes(data, size);
+    }
+}
+
 // print plugin info in Pd console
 static void vstplugin_info(t_vstplugin *x){
     if (!x->check_plugin()) return;
@@ -1321,6 +1354,8 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_name, gensym("name"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_NULL);
         // transport
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);

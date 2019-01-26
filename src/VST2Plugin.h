@@ -22,6 +22,8 @@ class VST2Plugin final : public IVSTPlugin {
     std::string getPluginName() const override;
     int getPluginVersion() const override;
     int getPluginUniqueID() const override;
+    virtual int canDo(const char *what) const override;
+    virtual intptr_t vedorSpecific(int index, intptr_t value, void *ptr, float opt) override;
 
 	void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;
@@ -107,7 +109,6 @@ class VST2Plugin final : public IVSTPlugin {
  private:
     std::string getBaseName() const;
     bool hasFlag(VstAEffectFlags flag) const;
-    bool canDo(const char *what) const;
     bool canHostDo(const char *what) const;
     void parameterAutomated(int index, float value);
     VstTimeInfo * getTimeInfo(VstInt32 flags);
