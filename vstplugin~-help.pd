@@ -423,7 +423,7 @@ Pd GUI and loading the plugin "Chorus" on creation., f 45;
 #X restore 150 55 pd creation arguments;
 #X text 23 55 creation arguments:;
 #X text 21 146 signal outlets + 1 message outlet;
-#N canvas 387 235 630 442 advanced 1;
+#N canvas 387 235 630 442 advanced 0;
 #X msg 28 59 precision \$1;
 #X msg 61 116 version;
 #X msg 52 86 name;

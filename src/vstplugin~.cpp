@@ -571,6 +571,8 @@ static void vstplugin_precision(t_vstplugin *x, t_symbol *s){
         return;
     }
     x->update_precision();
+        // clear the input buffer to avoid garbage in subsequent channels when the precision changes.
+    memset(x->x_inbuf.data(), 0, x->x_inbuf.size()); // buffer is char array
 }
 
 /*------------------------ transport----------------------------------*/
@@ -1196,9 +1198,9 @@ static void vstplugin_doperform(t_vstplugin *x, int n, bool bypass){
                 }
             } else if (std::is_same<t_sample, double>::value
                        && std::is_same<TFloat, float>::value){
-                    // we only have to zero for this special case because 'bypass' will
-                    // write doubles into the input buffer (see below), leaving garbage
-                    // in subsequent channels when the buffer is reinterpreted as floats.
+                    // we only have to zero for this special case: 'bypass' could
+                    // have written doubles into the input buffer, leaving garbage in
+                    // subsequent channels when the buffer is reinterpreted as floats.
                 for (int j = 0; j < n; ++j){
                     buf[j] = 0;
                 }
