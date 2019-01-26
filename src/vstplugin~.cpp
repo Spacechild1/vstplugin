@@ -445,7 +445,9 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
         IVSTPlugin *plugin = x->x_editor->open_plugin(path, x->x_gui);
         if (plugin){
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
-            plugin->setBlockSize(x->x_blocksize);
+                // initially, blocksize is 0 (before the 'dsp' message is sent).
+                // some plugins might not like 0, so we send some sane default size.
+            plugin->setBlockSize(x->x_blocksize > 0 ? x->x_blocksize : 64);
             plugin->setSampleRate(x->x_sr);
             x->x_plugin = plugin;
             x->update_precision();
@@ -1289,7 +1291,10 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
     t_float sr = sp[0]->s_sr;
     dsp_add(vstplugin_perform, 2, x, blocksize);
-    x->x_blocksize = blocksize;
+    if (blocksize != x->x_blocksize){
+        x->x_blocksize = blocksize;
+        x->update_buffer();
+    }
     x->x_sr = sr;
     if (x->x_plugin){
         x->x_plugin->suspend();
@@ -1305,7 +1310,6 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     for (int i = 0; i < nout; ++i){
         x->x_sigoutlets[i] = sp[nin + i]->s_vec;
     }
-    x->update_buffer();
     // LOG_DEBUG("vstplugin~: got 'dsp' message");
 }
 

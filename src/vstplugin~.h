@@ -39,7 +39,7 @@ class t_vstplugin {
     t_object x_obj;
     t_sample x_f = 0;
     t_outlet *x_messout = nullptr;
-    int x_blocksize = 64;
+    int x_blocksize = 0; // see vstplugin_dsp
     t_float x_sr = 44100;
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
