@@ -272,11 +272,14 @@ IVSTPlugin* VstPlugin::tryOpenPlugin(const char *path, bool gui){
 #endif
         // create plugin in main thread
     IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
+	if (!plugin) {
+		return nullptr;
+	}
         // receive events from plugin
     plugin->setListener(listener_.get());
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin && plugin->hasEditor() && gui){
+    if (plugin->hasEditor() && gui){
         window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
         if (window_){
             window_->setTitle(plugin->getPluginName());
