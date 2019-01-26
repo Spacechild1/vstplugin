@@ -263,9 +263,14 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, t_gui gui){
 }
 
 void t_vsteditor::close_plugin(){
+    if (e_window){
+        // terminate the message loop (if any) -
+        // this will implicitly release the plugin
+        e_window->quit();
+    } else {
+        vis(0); // close the Pd editor
+    }
 #if VSTTHREADS
-        // terminate the message loop (if any - will implicitly release the plugin)
-    if (e_window) e_window->quit();
         // now join the thread (if any)
     if (e_thread.joinable()){
         e_thread.join();
@@ -411,7 +416,6 @@ void t_vsteditor::vis(bool v){
 
 // close
 static void vstplugin_close(t_vstplugin *x){
-    x->x_editor->vis(0);
     x->x_editor->close_plugin();
 }
 
