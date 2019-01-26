@@ -23,7 +23,27 @@ VstPluginListener::VstPluginListener(VstPlugin &owner)
 void VstPluginListener::parameterAutomated(int index, float value) {
 #if VSTTHREADS
 	std::lock_guard<std::mutex> guard(owner_->mutex_);
-	owner_->paramQueue_.emplace_back(index, value);
+	auto& queue = owner_->paramQueue_;
+	// resize queue if necessary
+	if (queue.size >= queue.capacity) {
+		// start with initial capacity of 8, then double it whenever it needs to be increased
+		auto newCapacity = queue.capacity > 0 ? queue.capacity * 2 : 8;
+		auto result = (VstPlugin::ParamAutomated *)RTRealloc(owner_->mWorld, queue.data, newCapacity);
+		if (result) {
+			queue.data = result;
+			queue.capacity = newCapacity;
+			LOG_DEBUG("ParamQueue new capacity: " << newCapacity);
+		}
+		else {
+			LOG_ERROR("RTRealloc failed!");
+			return;
+		}
+	}
+	// append item
+	auto& newItem = queue.data[queue.size];
+	newItem.index = index;
+	newItem.value = value;
+	queue.size++;
 #else
 	owner_->parameterAutomated(index, value);
 #endif
@@ -76,6 +96,7 @@ VstPlugin::~VstPlugin(){
 	if (inBufVec_) RTFree(mWorld, inBufVec_);
 	if (outBufVec_) RTFree(mWorld, outBufVec_);
 	if (paramVec_) RTFree(mWorld, paramVec_);
+	if (paramQueue_.data) RTFree(mWorld, paramQueue_.data);
 }
 
 IVSTPlugin *VstPlugin::plugin() {
@@ -356,10 +377,11 @@ void VstPlugin::next(int inNumSamples) {
 		// send parameter automation notification (only if we have a VST editor window)
 		if (window_) {
 			std::lock_guard<std::mutex> guard(mutex_);
-			for (auto& p : paramQueue_) {
-				parameterAutomated(p.first, p.second);
+			for (int i = 0; i < paramQueue_.size; ++i){
+				auto& item = paramQueue_.data[i];
+				parameterAutomated(item.index, item.value);
 			}
-			paramQueue_.clear();
+			paramQueue_.size = 0; // dont' deallocate memory
 		}
 #endif
 	}
