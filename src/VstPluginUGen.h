@@ -133,46 +133,4 @@ private:
 #endif
 };
 
-template<typename T>
-T clip(T in, T lo, T hi) {
-	return std::max<T>(lo, std::min<T>(hi, in));
-}
 
-template <bool LockShared>
-struct AudioBusGuard
-{
-    AudioBusGuard(const Unit * unit, int32 currentChannel, int32 maxChannel):
-        unit(unit),
-        mCurrentChannel(currentChannel),
-        isValid(currentChannel < maxChannel)
-    {
-        if (isValid)
-            lock();
-    }
-
-    ~AudioBusGuard()
-    {
-        if (isValid)
-            unlock();
-    }
-
-    void lock()
-    {
-        if (LockShared)
-            ACQUIRE_BUS_AUDIO_SHARED(mCurrentChannel);
-        else
-            ACQUIRE_BUS_AUDIO(mCurrentChannel);
-    }
-
-    void unlock()
-    {
-        if (LockShared)
-            RELEASE_BUS_AUDIO_SHARED(mCurrentChannel);
-        else
-            RELEASE_BUS_AUDIO(mCurrentChannel);
-    }
-
-    const Unit * unit;
-    const int32 mCurrentChannel;
-    const bool isValid;
-};
