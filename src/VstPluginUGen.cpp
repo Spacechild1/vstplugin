@@ -95,7 +95,7 @@ VstPlugin::~VstPlugin(){
 	if (buf_) RTFree(mWorld, buf_);
 	if (inBufVec_) RTFree(mWorld, inBufVec_);
 	if (outBufVec_) RTFree(mWorld, outBufVec_);
-	if (paramVec_) RTFree(mWorld, paramVec_);
+	if (paramStates_) RTFree(mWorld, paramStates_);
 	if (paramQueue_.data) RTFree(mWorld, paramQueue_.data);
 }
 
@@ -214,11 +214,11 @@ void VstPlugin::open(const char *path, uint32 flags){
         resizeBuffer();
 		// allocate arrays for parameter values/states
 		int nParams = plugin_->getNumParameters();
-		paramVec_ = (Param *)RTRealloc(mWorld, paramVec_, nParams * sizeof(Param));
-        if (paramVec_){
+		paramStates_ = (Param *)RTRealloc(mWorld, paramStates_, nParams * sizeof(Param));
+        if (paramStates_){
             for (int i = 0; i < nParams; ++i) {
-				paramVec_[i].value = std::numeric_limits<float>::quiet_NaN();
-                paramVec_[i].bus = -1;
+				paramStates_[i].value = std::numeric_limits<float>::quiet_NaN();
+                paramStates_[i].bus = -1;
             }
         } else {
             LOG_WARNING("RTRealloc failed!");
@@ -341,17 +341,17 @@ void VstPlugin::next(int inNumSamples) {
 	}
 
 	if (plugin_ && !bypass && plugin_->hasPrecision(VSTProcessPrecision::Single)) {
-		if (paramVec_) {
+		if (paramStates_) {
 			// update parameters from mapped control busses
 			int maxControlChannel = mWorld->mNumControlBusChannels;
 			int nparam = plugin_->getNumParameters();
 			for (int i = 0; i < nparam; ++i) {
-				int bus = paramVec_[i].bus;
+				int bus = paramStates_[i].bus;
 				if (bus >= 0) {
 					float value = readControlBus(bus, maxControlChannel);
-					if (value != paramVec_[i].value) {
+					if (value != paramStates_[i].value) {
 						plugin_->setParameter(i, value);
-						paramVec_[i].value = value;
+						paramStates_[i].value = value;
 					}
 				}
 			}
@@ -361,11 +361,11 @@ void VstPlugin::next(int inNumSamples) {
 				int index = in0(k);
 				float value = in0(k + 1);
 				// only if index is not out of range and the param is not mapped to a bus
-				if (index >= 0 && index < nparam && paramVec_[index].bus < 0
-					&& paramVec_[index].value != value)
+				if (index >= 0 && index < nparam && paramStates_[index].bus < 0
+					&& paramStates_[index].value != value)
 				{
 					plugin_->setParameter(index, value);
-					paramVec_[index].value = value;
+					paramStates_[index].value = value;
 				}
 			}
 		}
@@ -403,8 +403,8 @@ void VstPlugin::setParam(int32 index, float value) {
 	if (check()) {
 		if (index >= 0 && index < plugin_->getNumParameters()) {
 			plugin_->setParameter(index, value);
-			paramVec_[index].value = value;
-			paramVec_[index].bus = -1; // invalidate bus num
+			paramStates_[index].value = value;
+			paramStates_[index].bus = -1; // invalidate bus num
 			if (scGui_ && paramDisplay_) {
 				const int maxSize = 64;
 				float buf[maxSize];
@@ -460,7 +460,7 @@ void VstPlugin::getParamN(int32 index, int32 count) {
 void VstPlugin::mapParam(int32 index, int32 bus) {
 	if (check()) {
 		if (index >= 0 && index < plugin_->getNumParameters()) {
-			paramVec_[index].bus = bus;
+			paramStates_[index].bus = bus;
 		}
 		else {
 			LOG_WARNING("VstPlugin: parameter index " << index << " out of range!");
@@ -471,7 +471,7 @@ void VstPlugin::mapParam(int32 index, int32 bus) {
 void VstPlugin::unmapParam(int32 index) {
 	if (check()) {
 		if (index >= 0 && index < plugin_->getNumParameters()) {
-			paramVec_[index].bus = -1;
+			paramStates_[index].bus = -1;
 		}
 		else {
 			LOG_WARNING("VstPlugin: parameter index " << index << " out of range!");

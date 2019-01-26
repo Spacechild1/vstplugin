@@ -119,7 +119,7 @@ private:
 	const float **inBufVec_ = nullptr;
     int numOutChannels_ = 0;
 	float **outBufVec_ = nullptr;
-    Param *paramVec_ = nullptr;
+    Param *paramStates_ = nullptr;
 	int numParameterControls_ = 0;
 	int parameterControlOnset_ = 0;
 
