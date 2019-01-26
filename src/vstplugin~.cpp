@@ -1044,9 +1044,7 @@ void t_vstplugin::update_precision(){
 
 // constructor
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
-static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
-    t_vstplugin *x = (t_vstplugin *)pd_new(vstplugin_class);
-
+t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 #ifdef __APPLE__
     t_gui gui = PD_GUI; // use generic Pd GUI by default
 #else
@@ -1091,61 +1089,71 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     }
 
         // VST plugin
-    x->x_plugin = nullptr;
-    x->x_bypass = 0;
-    x->x_blocksize = 64;
-    x->x_sr = 44100;
-    x->x_gui = gui;
-    x->x_dp = dp;
+    x_plugin = nullptr;
+    x_bypass = 0;
+    x_blocksize = 64;
+    x_sr = 44100;
+    x_gui = gui;
+    x_dp = dp;
 
         // inputs (skip first):
     for (int i = 1; i < in; ++i){
-		inlet_new(&x->x_obj, &x->x_obj.ob_pd, &s_signal, &s_signal);
+        inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
 	}
-    x->x_nin = in;
-    x->x_invec = (t_float**)getbytes(sizeof(t_float*) * in);
+    x_nin = in;
+    x_invec = (t_float**)getbytes(sizeof(t_float*) * in);
         // outlets:
 	for (int i = 0; i < out; ++i){
-		outlet_new(&x->x_obj, &s_signal);
+        outlet_new(&x_obj, &s_signal);
 	}
-    x->x_nout = out;
-    x->x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
+    x_nout = out;
+    x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
 
         // editor
-    x->x_editor = new t_vsteditor(*x);
+    x_editor = new t_vsteditor(*this);
 
         // buffers
-    x->x_inbufsize = 0;
-    x->x_inbuf = nullptr;
-    x->x_ninbuf = 0;
-    x->x_inbufvec = nullptr;
-    x->x_outbufsize = 0;
-    x->x_outbuf = nullptr;
-    x->x_noutbuf = 0;
-    x->x_outbufvec = nullptr;
+    x_inbufsize = 0;
+    x_inbuf = nullptr;
+    x_ninbuf = 0;
+    x_inbufvec = nullptr;
+    x_outbufsize = 0;
+    x_outbuf = nullptr;
+    x_noutbuf = 0;
+    x_outbufvec = nullptr;
 
-    x->x_f = 0;
-    x->x_messout = outlet_new(&x->x_obj, 0);
+    x_f = 0;
+    x_messout = outlet_new(&x_obj, 0);
 
     if (file){
-        vstplugin_open(x, file);
+        vstplugin_open(this, file);
     }
-    return (x);
+}
+
+static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
+    auto x = pd_new(vstplugin_class);
+        // placement new
+    new (x) t_vstplugin(argc, argv);
+    return x;
 }
 
 // destructor
-static void vstplugin_free(t_vstplugin *x){
-    vstplugin_close(x);
+t_vstplugin::~t_vstplugin(){
+    vstplugin_close(this);
         // buffers
-    freebytes(x->x_invec, x->x_nin * sizeof(t_float*));
-    freebytes(x->x_outvec, x->x_nout * sizeof(t_float*));
-    freebytes(x->x_inbuf, x->x_inbufsize);
-    freebytes(x->x_outbuf, x->x_outbufsize);
-    freebytes(x->x_inbufvec, x->x_ninbuf * sizeof(void*));
-    freebytes(x->x_outbufvec, x->x_noutbuf * sizeof(void*));
+    freebytes(x_invec, x_nin * sizeof(t_float*));
+    freebytes(x_outvec, x_nout * sizeof(t_float*));
+    freebytes(x_inbuf, x_inbufsize);
+    freebytes(x_outbuf, x_outbufsize);
+    freebytes(x_inbufvec, x_ninbuf * sizeof(void*));
+    freebytes(x_outbufvec, x_noutbuf * sizeof(void*));
         // editor
-    delete x->x_editor;
+    delete x_editor;
     LOG_DEBUG("vstplugin free");
+}
+
+static void vstplugin_free(t_vstplugin *x){
+    x->~t_vstplugin();
 }
 
 // perform routine

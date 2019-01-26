@@ -29,8 +29,12 @@ enum t_gui {
 
 class t_vsteditor;
 
-// vstplugin~ object (plain C struct without constructors/destructors!)
-struct t_vstplugin {
+// vstplugin~ object (no virtual methods!)
+class t_vstplugin {
+ public:
+    t_vstplugin(int argc, t_atom *argv);
+    ~t_vstplugin();
+        // Pd
     t_object x_obj;
     t_sample x_f;
     t_outlet *x_messout;
@@ -61,7 +65,7 @@ struct t_vstplugin {
         // array of pointers into the output buffer
     int x_noutbuf;
     void **x_outbufvec;
-        // internal methods
+        // helper methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
