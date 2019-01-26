@@ -12,6 +12,7 @@ class VSTWindowWin32 : public IVSTWindow {
         return hwnd_;
     }
     void run() override;
+    void quit() override;
 
     void setTitle(const std::string& title) override;
     void setGeometry(int left, int top, int right, int bottom) override;

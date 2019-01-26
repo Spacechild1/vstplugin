@@ -183,17 +183,18 @@ void VstPlugin::resizeBuffer(){
 
 void VstPlugin::close() {
 #if VSTTHREADS
-        // destroying the window (if any) might terminate the message loop and already release the plugin
-    window_ = nullptr;
+		// terminate the message loop (if any - will implicitly release the plugin)
+	if (window_) window_->quit();
         // now join the thread (if any)
     if (thread_.joinable()){
         thread_.join();
 		LOG_DEBUG("thread joined");
     }
 #endif
+		// now delete the window (if any)
+	window_ = nullptr;
         // do we still have a plugin? (e.g. SC editor or !VSTTHREADS)
     if (plugin_){
-        window_ = nullptr;
         freeVSTPlugin(plugin_);
         plugin_ = nullptr;
     }

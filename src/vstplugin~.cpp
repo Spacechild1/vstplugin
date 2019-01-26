@@ -212,11 +212,11 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         plugin->openEditor(e_window->getHandle());
 
         LOG_DEBUG("enter message loop");
-            // run the event loop until the window is destroyed (which implicitly closes the editor)
+            // run the event loop
         e_window->run();
+            // the editor has been closed implicitly
         LOG_DEBUG("exit message loop");
             // some plugins expect to released in the same thread where they have been created
-        LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(plugin);
         e_owner->x_plugin = nullptr;
         LOG_DEBUG("VST plugin closed");
@@ -264,17 +264,17 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, t_gui gui){
 
 void t_vsteditor::close_plugin(){
 #if VSTTHREADS
-        // destroying the window (if any) might terminate the message loop and already release the plugin
-    e_window = nullptr;
+        // terminate the message loop (if any - will implicitly release the plugin)
+    if (e_window) e_window->quit();
         // now join the thread (if any)
     if (e_thread.joinable()){
         e_thread.join();
     }
 #endif
+        // now delete the window (if any)
+    e_window = nullptr;
         // do we still have a plugin? (e.g. Pd editor or !VSTTHREADS)
     if (e_owner->x_plugin){
-        e_window = nullptr;
-        LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(e_owner->x_plugin);
         e_owner->x_plugin = nullptr;
         LOG_DEBUG("VST plugin closed");
