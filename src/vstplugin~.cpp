@@ -991,30 +991,28 @@ bool t_vstplugin::check_plugin(){
 }
 
 void t_vstplugin::update_buffer(){
-        // the input/output buffers must be large enough to fit both
-        // the number of Pd inlets/outlets and plugin inputs/outputs.
         // this routine is called in the "dsp" method and when a plugin is loaded.
-    int blocksize = x_blocksize;
-    int nin = x_nin;
-    int nout = x_nout;
+    int nin = x_siginlets.size();
+    int nout = x_sigoutlets.size();
     int pin = 0;
     int pout = 0;
     if (x_plugin){
         pin = x_plugin->getNumInputs();
         pout = x_plugin->getNumOutputs();
     }
-    int ninbuf = std::max(pin, nin);
-    int noutbuf = std::max(pout, nout);
-    int inbufsize = ninbuf * sizeof(double) * blocksize;
-    int outbufsize = noutbuf * sizeof(double) * blocksize;
-    x_inbuf = (char*)resizebytes(x_inbuf, x_inbufsize, inbufsize);
-    x_outbuf = (char*)resizebytes(x_outbuf, x_outbufsize, outbufsize);
-    x_inbufsize = inbufsize;
-    x_outbufsize = outbufsize;
-    x_inbufvec = (void**)resizebytes(x_inbufvec, x_ninbuf * sizeof(void *), ninbuf * sizeof(void *));
-    x_outbufvec = (void**)resizebytes(x_outbufvec, x_noutbuf * sizeof(void *), noutbuf * sizeof(void *));
-    x_ninbuf = ninbuf;
-    x_noutbuf = noutbuf;
+        // the input/output buffers must be large enough to fit both
+        // the number of Pd inlets/outlets and plugin inputs/outputs
+    int ninvec = std::max(pin, nin);
+    int noutvec = std::max(pout, nout);
+        // first clear() so that resize() will zero all values
+    x_inbuf.clear();
+    x_outbuf.clear();
+        // make it large enough for double precision
+    x_inbuf.resize(ninvec * sizeof(double) * x_blocksize);
+    x_outbuf.resize(noutvec * sizeof(double) * x_blocksize);
+    x_invec.resize(ninvec);
+    x_outvec.resize(noutvec);
+    LOG_DEBUG("vstplugin~: updated buffer");
 }
 
 void t_vstplugin::update_precision(){
@@ -1088,42 +1086,21 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         }
     }
 
-        // VST plugin
-    x_plugin = nullptr;
-    x_bypass = 0;
-    x_blocksize = 64;
-    x_sr = 44100;
     x_gui = gui;
     x_dp = dp;
+    x_editor = std::unique_ptr<t_vsteditor>(new t_vsteditor(*this)); // C++11
 
-        // inputs (skip first):
+        // inlets (skip first):
     for (int i = 1; i < in; ++i){
         inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
 	}
-    x_nin = in;
-    x_invec = (t_float**)getbytes(sizeof(t_float*) * in);
+    x_siginlets.resize(in);
         // outlets:
 	for (int i = 0; i < out; ++i){
         outlet_new(&x_obj, &s_signal);
-	}
-    x_nout = out;
-    x_outvec = (t_float**)getbytes(sizeof(t_float*) * out);
-
-        // editor
-    x_editor = new t_vsteditor(*this);
-
-        // buffers
-    x_inbufsize = 0;
-    x_inbuf = nullptr;
-    x_ninbuf = 0;
-    x_inbufvec = nullptr;
-    x_outbufsize = 0;
-    x_outbuf = nullptr;
-    x_noutbuf = 0;
-    x_outbufvec = nullptr;
-
-    x_f = 0;
-    x_messout = outlet_new(&x_obj, 0);
+    }
+    x_messout = outlet_new(&x_obj, 0); // additional message outlet
+    x_sigoutlets.resize(out);
 
     if (file){
         vstplugin_open(this, file);
@@ -1140,15 +1117,6 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 // destructor
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
-        // buffers
-    freebytes(x_invec, x_nin * sizeof(t_float*));
-    freebytes(x_outvec, x_nout * sizeof(t_float*));
-    freebytes(x_inbuf, x_inbufsize);
-    freebytes(x_outbuf, x_outbufsize);
-    freebytes(x_inbufvec, x_ninbuf * sizeof(void*));
-    freebytes(x_outbufvec, x_noutbuf * sizeof(void*));
-        // editor
-    delete x_editor;
     LOG_DEBUG("vstplugin free");
 }
 
@@ -1161,14 +1129,16 @@ static t_int *vstplugin_perform(t_int *w){
     t_vstplugin *x = (t_vstplugin *)(w[1]);
     int n = (int)(w[2]);
     auto plugin = x->x_plugin;
-    int nin = x->x_nin;
-    t_float ** invec = x->x_invec;
-    int nout = x->x_nout;
-    t_float ** outvec = x->x_outvec;
-    int ninbuf = x->x_ninbuf;
-    void ** inbufvec = x->x_inbufvec;
-    int noutbuf = x->x_noutbuf;
-    void ** outbufvec = x->x_outbufvec;
+    int nin = x->x_siginlets.size();
+    t_sample ** sigin = x->x_siginlets.data();
+    int nout = x->x_sigoutlets.size();
+    t_sample ** sigout = x->x_sigoutlets.data();
+    char *inbuf = x->x_inbuf.data();
+    int ninvec = x->x_invec.size();
+    void ** invec = x->x_invec.data();
+    char *outbuf = x->x_outbuf.data();
+    int noutvec = x->x_outvec.size();
+    void ** outvec = x->x_outvec.data();
     int out_offset = 0;
     bool dp = x->x_dp;
     bool bypass = plugin ? x->x_bypass : true;
@@ -1185,17 +1155,16 @@ static t_int *vstplugin_perform(t_int *w){
     }
 
     if (!bypass){  // process audio
-        int pin = plugin->getNumInputs();
         int pout = plugin->getNumOutputs();
         out_offset = pout;
             // process in double precision
         if (dp){
-                // prepare input buffer
-            for (int i = 0; i < ninbuf; ++i){
-                double *buf = (double *)x->x_inbuf + i * n;
-                inbufvec[i] = buf;
+                // prepare input buffer + pointers
+            for (int i = 0; i < ninvec; ++i){
+                double *buf = (double *)inbuf + i * n;
+                invec[i] = buf;
                 if (i < nin){  // copy from Pd input
-                    t_float *in = invec[i];
+                    t_sample *in = sigin[i];
                     for (int j = 0; j < n; ++j){
                         buf[j] = in[j];
                     }
@@ -1207,25 +1176,25 @@ static t_int *vstplugin_perform(t_int *w){
             }
                 // set output buffer pointers
             for (int i = 0; i < pout; ++i){
-                outbufvec[i] = ((double *)x->x_outbuf + i * n);
+                outvec[i] = (double *)outbuf + i * n;
             }
                 // process
-            plugin->processDouble((const double **)inbufvec, (double **)outbufvec, n);
+            plugin->processDouble((const double **)invec, (double **)outvec, n);
                 // read from output buffer
             for (int i = 0; i < nout && i < pout; ++i){
-                t_float *out = outvec[i];
-                double *buf = (double *)outbufvec[i];
+                t_sample *out = sigout[i];
+                double *buf = (double *)outvec[i];
                 for (int j = 0; j < n; ++j){
                     out[j] = buf[j];
                 }
             }
         } else {  // single precision
                 // prepare input buffer
-            for (int i = 0; i < ninbuf; ++i){
-                float *buf = (float *)x->x_inbuf + i * n;
-                inbufvec[i] = buf;
+            for (int i = 0; i < ninvec; ++i){
+                float *buf = (float *)inbuf + i * n;
+                invec[i] = buf;
                 if (i < nin){  // copy from Pd input
-                    t_float *in = invec[i];
+                    t_sample *in = sigin[i];
                     for (int j = 0; j < n; ++j){
                         buf[j] = in[j];
                     }
@@ -1237,45 +1206,44 @@ static t_int *vstplugin_perform(t_int *w){
             }
                 // set output buffer pointers
             for (int i = 0; i < pout; ++i){
-                outbufvec[i] = ((float *)x->x_outbuf + i * n);
+                outvec[i] = (float *)outbuf + i * n;
             }
                 // process
-            plugin->process((const float **)inbufvec, (float **)outbufvec, n);
+            plugin->process((const float **)invec, (float **)outvec, n);
                 // read from output buffer
             for (int i = 0; i < nout && i < pout; ++i){
-                t_float *out = outvec[i];
-                float *buf = (float *)outbufvec[i];
+                t_sample *out = sigout[i];
+                float *buf = (float *)outvec[i];
                 for (int j = 0; j < n; ++j){
                     out[j] = buf[j];
                 }
             }
         }
     } else {  // just pass it through
-        t_float *buf = (t_float *)x->x_inbuf;
-        t_float *bufptr;
+        t_sample *buf = (t_sample *)inbuf;
         out_offset = nin;
             // copy input
-        bufptr = buf;
         for (int i = 0; i < nin && i < nout; ++i){
-            t_float *in = invec[i];
+            t_sample *in = sigin[i];
+            t_sample *bufptr = buf + i * n;
             for (int j = 0; j < n; ++j){
-                *bufptr++ = in[j];
+                bufptr[j] = in[j];
             }
         }
             // write output
-        bufptr = buf;
         for (int i = 0; i < nin && i < nout; ++i){
-            t_float *out = outvec[i];
+            t_sample *out = sigout[i];
+            t_sample *bufptr = buf + i * n;
             for (int j = 0; j < n; ++j){
-                out[j] = *bufptr++;
+                out[j] = bufptr[j];
             }
         }
     }
         // zero remaining outlets
     for (int i = out_offset; i < nout; ++i){
-        auto vec = x->x_outvec[i];
+        t_sample *out = sigout[i];
         for (int j = 0; j < n; ++j){
-            vec[j] = 0;
+            out[j] = 0;
         }
     }
 
@@ -1295,15 +1263,16 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
         x->x_plugin->setSampleRate(sr);
         x->x_plugin->resume();
     }
-    int nin = x->x_nin;
-    int nout = x->x_nout;
+    int nin = x->x_siginlets.size();
+    int nout = x->x_sigoutlets.size();
     for (int i = 0; i < nin; ++i){
-        x->x_invec[i] = sp[i]->s_vec;
+        x->x_siginlets[i] = sp[i]->s_vec;
     }
     for (int i = 0; i < nout; ++i){
-        x->x_outvec[i] = sp[nin + i]->s_vec;
+        x->x_sigoutlets[i] = sp[nin + i]->s_vec;
     }
     x->update_buffer();
+    // LOG_DEBUG("vstplugin~: got 'dsp' message");
 }
 
 // setup function

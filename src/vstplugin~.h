@@ -36,36 +36,25 @@ class t_vstplugin {
     ~t_vstplugin();
         // Pd
     t_object x_obj;
-    t_sample x_f;
-    t_outlet *x_messout;
+    t_sample x_f = 0;
+    t_outlet *x_messout = nullptr;
+    int x_blocksize = 64;
+    t_float x_sr = 44100;
+    std::vector<t_sample *> x_siginlets;
+    std::vector<t_sample *> x_sigoutlets;
         // VST plugin
-    IVSTPlugin* x_plugin;
-    int x_bypass;
-    int x_blocksize;
-    int x_sr;
-    t_gui x_gui;
-    int x_dp; // use double precision
-        // editor
-    t_vsteditor *x_editor;
-        // input signals from Pd
-    int x_nin;
-    t_float **x_invec;
-        // contiguous input buffer
-    int x_inbufsize;
-    char *x_inbuf;
-        // array of pointers into the input buffer
-    int x_ninbuf;
-    void **x_inbufvec;
-        // output signals from Pd
-    int x_nout;
-    t_float **x_outvec;
-        // contiguous output buffer
-    int x_outbufsize;
-    char *x_outbuf;
-        // array of pointers into the output buffer
-    int x_noutbuf;
-    void **x_outbufvec;
-        // helper methods
+    IVSTPlugin* x_plugin = nullptr;
+    int x_bypass = 0;
+    int x_dp; // single/double precision
+    std::unique_ptr<t_vsteditor> x_editor;
+    t_gui x_gui = NO_GUI;
+        // contiguous input/outputs buffer
+    std::vector<char> x_inbuf;
+    std::vector<char> x_outbuf;
+        // array of input/output pointers
+    std::vector<void *> x_invec;
+    std::vector<void *> x_outvec;
+        // methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
