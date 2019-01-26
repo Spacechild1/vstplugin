@@ -96,7 +96,9 @@ VstPlugin::~VstPlugin(){
 	if (inBufVec_) RTFree(mWorld, inBufVec_);
 	if (outBufVec_) RTFree(mWorld, outBufVec_);
 	if (paramStates_) RTFree(mWorld, paramStates_);
+#if VSTTHREADS
 	if (paramQueue_.data) RTFree(mWorld, paramQueue_.data);
+#endif
 }
 
 IVSTPlugin *VstPlugin::plugin() {
