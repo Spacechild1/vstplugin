@@ -56,7 +56,7 @@ VSTWindowWin32::VSTWindowWin32(IVSTPlugin *plugin)
 }
 
 VSTWindowWin32::~VSTWindowWin32(){
-    PostMessage(hwnd_, WM_DESTROY, 0, 0);
+    DestroyWindow(hwnd_);
     LOG_DEBUG("destroyed VSTWindowWin32");
 }
 
@@ -74,6 +74,10 @@ void VSTWindowWin32::run(){
         // close the editor here (in the GUI thread).
         // some plugins depend on this.
     plugin_->closeEditor();
+}
+
+void VSTWindowWin32::quit(){
+    PostMessage(hwnd_, WM_QUIT, 0, 0);
 }
 
 void VSTWindowWin32::setTitle(const std::string& title){

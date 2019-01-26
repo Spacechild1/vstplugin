@@ -16,12 +16,13 @@ class.sources = src/vstplugin~.cpp
 common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
 
 VST2DIR = src/VST_SDK/VST2_SDK/
+LOGLEVEL = 2
 
 cflags = -Wno-unused -Wno-unused-parameter \
 	-g \
 	-std=c++11 \
 	-I"${VST2DIR}/pluginterfaces/vst2.x/" \
-	-DLOGLEVEL=2 \
+	-DLOGLEVEL=${LOGLEVEL} \
 	$(empty)
 
 define forWindows

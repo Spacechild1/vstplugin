@@ -172,6 +172,15 @@ int VST2Plugin::getPluginUniqueID() const {
     return plugin_->uniqueID;
 }
 
+int VST2Plugin::canDo(const char *what) const {
+    // 1: yes, 0: no, -1: don't know
+    return dispatch(effCanDo, 0, 0, (char *)what);
+}
+
+intptr_t VST2Plugin::vedorSpecific(int index, intptr_t value, void *ptr, float opt){
+    return dispatch(effVendorSpecific, index, value, ptr, opt);
+}
+
 void VST2Plugin::process(const float **inputs,
     float **outputs, VstInt32 sampleFrames){
     preProcess(sampleFrames);
@@ -248,7 +257,7 @@ int VST2Plugin::getTailSize() const {
 }
 
 bool VST2Plugin::hasBypass() const {
-    return canDo("bypass");
+    return canDo("bypass") > 0;
 }
 
 void VST2Plugin::setBypass(bool bypass){
@@ -339,11 +348,11 @@ int VST2Plugin::getNumMidiOutputChannels() const {
 }
 
 bool VST2Plugin::hasMidiInput() const {
-    return canDo("receiveVstMidiEvent");
+    return canDo("receiveVstMidiEvent") > 0;
 }
 
 bool VST2Plugin::hasMidiOutput() const {
-    return canDo("sendVstMidiEvent");
+    return canDo("sendVstMidiEvent") > 0;
 }
 
 void VST2Plugin::sendMidiEvent(const VSTMidiEvent &event){
@@ -803,10 +812,6 @@ std::string VST2Plugin::getBaseName() const {
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;
-}
-
-bool VST2Plugin::canDo(const char *what) const {
-    return dispatch(effCanDo, 0, 0, (void *)what) > 0;
 }
 
 bool VST2Plugin::canHostDo(const char *what) const {

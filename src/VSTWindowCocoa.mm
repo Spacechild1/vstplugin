@@ -101,6 +101,8 @@ void * VSTWindowCocoa::getHandle(){
 
 void VSTWindowCocoa::run(){}
 
+void VSTWindowCocoa::quit(){}
+
 void VSTWindowCocoa::setTitle(const std::string& title){
     NSString *name = @(title.c_str());
     [window_ setTitle:name];

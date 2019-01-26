@@ -212,11 +212,11 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         plugin->openEditor(e_window->getHandle());
 
         LOG_DEBUG("enter message loop");
-            // run the event loop until the window is destroyed (which implicitly closes the editor)
+            // run the event loop
         e_window->run();
+            // the editor has been closed implicitly
         LOG_DEBUG("exit message loop");
             // some plugins expect to released in the same thread where they have been created
-        LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(plugin);
         e_owner->x_plugin = nullptr;
         LOG_DEBUG("VST plugin closed");
@@ -263,18 +263,23 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path, t_gui gui){
 }
 
 void t_vsteditor::close_plugin(){
+    if (e_window){
+        // terminate the message loop (if any) -
+        // this will implicitly release the plugin
+        e_window->quit();
+    } else {
+        vis(0); // close the Pd editor
+    }
 #if VSTTHREADS
-        // destroying the window (if any) might terminate the message loop and already release the plugin
-    e_window = nullptr;
         // now join the thread (if any)
     if (e_thread.joinable()){
         e_thread.join();
     }
 #endif
+        // now delete the window (if any)
+    e_window = nullptr;
         // do we still have a plugin? (e.g. Pd editor or !VSTTHREADS)
     if (e_owner->x_plugin){
-        e_window = nullptr;
-        LOG_DEBUG("try to close VST plugin");
         freeVSTPlugin(e_owner->x_plugin);
         e_owner->x_plugin = nullptr;
         LOG_DEBUG("VST plugin closed");
@@ -411,7 +416,6 @@ void t_vsteditor::vis(bool v){
 
 // close
 static void vstplugin_close(t_vstplugin *x){
-    x->x_editor->vis(0);
     x->x_editor->close_plugin();
 }
 
@@ -471,6 +475,39 @@ static void vstplugin_version(t_vstplugin *x){
     t_atom msg;
     SETFLOAT(&msg, version);
     outlet_anything(x->x_messout, gensym("version"), 1, &msg);
+}
+
+// query plugin for capabilities
+static void vstplugin_can_do(t_vstplugin *x, t_symbol *s){
+    if (!x->check_plugin()) return;
+    int result = x->x_plugin->canDo(s->s_name);
+    t_atom msg[2];
+    SETSYMBOL(&msg[0], s);
+    SETFLOAT(&msg[1], result);
+    outlet_anything(x->x_messout, gensym("can_do"), 2, msg);
+}
+
+// vendor specific action
+static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    int index = atom_getfloatarg(0, argc, argv);
+    intptr_t value = atom_getfloatarg(1, argc, argv);
+    float opt = atom_getfloatarg(2, argc, argv);
+    char *data = nullptr;
+    int size = argc - 3;
+    if (size > 0){
+        data = (char *)getbytes(size);
+        for (int i = 0, j = 3; i < size; ++i, ++j){
+            data[i] = atom_getfloat(argv + j);
+        }
+    }
+    int result = x->x_plugin->vedorSpecific(index, value, data, opt);
+    t_atom msg;
+    SETFLOAT(&msg, result);
+    outlet_anything(x->x_messout, gensym("vendor_method"), 1, &msg);
+    if (data){
+        freebytes(data, size);
+    }
 }
 
 // print plugin info in Pd console
@@ -1291,6 +1328,8 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_name, gensym("name"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_NULL);
         // transport
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);

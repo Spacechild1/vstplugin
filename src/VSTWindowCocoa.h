@@ -22,6 +22,7 @@ class VSTWindowCocoa : public IVSTWindow {
 
     void* getHandle() override;
     void run() override;
+    void quit() override;
 
     void setTitle(const std::string& title) override;
     void setGeometry(int left, int top, int right, int bottom) override;

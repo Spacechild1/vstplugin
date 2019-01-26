@@ -96,7 +96,9 @@ VstPlugin::~VstPlugin(){
 	if (inBufVec_) RTFree(mWorld, inBufVec_);
 	if (outBufVec_) RTFree(mWorld, outBufVec_);
 	if (paramStates_) RTFree(mWorld, paramStates_);
+#if VSTTHREADS
 	if (paramQueue_.data) RTFree(mWorld, paramQueue_.data);
+#endif
 }
 
 IVSTPlugin *VstPlugin::plugin() {
@@ -181,17 +183,18 @@ void VstPlugin::resizeBuffer(){
 
 void VstPlugin::close() {
 #if VSTTHREADS
-        // destroying the window (if any) might terminate the message loop and already release the plugin
-    window_ = nullptr;
+		// terminate the message loop (if any - will implicitly release the plugin)
+	if (window_) window_->quit();
         // now join the thread (if any)
     if (thread_.joinable()){
         thread_.join();
 		LOG_DEBUG("thread joined");
     }
 #endif
+		// now delete the window (if any)
+	window_ = nullptr;
         // do we still have a plugin? (e.g. SC editor or !VSTTHREADS)
     if (plugin_){
-        window_ = nullptr;
         freeVSTPlugin(plugin_);
         plugin_ = nullptr;
     }
@@ -270,11 +273,14 @@ IVSTPlugin* VstPlugin::tryOpenPlugin(const char *path, bool gui){
 #endif
         // create plugin in main thread
     IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
+	if (!plugin) {
+		return nullptr;
+	}
         // receive events from plugin
     plugin->setListener(listener_.get());
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin && plugin->hasEditor() && gui){
+    if (plugin->hasEditor() && gui){
         window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
         if (window_){
             window_->setTitle(plugin->getPluginName());
@@ -686,7 +692,23 @@ void VstPlugin::getTransportPos() {
 	}
 }
 
-// helper methods
+// advanced
+
+void VstPlugin::canDo(const char *what) {
+	if (check()) {
+		auto result = plugin_->canDo(what);
+		sendMsg("/vst_can_do", (float)result);
+	}
+}
+
+void VstPlugin::vendorSpecific(int32 index, int32 value, void *ptr, float opt) {
+	if (check()) {
+		auto result = plugin_->vedorSpecific(index, value, ptr, opt);
+		sendMsg("/vst_vendor_method", (float)result);
+	}
+}
+
+/*** helper methods ***/
 
 float VstPlugin::readControlBus(int32 num, int32 maxChannel) {
     if (num >= 0 && num < maxChannel) {
@@ -838,7 +860,8 @@ void VstPlugin::sendMsg(const char *cmd, int n, const float *data) {
 	SendNodeReply(&mParent->mNode, mParentIndex, cmd, n, data);
 }
 
-// unit command callbacks
+
+/*** unit command callbacks ***/
 
 #define CHECK {if (!static_cast<VstPlugin*>(unit)->valid()) return; }
 
@@ -1144,6 +1167,37 @@ void vst_transport_get(Unit *unit, sc_msg_iter *args) {
 	static_cast<VstPlugin*>(unit)->getTransportPos();
 }
 
+void vst_can_do(Unit *unit, sc_msg_iter *args) {
+	CHECK;
+	const char* what = args->gets();
+	if (what) {
+		static_cast<VstPlugin*>(unit)->canDo(what);
+	}
+}
+
+void vst_vendor_method(Unit *unit, sc_msg_iter *args) {
+	CHECK;
+	int32 index = args->geti();
+	int32 value = args->geti(); // sc_msg_iter doesn't support 64bit ints...
+	int32 size = args->getbsize();
+	char *data = nullptr;
+	if (size > 0) {
+		data = (char *)RTAlloc(unit->mWorld, size);
+		if (data) {
+			args->getb(data, size);
+		}
+		else {
+			LOG_ERROR("RTAlloc failed!");
+			return;
+		}
+	}
+	float opt = args->getf();
+	static_cast<VstPlugin*>(unit)->vendorSpecific(index, value, data, opt);
+	if (data) {
+		RTFree(unit->mWorld, data);
+	}
+}
+
 void vst_poll(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
     VSTWindowFactory::mainLoopPoll();
 }
@@ -1189,6 +1243,8 @@ PluginLoad(VstPlugin) {
 	DefineCmd(transport_play);
 	DefineCmd(transport_set);
 	DefineCmd(transport_get);
+	DefineCmd(can_do);
+	DefineCmd(vendor_method);
 
     DefinePlugInCmd("vst_poll", vst_poll, 0);
 }

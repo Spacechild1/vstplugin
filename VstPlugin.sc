@@ -423,6 +423,20 @@ VstPluginController {
 		}, '/vst_transport', argTemplate: [synth.nodeID, synthIndex]).oneShot;
 		this.sendMsg('/transport_get');
 	}
+	// advanced
+	canDo { arg what, action;
+		OSCFunc({ arg msg;
+			action.value(msg[3].asInt);
+		}, '/vst_can_do', argTemplate: [synth.nodeID, synthIndex]).oneShot;
+		this.sendMsg('/can_do', what);
+	}
+	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action=0;
+		OSCFunc({ arg msg;
+			action.value(msg[3].asInt);
+		}, '/vst_vendor_method', argTemplate: [synth.nodeID, synthIndex]).oneShot;
+		ptr = ptr ?? Int8Array.new;
+		this.sendMsg('/vendor_method', index, value, ptr, opt);
+	}
 	// internal
 	sendMsg { arg cmd ... args;
 		synth.server.sendMsg('/u_cmd', synth.nodeID, synthIndex, cmd, *args);
