@@ -1125,10 +1125,11 @@ static void vstplugin_free(t_vstplugin *x){
 }
 
 // perform routine
-static t_int *vstplugin_perform(t_int *w){
-    t_vstplugin *x = (t_vstplugin *)(w[1]);
-    int n = (int)(w[2]);
-    auto plugin = x->x_plugin;
+
+// TFloat: processing float type
+// this templated method makes some optimization based on whether T and U are equal
+template<typename TFloat>
+static void vstplugin_doperform(t_vstplugin *x, int n, bool bypass){
     int nin = x->x_siginlets.size();
     t_sample ** sigin = x->x_siginlets.data();
     int nout = x->x_sigoutlets.size();
@@ -1140,80 +1141,51 @@ static t_int *vstplugin_perform(t_int *w){
     int noutvec = x->x_outvec.size();
     void ** outvec = x->x_outvec.data();
     int out_offset = 0;
-    bool dp = x->x_dp;
-    bool bypass = plugin ? x->x_bypass : true;
-
-    if (plugin && !bypass) {
-            // check processing precision (single or double)
-        if (!plugin->hasPrecision(VSTProcessPrecision::Single) && !plugin->hasPrecision(VSTProcessPrecision::Double)) {
-            bypass = true;
-        } else if (dp && !plugin->hasPrecision(VSTProcessPrecision::Double)){
-            dp = false;
-        } else if (!dp && !plugin->hasPrecision(VSTProcessPrecision::Single)){ // very unlikely...
-            dp = true;
-        }
-    }
+    auto plugin = x->x_plugin;
 
     if (!bypass){  // process audio
         int pout = plugin->getNumOutputs();
         out_offset = pout;
-            // process in double precision
-        if (dp){
-                // prepare input buffer + pointers
-            for (int i = 0; i < ninvec; ++i){
-                double *buf = (double *)inbuf + i * n;
-                invec[i] = buf;
-                if (i < nin){  // copy from Pd input
-                    t_sample *in = sigin[i];
-                    for (int j = 0; j < n; ++j){
-                        buf[j] = in[j];
-                    }
-                } else {  // zero
-                    for (int j = 0; j < n; ++j){
-                        buf[j] = 0;
-                    }
+            // prepare input buffer + pointers
+        for (int i = 0; i < ninvec; ++i){
+            TFloat *buf = (TFloat *)inbuf + i * n;
+            invec[i] = buf;
+            if (i < nin){  // copy from Pd inlets
+                t_sample *in = sigin[i];
+                for (int j = 0; j < n; ++j){
+                    buf[j] = in[j];
+                }
+            } else if (std::is_same<t_sample, double>::value
+                       && std::is_same<TFloat, float>::value){
+                    // we only have to zero for this special case because 'bypass' will
+                    // write doubles into the input buffer (see below), leaving garbage
+                    // in subsequent channels when the buffer is reinterpreted as floats.
+                for (int j = 0; j < n; ++j){
+                    buf[j] = 0;
                 }
             }
-                // set output buffer pointers
-            for (int i = 0; i < pout; ++i){
-                outvec[i] = (double *)outbuf + i * n;
+        }
+            // set output buffer pointers
+        for (int i = 0; i < pout; ++i){
+                // if t_sample and TFloat are the same, we can directly write to the outlets.
+            if (std::is_same<t_sample, TFloat>::value && i < nout){
+                outvec[i] = sigout[i];
+            } else {
+                outvec[i] = (TFloat *)outbuf + i * n;
             }
-                // process
+        }
+            // process
+        if (std::is_same<TFloat, float>::value){
+            plugin->process((const float **)invec, (float **)outvec, n);
+        } else {
             plugin->processDouble((const double **)invec, (double **)outvec, n);
-                // read from output buffer
+        }
+
+        if (!std::is_same<t_sample, TFloat>::value){
+                // copy output buffer to Pd outlets
             for (int i = 0; i < nout && i < pout; ++i){
                 t_sample *out = sigout[i];
                 double *buf = (double *)outvec[i];
-                for (int j = 0; j < n; ++j){
-                    out[j] = buf[j];
-                }
-            }
-        } else {  // single precision
-                // prepare input buffer
-            for (int i = 0; i < ninvec; ++i){
-                float *buf = (float *)inbuf + i * n;
-                invec[i] = buf;
-                if (i < nin){  // copy from Pd input
-                    t_sample *in = sigin[i];
-                    for (int j = 0; j < n; ++j){
-                        buf[j] = in[j];
-                    }
-                } else {  // zero
-                    for (int j = 0; j < n; ++j){
-                        buf[j] = 0;
-                    }
-                }
-            }
-                // set output buffer pointers
-            for (int i = 0; i < pout; ++i){
-                outvec[i] = (float *)outbuf + i * n;
-            }
-                // process
-            plugin->process((const float **)invec, (float **)outvec, n);
-                // read from output buffer
-            for (int i = 0; i < nout && i < pout; ++i){
-                t_sample *out = sigout[i];
-                float *buf = (float *)outvec[i];
                 for (int j = 0; j < n; ++j){
                     out[j] = buf[j];
                 }
@@ -1245,6 +1217,31 @@ static t_int *vstplugin_perform(t_int *w){
         for (int j = 0; j < n; ++j){
             out[j] = 0;
         }
+    }
+}
+
+static t_int *vstplugin_perform(t_int *w){
+    t_vstplugin *x = (t_vstplugin *)(w[1]);
+    int n = (int)(w[2]);
+    auto plugin = x->x_plugin;
+    bool dp = x->x_dp;
+    bool bypass = plugin ? x->x_bypass : true;
+
+    if (plugin && !bypass) {
+            // check processing precision (single or double)
+        if (!plugin->hasPrecision(VSTProcessPrecision::Single)
+                && !plugin->hasPrecision(VSTProcessPrecision::Double)) { // very unlikely...
+            bypass = true;
+        } else if (dp && !plugin->hasPrecision(VSTProcessPrecision::Double)){ // possible
+            dp = false;
+        } else if (!dp && !plugin->hasPrecision(VSTProcessPrecision::Single)){ // pretty unlikely...
+            dp = true;
+        }
+    }
+    if (dp){ // double precision
+        vstplugin_doperform<double>(x, n, bypass);
+    } else { // single precision
+        vstplugin_doperform<float>(x, n, bypass);
     }
 
     return (w+3);

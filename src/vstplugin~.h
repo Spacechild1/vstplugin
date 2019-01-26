@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <type_traits>
 
 #ifndef VSTTHREADS
 #define VSTTHREADS 1
