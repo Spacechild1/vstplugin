@@ -25,7 +25,7 @@ void VstPluginListener::parameterAutomated(int index, float value) {
 	std::lock_guard<std::mutex> guard(owner_->mutex_);
 	auto& queue = owner_->paramQueue_;
 	// resize queue if necessary
-	if (queue.size >= queue.capacity) {
+	while (queue.size >= queue.capacity) {
 		// start with initial capacity of 8, then double it whenever it needs to be increased
 		auto newCapacity = queue.capacity > 0 ? queue.capacity * 2 : 8;
 		auto result = (VstPlugin::ParamAutomated *)RTRealloc(owner_->mWorld, queue.data, newCapacity);
