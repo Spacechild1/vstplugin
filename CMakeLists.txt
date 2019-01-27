@@ -23,7 +23,8 @@ include_directories(${VST2DIR}/pluginterfaces/vst2.x)
 
 include_directories(src)
 
-add_definitions(-DLOGLEVEL=2 -DLOGFUNCTION=SCLog)
+set(LOGLEVEL 2 CACHE STRING "LOGLEVEL")
+add_definitions(-DLOGLEVEL=${LOGLEVEL} -DLOGFUNCTION=SCLog)
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
 if(APPLE OR MINGW OR WIN32)
