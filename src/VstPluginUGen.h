@@ -14,11 +14,11 @@
 
 #include <limits>
 
-namespace Flags {
-	const uint32 ScGui = 1;
-	const uint32 VstGui = 2;
-	const uint32 ParamDisplay = 4;
-}
+enum GuiType {
+	NO_GUI,
+	SC_GUI,
+	VST_GUI
+};
 
 enum PluginInfo {
 	HasEditor = 0,
@@ -52,7 +52,7 @@ public:
 	IVSTPlugin *plugin();
 	bool check();
 	bool valid();
-    void open(const char *path, uint32 flags);
+    void open(const char *path, GuiType gui);
 	void close();
 	void showEditor(bool show);
 	void reset();
@@ -63,6 +63,8 @@ public:
 	void getParamN(int32 index, int32 count);
 	void mapParam(int32 index, int32 bus);
 	void unmapParam(int32 index);
+	void setUseParamDisplay(bool use);
+	void setNotifyParamChange(bool use);
 	// program/bank
 	void setProgram(int32 index);
 	void setProgramName(const char *name);
@@ -91,14 +93,15 @@ private:
 		float value;
 		int32 bus;
     };
-    IVSTPlugin* tryOpenPlugin(const char *path, bool gui);
+    IVSTPlugin* tryOpenPlugin(const char *path, GuiType gui);
     // helper methods
     float readControlBus(int32 num, int32 maxChannel);
     void resizeBuffer();
 	void sendPluginInfo();
-	void sendPrograms();
-	bool sendProgram(int32 num);
-	void sendCurrentProgram();
+	void sendProgramNames();
+	bool sendProgramName(int32 num);
+	void sendCurrentProgramName();
+	void sendParameter(int32 index); // not checked
 	void sendParameters();
 	void parameterAutomated(int32 index, float value);
 	void midiEvent(const VSTMidiEvent& midi);
@@ -109,9 +112,9 @@ private:
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
-	bool scGui_ = false;
-	bool vstGui_ = false;
-	bool paramDisplay_ = false;
+	GuiType gui_ = NO_GUI;
+	bool notify_ = false;
+	bool paramDisplay_ = true; // true by default
 	bool bypass_ = false;
 	std::unique_ptr<IVSTWindow> window_;
 	std::unique_ptr<VstPluginListener> listener_;
