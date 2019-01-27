@@ -80,15 +80,17 @@ static void vstparam_setup(){
 
 /*-------------------- t_vsteditor ------------------------*/
 
-t_vsteditor::t_vsteditor(t_vstplugin &owner)
+t_vsteditor::t_vsteditor(t_vstplugin &owner, t_gui gui)
     : e_owner(&owner){
 #if VSTTHREADS
     e_mainthread = std::this_thread::get_id();
 #endif
-    pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
-    e_canvas = (t_canvas *)s__X.s_thing;
-    send_vmess(gensym("pop"), "i", 0);
-
+    if (gui != NO_GUI){
+        pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
+        e_canvas = (t_canvas *)s__X.s_thing;
+        send_vmess(gensym("pop"), "i", 0);
+    }
+    e_gui = gui;
     e_clock = clock_new(this, (t_method)tick);
 }
 
@@ -225,10 +227,10 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
 }
 #endif
 
-IVSTPlugin* t_vsteditor::open_plugin(const char *path, t_gui gui){
+IVSTPlugin* t_vsteditor::open_plugin(const char *path){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
-    if (gui == VST_GUI){
+    if (e_gui == VST_GUI){
         std::promise<IVSTPlugin *> promise;
         auto future = promise.get_future();
         e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
@@ -429,7 +431,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
     const char *bundleinfo = "/Contents/Info.plist";
     vstpath += bundleinfo; // on MacOS VSTs are bundles but canvas_open needs a real file
 #endif
-    int fd = canvas_open(x->x_editor->canvas(), vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+    int fd = canvas_open(x->x_canvas, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
     if (fd >= 0){
         sys_close(fd);
         char path[MAXPDSTRING];
@@ -442,7 +444,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
 #endif
         sys_bashfilename(path, path);
             // load VST plugin in new thread
-        IVSTPlugin *plugin = x->x_editor->open_plugin(path, x->x_gui);
+        IVSTPlugin *plugin = x->x_editor->open_plugin(path);
         if (plugin){
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
                 // initially, blocksize is 0 (before the 'dsp' message is sent).
@@ -908,7 +910,7 @@ static void vstplugin_program_data_get(t_vstplugin *x){
 static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
-    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
+    int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
         pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
         return;
@@ -928,7 +930,7 @@ static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
 static void vstplugin_program_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
-    canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
+    canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
     x->x_plugin->writeProgramFile(path);
 }
 
@@ -971,7 +973,7 @@ static void vstplugin_bank_data_get(t_vstplugin *x){
 static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
-    int fd = canvas_open(x->x_editor->canvas(), s->s_name, "", dir, &name, MAXPDSTRING, 1);
+    int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
         pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
         return;
@@ -991,7 +993,7 @@ static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
 static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
-    canvas_makefilename(x->x_editor->canvas(), s->s_name, path, MAXPDSTRING);
+    canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
     x->x_plugin->writeBankFile(path);
 }
 
@@ -1127,9 +1129,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         }
     }
 
-    x_gui = gui;
     x_dp = dp;
-    x_editor = std::unique_ptr<t_vsteditor>(new t_vsteditor(*this)); // C++11
+    x_canvas = canvas_getcurrent();
+    x_editor = std::unique_ptr<t_vsteditor>(new t_vsteditor(*this, gui)); // C++11
 
         // inlets (skip first):
     for (int i = 1; i < in; ++i){

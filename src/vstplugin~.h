@@ -39,6 +39,7 @@ class t_vstplugin {
     t_object x_obj;
     t_sample x_f = 0;
     t_outlet *x_messout = nullptr;
+    t_canvas *x_canvas; // parent canvas
     int x_blocksize = 0; // see vstplugin_dsp
     t_float x_sr = 44100;
     std::vector<t_sample *> x_siginlets;
@@ -48,7 +49,6 @@ class t_vstplugin {
     int x_bypass = 0;
     int x_dp; // single/double precision
     std::unique_ptr<t_vsteditor> x_editor;
-    t_gui x_gui = NO_GUI;
         // contiguous input/outputs buffer
     std::vector<char> x_inbuf;
     std::vector<char> x_outbuf;
@@ -81,10 +81,10 @@ class t_vstparam {
 // VST editor
 class t_vsteditor : IVSTPluginListener {
  public:
-    t_vsteditor(t_vstplugin &owner);
+    t_vsteditor(t_vstplugin &owner, t_gui gui);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const char* path, t_gui gui);
+    IVSTPlugin* open_plugin(const char* path);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -95,12 +95,6 @@ class t_vsteditor : IVSTPluginListener {
     void param_changed(int index, float value, bool automated = false);
         // show/hide window
     void vis(bool v);
-    IVSTWindow *window(){
-        return e_window.get();
-    }
-    t_canvas *canvas(){
-        return e_canvas;
-    }
  private:
         // plugin callbacks
     void parameterAutomated(int index, float value) override;
@@ -108,11 +102,11 @@ class t_vsteditor : IVSTPluginListener {
     void sysexEvent(const VSTSysexEvent& event) override;
         // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
-        pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
+        if (e_canvas) pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
     }
     template<typename... T>
     void send_vmess(t_symbol *sel, const char *fmt, T... args){
-        pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
+        if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
 #if VSTTHREADS
         // open plugin in a new thread
@@ -123,10 +117,11 @@ class t_vsteditor : IVSTPluginListener {
     void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
     bool pd_gui() const {
-        return !e_window && (e_owner->x_gui != NO_GUI);
+        return !e_window && (e_gui != NO_GUI);
     }
         // data
     t_vstplugin *e_owner;
+    t_gui e_gui = NO_GUI;
 #if VSTTHREADS
     std::thread e_thread;
     std::thread::id e_mainthread;
