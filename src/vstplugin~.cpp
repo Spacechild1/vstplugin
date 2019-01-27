@@ -90,6 +90,14 @@ t_vsteditor::t_vsteditor(t_vstplugin &owner, t_gui gui)
         e_canvas = (t_canvas *)s__X.s_thing;
         send_vmess(gensym("pop"), "i", 0);
     }
+        // initialize GUI backend (if needed)
+    if (gui == VST_GUI){
+        static bool initialized = false;
+        if (!initialized){
+            VSTWindowFactory::initialize();
+            initialized = true;
+        }
+    }
     e_gui = gui;
     e_clock = clock_new(this, (t_method)tick);
 }
@@ -247,7 +255,7 @@ IVSTPlugin* t_vsteditor::open_plugin(const char *path){
     plugin->setListener(this);
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin->hasEditor() && gui == VST_GUI){
+    if (plugin->hasEditor() && e_gui == VST_GUI){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
@@ -1119,15 +1127,6 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int out = atom_getfloatarg(1, argc, argv); // signal outlets
     if (in < 1) in = 2;
     if (out < 1) out = 2;
-
-        // initialize GUI backend (if needed)
-    if (gui == VST_GUI){
-        static bool initialized = false;
-        if (!initialized){
-            VSTWindowFactory::initialize();
-            initialized = true;
-        }
-    }
 
     x_dp = dp;
     x_canvas = canvas_getcurrent();
