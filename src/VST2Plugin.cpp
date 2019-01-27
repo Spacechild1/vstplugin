@@ -379,7 +379,7 @@ void VST2Plugin::sendSysexEvent(const VSTSysexEvent &event){
         // copy the sysex data (LATER figure out how to avoid this)
     memcpy(sysexevent.sysexDump, event.data.data(), sysexevent.dumpBytes);
 
-    sysexQueue_.push_back(sysexevent);
+    sysexQueue_.push_back(std::move(sysexevent));
 
     vstEvents_->numEvents++;
 }
@@ -881,8 +881,9 @@ void VST2Plugin::preProcess(int nsamples){
     while (numEvents > vstEventBufferSize_){
         LOG_DEBUG("vstEvents: grow (numEvents " << numEvents << ", old size " << vstEventBufferSize_<< ")");
             // always grow (doubling the memory), never shrink
-        vstEvents_ = (VstEvents *)realloc(vstEvents_, sizeof(VstEvents) + 2 * vstEventBufferSize_ * sizeof(VstEvent *));
-        vstEventBufferSize_ *= 2;
+        int newSize = vstEventBufferSize_ * 2;
+        vstEvents_ = (VstEvents *)realloc(vstEvents_, sizeof(VstEvents) + newSize * sizeof(VstEvent *));
+        vstEventBufferSize_ = newSize;
         memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
         vstEvents_->numEvents = numEvents;
     }
