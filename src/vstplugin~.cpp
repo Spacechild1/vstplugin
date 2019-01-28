@@ -1103,7 +1103,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     t_symbol *file = nullptr; // plugin to load (optional)
 
     while (argc && argv->a_type == A_SYMBOL){
-        const char *flag = atom_getsymbol(argv)->s_name;
+        const char *flag = argv->a_w.w_symbol->s_name;
         if (*flag == '-'){
             if (!strcmp(flag, "-vstgui")){
                 gui = VST_GUI;
@@ -1115,6 +1115,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 dp = 0;
             } else if (!strcmp(flag, "-dp")){
                 dp = 1;
+            } else {
+                pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
             argc--; argv++;
         } else {
