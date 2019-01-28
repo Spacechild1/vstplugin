@@ -349,13 +349,13 @@ void VstPlugin::next(int inNumSamples) {
     int nout = numOutChannels_;
     bool bypass = in0(0);
 	int offset = 0;
-
+#if 0
     // only reset plugin when bypass changed from true to false
     if (plugin_ && !bypass && (bypass != bypass_)) {
         reset();
     }
     bypass_ = bypass;
-
+#endif
 	// setup pointer arrays:
 	for (int i = 0; i < nin; ++i) {
 		inBufVec_[i] = in(i + inChannelOnset_);
