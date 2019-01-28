@@ -244,9 +244,9 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
         plugin->openEditor(e_window->getHandle());
 
         LOG_DEBUG("enter message loop");
-            // run the event loop
+            // run the event loop until it gets a quit message
+            // (the editor will we closed implicitly)
         e_window->run();
-            // the editor has been closed implicitly
         LOG_DEBUG("exit message loop");
             // some plugins expect to released in the same thread where they have been created
         freeVSTPlugin(plugin);

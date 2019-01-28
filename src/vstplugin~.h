@@ -38,7 +38,7 @@ class t_vstplugin {
         // Pd
     t_object x_obj;
     t_sample x_f = 0;
-    t_outlet *x_messout = nullptr;
+    t_outlet *x_messout; // message outlet
     t_canvas *x_canvas; // parent canvas
     int x_blocksize = 0; // see vstplugin_dsp
     t_float x_sr = 44100;

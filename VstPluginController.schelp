@@ -10,7 +10,7 @@ link::#-open:: plugins, show the GUI, change programs, send link::#MIDI:: messag
 
 warning::Please read the sections about link::#Realtime-Safety:: and link::#Other Caveats:: ::
 
-Here's a short example for a simple insert effect on a 2-channel audio bus:
+Here's a quick example showing a simple insert effect on a 2-channel audio bus:
 
 code::
 SynthDef(\insert, { arg bus;
@@ -162,7 +162,7 @@ PRIVATE:: msg2string
 
 INSTANCEMETHODS::
 
-PRIVATE:: prFree, prClear, init, sendMsg, prClearGui, prMidiMsg
+PRIVATE:: prFree, prClear, init, sendMsg, prClearGui, prMidiMsg, prNotify
 
 METHOD:: open
 open a VST plugin.
@@ -183,9 +183,6 @@ definitionlist::
 ## \vst || create a native window with the original VST editor on the Server. note::This doesn't work (yet) on macOS!::
 ## \none || use no GUI at all.
 ::
-
-ARGUMENT:: paramDisplay
-send string representations of the plugin parameters whenever they are set with code::setParameter::. Disable this to reduce OSC traffic.
 
 ARGUMENT:: info
 print plugin info to the console after being loaded successfully.
