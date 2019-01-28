@@ -135,17 +135,7 @@ private:
     std::thread thread_;
 	std::thread::id threadID_;
     std::mutex mutex_;
-	struct ParamAutomated {
-		int32 index;
-		float value;
-	};
-	template<typename T>
-	struct Vector {
-		T* data = nullptr;
-		int32 size = 0;
-		int32 capacity = 0;
-	};
-	Vector<ParamAutomated> paramQueue_;
+	std::vector<std::pair<int, float>> paramQueue_;
 #endif
 };
 
