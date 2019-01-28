@@ -440,6 +440,20 @@ void VstPlugin::setParam(int32 index, float value) {
 	}
 }
 
+void VstPlugin::setParam(int32 index, const char *display) {
+	if (check()) {
+		if (index >= 0 && index < plugin_->getNumParameters()) {
+			plugin_->setParameter(index, display);
+			paramStates_[index].value = plugin_->getParameter(index);
+			paramStates_[index].bus = -1; // invalidate bus num
+			sendParameter(index);
+		}
+		else {
+			LOG_WARNING("VstPlugin: parameter index " << index << " out of range!");
+		}
+	}
+}
+
 void VstPlugin::getParam(int32 index) {
 	if (check()) {
 		if (index >= 0 && index < plugin_->getNumParameters()) {
@@ -911,12 +925,13 @@ void vst_set(Unit *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	auto vst = CAST_UNIT;
 	if (vst->check()) {
-		int nparam = vst->plugin()->getNumParameters();
 		while (args->remain() > 0) {
 			int32 index = args->geti();
-			float value = args->getf();
-			if (index >= 0 && index < nparam) {
-				vst->setParam(index, value);
+			if (args->remain() > 0 && args->nextTag() == 's') {
+				vst->setParam(index, args->gets());
+			}
+			else {
+				vst->setParam(index, args->getf());
 			}
 		}
 	}
@@ -931,11 +946,12 @@ void vst_setn(Unit *unit, sc_msg_iter *args) {
 		while (args->remain() > 0) {
 			int32 index = args->geti();
 			int32 count = args->geti();
-			for (int i = 0; i < count; ++i) {
-				float value = args->getf();
-				int32 idx = index + 1;
-				if (idx >= 0 && idx < nparam) {
-					vst->setParam(idx, value);
+			for (int i = 0; i < count && args->remain() > 0; ++i) {
+				if (args->nextTag() == 's') {
+					vst->setParam(index + i, args->gets());
+				}
+				else {
+					vst->setParam(index + i, args->getf());
 				}
 			}
 		}
@@ -983,13 +999,13 @@ void vst_unmap(Unit *unit, sc_msg_iter *args) {
 	auto vst = CAST_UNIT;
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
-		if (args->remain()) {
+		if (args->remain() > 0) {
 			do {
 				int32 index = args->geti();
 				if (index >= 0 && index < nparam) {
 					vst->unmapParam(index);
 				}
-			} while (args->remain());
+			} while (args->remain() > 0);
 		}
 		else {
 			// unmap all parameters:

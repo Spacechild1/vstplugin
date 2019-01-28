@@ -113,12 +113,13 @@ code::
 f.open("/path/to/plugin", gui: \vst);
 ::
 
-The default value code::\sc:: creates a generic Qt GUI in the Language which communicates with the Server via OSC messages.
+The default value code::\sc:: creates a generic Qt GUI in the Client which communicates with the Server via OSC messages.
+You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins).
 
-On Windows and Linux you can choose code::\vst:: instead to get a native window on the server containing the 'real' VST plugin editor.
+On Windows and Linux you can choose code::\vst:: instead to get a native window on the server containing the "real" VST plugin editor.
 note:: Unfortunately, this is not possible (yet?) on macOS for technical reasons.::
 
-Use code::\none:: if you don't need any GUI to save some ressources.
+Use code::\none:: if you don't need any GUI to save some ressources and OSC traffic.
 
 subsection:: Realtime-Safety
 
@@ -249,12 +250,20 @@ METHOD:: set
 Set plugin parameters.
 
 discussion::
-This method expects pairs of parameter index and value. The value(s) should be in the range 0.0 - 1.0.
+This method expects pairs of parameter index and value. Each value should be either a number between 0.0 and 1.0
+or a string/symbol.
+
+note::
+Some plugins don't support setting parameters by strings, others only allow it for certain parameters.
+::
+
 code::
 // set parameter 3 to value 0.9:
 ~fx.set(3, 0.9);
 // set parameters 1 and 5:
 ~fx.set(1, 0.5, 5, 0.75);
+// set parameter 3 by string
+~fx.set(3, "800");
 ::
 If the parameter has been mapped to a control bus, it will be automatically unmapped.
 
@@ -262,11 +271,11 @@ METHOD:: setn
 set sequential ranges of parameters.
 
 discussion::
-This method expects pairs of parameter index and Array of values.
+This method expects pairs of parameter index and Array of values (numbers or strings/symbols).
 
 code::
 // this will set parameters 3, 4, 8, 9 and 10.
-~fx.setn(3, [0.5, 0.75], 8, [0.1, 0.2, 0.3]);
+~fx.setn(3, [0.5, 0.75], 8, [0.1, "300", 0.3]);
 ::
 
 METHOD:: map

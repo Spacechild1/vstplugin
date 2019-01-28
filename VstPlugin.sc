@@ -435,6 +435,7 @@ VstPluginGui {
 	classvar <>maxParams = 12; // max. number of parameters per column
 	classvar <>sliderWidth = 180;
 	classvar <>sliderHeight = 20;
+	classvar <>displayWidth = 60;
 	// public
 	var <view;
 	// private
@@ -478,9 +479,10 @@ VstPluginGui {
 			var col, row, name, label, display, slider, unit;
 			col = i.div(nrows);
 			row = i % nrows;
-			name = StaticText.new().string_("%: %".format(i, model.parameterNames[i]));
-			label = StaticText.new().string_(model.parameterLabels[i] ?? "");
-			display = StaticText.new();
+			name = StaticText.new.string_("%: %".format(i, model.parameterNames[i]));
+			label = StaticText.new.string_(model.parameterLabels[i] ?? "");
+			display = TextField.new.fixedWidth_(displayWidth);
+			display.action = {arg s; model.set(i, s.value)};
 			paramDisplays.add(display);
 			slider = Slider.new(bounds: sliderWidth@sliderHeight).fixedHeight_(sliderHeight);
 			slider.action = {arg s; model.set(i, s.value)};
@@ -498,7 +500,7 @@ VstPluginGui {
 
 	paramChanged { arg index, value, display;
 		paramSliders.at(index).value = value;
-		display.notNil.if { paramDisplays.at(index).string = display };
+		paramDisplays.at(index).string = display;
 	}
 }
 

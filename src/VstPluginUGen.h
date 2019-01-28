@@ -59,6 +59,7 @@ public:
 	void next(int inNumSamples);
 	// param
 	void setParam(int32 index, float value);
+	void setParam(int32 index, const char* display);
 	void getParam(int32 index);
 	void getParamN(int32 index, int32 count);
 	void mapParam(int32 index, int32 bus);
