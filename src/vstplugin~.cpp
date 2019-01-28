@@ -160,9 +160,14 @@ void t_vsteditor::tick(t_vsteditor *x){
 #endif
         // automated parameters:
     for (auto& param : x->e_automated){
+        int index = param.first;
+        float value = param.second;
+            // update the generic GUI
+        x->param_changed(index, value);
+            // send message
         t_atom msg[2];
-        SETFLOAT(&msg[0], param.first); // index
-        SETFLOAT(&msg[1], param.second); // value
+        SETFLOAT(&msg[0], index);
+        SETFLOAT(&msg[1], value);
         outlet_anything(outlet, gensym("param_automated"), 2, msg);
     }
     x->e_automated.clear();
