@@ -153,13 +153,27 @@ void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
 #if VSTTHREADS
-        // we only need to lock for GUI windows, but never for the generic Pd editor
+        // we only need to lock if we have a GUI thread
     if (x->e_window){
-        x->e_mutex.lock();
+        // it's more important to not block than flushing the queue on time
+        if (!x->e_mutex.try_lock()){
+            LOG_DEBUG("couldn't lock mutex");
+            return;
+        }
     }
 #endif
+    // flush parameter, midi and sysex queues.
+    // NOTE: it is theoretically possible that outputting messages
+    // will cause more messages to be sent (e.g. when being fed back into [vstplugin~]
+    // and if there's no mutex involved this would modify a std::vector while being read.
+    // one solution is to just double buffer with swap and subsequent events will go
+    // a new empty queue. Although I *think* this might not be necessary for midi/sysex messages
+    // I'll do anyway. swapping a std::vector is cheap.
+
         // automated parameters:
-    for (auto& param : x->e_automated){
+    std::vector<std::pair<int, float>> paramQueue;
+    paramQueue.swap(x->e_automated);
+    for (auto& param : paramQueue){
         int index = param.first;
         float value = param.second;
             // update the generic GUI
@@ -170,18 +184,20 @@ void t_vsteditor::tick(t_vsteditor *x){
         SETFLOAT(&msg[1], value);
         outlet_anything(outlet, gensym("param_automated"), 2, msg);
     }
-    x->e_automated.clear();
         // midi events:
-    for (auto& midi : x->e_midi){
+    std::vector<VSTMidiEvent> midiQueue;
+    midiQueue.swap(x->e_midi);
+    for (auto& midi : midiQueue){
         t_atom msg[3];
         SETFLOAT(&msg[0], (unsigned char)midi.data[0]);
         SETFLOAT(&msg[1], (unsigned char)midi.data[1]);
         SETFLOAT(&msg[2], (unsigned char)midi.data[2]);
         outlet_anything(outlet, gensym("midi"), 3, msg);
     }
-    x->e_midi.clear();
         // sysex events:
-    for (auto& sysex : x->e_sysex){
+    std::vector<VSTSysexEvent> sysexQueue;
+    sysexQueue.swap(x->e_sysex);
+    for (auto& sysex : sysexQueue){
         std::vector<t_atom> msg;
         int n = sysex.data.size();
         msg.resize(n);
@@ -190,7 +206,6 @@ void t_vsteditor::tick(t_vsteditor *x){
         }
         outlet_anything(outlet, gensym("midi"), n, msg.data());
     }
-    x->e_sysex.clear();
 #if VSTTHREADS
     if (x->e_window){
         x->e_mutex.unlock();
