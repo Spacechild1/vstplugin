@@ -133,7 +133,7 @@ private:
 #if VSTTHREADS
     void threadFunction(std::promise<IVSTPlugin *> promise, const char *path);
     std::thread thread_;
-	std::thread::id threadID_;
+	std::thread::id rtThreadID_;
     std::mutex mutex_;
 	std::vector<std::pair<int, float>> paramQueue_;
 #endif

@@ -29,17 +29,23 @@ VstPluginListener::VstPluginListener(VstPlugin &owner)
 
 void VstPluginListener::parameterAutomated(int index, float value) {
 #if VSTTHREADS
-	std::lock_guard<std::mutex> guard(owner_->mutex_);
-	owner_->paramQueue_.emplace_back(index, value);
+	// only push it to the queue when we're not in the realtime thread
+	if (std::this_thread::get_id() != owner_->rtThreadID_) {
+		std::lock_guard<std::mutex> guard(owner_->mutex_);
+		owner_->paramQueue_.emplace_back(index, value);
+	}
+	else {
 #else
-	owner_->parameterAutomated(index, value);
+	{
 #endif
+		owner_->parameterAutomated(index, value);
+	}
 }
 
 void VstPluginListener::midiEvent(const VSTMidiEvent& midi) {
 #if VSTTHREADS
 	// check if we're on the realtime thread, otherwise ignore it
-	if (std::this_thread::get_id() == owner_->threadID_) {
+	if (std::this_thread::get_id() == owner_->rtThreadID_) {
 #else
 	{
 #endif
@@ -50,7 +56,7 @@ void VstPluginListener::midiEvent(const VSTMidiEvent& midi) {
 void VstPluginListener::sysexEvent(const VSTSysexEvent& sysex) {
 #if VSTTHREADS
 	// check if we're on the realtime thread, otherwise ignore it
-	if (std::this_thread::get_id() == owner_->threadID_) {
+	if (std::this_thread::get_id() == owner_->rtThreadID_) {
 #else
 	{
 #endif
@@ -62,8 +68,8 @@ void VstPluginListener::sysexEvent(const VSTSysexEvent& sysex) {
 
 VstPlugin::VstPlugin(){
 #if VSTTHREADS
-	threadID_ = std::this_thread::get_id();
-	// LOG_DEBUG("thread ID constructor: " << threadID_);
+	rtThreadID_ = std::this_thread::get_id();
+	// LOG_DEBUG("thread ID constructor: " << rtThreadID_);
 #endif
 	listener_ = std::make_unique<VstPluginListener>(*this);
 
@@ -392,7 +398,8 @@ void VstPlugin::next(int inNumSamples) {
 		offset = plugin_->getNumOutputs();
 
 #if VSTTHREADS
-		// send parameter automation notification (only if we have a VST editor window)
+		// send parameter automation notification posted from another thread.
+		// we assume this is only possible if we have a VST editor window.
 		if (window_) {
 			std::lock_guard<std::mutex> guard(mutex_);
 			for (auto& p : paramQueue_) {
