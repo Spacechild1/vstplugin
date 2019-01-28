@@ -400,12 +400,15 @@ void VstPlugin::next(int inNumSamples) {
 #if VSTTHREADS
 		// send parameter automation notification posted from another thread.
 		// we assume this is only possible if we have a VST editor window.
-		if (window_) {
-			std::lock_guard<std::mutex> guard(mutex_);
-			for (auto& p : paramQueue_) {
+		// try_lock() won't block the audio thread and we don't mind if
+		// notifications will be delayed if try_lock() fails (which happens rarely in practice).
+		if (window_ && mutex_.try_lock()) {
+			std::vector<std::pair<int, float>> queue;
+			queue.swap(paramQueue_);
+			mutex_.unlock();
+			for (auto& p : queue) {
 				parameterAutomated(p.first, p.second);
 			}
-			paramQueue_.clear();
 		}
 #endif
 	}
