@@ -45,6 +45,7 @@ private:
 
 class VstPlugin : public SCUnit {
 	friend class VstPluginListener;
+	friend struct VstPluginCmdData;
 	static const uint32 MagicNumber = 0x5da815bc;
 public:
 	VstPlugin();
@@ -53,6 +54,7 @@ public:
 	bool check();
 	bool valid();
     void open(const char *path, GuiType gui);
+	void doneOpen(VstPluginCmdData& msg);
 	void close();
 	void showEditor(bool show);
 	void reset();
@@ -113,11 +115,12 @@ private:
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
+	bool isLoading_ = false;
 	GuiType gui_ = NO_GUI;
 	bool notify_ = false;
 	bool paramDisplay_ = true; // true by default
 	bool bypass_ = false;
-	std::unique_ptr<IVSTWindow> window_;
+	std::shared_ptr<IVSTWindow> window_;
 	std::unique_ptr<VstPluginListener> listener_;
 
     float *buf_ = nullptr;
@@ -132,12 +135,30 @@ private:
 
     // threading
 #if VSTTHREADS
-    void threadFunction(std::promise<IVSTPlugin *> promise, const char *path);
     std::thread thread_;
 	std::thread::id rtThreadID_;
     std::mutex mutex_;
 	std::vector<std::pair<int, float>> paramQueue_;
 #endif
+};
+
+struct VstPluginCmdData {
+	VstPluginCmdData(VstPlugin *owner)
+		: owner_(owner) {}
+	bool tryOpen();
+	void close();
+	void doneOpen() {
+		owner_->doneOpen(*this);
+	}
+	VstPlugin *owner_;
+	IVSTPlugin *plugin_ = nullptr;
+	GuiType gui_ = NO_GUI;
+	std::shared_ptr<IVSTWindow> window_;
+#if VSTTHREADS
+	std::thread thread_;
+#endif
+	// flexible array
+	char path_[1];
 };
 
 

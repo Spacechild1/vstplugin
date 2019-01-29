@@ -89,6 +89,7 @@ VstPlugin::~VstPlugin(){
 	if (inBufVec_) RTFree(mWorld, inBufVec_);
 	if (outBufVec_) RTFree(mWorld, outBufVec_);
 	if (paramStates_) RTFree(mWorld, paramStates_);
+	LOG_DEBUG("destroyed VstPlugin");
 }
 
 IVSTPlugin *VstPlugin::plugin() {
@@ -171,53 +172,137 @@ void VstPlugin::resizeBuffer(){
 	}
 }
 
-void VstPlugin::close() {
-#if VSTTHREADS
-		// terminate the message loop (if any - will implicitly release the plugin)
-	if (window_) window_->quit();
-        // now join the thread (if any)
-    if (thread_.joinable()){
-        thread_.join();
-		LOG_DEBUG("thread joined");
-    }
-#endif
-		// now delete the window (if any)
-	window_ = nullptr;
-        // do we still have a plugin? (e.g. SC editor or !VSTTHREADS)
-    if (plugin_){
-        freeVSTPlugin(plugin_);
-        plugin_ = nullptr;
-    }
-	LOG_DEBUG("VST plugin closed");
+bool cmdClose(World *world, void* cmdData) {
+	((VstPluginCmdData *)cmdData)->close();
+	return true;
 }
 
-void VstPlugin::open(const char *path, GuiType gui){
-    close();
+void cmdCloseFree(World *world, void* cmdData) {
+	((VstPluginCmdData *)cmdData)->~VstPluginCmdData();
+	RTFree(world, cmdData);
+	LOG_DEBUG("VstPluginCmdData freed!");
+}
+
+void VstPlugin::close() {
+	VstPluginCmdData *cmdData = (VstPluginCmdData *)RTAlloc(mWorld, sizeof(VstPluginCmdData));
+	if (!cmdData) {
+		LOG_ERROR("RTAlloc failed!");
+			// for now, just leak it
+		window_ = nullptr;
+		plugin_ = nullptr;
+		return;
+	}
+	new (cmdData) VstPluginCmdData(this);
+	cmdData->plugin_ = plugin_;
+	cmdData->window_ = window_;
+	cmdData->thread_ = std::move(thread_);
+	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdClose, 0, 0, cmdCloseFree, 0, 0);
+	window_ = nullptr;
+	plugin_ = nullptr;
+}
+
+void VstPluginCmdData::close() {
+	if (window_) {
+#if VSTTHREADS
+		// terminate the message loop (if any - will implicitly release the plugin)
+		if (window_) window_->quit();
+		// now join the thread (if any)
+		if (thread_.joinable()) {
+			thread_.join();
+			LOG_DEBUG("thread joined");
+		}
+#else
+		freeVSTPlugin(plugin_);
+#endif
+		// now delete the window (if any)
+		window_ = nullptr;
+		// don't forget to set plugin_ to 0!
+		plugin_ = nullptr;
+	}
+	else {
+		if (plugin_) {
+			freeVSTPlugin(plugin_);
+			plugin_ = nullptr;
+			LOG_DEBUG("VST plugin closed");
+		}
+	}
+}
+
+bool cmdOpen(World *world, void* cmdData) {
 	// initialize GUI backend (if needed)
-	if (gui == VST_GUI) {
-    #ifdef __APPLE__
-        LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
-		gui = NO_GUI;
-    #else
+	auto data = (VstPluginCmdData *)cmdData;
+	if (data->gui_ == VST_GUI) {
+#ifdef __APPLE__
+		LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
+		data->gui_ = NO_GUI;
+#else
 		static bool initialized = false;
 		if (!initialized) {
 			VSTWindowFactory::initialize();
 			initialized = true;
 		}
-    #endif
+#endif
 	}
 	LOG_DEBUG("try loading plugin");
-    plugin_ = tryOpenPlugin(path, gui);
+	if (data->tryOpen()) {
+		LOG_DEBUG("loaded " << data->path_);
+		return true;
+	}
+	else {
+		LOG_WARNING("VstPlugin: couldn't load " << data->path_);
+		return false;
+	}
+}
+
+bool cmdOpenDone(World *world, void* cmdData) {
+	((VstPluginCmdData *)cmdData)->doneOpen();
+	LOG_DEBUG("cmdOpenDone!");
+	return false;
+}
+
+void cmdOpenFree(World *world, void* cmdData) {
+	((VstPluginCmdData *)cmdData)->~VstPluginCmdData();
+	RTFree(world, cmdData);
+	LOG_DEBUG("VstPluginCmdData freed!");
+}
+
+	// try to open the plugin in the NRT thread with an asynchronous command
+void VstPlugin::open(const char *path, GuiType gui) {
+	if (isLoading_) {
+		LOG_WARNING("already loading!");
+		return;
+	}
+	close();
+	
+	int pathLen = strlen(path) + 1;
+	VstPluginCmdData *cmdData = (VstPluginCmdData *)RTAlloc(mWorld, sizeof(VstPluginCmdData) + pathLen);
+	if (!cmdData) {
+		LOG_ERROR("RTAlloc failed!");
+		return;
+	}
+	new (cmdData) VstPluginCmdData(this);
+	cmdData->gui_ = gui;
+	memcpy(cmdData->path_, path, pathLen);
+	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdOpen, cmdOpenDone, 0, cmdOpenFree, 0, 0);
+	isLoading_ = true;
+}
+
+void VstPlugin::doneOpen(VstPluginCmdData& msg){
+	isLoading_ = false;
+	plugin_ = msg.plugin_;
+	window_ = msg.window_;
+	thread_ = std::move(msg.thread_);
+
     if (plugin_){
-		if (gui == VST_GUI && !window_) {
+		plugin_->setListener(listener_.get());
+		if (msg.gui_ == VST_GUI && !window_) {
 			// fall back to SC GUI if the window couldn't be created
 			// (e.g. because the plugin doesn't have an editor)
 			gui_ = SC_GUI;
 		}
 		else {
-			gui_ = gui;
+			gui_ = msg.gui_;
 		}
-		LOG_DEBUG("loaded " << path);
 		int blockSize = bufferSize();
 		plugin_->setSampleRate(sampleRate());
 		plugin_->setBlockSize(blockSize);
@@ -247,79 +332,85 @@ void VstPlugin::open(const char *path, GuiType gui){
 		sendMsg("/vst_open", 1);
 		sendParameters(); // after open!
 	} else {
-		LOG_WARNING("VstPlugin: couldn't load " << path);
 		sendMsg("/vst_open", 0);
 		gui_ = NO_GUI;
 	}
 }
 
-IVSTPlugin* VstPlugin::tryOpenPlugin(const char *path, GuiType gui){
+using VstPluginCmdPromise = std::promise<std::pair<IVSTPlugin *, std::shared_ptr<IVSTWindow>>>;
+
+void threadFunction(VstPluginCmdPromise promise, const char *path);
+
+bool VstPluginCmdData::tryOpen(){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
-    if (gui == VST_GUI){
-        std::promise<IVSTPlugin *> promise;
+    if (gui_ == VST_GUI){
+		VstPluginCmdPromise promise;
         auto future = promise.get_future();
 		LOG_DEBUG("started thread");
-        thread_ = std::thread(&VstPlugin::threadFunction, this, std::move(promise), path);
-        return future.get();
+        thread_ = std::thread(threadFunction, std::move(promise), path_);
+			// wait for thread to return the plugin and window
+        auto result = future.get();
+		LOG_DEBUG("got result from thread");
+		plugin_ = result.first;
+		window_ = result.second;
+		return (bool)plugin_;
     }
 #endif
         // create plugin in main thread
-    IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
-	if (!plugin) {
-		return nullptr;
+    plugin_ = loadVSTPlugin(makeVSTPluginFilePath(path_));
+	if (!plugin_) {
+		return false;
 	}
-        // receive events from plugin
-    plugin->setListener(listener_.get());
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin->hasEditor() && gui == VST_GUI){
-        window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
-        if (window_){
-            window_->setTitle(plugin->getPluginName());
+        window = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        if (window){
+            window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
             plugin->getEditorRect(left, top, right, bottom);
-            window_->setGeometry(left, top, right, bottom);
+            window->setGeometry(left, top, right, bottom);
             // don't open the editor on macOS (see VSTWindowCocoa.mm)
 #ifndef __APPLE__
-            plugin->openEditor(window_->getHandle());
+            plugin->openEditor(window->getHandle());
 #endif
         }
     }
 #endif
-    return plugin;
+    return true;
 }
 
 #if VSTTHREADS
-void VstPlugin::threadFunction(std::promise<IVSTPlugin *> promise, const char *path){
+void threadFunction(VstPluginCmdPromise promise, const char *path){
     IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
     if (!plugin){
-            // signal main thread
-        promise.set_value(nullptr);
+            // signal other thread
+		promise.set_value({ nullptr, nullptr });
         return;
     }
         // create GUI window (if needed)
+	std::shared_ptr<IVSTWindow> window;
     if (plugin->hasEditor()){
-        window_ = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        window = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
     }
-        // receive events from plugin
-    plugin->setListener(listener_.get());
-        // return plugin to main thread
-    promise.set_value(plugin);
+        // return plugin and window to other thread
+	promise.set_value({ plugin, window });
         // setup GUI window (if any)
-    if (window_){
-        window_->setTitle(plugin->getPluginName());
+    if (window){
+        window->setTitle(plugin->getPluginName());
         int left, top, right, bottom;
         plugin->getEditorRect(left, top, right, bottom);
-        window_->setGeometry(left, top, right, bottom);
+        window->setGeometry(left, top, right, bottom);
 
-        plugin->openEditor(window_->getHandle());
+        plugin->openEditor(window->getHandle());
             // run the event loop until it gets a quit message 
 			// (the editor will we closed implicitly)
-        window_->run();
+		LOG_DEBUG("start message loop");
+		window->run();
+		LOG_DEBUG("end message loop");
             // some plugins expect to released in the same thread where they have been created.
         freeVSTPlugin(plugin);
-		plugin_ = nullptr;
     }
 }
 #endif
