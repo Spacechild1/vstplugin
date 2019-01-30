@@ -436,10 +436,27 @@ void VstPlugin::showEditor(bool show) {
 	}
 }
 
-void VstPlugin::reset() {
+// some plugins crash when being reset reset
+// in the NRT thread. we let the user choose
+// and add a big fat warning in the help file.
+bool cmdReset(World *world, void *cmdData) {
+	auto data = (VstPluginCmdData *)cmdData;
+	data->owner_->plugin()->suspend();
+	data->owner_->plugin()->resume();
+	return false;
+}
+
+void VstPlugin::reset(bool nrt) {
 	if (check()) {
-		plugin_->suspend();
-		plugin_->resume();
+		if (nrt) {
+			// reset in the NRT thread (unsafe)
+			doCmd(makeCmdData(), cmdReset);
+		}
+		else {
+			// reset in the RT thread (safe)
+			plugin_->suspend();
+			plugin_->resume();
+		}
 	}
 }
 
@@ -450,6 +467,7 @@ void VstPlugin::next(int inNumSamples) {
     int nout = numOutChannels_;
     bool bypass = in0(0);
 	int offset = 0;
+	// disable reset for realtime-safety reasons
 #if 0
     // only reset plugin when bypass changed from true to false
     if (plugin_ && !bypass && (bypass != bypass_)) {
@@ -1139,7 +1157,8 @@ void vst_close(Unit *unit, sc_msg_iter *args) {
 
 void vst_reset(Unit *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	CAST_UNIT->reset();
+	bool nrt = args->geti();
+	CAST_UNIT->reset(nrt);
 }
 
 void vst_vis(Unit *unit, sc_msg_iter *args) {

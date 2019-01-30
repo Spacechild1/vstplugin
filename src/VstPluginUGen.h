@@ -76,7 +76,7 @@ public:
 	void doneOpen(VstPluginCmdData& msg);
 	void close();
 	void showEditor(bool show);
-	void reset();
+	void reset(bool nrt = false);
 	void next(int inNumSamples);
 	// param
 	void setParam(int32 index, float value);

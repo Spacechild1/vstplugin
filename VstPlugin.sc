@@ -244,8 +244,8 @@ VstPluginController {
 		this.prClear();
 		this.prClearGui();
 	}
-	reset {
-		this.sendMsg('/reset');
+	reset { arg nrt = false;
+		this.sendMsg('/reset', nrt.asInt);
 	}
 	// parameters
 	set { arg ...args;

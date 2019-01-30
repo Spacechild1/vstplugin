@@ -192,7 +192,18 @@ METHOD:: close
 close the current plugin (but don't free the Synth!). You can open another plugin later.
 
 METHOD:: reset
-reset the plugin. (E.g. this might clear the delay lines in a reverb plugin.)
+reset the plugin state.
+
+ARGUMENT:: nrt
+reset the plugin in the non-realtime thread.
+
+discussion::
+Resetting the plugin might not be realtime-safe, e.g. if it involves clearing a large delay line. If this is a problem you can try to reset it
+in the non-realtime thread (asynchronously).
+
+warning::
+Some plugins can crash when being reset in the non-realtime thread, so be careful!
+::
 
 METHOD:: showGui
 shows/hides the GUI window.
