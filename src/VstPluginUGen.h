@@ -45,6 +45,23 @@ private:
 	VstPlugin *owner_ = nullptr;
 };
 
+struct VstPluginCmdData {
+	VstPluginCmdData(VstPlugin *owner)
+		: owner_(owner) {}
+	bool tryOpen();
+	void doneOpen();
+	void close();
+	VstPlugin *owner_;
+	IVSTPlugin *plugin_ = nullptr;
+	GuiType gui_ = NO_GUI;
+	std::shared_ptr<IVSTWindow> window_;
+#if VSTTHREADS
+	std::thread thread_;
+#endif
+	// flexible array
+	char path_[1];
+};
+
 class VstPlugin : public SCUnit {
 	friend class VstPluginListener;
 	friend struct VstPluginCmdData;
@@ -143,21 +160,5 @@ private:
 #endif
 };
 
-struct VstPluginCmdData {
-	VstPluginCmdData(VstPlugin *owner)
-		: owner_(owner) {}
-	bool tryOpen();
-	void doneOpen();
-	void close();
-	VstPlugin *owner_;
-	IVSTPlugin *plugin_ = nullptr;
-	GuiType gui_ = NO_GUI;
-	std::shared_ptr<IVSTWindow> window_;
-#if VSTTHREADS
-	std::thread thread_;
-#endif
-	// flexible array
-	char path_[1];
-};
 
 
