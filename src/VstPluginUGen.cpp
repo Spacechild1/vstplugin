@@ -372,13 +372,13 @@ bool VstPluginCmdData::tryOpen(){
     if (plugin_->hasEditor() && gui_ == VST_GUI){
         window_ = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin_));
         if (window_){
-			window_->setTitle(plugin->getPluginName());
+			window_->setTitle(plugin_->getPluginName());
             int left, top, right, bottom;
             plugin_->getEditorRect(left, top, right, bottom);
 			window_->setGeometry(left, top, right, bottom);
             // don't open the editor on macOS (see VSTWindowCocoa.mm)
 #ifndef __APPLE__
-            plugin_->openEditor(window->getHandle());
+            plugin_->openEditor(window_->getHandle());
 #endif
         }
     }
