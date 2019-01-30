@@ -45,20 +45,21 @@ private:
 };
 
 struct VstPluginCmdData {
-	VstPluginCmdData(VstPlugin *owner)
-		: owner_(owner) {}
 	bool tryOpen();
 	void doneOpen();
 	void close();
 	VstPlugin *owner_;
 	IVSTPlugin *plugin_ = nullptr;
-	GuiType gui_ = NO_GUI;
 	std::shared_ptr<IVSTWindow> window_;
 #if VSTTHREADS
 	std::thread thread_;
 #endif
-	// flexible array
-	char path_[1];
+	// generic int value
+	int value_ = 0;
+	// non-realtime memory
+	void *mem_ = nullptr;
+	// flexible array for RT memory
+	char buf_[1];
 };
 
 class VstPlugin : public SCUnit {
@@ -87,15 +88,17 @@ public:
 	void setUseParamDisplay(bool use);
 	void setNotifyParamChange(bool use);
 	// program/bank
+    void setProgramDataDone();
+    void setBankDataDone();
 	void setProgram(int32 index);
 	void setProgramName(const char *name);
 	void readProgram(const char *path);
-	void writeProgram(const char *path);
-	void setProgramData(const char *data, int32 n);
-	void getProgramData();
 	void readBank(const char *path);
+	void writeProgram(const char *path);
 	void writeBank(const char *path);
+	void setProgramData(const char *data, int32 n);
 	void setBankData(const char *data, int32 n);
+	void getProgramData();
 	void getBankData();
 	// midi
 	void sendMidiMsg(int32 status, int32 data1, int32 data2);
@@ -128,7 +131,12 @@ private:
 	void sysexEvent(const VSTSysexEvent& sysex);
 	void sendMsg(const char *cmd, float f);
 	void sendMsg(const char *cmd, int n, const float *data);
-
+	// for asynchronous commands
+    VstPluginCmdData* makeCmdData(const char *s);
+	VstPluginCmdData* makeCmdData(const char *data, size_t size);
+	VstPluginCmdData* makeCmdData();
+	void doCmd(VstPluginCmdData *cmdData, AsyncStageFn state2,
+		AsyncStageFn stage3=nullptr, AsyncStageFn stage4=nullptr);
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
