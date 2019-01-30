@@ -281,6 +281,10 @@ void VstPlugin::open(const char *path, GuiType gui) {
 	isLoading_ = true;
 }
 
+void VstPluginCmdData::doneOpen(){
+	owner_->doneOpen(*this);
+}
+
 void VstPlugin::doneOpen(VstPluginCmdData& msg){
 	isLoading_ = false;
 	plugin_ = msg.plugin_;

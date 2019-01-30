@@ -1,3 +1,5 @@
+#pragma once
+
 #include "SC_PlugIn.hpp"
 #include "VSTPluginInterface.h"
 
@@ -32,7 +34,6 @@ enum PluginInfo {
 };
 
 class VstPlugin;
-struct VStPluginCmdData;
 
 class VstPluginListener : public IVSTPluginListener {
 public:
@@ -97,7 +98,6 @@ private:
 		float value;
 		int32 bus;
     };
-    IVSTPlugin* tryOpenPlugin(const char *path, GuiType gui);
     // helper methods
     float readControlBus(int32 num, int32 maxChannel);
     void resizeBuffer();
@@ -147,10 +147,8 @@ struct VstPluginCmdData {
 	VstPluginCmdData(VstPlugin *owner)
 		: owner_(owner) {}
 	bool tryOpen();
+	void doneOpen();
 	void close();
-	void doneOpen() {
-		owner_->doneOpen(*this);
-	}
 	VstPlugin *owner_;
 	IVSTPlugin *plugin_ = nullptr;
 	GuiType gui_ = NO_GUI;
