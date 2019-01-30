@@ -8,13 +8,12 @@
 #endif
 
 #if VSTTHREADS
-#include <atomic>
 #include <thread>
 #include <future>
 #include <vector>
 #endif
 
-#include <limits>
+#include <memory>
 
 enum GuiType {
 	NO_GUI,

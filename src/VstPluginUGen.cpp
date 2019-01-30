@@ -1,6 +1,8 @@
 #include "VstPluginUGen.h"
 #include "Utility.h"
 
+#include <limits>
+
 static InterfaceTable *ft;
 
 void SCLog(const std::string& msg){
@@ -195,7 +197,9 @@ void VstPlugin::close() {
 	new (cmdData) VstPluginCmdData(this);
 	cmdData->plugin_ = plugin_;
 	cmdData->window_ = window_;
+#if VSTTHREADS
 	cmdData->thread_ = std::move(thread_);
+#endif
 	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdClose, 0, 0, cmdFree, 0, 0);
 	window_ = nullptr;
 	plugin_ = nullptr;
@@ -289,7 +293,9 @@ void VstPlugin::doneOpen(VstPluginCmdData& msg){
 	isLoading_ = false;
 	plugin_ = msg.plugin_;
 	window_ = msg.window_;
+#if VSTTHREADS
 	thread_ = std::move(msg.thread_);
+#endif
 
     if (plugin_){
 		plugin_->setListener(listener_.get());
@@ -335,9 +341,10 @@ void VstPlugin::doneOpen(VstPluginCmdData& msg){
 	}
 }
 
+#if VSTTHREADS
 using VstPluginCmdPromise = std::promise<std::pair<IVSTPlugin *, std::shared_ptr<IVSTWindow>>>;
-
 void threadFunction(VstPluginCmdPromise promise, const char *path);
+#endif
 
 bool VstPluginCmdData::tryOpen(){
 #if VSTTHREADS
@@ -362,16 +369,16 @@ bool VstPluginCmdData::tryOpen(){
 	}
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin->hasEditor() && gui == VST_GUI){
-        window = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
-        if (window){
-            window->setTitle(plugin->getPluginName());
+    if (plugin_->hasEditor() && gui_ == VST_GUI){
+        window_ = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin_));
+        if (window_){
+			window_->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
-            plugin->getEditorRect(left, top, right, bottom);
-            window->setGeometry(left, top, right, bottom);
+            plugin_->getEditorRect(left, top, right, bottom);
+			window_->setGeometry(left, top, right, bottom);
             // don't open the editor on macOS (see VSTWindowCocoa.mm)
 #ifndef __APPLE__
-            plugin->openEditor(window->getHandle());
+            plugin_->openEditor(window->getHandle());
 #endif
         }
     }
