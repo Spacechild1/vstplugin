@@ -174,10 +174,10 @@ void VstPlugin::resizeBuffer(){
 
 bool cmdClose(World *world, void* cmdData) {
 	((VstPluginCmdData *)cmdData)->close();
-	return true;
+	return false;
 }
 
-void cmdCloseFree(World *world, void* cmdData) {
+void cmdFree(World *world, void* cmdData) {
 	((VstPluginCmdData *)cmdData)->~VstPluginCmdData();
 	RTFree(world, cmdData);
 	LOG_DEBUG("VstPluginCmdData freed!");
@@ -196,7 +196,7 @@ void VstPlugin::close() {
 	cmdData->plugin_ = plugin_;
 	cmdData->window_ = window_;
 	cmdData->thread_ = std::move(thread_);
-	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdClose, 0, 0, cmdCloseFree, 0, 0);
+	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdClose, 0, 0, cmdFree, 0, 0);
 	window_ = nullptr;
 	plugin_ = nullptr;
 }
@@ -260,12 +260,6 @@ bool cmdOpenDone(World *world, void* cmdData) {
 	return false;
 }
 
-void cmdOpenFree(World *world, void* cmdData) {
-	((VstPluginCmdData *)cmdData)->~VstPluginCmdData();
-	RTFree(world, cmdData);
-	LOG_DEBUG("VstPluginCmdData freed!");
-}
-
 	// try to open the plugin in the NRT thread with an asynchronous command
 void VstPlugin::open(const char *path, GuiType gui) {
 	if (isLoading_) {
@@ -283,7 +277,7 @@ void VstPlugin::open(const char *path, GuiType gui) {
 	new (cmdData) VstPluginCmdData(this);
 	cmdData->gui_ = gui;
 	memcpy(cmdData->path_, path, pathLen);
-	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdOpen, cmdOpenDone, 0, cmdOpenFree, 0, 0);
+	DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdOpen, cmdOpenDone, 0, cmdFree, 0, 0);
 	isLoading_ = true;
 }
 
@@ -415,14 +409,28 @@ void threadFunction(VstPluginCmdPromise promise, const char *path){
 }
 #endif
 
+bool cmdShowEditor(World *world, void *cmdData) {
+	auto data = (VstPluginCmdData *)cmdData;
+	if (data->path_[0]) {
+		data->window_->bringToTop();
+	}
+	else {
+		data->window_->hide();
+	}
+	return false;
+}
+
 void VstPlugin::showEditor(bool show) {
 	if (plugin_ && window_) {
-		if (show) {
-			window_->bringToTop();
+		VstPluginCmdData *cmdData = (VstPluginCmdData *)RTAlloc(mWorld, sizeof(VstPluginCmdData));
+		if (!cmdData) {
+			LOG_ERROR("RTAlloc failed!");
+			return;
 		}
-		else {
-			window_->hide();
-		}
+		new (cmdData) VstPluginCmdData(this);
+		cmdData->window_ = window_;
+		cmdData->path_[0] = show;
+		DoAsynchronousCommand(mWorld, 0, 0, cmdData, cmdShowEditor, 0, 0, cmdFree, 0, 0);
 	}
 }
 
