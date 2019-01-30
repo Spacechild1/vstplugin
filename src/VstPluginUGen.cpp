@@ -25,6 +25,12 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 	}
 }
 
+void cmdFree(World *world, void* cmdData) {
+	((VstPluginCmdData *)cmdData)->~VstPluginCmdData();
+	RTFree(world, cmdData);
+	LOG_DEBUG("VstPluginCmdData freed!");
+}
+
 // VstPluginListener
 
 VstPluginListener::VstPluginListener(VstPlugin &owner)
@@ -180,28 +186,24 @@ bool cmdClose(World *world, void* cmdData) {
 	return false;
 }
 
-void cmdFree(World *world, void* cmdData) {
-	((VstPluginCmdData *)cmdData)->~VstPluginCmdData();
-	RTFree(world, cmdData);
-	LOG_DEBUG("VstPluginCmdData freed!");
-}
-
+	// try to close the plugin in the NRT thread with an asynchronous command
 void VstPlugin::close() {
-    auto cmdData = makeCmdData();
-	if (!cmdData) {
-			// for now, just leak it
+	if (plugin_) {
+		auto cmdData = makeCmdData();
+		if (!cmdData) {
+			return;
+		}
+		// plugin, window and thread don't depend on VstPlugin so they can be
+		// safely moved to cmdData (which takes care of the actual closing)
+		cmdData->plugin_ = plugin_;
+		cmdData->window_ = window_;
+#if VSTTHREADS
+		cmdData->thread_ = std::move(thread_);
+#endif
+		doCmd(cmdData, cmdClose);
 		window_ = nullptr;
 		plugin_ = nullptr;
-		return;
-    }
-	cmdData->plugin_ = plugin_;
-	cmdData->window_ = window_;
-#if VSTTHREADS
-	cmdData->thread_ = std::move(thread_);
-#endif
-	doCmd(cmdData, cmdClose);
-	window_ = nullptr;
-	plugin_ = nullptr;
+	}
 }
 
 void VstPluginCmdData::close() {
@@ -219,13 +221,12 @@ void VstPluginCmdData::close() {
 #endif
 		// now delete the window (if any)
 		window_ = nullptr;
-		// don't forget to set plugin_ to 0!
-		plugin_ = nullptr;
+		plugin_ = nullptr; // not necessary...
 	}
 	else {
 		if (plugin_) {
 			freeVSTPlugin(plugin_);
-			plugin_ = nullptr;
+			plugin_ = nullptr; // not necessary...
 			LOG_DEBUG("VST plugin closed");
 		}
 	}
@@ -270,6 +271,10 @@ void VstPlugin::open(const char *path, GuiType gui) {
 		return;
 	}
 	close();
+	if (plugin_) {
+		LOG_ERROR("couldn't close current plugin!");
+		return;
+	}
 	
     auto cmdData = makeCmdData(path);
 	if (cmdData) {
