@@ -32,6 +32,7 @@ enum PluginInfo {
 };
 
 class VstPlugin;
+struct VStPluginCmdData;
 
 class VstPluginListener : public IVSTPluginListener {
 public:
