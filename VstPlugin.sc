@@ -314,39 +314,179 @@ VstPluginController {
 	setProgramName { arg name;
 		this.sendMsg('/program_name', name);
 	}
-	readProgram { arg path;
+	readProgram { arg path, action;
+		this.makeOSCFunc({ arg msg;
+			var success = msg[3].asBoolean;
+			action.value(this, success);
+		}, '/vst_program_read').oneShot;
 		this.sendMsg('/program_read', path);
 	}
-	writeProgram { arg path;
-		this.sendMsg('/program_write', path);
-	}
-	setProgramData { arg data;
-		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
-		this.sendMsg('/program_data_set', data);
-	}
-	getProgramData { arg action;
+	readBank { arg path, action;
 		this.makeOSCFunc({ arg msg;
-			// msg: address, nodeID, index, data...
-			action.value(Int8Array.newFrom(msg[3..]));
-		}, '/vst_pgm_data').oneShot;
-		this.sendMsg('/program_data_get');
-	}
-	readBank { arg path;
+			var success = msg[3].asBoolean;
+			action.value(this, success);
+		}, '/vst_bank_read').oneShot;
 		this.sendMsg('/bank_read', path);
 	}
-	writeBank { arg path;
+	writeProgram { arg path, action;
+		this.makeOSCFunc({ arg msg;
+			var success = msg[3].asBoolean;
+			action.value(this, success);
+		}, '/vst_program_write').oneShot;
+		this.sendMsg('/program_write', path);
+	}
+	writeBank { arg path, action;
+		this.makeOSCFunc({ arg msg;
+			var success = msg[3].asBoolean;
+			action.value(this, success);
+		}, '/vst_bank_write').oneShot;
 		this.sendMsg('/bank_write', path);
 	}
-	setBankData { arg data;
+	setProgramData { arg data, action;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
-		this.sendMsg('/bank_data_set', data);
+		synth.server.isLocal.if {
+			this.prSetData(data, action, false);
+		} { "'%' only works with a local Server".format(thisMethod.name).warn; ^nil };
+	}
+	setBankData { arg data, action;
+		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		synth.server.isLocal.if {
+			this.prSetData(data, action, true);
+		} { "'%' only works with a local Server".format(thisMethod.name).warn; ^nil };
+	}
+	prSetData { arg data, action, bank;
+		var path, cb;
+		path = PathName.tmp ++ this.hash.asString;
+		cb = { arg self, success;
+			success.if {
+				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
+			};
+			action.value(self, success);
+			"done!".postln;
+		};
+		protect {
+			File.use(path, "wb", { arg file; file.write(data) });
+		} { arg error;
+			error.isNil.if {
+				bank.if { this.readBank(path, cb) } { this.readProgram(path, cb) };
+			} { "Failed to write data".warn };
+		};
+	}
+	sendProgramData { arg data, wait= -1, action;
+		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		this.prSendData(data, wait, action, false);
+	}
+	sendBankData { arg data, wait= -1, action;
+		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		this.prSendData(data, wait, action, true);
+	}
+	prSendData { arg data, wait, action, bank;
+		// split data into smaller packets and send them to the plugin.
+		// 1600 is a safe max. size for OSC packets.
+		// wait = -1 allows an OSC roundtrip between packets
+		// wait = 0 might not be safe in a high traffic situation,
+		// maybe okay with tcp.
+		var totalSize, address, resp, sym, pos = 0, packetSize = 1600;
+		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
+		sym = bank.if {'bank' } {'program'};
+		address = "/"++sym++"_data_set";
+		totalSize = data.size;
+
+		resp = this.makeOSCFunc({ arg msg;
+			var success = msg[3].asBoolean;
+			action.value(this, success);
+		}, "/vst_"++sym++"_read").oneShot;
+
+		{
+			while { pos < totalSize } {
+				var end = pos + packetSize - 1; // 'end' can safely exceed 'totalSize'
+				this.sendMsg(address, totalSize, pos, data[pos..end]);
+				pos = pos + packetSize;
+				(wait >= 0).if { wait.wait } { synth.server.sync };
+			};
+		}.forkIfNeeded
+	}
+	getProgramData { arg action;
+		this.prGetData(action, false);
 	}
 	getBankData { arg action;
-		this.makeOSCFunc({ arg msg;
-			// msg: address, nodeID, index, data...
-			action.value(Int8Array.newFrom(msg[3..]));
-		}, '/vst_bank_data').oneShot;
-		this.sendMsg('/bank_data_get');
+		this.prGetData(action, true);
+	}
+	prGetData { arg action, bank;
+		var path, cb, data;
+		path = PathName.tmp ++ this.hash.asString;
+		"try to get data".postln;
+		cb = { arg self, success;
+			success.if {
+				"try to read file".postln;
+				protect {
+					File.use(path, "rb", { arg file;
+						data = Int8Array.newClear(file.length);
+						file.read(data);
+					});
+				} { arg error;
+					error.notNil.if { "Failed to read data".warn };
+					File.delete(path).not.if { ("Could not delete data file:" + path).warn };
+					"done!".postln;
+				};
+			} { "Could not get data".warn };
+			action.value(data);
+		};
+		"write file".postln;
+		bank.if { this.writeBank(path, cb) } { this.writeProgram(path, cb) };
+	}
+	receiveProgramData { arg wait=0.01, timeout=3, action;
+		this.prReceiveData(wait, timeout, action, false);
+	}
+	receiveBankData { arg wait=0.01, timeout=3, action;
+		this.prReceiveData(wait, timeout, action, true);
+	}
+	prReceiveData { arg wait, timeout, action, bank;
+		// get data in smaller packets and assemble them.
+		// 1600 is a safe max. size for OSC packets.
+		// wait = -1 allows an OSC roundtrip between packets
+		// wait = 0 might not be safe in a high traffic situation,
+		// maybe okay with tcp.
+		var data, resp, address, sym, count = 0, done = false, packetSize = 1600;
+		loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
+		sym = bank.if {'bank' } {'program'};
+		address = "/"++sym++"_data_get";
+		data = Int8Array.new;
+
+		resp = this.makeOSCFunc({ arg msg;
+			var total, onset, size;
+			total = msg[3].asInt;
+			onset = msg[4].asInt;
+			size = msg[5].asInt;
+			// allocate array on the first packet
+			(onset == 0).if { data = Int8Array.new(total) };
+			// add packet
+			data.addAll(msg[6..]);
+			// send when done
+			(data.size >= total).if {
+				done = true;
+				resp.free;
+				action.value(data);
+			};
+		}, "/vst_"++sym++"_data");
+
+		{
+			while { done.not } {
+				this.sendMsg(address, count);
+				count = count + 1;
+				if(wait >= 0) { wait.wait } { synth.server.sync };
+			};
+
+		}.forkIfNeeded;
+
+		// lose the responder if the network choked
+		SystemClock.sched(timeout, {
+			if(done.not) {
+				resp.free;
+				"Receiving data failed!".warn;
+				"Try increasing wait time".postln
+			}
+		});
 	}
 	// midi
 	midiNoteOff { arg chan, note=60, veloc=64;

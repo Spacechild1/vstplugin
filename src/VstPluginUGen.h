@@ -15,6 +15,8 @@
 
 #include <memory>
 
+const size_t MAX_OSC_PACKET_SIZE = 1600;
+
 enum GuiType {
 	NO_GUI,
 	SC_GUI,
@@ -48,6 +50,7 @@ struct VstPluginCmdData {
 	bool tryOpen();
 	void doneOpen();
 	void close();
+	// data
 	VstPlugin *owner_;
 	IVSTPlugin *plugin_ = nullptr;
 	std::shared_ptr<IVSTWindow> window_;
@@ -57,8 +60,9 @@ struct VstPluginCmdData {
 	// generic int value
 	int value_ = 0;
 	// non-realtime memory
-	void *mem_ = nullptr;
+	std::string mem_;
 	// flexible array for RT memory
+	int size_ = 0;
 	char buf_[1];
 };
 
@@ -88,18 +92,22 @@ public:
 	void setUseParamDisplay(bool use);
 	void setNotifyParamChange(bool use);
 	// program/bank
-    void setProgramDataDone();
-    void setBankDataDone();
 	void setProgram(int32 index);
 	void setProgramName(const char *name);
 	void readProgram(const char *path);
 	void readBank(const char *path);
-	void writeProgram(const char *path);
-	void writeBank(const char *path);
+	void sendProgramData(int32 totalSize, int32 onset, const char *data, int32 n) {
+		sendData(totalSize, onset, data, n, false);
+	}
+	void sendBankData(int32 totalSize, int32 onset, const char *data, int32 n) {
+		sendData(totalSize, onset, data, n, true);
+	}
 	void setProgramData(const char *data, int32 n);
 	void setBankData(const char *data, int32 n);
-	void getProgramData();
-	void getBankData();
+	void writeProgram(const char *path);
+	void writeBank(const char *path);
+	void receiveProgramData(int count);
+	void receiveBankData(int count);
 	// midi
 	void sendMidiMsg(int32 status, int32 data1, int32 data2);
 	void sendSysexMsg(const char *data, int32 n);
@@ -112,6 +120,9 @@ public:
 	// advanced
 	void canDo(const char *what);
 	void vendorSpecific(int32 index, int32 value, void *ptr, float opt);
+	// node reply
+	void sendMsg(const char *cmd, float f);
+	void sendMsg(const char *cmd, int n, const float *data);
 private:
 	struct Param {
 		float value;
@@ -129,14 +140,16 @@ private:
 	void parameterAutomated(int32 index, float value);
 	void midiEvent(const VSTMidiEvent& midi);
 	void sysexEvent(const VSTSysexEvent& sysex);
-	void sendMsg(const char *cmd, float f);
-	void sendMsg(const char *cmd, int n, const float *data);
+	void sendData(int32 totalSize, int32 onset, const char *data, int32 n, bool bank);
 	// for asynchronous commands
     VstPluginCmdData* makeCmdData(const char *s);
 	VstPluginCmdData* makeCmdData(const char *data, size_t size);
+	VstPluginCmdData* makeCmdData(size_t size);
 	VstPluginCmdData* makeCmdData();
-	void doCmd(VstPluginCmdData *cmdData, AsyncStageFn state2,
-		AsyncStageFn stage3=nullptr, AsyncStageFn stage4=nullptr);
+	void doCmd(VstPluginCmdData *cmdData, AsyncStageFn nrt,
+		AsyncStageFn rt=nullptr);
+	static bool cmdGetData(World *world, void *cmdData, bool bank);
+	static bool cmdGetDataDone(World *world, void *cmdData, bool bank);
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
@@ -165,6 +178,14 @@ private:
     std::mutex mutex_;
 	std::vector<std::pair<int, float>> paramQueue_;
 #endif
+
+	// send program/bank data
+	std::string dataNRT_;
+	int32 dataSent_ = 0;
+	// receive program/bank data
+	char *dataRT_ = nullptr;
+	int32 dataSize_ = 0;
+	int32 dataReceived_ = 0;
 };
 
 
