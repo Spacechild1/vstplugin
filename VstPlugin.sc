@@ -362,7 +362,6 @@ VstPluginController {
 				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
 			};
 			action.value(self, success);
-			"done!".postln;
 		};
 		protect {
 			File.use(path, "wb", { arg file; file.write(data) });
@@ -415,10 +414,8 @@ VstPluginController {
 	prGetData { arg action, bank;
 		var path, cb, data;
 		path = PathName.tmp ++ this.hash.asString;
-		"try to get data".postln;
 		cb = { arg self, success;
 			success.if {
-				"try to read file".postln;
 				protect {
 					File.use(path, "rb", { arg file;
 						data = Int8Array.newClear(file.length);
@@ -427,12 +424,10 @@ VstPluginController {
 				} { arg error;
 					error.notNil.if { "Failed to read data".warn };
 					File.delete(path).not.if { ("Could not delete data file:" + path).warn };
-					"done!".postln;
 				};
 			} { "Could not get data".warn };
 			action.value(data);
 		};
-		"write file".postln;
 		bank.if { this.writeBank(path, cb) } { this.writeProgram(path, cb) };
 	}
 	receiveProgramData { arg wait=0.01, timeout=3, action;
