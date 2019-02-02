@@ -16,12 +16,15 @@ VstPlugin : MultiOutUGen {
 }
 
 VstPluginController {
-	classvar fHasEditor = 1;
-	classvar fIsSynth = 2;
-	classvar fSinglePrecision = 4;
-	classvar fDoublePrecision = 8;
-	classvar fMidiInput = 16;
-	classvar fMidiOutput = 32;
+	// flags
+	const fHasEditor = 1;
+	const fIsSynth = 2;
+	const fSinglePrecision = 4;
+	const fDoublePrecision = 8;
+	const fMidiInput = 16;
+	const fMidiOutput = 32;
+	// constants
+	const oscPacketSize = 1600; // safe max. OSC packet size
 
 	// public
 	var <synth;
@@ -381,11 +384,10 @@ VstPluginController {
 	}
 	prSendData { arg data, wait, action, bank;
 		// split data into smaller packets and send them to the plugin.
-		// 1600 is a safe max. size for OSC packets.
-		// wait = -1 allows an OSC roundtrip between packets
+		// wait = -1 allows an OSC roundtrip between packets.
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
-		var totalSize, address, resp, sym, pos = 0, packetSize = 1600;
+		var totalSize, address, resp, sym, pos = 0;
 		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 		address = "/"++sym++"_data_set";
@@ -398,9 +400,9 @@ VstPluginController {
 
 		{
 			while { pos < totalSize } {
-				var end = pos + packetSize - 1; // 'end' can safely exceed 'totalSize'
+				var end = pos + oscPacketSize - 1; // 'end' can safely exceed 'totalSize'
 				this.sendMsg(address, totalSize, pos, data[pos..end]);
-				pos = pos + packetSize;
+				pos = pos + oscPacketSize;
 				(wait >= 0).if { wait.wait } { synth.server.sync };
 			};
 		}.forkIfNeeded
@@ -438,11 +440,10 @@ VstPluginController {
 	}
 	prReceiveData { arg wait, timeout, action, bank;
 		// get data in smaller packets and assemble them.
-		// 1600 is a safe max. size for OSC packets.
-		// wait = -1 allows an OSC roundtrip between packets
+		// wait = -1 allows an OSC roundtrip between packets.
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
-		var data, resp, address, sym, count = 0, done = false, packetSize = 1600;
+		var data, resp, address, sym, count = 0, done = false;
 		loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 		address = "/"++sym++"_data_get";
@@ -514,6 +515,9 @@ VstPluginController {
 	}
 	midiSysex { arg msg;
 		(msg.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		(msg.size > oscPacketSize).if {
+			"sending sysex data larger than % bytes is risky".format(oscPacketSize).warn;
+		};
 		this.sendMsg('/midi_sysex', msg);
 	}
 	// transport

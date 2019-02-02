@@ -1175,7 +1175,7 @@ void VstPlugin::midiEvent(const VSTMidiEvent& midi) {
 void VstPlugin::sysexEvent(const VSTSysexEvent& sysex) {
 	auto& data = sysex.data;
 	int size = data.size();
-	if ((size * sizeof(float)) > 8000) {
+	if ((size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
 		LOG_WARNING("sysex message (" << size << " bytes) too large for UDP packet - dropped!");
 		return;
 	}
