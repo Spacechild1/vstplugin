@@ -1,11 +1,11 @@
 TITLE:: VstPluginController
 summary:: control a VST plugin
 categories:: Utility
-related:: Classes/VstPlugin
+related:: VstPlugin
 
 DESCRIPTION::
 
-This class is used to control a specific link::Classes/VstPlugin:: instance in a link::Classes/Synth::, so you can
+This class is used to control a specific link::VstPlugin:: instance in a link::Classes/Synth::, so you can
 link::#-open:: plugins, show the GUI, change programs, send link::#MIDI:: messages, etc.
 
 warning::Please read the sections about link::#Realtime-Safety:: and link::#Other Caveats:: ::
@@ -50,7 +50,7 @@ SynthDef(\insert2, { arg bus;
 
 subsection:: Parameter Automation and Preset Management
 
-It is possible to automate plugin parameters with UGens or Synth controls via the code::params:: argument in link::Classes/VstPlugin#*ar::.
+It is possible to automate plugin parameters with UGens or Synth controls via the code::params:: argument in link::VstPlugin#*ar::.
 
 Additionally, you can set parameters directly with link::#-set:: and link::#-setn:: or map them to control busses with link::#-map:::
 
@@ -149,10 +149,10 @@ METHOD:: new
 Create a new VstPluginController.
 
 ARGUMENT:: synth
-the link::Classes/Synth:: containing the link::Classes/VstPlugin:: you want to control.
+the link::Classes/Synth:: containing the link::VstPlugin:: you want to control.
 
 ARGUMENT:: id
-a symbol or number which uniquely identifies the link::Classes/VstPlugin:: within the link::Classes/SynthDef::.
+a symbol or number which uniquely identifies the link::VstPlugin:: within the link::Classes/SynthDef::.
 If this is code::nil::, VstPluginController will take the first instance it can find. This means you don't need an emphasis::id:: if there's only one VstPlugin in the SynthDef.
 
 ARGUMENT:: synthDef
@@ -209,10 +209,10 @@ METHOD:: showGui
 shows/hides the GUI window.
 
 METHOD:: synth
-returns:: the link::Classes/Synth:: of the currently controlled link::Classes/VstPlugin:: instance.
+returns:: the link::Classes/Synth:: of the currently controlled link::VstPlugin:: instance.
 
 METHOD:: synthIndex
-returns:: the index of the link::Classes/VstPlugin:: instance within the link::Classes/Synth::.
+returns:: the index of the link::VstPlugin:: instance within the link::Classes/Synth::.
 
 subsection:: Plugin Info
 
