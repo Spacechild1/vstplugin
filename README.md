@@ -84,5 +84,6 @@ on Windows you have to use VisualStudio because MinGW builds don't seem to work 
 	I recommend using the cmake-gui GUI application instead of the cmake command line tool to set the generator and above mentioned variables.
 
 6) macOS/Linux: type 'make', Windows: open VstPluginUGen.sln with Visual Studio and build the project.
-7) copy the resulting binary VstPluginUGen.scx (on Linux: VstPluginUGen.so) and the VstPlugin.sc class file into your SuperCollider extensions folder.
-8) copy VstPlugin.schelp into HelpSource/Classes/
+7) make a /VstPlugin folder in your SuperCollider extensions folder
+7) copy VstPluginUGen.scx (on Linux: VstPluginUGen.so) and VstPlugin.sc into /VstPlugin
+8) copy VstPlugin.schelp and VstPluginController.schep into /VstPlugin/HelpSource
