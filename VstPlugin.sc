@@ -25,7 +25,6 @@ VstPluginController {
 	const fMidiOutput = 32;
 	// constants
 	const oscPacketSize = 1600; // safe max. OSC packet size
-
 	// public
 	var <synth;
 	var <synthIndex;
@@ -40,6 +39,7 @@ VstPluginController {
 	var <doublePrecision;
 	var <midiInput;
 	var <midiOutput;
+	var <midi;
 	var <programs;
 	var <currentProgram;
 	var <parameterNames;
@@ -78,6 +78,7 @@ VstPluginController {
 		synth = theSynth;
 		synthIndex = theIndex;
 		loaded = false;
+		midi = VstPluginMIDIProxy(this);
 		oscFuncs = List.new;
 		// parameter changed:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
@@ -484,36 +485,10 @@ VstPluginController {
 			}
 		});
 	}
-	// midi
-	midiNoteOff { arg chan, note=60, veloc=64;
-		this.prMidiMsg(128, chan, note, veloc);
-	}
-	midiNoteOn { arg chan, note=60, veloc=64;
-		this.prMidiMsg(144, chan, note, veloc);
-	}
-	midiPolyTouch { arg chan, note=60, val=64;
-		this.prMidiMsg(160, chan, note, val);
-	}
-	midiControl { arg chan, ctlNum=60, val=64;
-		this.prMidiMsg(176, chan, ctlNum, val);
-	}
-	midiProgram { arg chan, num=1;
-		this.prMidiMsg(192, chan, num);
-	}
-	midiTouch { arg chan, val=64;
-		this.prMidiMsg(208, chan, val);
-	}
-	midiBend { arg chan, val=8192;
-		var msb, lsb;
-		val = val.asInt.clip(0, 16383);
-		lsb = val & 127;
-		msb = (val >> 7) & 127;
-		this.prMidiMsg(224, chan, lsb, msb);
-	}
-	midiMsg { arg status, data1=0, data2=0;
+	sendMidi { arg status, data1=0, data2=0;
 		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2));
 	}
-	midiSysex { arg msg;
+	sendSysex { arg msg;
 		(msg.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		(msg.size > oscPacketSize).if {
 			"sending sysex data larger than % bytes is risky".format(oscPacketSize).warn;
@@ -560,16 +535,86 @@ VstPluginController {
 	makeOSCFunc { arg func, path;
 		^OSCFunc(func, path, synth.server.addr, argTemplate: [synth.nodeID, synthIndex]);
 	}
-	prMidiMsg { arg hiStatus, lowStatus, data1=0, data2=0;
-		var status = hiStatus.asInt + lowStatus.asInt.clip(0, 15);
-		this.midiMsg(status, data1, data2);
-	}
 	*msg2string { arg msg, onset=0;
 		// format: len, chars...
 		var len = msg[onset].asInt;
 		(len > 0).if {
 			^msg[(onset+1)..(onset+len)].collectAs({arg item; item.asInt.asAscii}, String);
 		} { ^"" };
+	}
+}
+
+// mimicks MIDIOut
+VstPluginMIDIProxy {
+	var <>latency = 0;
+	var <>port = 0;
+	var <>uid = 0;
+	var <>owner;
+
+	*new { arg theOwner;
+		^super.new.owner_(theOwner);
+	}
+	write { arg len, hiStatus, loStatus, a=0, b=0;
+		owner.sendMidi(hiStatus bitOr: loStatus, a, b);
+	}
+	noteOn { arg chan, note=60, veloc=64;
+		this.write(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger);
+	}
+	noteOff { arg chan, note=60, veloc=64;
+		this.write(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger);
+	}
+	polyTouch { arg chan, note=60, val=64;
+		this.write(3, 16rA0, chan.asInteger, note.asInteger, val.asInteger);
+	}
+	control { arg chan, ctlNum=7, val=64;
+		this.write(3, 16rB0, chan.asInteger, ctlNum.asInteger, val.asInteger);
+	}
+	program { arg chan, num=1;
+		this.write(2, 16rC0, chan.asInteger, num.asInteger);
+	}
+	touch { arg chan, val=64;
+		this.write(2, 16rD0, chan.asInteger, val.asInteger);
+	}
+	bend { arg chan, val=8192;
+		val = val.asInteger;
+		this.write(3, 16rE0, chan, val bitAnd: 127, val >> 7);
+	}
+	allNotesOff { arg chan;
+		this.control(chan, 123, 0);
+	}
+	smpte	{ arg frames=0, seconds=0, minutes=0, hours=0, frameRate = 3;
+		var packet;
+		packet = [frames, seconds, minutes, hours]
+			.asInteger
+			.collect({ arg v, i; [(i * 2 << 4) | (v & 16rF), (i * 2 + 1 << 4) | (v >> 4) ] });
+		packet = packet.flat;
+		packet.put(7, packet.at(7) | ( frameRate << 1 ) );
+		packet.do({ arg v; this.write(2, 16rF0, 16r01, v); });
+	}
+	songPtr { arg songPtr;
+		songPtr = songPtr.asInteger;
+		this.write(4, 16rF0, 16r02, songPtr & 16r7f, songPtr >> 7 & 16r7f);
+	}
+	songSelect { arg song;
+		this.write(3, 16rF0, 16r03, song.asInteger);
+	}
+	midiClock {
+		this.write(1, 16rF0, 16r08);
+	}
+	start {
+		this.write(1, 16rF0, 16r0A);
+	}
+	continue {
+		this.write(1, 16rF0, 16r0B);
+	}
+	stop {
+		this.write(1, 16rF0, 16r0C);
+	}
+	reset {
+		this.write(1, 16rF0, 16r0F);
+	}
+	sysex { arg packet;
+		owner.sendSysex(packet);
 	}
 }
 
