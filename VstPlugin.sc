@@ -1,5 +1,50 @@
 VstPlugin : MultiOutUGen {
+	// class variables
+	classvar <defaultSearchPaths;
+	classvar <>useDefaultSearchPaths = true;
+	classvar <userSearchPaths;
+	classvar <platformExtensions;
+	classvar pluginMap;
+	// instance variables
 	var <id;
+	// class methods
+	*initClass {
+		StartUp.add {
+			Platform.case(
+				// https://helpcenter.steinberg.de/hc/de/articles/115000171310
+				\osx, {
+					defaultSearchPaths = ["~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"];
+					platformExtensions = Set["vst"];
+				},
+				// needs more research
+				\linux, {
+					defaultSearchPaths = ["/usr/lib/vst", "/usr/local/lib/vst"];
+					platformExtensions = Set["so"];
+				},
+				// https://helpcenter.steinberg.de/hc/de/articles/115000177084-Speicherorte-von-VST-Plug-ins-unter-Windows-
+				\windows, {
+					// HACK to find out if we're using 32 bit SC (ignoring the case were the Client and local Server don't
+					// share the same architecture). only works if SC is installed in Program Files / Program Files (x86).
+					// LATER come up with something more robust (e.g. retrieving the architecture of scsynth.exe with PowerShell)
+					var dir, end;
+					dir = thisProcess.platform.resourceDir;
+					end = dir.find("SuperCollider");
+					end.notNil.if {
+						var prefix = dir[0..(end-1)];
+						defaultSearchPaths = [prefix +/+ "VSTPlugins", prefix +/+ "Steinberg\VSTPlugins",
+							prefix +/+ "Common Files\VST2",	prefix +/+ "Common Files\Steinberg\VST2"];
+					} {
+						"VstPlugin: can't determine SuperCollider architecture! Not using any default search paths. Please add search paths manually.".warn;
+						defaultSearchPaths = [];
+					};
+					platformExtensions = Set["dll"];
+				}
+			);
+			userSearchPaths = Set.new;
+			pluginMap = Dictionary.new;
+			this.rescan;
+		}
+	}
 	*ar { arg input, numOut=1, bypass=0, params, id;
 		var numIn = 0;
 		input.notNil.if {
@@ -8,6 +53,47 @@ VstPlugin : MultiOutUGen {
 		^this.multiNewList([\audio, id, numOut, bypass, numIn] ++ input ++ params);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
+
+	*pluginList {
+		// return sorted list of plugins (case insensitive)
+		^Array.newFrom(pluginMap.keys).sort({ arg a, b; a.compare(b, true) < 0});
+	}
+	*pluginPath { arg name;
+		^pluginMap[name];
+	}
+	*addSearchPath { arg path;
+		path = path.standardizePath;
+		userSearchPaths.includes(path).if {"path '%' already added!".format(path).warn; };
+		userSearchPaths.remove(path);
+	}
+	*removeSearchPath { arg path;
+		path = path.standardizePath;
+		userSearchPaths.includes(path).not.if {"path '%' hasn't been added yet!".format(path).warn; };
+		userSearchPaths.remove(path);
+	}
+	*clearSearchPaths {
+		userSearchPaths.clear;
+	}
+	*rescan {
+		pluginMap.clear;
+		useDefaultSearchPaths.if { defaultSearchPaths.do { arg path; this.prScan(PathName(path)) }};
+		userSearchPaths.do { arg path; this.prScan(PathName(path)) };
+	}
+	*prScan { arg path, folder="";
+		path.entries.do { arg entry;
+			entry.isFolder.if {
+				// search recursively, remembering the current folder (don't use +/+)
+				// we want something like: GVST/GLow
+				this.prScan(entry, folder ++ entry.folderName ++ "/");
+			} {
+				var name = entry.fileNameWithoutExtension;
+				platformExtensions.includes(entry.extension).if {
+					pluginMap.put(folder ++ name, entry.absolutePath); // don't use +/+
+				}
+			}
+		}
+	}
+	// instance methods
 	init { arg theID, numOut ... theInputs;
 		id = theID;
 		inputs = theInputs;
@@ -231,7 +317,7 @@ VstPluginController {
 			{\sc} {1}
 			{\vst} {2}
 			{0};
-		this.sendMsg('/open', guiType, path);
+		this.sendMsg('/open', guiType, VstPlugin.pluginPath(path) ?? path);
 	}
 	prClear {
 		loaded = false; name = nil; version = nil; numInputs = nil; numOutputs = nil;
