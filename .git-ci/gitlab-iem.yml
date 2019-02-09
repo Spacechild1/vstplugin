@@ -46,7 +46,7 @@ variables:
     - export PD=/usr/bin/pd
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=1
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
@@ -64,7 +64,7 @@ variables:
     - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=1
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
@@ -85,7 +85,7 @@ variables:
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=1
   script:
     - make VST2DIR="${VST2DIR}"
     - make install DESTDIR=$(pwd) pkglibdir=/
@@ -106,7 +106,7 @@ variables:
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -H. -Bbuild -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=1
   script:
     - make extension=m_amd64 VST2DIR="${VST2DIR}"
     - make install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
