@@ -200,10 +200,10 @@ void VstPlugin::close() {
 		}
 		// plugin, window and thread don't depend on VstPlugin so they can be
 		// safely moved to cmdData (which takes care of the actual closing)
-		cmdData->plugin_ = plugin_;
-		cmdData->window_ = window_;
+		cmdData->plugin = plugin_;
+		cmdData->window = window_;
 #if VSTTHREADS
-		cmdData->thread_ = std::move(thread_);
+		cmdData->thread = std::move(thread_);
 #endif
 		doCmd(cmdData, cmdClose);
 		window_ = nullptr;
@@ -212,26 +212,26 @@ void VstPlugin::close() {
 }
 
 void VstPluginCmdData::close() {
-	if (window_) {
+	if (window) {
 #if VSTTHREADS
 		// terminate the message loop (if any - will implicitly release the plugin)
-		if (window_) window_->quit();
+		if (window) window->quit();
 		// now join the thread (if any)
-		if (thread_.joinable()) {
-			thread_.join();
+		if (thread.joinable()) {
+			thread.join();
 			LOG_DEBUG("thread joined");
 		}
 #else
 		freeVSTPlugin(plugin_);
 #endif
 		// now delete the window (if any)
-		window_ = nullptr;
-		plugin_ = nullptr; // not necessary...
+		window = nullptr;
+		plugin = nullptr; // not necessary...
 	}
 	else {
-		if (plugin_) {
-			freeVSTPlugin(plugin_);
-			plugin_ = nullptr; // not necessary...
+		if (plugin) {
+			freeVSTPlugin(plugin);
+			plugin = nullptr; // not necessary...
 			LOG_DEBUG("VST plugin closed");
 		}
 	}
@@ -240,10 +240,10 @@ void VstPluginCmdData::close() {
 bool cmdOpen(World *world, void* cmdData) {
 	// initialize GUI backend (if needed)
 	auto data = (VstPluginCmdData *)cmdData;
-	if (data->value_ == VST_GUI) {
+	if (data->value == VST_GUI) {
 #ifdef __APPLE__
 		LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
-		data->value_ = NO_GUI;
+		data->value = NO_GUI;
 #else
 		static bool initialized = false;
 		if (!initialized) {
@@ -254,19 +254,19 @@ bool cmdOpen(World *world, void* cmdData) {
 	}
 	LOG_DEBUG("try loading plugin");
 	if (data->tryOpen()) {
-		LOG_DEBUG("loaded " << data->buf_);
-		data->value_ = true;
+		LOG_DEBUG("loaded " << data->buf);
+		data->value = true;
 	}
 	else {
-		LOG_WARNING("VstPlugin: couldn't load " << data->buf_);
-		data->value_ = false;
+		LOG_WARNING("VstPlugin: couldn't load " << data->buf);
+		data->value = false;
 	}
 	return true;
 }
 
 bool cmdOpenDone(World *world, void* cmdData) {
 	auto data = (VstPluginCmdData *)cmdData;
-	if (data->value_) {
+	if (data->value) {
 		((VstPluginCmdData *)cmdData)->doneOpen();
 		LOG_DEBUG("cmdOpenDone!");
 	}
@@ -287,33 +287,33 @@ void VstPlugin::open(const char *path, GuiType gui) {
 	
     auto cmdData = makeCmdData(path);
 	if (cmdData) {
-		cmdData->value_ = (int)gui;
+		cmdData->value = (int)gui;
 		doCmd(cmdData, cmdOpen, cmdOpenDone);
 		isLoading_ = true;
     }
 }
 
 void VstPluginCmdData::doneOpen(){
-	owner_->doneOpen(*this);
+	owner->doneOpen(*this);
 }
 
 void VstPlugin::doneOpen(VstPluginCmdData& cmd){
 	isLoading_ = false;
-	plugin_ = cmd.plugin_;
-	window_ = cmd.window_;
+	plugin_ = cmd.plugin;
+	window_ = cmd.window;
 #if VSTTHREADS
-	thread_ = std::move(cmd.thread_);
+	thread_ = std::move(cmd.thread);
 #endif
 
     if (plugin_){
 		plugin_->setListener(listener_.get());
-		if (cmd.value_ == VST_GUI && !window_) {
+		if (cmd.value == VST_GUI && !window_) {
 			// fall back to SC GUI if the window couldn't be created
 			// (e.g. because the plugin doesn't have an editor)
 			gui_ = SC_GUI;
 		}
 		else {
-			gui_ = (GuiType)cmd.value_;
+			gui_ = (GuiType)cmd.value;
 		}
 		int blockSize = bufferSize();
 		plugin_->setSampleRate(sampleRate());
@@ -357,22 +357,22 @@ void threadFunction(VstPluginCmdPromise promise, const char *path);
 bool VstPluginCmdData::tryOpen(){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
-    if (value_ == VST_GUI){
+    if (value == VST_GUI){
 		VstPluginCmdPromise promise;
         auto future = promise.get_future();
 		LOG_DEBUG("started thread");
-        thread_ = std::thread(threadFunction, std::move(promise), buf_);
+        thread = std::thread(threadFunction, std::move(promise), buf);
 			// wait for thread to return the plugin and window
         auto result = future.get();
 		LOG_DEBUG("got result from thread");
-		plugin_ = result.first;
-		window_ = result.second;
-		return (bool)plugin_;
+		plugin = result.first;
+		window = result.second;
+		return (bool)plugin;
     }
 #endif
         // create plugin in main thread
-    plugin_ = loadVSTPlugin(makeVSTPluginFilePath(buf_));
-	if (!plugin_) {
+    plugin = loadVSTPlugin(makeVSTPluginFilePath(buf));
+	if (!plugin) {
 		return false;
 	}
 #if !VSTTHREADS
@@ -430,11 +430,11 @@ void threadFunction(VstPluginCmdPromise promise, const char *path){
 
 bool cmdShowEditor(World *world, void *cmdData) {
 	auto data = (VstPluginCmdData *)cmdData;
-	if (data->value_) {
-		data->window_->bringToTop();
+	if (data->value) {
+		data->window->bringToTop();
 	}
 	else {
-		data->window_->hide();
+		data->window->hide();
 	}
 	return true;
 }
@@ -443,8 +443,8 @@ void VstPlugin::showEditor(bool show) {
 	if (plugin_ && window_) {
         auto cmdData = makeCmdData();
 		if (cmdData) {
-			cmdData->window_ = window_;
-			cmdData->value_ = show;
+			cmdData->window = window_;
+			cmdData->value = show;
 			doCmd(cmdData, cmdShowEditor);
 		}
 	}
@@ -455,8 +455,8 @@ void VstPlugin::showEditor(bool show) {
 // and add a big fat warning in the help file.
 bool cmdReset(World *world, void *cmdData) {
 	auto data = (VstPluginCmdData *)cmdData;
-	data->owner_->plugin()->suspend();
-	data->owner_->plugin()->resume();
+	data->owner->plugin()->suspend();
+	data->owner->plugin()->resume();
 	return true;
 }
 
@@ -691,31 +691,31 @@ void VstPlugin::setProgramName(const char *name) {
 bool cmdReadFile(World *world, void *cmdData, bool bank){
     auto data = (VstPluginCmdData *)cmdData;
     // open file
-    std::ifstream file(data->buf_, std::ios_base::binary);
+    std::ifstream file(data->buf, std::ios_base::binary);
     if (file.is_open()){
         // read from file
         file.seekg(0, std::ios_base::end);
-		auto& buffer = data->mem_;
+		auto& buffer = data->mem;
         buffer.resize(file.tellg());
         file.seekg(0, std::ios_base::beg);
         file.read(&buffer[0], buffer.size());
         if (bank){
-            if (data->owner_->plugin()->readBankData(buffer)){
-                LOG_DEBUG("file " << data->buf_ << " read!");
+            if (data->owner->plugin()->readBankData(buffer)){
+                LOG_DEBUG("file " << data->buf << " read!");
             } else {
-                LOG_WARNING("couldn't read bank file \"" << data->buf_ << "\"!");
+                LOG_WARNING("couldn't read bank file \"" << data->buf << "\"!");
 				buffer.clear(); // avoid setting data in cmdReadBankDone
             }
         } else {
-            if (data->owner_->plugin()->readProgramData(buffer)){
-                LOG_DEBUG("file " << data->buf_ << " read!");
+            if (data->owner->plugin()->readProgramData(buffer)){
+                LOG_DEBUG("file " << data->buf << " read!");
             } else {
-                LOG_WARNING("couldn't read program file \"" << data->buf_ << "\"!");
+                LOG_WARNING("couldn't read program file \"" << data->buf << "\"!");
 				buffer.clear(); // avoid setting data in cmdReadProgramDone
             }
         }
     } else {
-        LOG_WARNING("couldn't open file \"" << data->buf_ << "\"!");
+        LOG_WARNING("couldn't open file \"" << data->buf << "\"!");
     }
 	return true;
 }
@@ -730,18 +730,18 @@ bool cmdReadBank(World *world, void *cmdData){
 
 bool cmdReadProgramDone(World *world, void *cmdData){
     auto data = (VstPluginCmdData *)cmdData;
-	auto& buffer = data->mem_;
+	auto& buffer = data->mem;
 	if (buffer.size()) {
-		data->owner_->setProgramData(buffer.data(), buffer.size());
+		data->owner->setProgramData(buffer.data(), buffer.size());
 	}
     return true;
 }
 
 bool cmdReadBankDone(World *world, void *cmdData){
 	auto data = (VstPluginCmdData *)cmdData;
-	auto& buffer = data->mem_;
+	auto& buffer = data->mem;
 	if (buffer.size()) {
-		data->owner_->setBankData(buffer.data(), buffer.size());
+		data->owner->setBankData(buffer.data(), buffer.size());
 	}
 	return true;
 }
@@ -852,21 +852,21 @@ void VstPlugin::setBankData(const char *data, int32 n) {
 bool cmdWriteFile(World *world, void *cmdData, bool bank){
     auto data = (VstPluginCmdData *)cmdData;
     // create file
-    std::ofstream file(data->buf_, std::ios_base::binary);
+    std::ofstream file(data->buf, std::ios_base::binary);
     if (file.is_open()){
 		std::string buffer;
         // write to file
         if (bank){
-            data->owner_->plugin()->writeBankData(buffer);
+            data->owner->plugin()->writeBankData(buffer);
         } else {
-            data->owner_->plugin()->writeProgramData(buffer);
+            data->owner->plugin()->writeProgramData(buffer);
         }
         file << buffer;
-        LOG_DEBUG("file " << data->buf_ << " written!");
-		data->value_ = true;
+        LOG_DEBUG("file " << data->buf << " written!");
+		data->value = true;
     } else {
-        LOG_WARNING("couldn't write file \"" << data->buf_ << "\"!");
-		data->value_ = false;
+        LOG_WARNING("couldn't write file \"" << data->buf << "\"!");
+		data->value = false;
     }
 	return true;
 }
@@ -882,13 +882,13 @@ bool cmdWriteBank(World *world, void *cmdData){
 
 bool cmdWriteProgramDone(World *world, void *cmdData){
     auto data = (VstPluginCmdData *)cmdData;
-	data->owner_->sendMsg("/vst_program_write", data->value_);
+	data->owner->sendMsg("/vst_program_write", data->value);
     return true;
 }
 
 bool cmdWriteBankDone(World *world, void *cmdData) {
 	auto data = (VstPluginCmdData *)cmdData;
-	data->owner_->sendMsg("/vst_bank_write", data->value_);
+	data->owner->sendMsg("/vst_bank_write", data->value);
 	return true;
 }
 
@@ -906,9 +906,9 @@ void VstPlugin::writeBank(const char *path) {
 
 bool VstPlugin::cmdGetData(World *world, void *cmdData, bool bank) {
 	auto data = (VstPluginCmdData *)cmdData;
-	auto owner = data->owner_;
+	auto owner = data->owner;
 	auto& buffer = owner->dataNRT_;
-	int count = data->value_;
+	int count = data->value;
 	if (count == 0) {
 		// write whole program/bank data into buffer
 		if (bank) {
@@ -925,10 +925,10 @@ bool VstPlugin::cmdGetData(World *world, void *cmdData, bool bank) {
 	auto remaining = buffer.size() - onset;
 	if (remaining > 0) {
 		// we want to send floats (but size_ is the number of bytes)
-		int maxArgs = data->size_ / sizeof(float);
+		int maxArgs = data->size / sizeof(float);
 		// leave space for 3 extra arguments
 		auto size = std::min<int>(remaining, maxArgs - 3);
-		auto buf = (float *)data->buf_;
+		auto buf = (float *)data->buf;
 		buf[0] = buffer.size(); // total
 		buf[1] = onset; // onset
 		buf[2] = size; // packet size
@@ -938,17 +938,17 @@ bool VstPlugin::cmdGetData(World *world, void *cmdData, bool bank) {
 			// no need to cast to unsigned because SC's Int8Array is signed anyway
 			buf[i + 3] = packet[i];
 		}
-		data->size_ = size + 3; // size_ becomes the number of float args
+		data->size = size + 3; // size_ becomes the number of float args
 		owner->dataSent_ += size;
 		LOG_DEBUG("send packet: " << buf[0] << " (total), " << buf[1] << " (onset), " << buf[2] << " (size)");
 	}
 	else {
 		// avoid sending packet
-		data->size_ = 0;
+		data->size = 0;
 		// free program/bank data
 		std::string empty;
 		buffer.swap(empty);
-		data->owner_->dataSent_ = 0;
+		data->owner->dataSent_ = 0;
 		LOG_DEBUG("done! free data");
 	}
 	return true;
@@ -956,12 +956,12 @@ bool VstPlugin::cmdGetData(World *world, void *cmdData, bool bank) {
 
 bool VstPlugin::cmdGetDataDone(World *world, void *cmdData, bool bank) {
 	auto data = (VstPluginCmdData *)cmdData;
-	if (data->size_ > 0) {
+	if (data->size > 0) {
 		if (bank) {
-			data->owner_->sendMsg("/vst_bank_data", data->size_, (const float *)data->buf_);
+			data->owner->sendMsg("/vst_bank_data", data->size, (const float *)data->buf);
 		}
 		else {
-			data->owner_->sendMsg("/vst_program_data", data->size_, (const float *)data->buf_);
+			data->owner->sendMsg("/vst_program_data", data->size, (const float *)data->buf);
 		}
 	}
 	return true;
@@ -971,7 +971,7 @@ void VstPlugin::receiveProgramData(int count) {
 	if (check()) {
 		auto data = makeCmdData(MAX_OSC_PACKET_SIZE);
 		if (data) {
-			data->value_ = count;
+			data->value = count;
 			doCmd(data, [](World *world, void *cmdData) { return cmdGetData(world, cmdData, false); }, 
 				[](World *world, void *cmdData) { return cmdGetDataDone(world, cmdData, false); });
 		}
@@ -982,7 +982,7 @@ void VstPlugin::receiveBankData(int count) {
 	if (check()) {
 		auto data = makeCmdData(MAX_OSC_PACKET_SIZE);
 		if (data) {
-			data->value_ = count;
+			data->value = count;
 			doCmd(data, [](World *world, void *cmdData) { return cmdGetData(world, cmdData, true); },
 				[](World *world, void *cmdData) { return cmdGetDataDone(world, cmdData, true); });
 		}
@@ -1207,11 +1207,11 @@ VstPluginCmdData* VstPlugin::makeCmdData(const char *data, size_t size){
     VstPluginCmdData *cmdData = (VstPluginCmdData *)RTAlloc(mWorld, sizeof(VstPluginCmdData) + size);
     if (cmdData){
         new (cmdData) VstPluginCmdData();
-        cmdData->owner_ = this;
+        cmdData->owner = this;
         if (data){
-            memcpy(cmdData->buf_, data, size);
+            memcpy(cmdData->buf, data, size);
         }
-		cmdData->size_ = size; // independent from data
+		cmdData->size = size; // independent from data
 	}
 	else {
 		LOG_ERROR("RTAlloc failed!");

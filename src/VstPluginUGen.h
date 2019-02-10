@@ -51,19 +51,19 @@ struct VstPluginCmdData {
 	void doneOpen();
 	void close();
 	// data
-	VstPlugin *owner_;
-	IVSTPlugin *plugin_ = nullptr;
-	std::shared_ptr<IVSTWindow> window_;
+	VstPlugin *owner;
+	IVSTPlugin *plugin = nullptr;
+	std::shared_ptr<IVSTWindow> window;
 #if VSTTHREADS
-	std::thread thread_;
+	std::thread thread;
 #endif
 	// generic int value
-	int value_ = 0;
+	int value = 0;
 	// non-realtime memory
-	std::string mem_;
+	std::string mem;
 	// flexible array for RT memory
-	int size_ = 0;
-	char buf_[1];
+	int size = 0;
+	char buf[1];
 };
 
 class VstPlugin : public SCUnit {
