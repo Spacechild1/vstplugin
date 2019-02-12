@@ -10,10 +10,12 @@
 #if VSTTHREADS
 #include <thread>
 #include <future>
-#include <vector>
 #endif
 
 #include <memory>
+#include <string>
+#include <vector>
+#include <unordered_map>
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
@@ -23,7 +25,7 @@ enum GuiType {
 	VST_GUI
 };
 
-enum PluginInfo {
+enum VstPluginFlags {
 	HasEditor = 0,
 	IsSynth,
 	SinglePrecision,
@@ -34,17 +36,25 @@ enum PluginInfo {
 	SysexOutput
 };
 
-class VstPlugin;
-
-class VstPluginListener : public IVSTPluginListener {
-public:
-	VstPluginListener(VstPlugin& owner);
-	void parameterAutomated(int index, float value) override;
-	void midiEvent(const VSTMidiEvent& midi) override;
-	void sysexEvent(const VSTSysexEvent& sysex) override;
-private:
-	VstPlugin *owner_ = nullptr;
+struct VstPluginInfo {
+	std::string key;
+	std::string name;
+	std::string fullPath;
+	int version = 0;
+	int id = 0;
+	int numInputs = 0;
+	int numOutputs = 0;
+	// parameter name + label
+	std::vector<std::pair<std::string, std::string>> parameters;
+	// default programs
+	std::vector<std::string> programs;
+	// see VstPluginFlags
+	uint32 flags = 0;
 };
+
+using VstPluginMap = std::unordered_map<std::string, VstPluginInfo>;
+
+class VstPlugin;
 
 struct VstPluginCmdData {
 	bool tryOpen();
@@ -64,6 +74,24 @@ struct VstPluginCmdData {
 	// flexible array for RT memory
 	int size = 0;
 	char buf[1];
+};
+
+struct QueryCmdData {
+	char reply[1600];
+	int value;
+	int index;
+	// flexible array
+	char buf[1];
+};
+
+class VstPluginListener : public IVSTPluginListener {
+public:
+	VstPluginListener(VstPlugin& owner);
+	void parameterAutomated(int index, float value) override;
+	void midiEvent(const VSTMidiEvent& midi) override;
+	void sysexEvent(const VSTSysexEvent& sysex) override;
+private:
+	VstPlugin *owner_ = nullptr;
 };
 
 class VstPlugin : public SCUnit {

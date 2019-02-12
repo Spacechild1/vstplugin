@@ -4,45 +4,14 @@ VstPlugin : MultiOutUGen {
 	classvar <>useDefaultSearchPaths = true;
 	classvar <userSearchPaths;
 	classvar <platformExtensions;
-	classvar pluginMap;
+	classvar <searchPathDict;
+	classvar pluginDict;
 	// instance variables
 	var <id;
 	// class methods
 	*initClass {
 		StartUp.add {
-			Platform.case(
-				// https://helpcenter.steinberg.de/hc/de/articles/115000171310
-				\osx, {
-					defaultSearchPaths = ["~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"];
-					platformExtensions = Set["vst"];
-				},
-				// needs more research
-				\linux, {
-					defaultSearchPaths = ["/usr/lib/vst", "/usr/local/lib/vst"];
-					platformExtensions = Set["so"];
-				},
-				// https://helpcenter.steinberg.de/hc/de/articles/115000177084-Speicherorte-von-VST-Plug-ins-unter-Windows-
-				\windows, {
-					// HACK to find out if we're using 32 bit SC (ignoring the case were the Client and local Server don't
-					// share the same architecture). only works if SC is installed in Program Files / Program Files (x86).
-					// LATER come up with something more robust (e.g. retrieving the architecture of scsynth.exe with PowerShell)
-					var dir, end;
-					dir = thisProcess.platform.resourceDir;
-					end = dir.find("SuperCollider");
-					end.notNil.if {
-						var prefix = dir[0..(end-1)];
-						defaultSearchPaths = [prefix +/+ "VSTPlugins", prefix +/+ "Steinberg\VSTPlugins",
-							prefix +/+ "Common Files\VST2",	prefix +/+ "Common Files\Steinberg\VST2"];
-					} {
-						"VstPlugin: can't determine SuperCollider architecture! Not using any default search paths. Please add search paths manually.".warn;
-						defaultSearchPaths = [];
-					};
-					platformExtensions = Set["dll"];
-				}
-			);
-			userSearchPaths = Set.new;
-			pluginMap = Dictionary.new;
-			this.rescan;
+			pluginDict = IdentityDictionary.new;
 		}
 	}
 	*ar { arg input, numOut=1, bypass=0, params, id;
@@ -54,44 +23,241 @@ VstPlugin : MultiOutUGen {
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
-	*pluginList {
-		// return sorted list of plugins (case insensitive)
-		^Array.newFrom(pluginMap.keys).sort({ arg a, b; a.compare(b, true) < 0});
+	*pluginList { arg server;
+		var dict;
+		server = server ?? Server.default;
+		dict = pluginDict[server];
+		dict.notNil.if {
+			// return sorted list of plugin keys (case insensitive)
+			^Array.newFrom(dict.keys).sort({ arg a, b; a.asString.compare(b.asString, true) < 0});
+		} { ^[] };
 	}
-	*pluginPath { arg name;
-		^pluginMap[name];
+	*plugins { arg server;
+		server = server ?? Server.default;
+		^pluginDict[server];
 	}
-	*addSearchPath { arg path;
-		path = path.standardizePath;
-		userSearchPaths.includes(path).if {"path '%' already added!".format(path).warn; };
-		userSearchPaths.remove(path);
+	*clear { arg server;
+		server = server ?? Server.default;
+		// clear plugin dictionary
+		pluginDict[server] = IdentityDictionary.new;
 	}
-	*removeSearchPath { arg path;
-		path = path.standardizePath;
-		userSearchPaths.includes(path).not.if {"path '%' hasn't been added yet!".format(path).warn; };
-		userSearchPaths.remove(path);
+	*search { arg server, searchPaths, useDefault=true, verbose=false, wait = -1, action;
+		var dict;
+		server = server ?? Server.default;
+		// add dictionary if it doesn't exist yet
+		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
+		dict = pluginDict[server];
+		OSCFunc({ arg msg;
+			var result = msg[1].asString.split($\n);
+			(result[0] == "/vst_search").if {
+				var fn, count = 0, num = result[1].asInteger;
+				(num == 0).if {
+					action.value;
+					^this;
+				};
+				"probing plugins".post;
+				fn = OSCFunc({ arg msg;
+					var key, info, result = msg[1].asString.split($\n);
+					(result[0].asSymbol == '/vst_info').if {
+						key = result[1].asSymbol;
+						info = this.prMakeInfo(key, result[2..]);
+						dict[key] = info;
+						count = count + 1;
+						// exit condition
+						(count == num).if {
+							fn.free;
+							this.prQueryPlugins(server, wait, {".".post}, {
+								action.value;
+								"probed % plugins.".format(num).postln;
+								"done!".postln;
+							});
+						}
+					}
+				}, '/done');
+				{
+					num.do { arg index;
+						server.sendMsg('/cmd', '/vst_query', index);
+						".".post;
+						if(wait >= 0) { wait.wait } { server.sync };
+					}
+				}.forkIfNeeded;
+			};
+		}, '/done').oneShot;
+		{
+			server.sendMsg('/cmd', '/vst_path_clear');
+			searchPaths.do { arg path;
+				server.sendMsg('/cmd', '/vst_path_add', path);
+				if(wait >= 0) { wait.wait } { server.sync }; // for safety
+			};
+			server.sendMsg('/cmd', '/vst_search', useDefault, verbose);
+		}.forkIfNeeded;
 	}
-	*clearSearchPaths {
-		userSearchPaths.clear;
+	*probe { arg server, path, wait = -1, action;
+		server = server ?? Server.default;
+		// add dictionary if it doesn't exist yet
+		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
+		OSCFunc({ arg msg;
+			var result = msg[1].asString.split($\n);
+			(result[0] == "/vst_info").if {
+				(result.size > 1).if {
+					var key, info;
+					key = result[1].asSymbol;
+					info = this.prMakeInfo(key, result[2..]);
+					pluginDict[server][key] = info;
+					this.prQueryPlugin(server, key, wait, { action.value(info) });
+					"plugin % probed".format(key).postln;
+				} { action.value };
+			};
+		}, '/done').oneShot;
+		server.sendMsg('/cmd', '/vst_query', path);
 	}
-	*rescan {
-		pluginMap.clear;
-		useDefaultSearchPaths.if { defaultSearchPaths.do { arg path; this.prScan(PathName(path)) }};
-		userSearchPaths.do { arg path; this.prScan(PathName(path)) };
+	*prQueryPlugins { arg server, wait, update, action;
+		var gen, fn, dict;
+		dict = pluginDict[server];
+		(dict.size == 0).if {
+			action.value;
+			^this;
+		};
+		// make a generator for plugin keys
+		gen = Routine.new({
+			dict.keysDo { arg key; yield(key) };
+		});
+		// recursively call the generator
+		fn = { arg key;
+			key.notNil.if {
+				this.prQueryPlugin(server, key, wait, {
+					update.value; fn.value(gen.next)
+				});
+			} { action.value }; // done (no keys left)
+		};
+		// start it
+		fn.value(gen.next);
 	}
-	*prScan { arg path, folder="";
-		path.entries.do { arg entry;
-			entry.isFolder.if {
-				// search recursively, remembering the current folder (don't use +/+)
-				// we want something like: GVST/GLow
-				this.prScan(entry, folder ++ entry.folderName ++ "/");
-			} {
-				var name = entry.fileNameWithoutExtension;
-				platformExtensions.includes(entry.extension).if {
-					pluginMap.put(folder ++ name, entry.absolutePath); // don't use +/+
-				}
+	*prQueryPlugin { arg server, key, wait, action;
+		this.prQueryParameters(server, key, wait, {
+			this.prQueryPrograms(server, key, wait, {
+				action.value;
+				// "plugin % queried".format(key).postln;
+			});
+		});
+	}
+	*prQueryParameters { arg server, key, wait, action;
+		var count = 0, fn, num, info;
+		info = pluginDict[server][key];
+		num = info.numParameters;
+		info.parameterNames = Array.new(num);
+		info.parameterLabels = Array.new(num);
+		(num == 0).if {
+			action.value;
+			^this;
+		};
+		fn = OSCFunc({ arg msg;
+			var result = msg[1].asString.split($\n);
+			// result.postln;
+			((result[0].asSymbol == '/vst_param_info')
+				&& (result[1].asSymbol == key)
+			).if {
+				var n = (result.size - 2).div(2);
+				// "got % parameters for %".format(n, key).postln;
+				n.do { arg i;
+					var idx = (i * 2) + 2;
+					info.parameterNames.add(result[idx].asSymbol);
+					info.parameterLabels.add(result[idx+1].asSymbol);
+				};
+				count = count + n;
+				// exit condition
+				(count == num).if { fn.free; action.value };
 			}
-		}
+		}, '/done');
+		{
+			var div = num.div(16), mod = num.mod(16);
+			// request 16 parameters at once
+			div.do { arg i;
+				server.sendMsg('/cmd', '/vst_query_param', key, i * 16, 16);
+				if(wait >= 0) { wait.wait } { server.sync };
+			};
+			// request remaining parameters
+			(mod > 0).if { server.sendMsg('/cmd', '/vst_query_param', key, num - mod, mod) };
+		}.forkIfNeeded;
+	}
+	*prQueryPrograms { arg server, key, wait, action;
+		var count = 0, fn, num, info;
+		info = pluginDict[server][key];
+		num = info.numPrograms;
+		info.programs = Array.new(num);
+		(num == 0).if {
+			action.value;
+			^this;
+		};
+		fn = OSCFunc({ arg msg;
+			var result = msg[1].asString.split($\n);
+			// result.postln;
+			((result[0].asSymbol == '/vst_program_info')
+				&& (result[1].asSymbol == key)
+			).if {
+				var n = result.size - 2;
+				// "got % programs for %".format(n, key).postln;
+				n.do { arg i;
+					info.programs.add(result[i + 2].asSymbol);
+				};
+				count = count + n;
+				// exit condition
+				(count == num).if { fn.free; action.value };
+			}
+		}, '/done');
+		{
+			var div = num.div(16), mod = num.mod(16);
+			// request 16 parameters at once
+			div.do { arg i;
+				server.sendMsg('/cmd', '/vst_query_program', key, i * 16, 16);
+				if(wait >= 0) { wait.wait } { server.sync };
+			};
+			// request remaining parameters
+			(mod > 0).if { server.sendMsg('/cmd', '/vst_query_program', key, num - mod, mod) };
+		}.forkIfNeeded;
+	}
+	*prMakeInfo { arg key, info;
+		var f, flags;
+		f = info[8].asInt;
+		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
+		^(
+			key: key,
+			name: info[0],
+			path: info[1].asString,
+			version: info[2].asInt,
+			id: info[3].asInt,
+			numInputs: info[4].asInt,
+			numOutputs: info[5].asInt,
+			numParameters: info[6].asInt,
+			numPrograms: info[7].asInt,
+			hasEditor: flags[0],
+			isSynth: flags[1],
+			singlePrecision: flags[2],
+			doublePrecision: flags[3],
+			midiInput: flags[4],
+			midiOutput: flags[5],
+			sysexInput: flags[6],
+			sysexOutput: flags[7]
+		);
+	}
+	*prGetInfo { arg server, path, action;
+		var dict, key, info;
+		key = path.asSymbol;
+		// check if there's already a dict for this server
+		dict = pluginDict[server];
+		dict.isNil.if { dict = IdentityDictionary.new; pluginDict[server] = dict };
+		// try to find a plugin for this path
+		info = dict[key];
+		info.isNil.if {
+			// not in the dict - probe the path
+			this.probe(server, path, action: { arg info_;
+				info_.notNil.if {
+					action.value(info_);
+				} {
+					action.value;
+				};
+			});
+		} { action.value(info) };
 	}
 	// instance methods
 	init { arg theID, numOut ... theInputs;
@@ -153,14 +319,14 @@ VstPluginController {
 		synthDef.children.do { arg ugen, index;
 			(ugen.class == VstPlugin).if {
 				(id.isNil || (ugen.id == id)).if {
-					^super.new.init(synth, id, synthDef, index);
+					^super.new.init(synth, index);
 				}
 			};
 		};
 		id.isNil.if {^"synth doesn't contain a VstPlugin!".throw;}
 		{^"synth doesn't contain a VstPlugin with ID '%'".format(id).throw;}
 	}
-	init { arg theSynth, id, synthDef, theIndex;
+	init { arg theSynth, theIndex;
 		synth = theSynth;
 		synthIndex = theIndex;
 		loaded = false;
@@ -179,15 +345,6 @@ VstPluginController {
 				scGui.paramChanged(index, value, display);
 			}}.defer;
 		}, '/vst_p'));
-		// parameter automated:
-		oscFuncs.add(this.makeOSCFunc({ arg msg;
-			var index, value;
-			parameterAutomated.notNil.if {
-				index = msg[3].asInt;
-				value = msg[4].asFloat;
-				parameterAutomated.value(index, value);
-			}
-		}, '/vst_pa'));
 		// parameter name + label:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			var index, name, label;
@@ -208,19 +365,22 @@ VstPluginController {
 			name = this.class.msg2string(msg, 4);
 			programs[index] = name;
 		}, '/vst_pgmn'));
+		// parameter automated:
+		oscFuncs.add(this.makeOSCFunc({ arg msg;
+			var index, value;
+			index = msg[3].asInt;
+			value = msg[4].asFloat;
+			parameterAutomated.value(index, value);
+		}, '/vst_pa'));
 		// MIDI received:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
-			midiReceived.notNil.if {
-				// convert to integers and pass as args to action
-				midiReceived.value(*Int32Array.newFrom(msg[3..]));
-			}
+			// convert to integers and pass as args to action
+			midiReceived.value(*Int32Array.newFrom(msg[3..]));
 		}, '/vst_midi'));
 		// sysex received:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
-			sysexReceived.notNil.if {
-				// convert to Int8Array and pass to action
-				sysexReceived.value(Int8Array.newFrom(msg[3..]));
-			}
+			// convert to Int8Array and pass to action
+			sysexReceived.value(Int8Array.newFrom(msg[3..]));
 		}, '/vst_sysex'));
 		// cleanup after synth has been freed:
 		synth.onFree { this.prFree };
@@ -232,8 +392,6 @@ VstPluginController {
 		};
 		this.prClear();
 		this.prClearGui();
-		synth = nil;
-		synthIndex = nil;
 	}
 	showGui { arg show=true;
 		loaded.if {
@@ -317,7 +475,11 @@ VstPluginController {
 			{\sc} {1}
 			{\vst} {2}
 			{0};
-		this.sendMsg('/open', guiType, VstPlugin.pluginPath(path) ?? path);
+		VstPlugin.prGetInfo(synth.server, path, { arg info_;
+			// if no plugin info could be obtained (probing failed)
+			// we open the plugin nevertheless to obtain the error messages
+			this.sendMsg('/open', guiType, info_.path ?? path);
+		});
 	}
 	prClear {
 		loaded = false; name = nil; version = nil; numInputs = nil; numOutputs = nil;
@@ -571,6 +733,7 @@ VstPluginController {
 			}
 		});
 	}
+	// MIDI / Sysex
 	sendMidi { arg status, data1=0, data2=0;
 		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2));
 	}
