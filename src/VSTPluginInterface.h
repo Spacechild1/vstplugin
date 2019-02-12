@@ -160,10 +160,12 @@ class IVSTPlugin {
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
 };
 
-// expects a path to the actual plugin file (e.g. "myplugin.dll" on Windows,
+// expects an absolute path to the actual plugin file (e.g. "myplugin.dll" on Windows,
 // "myplugin.so" on Linux, "myplugin.vst" on Apple).
-// use 'makeVSTPluginFilePath' to avoid typing the extension
-IVSTPlugin* loadVSTPlugin(const std::string& path);
+// use 'makeVSTPluginFilePath' to avoid typing the extension.
+// set 'silent' to true if you don't want to report errors when a plugin couldn't be opened
+// (e.g. for probing plugins)
+IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent = false);
 
 void freeVSTPlugin(IVSTPlugin* plugin);
 
