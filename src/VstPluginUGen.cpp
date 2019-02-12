@@ -4,9 +4,12 @@
 #include <limits>
 #include <fstream>
 #include <set>
+#ifdef _WIN32
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
-
+#else // just because of Clang on macOS not shipping <experimental/filesystem>...
+#include <dirent.h>
+#endif
 static InterfaceTable *ft;
 
 void SCLog(const std::string& msg){
@@ -1781,6 +1784,11 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 			Print("ok!\n");
 		}
 	}
+	else {
+		if (verbose) {
+			Print("failed!\n");
+		}
+	}
 	return plugin != nullptr;
 }
 
@@ -1800,23 +1808,23 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	auto e = platformExtensions;
 	while (*e) extensions.insert(*e++);
 	// search recursively
-	for (auto& s : searchPaths) {
+	for (auto& path : searchPaths) {
 		int count = 0;
-		auto root = fs::absolute(fs::path(s)).string();
-		LOG_VERBOSE("searching in " << root << "...");
+		LOG_VERBOSE("searching in " << path << "...");
+#ifdef _WIN32
+		// root will have a trailing slash
+		auto root = fs::absolute(fs::path(path)).string();
 		for (auto& entry : fs::recursive_directory_iterator(root)) {
-			if (fs::is_regular_file(entry)){
+			if (fs::is_regular_file(entry)) {
 				auto ext = entry.path().extension().string();
 				if (extensions.count(ext)) {
 					auto fullPath = entry.path().string();
-					// shortPath: fullPath minus root minus extension (without a leading slash)
-					auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);				
-#if _WIN32
+					// shortPath: fullPath minus root minus extension (without leading slash)
+					auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
 					// only forward slashes
 					for (auto& c : shortPath) {
 						if (c == '\\') c = '/';
 					}
-#endif
 					if (!pluginMap.count(shortPath)) {
 						// only probe plugin if hasn't been added to the map yet
 						if (probePlugin(fullPath, shortPath, verbose)) count++;
@@ -1827,6 +1835,45 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 				}
 			}
 		}
+#else // Unix
+		// force trailing slash
+		auto root = (path.back() != '/') ? path + "/" : path;
+		std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
+			DIR *dir;
+			struct dirent *entry;
+			if ((dir = opendir(dirname.c_str()))) {
+				while ((entry = readdir(dir)) != NULL) {
+					std::string name(entry->d_name);
+					std::string fullPath = dirname + "/" + name;
+					if (entry->d_type == DT_DIR) {
+						if (strcmp(name.c_str(), ".") != 0 && strcmp(name.c_str(), "..") != 0) {
+							searchDir(fullPath);
+						}
+					}
+					else {
+						std::string ext;
+						auto extPos = name.find('.');
+						if (extPos != std::string::npos) {
+							ext = name.substr(extPos);
+						}
+						if (extensions.count(ext)) {
+							// shortPath: fullPath minus root minus extension (without leading slash)
+							auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
+							if (!pluginMap.count(shortPath)) {
+								// only probe plugin if hasn't been added to the map yet
+								if (probePlugin(fullPath, shortPath, verbose)) count++;
+							}
+							else {
+								count++;
+							}
+						}
+					}
+				}
+				closedir(dir);
+			}
+		};
+		searchDir(root);
+#endif
 		if (verbose) {
 			LOG_VERBOSE("found " << count << " plugins.");
 		}
