@@ -337,7 +337,7 @@ void VstPluginCmdData::close() {
 			LOG_DEBUG("thread joined");
 		}
 #else
-		freeVSTPlugin(plugin_);
+		freeVSTPlugin(plugin);
 #endif
 		// now delete the window (if any)
 		window = nullptr;
@@ -492,16 +492,16 @@ bool VstPluginCmdData::tryOpen(){
 	}
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin_->hasEditor() && value_ == VST_GUI){
-        window_ = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin_));
-        if (window_){
-			window_->setTitle(plugin_->getPluginName());
+    if (plugin->hasEditor() && value == VST_GUI){
+        window = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        if (window){
+			window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
-            plugin_->getEditorRect(left, top, right, bottom);
-			window_->setGeometry(left, top, right, bottom);
+            plugin->getEditorRect(left, top, right, bottom);
+			window->setGeometry(left, top, right, bottom);
             // don't open the editor on macOS (see VSTWindowCocoa.mm)
 #ifndef __APPLE__
-            plugin_->openEditor(window_->getHandle());
+            plugin->openEditor(window->getHandle());
 #endif
         }
     }
