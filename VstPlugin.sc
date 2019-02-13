@@ -414,6 +414,7 @@ VstPluginController {
 		this.prClearGui();
 		this.makeOSCFunc({arg msg;
 			var success = msg[3].asBoolean;
+			var window = msg[4].asBoolean;
 			success.if {
 				loaded = true;
 				this.slotPut('info', theInfo); // hack because of name clash with 'info'
@@ -421,7 +422,7 @@ VstPluginController {
 				// copy default program names (might change later when loading banks)
 				programs = Array.newFrom(theInfo.programs);
 				// make SC editor if needed/wanted (deferred to AppClock!)
-				((gui == \sc) || ((gui == \vst) && theInfo.hasEditor.not)).if {
+				window.not.if {
 					{scGui = VstPluginGui.new(this)}.defer;
 				};
 				this.prQueryParams;

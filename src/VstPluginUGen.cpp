@@ -431,7 +431,9 @@ void VstPlugin::doneOpen(VstPluginCmdData& cmd){
 			paramStates_ = nullptr;
             LOG_ERROR("RTRealloc failed!");
         }
-		sendMsg("/vst_open", 1);
+		// success, window
+		float data[] = { 1, (window_ != nullptr) };
+		sendMsg("/vst_open", 2, data);
 	} else {
 		LOG_WARNING("VstPlugin: couldn't load " << cmd.buf);
 		sendMsg("/vst_open", 0);
