@@ -132,17 +132,17 @@ VstPlugin : MultiOutUGen {
 			server.sendMsg('/cmd', '/vst_search', useDefault, verbose);
 		}.forkIfNeeded;
 	}
-	*probe { arg server, path, wait = -1, action;
+	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
+		// if key is nil, use the plugin path as key
+		key = key.notNil.if { key.asSymbol } { path.asSymbol };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		OSCFunc({ arg msg;
 			var result = msg[1].asString.split($\n);
 			(result[0] == "/vst_info").if {
 				(result.size > 1).if {
-					var key, info;
-					key = result[1].asSymbol;
-					info = this.prMakeInfo(key, result[2..]);
+					var info = this.prMakeInfo(key, result[2..]);
 					pluginDict[server][key] = info;
 					this.prQueryPlugin(server, key, wait, { action.value(info) });
 					"plugin % probed".format(key).postln;
