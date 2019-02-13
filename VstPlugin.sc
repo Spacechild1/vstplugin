@@ -76,14 +76,16 @@ VstPlugin : MultiOutUGen {
 		server = server ?? Server.default;
 		^pluginDict[server];
 	}
-	*clear { arg server;
+	*reset { arg server;
 		server = server ?? Server.default;
 		// clear plugin dictionary
 		pluginDict[server] = IdentityDictionary.new;
 	}
-	*search { arg server, searchPaths, useDefault=true, verbose=false, wait = -1, action;
+	*search { arg server, path, useDefault=true, verbose=false, wait = -1, action;
 		var dict;
 		server = server ?? Server.default;
+		path.isString.if { path = [path] };
+		(path.isNil or: path.isArray).not.if { ^"bad type for 'path' argument!".throw };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		dict = pluginDict[server];
@@ -125,7 +127,7 @@ VstPlugin : MultiOutUGen {
 		}, '/done').oneShot;
 		{
 			server.sendMsg('/cmd', '/vst_path_clear');
-			searchPaths.do { arg path;
+			path.do { arg path;
 				server.sendMsg('/cmd', '/vst_path_add', path);
 				if(wait >= 0) { wait.wait } { server.sync }; // for safety
 			};
