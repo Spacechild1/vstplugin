@@ -13,6 +13,7 @@
 #endif
 
 #include <memory>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -31,6 +32,8 @@ enum VstPluginFlags {
 };
 
 struct VstPluginInfo {
+	void serialize(std::ofstream& file);
+	// data
 	std::string key;
 	std::string name;
 	std::string fullPath;

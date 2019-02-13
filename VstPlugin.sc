@@ -63,18 +63,19 @@ VstPlugin : MultiOutUGen {
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
-	*pluginList { arg server;
-		var dict;
+	*info { arg server;
 		server = server ?? Server.default;
-		dict = pluginDict[server];
+		^pluginDict[server];
+	}
+	*plugins { arg server;
+		var dict = this.info(server);
 		dict.notNil.if {
 			// return sorted list of plugin keys (case insensitive)
 			^Array.newFrom(dict.keys).sort({ arg a, b; a.asString.compare(b.asString, true) < 0});
 		} { ^[] };
 	}
-	*plugins { arg server;
-		server = server ?? Server.default;
-		^pluginDict[server];
+	*print { arg server;
+		this.plugins(server).do { arg p; p.postln; }
 	}
 	*reset { arg server;
 		server = server ?? Server.default;
@@ -82,17 +83,57 @@ VstPlugin : MultiOutUGen {
 		pluginDict[server] = IdentityDictionary.new;
 	}
 	*search { arg server, path, useDefault=true, verbose=false, wait = -1, action;
-		var dict;
 		server = server ?? Server.default;
 		path.isString.if { path = [path] };
 		(path.isNil or: path.isArray).not.if { ^"bad type for 'path' argument!".throw };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		dict = pluginDict[server];
-		OSCFunc({ arg msg;
+		server.isLocal.if { this.prSearchLocal(server, path, useDefault, verbose, action) }
+		{ this.prSearchRemote(server, path, useDefault, verbose, wait, action) };
+	}
+	*prSearchLocal { arg server, searchPaths, useDefault, verbose, wait, action;
+		{
+			var dict = pluginDict[server];
+			var filePath = PathName.tmp ++ this.hash.asString;
+			protect {
+				// first write search paths to tmp file
+				File.use(filePath, "wb", { arg file;
+					searchPaths.do { arg path; file.write(path); file.write("\n"); }
+				});
+			} { arg error;
+				error.isNil.if {
+					// ask server to read tmp file and replace the content with the plugin info
+					server.sendMsg('/cmd', '/vst_search', useDefault, verbose, filePath);
+					// wait for cmd to finish
+					server.sync;
+					// read file
+					protect {
+						File.use(filePath, "rb", { arg file;
+							// plugins are seperated by newlines
+							file.readAllString.split($\n).do { arg line;
+								(line.size > 0).if {
+									var info = this.prParseInfo(line);
+									dict[info.key] = info;
+								}
+							};
+						});
+					} { arg error;
+						error.notNil.if { "Failed to read tmp file!".warn };
+						File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
+						// done
+						action.value;
+					}
+				} { "Failed to write tmp file!".warn };
+			};
+		}.forkIfNeeded;
+	}
+	*prSearchRemote { arg server, searchPaths, useDefault, verbose, wait, action;
+		var cb, dict = pluginDict[server];
+		cb = OSCFunc({ arg msg;
 			var result = msg[1].asString.split($\n);
 			(result[0] == "/vst_search").if {
 				var fn, count = 0, num = result[1].asInteger;
+				cb.free; // got correct /done message, free it!
 				(num == 0).if {
 					action.value;
 					^this;
@@ -124,33 +165,88 @@ VstPlugin : MultiOutUGen {
 					}
 				}.forkIfNeeded;
 			};
-		}, '/done').oneShot;
+		}, '/done');
 		{
 			server.sendMsg('/cmd', '/vst_path_clear');
-			path.do { arg path;
+			searchPaths.do { arg path;
 				server.sendMsg('/cmd', '/vst_path_add', path);
 				if(wait >= 0) { wait.wait } { server.sync }; // for safety
 			};
 			server.sendMsg('/cmd', '/vst_search', useDefault, verbose);
 		}.forkIfNeeded;
 	}
+	*prParseInfo { arg string;
+		var data, key, info, nparam, nprogram;
+		// data is seperated by tabs
+		data = string.split($\t);
+		key = data[0].asSymbol;
+		info = this.prMakeInfo(key, data[1..9]);
+		// get parameters (name + label)
+		nparam = info.numParameters;
+		info.parameterNames = Array.new(nparam);
+		info.parameterLabels = Array.new(nparam);
+		nparam.do { arg i;
+			var onset = 10 + (i * 2);
+			info.parameterNames.add(data[onset]);
+			info.parameterLabels.add(data[onset + 1]);
+		};
+		// get programs
+		nprogram = info.numPrograms;
+		info.programs = Array.new(nprogram);
+		nprogram.do { arg i;
+			var onset = 10 + (nparam * 2) + i;
+			info.programs.add(data[onset]);
+		};
+		^info;
+	}
 	*probe { arg server, path, key, wait = -1, action;
+		var cb;
 		server = server ?? Server.default;
 		// if key is nil, use the plugin path as key
 		key = key.notNil.if { key.asSymbol } { path.asSymbol };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		OSCFunc({ arg msg;
+		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
+		{ this.prProbeRemote(server, path, key, wait, action); };
+	}
+	*prProbeLocal { arg server, path, key, action;
+		{
+			var info, filePath = PathName.tmp ++ this.hash.asString;
+			// ask server to read tmp file and replace the content with the plugin info
+			server.sendMsg('/cmd', '/vst_query', path, filePath);
+			// wait for cmd to finish
+			server.sync;
+			// read file (only written if the plugin could be probed)
+			File.exists(filePath).if {
+				protect {
+					File.use(filePath, "rb", { arg file;
+						info = this.prParseInfo(file.readAllString);
+						info.key = key; // overwrite
+						pluginDict[server][key] = info;
+					});
+					"'%' successfully probed".format(key).postln;
+				} { arg error;
+					error.notNil.if { "Failed to read tmp file!".warn };
+					File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
+				}
+			};
+			// done
+			action.value(info);
+		}.forkIfNeeded;
+	}
+	*prProbeRemote { arg server, path, key, wait, action;
+		var cb = OSCFunc({ arg msg;
 			var result = msg[1].asString.split($\n);
 			(result[0] == "/vst_info").if {
+				cb.free; // got correct /done message, free it!
 				(result.size > 1).if {
 					var info = this.prMakeInfo(key, result[2..]);
 					pluginDict[server][key] = info;
 					this.prQueryPlugin(server, key, wait, { action.value(info) });
-					"plugin % probed".format(key).postln;
+					"'%' successfully probed".format(key).postln;
 				} { action.value };
 			};
-		}, '/done').oneShot;
+		}, '/done');
 		server.sendMsg('/cmd', '/vst_query', path);
 	}
 	*prQueryPlugins { arg server, wait, update, action;
@@ -278,24 +374,11 @@ VstPlugin : MultiOutUGen {
 			sysexOutput: flags[7]
 		);
 	}
-	*prGetInfo { arg server, path, action;
-		var dict, key, info;
-		key = path.asSymbol;
-		// check if there's already a dict for this server
-		dict = pluginDict[server];
-		dict.isNil.if { dict = IdentityDictionary.new; pluginDict[server] = dict };
-		// try to find a plugin for this path
-		info = dict[key];
-		info.isNil.if {
-			// not in the dict - probe the path
-			this.probe(server, path, action: { arg theInfo;
-				theInfo.notNil.if {
-					action.value(theInfo);
-				} {
-					action.value;
-				};
-			});
-		} { action.value(info) };
+	*prGetInfo { arg server, key, wait, action;
+		key = key.asSymbol;
+		// if the key already exists, return the info, otherwise probe the plugin
+		pluginDict[server] !? { arg dict; dict[key] } !? { arg info; action.value(info) }
+		?? { this.probe(server, key, key, wait, action) };
 	}
 	// instance methods
 	init { arg theID, numOut ... theInputs;
@@ -433,7 +516,7 @@ VstPluginController {
 			};
 			action.value(this, success);
 		}, '/vst_open').oneShot;
-		VstPlugin.prGetInfo(synth.server, path, { arg i;
+		VstPlugin.prGetInfo(synth.server, path, wait, { arg i;
 			// don't set 'info' property yet
 			theInfo = i;
 			// if no plugin info could be obtained (probing failed)

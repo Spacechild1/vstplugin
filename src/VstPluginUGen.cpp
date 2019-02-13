@@ -2,7 +2,6 @@
 #include "Utility.h"
 
 #include <limits>
-#include <fstream>
 #include <set>
 #ifdef _WIN32
 #include <experimental/filesystem>
@@ -1718,6 +1717,7 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 bool cmdSearch(World *inWorld, void* cmdData) {
 	auto data = (QueryCmdData *)cmdData;
 	bool verbose = data->index;
+	bool local = data->buf[0];
 	// search paths
 	std::vector<std::string> searchPaths;
 	// use defaults?
@@ -1725,7 +1725,23 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		auto it = defaultSearchPaths;
 		while (*it) searchPaths.push_back(*it++);
 	}
-	searchPaths.insert(searchPaths.end(), userSearchPaths.begin(), userSearchPaths.end());
+	if (local) {
+		// get search paths from file
+		std::ifstream file(data->buf);
+		if (file.is_open()) {
+			std::string path;
+			while (std::getline(file, path)) {
+				searchPaths.push_back(path);
+			}
+		}
+		else {
+			LOG_ERROR("couldn't read plugin info file '" << data->buf << "'!");
+		}
+	}
+	else {
+		// use search paths added with '/vst_path_add'
+		searchPaths.insert(searchPaths.end(), userSearchPaths.begin(), userSearchPaths.end());
+	}
 	// extensions
 	std::set<std::string> extensions;
 	auto e = platformExtensions;
@@ -1806,15 +1822,44 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	for (auto& entry : pluginMap) {
 		pluginList.push_back(entry.first);
 	}
+	// write to file (only for local Servers)
+	if (local) {
+		std::ofstream file(data->buf);
+		if (file.is_open()) {
+			LOG_DEBUG("writing plugin info file");
+			for (auto& entry : pluginMap) {
+				entry.second.serialize(file);
+				file << "\n"; // seperate plugins with newlines
+			}
+		}
+		else {
+			LOG_ERROR("couldn't write plugin info file '" << data->buf << "'!");
+		}
+	}
 	// report the number of plugins
 	makeReply(data->reply, sizeof(data->reply), "/vst_search", (int)pluginList.size());
-	// write to file (only for local Servers)
-	std::string fileName(data->buf);
-	if (fileName.size()) {
-		LOG_DEBUG("writing plugin info file");
-		// TODO
-	}
 	return true;
+}
+
+void VstPluginInfo::serialize(std::ofstream& file) {
+	// seperate data with tabs
+	file << key << "\t";
+	file << name << "\t";
+	file << fullPath << "\t";
+	file << version << "\t";
+	file << id << "\t";
+	file << numInputs << "\t";
+	file << numOutputs << "\t";
+	file << (int)parameters.size() << "\t";
+	file << (int)programs.size() << "\t";
+	file << (int)flags << "\t";
+	for (auto& param : parameters) {
+		file << param.first << "\t";
+		file << param.second << "\t";
+	}
+	for (auto& pgm : programs) {
+		file << pgm << "\t";
+	}
 }
 
 bool cmdSearchDone(World *inWorld, void *cmdData) {
@@ -1866,10 +1911,21 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 			key = pluginList[index];
 		}
 	}
-	// reply with plugin info
+	// find info
 	auto it = pluginMap.find(key);
 	if (it != pluginMap.end()) {
 		auto& info = it->second;
+		if (data->reply[0]) {
+			// write to file
+			std::ofstream file(data->reply);
+			if (file.is_open()) {
+				info.serialize(file);
+			}
+			else {
+				LOG_ERROR("couldn't write plugin info file '" << data->reply << "'!");
+			}
+		}
+		// reply with plugin info
 		makeReply(data->reply, sizeof(data->reply), "/vst_info", key,
 			info.name, info.fullPath, info.version, info.id, info.numInputs, info.numOutputs,
 			(int)info.parameters.size(), (int)info.programs.size(), (int)info.flags);
@@ -1888,12 +1944,19 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 	}
 	QueryCmdData *data = nullptr;
 	if (args->nextTag() == 's') {
-		auto s = args->gets();
-		auto size = strlen(s) + 1;
+		auto path = args->gets(); // plugin path
+		auto size = strlen(path) + 1;
 		data = (QueryCmdData *)RTAlloc(inWorld, sizeof(QueryCmdData) + size);
 		if (data) {
 			data->index = -1;
-			memcpy(data->buf, s, size);
+			memcpy(data->buf, path, size);
+			auto file = args->gets();
+			if (file) {
+				strncpy(data->reply, file, sizeof(data->reply));
+			}
+			else {
+				data->reply[0] = 0;
+			}
 		}
 		else {
 			LOG_ERROR("RTAlloc failed!");
