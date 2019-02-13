@@ -327,29 +327,26 @@ void VstPlugin::close() {
 }
 
 void VstPluginCmdData::close() {
-	if (window) {
-#if VSTTHREADS
-		// terminate the message loop (if any - will implicitly release the plugin)
-		if (window) window->quit();
-		// now join the thread (if any)
+	if (!plugin) return;
+
+	if (VSTTHREADS && window) {
+		// terminate the message loop (will implicitly release the plugin)
+		window->quit();
+		// now join the thread
 		if (thread.joinable()) {
 			thread.join();
 			LOG_DEBUG("thread joined");
 		}
-#else
-		freeVSTPlugin(plugin);
-#endif
-		// now delete the window (if any)
+		// then destroy the window
 		window = nullptr;
-		plugin = nullptr; // not necessary...
 	}
 	else {
-		if (plugin) {
-			freeVSTPlugin(plugin);
-			plugin = nullptr; // not necessary...
-			LOG_DEBUG("VST plugin closed");
-		}
+		// first destroy the window (if any)
+		window = nullptr;
+		// then release the plugin
+		freeVSTPlugin(plugin);
 	}
+	LOG_DEBUG("VST plugin closed");
 }
 
 bool cmdOpen(World *world, void* cmdData) {
@@ -459,8 +456,8 @@ void VstPluginCmdData::tryOpen(){
 		LOG_DEBUG("got result from thread");
 		plugin = result.first;
 		window = result.second;
-		if (!plugin) {
-			thread.join(); // to avoid a crash in VstPluginCmdData.close()
+		if (!window) {
+			thread.join(); // to avoid a crash in ~VstPluginCmdData
 		}
 		return;
     }
