@@ -19,12 +19,6 @@
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
-enum GuiType {
-	NO_GUI,
-	SC_GUI,
-	VST_GUI
-};
-
 enum VstPluginFlags {
 	HasEditor = 0,
 	IsSynth,
@@ -57,8 +51,7 @@ using VstPluginMap = std::unordered_map<std::string, VstPluginInfo>;
 class VstPlugin;
 
 struct VstPluginCmdData {
-	bool tryOpen();
-	void doneOpen();
+	void tryOpen();
 	void close();
 	// data
 	VstPlugin *owner;
@@ -104,7 +97,7 @@ public:
 	IVSTPlugin *plugin();
 	bool check();
 	bool valid();
-    void open(const char *path, GuiType gui);
+    void open(const char *path, bool gui);
 	void doneOpen(VstPluginCmdData& msg);
 	void close();
 	void showEditor(bool show);
@@ -113,15 +106,15 @@ public:
 	// param
 	void setParam(int32 index, float value);
 	void setParam(int32 index, const char* display);
+	void queryParams(int32 index, int32 count);
 	void getParam(int32 index);
-	void getParamN(int32 index, int32 count);
+	void getParams(int32 index, int32 count);
 	void mapParam(int32 index, int32 bus);
 	void unmapParam(int32 index);
-	void setUseParamDisplay(bool use);
-	void setNotifyParamChange(bool use);
 	// program/bank
 	void setProgram(int32 index);
 	void setProgramName(const char *name);
+	void queryPrograms(int32 index, int32 count);
 	void readProgram(const char *path);
 	void readBank(const char *path);
 	void sendProgramData(int32 totalSize, int32 onset, const char *data, int32 n) {
@@ -159,12 +152,9 @@ private:
     // helper methods
     float readControlBus(int32 num, int32 maxChannel);
     void resizeBuffer();
-	void sendPluginInfo();
-	void sendProgramNames();
-	bool sendProgramName(int32 num);
+	bool sendProgramName(int32 num); // unchecked
 	void sendCurrentProgramName();
-	void sendParameter(int32 index); // not checked
-	void sendParameters();
+	void sendParameter(int32 index); // unchecked
 	void parameterAutomated(int32 index, float value);
 	void midiEvent(const VSTMidiEvent& midi);
 	void sysexEvent(const VSTSysexEvent& sysex);
@@ -182,9 +172,6 @@ private:
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;
 	bool isLoading_ = false;
-	GuiType gui_ = NO_GUI;
-	bool notify_ = false;
-	bool paramDisplay_ = true; // true by default
 	bool bypass_ = false;
 	std::shared_ptr<IVSTWindow> window_;
 	std::unique_ptr<VstPluginListener> listener_;

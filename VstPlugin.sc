@@ -1,17 +1,57 @@
 VstPlugin : MultiOutUGen {
-	// class variables
+	// class members
 	classvar <defaultSearchPaths;
 	classvar <>useDefaultSearchPaths = true;
 	classvar <userSearchPaths;
 	classvar <platformExtensions;
 	classvar <searchPathDict;
 	classvar pluginDict;
-	// instance variables
+	classvar parentInfo;
+	// instance members
 	var <id;
 	// class methods
 	*initClass {
 		StartUp.add {
 			pluginDict = IdentityDictionary.new;
+			parentInfo = (
+				print: { arg self, long = false;
+					"---".postln;
+					"name: '%'".format(self.name).postln;
+					"version: %".format(self.version).postln;
+					"editor: %".format(self.hasEditor).postln;
+					"input channels: %".format(self.numInputs).postln;
+					"output channels: %".format(self.numOutputs).postln;
+					"single precision: %".format(self.singlePrecision).postln;
+					"double precision: %".format(self.doublePrecision).postln;
+					"MIDI input: %".format(self.midiInput).postln;
+					"MIDI output: %".format(self.midiOutput).postln;
+					"synth: %".format(self.isSynth).postln;
+					long.if {
+						"".postln;
+						"parameters (%):".format(self.numParameters).postln;
+						self.printParameters;
+						"".postln;
+						"programs (%):".format(self.numPrograms).postln;
+						self.printPrograms;
+					} {
+						"parameters: %".format(self.numParameters);
+						"programs: %".format(self.numPrograms);
+					};
+					"".postln;
+				},
+				printParameters: { arg self;
+					self.numParameters.do { arg i;
+						var label;
+						label = (self.parameterLabels[i].size > 0).if { "(%)".format(self.parameterLabels[i]) };
+						"[%] % %".format(i, self.parameterNames[i], label ?? "").postln;
+					};
+				},
+				printPrograms: { arg self;
+					self.programs.do { arg item, i;
+						"[%] %".format(i, item).postln;
+					};
+				}
+			);
 		}
 	}
 	*ar { arg input, numOut=1, bypass=0, params, id;
@@ -126,7 +166,8 @@ VstPlugin : MultiOutUGen {
 		fn = { arg key;
 			key.notNil.if {
 				this.prQueryPlugin(server, key, wait, {
-					update.value; fn.value(gen.next)
+					update.value; // e.g. ".".postln;
+					fn.value(gen.next);
 				});
 			} { action.value }; // done (no keys left)
 		};
@@ -167,18 +208,9 @@ VstPlugin : MultiOutUGen {
 				count = count + n;
 				// exit condition
 				(count == num).if { fn.free; action.value };
-			}
-		}, '/done');
-		{
-			var div = num.div(16), mod = num.mod(16);
-			// request 16 parameters at once
-			div.do { arg i;
-				server.sendMsg('/cmd', '/vst_query_param', key, i * 16, 16);
-				if(wait >= 0) { wait.wait } { server.sync };
 			};
-			// request remaining parameters
-			(mod > 0).if { server.sendMsg('/cmd', '/vst_query_param', key, num - mod, mod) };
-		}.forkIfNeeded;
+		}, '/done');
+		this.prQuery(server, key, wait, num, '/vst_query_param');
 	}
 	*prQueryPrograms { arg server, key, wait, action;
 		var count = 0, fn, num, info;
@@ -203,17 +235,20 @@ VstPlugin : MultiOutUGen {
 				count = count + n;
 				// exit condition
 				(count == num).if { fn.free; action.value };
-			}
+			};
 		}, '/done');
+		this.prQuery(server, key, wait, num, '/vst_query_program');
+	}
+	*prQuery { arg server, key, wait, num, cmd;
 		{
 			var div = num.div(16), mod = num.mod(16);
-			// request 16 parameters at once
+			// request 16 parameters/programs at once
 			div.do { arg i;
-				server.sendMsg('/cmd', '/vst_query_program', key, i * 16, 16);
+				server.sendMsg('/cmd', cmd, key, i * 16, 16);
 				if(wait >= 0) { wait.wait } { server.sync };
 			};
-			// request remaining parameters
-			(mod > 0).if { server.sendMsg('/cmd', '/vst_query_program', key, num - mod, mod) };
+			// request remaining parameters/programs
+			(mod > 0).if { server.sendMsg('/cmd', cmd, key, num - mod, mod) };
 		}.forkIfNeeded;
 	}
 	*prMakeInfo { arg key, info;
@@ -221,6 +256,7 @@ VstPlugin : MultiOutUGen {
 		f = info[8].asInt;
 		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 		^(
+			parent: parentInfo,
 			key: key,
 			name: info[0],
 			path: info[1].asString,
@@ -250,9 +286,9 @@ VstPlugin : MultiOutUGen {
 		info = dict[key];
 		info.isNil.if {
 			// not in the dict - probe the path
-			this.probe(server, path, action: { arg info_;
-				info_.notNil.if {
-					action.value(info_);
+			this.probe(server, path, action: { arg theInfo;
+				theInfo.notNil.if {
+					action.value(theInfo);
 				} {
 					action.value;
 				};
@@ -268,34 +304,17 @@ VstPlugin : MultiOutUGen {
 }
 
 VstPluginController {
-	// flags
-	const fHasEditor = 1;
-	const fIsSynth = 2;
-	const fSinglePrecision = 4;
-	const fDoublePrecision = 8;
-	const fMidiInput = 16;
-	const fMidiOutput = 32;
 	// constants
 	const oscPacketSize = 1600; // safe max. OSC packet size
 	// public
 	var <synth;
 	var <synthIndex;
 	var <loaded;
-	var <name;
-	var <version;
-	var <hasEditor;
-	var <isSynth;
-	var <numInputs;
-	var <numOutputs;
-	var <singlePrecision;
-	var <doublePrecision;
-	var <midiInput;
-	var <midiOutput;
+	var <info;
 	var <midi;
 	var <programs;
 	var <currentProgram;
-	var <parameterNames;
-	var <parameterLabels;
+	var <>wait;
 	// callbacks
 	var <>parameterAutomated;
 	var <>midiReceived;
@@ -303,9 +322,8 @@ VstPluginController {
 	// private
 	var oscFuncs;
 	var scGui;
-	var notify;
 
-	*new { arg synth, id, synthDef;
+	*new { arg synth, id, synthDef, wait= -1;
 		var synthIndex;
 		// if the synthDef is nil, we try to get it from the global SynthDescLib
 		synthDef.isNil.if {
@@ -319,16 +337,17 @@ VstPluginController {
 		synthDef.children.do { arg ugen, index;
 			(ugen.class == VstPlugin).if {
 				(id.isNil || (ugen.id == id)).if {
-					^super.new.init(synth, index);
+					^super.new.init(synth, index, wait);
 				}
 			};
 		};
 		id.isNil.if {^"synth doesn't contain a VstPlugin!".throw;}
 		{^"synth doesn't contain a VstPlugin with ID '%'".format(id).throw;}
 	}
-	init { arg theSynth, theIndex;
+	init { arg theSynth, theIndex, waitTime;
 		synth = theSynth;
 		synthIndex = theIndex;
+		wait = waitTime;
 		loaded = false;
 		midi = VstPluginMIDIProxy(this);
 		oscFuncs = List.new;
@@ -344,34 +363,25 @@ VstPluginController {
 				};
 				scGui.paramChanged(index, value, display);
 			}}.defer;
-		}, '/vst_p'));
-		// parameter name + label:
-		oscFuncs.add(this.makeOSCFunc({ arg msg;
-			var index, name, label;
-			index = msg[3].asInt;
-			name = this.class.msg2string(msg, 4);
-			label = this.class.msg2string(msg, 4 + name.size + 1);
-			parameterNames[index] = name;
-			parameterLabels[index] = label;
-		}, '/vst_pn'));
+		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			currentProgram = msg[3].asInt;
-		}, '/vst_pgm'));
+		}, '/vst_program_index'));
 		// program name:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = this.class.msg2string(msg, 4);
 			programs[index] = name;
-		}, '/vst_pgmn'));
+		}, '/vst_program'));
 		// parameter automated:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			var index, value;
 			index = msg[3].asInt;
 			value = msg[4].asFloat;
 			parameterAutomated.value(index, value);
-		}, '/vst_pa'));
+		}, '/vst_auto'));
 		// MIDI received:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			// convert to integers and pass as args to action
@@ -398,95 +408,38 @@ VstPluginController {
 			scGui.isNil.if { this.sendMsg('/vis', show.asInt)} { scGui.view.visible_(show)};
 		}
 	}
-	info {
-		loaded.if {
-			"---".postln;
-			"name: '%'".format(name).postln;
-			"version: %".format(version).postln;
-			"editor: %".format(hasEditor).postln;
-			"input channels: %".format(numInputs).postln;
-			"output channels: %".format(numOutputs).postln;
-			"single precision: %".format(singlePrecision).postln;
-			"double precision: %".format(doublePrecision).postln;
-			"MIDI input: %".format(midiInput).postln;
-			"MIDI output: %".format(midiOutput).postln;
-			"synth: %".format(isSynth).postln;
-			"".postln;
-			"parameters (%):".format(this.numParameters).postln;
-			this.numParameters.do { arg i;
-				var label;
-				label = (parameterLabels[i].size > 0).if { "(%)".format(parameterLabels[i]) };
-				"[%] % %".format(i, parameterNames[i], label ?? "").postln;
-			};
-			"".postln;
-			"programs (%):".format(programs.size).postln;
-			programs.do { arg item, i;
-				"[%] %".format(i, item).postln;
-			};
-		} {
-			"---".postln;
-			"no plugin loaded!".postln;
-		}
-	}
-	open { arg path, onSuccess, onFail, gui=\sc, info=false;
-		var guiType;
+	open { arg path, gui=\sc, info=false, action;
+		var theInfo;
 		this.prClear();
 		this.prClearGui();
-		// the UGen will respond to the '/open' message with the following messages:
 		this.makeOSCFunc({arg msg;
-			loaded = true;
-			name = this.class.msg2string(msg, 3)
-		}, '/vst_name').oneShot;
-		this.makeOSCFunc({arg msg;
-			var nparam, npgm, flags;
-			numInputs = msg[3].asInt;
-			numOutputs = msg[4].asInt;
-			nparam = msg[5].asInt;
-			npgm = msg[6].asInt;
-			flags = msg[7].asInt;
-			version = msg[8].asInt;
-			parameterNames = Array.fill(nparam, nil);
-			parameterLabels = Array.fill(nparam, nil);
-			programs = Array.fill(npgm, nil);
-			hasEditor = (flags & fHasEditor).asBoolean;
-			isSynth = (flags & fIsSynth).asBoolean;
-			singlePrecision = (flags & fSinglePrecision).asBoolean;
-			doublePrecision = (flags & fDoublePrecision).asBoolean;
-			midiInput = (flags & fMidiInput).asBoolean;
-			midiOutput = (flags & fMidiOutput).asBoolean;
-		}, '/vst_info').oneShot;
-		/* the /vst_open message is sent after /vst_name and /vst_info
-		  and after parameter names and program names but *before*
-		  parameter values are sent (so the GUI has a chance to respond to it) */
-		this.makeOSCFunc({arg msg;
-			msg[3].asBoolean.if {
+			var success = msg[3].asBoolean;
+			success.if {
+				loaded = true;
+				this.slotPut('info', theInfo); // hack because of name clash with 'info'
+				currentProgram = 0;
+				// copy default program names (might change later when loading banks)
+				programs = Array.newFrom(theInfo.programs);
 				// make SC editor if needed/wanted (deferred to AppClock!)
-				(gui == \sc || (gui == \vst && hasEditor.not)).if {
+				((gui == \sc) || ((gui == \vst) && theInfo.hasEditor.not)).if {
 					{scGui = VstPluginGui.new(this)}.defer;
 				};
-				// print info if wanted
-				info.if { this.info };
-				onSuccess.value(this);
-			} {
-				onFail.value(this);
+				this.prQueryParams;
+				// post info if wanted
+				info.if { theInfo.print };
 			};
+			action.value(this, success);
 		}, '/vst_open').oneShot;
-		guiType = switch(gui)
-			{\sc} {1}
-			{\vst} {2}
-			{0};
-		VstPlugin.prGetInfo(synth.server, path, { arg info_;
+		VstPlugin.prGetInfo(synth.server, path, { arg i;
+			// don't set 'info' property yet
+			theInfo = i;
 			// if no plugin info could be obtained (probing failed)
-			// we open the plugin nevertheless to obtain the error messages
-			this.sendMsg('/open', guiType, info_.path ?? path);
+			// we open the plugin nevertheless to get some error messages
+			this.sendMsg('/open', theInfo !? { theInfo.path } ?? path, (gui == \vst).asInt);
 		});
 	}
 	prClear {
-		loaded = false; name = nil; version = nil; numInputs = nil; numOutputs = nil;
-		singlePrecision = nil; doublePrecision = nil; hasEditor = nil;
-		midiInput = nil; midiOutput = nil; isSynth = nil;
-		parameterNames = nil; parameterLabels = nil;
-		programs = nil; currentProgram = nil;
+		loaded = false; info = nil;	programs = nil; currentProgram = nil;
 	}
 	prClearGui {
 		scGui.notNil.if { {scGui.view.remove; scGui = nil}.defer };
@@ -500,6 +453,9 @@ VstPluginController {
 		this.sendMsg('/reset', nrt.asInt);
 	}
 	// parameters
+	numParameters {
+		^(info !? (_.numParameters) ?? 0);
+	}
 	set { arg ...args;
 		this.sendMsg('/set', *args);
 	}
@@ -544,21 +500,14 @@ VstPluginController {
 	unmap { arg ...args;
 		this.sendMsg('/unmap', *args);
 	}
-	numParameters {
-		^parameterNames.size;
-	}
-	prNotify { arg b;
-		b = b.asBoolean;
-		notify = b;
-		this.sendMsg('/notify', b.asInt);
-	}
 	// programs and banks
 	numPrograms {
-		^programs.size;
+		^(info !? (_.numPrograms) ?? 0);
 	}
 	setProgram { arg index;
 		((index >= 0) && (index < this.numPrograms)).if {
 			this.sendMsg('/program_set', index);
+			this.prQueryParams;
 		} {
 			^"program number % out of range".format(index).throw;
 		};
@@ -570,6 +519,7 @@ VstPluginController {
 		this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
+			this.prQueryParams;
 		}, '/vst_program_read').oneShot;
 		this.sendMsg('/program_read', path);
 	}
@@ -577,6 +527,8 @@ VstPluginController {
 		this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
+			this.prQueryParams;
+			this.prQueryPrograms;
 		}, '/vst_bank_read').oneShot;
 		this.sendMsg('/bank_read', path);
 	}
@@ -623,11 +575,13 @@ VstPluginController {
 			} { "Failed to write data".warn };
 		};
 	}
-	sendProgramData { arg data, wait= -1, action;
+	sendProgramData { arg data, wait, action;
+		wait = wait ?? this.wait;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.prSendData(data, wait, action, false);
 	}
-	sendBankData { arg data, wait= -1, action;
+	sendBankData { arg data, wait, action;
+		wait = wait ?? this.wait;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.prSendData(data, wait, action, true);
 	}
@@ -645,6 +599,8 @@ VstPluginController {
 		resp = this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
+			this.prQueryParams(wait);
+			bank.if { this.prQueryPrograms(wait) };
 		}, "/vst_"++sym++"_read").oneShot;
 
 		{
@@ -693,6 +649,7 @@ VstPluginController {
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
 		var data, resp, address, sym, count = 0, done = false;
+		wait = wait ?? this.wait;
 		loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 		address = "/"++sym++"_data_get";
@@ -790,6 +747,27 @@ VstPluginController {
 		(len > 0).if {
 			^msg[(onset+1)..(onset+len)].collectAs({arg item; item.asInt.asAscii}, String);
 		} { ^"" };
+	}
+	prQueryParams { arg wait;
+		this.prQuery(wait, this.numParameters, '/param_query');
+	}
+	prQueryPrograms { arg wait;
+		this.prQuery(wait, this.numPrograms, '/program_query');
+	}
+	prQuery { arg wait, num, cmd;
+		{
+			var div, mod;
+			div = num.div(16);
+			mod = num.mod(16);
+			wait = wait ?? this.wait;
+			// request 16 parameters/programs at once
+			div.do { arg i;
+				this.sendMsg(cmd, i * 16, 16);
+				if(wait >= 0) { wait.wait } { synth.server.sync };
+			};
+			// request remaining parameters/programs
+			(mod > 0).if { this.sendMsg(cmd, num - mod, mod) };
+		}.forkIfNeeded;
 	}
 }
 
@@ -896,14 +874,14 @@ VstPluginGui {
 		font = Font.new(*GUI.skin.fontSpecs);
 		bounds = Rect(0,0, sliderWidth * ncolumns, sliderHeight * nrows);
 		// don't delete the view on closing the window!
-		view = View.new(nil, bounds).name_(model.name).deleteOnClose_(false);
+		view = View.new(nil, bounds).name_(model.info.name).deleteOnClose_(false);
 
 		title = StaticText.new()
 			.stringColor_(GUI.skin.fontColor)
 			.font_(font)
 			.background_(GUI.skin.background)
 			.align_(\left)
-			.object_(model.name);
+			.object_(model.info.name);
 
 		layout = GridLayout.new();
 		layout.add(title, 0, 0);
@@ -915,8 +893,8 @@ VstPluginGui {
 			var col, row, name, label, display, slider, unit;
 			col = i.div(nrows);
 			row = i % nrows;
-			name = StaticText.new.string_("%: %".format(i, model.parameterNames[i]));
-			label = StaticText.new.string_(model.parameterLabels[i] ?? "");
+			name = StaticText.new.string_("%: %".format(i, model.info.parameterNames[i]));
+			label = StaticText.new.string_(model.info.parameterLabels[i] ?? "");
 			display = TextField.new.fixedWidth_(displayWidth);
 			display.action = {arg s; model.set(i, s.value)};
 			paramDisplays.add(display);
