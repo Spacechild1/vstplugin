@@ -65,11 +65,17 @@ struct VstPluginCmdData {
 #endif
 	// generic int value
 	int value = 0;
-	// non-realtime memory
-	std::string mem;
 	// flexible array for RT memory
 	int size = 0;
 	char buf[1];
+};
+
+struct ParamCmdData {
+	VstPlugin *owner;
+	int index;
+	float value;
+	// flexible array
+	char display[1];
 };
 
 struct QueryCmdData {
@@ -104,11 +110,12 @@ public:
 	void doneOpen(VstPluginCmdData& msg);
 	void close();
 	void showEditor(bool show);
-	void reset(bool nrt = false);
+	void reset(bool async = false);
 	void next(int inNumSamples);
 	// param
 	void setParam(int32 index, float value);
 	void setParam(int32 index, const char* display);
+	void setParamDone(int32 index);
 	void queryParams(int32 index, int32 count);
 	void getParam(int32 index);
 	void getParams(int32 index, int32 count);
@@ -126,8 +133,6 @@ public:
 	void sendBankData(int32 totalSize, int32 onset, const char *data, int32 n) {
 		sendData(totalSize, onset, data, n, true);
 	}
-	void setProgramData(const char *data, int32 n);
-	void setBankData(const char *data, int32 n);
 	void writeProgram(const char *path);
 	void writeBank(const char *path);
 	void receiveProgramData(int count);
@@ -147,7 +152,6 @@ public:
 	// node reply
 	void sendMsg(const char *cmd, float f);
 	void sendMsg(const char *cmd, int n, const float *data);
-private:
 	struct Param {
 		float value;
 		int32 bus;
@@ -167,10 +171,11 @@ private:
 	VstPluginCmdData* makeCmdData(const char *data, size_t size);
 	VstPluginCmdData* makeCmdData(size_t size);
 	VstPluginCmdData* makeCmdData();
-	void doCmd(VstPluginCmdData *cmdData, AsyncStageFn nrt,
-		AsyncStageFn rt=nullptr);
+	template<typename T>
+	void doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt=nullptr);
 	static bool cmdGetData(World *world, void *cmdData, bool bank);
 	static bool cmdGetDataDone(World *world, void *cmdData, bool bank);
+private:
 	// data members
 	uint32 magic_ = MagicNumber;
 	IVSTPlugin *plugin_ = nullptr;

@@ -535,8 +535,8 @@ VstPluginController {
 		this.prClear();
 		this.prClearGui();
 	}
-	reset { arg nrt = false;
-		this.sendMsg('/reset', nrt.asInt);
+	reset { arg async = false;
+		this.sendMsg('/reset', async.asInt);
 	}
 	// parameters
 	numParameters {
@@ -592,8 +592,12 @@ VstPluginController {
 	}
 	setProgram { arg index;
 		((index >= 0) && (index < this.numPrograms)).if {
-			this.sendMsg('/program_set', index);
-			this.prQueryParams;
+			{
+				this.sendMsg('/program_set', index);
+				// wait one roundtrip for async command to finish
+				synth.server.sync;
+				this.prQueryParams;
+			}.forkIfNeeded;
 		} {
 			^"program number % out of range".format(index).throw;
 		};
