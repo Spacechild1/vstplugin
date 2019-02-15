@@ -58,19 +58,19 @@ VstPlugin : MultiOutUGen {
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
-	*info { arg server;
+	*plugins { arg server;
 		server = server ?? Server.default;
 		^pluginDict[server];
 	}
-	*plugins { arg server;
-		var dict = this.info(server);
+	*pluginKeys { arg server;
+		var dict = this.plugins(server);
 		dict.notNil.if {
 			// return sorted list of plugin keys (case insensitive)
 			^Array.newFrom(dict.keys).sort({ arg a, b; a.asString.compare(b.asString, true) < 0});
 		} { ^[] };
 	}
 	*print { arg server;
-		this.plugins(server).do { arg p; p.postln; }
+		this.pluginKeys(server).do { arg p; p.postln; }
 	}
 	*reset { arg server;
 		server = server ?? Server.default;
