@@ -34,8 +34,8 @@ VstPlugin : MultiOutUGen {
 						"programs (%):".format(self.numPrograms).postln;
 						self.printPrograms;
 					} {
-						"parameters: %".format(self.numParameters);
-						"programs: %".format(self.numPrograms);
+						"parameters: %".format(self.numParameters).postln;
+						"programs: %".format(self.numPrograms).postln;
 					};
 					"".postln;
 				},
@@ -389,7 +389,8 @@ VstPlugin : MultiOutUGen {
 }
 
 VstPluginController {
-	// constants
+	// class var
+	classvar <>guiClass;
 	const oscPacketSize = 1600; // safe max. OSC packet size
 	// public
 	var <synth;
@@ -406,8 +407,12 @@ VstPluginController {
 	var <>sysexReceived;
 	// private
 	var oscFuncs;
-	var scGui;
+	var <paramCache; // only for dependants
+	var window;
 
+	*initClass {
+		guiClass = VstPluginGui;
+	}
 	*new { arg synth, id, synthDef, wait= -1;
 		var synthIndex;
 		// if the synthDef is nil, we try to get it from the global SynthDescLib
@@ -439,19 +444,21 @@ VstPluginController {
 		// parameter changed:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			var index, value, display;
-			// we have to defer the method call to the AppClock!
-			{scGui.notNil.if {
-				index = msg[3].asInt;
-				value = msg[4].asFloat;
-				(msg.size > 5).if {
-					display = this.class.msg2string(msg, 5);
-				};
-				scGui.paramChanged(index, value, display);
-			}}.defer;
+			index = msg[3].asInt;
+			value = msg[4].asFloat;
+			(msg.size > 5).if {
+				display = this.class.msg2string(msg, 5);
+			};
+			// cache parameter value
+			paramCache[index] = [value, display];
+			// notify dependants
+			this.changed('/param', index, value, display);
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
 			currentProgram = msg[3].asInt;
+			// notify dependants
+			this.changed('/program_index', currentProgram);
 		}, '/vst_program_index'));
 		// program name:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
@@ -459,6 +466,8 @@ VstPluginController {
 			index = msg[3].asInt;
 			name = this.class.msg2string(msg, 4);
 			programs[index] = name;
+			// notify dependants
+			this.changed('/program', index, name);
 		}, '/vst_program'));
 		// parameter automated:
 		oscFuncs.add(this.makeOSCFunc({ arg msg;
@@ -485,55 +494,50 @@ VstPluginController {
 		oscFuncs.do { arg func;
 			func.free;
 		};
-		this.prClear();
-		this.prClearGui();
+		this.prClear;
+		this.changed('/free');
 	}
-	showGui { arg show=true;
-		loaded.if {
-			scGui.isNil.if { this.sendMsg('/vis', show.asInt)} { scGui.view.visible_(show)};
-		}
+	editor { arg show=true;
+		window.if { this.sendMsg('/vis', show.asInt); }
+		{ "no editor!".postln; };
 	}
-	open { arg path, gui=\sc, info=false, action;
+	gui { arg parent, bounds;
+		^this.class.guiClass.new(this).gui(parent, bounds);
+	}
+	open { arg path, editor=false, info=false, action;
 		var theInfo;
-		this.prClear();
-		this.prClearGui();
+		this.prClear;
 		this.makeOSCFunc({arg msg;
-			var success = msg[3].asBoolean;
-			var window = msg[4].asBoolean;
-			success.if {
-				loaded = true;
+			loaded = msg[3].asBoolean;
+			window = msg[4].asBoolean;
+			loaded.if {
 				this.slotPut('info', theInfo); // hack because of name clash with 'info'
+				paramCache = Array.fill(theInfo.numParameters, [0, nil]);
 				currentProgram = 0;
 				// copy default program names (might change later when loading banks)
 				programs = Array.newFrom(theInfo.programs);
-				// make SC editor if needed/wanted (deferred to AppClock!)
-				window.not.if {
-					{scGui = VstPluginGui.new(this)}.defer;
-				};
 				this.prQueryParams;
 				// post info if wanted
 				info.if { theInfo.print };
 			};
-			action.value(this, success);
+			action.value(this, loaded);
+			this.changed('/open');
 		}, '/vst_open').oneShot;
 		VstPlugin.prGetInfo(synth.server, path, wait, { arg i;
 			// don't set 'info' property yet
 			theInfo = i;
 			// if no plugin info could be obtained (probing failed)
 			// we open the plugin nevertheless to get some error messages
-			this.sendMsg('/open', theInfo !? { theInfo.path } ?? path, (gui == \vst).asInt);
+			this.sendMsg('/open', theInfo !? { theInfo.path } ?? path, editor.asInt);
 		});
 	}
 	prClear {
-		loaded = false; info = nil;	programs = nil; currentProgram = nil;
-	}
-	prClearGui {
-		scGui.notNil.if { {scGui.view.remove; scGui = nil}.defer };
+		loaded = false; window = false; info = nil;	paramCache = nil; programs = nil; currentProgram = nil;
 	}
 	close {
 		this.sendMsg('/close');
-		this.prClear();
-		this.prClearGui();
+		this.prClear;
+		this.changed('/close');
 	}
 	reset { arg async = false;
 		this.sendMsg('/reset', async.asInt);
@@ -935,76 +939,197 @@ VstPluginMIDIProxy {
 	}
 }
 
-VstPluginGui {
-	classvar <>maxParams = 12; // max. number of parameters per column
-	classvar <>sliderWidth = 180;
+VstPluginGui : ObjectGui {
+	// class defaults (can be overwritten per instance)
+	classvar <>numRows = 10; // max. number of parameters per column
+	classvar <>closeOnFree = true;
+	classvar <>sliderWidth = 200;
 	classvar <>sliderHeight = 20;
 	classvar <>displayWidth = 60;
-	// public
-	var <view;
 	// private
+	var programMenu;
 	var paramSliders;
 	var paramDisplays;
-	var model;
+	var embedded;
+	// public
+	var <>closeOnFree;
+	var <>numRows;
+	var <>sliderWidth;
+	var <>sliderHeight;
+	var <>displayWidth;
 
-	*new { arg model;
-		^super.new.init(model);
+	model_ { arg newModel;
+		// always notify when changing models (but only if we have a view)
+		model.removeDependant(this);
+		model = newModel;
+		model.addDependant(this);
+		view.notNil.if {
+			this.update;
+		}
 	}
 
-	init { arg theModel;
-		var nparams, title, ncolumns, nrows, bounds, layout, font;
+	// this is called whenever something important in the model changes.
+	update { arg who, what ...args;
+		{
+			(who == model).if {
+				what.switch
+				{ '/open'} { this.prUpdateGui }
+				{ '/close' } { this.prUpdateGui }
+				{ '/free' } { this.prFree } // Synth has been freed
+				{ '/param' } { this.prParam(*args) }
+				{ '/program' } { this.prProgram(*args) }
+				{ '/program_index' } { this.prProgramIndex(*args) };
+			};
+			// empty update call
+			who ?? { this.prUpdateGui };
+		}.defer;
+	}
 
-		model = theModel;
+	guify { arg parent, bounds;
+		// converts the parent to a FlowView or compatible object
+		// thus creating a window from nil if needed
+		// registers to remove self as dependent on model if window closes
+		bounds.notNil.if {
+			bounds = bounds.asRect;
+		};
+		parent.isNil.if {
+			parent = Window(bounds: bounds, scroll: true);
+		} {
+			parent = parent.asView;
+		};
+		^parent
+	}
 
-		nparams = model.numParameters;
-		ncolumns = nparams.div(maxParams) + ((nparams % maxParams) != 0).asInt;
-		(ncolumns == 0).if {ncolumns = 1}; // just to prevent division by zero
-		nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInt;
+	gui { arg parent, bounds;
+		var layout = this.guify(parent, bounds);
+		parent.isNil.if {
+			view = View(layout, bounds).background_(this.background);
+			embedded = false;
+		} {
+			view = View.new(bounds: bounds);
+			ScrollView(layout, bounds)
+			.background_(this.background)
+			.hasHorizontalScroller_(true)
+			.autohidesScrollers_(true)
+			.canvas_(view);
+			embedded = true;
+		};
+		this.prUpdateGui;
+		// window
+		parent.isNil.if {
+			bounds.isNil.if {
+				var numRows = this.numRows ?? this.class.numRows;
+				var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
+				layout.setInnerExtent(sliderWidth * 2, numRows * 40);
+			};
+			layout.front;
+		};
+	}
 
-		font = Font.new(*GUI.skin.fontSpecs);
-		bounds = Rect(0,0, sliderWidth * ncolumns, sliderHeight * nrows);
-		// don't delete the view on closing the window!
-		view = View.new(nil, bounds).name_(model.info.name).deleteOnClose_(false);
+	prUpdateGui {
+		var nparams=0, name, title, ncolumns=0, nrows=0, grid, font, minWidth, minHeight, minSize;
+		var numRows = this.numRows ?? this.class.numRows;
+		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
+		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
+		var displayWidth = this.displayWidth ?? this.class.displayWidth;
+		// remove old GUI body
+		view !? { view.removeAll };
 
-		title = StaticText.new()
-			.stringColor_(GUI.skin.fontColor)
-			.font_(font)
-			.background_(GUI.skin.background)
-			.align_(\left)
-			.object_(model.info.name);
+		model !? { model.info !? {
+			name = model.info.name;
+			// build program menu
+			programMenu = PopUpMenu.new;
+			programMenu.action = { model.setProgram(programMenu.value) };
+			programMenu.items_(model.programs);
+			programMenu.value_(model.currentProgram);
+			// parameters: calculate number of rows and columns
+			nparams = model.numParameters;
+			ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInt;
+			(ncolumns == 0).if {ncolumns = 1}; // just to prevent division by zero
+			nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInt;
+		}};
 
-		layout = GridLayout.new();
-		layout.add(title, 0, 0);
+		font = Font.new(*GUI.skin.fontSpecs).size_(14);
+		// change window title
+		embedded.not.if {
+			view.parent.name_(name !? { "VstPlugin (%)".format(name) } ?? { "VstPlugin (empty)" });
+		};
 
-		paramSliders = List.new();
-		paramDisplays = List.new();
+		title = StaticText.new(view)
+		.stringColor_(GUI.skin.fontColor)
+		.font_(font)
+		.background_(GUI.skin.background)
+		.align_(\center)
+		.object_(name ?? "[no plugin loaded]");
+
+		grid = GridLayout.new;
+		grid.add(title, 0, 0);
+		programMenu !? { grid.add(programMenu, 1, 0) };
+
+		paramSliders = Array.new(nparams);
+		paramDisplays = Array.new(nparams);
 
 		nparams.do { arg i;
-			var col, row, name, label, display, slider, unit;
+			var col, row, name, label, display, slider, bar, unit, param, labelWidth = 50;
+			param = model.paramCache[i];
 			col = i.div(nrows);
 			row = i % nrows;
-			name = StaticText.new.string_("%: %".format(i, model.info.parameterNames[i]));
-			label = StaticText.new.string_(model.info.parameterLabels[i] ?? "");
-			display = TextField.new.fixedWidth_(displayWidth);
+			// param name
+			name = StaticText.new(bounds: sliderWidth@sliderHeight)
+			.string_("%: %".format(i, model.info.parameterNames[i]))
+			.minWidth_(sliderWidth - displayWidth - labelWidth);
+			// param label
+			label = StaticText.new(bounds: labelWidth@sliderHeight)
+			.string_(model.info.parameterLabels[i] ?? "");
+			// param display
+			display = TextField.new.fixedWidth_(displayWidth).string_(param[1]);
 			display.action = {arg s; model.set(i, s.value)};
 			paramDisplays.add(display);
-			slider = Slider.new(bounds: sliderWidth@sliderHeight).fixedHeight_(sliderHeight);
+			// slider
+			slider = Slider.new(bounds: sliderWidth@sliderHeight)
+			.fixedSize_(sliderWidth@sliderHeight).value_(param[0]);
 			slider.action = {arg s; model.set(i, s.value)};
 			paramSliders.add(slider);
-			unit = VLayout.new(
-				HLayout.new(name.align_(\left), nil, display.align_(\right), label.align_(\right)),
-				slider;
-			);
-			layout.add(unit, row+1, col);
+			// put together
+			bar = View.new.layout_(HLayout.new(name.align_(\left),
+				nil, display.align_(\right), label.align_(\right)));
+			unit = VLayout.new(bar, slider).spacing_(20);
+			grid.add(unit, row+2, col);
 		};
-		layout.setRowStretch(nparams+1, 1);
+		grid.setRowStretch(nrows + 2, 1);
 
-		view.layout_(layout);
+		// add a view and make the area large enough to hold all its contents
+		minWidth = ((sliderWidth + 20) * ncolumns).max(sliderWidth);
+		minHeight = ((sliderHeight * 3 * nrows) + 70).max(sliderWidth); // empirically
+		minSize = minWidth@minHeight;
+		view.minSize_(minSize);
+		View.new(view).layout_(grid).minSize_(minSize);
 	}
 
-	paramChanged { arg index, value, display;
-		paramSliders.at(index).value = value;
-		paramDisplays.at(index).string = display;
+	prParam { arg index, value, display;
+		paramSliders[index].value_(value);
+		paramDisplays[index].string_(display);
 	}
+	prProgram { arg index, name;
+		var items, value;
+		value = programMenu.value;
+		items = programMenu.items;
+		items[index] = name;
+		programMenu.items_(items);
+		programMenu.value_(value);
+	}
+	prProgramIndex { arg index;
+		programMenu.value_(index);
+	}
+	prFree {
+		(this.closeOnFree ?? this.class.closeOnFree).if {
+			embedded.not.if {
+				view.parent.close;
+				^this;
+			};
+		};
+		this.prUpdateGui;
+	}
+	writeName {}
 }
 
