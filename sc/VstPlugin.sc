@@ -12,15 +12,21 @@ VstPlugin : MultiOutUGen {
 				print: { arg self, long = false;
 					"---".postln;
 					"name: '%'".format(self.name).postln;
-					"version: %".format(self.version).postln;
-					"editor: %".format(self.hasEditor).postln;
 					"input channels: %".format(self.numInputs).postln;
 					"output channels: %".format(self.numOutputs).postln;
-					"single precision: %".format(self.singlePrecision).postln;
-					"double precision: %".format(self.doublePrecision).postln;
+					long.not.if {
+						"parameters: %".format(self.numParameters).postln;
+						"programs: %".format(self.numPrograms).postln;
+					};
 					"MIDI input: %".format(self.midiInput).postln;
 					"MIDI output: %".format(self.midiOutput).postln;
+					"sysex input: %".format(self.sysexInput).postln;
+					"sysex output: %".format(self.sysexOutput).postln;
 					"synth: %".format(self.isSynth).postln;
+					"version: %".format(self.version).postln;
+					"editor: %".format(self.hasEditor).postln;
+					"single precision: %".format(self.singlePrecision).postln;
+					"double precision: %".format(self.doublePrecision).postln;
 					long.if {
 						"".postln;
 						"parameters (%):".format(self.numParameters).postln;
@@ -28,9 +34,6 @@ VstPlugin : MultiOutUGen {
 						"".postln;
 						"programs (%):".format(self.numPrograms).postln;
 						self.printPrograms;
-					} {
-						"parameters: %".format(self.numParameters).postln;
-						"programs: %".format(self.numPrograms).postln;
 					};
 					"".postln;
 				},
