@@ -1,0 +1,138 @@
+TITLE:: VstPluginGui
+summary:: a generic Qt GUI for VstPluginController
+categories:: GUI
+related:: VstPlugin, VstPluginController
+
+DESCRIPTION::
+This class is the default GUI class for link::VstPluginController::.
+
+CLASSMETHODS::
+
+Global defaults for GUI properties, see link::#Customization::.
+
+INSTANCEMETHODS::
+
+PRIVATE:: guify, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, writeName
+
+METHOD:: gui
+Initialize the GUI.
+
+ARGUMENT:: parent
+If parent is code::nil::, the GUI will be displayed in a new top level link::Classes/Window::, otherwise it is embedded
+in the given parent (see link::#Embedding::).
+
+ARGUMENT:: bounds
+If parent is code::nil::, this will set the window geometry, otherwise it
+determines the size and position of the embedded GUI.
+
+DISCUSSION::
+Usually, this is called indirectly by link::VstPluginController#-gui::.
+
+Occasionally you might want to call it directly, e.g. to create an initially empty view where you can
+set the link::#-model:: later.
+
+METHOD:: model
+the model (a link::VstPluginController:: instance).
+
+DISCUSSION::
+VstPluginGui receives notifications for relevant changes in the model, e.g. when a new plugin has been loaded or a parameter has changed.
+
+You can always set another model and the view will update automatically (see link::#Changing Models::).
+
+SUBSECTION:: Customization
+
+The following instance methods allow you to customize the appearance and behavior of link::VstPluginGui::.
+You can also customize globally by setting the class methods of the same name. Instance members override class members.
+
+METHOD:: numRows
+the maximal number of rows (default: 10).
+
+METHOD:: closeOnFree
+a Boolean telling if the GUI window should be closed when the link::VstPlugin:: is freed (default: code::true::).
+This doesn't affect embedded GUIs.
+
+METHOD:: sliderWidth
+The slider width in pixels (default: 200)
+DISCUSSION::
+The slider width also determines the width of each parameter section.
+You might want to increase it, e.g. if parameter names are too long to fit into a single line.
+
+METHOD:: sliderHeight
+The slider height in pixels (default: 20)
+
+METHOD:: displayWidth
+The parameter display width in pixels (default: 60)
+DISCUSSION::
+The default size should be fine for most number displays.
+You might want to increase it, e.g. if the plugin displays text beyond a few characters.
+
+METHOD:: update
+Update the view.
+DISCUSSION::
+This method is usually called by the model to notify the view for important changes (see link::Classes/Object#-update::).
+However, it can also be called by the user (with no arguments) to update the view, e.g. after changing GUI properties:
+code::
+// here it's not necessary to call update because the GUI is customized *before* the 'gui' method is called
+~gui = VstPluginGui.new(~model).sliderWidth_(250).gui;
+// otherwise you need to call 'update' to see the effect of your customization
+~gui.sliderWidth_(300).displayWidth_(80).update;
+// also here
+~fx.gui.sliderWidth_(500).update;
+::
+
+EXAMPLES::
+Prolog:
+code::
+(
+// a simple insert FX:
+SynthDef.new(\insert, {arg bus = 0;
+	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
+}).add;
+)
+(
+// create 2 VstPlugins
+~fx1 = VstPluginController(Synth(\insert));
+~fx2 = VstPluginController(Synth(\insert));
+)
+(
+// load 2 different plugins
+~fx1.open("/path/to/some/fx");
+~fx2.open("/path/to/other/fx");
+)
+::
+
+SUBSECTION:: Embedding
+It's possible to embed several VstPluginGui instances within a single view. 
+
+The emphasis::bounds:: argument determines the size and position of each subview. 
+(In link::Classes/FlowLayout::s the position is managed automatically,
+so it's enough provide a link::Classes/Point:: instead of a link::Classes/Rect::.)
+
+If the plugin editor needs more space than emphasis::bounds::, scrollbars are shown automatically.
+
+code::
+(
+// create a Window large enough to hold two VstPluginGuis per row (see below).
+~view = Window.new(bounds: 850@450, scroll: true);
+~view.view.decorator = FlowLayout(w.view.bounds);
+~view.front;
+)
+// create 2 subviews next to each other:
+~fx1.gui(~view, 400@400);
+~fx2.gui(~view, 400@400);
+// the next GUI would go to a new row...
+::
+
+SUBSECTION:: Changing Models
+Here we use a single VstPluginGui instance to show different link::VstPluginController::s.
+Say you have an FX chain with several link::VstPlugin:: instances but you only need to see one at the time.
+
+code::
+// make an empty GUI
+~gui = VstPluginGui.new.gui;
+// show fx1
+~gui.model_(~fx1);
+// show fx2
+~gui.model_(~fx2);
+::
+We could even build a link::Classes/PopUpMenu:: to change between link::VstPluginController:: instances.
