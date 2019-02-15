@@ -1,10 +1,5 @@
 VstPlugin : MultiOutUGen {
 	// class members
-	classvar <defaultSearchPaths;
-	classvar <>useDefaultSearchPaths = true;
-	classvar <userSearchPaths;
-	classvar <platformExtensions;
-	classvar <searchPathDict;
 	classvar pluginDict;
 	classvar parentInfo;
 	// instance members
@@ -86,6 +81,7 @@ VstPlugin : MultiOutUGen {
 		server = server ?? Server.default;
 		path.isString.if { path = [path] };
 		(path.isNil or: path.isArray).not.if { ^"bad type for 'path' argument!".throw };
+		path = path.collect { arg p; this.prResolvePath(p) };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prSearchLocal(server, path, useDefault, verbose, action) }
@@ -204,6 +200,8 @@ VstPlugin : MultiOutUGen {
 		server = server ?? Server.default;
 		// if key is nil, use the plugin path as key
 		key = key.notNil.if { key.asSymbol } { path.asSymbol };
+		// resolve the path
+		path = this.prResolvePath(path);
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
@@ -379,6 +377,19 @@ VstPlugin : MultiOutUGen {
 		// if the key already exists, return the info, otherwise probe the plugin
 		pluginDict[server] !? { arg dict; dict[key] } !? { arg info; action.value(info) }
 		?? { this.probe(server, key, key, wait, action) };
+	}
+	*prResolvePath { arg path;
+		// resolve relative paths to the currently executing file
+		var rel = thisProcess.nowExecutingPath.dirname;
+		path = path.asString;
+		(thisProcess.platform.name == \windows).if {
+			// replace / with \ because of a bug in PathName
+			path = path.tr($/, $\\);
+		};
+		// other methods don't work for folders...
+		PathName(path).isAbsolutePath.not.if {
+			^(rel +/+ path);
+		} { ^path };
 	}
 	// instance methods
 	init { arg theID, numOut ... theInputs;

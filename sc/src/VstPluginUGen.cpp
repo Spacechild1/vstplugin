@@ -1743,7 +1743,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		LOG_VERBOSE("searching in " << path << "...");
 #ifdef _WIN32
 		// root will have a trailing slash
-		auto root = fs::absolute(fs::path(path)).u8string();
+		auto root = fs::path(path).u8string();
 		for (auto& entry : fs::recursive_directory_iterator(root)) {
 			if (fs::is_regular_file(entry)) {
 				auto ext = entry.path().extension().u8string();
