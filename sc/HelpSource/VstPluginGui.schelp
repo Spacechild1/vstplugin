@@ -1,0 +1,162 @@
+TITLE:: VstPluginGui
+summary:: (put short description here)
+categories:: Undocumented classes
+related:: Classes/SomeRelatedClass, Reference/SomeRelatedStuff, etc.
+
+DESCRIPTION::
+(put long description here)
+
+
+CLASSMETHODS::
+
+METHOD:: sliderHeight
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: numRows
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: closeOnFree
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: displayWidth
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: sliderWidth
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+
+INSTANCEMETHODS::
+
+METHOD:: gui
+(describe method here)
+
+ARGUMENT:: parent
+(describe argument here)
+
+ARGUMENT:: bounds
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: writeName
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: numRows
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: closeOnFree
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: prFree
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: sliderWidth
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: prProgram
+(describe method here)
+
+ARGUMENT:: index
+(describe argument here)
+
+ARGUMENT:: name
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: sliderHeight
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: update
+(describe method here)
+
+ARGUMENT:: who
+(describe argument here)
+
+ARGUMENT:: what
+(describe argument here)
+
+ARGUMENT::  ... args
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: prParam
+(describe method here)
+
+ARGUMENT:: index
+(describe argument here)
+
+ARGUMENT:: value
+(describe argument here)
+
+ARGUMENT:: display
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: displayWidth
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: prProgramIndex
+(describe method here)
+
+ARGUMENT:: index
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: guify
+(describe method here)
+
+ARGUMENT:: parent
+(describe argument here)
+
+ARGUMENT:: bounds
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: model
+(describe method here)
+
+ARGUMENT:: newModel
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: prUpdateGui
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+
+EXAMPLES::
+
+code::
+(some example code)
+::

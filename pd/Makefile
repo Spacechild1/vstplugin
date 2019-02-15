@@ -13,29 +13,30 @@ lib.name = vstplugin~
 
 class.sources = src/vstplugin~.cpp
 
-common.sources = src/VSTPlugin.cpp src/VST2Plugin.cpp
+common.sources = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
 
-VST2DIR = src/VST_SDK/VST2_SDK/
+VST2DIR = ../vst/VST_SDK/VST2_SDK/
 LOGLEVEL = 2
 
 cflags = -Wno-unused -Wno-unused-parameter \
 	-g \
 	-std=c++11 \
+        -I ../vst \
 	-I"${VST2DIR}/pluginterfaces/vst2.x/" \
 	-DLOGLEVEL=${LOGLEVEL} \
 	$(empty)
 
 define forWindows
-  common.sources += src/VSTWindowWin32.cpp
+  common.sources += ../vst/VSTWindowWin32.cpp
   cflags += -DVSTTHREADS=1
 endef
 define forLinux
-  common.sources += src/VSTWindowX11.cpp
+  common.sources += ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   ldflags += -L/usr/X11R6/lib -lX11
 endef
 define forDarwin
- common.sources += src/VSTWindowCocoa.mm
+ common.sources += ../vst/VSTWindowCocoa.mm
  cflags += -fno-objc-arc -DVSTTHREADS=0
  ldflags += -framework Cocoa
 endef
