@@ -35,11 +35,10 @@ static const char * defaultSearchPaths[] = {
 #endif
 // Windows
 #ifdef _WIN32
-	// LATER get %PROGRAMFILES% from environment
 #ifdef _WIN64 // 64 bit
-#define PROGRAMFILES "C:\\Program Files\\"
+#define PROGRAMFILES "%ProgramFiles%\\"
 #else // 32 bit
-#define PROGRAMFILES "C:\\Program Files (86)\\"
+#define PROGRAMFILES "%ProgramFiles(x86)%\\"
 #endif
 	PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins\\",
 	PROGRAMFILES "Common Files\\VST2\\", PROGRAMFILES "Common Files\\Steinberg\\VST2\\",
@@ -1691,6 +1690,12 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 	return plugin != nullptr;
 }
 
+// recursively searches directories for VST plugins.
+#ifdef _WIN32
+// expand environment variables (%ProgramFiles%), see definition.
+void expandEnvStrings(const char *src, char* dst, size_t size);
+#endif
+
 bool cmdSearch(World *inWorld, void* cmdData) {
 	auto data = (QueryCmdData *)cmdData;
 	bool verbose = data->index;
@@ -1700,7 +1705,16 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	// use defaults?
 	if (data->value) {
 		auto it = defaultSearchPaths;
-		while (*it) searchPaths.push_back(*it++);
+		while (*it) {
+#ifdef _WIN32
+			char buf[1024];
+			expandEnvStrings(*it, buf, sizeof(buf));
+			searchPaths.push_back(buf);
+#else
+			searchPaths.push_back(*it);
+#endif
+			it++;
+		}
 	}
 	if (local) {
 		// get search paths from file
@@ -1729,12 +1743,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		LOG_VERBOSE("searching in " << path << "...");
 #ifdef _WIN32
 		// root will have a trailing slash
-		auto root = fs::absolute(fs::path(path)).string();
+		auto root = fs::absolute(fs::path(path)).u8string();
 		for (auto& entry : fs::recursive_directory_iterator(root)) {
 			if (fs::is_regular_file(entry)) {
-				auto ext = entry.path().extension().string();
+				auto ext = entry.path().extension().u8string();
 				if (extensions.count(ext)) {
-					auto fullPath = entry.path().string();
+					auto fullPath = entry.path().u8string();
 					// shortPath: fullPath minus root minus extension (without leading slash)
 					auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
 					// only forward slashes
@@ -1963,8 +1977,8 @@ bool cmdQueryParam(World *inWorld, void *cmdData) {
 		auto& params = it->second.parameters;
 		auto reply = data->reply;
 		int count = 0;
-		int onset = sc_clip(data->index, 0, params.size());
-		int num = sc_clip(data->value, 0, params.size() - onset);
+		int onset = sc_clip(data->index, 0, (int)params.size());
+		int num = sc_clip(data->value, 0, (int)params.size() - onset);
 		int size = sizeof(data->reply);
 		count += doAddArg(reply, size, "/vst_param_info");
 		// add plugin key (no need to check for overflow)
@@ -2108,3 +2122,15 @@ PluginLoad(VstPlugin) {
 	PluginCmd(vst_path_add);
 	PluginCmd(vst_path_clear);
 }
+
+// define this at the very end to avoid clashes with SC headers
+#ifdef _WIN32
+#undef IN
+#undef OUT
+#define IN
+#define OUT
+#include <Windows.h>
+void expandEnvStrings(const char *src, char* dst, size_t size) {
+	ExpandEnvironmentStringsA(src, dst, size);
+}
+#endif
