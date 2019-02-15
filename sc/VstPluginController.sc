@@ -1,6 +1,5 @@
 VstPluginController {
 	// class var
-	classvar <>guiClass;
 	const oscPacketSize = 1600; // safe max. OSC packet size
 	// public
 	var <synth;
@@ -20,8 +19,8 @@ VstPluginController {
 	var <paramCache; // only for dependants
 	var window;
 
-	*initClass {
-		guiClass = VstPluginGui;
+	*guiClass {
+		^VstPluginGui;
 	}
 	*new { arg synth, id, synthDef, wait= -1;
 		var synthIndex;

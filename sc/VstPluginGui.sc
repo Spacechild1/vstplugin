@@ -53,9 +53,9 @@ VstPluginGui : ObjectGui {
 		};
 		parent.isNil.if {
 			parent = Window(bounds: bounds, scroll: true);
-		} {
-			parent = parent.asView;
-		};
+		} { parent = parent.asView };
+		// notify the GUI on close to release its dependencies!
+		parent.asView.addAction({ this.viewDidClose }, 'onClose');
 		^parent
 	}
 
@@ -119,7 +119,7 @@ VstPluginGui : ObjectGui {
 		.font_(font)
 		.background_(GUI.skin.background)
 		.align_(\center)
-		.object_(name ?? "[no plugin loaded]");
+		.object_(name ?? "[empty]");
 
 		grid = GridLayout.new;
 		grid.add(title, 0, 0);
