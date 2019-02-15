@@ -36,10 +36,10 @@ the main thread *)- which happens to be the audio thread in Pd...
 until we've found a better solution, macOS users are adviced to keep native GUI
 windows closed in low-latency realtime situations to avoid audio hick-ups.
 for this reason, the default GUI on MacOS is the generic Pd editor.
-you have to explicitly provide the flag "-gui" to get the VST GUI.
+you have to explicitly provide the "-vstgui" flag to get the VST GUI.
 
 on SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
-to open a plugin with "gui: \vst".
+to open a plugin with "editor: true".
 
 *) to make the GUI work for Pd on macOS we have to 'transform' Pd into a Cocoa app
 and install an event polling routine, which is a bit adventurous to say the least.
@@ -53,12 +53,12 @@ Pd:
 vstplugin~ uses a slightly modified version of pd-lib-builder (https://github.com/pure-data/pd-lib-builder)
 (to compile on Windows you need MinGW; it is recommended to use msys2: https://www.msys2.org/)
 
-1) 	get the Steinberg VST2 SDK and copy it into /src.
-	you should have a folder /src/VST_SDK/VST2_SDK/pluginterfaces/vst2.x
+1) 	get the Steinberg VST2 SDK and copy it into /vst.
+	you should have a folder vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x
 	with the header files aeffect.h, affectx.h and vstfxstore.
 	(the VST2 SDK is officially deprecated by Steinberg and not easy to find. try .git-ci/get_vst.sh)
 
-2) 	cd into vstplugin/ and type 'make'. in case the Makefile doesn't automatically find your Pd installation,
+2) 	cd into pd/ and type 'make'. in case the Makefile doesn't automatically find your Pd installation,
 	you can provide the path to Pd explicitly with:
 	$ make PDDIR=/path/to/pd
 	type 'make install' if you wan't to install the library. you can choose the installation directory with
@@ -69,21 +69,21 @@ SuperCollider:
 in order to use the VstPlugin class you have to first build VstPluginUGen. on macOS/Linux you can use GCC or Clang,
 on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
 
-1) make sure you have CMake installed
-2) get the Steinberg VST2 SDK (same as with Pd, see above)
-3) get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider)
-4) cd into vstplugin/ and create a build directory (e.g. build/)
-5) macOS/Linux:	cd into the build directory and do
+1) 	make sure you have CMake installed
+2) 	get the Steinberg VST2 SDK (same as with Pd, see above)
+3) 	get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider)
+4) 	cd into sc/ and create a build directory (e.g. build/)
+5) 	macOS/Linux:	cd into the build directory and do
 
 	cmake -DCMAKE_BUILD_TYPE=RELEASE -DSC_PATH=/path/to/supercollider ..
 	
 	the SC_PATH variable must point to the folder containing the SuperCollider source code with the subfolders common/ and include/.
-	you can change CMAKE_BUILD_TYPE to DEBUG if you rather want a debug build.
+	you can change CMAKE_BUILD_TYPE to DEBUG if you want a debug build.
 	
 	Windows: you have to tell CMake to generate a VisualStudio project (e.g. "Visual Studio 15 2017 Win64" for a 64 bit build) instead of a standard Unix makefile.
-	I recommend using the cmake-gui GUI application instead of the cmake command line tool to set the generator and above mentioned variables.
+	It's recommended to use the cmake-gui GUI application instead of the cmake command line tool.
 
-6) macOS/Linux: type 'make', Windows: open VstPluginUGen.sln with Visual Studio and build the project.
-7) make a /VstPlugin folder in your SuperCollider extensions folder
-7) copy VstPluginUGen.scx (on Linux: VstPluginUGen.so) and VstPlugin.sc into /VstPlugin
-8) copy VstPlugin.schelp and VstPluginController.schep into /VstPlugin/HelpSource
+6) 	macOS/Linux: type 'make', Windows: open VstPluginUGen.sln with Visual Studio and build the project.
+7) 	copy the /sc folder into your extensions folder and rename it to VstPlugin.
+	move VstPluginUGen.scx / VstPluginUGen.so from sc/build/... to the top (next to the .sc files)
+	and remove the build/ and src/ folders.

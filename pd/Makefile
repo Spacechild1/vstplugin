@@ -43,6 +43,6 @@ endef
 
 
 # all extra files to be included in binary distribution of the library
-datafiles = vstplugin~-help.pd ../README.txt ../LICENSE.txt
+datafiles = vstplugin~-help.pd ../README.md ../LICENSE.txt
 
 include pd-lib-builder/Makefile.pdlibbuilder
