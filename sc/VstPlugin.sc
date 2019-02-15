@@ -379,8 +379,6 @@ VstPlugin : MultiOutUGen {
 		?? { this.probe(server, key, key, wait, action) };
 	}
 	*prResolvePath { arg path;
-		// resolve relative paths to the currently executing file
-		var rel = thisProcess.nowExecutingPath.dirname;
 		path = path.asString;
 		(thisProcess.platform.name == \windows).if {
 			// replace / with \ because of a bug in PathName
@@ -388,7 +386,12 @@ VstPlugin : MultiOutUGen {
 		};
 		// other methods don't work for folders...
 		PathName(path).isAbsolutePath.not.if {
-			^(rel +/+ path);
+			// resolve relative paths to the currently executing file
+			var root = thisProcess.nowExecutingPath;
+			root.isNil.if {
+				"couldn't resolve % - relative paths only work on saved files!".warn;
+				^nil;
+			} {	^(root.dirname +/+ path) };
 		} { ^path };
 	}
 	// instance methods
