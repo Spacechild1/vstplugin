@@ -1738,6 +1738,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	auto e = platformExtensions;
 	while (*e) extensions.insert(*e++);
 	// search recursively
+	int total = 0;
 	for (auto& path : searchPaths) {
 		int count = 0;
 		LOG_VERBOSE("searching in " << path << "...");
@@ -1807,6 +1808,10 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		if (verbose) {
 			LOG_VERBOSE("found " << count << " plugins.");
 		}
+		total += count;
+	}
+	if (verbose) {
+		LOG_VERBOSE("total number of plugins: " << total);
 	}
 	// make list of plugin keys (so plugins can be queried by index)
 	pluginList.clear();
