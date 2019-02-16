@@ -1,0 +1,753 @@
+TITLE:: VstPluginController
+summary:: control a VstPlugin instance
+categories:: Utility
+related:: Classes/VstPlugin, Classes/VstPluginGui, Classes/VstPluginMIDIProxy
+
+DESCRIPTION::
+
+This class is used to control a specific link::Classes/VstPlugin:: instance in a link::Classes/Synth::, so you can
+open plugins, automate parameters, change programs, send MIDI messages, etc. Have a look at the examples at the bottom!
+
+Subsection:: Introduction
+
+Here's a quick example showing a simple insert effect on a 2-channel audio bus:
+
+code::
+(
+SynthDef(\insert, { arg bus;
+    ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));  
+}).add;
+)
+// create the synth:
+~synth = Synth(\insert, [\bus, 0]);
+// get a handle to the VstPlugin:
+~fx = VstPluginController(~synth);
+// open a plugin:
+~fx.open("/path/to/plugin", info: true);
+// show the GUI:
+~fx.gui;
+// etc.
+::
+
+If you have more than one instance of VstPlugin in your SynthDef, you need to give them unique IDs so that VstPluginController can find the right instance:
+
+code::
+(
+// two VST plugins in series:
+SynthDef(\insert2, { arg bus;
+    var sig;
+	sig = In.ar(bus, 2);
+    sig = VstPlugin.ar(sig, 2, id: \eq);
+    sig = VstPlugin.ar(sig, 2, id: \chorus);
+    ReplaceOut.ar(bus, );  
+}).add;
+)
+// create the synth:
+~synth = Synth(\insert2, [\bus, 0]);
+(
+// get handles to the VstPlugins:
+~eq = VstPluginController(~synth, \eq);
+~chorus = VstPluginController(~synth, \chorus);
+)
+// etc.
+::
+
+subsection:: Parameter Automation and Preset Management
+
+There are three different ways to automate plugin parameters:
+list::
+## with the link::#-set:: and link::#-setn:: messages
+code::
+// set parameter by message
+~fx.set(1, 0.5);
+::
+## by mapping them to control busses with link::#-map::
+code::
+// map a parameter to a control bus
+~c = Bus.control;
+~fx.map(2, ~c);
+~c.set(0.5);
+::
+## with the code::params:: UGen input of link::Classes/VstPlugin#*ar::
+code::
+(
+SynthDef(\insert, { arg bus, f;
+    ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2, params: [0, f]));  
+}).add;
+)
+// create a VstPlugin instance with parameter 0 set to 0.5
+~fx = VstPluginController(Synth(\insert, [\bus, 0, \f, 0.5]));
+// now set it to 0.7
+~fx.synth.set(\f, 0.7);
+// of course, 'f' could be any UGen input (e.g. SinOsc.ar)
+::
+::
+
+note:: 
+link::#-set:: and link::#-setn:: work asynchronously (in the non-realtime thread),
+so they are well-suited for parameters which are not realtime-safe 
+(e.g. triggering a heavy calculation, allocating memory, etc.). 
+Usually, such parameters are not supposed to be automated continuously anway.
+
+On the other hand, parameters mapped to control busses or UGen inputs are updated synchronously (in the realtime thread) 
+to ensure a deterministic result. This might only be a problem if the parameter itself is not realtime-safe.
+::
+
+
+Use link::#-get:: and link::#-getn:: to obtain current parameter values:
+code::
+// get the current value of parameter 3 and post it to the console:
+~fx.get(3, {arg f; f.postln;});
+::
+
+Change programs with link::#-setProgram:::
+
+code::
+// check for available programs:
+~fx.programs.postln;
+// switch to program 4:
+~fx.setProgram(4);
+::
+
+You can read/write preset files in the standard .fxp and .fxb format (recognized by most DAWs and VST hosts):
+code::
+// write current plugin state to a preset file.
+~fx.writeProgram("/preset/file/path/test.fxp");
+
+// ... mess around with the plugin ...
+~fx.gui;
+
+// restore previous state:
+~fx.readProgram("/preset/file/path/text.fxp");
+::
+
+It's also possible to get/set the raw plugin state as an link::Classes/Int8Array:::
+code::
+// get plugin state as Int8Array:
+~fx.getProgramData({ arg data; d = data;});
+
+// ... mess around with the plugin ...
+~fx.gui;
+
+// restore previous state:
+~fx.setProgramData(d);
+::
+
+The data is in the same non-human-readable binary format as emphasis::.fxp:: and emphasis::.fxb:: files. Use these methods to build your own preset management!
+
+note::Some plugins have additional state beyond their parameter values, 
+so you emphasis::have:: to use the program and bank methods above to fully save/restore them.
+::
+
+subsection:: GUI
+
+Generally, there are two kind of GUIs:
+
+list::
+## the native VST editor, which must be explicitly requested when opening a plugin:
+
+code::
+// load a plugin
+~fx.open("/path/to/plugin", editor: true);
+// open the VST editor window
+~fx.editor;
+::
+On Windows and Linux this will run a native window on the Server (in a seperate thread).
+note:: Unfortunately, this is not possible (yet?) on macOS for technical reasons.::
+
+## a generic Qt GUI which can be opened in a new Window or embedded into existing views:
+code::
+// load a plugin
+~fx.open("/path/to/plugin");
+// create a Window with the plugin GUI
+~fx.gui;
+::
+You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins).
+There's also a pop-up menu for switching programs.
+See link::#-gui:: and link::Classes/VstPluginGui:: for more information.
+::
+
+CLASSMETHODS::
+
+PRIVATE:: guiClass, msg2string
+
+METHOD:: new
+Create a new VstPluginController.
+
+ARGUMENT:: synth
+the link::Classes/Synth:: containing the link::Classes/VstPlugin:: you want to control.
+
+ARGUMENT:: id
+a symbol or number which uniquely identifies the link::Classes/VstPlugin:: within the link::Classes/SynthDef::.
+
+If this is code::nil::, VstPluginController will take the first instance it can find. 
+This implies that you don't need an emphasis::id:: if there's only a single VstPlugin in the SynthDef.
+
+ARGUMENT:: synthDef
+the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::.
+Otherwise it can be automatically deduced from the emphasis::synth:: argument.
+
+ARGUMENT:: wait
+see link::#-wait::.
+
+
+INSTANCEMETHODS::
+
+PRIVATE:: prFree, prClear, init, sendMsg, prQuery, prQueryParams, prQueryPrograms
+PRIVATE:: prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
+
+
+METHOD:: open
+open a VST plugin.
+
+ARGUMENT:: path
+plugin path/key.
+
+This can be either a file path (with or without extension) or a key to an already loaded plugin (see link::Classes/VstPlugin#*search::).
+File paths can be absolute or relative. The latter are resolved to the currently executing file (must have been saved!).
+
+ARGUMENT:: editor
+request the VST plugin editor.
+note::This is not supported (yet) on macOS!::
+
+ARGUMENT:: info
+post the plugin info to the console (if loaded successfully).
+
+ARGUMENT:: action
+
+an action to be called with code::this:: and a Boolean (success/fail).
+
+DISCUSSION::
+
+This method is realtime-safe because VST plugins are opened asynchronously (in the non-realtime thread).
+
+METHOD:: close
+close the current plugin (but don't free the Synth!). You can open another plugin later.
+
+DISCUSSION::
+
+Just like link::#-open::, this method is realtime-safe.
+
+METHOD:: editor
+shows/hide the VST editor window.
+
+DISCUSSION::
+The plugin has to be opened with emphasis::editor:: set to code::true::.
+
+note::This is not supported (yet) on macOS!::
+
+METHOD:: gui
+creates a generic Qt GUI (see link::Classes/VstPluginGui::).
+
+ARGUMENT:: parent
+the parent. If code::nil::, the GUI is created in a new toplevel window.
+
+ARGUMENT:: bounds
+the bounds.
+
+RETURNS:: a new link::Classes/VstPluginGui:: instance.
+
+METHOD:: info
+returns:: the (static) plugin info (see link::Classes/VstPlugin#Plugin Info::).
+
+METHOD:: loaded
+returns:: whether a plugin is currently loaded.
+
+METHOD:: reset
+reset the plugin state.
+
+ARGUMENT:: async
+reset asynchronously.
+
+DISCUSSION::
+Generally, emphasis::reset:: might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line. 
+
+If this is a problem you can try to reset it asynchronously (in the non-realtime thread).
+
+warning::
+Some plugins crash when being reset in the non-realtime thread, so use with care!
+::
+
+METHOD:: synth
+returns:: the link::Classes/Synth:: containing the currently controlled link::Classes/VstPlugin:: instance.
+
+METHOD:: synthIndex
+returns:: the index of the link::Classes/VstPlugin:: instance within the link::Classes/Synth::.
+
+METHOD:: wait
+the wait time between OSC messages (in seconds).
+
+DISCUSSION::
+-1 allows an OSC roundtrip between packets.
+
+0 is not safe with UDP, but is probably ok with TCP.
+
+Some methods may require lots of OSC messages (e.g. when changing programs, the UGen has to send the new
+state of all parameters). VstPluginController waits for the given time after a certain number of bytes
+to avoid messages getting dropped. This is mostly relevant for UDP connections, 
+especially for remote Servers, high network traffic and plugins with a large number of parameters.
+
+The wait time can be changed anytime.
+
+subsection:: Parameters
+
+METHOD:: numParameters
+returns:: the number of parameters.
+
+METHOD:: set
+Set plugin parameters.
+
+discussion::
+This method expects pairs of parameter index and value. Each value should be either a number between 0.0 and 1.0
+or a string/symbol. This method works asynchronously and is emphasis::realtime-safe::.
+
+note::
+Some plugins don't support setting parameters by strings, others only allow it for certain parameters.
+::
+
+code::
+// set parameter 3 to value 0.9:
+~fx.set(3, 0.9);
+// set parameters 1 and 5:
+~fx.set(1, 0.5, 5, 0.75);
+// set parameter 3 by string
+~fx.set(3, "800");
+::
+note::
+The parameter(s) will be automatically unmapped from any control bus, see link::#-map::.
+::
+
+METHOD:: setn
+set sequential ranges of parameters.
+
+discussion::
+This method expects pairs of parameter index and Array of values (numbers or strings/symbols), see link::#-set::.
+This method works asynchronously and is emphasis::realtime-safe::.
+
+code::
+// this will set parameters 3, 4, 8, 9 and 10.
+~fx.setn(3, [0.5, 0.75], 8, [0.1, "300", 0.3]);
+::
+
+METHOD:: map
+map parameters to control busses.
+
+discussion::
+This methods expects pairs of parameter index and bus.
+In case of multi-channel control busses the channels are mapped to a sequential range of parameters starting at the given index.
+code::
+~bus1 = Bus.control;
+~bus2 = Bus.control(numChannels: 2);
+~fx.map(3, ~bus1, 5, ~bus2);
+~bus1.set(0.5); // set parameter 3
+~bus2.set(0.75, 0.9); // set parameters 5 and 6.
+::
+Each parameter can only be mapped to one control bus channel at the time. 
+
+note::setting a parameter with link::#-set:: or link::#-setn:: will automatically unmap it from any control bus.::
+
+Mapped parameters are updated synchronously
+(in the realtime thread). This might only be a problem if the parameter itself is not realtime-safe (e.g. because it
+triggers CPU heavy computations, does memory allocations, etc.). In that case, consider using link::#-set:: / link::#-setn:: instead.
+
+METHOD:: unmap
+Unmap parameters from a control bus.
+
+discussion::
+Pass all the parameters you want to unmap. Calling the method without arguments will unmap all parameters.
+code::
+// unmap parameters 4, 5, and 7
+~fx.unmap(4, 5, 7);
+::
+
+METHOD:: get
+get the current value of a plugin parameter.
+
+ARGUMENT:: index
+the index of the parameter.
+
+ARGUMENT:: action
+an action to be evaluated with the value passed as an argument.
+
+discussion::
+code::
+// get the value of parameter 4 and post it to the console:
+~fx.get(4, {arg f: f.postln;});
+::
+
+METHOD:: getn
+get a sequential range of parameter values. 
+
+ARGUMENT:: index
+the starting index.
+
+ARGUMENT:: count
+the number of sequential parameter values. -1 will return all parameters starting from emphasis::index::.
+
+ARGUMENT:: action
+an action be evaluated with the values passed as an Array.
+
+discussion::
+code::
+// get the values of parameters 2, 3 an 4 and post them to console:
+~fx.getn(2, 3, {arg v; v.postln;});
+
+// get all parameter values:
+~fx.getn(action: {arg v; v.postln;});
+::
+
+METHOD:: parameterAutomated
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when parameters are automated from the VST editor.
+
+discussion::
+The action receives the parameter index and value. This can be helpful if you want to know the index of a parameter in the editor.
+
+note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
+In that case it is not possible to determine which parameter has been automated manually.::
+
+subsection:: Preset Management
+
+Generally, all preset management methods works asynchronously (in the non-realtime thread) and are therefore emphasis::realtime safe::!
+
+METHOD:: numPrograms
+returns:: the number of available plugin programs.
+
+METHOD:: programs
+returns:: the current programs as an Array of Strings.
+
+DISCUSSION::
+Initially, these are the same as in code::.info.programs::. They can, however, change over time, e.g. after loading program/bank files.
+
+METHOD:: currentProgram
+returns:: the index of the current program.
+
+METHOD:: setProgram
+change the program by index.
+
+METHOD:: setProgramName
+change the name of the current program.
+
+METHOD:: readProgram
+
+METHOD:: readBank
+
+METHOD:: writeProgram
+
+METHOD:: writeBank
+read/write program/bank files.
+
+ARGUMENT:: path
+
+can be an absolute or relative file path. Relative paths are resolved to the currently executing file (must have been saved!).
+
+The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for program files and emphasis::.fxb:: for bank files.
+
+ARGUMENT:: action
+
+an action to be called with code::this:: and a Boolean (success/fail).
+
+discussion::
+The program and bank files are in a standard format which is recogized by every decent DAW or VST host. 
+This means you can freely exchange presets between different applications.
+
+
+METHOD:: setProgramData
+
+METHOD:: setBankData
+
+set the new program/bank state as an link::Classes/Int8Array::.
+
+ARGUMENT:: data
+the raw plugin data.
+
+ARGUMENT:: action
+an action to be called with code::this:: and a Boolean (success/fail).
+
+METHOD:: getProgramData
+
+METHOD:: getProgramData
+
+METHOD:: getBankData
+get the current program/bank state as an link::Classes/Int8Array::.
+
+ARGUMENT:: action
+an action to pass the data - or code::nil:: if the method failed.
+
+DISCUSSION::
+Internally, the program data is exchanged via temp files.
+note::This only works with a local Server!::
+
+METHOD:: sendProgramData
+
+METHOD:: sendBankData
+
+send the new program/bank state as an link::Classes/Int8Array::.
+
+ARGUMENT:: data
+the raw plugin data.
+
+ARGUMENT:: wait
+temporarily overwrites link::#-wait:: if not code::nil::.
+
+ARGUMENT:: action
+an action to be called with code::this:: and a Boolean (success/fail).
+
+METHOD:: receiveProgramData
+
+METHOD:: receiveBankData
+receive the current program/bank state as an link::Classes/Int8Array::.
+
+ARGUMENT:: wait
+temporarily overwrites link::#-wait:: if not code::nil::.
+
+ARGUMENT:: timeout
+the number of seconds to wait before giving up.
+
+ARGUMENT:: action
+an action to pass the data.
+
+discussion::
+Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above 
+also work with remote Servers because the data is streamed via OSC messages. This means
+it is not 100% reliable (at least not with UDP).
+
+subsection:: MIDI
+
+METHOD:: midi
+send MIDI messages to the plugin via a proxy class.
+
+RETURNS:: an instance of link::Classes/VstPluginMIDIProxy::.
+
+DISCUSSION::
+link::Classes/VstPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably.
+
+This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
+
+METHOD:: sendMidi
+send a raw MIDI message with 2-3 bytes (status, data1, data2).
+
+METHOD:: sendSysex
+send a system exclusive message as an link::Classes/Int8Array::.
+
+METHOD:: midiReceived
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when receiving MIDI messages from the plugin.
+
+discussion::
+The 3 bytes of the MIDI message are passed as invidual arguments:
+code::
+~fx.midiReceived = {arg ...msg; "got MIDI message %".format(msg)};
+::
+
+METHOD:: sysexReceived
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when receiving SysEx messages from the plugin.
+
+discussion::
+The SysEx data is passed to the action as an link::Classes/Int8Array::.
+
+subsection:: Transport
+
+METHOD:: setPlaying
+set the transport playing state to true or false. Only necessary for VST plugins which do some kind of sequencing.
+
+METHOD:: setTempo
+set the tempo in BPM (beats per minute).
+
+METHOD:: setTimeSignature
+set the time signature, e.g. 3/4 -> num = 3, denom = 4.
+
+METHOD:: setTransportPos
+set the current transport position (in quarter notes).
+
+METHOD:: getTransportPos
+get the current transport position (in quarter notes).
+
+ARGUMENT:: action
+will be called with current transport position.
+
+subsection:: Advanced
+
+METHOD:: canDo
+
+query the plugin for special capabilities.
+
+ARGUMENT:: what
+a string describing the capability. Some of these are documented in the VST SDK, but others are not.
+
+ARGUMENT:: action
+will be called with an Integer result.
+table::
+## 1 || yes
+## -1 || no
+## 0 || don't know
+::
+
+METHOD:: vendorMethod
+access special functionality of a plugin which is not available via the standard parameter interface.
+Generally, you have to know what you're doing. Check the documentation of the plugin to see what data it expects
+
+ARGUMENT:: index
+an Integer.
+ARGUMENT:: value
+an Integer.
+ARGUMENT:: ptr
+some arbitrary data as an link::Classes/Int8Array::.
+ARGUMENT:: opt
+a Float.
+
+ARGUMENT:: action
+will be called with an Integer result. The meaning depends on the VST plugin.
+
+EXAMPLES::
+
+SUBSECTION:: Serial FX chains
+
+How to build a serial FX chain on an audio bus:
+code::
+(
+// a simple stereo insert FX:
+SynthDef.new(\insert, {arg bus;
+	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
+}).add;
+// load sound file
+b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+// create FX bus
+c = Bus.audio(s, 2);
+// send test signal to FX bus
+d = SynthDef(\input, {arg out = 0, bufnum = 0;
+    Out.ar(out,
+        PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum), loop: 1).dup * 0.5
+    )
+}).play(s, [\out, c, \bufnum, b]);
+
+// send FX bus to output
+e = SynthDef(\output, {arg in = 0, out = 0;
+	Out.ar(out, In.ar(in, 2))
+}).play(d, [\in, c, \out, 0], addAction: \addAfter);
+)
+
+// add an insert FX to the bus (after the test signal)
+f = VstPluginController(Synth(\insert, [\bus, c], d, addAction: \addAfter));
+// load a plugin:
+f.open("/path/to/plugin", info: true);
+f.gui; // play with it
+
+// add another insert FX (after 'f'):
+g = VstPluginController(Synth(\insert, [\bus, c], f.synth, addAction: \addAfter));
+// load a plugin:
+g.open("/path/to/plugin", info: true);
+g.gui; // play with it
+
+// change the FX order dynamically, e.g. move 'g' before 'f':
+g.synth.moveBefore(f.synth);
+
+f.synth.free; // remove from FX chain
+g.synth.free; // remove from FX chain
+::
+
+You can also create fixed FX chains by using several VstPlugins inside a SynthDef:
+code::
+// this builds upon the example above
+
+(
+// an insert FX with two plugins in series:
+SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
+	var sig = In.ar(bus, 2);
+	sig = VstPlugin.ar(sig, 2, bypass1, id: \fx1);
+	sig = VstPlugin.ar(sig, 2, bypass2, id: \fx2);
+	ReplaceOut.ar(bus, sig);
+}).add;
+)
+
+(
+~synth = Synth(\insert2, [\bus, c], d, addAction: \addAfter);
+// get handles to the individual VST plugins:
+~fx1 = VstPluginController(~synth, \fx1);
+~fx2 = VstPluginController(~synth, \fx2);
+)
+
+// load plugins
+~fx1.open("/path/to/plugin", info: true);
+~fx2.open("/path/to/plugin", info: true);
+
+~fx1.gui
+~fx2.gui
+
+// bypass FX
+~synth.set(\bypass1, 1);
+~synth.set(\bypass2, 1);
+
+~synth.free; // remove FX
+::
+
+Subsection:: Automation
+
+Automate parameters via control busses:
+code::
+// this builds upon the example above
+
+~ctl = Bus.control;
+// create an LFO
+~lfo = {Out.kr(~ctl, SinOsc.kr(0.25, 0, 0.5, 0.5))}.play;
+// modulate the first parameter of ~fx1 by mapping it to ~ctl:
+~fx1.map(0, ~ctl);
+// unmap it
+~fx1.unmap(0);
+::
+
+Automate parameters inside the SynthDef:
+code::
+// this builds upon the first example
+(
+SynthDef.new(\insert3, {arg bus, rate=0.25, bypass=0;
+	var lfo, sig;
+	lfo = SinOsc.kr(rate, 0, 0.5, 0.5);
+	// parameter 0 will be modulated by a SinOsc
+	sig = VstPlugin.ar(In.ar(bus, 2), 2, bypass, params: [0, lfo]);
+	Out.ar(bus, sig);
+}).add;
+)
+
+~fx3 = VstPluginController(Synth.new(\insert3, [\bus, c], d, addAction: \addAfter));
+
+~fx3.open("/path/to/plugin", info: true);
+
+~fx3.synth.set(\rate, 0.9); // change modulation rate
+~fx3.synth.set(\bypass, 1); // bypass
+~fx3.synth.free; // release FX
+::
+
+Subsection:: VST Instruments
+
+You can easily play VST instruments with a link::Classes/Pbind:: of event type code::\midi:::
+code::
+(
+SynthDef.new(\vsti, {arg out = 0;
+	// VST instruments usually don't have inputs
+	ReplaceOut.ar(out, VstPlugin.ar(nil, 2));
+}).add;
+)
+
+// create Synth and open VST instrument
+~vsti = VstPluginController(Synth(\vsti));
+~vsti.open("/path/to/my/synth", editor: true);
+~vsti.gui;
+
+// play the instrument with a \midi Pbind
+(
+p = Pbind(
+    \type, \midi,
+    \midiout, ~vsti.midi, // set the midi target
+    \chan, 0,
+	\degree, Pwhite(0, 12, inf),
+	\dur, Prand(#[0.125, 0.25, 0.5, 1], inf),
+    \legato, Pexprand(0.5, 1.0, inf),
+    \amp, Pexprand(0.5, 1.0, inf)
+).play(quant: 1);
+)
+
+// change programs
+~vsti.setProgram(1);
+
+p.stop;
+::
+

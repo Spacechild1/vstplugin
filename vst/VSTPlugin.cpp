@@ -38,7 +38,7 @@ std::string shorten(const std::wstring& s){
 #endif
 
 
-IVSTPlugin* loadVSTPlugin(const std::string& path){
+IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
     AEffect *plugin = nullptr;
     vstPluginFuncPtr mainEntryPoint = nullptr;
     bool openedlib = false;
@@ -54,7 +54,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
             if (!mainEntryPoint){
                 FreeLibrary(handle);
             }
-        } else {
+        } else if (!silent) {
             LOG_ERROR("loadVSTPlugin: LoadLibrary failed for " << path);
         }
     }
@@ -71,7 +71,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
         if(bundleUrl) {
                 // Open the bundle
             bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
-            if(!bundle) {
+            if(!bundle && !silent) {
                 LOG_ERROR("loadVSTPlugin: couldn't create bundle reference for " << path);
             }
         }
@@ -107,7 +107,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
             if (!mainEntryPoint){
                 dlclose(handle);
             }
-        } else {
+        } else if (!silent) {
             LOG_ERROR("loadVSTPlugin: couldn't dlopen " << path);
         }
     }
@@ -116,16 +116,16 @@ IVSTPlugin* loadVSTPlugin(const std::string& path){
     if (!openedlib) // we already printed an error if finding/opening the plugin filed
         return nullptr;
 
-    if (!mainEntryPoint){
+    if (!mainEntryPoint && !silent){
         LOG_ERROR("loadVSTPlugin: couldn't find entry point in VST plugin");
         return nullptr;
     }
     plugin = mainEntryPoint(&VST2Plugin::hostCallback);
-    if (!plugin){
+    if (!plugin && !silent){
         LOG_ERROR("loadVSTPlugin: couldn't initialize plugin");
         return nullptr;
     }
-    if (plugin->magic != kEffectMagic){
+    if (plugin->magic != kEffectMagic && !silent){
         LOG_ERROR("loadVSTPlugin: not a VST plugin!");
         return nullptr;
     }

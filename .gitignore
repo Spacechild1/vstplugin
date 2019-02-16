@@ -1,6 +1,6 @@
 # vsthost specific ignores
 test**
-src/VST_SDK**
+vst/VST_SDK**
 build**
 *.qbs*
 *.vs

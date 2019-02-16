@@ -1,0 +1,253 @@
+TITLE:: VstPlugin
+summary:: load VST plugins as UGens
+related:: Classes/VstPluginController, Classes/VstPluginGui
+categories:: UGens
+
+DESCRIPTION::
+This UGen represents a single VST plugin instance on the link::Classes/Server::. See the helpfile of link::Classes/VstPluginController:: for how to control it from the SuperCollider language.
+
+VstPlugin also has class methods to scan a Server for plugins and cache the info in the Client, see link::#Plugin Management::.
+
+CLASSMETHODS::
+
+PRIVATE:: prGetInfo, prMakeInfo, prParseInfo, prProbeLocal, prProbeRemote, prQuery, prQueryParameters, prQueryPlugin, prQueryPlugins
+PRIVATE:: prQueryPrograms, prSearchLocal, prSearchRemote, kr, prResolvePath
+
+METHOD:: ar
+create a UGen instance.
+
+ARGUMENT:: input
+An Array of channels or single input for the plugin to process. You cannot change the size of this once a SynthDef has been built.
+Set this to code::nil:: if the plugin takes no audio input (e.g. software synthesizers).
+
+ARGUMENT:: numOut
+The number of output channels. This must be a fixed number greater than 0.
+
+ARGUMENT:: bypass
+If this is a non-zero value, the inputs are copied to the outputs, thus bypassing the plugin. This can be automated.
+
+ARGUMENT:: params
+An optional Array of parameter controls in pairs of index and value. Both can values be automated.
+code::
+/* 'p1' controls the plugin parameter 1. 'p2' controls a parameter whose index can be set dynamically with 'idx'. */
+SynthDef(\test, { arg in, p1, p2, idx;
+	var sig = VstPlugin.ar(In.ar(in, 2), 1, 
+		params: [1, p1, idx, p2]);
+	Out.ar(0, sig);
+});
+::
+You can set the index to a negative value to "unmap" the parameter.
+note::emphasis::params:: overrides any automation of the same parameters via link::Classes/VstPluginController#-set:: or
+link::Classes/VstPluginController#-map::.
+::
+warning::To ensure deterministic results, emphasis::params:: works synchronously (in the realtime thread). 
+You are adviced to use it only on parameters which are realtime safe (i.e. don't trigger any heavy calculations, memory allocations, etc.),
+otherwise consider using link::Classes/VstPluginController#-set::, which works on the non-realtime thread.
+::
+
+ARGUMENT:: id
+An optional number or symbol which uniquely identifies the UGen within a SynthDef, so it can be found by link::Classes/VstPluginController::.
+This is only necessary if there is more than one VstPlugin instance in the SynthDef!
+code::
+(
+// an EQ and Chorus in parallel:
+SynthDef(\test, { arg in, out;
+	var sig;
+	sig = VstPlugin.ar(In.ar(in1, 2), 2, id: \eq);
+	sig = VstPlugin.ar(sig, 2, id: \chorus);
+	Out.ar(out, sig);
+}).add;
+)
+~synth = Synth(\test, [\in, ~in, \out, ~out]); 
+(
+// this is how you get a handle to a specific plugin instance in the Synth:
+~eq = VstPluginController.new(~synth, \eq);
+~chorus = VstPluginController.new(~synth, \chorus);
+)
+// load plugins, etc:
+~eq.open("...");
+~chorus.open("...");
+::
+
+SUBSECTION:: Plugin Management
+
+All VST plugin information is cached on the Client mainly for performance reasons but it is also handy for end users
+because it's possible to investigate plugins without actually creating instances of VstPlugin.
+
+The plugin info is stored in an link::Classes/Event:: with the following entries:
+table::
+## key || the key under which the plugin info is stored
+## path || the file path
+## name || the plugin name
+## version || the plugin version (Integer)
+## id || the unique plugin ID (Integer)
+## hasEditor || if the plugin has an editor
+## numInputs || the number of input channels
+## numOutputs || the number of output channels
+## singlePrecision || single precision processing supported
+## doublePrecision || double precision processing supported
+## midiInput || if the plugin receives MIDI messages
+## midiOutput || if the plugin sends MIDI messages
+## sysexInput || if the plugin receives SysEx messages
+## sysexOutput || if the plugin sends SysEx messages
+## isSynth || if the plugin is a VST instrument
+## numParameters || the number of parameters
+## parameterNames || the parameter names as a String Array
+## parameterLabels || the parameter labels (e.g. "dB") as a String Array
+## numPrograms || the number of programs
+## programs || the defaul program names as a String Array
+::
+It also defines the following convenience methods:
+table::
+## print (long = false) || post plugin info to the console. 
+
+if emphasis::long:: is code::true::, also list parameters and programs.
+## printParameters || post parameter names and labels to the console.
+## printPrograms || post default program names to the console
+::
+
+SUBSECTION:: Plugin Info
+
+METHOD:: plugins
+get information about (probed) VST plugins on a Server.
+
+ARGUMENT:: server
+the Server. If this is code::nil::, the default Server is assumed.
+
+RETURNS:: an link::Classes/IdentityDictionary:: containing the info of all VST plugins on the Server.
+
+DISCUSSION::
+The dictionary can be simply indexed with the plugin key:
+code::
+// search in default paths
+VstPlugin.search(s);
+VstPlugin.plugins(s)["CoolPlugins/AwesomePlugin"].print;
+// for the default server this can be shortend to:
+VstPlugin.plugins["CoolPlugins/AwesomePlugin"].print;
+::
+
+METHOD:: pluginKeys
+get the keys of all plugins on a Server.
+
+ARGUMENT:: server
+the Server. If this is code::nil::, the default Server is assumed.
+
+RETURNS:: an alphabetically sorted Array of plugin keys.
+
+METHOD:: print
+post all plugin keys to the console in alphabetical order.
+
+ARGUMENT::
+the Server. If this is code::nil::, the default Server is assumed.
+
+SUBSECTION:: Searching for plugins
+
+METHOD:: search
+Scan a local or remote Server for VST plugins and cache the info in the Client.
+
+ARGUMENT:: server
+The server to scan for plugins. If the argument is code::nil::, the default Server is used.
+
+ARGUMENT:: path
+An optional Array of directories to search. Relative paths are resolved to the currently executing file (must have been saved!).
+
+ARGUMENT:: useDefault
+Whether to search in the default paths, which currently are:
+table:: 
+## Windows || list::
+## %ProgramFiles%\VSTPlugins
+## %ProgramFiles%\Steinberg\VSTPlugins
+## %ProgramFiles%\Common Files\VST2
+## %ProgramFiles%\Common Files\Steinberg\VST2
+::
+## macOS || list::
+## /Library/Audio/Plug-Ins/VST
+## ~/Library/Audio/Plug-Ins/VST
+::
+## Linux || list::
+## /usr/lib/vst
+## /usr/local/lib/vst
+::
+::
+
+note::here, emphasis::%ProgramFiles%:: stands for "C:\Program Files" on a 64 bit Server and "C:\Program Files (x86)" on a 32 bit Server.::
+
+ARGUMENT:: verbose
+a Boolean telling if the Server should post a message for each VST plugin being probed.
+
+The message tells the name of the plugin and the probe result. Probing can fail if the file is
+not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
+
+emphasis::verbose:: can be very helpful when a search crashes the Server because you can easily
+spot the offending plugin.
+
+ARGUMENT:: wait
+The wait time between OSC messages.
+
+-1 allows an OSC roundtrip between packets.
+
+0 is not safe with UDP, but is probably ok with TCP.
+
+note::This is only relevant for remote Servers (local Servers will send the plugin info via temp files).::
+
+ARGUMENT:: action
+an action to be called after the search has finished.
+
+DISCUSSION::
+Directories are searched recursively. For each valid VST plugin, the information is stored in the Client and can be retrieved
+with link::#*plugins::. The key is a symbol generated from the folder name(s) + the plugin file name without extensions.
+
+For a search path containing
+
+code::GVST/GChorus.dll GVST/GBand.dll Dexed.dll::
+
+the search result would be:
+table::
+## Key || Path
+## GVST/GChorus || GVST/GChorus.dll
+## GVST/GBand || GBand.dll
+## Dexed || Dexed.dll
+::
+
+The keys could now be used in link::Classes/VstPluginController#-open::.
+
+note::A new search doesn't automatically clear the cache, but existing keys are overwritten. 
+You can clear the cache explicitly with link::#*reset::.::
+
+METHOD:: probe
+Probe a single VST plugin.
+
+ARGUMENT:: server
+the Server, see link::#*search::.
+
+ARGUMENT:: path
+the plugin path. Relative paths are resolved to the currently executing file (must have been saved!).
+
+ARGUMENT:: key
+the symbol under which the plugin info is stored (if the probing was successful). 
+
+If emphasis::key:: is code::nil::, 
+the emphasis::path:: argument (converted to a symbol) is used as the key.
+
+This method is used internally by link::Classes/VstPluginController#-open:: whenever it can't find the given path in the plugin dict.
+It might be occasionally useful for other purposes.
+
+ARGUMENT:: wait
+the wait time, see link::#*search::.
+
+ARGUMENT:: action
+an action to be called after the search has finished.
+
+On success the plugin info is returned as an link::Classes/Event::, otherwise code::nil:: is returned.
+
+METHOD:: reset
+deletes all cached plugin info for a Server.
+
+ARGUMENT:: server
+the Server. If this is code::nil::, the default Server is assumed.
+
+INSTANCEMETHODS::
+
+METHOD:: id
+the ID which uniquely identifies the plugin in a SynthDef (can be code::nil::).
+
