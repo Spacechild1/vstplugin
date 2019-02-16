@@ -1741,7 +1741,8 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	int total = 0;
 	for (auto& path : searchPaths) {
 		int count = 0;
-		LOG_VERBOSE("searching in " << path << "...");
+		if (verbose) Print("searching in %s ...", path.c_str());
+		else LOG_VERBOSE("searching in " << path << " ...");
 #ifdef _WIN32
 		// root will have a trailing slash
 		auto root = fs::path(path).u8string();
@@ -1806,14 +1807,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		};
 		searchDir(root);
 #endif
-		if (verbose) {
-			LOG_VERBOSE("found " << count << " plugins.");
-		}
+		if (verbose) Print("found %d plugins.", count);
+		else LOG_VERBOSE("found " << count << " plugins.");
 		total += count;
 	}
-	if (verbose) {
-		LOG_VERBOSE("total number of plugins: " << total);
-	}
+	if (verbose) Print("total number of plugins: %d", total);
+	else LOG_VERBOSE("total number of plugins: ", total);
 	// make list of plugin keys (so plugins can be queried by index)
 	pluginList.clear();
 	for (auto& entry : pluginMap) {
