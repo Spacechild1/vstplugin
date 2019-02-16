@@ -298,6 +298,7 @@ VstPluginController {
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
 		var totalSize, address, resp, sym, pos = 0;
+		wait = wait ?? this.wait;
 		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 		address = "/"++sym++"_data_set";
