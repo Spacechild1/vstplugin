@@ -1,10 +1,10 @@
 TITLE:: VstPluginGui
 summary:: a generic Qt GUI for VstPluginController
 categories:: GUI
-related:: VstPlugin, VstPluginController
+related:: Classes/VstPlugin, Classes/VstPluginController
 
 DESCRIPTION::
-This class is the default GUI class for link::VstPluginController::.
+This class is the default GUI class for link::Classes/VstPluginController::.
 
 CLASSMETHODS::
 
@@ -26,13 +26,13 @@ If parent is code::nil::, this will set the window geometry, otherwise it
 determines the size and position of the embedded GUI.
 
 DISCUSSION::
-Usually, this is called indirectly by link::VstPluginController#-gui::.
+Usually, this is called indirectly by link::Classes/VstPluginController#-gui::.
 
 Occasionally you might want to call it directly, e.g. to create an initially empty view where you can
 set the link::#-model:: later.
 
 METHOD:: model
-the model (a link::VstPluginController:: instance).
+the model (a link::Classes/VstPluginController:: instance).
 
 DISCUSSION::
 VstPluginGui receives notifications for relevant changes in the model, e.g. when a new plugin has been loaded or a parameter has changed.
@@ -41,14 +41,14 @@ You can always set another model and the view will update automatically (see lin
 
 SUBSECTION:: Customization
 
-The following instance methods allow you to customize the appearance and behavior of link::VstPluginGui::.
+The following instance methods allow you to customize the appearance and behavior of link::Classes/VstPluginGui::.
 You can also customize globally by setting the class methods of the same name. Instance members override class members.
 
 METHOD:: numRows
 the maximal number of rows (default: 10).
 
 METHOD:: closeOnFree
-a Boolean telling if the GUI window should be closed when the link::VstPlugin:: is freed (default: code::true::).
+a Boolean telling if the GUI window should be closed when the link::Classes/VstPlugin:: is freed (default: code::true::).
 This doesn't affect embedded GUIs.
 
 METHOD:: sliderWidth
@@ -124,8 +124,8 @@ code::
 ::
 
 SUBSECTION:: Changing Models
-Here we use a single VstPluginGui instance to show different link::VstPluginController::s.
-Say you have an FX chain with several link::VstPlugin:: instances but you only need to see one at the time.
+Here we use a single VstPluginGui instance to show different link::Classes/VstPluginController::s.
+Say you have an FX chain with several link::Classes/VstPlugin:: instances but you only need to see one at the time.
 
 code::
 // make an empty GUI
@@ -135,4 +135,4 @@ code::
 // show fx2
 ~gui.model_(~fx2);
 ::
-We could even build a link::Classes/PopUpMenu:: to change between link::VstPluginController:: instances.
+We could even build a link::Classes/PopUpMenu:: to change between link::Classes/VstPluginController:: instances.

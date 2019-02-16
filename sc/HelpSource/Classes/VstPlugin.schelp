@@ -1,10 +1,10 @@
 TITLE:: VstPlugin
 summary:: load VST plugins as UGens
-related:: VstPluginController, VstPluginGui
+related:: Classes/VstPluginController, Classes/VstPluginGui
 categories:: UGens
 
 DESCRIPTION::
-This UGen represents a single VST plugin instance on the link::Classes/Server::. See the helpfile of link::VstPluginController:: for how to control it from the SuperCollider language.
+This UGen represents a single VST plugin instance on the link::Classes/Server::. See the helpfile of link::Classes/VstPluginController:: for how to control it from the SuperCollider language.
 
 VstPlugin also has class methods to scan a Server for plugins and cache the info in the Client, see link::#Plugin Management::.
 
@@ -37,11 +37,16 @@ SynthDef(\test, { arg in, p1, p2, idx;
 });
 ::
 You can set the index to a negative value to "unmap" the parameter.
-note::emphasis::params:: overrides any automation of the same parameters via link::VstPluginController#-set:: or
-link::VstPluginController#-map::.
+note::emphasis::params:: overrides any automation of the same parameters via link::Classes/VstPluginController#-set:: or
+link::Classes/VstPluginController#-map::.
 ::
+warning::To ensure deterministic results, emphasis::params:: works synchronously (in the realtime thread). 
+You are adviced to use it only on parameters which are realtime safe (i.e. don't trigger any heavy calculations, memory allocations, etc.),
+otherwise consider using link::Classes/VstPluginController#-set::, which works on the non-realtime thread.
+::
+
 ARGUMENT:: id
-An optional number or symbol which uniquely identifies the UGen within a SynthDef, so it can be found by link::VstPluginController::.
+An optional number or symbol which uniquely identifies the UGen within a SynthDef, so it can be found by link::Classes/VstPluginController::.
 This is only necessary if there is more than one VstPlugin instance in the SynthDef!
 code::
 (
@@ -179,9 +184,9 @@ spot the offending plugin.
 ARGUMENT:: wait
 The wait time between OSC messages.
 
-code::wait: -1:: allows an OSC roundtrip between packets.
+-1 allows an OSC roundtrip between packets.
 
-code::wait: 0:: is not safe with UDP, but is probably ok with TCP.
+0 is not safe with UDP, but is probably ok with TCP.
 
 note::This is only relevant for remote Servers (local Servers will send the plugin info via temp files).::
 
@@ -204,7 +209,7 @@ table::
 ## Dexed || Dexed.dll
 ::
 
-The keys could now be used in link::VstPluginController#-open::.
+The keys could now be used in link::Classes/VstPluginController#-open::.
 
 note::A new search doesn't automatically clear the cache, but existing keys are overwritten. 
 You can clear the cache explicitly with link::#*reset::.::
@@ -224,7 +229,7 @@ the symbol under which the plugin info is stored (if the probing was successful)
 If emphasis::key:: is code::nil::, 
 the emphasis::path:: argument (converted to a symbol) is used as the key.
 
-This method is used internally by link::VstPluginController#-open:: whenever it can't find the given path in the plugin dict.
+This method is used internally by link::Classes/VstPluginController#-open:: whenever it can't find the given path in the plugin dict.
 It might be occasionally useful for other purposes.
 
 ARGUMENT:: wait
