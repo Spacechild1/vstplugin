@@ -392,7 +392,7 @@ VstPlugin : MultiOutUGen {
 			// resolve relative paths to the currently executing file
 			var root = thisProcess.nowExecutingPath;
 			root.isNil.if {
-				"couldn't resolve % - relative paths only work on saved files!".warn;
+				"couldn't resolve '%' - relative paths only work on saved files!".warn;
 				^nil;
 			} {	^(root.dirname +/+ path) };
 		} { ^path };
