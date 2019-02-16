@@ -7,8 +7,7 @@ VstPluginController {
 	var <loaded;
 	var <info;
 	var <midi;
-	var <programs;
-	var <currentProgram;
+	var <program;
 	var <>wait;
 	// callbacks
 	var <>parameterAutomated;
@@ -17,6 +16,7 @@ VstPluginController {
 	// private
 	var oscFuncs;
 	var <paramCache; // only for dependants
+	var <programNames;
 	var window;
 
 	*guiClass {
@@ -65,16 +65,16 @@ VstPluginController {
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
-			currentProgram = msg[3].asInt;
+			program = msg[3].asInt;
 			// notify dependants
-			this.changed('/program_index', currentProgram);
+			this.changed('/program_index', program);
 		}, '/vst_program_index'));
 		// program name:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInt;
 			name = this.class.msg2string(msg, 4);
-			programs[index] = name;
+			programNames[index] = name;
 			// notify dependants
 			this.changed('/program', index, name);
 		}, '/vst_program'));
@@ -120,17 +120,25 @@ VstPluginController {
 			loaded = msg[3].asBoolean;
 			window = msg[4].asBoolean;
 			loaded.if {
-				this.slotPut('info', theInfo); // hack because of name clash with 'info'
-				paramCache = Array.fill(theInfo.numParameters, [0, nil]);
-				currentProgram = 0;
-				// copy default program names (might change later when loading banks)
-				programs = Array.newFrom(theInfo.programs);
-				this.prQueryParams;
-				// post info if wanted
-				info.if { theInfo.print };
+				theInfo.notNil.if {
+					this.slotPut('info', theInfo); // hack because of name clash with 'info'
+					paramCache = Array.fill(theInfo.numParameters, [0, nil]);
+					program = 0;
+					// copy default program names (might change later when loading banks)
+					programNames = Array.newFrom(theInfo.programNames);
+					this.prQueryParams;
+					// post info if wanted
+					info.if { theInfo.print };
+				} {
+					// shouldn't happen...
+					"bug: got no info!".error;
+					loaded = false; window = false;
+				};
+			} {
+				"couldn't open '%'".format(path).error;
 			};
 			action.value(this, loaded);
-			this.changed('/open');
+			this.changed('/open', path, loaded);
 		}, '/vst_open').oneShot;
 		VstPlugin.prGetInfo(synth.server, path, wait, { arg i;
 			// don't set 'info' property yet
@@ -141,7 +149,7 @@ VstPluginController {
 		});
 	}
 	prClear {
-		loaded = false; window = false; info = nil;	paramCache = nil; programs = nil; currentProgram = nil;
+		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; program = nil;
 	}
 	close {
 		this.sendMsg('/close');
@@ -203,19 +211,24 @@ VstPluginController {
 	numPrograms {
 		^(info !? (_.numPrograms) ?? 0);
 	}
-	setProgram { arg index;
-		((index >= 0) && (index < this.numPrograms)).if {
+	program_ { arg number;
+		((number >= 0) && (number < this.numPrograms)).if {
 			{
-				this.sendMsg('/program_set', index);
+				this.sendMsg('/program_set', number);
 				// wait one roundtrip for async command to finish
 				synth.server.sync;
 				this.prQueryParams;
 			}.forkIfNeeded;
 		} {
-			^"program number % out of range".format(index).throw;
+			^"program number % out of range".format(number).throw;
 		};
 	}
-	setProgramName { arg name;
+	programName {
+		this.program.notNil.if {
+			^programNames[this.program];
+		} { ^nil };
+	}
+	programName_ { arg name;
 		this.sendMsg('/program_name', name);
 	}
 	readProgram { arg path, action;

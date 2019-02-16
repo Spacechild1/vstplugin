@@ -45,7 +45,7 @@ VstPlugin : MultiOutUGen {
 					};
 				},
 				printPrograms: { arg self;
-					self.programs.do { arg item, i;
+					self.programNames.do { arg item, i;
 						"[%] %".format(i, item).postln;
 					};
 				}
@@ -191,10 +191,10 @@ VstPlugin : MultiOutUGen {
 		};
 		// get programs
 		nprogram = info.numPrograms;
-		info.programs = Array.new(nprogram);
+		info.programNames = Array.new(nprogram);
 		nprogram.do { arg i;
 			var onset = 10 + (nparam * 2) + i;
-			info.programs.add(data[onset]);
+			info.programNames.add(data[onset]);
 		};
 		^info;
 	}
@@ -207,8 +207,16 @@ VstPlugin : MultiOutUGen {
 		path = this.prResolvePath(path);
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
-		{ this.prProbeRemote(server, path, key, wait, action); };
+		cb = { arg info;
+			info.notNil.if {
+				"'%' successfully probed".format(key).postln;
+			} {
+				"couldn't probe '%'".format(key).postln;
+			};
+			action.value(info);
+		};
+		server.isLocal.if { this.prProbeLocal(server, path, key, cb); }
+		{ this.prProbeRemote(server, path, key, wait, cb); };
 	}
 	*prProbeLocal { arg server, path, key, action;
 		{
@@ -225,7 +233,6 @@ VstPlugin : MultiOutUGen {
 						info.key = key; // overwrite
 						pluginDict[server][key] = info;
 					});
-					"'%' successfully probed".format(key).postln;
 				} { arg error;
 					error.notNil.if { "Failed to read tmp file!".warn };
 					File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
@@ -244,7 +251,6 @@ VstPlugin : MultiOutUGen {
 					var info = this.prMakeInfo(key, result[2..]);
 					pluginDict[server][key] = info;
 					this.prQueryPlugin(server, key, wait, { action.value(info) });
-					"'%' successfully probed".format(key).postln;
 				} { action.value };
 			};
 		}, '/done');
@@ -315,7 +321,7 @@ VstPlugin : MultiOutUGen {
 		var count = 0, fn, num, info;
 		info = pluginDict[server][key];
 		num = info.numPrograms;
-		info.programs = Array.new(num);
+		info.programNames = Array.new(num);
 		(num == 0).if {
 			action.value;
 			^this;
@@ -329,7 +335,7 @@ VstPlugin : MultiOutUGen {
 				var n = result.size - 2;
 				// "got % programs for %".format(n, key).postln;
 				n.do { arg i;
-					info.programs.add(result[i + 2].asSymbol);
+					info.programNames.add(result[i + 2].asSymbol);
 				};
 				count = count + n;
 				// exit condition

@@ -100,13 +100,15 @@ code::
 ~fx.get(3, {arg f; f.postln;});
 ::
 
-Change programs with link::#-setProgram:::
+Change FX programs with link::#-program:::
 
 code::
 // check for available programs:
-~fx.programs.postln;
+~fx.info.printPrograms;
+// get current program number
+~fx.program;
 // switch to program 4:
-~fx.setProgram(4);
+~fx.program_(4);
 ::
 
 You can read/write preset files in the standard .fxp and .fxb format (recognized by most DAWs and VST hosts):
@@ -412,20 +414,12 @@ Generally, all preset management methods works asynchronously (in the non-realti
 METHOD:: numPrograms
 returns:: the number of available plugin programs.
 
-METHOD:: programs
-returns:: the current programs as an Array of Strings.
+METHOD:: program
+set/get the program number.
 
-DISCUSSION::
-Initially, these are the same as in code::.info.programs::. They can, however, change over time, e.g. after loading program/bank files.
+METHOD:: programName
 
-METHOD:: currentProgram
-returns:: the index of the current program.
-
-METHOD:: setProgram
-change the program by index.
-
-METHOD:: setProgramName
-change the name of the current program.
+set/get the name of the current program.
 
 METHOD:: readProgram
 
@@ -746,7 +740,7 @@ p = Pbind(
 )
 
 // change programs
-~vsti.setProgram(1);
+~vsti.program_(1);
 
 p.stop;
 ::

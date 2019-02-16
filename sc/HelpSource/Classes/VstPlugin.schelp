@@ -95,7 +95,7 @@ table::
 ## parameterNames || the parameter names as a String Array
 ## parameterLabels || the parameter labels (e.g. "dB") as a String Array
 ## numPrograms || the number of programs
-## programs || the defaul program names as a String Array
+## programNames || the default program names as a String Array
 ::
 It also defines the following convenience methods:
 table::

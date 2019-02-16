@@ -98,9 +98,9 @@ VstPluginGui : ObjectGui {
 			name = model.info.name;
 			// build program menu
 			programMenu = PopUpMenu.new;
-			programMenu.action = { model.setProgram(programMenu.value) };
-			programMenu.items_(model.programs);
-			programMenu.value_(model.currentProgram);
+			programMenu.action = { model.program_(programMenu.value) };
+			programMenu.items_(model.programNames);
+			programMenu.value_(model.program);
 			// parameters: calculate number of rows and columns
 			nparams = model.numParameters;
 			ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInt;
