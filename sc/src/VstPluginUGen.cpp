@@ -1776,27 +1776,28 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 				while ((entry = readdir(dir)) != NULL) {
 					std::string name(entry->d_name);
 					std::string fullPath = dirname + "/" + name;
-					if (entry->d_type == DT_DIR) {
-						if (strcmp(name.c_str(), ".") != 0 && strcmp(name.c_str(), "..") != 0) {
-							searchDir(fullPath);
+					// *first* check the extensions because VST plugins can be files (Linux) or directories (macOS)
+					std::string ext;
+					auto extPos = name.find('.');
+					if (extPos != std::string::npos) {
+						ext = name.substr(extPos);
+					}
+					// found extension - probe it!
+					if (extensions.count(ext)) {
+						// shortPath: fullPath minus root minus extension (without leading slash)
+						auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
+						if (!pluginMap.count(shortPath)) {
+							// only probe plugin if hasn't been added to the map yet
+							if (probePlugin(fullPath, shortPath, verbose)) count++;
+						}
+						else {
+							count++;
 						}
 					}
-					else {
-						std::string ext;
-						auto extPos = name.find('.');
-						if (extPos != std::string::npos) {
-							ext = name.substr(extPos);
-						}
-						if (extensions.count(ext)) {
-							// shortPath: fullPath minus root minus extension (without leading slash)
-							auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
-							if (!pluginMap.count(shortPath)) {
-								// only probe plugin if hasn't been added to the map yet
-								if (probePlugin(fullPath, shortPath, verbose)) count++;
-							}
-							else {
-								count++;
-							}
+					// otherwise search it if it's a directory
+					else if (entry->d_type == DT_DIR) {
+						if (strcmp(name.c_str(), ".") != 0 && strcmp(name.c_str(), "..") != 0) {
+							searchDir(fullPath);
 						}
 					}
 				}
