@@ -219,6 +219,7 @@ VstPluginController {
 		this.sendMsg('/program_name', name);
 	}
 	readProgram { arg path, action;
+		path = VstPlugin.prResolvePath(path);
 		this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -227,6 +228,7 @@ VstPluginController {
 		this.sendMsg('/program_read', path);
 	}
 	readBank { arg path, action;
+		path = VstPlugin.prResolvePath(path);
 		this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -236,6 +238,7 @@ VstPluginController {
 		this.sendMsg('/bank_read', path);
 	}
 	writeProgram { arg path, action;
+		path = VstPlugin.prResolvePath(path);
 		this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -243,6 +246,7 @@ VstPluginController {
 		this.sendMsg('/program_write', path);
 	}
 	writeBank { arg path, action;
+		path = VstPlugin.prResolvePath(path);
 		this.makeOSCFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
