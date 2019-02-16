@@ -345,10 +345,10 @@ VstPluginController {
 		};
 		bank.if { this.writeBank(path, cb) } { this.writeProgram(path, cb) };
 	}
-	receiveProgramData { arg wait=0.01, timeout=3, action;
+	receiveProgramData { arg wait, timeout=3, action;
 		this.prReceiveData(wait, timeout, action, false);
 	}
-	receiveBankData { arg wait=0.01, timeout=3, action;
+	receiveBankData { arg wait, timeout=3, action;
 		this.prReceiveData(wait, timeout, action, true);
 	}
 	prReceiveData { arg wait, timeout, action, bank;
