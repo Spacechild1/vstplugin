@@ -90,7 +90,7 @@ VstPlugin : MultiOutUGen {
 		server.isLocal.if { this.prSearchLocal(server, path, useDefault, verbose, action) }
 		{ this.prSearchRemote(server, path, useDefault, verbose, wait, action) };
 	}
-	*prSearchLocal { arg server, searchPaths, useDefault, verbose, wait, action;
+	*prSearchLocal { arg server, searchPaths, useDefault, verbose, action;
 		{
 			var dict = pluginDict[server];
 			var filePath = PathName.tmp ++ this.hash.asString;

@@ -115,6 +115,7 @@ VstPluginController {
 	}
 	open { arg path, editor=false, info=false, action;
 		var theInfo;
+		path.isNil.if {^this};
 		this.prClear;
 		this.prMakeOscFunc({arg msg;
 			loaded = msg[3].asBoolean;
