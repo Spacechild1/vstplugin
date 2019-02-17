@@ -165,7 +165,7 @@ code::
 ~fx.gui;
 ::
 You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins).
-There's also a pop-up menu for switching programs.
+Additionally, you can browse for plugins, select programs and read/write preset files.
 See link::#-gui:: and link::Classes/VstPluginGui:: for more information.
 ::
 
@@ -192,6 +192,9 @@ Otherwise it can be automatically deduced from the emphasis::synth:: argument.
 ARGUMENT:: wait
 see link::#-wait::.
 
+DISCUSSION::
+
+Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
 INSTANCEMETHODS::
 
@@ -227,6 +230,8 @@ METHOD:: close
 close the current plugin (but don't free the Synth!). You can open another plugin later.
 
 DISCUSSION::
+
+This will automatically bypass the plugin (i.e. the input is just passed through).
 
 Just like link::#-open::, this method is realtime-safe.
 
@@ -593,57 +598,63 @@ will be called with an Integer result. The meaning depends on the VST plugin.
 
 EXAMPLES::
 
+The following code is needed for most examples:
+
+code::
+(
+// a simple stereo insert FX which reads from an audio bus
+// and replaces the content with the processed output:
+SynthDef.new(\insert, {arg bus;
+	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
+}).add;
+
+// load sound file
+~buf = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+// soundfile player
+SynthDef(\test, {arg out = 0;
+    Out.ar(out,
+        PlayBuf.ar(1, ~buf, BufRateScale.kr(~buf), loop: 1).dup * 0.5;
+    )
+}).add;
+)
+::
+
 SUBSECTION:: Serial FX chains
 
 How to build a serial FX chain on an audio bus:
 code::
 (
-// a simple stereo insert FX:
-SynthDef.new(\insert, {arg bus;
-	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
-}).add;
-// load sound file
-b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
-// create FX bus
-c = Bus.audio(s, 2);
-// send test signal to FX bus
-d = SynthDef(\input, {arg out = 0, bufnum = 0;
-    Out.ar(out,
-        PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum), loop: 1).dup * 0.5
-    )
-}).play(s, [\out, c, \bufnum, b]);
-
+// allocate an FX bus
+~fxBus = Bus.audio(s, 2);
+// play test signal on FX bus
+~test = Synth(\test, [\out, ~fxBus]);
 // send FX bus to output
-e = SynthDef(\output, {arg in = 0, out = 0;
+SynthDef(\output, {arg in = 0, out = 0;
 	Out.ar(out, In.ar(in, 2))
-}).play(d, [\in, c, \out, 0], addAction: \addAfter);
+}).play(~test, [\in, ~fxBus, \out, 0], addAction: \addAfter);
 )
 
 // add an insert FX to the bus (after the test signal)
-f = VstPluginController(Synth(\insert, [\bus, c], d, addAction: \addAfter));
-// load a plugin:
-f.open("/path/to/plugin", info: true);
-f.gui; // play with it
+~fx1 = VstPluginController(Synth(\insert, [\bus, ~fxBus], ~test, addAction: \addAfter));
+// open a plugin from the GUI and play with the parameters
+~fx1.gui;
 
-// add another insert FX (after 'f'):
-g = VstPluginController(Synth(\insert, [\bus, c], f.synth, addAction: \addAfter));
-// load a plugin:
-g.open("/path/to/plugin", info: true);
-g.gui; // play with it
+// add another insert FX (after '~fx1'):
+~fx2 = VstPluginController(Synth(\insert, [\bus, ~fxBus], ~fx1.synth, addAction: \addAfter));
+// open plugin
+~fx2.gui;
 
-// change the FX order dynamically, e.g. move 'g' before 'f':
-g.synth.moveBefore(f.synth);
+// change the FX order dynamically, e.g. move '~fx2' before '~fx1':
+~fx2.synth.moveBefore(~fx1.synth);
 
-f.synth.free; // remove from FX chain
-g.synth.free; // remove from FX chain
+~fx1.synth.free; // remove from FX chain
+~fx2.synth.free; // remove from FX chain
 ::
 
 You can also create fixed FX chains by using several VstPlugins inside a SynthDef:
 code::
-// this builds upon the example above
-
 (
-// an insert FX with two plugins in series:
+// an insert FX with two plugins hardcoded in series:
 SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 	var sig = In.ar(bus, 2);
 	sig = VstPlugin.ar(sig, 2, bypass1, id: \fx1);
@@ -653,16 +664,14 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 )
 
 (
-~synth = Synth(\insert2, [\bus, c], d, addAction: \addAfter);
+// insert into the FX bus
+~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
 ~fx1 = VstPluginController(~synth, \fx1);
 ~fx2 = VstPluginController(~synth, \fx2);
 )
 
-// load plugins
-~fx1.open("/path/to/plugin", info: true);
-~fx2.open("/path/to/plugin", info: true);
-
+// open plugins
 ~fx1.gui
 ~fx2.gui
 
@@ -673,47 +682,78 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 ~synth.free; // remove FX
 ::
 
+Subsection:: Master FX section
+
+This is how you would create a simple master FX section:
+code::
+// Cmd + .
+// add a group *after* the default group
+~fxGroup = Group.after(1); 
+// add two stereo insert effects to the FX group (in series)
+~fx1 = VstPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
+~fx2 = VstPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
+
+// open plugins
+~fx1.gui
+~fx2.gui
+
+// play test sound
+Synth(\test, [\out, 0]);
+::
+
 Subsection:: Automation
 
-Automate parameters via control busses:
-code::
-// this builds upon the example above
+Automate parameters via control busses
+note:: Parameter automation will emphasis::not:: be visible in the Qt GUI (due to performance reasons)::
 
+code::
+// Cmd + .
+// play test signal
+~test = Synth(\test, [\out, 0]);
+
+// insert FX (after ~test)
+~fx = VstPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
+// open plugin
+~fx.gui;
+// create control bus
 ~ctl = Bus.control;
 // create an LFO
 ~lfo = {Out.kr(~ctl, SinOsc.kr(0.25, 0, 0.5, 0.5))}.play;
-// modulate the first parameter of ~fx1 by mapping it to ~ctl:
-~fx1.map(0, ~ctl);
+// modulate the first parameter of ~fx by mapping it to ~ctl
+~fx.map(0, ~ctl); // (don't move the slider of the mapped parameter in the Qt GUI or you will unmap it!)
 // unmap it
-~fx1.unmap(0);
+~fx.unmap(0);
+
+~fx.synth.free; // remove FX
+~lfo.free;
 ::
 
 Automate parameters inside the SynthDef:
 code::
-// this builds upon the first example
 (
-SynthDef.new(\insert3, {arg bus, rate=0.25, bypass=0;
+SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 	var lfo, sig;
 	lfo = SinOsc.kr(rate, 0, 0.5, 0.5);
 	// parameter 0 will be modulated by a SinOsc
 	sig = VstPlugin.ar(In.ar(bus, 2), 2, bypass, params: [0, lfo]);
-	Out.ar(bus, sig);
+	ReplaceOut.ar(bus, sig);
 }).add;
 )
 
-~fx3 = VstPluginController(Synth.new(\insert3, [\bus, c], d, addAction: \addAfter));
+~fx = VstPluginController(Synth.new(\mod, [\bus, 0], ~test, addAction: \addAfter));
+// open plugin
+~fx.gui;
 
-~fx3.open("/path/to/plugin", info: true);
-
-~fx3.synth.set(\rate, 0.9); // change modulation rate
-~fx3.synth.set(\bypass, 1); // bypass
-~fx3.synth.free; // release FX
+~fx.synth.set(\rate, 0.9); // change modulation rate
+~fx.synth.set(\bypass, 1); // bypass
+~fx.synth.free; // release FX
 ::
 
 Subsection:: VST Instruments
 
 You can easily play VST instruments with a link::Classes/Pbind:: of event type code::\midi:::
 code::
+// Cmd + .
 (
 SynthDef.new(\vsti, {arg out = 0;
 	// VST instruments usually don't have inputs
@@ -721,10 +761,12 @@ SynthDef.new(\vsti, {arg out = 0;
 }).add;
 )
 
-// create Synth and open VST instrument
+// create Synth with VST instrument
 ~vsti = VstPluginController(Synth(\vsti));
-~vsti.open("/path/to/my/synth", editor: true);
+// open plugin
 ~vsti.gui;
+// or if you want the VST editor:
+~vsti.open("/plugin/path", editor: true);
 
 // play the instrument with a \midi Pbind
 (

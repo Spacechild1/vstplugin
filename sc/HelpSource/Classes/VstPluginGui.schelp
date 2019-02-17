@@ -4,7 +4,21 @@ categories:: GUI
 related:: Classes/VstPlugin, Classes/VstPluginController
 
 DESCRIPTION::
-This class is the default GUI class for link::Classes/VstPluginController::.
+This class is the default Qt GUI class for link::Classes/VstPluginController::, see link::Classes/VstPluginController#-gui::.
+
+For each parameter, the GUI shows the parameter name, a slider, a text display and the parameter label (e.g. "dB").
+
+You can automate parameters by moving the slider or entering text into the text display (not supported by all plugins).
+
+note::Automating parameters from the Qt GUI will automatically unmap it from any control busses (see link::Classes/VstPluginController#-map::)::
+
+note::For performance reasons, the Qt GUI will emphasis::not:: not reflect parameter automation via link::Classes/VstPluginController#-map:: or UGen arguments
+(i.e. the code::params:: argument for link::Classes/VstPlugin#*ar::).::
+
+By pressing the "Open" button you will get a Dialog where you can browse already loaded plugins, make a new search in the default directories
+(see link::Classes/VstPlugin#*search::) or open a file dialog.
+
+The GUI also features a PopUpMenu with available programs and panels to read/write program and bank files.
 
 CLASSMETHODS::
 
@@ -12,7 +26,7 @@ Global defaults for GUI properties, see link::#Customization::.
 
 INSTANCEMETHODS::
 
-PRIVATE:: guify, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, writeName
+PRIVATE:: guify, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, prOpen, writeName
 
 METHOD:: gui
 Initialize the GUI.
@@ -44,27 +58,32 @@ SUBSECTION:: Customization
 The following instance methods allow you to customize the appearance and behavior of link::Classes/VstPluginGui::.
 You can also customize globally by setting the class methods of the same name. Instance members override class members.
 
+METHOD:: closeOnFree
+whether the GUI window should be closed when the link::Classes/VstPlugin:: is freed (default: code::true::).
+DISCUSSION::
+This is only for top level windows, embedded GUIs are not affected.
+
+METHOD:: displayWidth
+the parameter display width in pixels (default: 60)
+DISCUSSION::
+The default size should be fine for most number displays but might need to be increased for larger text displays.
+
+METHOD:: menu
+whether a program menu should be created (default: code::true::)
+
 METHOD:: numRows
 the maximal number of rows (default: 10).
 
-METHOD:: closeOnFree
-a Boolean telling if the GUI window should be closed when the link::Classes/VstPlugin:: is freed (default: code::true::).
-This doesn't affect embedded GUIs.
-
 METHOD:: sliderWidth
-The slider width in pixels (default: 200)
+the slider width in pixels (default: 200)
 DISCUSSION::
-The slider width also determines the width of each parameter section.
-You might want to increase it, e.g. if parameter names are too long to fit into a single line.
+the slider width also determines the width of each parameter section.
+You might want to increase it if parameter names are too long to fit into a single line.
 
 METHOD:: sliderHeight
-The slider height in pixels (default: 20)
+the slider height in pixels (default: 20)
 
-METHOD:: displayWidth
-The parameter display width in pixels (default: 60)
-DISCUSSION::
-The default size should be fine for most number displays.
-You might want to increase it, e.g. if the plugin displays text beyond a few characters.
+
 
 METHOD:: update
 Update the view.
@@ -93,11 +112,6 @@ SynthDef.new(\insert, {arg bus = 0;
 // create 2 VstPlugins
 ~fx1 = VstPluginController(Synth(\insert));
 ~fx2 = VstPluginController(Synth(\insert));
-)
-(
-// load 2 different plugins
-~fx1.open("/path/to/some/fx");
-~fx2.open("/path/to/other/fx");
 )
 ::
 
