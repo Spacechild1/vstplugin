@@ -1812,7 +1812,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		total += count;
 	}
 	if (verbose) Print("total number of plugins: %d", total);
-	else LOG_VERBOSE("total number of plugins: ", total);
+	else LOG_VERBOSE("total number of plugins: " << total);
 	// make list of plugin keys (so plugins can be queried by index)
 	pluginList.clear();
 	for (auto& entry : pluginMap) {
