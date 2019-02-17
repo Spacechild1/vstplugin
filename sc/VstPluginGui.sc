@@ -5,17 +5,21 @@ VstPluginGui : ObjectGui {
 	classvar <>sliderWidth = 200;
 	classvar <>sliderHeight = 20;
 	classvar <>displayWidth = 60;
-	// private
-	var programMenu;
-	var paramSliders;
-	var paramDisplays;
-	var embedded;
+	classvar <>menu = true;
 	// public
 	var <>closeOnFree;
 	var <>numRows;
 	var <>sliderWidth;
 	var <>sliderHeight;
 	var <>displayWidth;
+	var <>menu;
+	// private
+	classvar pluginPath;
+	classvar presetPath;
+	var programMenu;
+	var paramSliders;
+	var paramDisplays;
+	var embedded;
 
 	model_ { arg newModel;
 		// always notify when changing models (but only if we have a view)
@@ -86,44 +90,80 @@ VstPluginGui : ObjectGui {
 	}
 
 	prUpdateGui {
-		var nparams=0, name, title, ncolumns=0, nrows=0, grid, font, minWidth, minHeight, minSize;
+		var rowOnset, nparams=0, name, header, ncolumns=0, nrows=0;
+		var grid, font, minWidth, minHeight, minSize;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
 		var displayWidth = this.displayWidth ?? this.class.displayWidth;
+		var menu = this.menu ?? this.class.menu;
 		// remove old GUI body
 		view !? { view.removeAll };
-
-		model !? { model.info !? {
+		(model.notNil and: { model.info.notNil}).if {
 			name = model.info.name;
-			// build program menu
-			programMenu = PopUpMenu.new;
-			programMenu.action = { model.program_(programMenu.value) };
-			programMenu.items_(model.programNames);
-			programMenu.value_(model.program);
+			menu = menu.asBoolean;
 			// parameters: calculate number of rows and columns
 			nparams = model.numParameters;
 			ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInt;
 			(ncolumns == 0).if {ncolumns = 1}; // just to prevent division by zero
 			nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInt;
-		}};
+		} { menu = false };
 
 		font = Font.new(*GUI.skin.fontSpecs).size_(14);
-		// change window title
+		// change window header
 		embedded.not.if {
 			view.parent.name_(name !? { "VstPlugin (%)".format(name) } ?? { "VstPlugin (empty)" });
 		};
 
-		title = StaticText.new(view)
-		.stringColor_(GUI.skin.fontColor)
-		.font_(font)
-		.background_(GUI.skin.background)
-		.align_(\center)
-		.object_(name ?? "[empty]");
+		header = HLayout(StaticText.new(view)
+			.stringColor_(GUI.skin.fontColor)
+			.font_(font)
+			.background_(GUI.skin.background)
+			.align_(\center)
+			.object_(name ?? "[empty]"),
+			Button.new.states_([["Open"]])
+			.maxWidth_(60)
+			.action_({this.prOpen})
+		);
 
 		grid = GridLayout.new;
-		grid.add(title, 0, 0);
-		programMenu !? { grid.add(programMenu, 1, 0) };
+		grid.add(header, 0, 0);
+		menu.if {
+			var row = 1, col = 0;
+			var makePanel = { arg what;
+				var label, read, write;
+				label = StaticText.new.string_(what).align_(\right);
+				read = Button.new.states_([["Read"]]).action_({
+					var sel = ("read" ++ what).asSymbol;
+					FileDialog.new({ arg path;
+						presetPath = path;
+						model.perform(sel, path);
+					}, nil, 1, 0, true, presetPath);
+				}).maxWidth_(60);
+				write = Button.new.states_([["Write"]]).action_({
+					var sel = ("write" ++ what).asSymbol;
+					FileDialog.new({ arg path;
+						presetPath = path;
+						model.perform(sel, path);
+					}, nil, 0, 1, true, presetPath);
+				}).maxWidth_(60);
+				HLayout(label, read, write);
+			};
+			// build program menu
+			programMenu = PopUpMenu.new;
+			programMenu.action = { model.program_(programMenu.value) };
+			programMenu.items_(model.programNames.collect { arg item, index;
+				"%: %".format(index, item);
+			});
+			programMenu.value_(model.program);
+			grid.add(programMenu, row, col);
+			// try to use another columns if available
+			row = (ncolumns > 1).if { 0 } { row + 1 };
+			col = (ncolumns > 1).asInt;
+			grid.add(makePanel.value("Program"), row, col);
+			grid.add(makePanel.value("Bank"), row + 1, col);
+			rowOnset = row + 2;
+		} { programMenu = nil; rowOnset = 1 };
 
 		paramSliders = Array.new(nparams);
 		paramDisplays = Array.new(nparams);
@@ -153,13 +193,13 @@ VstPluginGui : ObjectGui {
 			bar = View.new.layout_(HLayout.new(name.align_(\left),
 				nil, display.align_(\right), label.align_(\right)));
 			unit = VLayout.new(bar, slider).spacing_(20);
-			grid.add(unit, row+2, col);
+			grid.add(unit, row+rowOnset, col);
 		};
-		grid.setRowStretch(nrows + 2, 1);
+		grid.setRowStretch(nrows + rowOnset, 1);
 
 		// add a view and make the area large enough to hold all its contents
 		minWidth = ((sliderWidth + 20) * ncolumns).max(sliderWidth);
-		minHeight = ((sliderHeight * 3 * nrows) + 70).max(sliderWidth); // empirically
+		minHeight = ((sliderHeight * 3 * nrows) + 120).max(sliderWidth); // empirically
 		minSize = minWidth@minHeight;
 		view.minSize_(minSize);
 		View.new(view).layout_(grid).minSize_(minSize);
@@ -171,14 +211,16 @@ VstPluginGui : ObjectGui {
 	}
 	prProgram { arg index, name;
 		var items, value;
-		value = programMenu.value;
-		items = programMenu.items;
-		items[index] = name;
-		programMenu.items_(items);
-		programMenu.value_(value);
+		programMenu !? {
+			value = programMenu.value;
+			items = programMenu.items;
+			items[index] = "%: %".format(index, name);
+			programMenu.items_(items);
+			programMenu.value_(value);
+		};
 	}
 	prProgramIndex { arg index;
-		programMenu.value_(index);
+		programMenu !? { programMenu.value_(index)};
 	}
 	prFree {
 		(this.closeOnFree ?? this.class.closeOnFree).if {
@@ -188,6 +230,56 @@ VstPluginGui : ObjectGui {
 			};
 		};
 		this.prUpdateGui;
+	}
+	prOpen {
+		model.notNil.if {
+			var window, browser, file, search, path, ok, cancel, status;
+			// build dialog
+			window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
+			browser = ListView.new.selectionMode_(\single).items_(VstPlugin.pluginKeys(model.synth.server));
+			browser.action = {
+				var key = browser.items[browser.value].asSymbol;
+				var info = VstPlugin.plugins(model.synth.server)[key];
+				info.notNil.if { path.string_(info.path) }
+				{ "bug: no info!".error; }; // should never happen
+			};
+			search = Button.new.states_([["Search"]]).maxWidth_(60);
+			search.action = {
+				status.string_("searching...");
+				VstPlugin.search(model.synth.server, verbose: true, action: {
+					{
+						status.string_("");
+						browser.items = VstPlugin.pluginKeys(model.synth.server);
+						browser.value !? { browser.action.value };
+					}.defer;
+				});
+			};
+			file = Button.new.states_([["File"]]).maxWidth_(60);
+			file.action = {
+				FileDialog.new({ arg p;
+					path.string_(p);
+				}, nil, 1, 0, true, pluginPath);
+			};
+			path = StaticText.new.align_(\right);
+			cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
+			cancel.action = { window.close };
+			ok = Button.new.states_([["OK"]]).maxWidth_(60);
+			ok.action = {
+				var filePath = path.string;
+				(filePath.size > 0).if {
+					model.open(filePath);
+					pluginPath = filePath;
+					window.close;
+				};
+			};
+			status = StaticText.new.stringColor_(Color.red).align_(\left);
+			window.layout_(VLayout(
+				[browser, \stretch, 1],
+				HLayout(StaticText.new.string_("Path:").maxWidth_(60).align_(\left), path),
+				HLayout(search, file, status, nil, cancel, ok)
+			));
+			window.front;
+		} { "no model!".error };
 	}
 	writeName {}
 }
