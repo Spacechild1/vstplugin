@@ -803,7 +803,7 @@ static void vstplugin_midi_note(t_vstplugin *x, t_floatarg channel, t_floatarg p
     vstplugin_midi_mess(x, 144, channel, pitch, velocity);
 }
 
-static void vstplugin_midi_aftertouch(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
+static void vstplugin_midi_polytouch(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
     vstplugin_midi_mess(x, 160, channel, pitch, pressure);
 }
 
@@ -811,11 +811,11 @@ static void vstplugin_midi_cc(t_vstplugin *x, t_floatarg channel, t_floatarg ctl
     vstplugin_midi_mess(x, 176, channel, ctl, value);
 }
 
-static void vstplugin_midi_program_change(t_vstplugin *x, t_floatarg channel, t_floatarg program){
+static void vstplugin_midi_program(t_vstplugin *x, t_floatarg channel, t_floatarg program){
    vstplugin_midi_mess(x, 192, channel, program);
 }
 
-static void vstplugin_midi_channel_aftertouch(t_vstplugin *x, t_floatarg channel, t_floatarg pressure){
+static void vstplugin_midi_touch(t_vstplugin *x, t_floatarg channel, t_floatarg pressure){
     vstplugin_midi_mess(x, 208, channel, pressure);
 }
 
@@ -1388,9 +1388,9 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_program_change, gensym("midi_program_change"), A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_aftertouch, gensym("midi_aftertouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_channel_aftertouch, gensym("midi_channel_aftertouch"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_program, gensym("midi_program"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_polytouch, gensym("midi_polytouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_touch, gensym("midi_touch"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_sysex, gensym("midi_sysex"), A_GIMME, A_NULL);
         // programs
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_set, gensym("program_set"), A_FLOAT, A_NULL);

@@ -134,18 +134,18 @@
 #X obj 344 356 s \$0-program-data;
 #X obj 344 333 route program_data bank_data, f 39;
 #X obj 459 356 s \$0-bank-data;
-#X text 137 34 param_count <f>: number of parameters;
-#X text 137 16 param_value <f> <f>: parameter index + value;
-#X text 137 53 param_name <f> <s>: parameter index + name;
-#X text 138 73 param_label <f> <s>: parameter index + label (unit of
+#X text 148 34 param_count <f>: number of parameters;
+#X text 148 16 param_value <f> <f>: parameter index + value;
+#X text 148 53 param_name <f> <s>: parameter index + name;
+#X text 149 73 param_label <f> <s>: parameter index + label (unit of
 measurement), f 67;
-#X text 138 93 param_display <f> <s>: parameter index + display (stringified
+#X text 149 93 param_display <f> <s>: parameter index + display (stringified
 value), f 69;
-#X text 578 37 program_count <f>: number of programs;
-#X text 578 17 program <f>: index of current program;
-#X text 577 56 program_name <f> <s>: program index + name;
-#X text 578 75 program_data <list>: current program data;
-#X text 577 94 bank_data <list>: current bank data;
+#X text 589 37 program_count <f>: number of programs;
+#X text 589 17 program <f>: index of current program;
+#X text 588 56 program_name <f> <s>: program index + name;
+#X text 589 75 program_data <list>: current program data;
+#X text 588 94 bank_data <list>: current bank data;
 #X text 739 143 param_automated <f> <f>: parameter index + value;
 #X text 738 237 sysex <list>: system exclusive message (from the plugin)
 ;
@@ -167,7 +167,7 @@ value), f 69;
 #X text 738 162 (this message is sent whenever you change a parameter
 in the GUI. this is useful if you want to record automation data),
 f 44;
-#X text 737 213 midi <f> <f> <f>: MIDI message (from the plugin);
+#X text 737 213 midi <list>: MIDI message (from the plugin);
 #X connect 0 0 2 0;
 #X connect 2 0 7 0;
 #X connect 2 1 1 0;
@@ -304,9 +304,6 @@ editor., f 47;
 -1 -1 0 1;
 #X obj 82 296 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X msg 82 316 midi_program_change 1 \$1;
-#X msg 87 355 midi_aftertouch 1 60 127;
-#X msg 95 395 midi_channel_aftertouch 1 127;
 #X text 136 35 send raw MIDI message (list of bytes);
 #X text 155 59 send MIDI system exclusive message (list of bytes);
 #X text 49 89 convenience methods:;
@@ -315,10 +312,13 @@ editor., f 47;
 #X text 182 205 CC: channel \, number \, value;
 #X text 129 183 (sustain pedal on/off);
 #X text 175 265 pitchbend: channel \, bend (-1 to 1);
-#X text 241 316 program change: channel \, program;
-#X text 250 353 polyphonic aftertouch: channel \, pitch \, pressure
+#X text 203 316 program change: channel \, program;
+#X text 242 353 polyphonic aftertouch: channel \, pitch \, pressure
 ;
-#X text 282 396 channel aftertouch: channel \, pressure;
+#X text 211 395 channel aftertouch: channel \, pressure;
+#X msg 82 316 midi_program 1 \$1;
+#X msg 87 355 midi_polytouch 1 60 127;
+#X msg 95 394 midi_touch 1 127;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 0 0;
@@ -328,10 +328,10 @@ editor., f 47;
 #X connect 7 0 0 0;
 #X connect 8 0 0 0;
 #X connect 9 0 8 0;
-#X connect 10 0 11 0;
-#X connect 11 0 0 0;
-#X connect 12 0 0 0;
-#X connect 13 0 0 0;
+#X connect 10 0 22 0;
+#X connect 22 0 0 0;
+#X connect 23 0 0 0;
+#X connect 24 0 0 0;
 #X restore 399 473 pd midi;
 #X f 13;
 #X text 399 455 MIDI messages;
@@ -622,10 +622,10 @@ the GUI must run on the main thread - which happens to be the audio
 thread in Pd... until we've found a better solution you are adviced
 to keep the editor window closed in low-latency realtime situations
 to avoid audio hick-ups - or use the Pd editor instead.;
-#X text 15 304 don't use any GUI. this saves some memory and CPU cycles
-but it probably won't matter a lot. if you don't need really need any
-GUI \, it doesn't harm to use this flag.;
 #X text 15 16 vstplugin~ accepts three different GUI flags:;
+#X text 15 304 don't use any GUI. this saves some memory and CPU cycles
+but it probably won't matter a lot. if you don't really need any GUI
+\, it doesn't harm to use this flag.;
 #X restore 410 522 pd gui;
 #X f 13;
 #X text 408 504 about the GUI;
