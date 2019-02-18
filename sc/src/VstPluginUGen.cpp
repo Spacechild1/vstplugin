@@ -16,7 +16,7 @@ void SCLog(const std::string& msg){
 }
 
 static const char * platformExtensions[] = {
-#ifdef APPLE
+#ifdef __APPLE__
 	".vst",
 #endif
 #ifdef _WIN32
@@ -30,7 +30,7 @@ static const char * platformExtensions[] = {
 
 static const char * defaultSearchPaths[] = {
 // macOS
-#ifdef APPLE
+#ifdef __APPLE__
 	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST",
 #endif
 // Windows
@@ -1643,7 +1643,7 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 	if (verbose) {
 		Print("probing '%s' ... ", key.c_str());
 	}
-	auto plugin = loadVSTPlugin(fullPath, true);
+	auto plugin = loadVSTPlugin(makeVSTPluginFilePath(fullPath), true);
 	if (plugin) {
 		auto& info = pluginMap[key];
 		info.name = plugin->getPluginName();
