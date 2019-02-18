@@ -24,7 +24,8 @@ VstPlugin : MultiOutUGen {
 				},
 				toString: { arg self, sep = $\n;
 					var s;
-					s = "name: '%'".format(self.name) ++ sep
+					s = "name: %".format(self.name) ++ sep
+					++ "path: %".format(self.path) ++ sep
 					++ "input channels: %".format(self.numInputs) ++ sep
 					++ "output channels: %".format(self.numOutputs) ++ sep
 					++ "parameters: %".format(self.numParameters) ++ sep
