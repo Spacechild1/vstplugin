@@ -90,7 +90,7 @@ VstPluginGui : ObjectGui {
 	}
 
 	prUpdateGui {
-		var rowOnset, nparams=0, name, header, ncolumns=0, nrows=0;
+		var rowOnset, nparams=0, name, info, header, ncolumns=0, nrows=0;
 		var grid, font, minWidth, minHeight, minSize;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
@@ -101,6 +101,7 @@ VstPluginGui : ObjectGui {
 		view !? { view.removeAll };
 		(model.notNil and: { model.info.notNil}).if {
 			name = model.info.name;
+			info = model.info.toString;
 			menu = menu.asBoolean;
 			// parameters: calculate number of rows and columns
 			nparams = model.numParameters;
@@ -120,10 +121,12 @@ VstPluginGui : ObjectGui {
 			.font_(font)
 			.background_(GUI.skin.background)
 			.align_(\center)
-			.object_(name ?? "[empty]"),
+			.object_(name ?? "[empty]")
+			.toolTip_(info ?? "No plugin loaded"),
 			Button.new.states_([["Open"]])
 			.maxWidth_(60)
 			.action_({this.prOpen})
+			.toolTip_("Open a plugin")
 		);
 
 		grid = GridLayout.new;
@@ -132,7 +135,8 @@ VstPluginGui : ObjectGui {
 			var row = 1, col = 0;
 			var makePanel = { arg what;
 				var label, read, write;
-				label = StaticText.new.string_(what).align_(\right);
+				label = StaticText.new.string_(what).align_(\right)
+				.toolTip_("Read/write % files (.fx%)".format(what.toLower, what[0].toLower)); // let's be creative :-)
 				read = Button.new.states_([["Read"]]).action_({
 					var sel = ("read" ++ what).asSymbol;
 					FileDialog.new({ arg path;
@@ -191,17 +195,19 @@ VstPluginGui : ObjectGui {
 			// put together
 			bar = View.new.layout_(HLayout.new(name.align_(\left),
 				nil, display.align_(\right), label.align_(\right)));
-			unit = VLayout.new(bar, slider).spacing_(20);
+			unit = VLayout.new(bar, slider).spacing_(0);
 			grid.add(unit, row+rowOnset, col);
 		};
-		grid.setRowStretch(nrows + rowOnset, 1);
+		grid.setRowStretch(rowOnset + nrows, 1);
+		grid.setColumnStretch(ncolumns, 1);
 
-		// add a view and make the area large enough to hold all its contents
+
+		// make the canvas (view) large enough to hold all its contents.
+		// somehow it can't figure out the necessary size itself...
 		minWidth = ((sliderWidth + 20) * ncolumns).max(sliderWidth);
-		minHeight = ((sliderHeight * 3 * nrows) + 120).max(sliderWidth); // empirically
+		minHeight = ((sliderHeight * 4 * nrows) + 120).max(sliderWidth); // empirically
 		minSize = minWidth@minHeight;
-		view.minSize_(minSize);
-		View.new(view).layout_(grid).minSize_(minSize);
+		view.layout_(grid).fixedSize_(minSize);
 	}
 
 	prParam { arg index, value, display;
@@ -245,7 +251,8 @@ VstPluginGui : ObjectGui {
 					path.string = "Path:" + absPath;
 				} { "bug: no info!".error; }; // should never happen
 			};
-			search = Button.new.states_([["Search"]]).maxWidth_(60);
+			search = Button.new.states_([["Search"]]).maxWidth_(60)
+			.toolTip_("Search for VST plugins in the platform specific default paths\n(see VstPlugin*search)");
 			search.action = {
 				status.string_("searching...");
 				VstPlugin.search(model.synth.server, verbose: true, action: {
@@ -256,7 +263,8 @@ VstPluginGui : ObjectGui {
 					}.defer;
 				});
 			};
-			file = Button.new.states_([["File"]]).maxWidth_(60);
+			file = Button.new.states_([["File"]]).maxWidth_(60)
+			.toolTip_("Open a file dialog");
 			file.action = {
 				FileDialog.new({ arg p;
 					absPath = p;
