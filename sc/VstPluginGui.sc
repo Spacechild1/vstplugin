@@ -20,15 +20,19 @@ VstPluginGui : ObjectGui {
 	var paramSliders;
 	var paramDisplays;
 	var embedded;
+	var dialog;
 
 	model_ { arg newModel;
-		// always notify when changing models (but only if we have a view)
+		// always notify when changing models
 		model.removeDependant(this);
 		model = newModel;
 		model.addDependant(this);
+		// close the browser (if opened)
+		dialog !? { dialog.close };
+		// only update if we have a view (i.e. -gui has been called)
 		view.notNil.if {
 			this.update;
-		}
+		};
 	}
 
 	// this is called whenever something important in the model changes.
@@ -87,6 +91,11 @@ VstPluginGui : ObjectGui {
 			};
 			layout.front;
 		};
+	}
+
+	viewDidClose {
+		dialog !? { dialog.close };
+		super.viewDidClose;
 	}
 
 	prUpdateGui {
@@ -239,6 +248,8 @@ VstPluginGui : ObjectGui {
 	prOpen {
 		model.notNil.if {
 			var window, browser, file, search, path, ok, cancel, status, key, absPath;
+			// prevent opening the dialog multiple times
+			dialog !? { ^this };
 			// build dialog
 			window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 			browser = ListView.new.selectionMode_(\single).items_(VstPlugin.pluginKeys(model.synth.server));
@@ -270,7 +281,6 @@ VstPluginGui : ObjectGui {
 					absPath = p;
 					key = absPath;
 					path.string = "Path:" + absPath;
-					// do open
 					ok.action.value;
 				}, nil, 1, 0, true, pluginPath);
 			};
@@ -290,6 +300,8 @@ VstPluginGui : ObjectGui {
 			window.layout_(VLayout(
 				browser, path, HLayout(search, file, status, nil, cancel, ok)
 			));
+			window.view.addAction({ dialog = nil }, 'onClose');
+			dialog = window;
 			window.front;
 		} { "no model!".error };
 	}
