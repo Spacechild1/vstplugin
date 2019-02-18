@@ -11,22 +11,7 @@ VstPlugin : MultiOutUGen {
 			parentInfo = (
 				print: { arg self, long = false;
 					"---".postln;
-					"name: '%'".format(self.name).postln;
-					"input channels: %".format(self.numInputs).postln;
-					"output channels: %".format(self.numOutputs).postln;
-					long.not.if {
-						"parameters: %".format(self.numParameters).postln;
-						"programs: %".format(self.numPrograms).postln;
-					};
-					"MIDI input: %".format(self.midiInput).postln;
-					"MIDI output: %".format(self.midiOutput).postln;
-					"sysex input: %".format(self.sysexInput).postln;
-					"sysex output: %".format(self.sysexOutput).postln;
-					"synth: %".format(self.isSynth).postln;
-					"version: %".format(self.version).postln;
-					"editor: %".format(self.hasEditor).postln;
-					"single precision: %".format(self.singlePrecision).postln;
-					"double precision: %".format(self.doublePrecision).postln;
+					self.toString.postln;
 					long.if {
 						"".postln;
 						"parameters (%):".format(self.numParameters).postln;
@@ -36,6 +21,23 @@ VstPlugin : MultiOutUGen {
 						self.printPrograms;
 					};
 					"".postln;
+				},
+				toString: { arg self, sep = $\n;
+					var s;
+					s = "name: '%'".format(self.name) ++ sep
+					++ "input channels: %".format(self.numInputs) ++ sep
+					++ "output channels: %".format(self.numOutputs) ++ sep
+					++ "parameters: %".format(self.numParameters) ++ sep
+					++ "programs: %".format(self.numPrograms) ++ sep
+					++ "MIDI input: %".format(self.midiInput) ++ sep
+					++ "MIDI output: %".format(self.midiOutput) ++ sep
+					++ "sysex input: %".format(self.sysexInput) ++ sep
+					++ "sysex output: %".format(self.sysexOutput) ++ sep
+					++ "synth: %".format(self.isSynth) ++ sep
+					++ "version: %".format(self.version) ++ sep
+					++ "editor: %".format(self.hasEditor) ++ sep
+					++ "single precision: %".format(self.singlePrecision) ++ sep
+					++ "double precision: %".format(self.doublePrecision);
 				},
 				printParameters: { arg self;
 					self.numParameters.do { arg i;
