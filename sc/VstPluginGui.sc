@@ -107,9 +107,10 @@ VstPluginGui : ObjectGui {
 		var displayWidth = this.displayWidth ?? this.class.displayWidth;
 		var menu = this.menu ?? this.class.menu;
 		// displayWidth is measured in characters, so use a monospace font.
-		// setting the font size as pixels might be problem on high-res screens...
-		displayFont = Font.new(Font.defaultMonoFace, 12);
-		displayWidth = displayWidth * displayFont.pixelSize * 0.75; // estimate of width
+		// use point size to adapt to different screen resolutions
+		displayFont = Font.new(Font.defaultMonoFace, 8, usePointSize: true);
+		// get the max. display width in pixels (use an extra character for safety)
+		displayWidth = String.fill(displayWidth + 1, $0).bounds(displayFont).width;
 		// remove old GUI body
 		view !? { view.removeAll };
 		(model.notNil and: { model.info.notNil}).if {
@@ -123,7 +124,7 @@ VstPluginGui : ObjectGui {
 			nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInt;
 		} { menu = false };
 
-		font = Font.new(*GUI.skin.fontSpecs).size_(14);
+		font = Font.new(*GUI.skin.fontSpecs).pointSize_(12);
 		// change window header
 		embedded.not.if {
 			view.parent.name_(name !? { "VstPlugin (%)".format(name) } ?? { "VstPlugin (empty)" });
