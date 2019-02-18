@@ -141,12 +141,13 @@ VstPluginController {
 			action.value(this, loaded);
 			this.changed('/open', path, loaded);
 		}, '/vst_open').oneShot;
-		VstPlugin.prGetInfo(synth.server, path, wait, { arg i;
+		VstPlugin.prGetInfo(synth.server, path, wait, { arg i, resPath;
 			// don't set 'info' property yet
 			theInfo = i;
-			// if no plugin info could be obtained (probing failed)
-			// we open the plugin nevertheless to get some error messages
-			this.sendMsg('/open', theInfo !? { theInfo.path } ?? path, editor.asInt);
+			// if no plugin info could be obtained (probing failed),
+			// we open the plugin nevertheless to get some error messages.
+			// in this case it's import to pass the resolved path.
+			this.sendMsg('/open', theInfo !? { theInfo.path } ?? resPath, editor.asInt);
 		});
 	}
 	prClear {

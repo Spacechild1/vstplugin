@@ -213,7 +213,7 @@ VstPlugin : MultiOutUGen {
 			} {
 				"couldn't probe '%'".format(key).postln;
 			};
-			action.value(info);
+			action.value(info, path); // also pass the resolved path
 		};
 		server.isLocal.if { this.prProbeLocal(server, path, key, cb); }
 		{ this.prProbeRemote(server, path, key, wait, cb); };
@@ -249,6 +249,7 @@ VstPlugin : MultiOutUGen {
 				cb.free; // got correct /done message, free it!
 				(result.size > 1).if {
 					var info = this.prMakeInfo(key, result[2..]);
+					info.key = key; // overwrite
 					pluginDict[server][key] = info;
 					this.prQueryPlugin(server, key, wait, { action.value(info) });
 				} { action.value };
@@ -384,7 +385,7 @@ VstPlugin : MultiOutUGen {
 	*prGetInfo { arg server, key, wait, action;
 		key = key.asSymbol;
 		// if the key already exists, return the info, otherwise probe the plugin
-		pluginDict[server] !? { arg dict; dict[key] } !? { arg info; action.value(info) }
+		pluginDict[server] !? { arg dict; dict[key] } !? { arg info; action.value(info, key) }
 		?? { this.probe(server, key, key, wait, action) };
 	}
 	*prResolvePath { arg path;
@@ -393,15 +394,19 @@ VstPlugin : MultiOutUGen {
 			// replace / with \ because of a bug in PathName
 			path = path.tr($/, $\\);
 		};
+		path = path.standardizePath; // expand ~/
 		// other methods don't work for folders...
 		PathName(path).isAbsolutePath.not.if {
 			// resolve relative paths to the currently executing file
 			var root = thisProcess.nowExecutingPath;
-			root.isNil.if {
-				"couldn't resolve '%' - relative paths only work on saved files!".warn;
-				^nil;
-			} {	^(root.dirname +/+ path) };
-		} { ^path };
+			root.notNil.if {
+				path = root.dirname +/+ path;
+			} {
+				"couldn't resolve '%' - relative paths only work on saved files!".error;
+				path = nil;
+			};
+		};
+		^path;
 	}
 	// instance methods
 	init { arg theID, numOut ... theInputs;

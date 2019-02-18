@@ -209,7 +209,13 @@ ARGUMENT:: path
 plugin path/key.
 
 This can be either a file path (with or without extension) or a key to an already loaded plugin (see link::Classes/VstPlugin#*search::).
-File paths can be absolute or relative. The latter are resolved to the currently executing file (must have been saved!).
+File paths can be absolute or relative, the latter are resolved to the currently executing file (must have been saved!).
+
+emphasis::path:: is first tried as a key for the plugin dictionary. If no plugin can be found it is treated as a file path
+and probed on the Server. (On success, the plugin is added to the dictionary with emphasis::path:: as the key.)
+
+note::A relative path like "GVST/GChorus" can be ambiguous if such a key already exists in the dictionary
+(e.g. as a result of link::Classes/VstPlugin#*search::). You can "force" a relative path by writing "./GVST/GChorus" instead.::
 
 ARGUMENT:: editor
 request the VST plugin editor.
