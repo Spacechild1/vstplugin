@@ -1690,12 +1690,10 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 	return plugin != nullptr;
 }
 
-// recursively searches directories for VST plugins.
-#ifdef _WIN32
-// expand environment variables (%ProgramFiles%), see definition.
-void expandEnvStrings(const char *src, char* dst, size_t size);
-#endif
+// expand stuff like %ProgramFiles% or ~/, see definition.
+std::string expandSearchPath(const char *path);
 
+// recursively searches directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
 	auto data = (QueryCmdData *)cmdData;
 	bool verbose = data->index;
@@ -1708,13 +1706,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	if (data->value) {
 		auto it = defaultSearchPaths;
 		while (*it) {
-#ifdef _WIN32
-			char buf[1024];
-			expandEnvStrings(*it, buf, sizeof(buf));
-			searchPaths.push_back(buf);
-#else
-			searchPaths.push_back(*it);
-#endif
+			searchPaths.push_back(expandSearchPath(*it));
 			it++;
 		}
 	}
@@ -2133,14 +2125,27 @@ PluginLoad(VstPlugin) {
 	PluginCmd(vst_path_clear);
 }
 
-// define this at the very end to avoid clashes with SC headers
+// define the function at the very end to avoid clashes with SC headers
 #ifdef _WIN32
 #undef IN
 #undef OUT
-#define IN
-#define OUT
+#undef PURE
 #include <Windows.h>
-void expandEnvStrings(const char *src, char* dst, size_t size) {
-	ExpandEnvironmentStringsA(src, dst, size);
+std::string expandSearchPath(const char *path) {
+	char buf[MAX_PATH];
+	ExpandEnvironmentStringsA(path, buf, MAX_PATH);
+	return buf;
+}
+#else
+#include <stdlib.h>
+std::string expandSearchPath(const char *path) {
+	// expand ~ to home directory
+	if (path && *path == '~') {
+		const char *home = getenv("HOME");
+		if (home) {
+			return std::string(home) + std::string(path + 1);
+		}
+	}
+	return path;
 }
 #endif
