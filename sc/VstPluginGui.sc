@@ -4,7 +4,7 @@ VstPluginGui : ObjectGui {
 	classvar <>closeOnFree = true;
 	classvar <>sliderWidth = 200;
 	classvar <>sliderHeight = 20;
-	classvar <>displayWidth = 6;
+	classvar <>displayWidth = 7;
 	classvar <>menu = true;
 	// public
 	var <>closeOnFree;
@@ -108,8 +108,8 @@ VstPluginGui : ObjectGui {
 		var menu = this.menu ?? this.class.menu;
 		// displayWidth is measured in characters, so use a monospace font.
 		// setting the font size as pixels might be problem on high-res screens...
-		displayFont = Font.new(Font.defaultMonoFace, 11);
-		displayWidth = displayWidth * displayFont.pixelSize;
+		displayFont = Font.new(Font.defaultMonoFace, 12);
+		displayWidth = displayWidth * displayFont.pixelSize * 0.75; // estimate of width
 		// remove old GUI body
 		view !? { view.removeAll };
 		(model.notNil and: { model.info.notNil}).if {
