@@ -108,7 +108,7 @@ VstPluginGui : ObjectGui {
 		var menu = this.menu ?? this.class.menu;
 		// displayWidth is measured in characters, so use a monospace font.
 		// use point size to adapt to different screen resolutions
-		displayFont = Font.new(Font.defaultMonoFace, 8, usePointSize: true);
+		displayFont = Font.new(Font.defaultMonoFace, 10, usePointSize: true);
 		// get the max. display width in pixels (use an extra character for safety)
 		displayWidth = String.fill(displayWidth + 1, $0).bounds(displayFont).width;
 		// remove old GUI body
