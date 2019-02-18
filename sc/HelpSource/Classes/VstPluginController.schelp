@@ -1,6 +1,6 @@
 TITLE:: VstPluginController
-summary:: control a VstPlugin instance
-categories:: Utility
+summary:: Client-side representation of a VstPlugin UGen instance
+categories:: Server>Abstractions
 related:: Classes/VstPlugin, Classes/VstPluginGui, Classes/VstPluginMIDIProxy
 
 DESCRIPTION::

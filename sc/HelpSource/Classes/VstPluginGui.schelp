@@ -8,17 +8,23 @@ This class is the default Qt GUI class for link::Classes/VstPluginController::, 
 
 For each parameter, the GUI shows the parameter name, a slider, a text display and the parameter label (e.g. "dB").
 
+note::For performance reasons, the Qt GUI will emphasis::not:: reflect parameter automation via link::Classes/VstPluginController#-map:: or UGen arguments
+(link::Classes/VstPlugin#*ar::).::
+
 You can automate parameters by moving the slider or entering text into the text display (not supported by all plugins).
 
 note::Automating parameters from the Qt GUI will automatically unmap it from any control busses (see link::Classes/VstPluginController#-map::)::
 
-note::For performance reasons, the Qt GUI will emphasis::not:: not reflect parameter automation via link::Classes/VstPluginController#-map:: or UGen arguments
-(i.e. the code::params:: argument for link::Classes/VstPlugin#*ar::).::
+To get some information about the plugin, just hover over the name.
 
-By pressing the "Open" button you will get a Dialog where you can browse already loaded plugins, make a new search in the default directories
-(see link::Classes/VstPlugin#*search::) or open a file dialog.
+The GUI also features a pop-up menu with available programs and panels for reading/writing program/bank files.
 
-The GUI also features a PopUpMenu with available programs and panels to read/write program and bank files.
+IMAGE::editor.jpg::
+
+Pressing the "Open" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories
+(see link::Classes/VstPlugin#*search::) or load a plugin from a file dialog.
+
+IMAGE::browser.jpg::
 
 CLASSMETHODS::
 
@@ -76,14 +82,9 @@ the maximal number of rows (default: 10).
 
 METHOD:: sliderWidth
 the slider width in pixels (default: 200)
-DISCUSSION::
-the slider width also determines the width of each parameter section.
-You might want to increase it if parameter names are too long to fit into a single line.
 
 METHOD:: sliderHeight
 the slider height in pixels (default: 20)
-
-
 
 METHOD:: update
 Update the view.
@@ -108,11 +109,18 @@ SynthDef.new(\insert, {arg bus = 0;
 	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
 }).add;
 )
+
 (
 // create 2 VstPlugins
 ~fx1 = VstPluginController(Synth(\insert));
 ~fx2 = VstPluginController(Synth(\insert));
 )
+
+// show each GUI in its own window
+~fx1.gui;
+~fx2.gui;
+
+// close the windows
 ::
 
 SUBSECTION:: Embedding
@@ -120,7 +128,7 @@ It's possible to embed several VstPluginGui instances within a single view.
 
 The emphasis::bounds:: argument determines the size and position of each subview. 
 (In link::Classes/FlowLayout::s the position is managed automatically,
-so it's enough provide a link::Classes/Point:: instead of a link::Classes/Rect::.)
+so it's enough to provide a link::Classes/Point:: instead of a link::Classes/Rect::.)
 
 If the plugin editor needs more space than emphasis::bounds::, scrollbars are shown automatically.
 
@@ -138,7 +146,7 @@ code::
 ::
 
 SUBSECTION:: Changing Models
-Here we use a single VstPluginGui instance to show different link::Classes/VstPluginController::s.
+Here we use a emphasis::single:: VstPluginGui instance to show different link::Classes/VstPluginController::s.
 Say you have an FX chain with several link::Classes/VstPlugin:: instances but you only need to see one at the time.
 
 code::

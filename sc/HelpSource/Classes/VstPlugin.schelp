@@ -1,7 +1,7 @@
 TITLE:: VstPlugin
 summary:: load VST plugins as UGens
 related:: Classes/VstPluginController, Classes/VstPluginGui
-categories:: UGens
+categories:: UGens>FX
 
 DESCRIPTION::
 This UGen represents a single VST plugin instance on the link::Classes/Server::. See the helpfile of link::Classes/VstPluginController:: for how to control it from the SuperCollider language.
@@ -24,12 +24,13 @@ ARGUMENT:: numOut
 The number of output channels. This must be a fixed number greater than 0.
 
 ARGUMENT:: bypass
-If this is a non-zero value, the inputs are copied to the outputs, thus bypassing the plugin. This can be automated.
+If this is a non-zero value, the inputs are copied to the outputs, bypassing the plugin. This can be automated.
 
 ARGUMENT:: params
-An optional Array of parameter controls in pairs of index and value. Both can values be automated.
+An optional Array of parameter controls in pairs of index and value. Both can be automated.
 code::
-/* 'p1' controls the plugin parameter 1. 'p2' controls a parameter whose index can be set dynamically with 'idx'. */
+// 'p1' controls parameter 1. 
+// 'p2' controls a parameter whose index can be set dynamically with 'idx'.
 SynthDef(\test, { arg in, p1, p2, idx;
 	var sig = VstPlugin.ar(In.ar(in, 2), 1, 
 		params: [1, p1, idx, p2]);
@@ -37,16 +38,16 @@ SynthDef(\test, { arg in, p1, p2, idx;
 });
 ::
 You can set the index to a negative value to "unmap" the parameter.
-note::emphasis::params:: overrides any automation of the same parameters via link::Classes/VstPluginController#-set:: or
+note::emphasis::params:: overrides any automation of the same parameters by link::Classes/VstPluginController#-set:: or
 link::Classes/VstPluginController#-map::.
 ::
 warning::To ensure deterministic results, emphasis::params:: works synchronously (in the realtime thread). 
-You are adviced to use it only on parameters which are realtime safe (i.e. don't trigger any heavy calculations, memory allocations, etc.),
+You are adviced to use it only on parameters which are realtime safe (i.e. don't do any heavy calculations, memory allocations, etc.),
 otherwise consider using link::Classes/VstPluginController#-set::, which works on the non-realtime thread.
 ::
 
 ARGUMENT:: id
-An optional number or symbol which uniquely identifies the UGen within a SynthDef, so it can be found by link::Classes/VstPluginController::.
+An optional number or symbol which uniquely identifies the UGen within a SynthDef so it can be found by link::Classes/VstPluginController::.
 This is only necessary if there is more than one VstPlugin instance in the SynthDef!
 code::
 (
@@ -71,8 +72,8 @@ SynthDef(\test, { arg in, out;
 
 SUBSECTION:: Plugin Management
 
-All VST plugin information is cached on the Client mainly for performance reasons but it is also handy for end users
-because it's possible to investigate plugins without actually creating instances of VstPlugin.
+All VST plugin information is cached on the Client. This is done mainly for performance reasons but it can be also handy for end users
+because it's possible to investigate plugins without actually creating any instances.
 
 The plugin info is stored in an link::Classes/Event:: with the following entries:
 table::
@@ -99,12 +100,14 @@ table::
 ::
 It also defines the following convenience methods:
 table::
-## print (long = false) || post plugin info to the console. 
+## print (long = false) || post the plugin info to the console. 
 
 if emphasis::long:: is code::true::, also list parameters and programs.
 ## printParameters || post parameter names and labels to the console.
 ## printPrograms || post default program names to the console
 ::
+
+note::The info is to be considered read-only!::
 
 SUBSECTION:: Plugin Info
 
