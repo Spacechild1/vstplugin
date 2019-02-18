@@ -174,12 +174,11 @@ VstPluginGui : ObjectGui {
 			col = i.div(nrows);
 			row = i % nrows;
 			// param name
-			name = StaticText.new(bounds: sliderWidth@sliderHeight)
+			name = StaticText.new
 			.string_("%: %".format(i, model.info.parameterNames[i]))
 			.minWidth_(sliderWidth - displayWidth - labelWidth);
 			// param label
-			label = StaticText.new(bounds: labelWidth@sliderHeight)
-			.string_(model.info.parameterLabels[i] ?? "");
+			label = StaticText.new.string_(model.info.parameterLabels[i] ?? "");
 			// param display
 			display = TextField.new.fixedWidth_(displayWidth).string_(param[1]);
 			display.action = {arg s; model.set(i, s.value)};
@@ -233,15 +232,18 @@ VstPluginGui : ObjectGui {
 	}
 	prOpen {
 		model.notNil.if {
-			var window, browser, file, search, path, ok, cancel, status;
+			var window, browser, file, search, path, ok, cancel, status, key, absPath;
 			// build dialog
 			window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 			browser = ListView.new.selectionMode_(\single).items_(VstPlugin.pluginKeys(model.synth.server));
 			browser.action = {
-				var key = browser.items[browser.value].asSymbol;
-				var info = VstPlugin.plugins(model.synth.server)[key];
-				info.notNil.if { path.string_(info.path) }
-				{ "bug: no info!".error; }; // should never happen
+				var info;
+				key = browser.items[browser.value].asSymbol;
+				info = VstPlugin.plugins(model.synth.server)[key];
+				info.notNil.if {
+					absPath = info.path;
+					path.string = "Path:" + absPath;
+				} { "bug: no info!".error; }; // should never happen
 			};
 			search = Button.new.states_([["Search"]]).maxWidth_(60);
 			search.action = {
@@ -257,26 +259,28 @@ VstPluginGui : ObjectGui {
 			file = Button.new.states_([["File"]]).maxWidth_(60);
 			file.action = {
 				FileDialog.new({ arg p;
-					path.string_(p);
+					absPath = p;
+					key = absPath;
+					path.string = "Path:" + absPath;
+					// do open
+					ok.action.value;
 				}, nil, 1, 0, true, pluginPath);
 			};
-			path = StaticText.new.align_(\right);
+			path = StaticText.new.align_(\left).string_("Path:");
 			cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
 			cancel.action = { window.close };
 			ok = Button.new.states_([["OK"]]).maxWidth_(60);
 			ok.action = {
-				var filePath = path.string;
-				(filePath.size > 0).if {
-					model.open(filePath);
-					pluginPath = filePath;
+				key !? {
+					// open with key - not absPath!
+					model.open(key);
+					pluginPath = absPath;
 					window.close;
 				};
 			};
 			status = StaticText.new.stringColor_(Color.red).align_(\left);
 			window.layout_(VLayout(
-				[browser, \stretch, 1],
-				HLayout(StaticText.new.string_("Path:").maxWidth_(60).align_(\left), path),
-				HLayout(search, file, status, nil, cancel, ok)
+				browser, path, HLayout(search, file, status, nil, cancel, ok)
 			));
 			window.front;
 		} { "no model!".error };
