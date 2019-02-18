@@ -1700,6 +1700,8 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	auto data = (QueryCmdData *)cmdData;
 	bool verbose = data->index;
 	bool local = data->buf[0];
+	// list of new plugin keys (so plugins can be queried by index)
+	pluginList.clear();
 	// search paths
 	std::vector<std::string> searchPaths;
 	// use defaults?
@@ -1741,7 +1743,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	int total = 0;
 	for (auto& path : searchPaths) {
 		int count = 0;
-		if (verbose) Print("searching in %s ...", path.c_str());
+		if (verbose) Print("searching in %s ...\n", path.c_str());
 		else LOG_VERBOSE("searching in " << path << " ...");
 #ifdef _WIN32
 		// root will have a trailing slash
@@ -1759,7 +1761,11 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 					}
 					if (!pluginMap.count(shortPath)) {
 						// only probe plugin if hasn't been added to the map yet
-						if (probePlugin(fullPath, shortPath, verbose)) count++;
+						if (probePlugin(fullPath, shortPath, verbose)) {
+							// push new key to list
+							pluginList.push_back(shortPath);
+							count++;
+						}
 					}
 					else {
 						count++;
@@ -1789,7 +1795,11 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 						auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
 						if (!pluginMap.count(shortPath)) {
 							// only probe plugin if hasn't been added to the map yet
-							if (probePlugin(fullPath, shortPath, verbose)) count++;
+							if (probePlugin(fullPath, shortPath, verbose)) {
+								// push new key to list
+								pluginList.push_back(shortPath);
+								count++;
+							}
 						}
 						else {
 							count++;
@@ -1807,24 +1817,19 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		};
 		searchDir(root);
 #endif
-		if (verbose) Print("found %d plugins.", count);
+		if (verbose) Print("found %d plugins.\n", count);
 		else LOG_VERBOSE("found " << count << " plugins.");
 		total += count;
 	}
-	if (verbose) Print("total number of plugins: %d", total);
+	if (verbose) Print("total number of plugins: %d\n", total);
 	else LOG_VERBOSE("total number of plugins: " << total);
-	// make list of plugin keys (so plugins can be queried by index)
-	pluginList.clear();
-	for (auto& entry : pluginMap) {
-		pluginList.push_back(entry.first);
-	}
-	// write to file (only for local Servers)
+	// write new info to file (only for local Servers)
 	if (local) {
 		std::ofstream file(data->buf);
 		if (file.is_open()) {
 			LOG_DEBUG("writing plugin info file");
-			for (auto& entry : pluginMap) {
-				entry.second.serialize(file);
+			for (auto& key : pluginList) {
+				pluginMap[key].serialize(file);
 				file << "\n"; // seperate plugins with newlines
 			}
 		}
