@@ -4,7 +4,7 @@ VstPluginGui : ObjectGui {
 	classvar <>closeOnFree = true;
 	classvar <>sliderWidth = 200;
 	classvar <>sliderHeight = 20;
-	classvar <>displayWidth = 60;
+	classvar <>displayWidth = 6;
 	classvar <>menu = true;
 	// public
 	var <>closeOnFree;
@@ -100,12 +100,16 @@ VstPluginGui : ObjectGui {
 
 	prUpdateGui {
 		var rowOnset, nparams=0, name, info, header, ncolumns=0, nrows=0;
-		var grid, font, minWidth, minHeight, minSize;
+		var grid, font, minWidth, minHeight, minSize, displayFont;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
 		var displayWidth = this.displayWidth ?? this.class.displayWidth;
 		var menu = this.menu ?? this.class.menu;
+		// displayWidth is measured in characters, so use a monospace font.
+		// setting the font size as pixels might be problem on high-res screens...
+		displayFont = Font.new(Font.defaultMonoFace, 11);
+		displayWidth = displayWidth * displayFont.pixelSize;
 		// remove old GUI body
 		view !? { view.removeAll };
 		(model.notNil and: { model.info.notNil}).if {
@@ -178,22 +182,22 @@ VstPluginGui : ObjectGui {
 			rowOnset = row + 2;
 		} { programMenu = nil; rowOnset = 1 };
 
+		// build parameters
 		paramSliders = Array.new(nparams);
 		paramDisplays = Array.new(nparams);
-
 		nparams.do { arg i;
-			var col, row, name, label, display, slider, bar, unit, param, labelWidth = 50;
+			var col, row, name, label, display, slider, bar, unit, param;
 			param = model.paramCache[i];
 			col = i.div(nrows);
 			row = i % nrows;
 			// param name
 			name = StaticText.new
-			.string_("%: %".format(i, model.info.parameterNames[i]))
-			.minWidth_(sliderWidth - displayWidth - labelWidth);
+			.string_("%: %".format(i, model.info.parameterNames[i]));
 			// param label
 			label = StaticText.new.string_(model.info.parameterLabels[i] ?? "");
 			// param display
-			display = TextField.new.fixedWidth_(displayWidth).string_(param[1]);
+			display = TextField.new
+			.fixedWidth_(displayWidth).font_(displayFont).string_(param[1]);
 			display.action = {arg s; model.set(i, s.value)};
 			paramDisplays.add(display);
 			// slider

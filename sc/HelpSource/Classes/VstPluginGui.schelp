@@ -70,7 +70,7 @@ DISCUSSION::
 This is only for top level windows, embedded GUIs are not affected.
 
 METHOD:: displayWidth
-the parameter display width in pixels (default: 60)
+the parameter display width in characters (default: 6)
 DISCUSSION::
 The default size should be fine for most number displays but might need to be increased for larger text displays.
 
