@@ -386,7 +386,7 @@ VstPluginController {
 			// allocate array on the first packet
 			(onset == 0).if { data = Int8Array.new(total) };
 			// add packet
-			data.addAll(msg[6..]);
+			data = data.addAll(msg[6..]);
 			// send when done
 			(data.size >= total).if {
 				done = true;

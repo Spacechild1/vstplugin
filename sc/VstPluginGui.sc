@@ -130,23 +130,18 @@ VstPluginGui : ObjectGui {
 			view.parent.name_(name !? { "VstPlugin (%)".format(name) } ?? { "VstPlugin (empty)" });
 		};
 
-		header = HLayout(StaticText.new(view)
-			.stringColor_(GUI.skin.fontColor)
-			.font_(font)
-			.background_(GUI.skin.background)
-			.align_(\center)
-			.object_(name ?? "[empty]")
-			.toolTip_(info ?? "No plugin loaded"),
-			Button.new.states_([["Open"]])
-			.maxWidth_(60)
-			.action_({this.prOpen})
-			.toolTip_("Open a plugin")
-		);
+		header = StaticText.new
+		.stringColor_(GUI.skin.fontColor)
+		.font_(font)
+		.background_(GUI.skin.background)
+		.align_(\center)
+		.object_(name ?? "[empty]")
+		.toolTip_(info ?? "No plugin loaded");
 
 		grid = GridLayout.new;
 		grid.add(header, 0, 0);
 		menu.if {
-			var row = 1, col = 0;
+			var row = 1, col = 0, open;
 			var makePanel = { arg what;
 				var label, read, write;
 				label = StaticText.new.string_(what).align_(\right)
@@ -174,7 +169,13 @@ VstPluginGui : ObjectGui {
 				"%: %".format(index, item);
 			});
 			programMenu.value_(model.program);
-			grid.add(programMenu, row, col);
+			// "Open" button
+			open = Button.new
+			.states_([["Open"]])
+			.maxWidth_(60)
+			.action_({this.prOpen})
+			.toolTip_("Open a plugin");
+			grid.add(HLayout.new(programMenu, open), row, col);
 			// try to use another columns if available
 			row = (ncolumns > 1).if { 0 } { row + 1 };
 			col = (ncolumns > 1).asInt;
