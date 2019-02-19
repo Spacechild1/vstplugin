@@ -334,44 +334,21 @@ void t_vsteditor::setup(){
 
     int nparams = e_owner->x_plugin->getNumParameters();
     e_params.clear();
+    // reserve to avoid a reallocation (which will call destructors)
     e_params.reserve(nparams);
     for (int i = 0; i < nparams; ++i){
         e_params.emplace_back(e_owner, i);
     }
-        // slider: #X obj 25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1;
-    t_atom slider[21];
-    SETFLOAT(slider, 0); // temp
-    SETFLOAT(slider+1, 0); // temp
-    SETSYMBOL(slider+2, gensym("hsl"));
-    SETFLOAT(slider+3, 128);
-    SETFLOAT(slider+4, 15);
-    SETFLOAT(slider+5, 0);
-    SETFLOAT(slider+6, 1);
-    SETFLOAT(slider+7, 0);
-    SETFLOAT(slider+8, 0);
-    SETSYMBOL(slider+9, gensym("snd")); // temp
-    SETSYMBOL(slider+10, gensym("rcv")); // temp
-    SETSYMBOL(slider+11, gensym("label")); // temp
-    SETFLOAT(slider+12, -2);
-    SETFLOAT(slider+13, -8);
-    SETFLOAT(slider+14, 0);
-    SETFLOAT(slider+15, 10);
-    SETFLOAT(slider+16, -262144);
-    SETFLOAT(slider+17, -1);
-    SETFLOAT(slider+18, -1);
-    SETFLOAT(slider+19, -0);
-    SETFLOAT(slider+20, 1);
-        // display: #X symbolatom 165 79 10 0 0 1 label rcv snd, f 10;
-    t_atom display[9];
-    SETFLOAT(display, 0); // temp
-    SETFLOAT(display+1,0); // temp
-    SETFLOAT(display+2, 10);
-    SETFLOAT(display+3, 0);
-    SETFLOAT(display+4, 0);
-    SETFLOAT(display+5, 1);
-    SETSYMBOL(display+6, gensym("")); // temp
-    SETSYMBOL(display+7, gensym("rcv")); // temp
-    SETSYMBOL(display+8, gensym("snd")); // temp
+        // slider: #X obj ...
+    char sliderText[] = "25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1";
+    t_binbuf *sliderBuf = binbuf_new();
+    binbuf_text(sliderBuf, sliderText, sizeof(sliderText) - 1);
+    t_atom *slider = binbuf_getvec(sliderBuf);
+        // display: #X symbolatom ...
+    char displayText[] = "165 79 10 0 0 1 label rcv snd";
+    t_binbuf *displayBuf = binbuf_new();
+    binbuf_text(displayBuf, displayText, sizeof(displayText) - 1);
+    t_atom *display = binbuf_getvec(displayBuf);
 
     int ncolumns = nparams / maxparams + ((nparams % maxparams) != 0);
     if (!ncolumns) ncolumns = 1; // just to prevent division by zero
@@ -407,6 +384,9 @@ void t_vsteditor::setup(){
     send_vmess(gensym("vis"), "i", 0);
 
     update();
+
+    binbuf_free(sliderBuf);
+    binbuf_free(displayBuf);
 }
 
 void t_vsteditor::update(){
