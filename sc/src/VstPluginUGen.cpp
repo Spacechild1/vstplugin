@@ -1646,8 +1646,6 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 	}
 	auto plugin = loadVSTPlugin(makeVSTPluginFilePath(fullPath), true);
 	if (plugin) {
-		using namespace std::chrono_literals;
-		std::this_thread::sleep_for(1s);
 		auto& info = pluginMap[key];
 		info.name = plugin->getPluginName();
 		info.key = key;
