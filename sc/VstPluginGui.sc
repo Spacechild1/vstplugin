@@ -99,7 +99,7 @@ VstPluginGui : ObjectGui {
 	}
 
 	prUpdateGui {
-		var rowOnset, nparams=0, name, info, header, ncolumns=0, nrows=0;
+		var rowOnset, nparams=0, name, info, header, open, ncolumns=0, nrows=0;
 		var grid, font, minWidth, minHeight, minSize, displayFont;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
@@ -137,11 +137,17 @@ VstPluginGui : ObjectGui {
 		.align_(\center)
 		.object_(name ?? "[empty]")
 		.toolTip_(info ?? "No plugin loaded");
+		// "Open" button
+		open = Button.new
+		.states_([["Open"]])
+		.maxWidth_(60)
+		.action_({this.prOpen})
+		.toolTip_("Open a plugin");
 
 		grid = GridLayout.new;
 		grid.add(header, 0, 0);
 		menu.if {
-			var row = 1, col = 0, open;
+			var row = 1, col = 0;
 			var makePanel = { arg what;
 				var label, read, write;
 				label = StaticText.new.string_(what).align_(\right)
@@ -169,12 +175,6 @@ VstPluginGui : ObjectGui {
 				"%: %".format(index, item);
 			});
 			programMenu.value_(model.program);
-			// "Open" button
-			open = Button.new
-			.states_([["Open"]])
-			.maxWidth_(60)
-			.action_({this.prOpen})
-			.toolTip_("Open a plugin");
 			grid.add(HLayout.new(programMenu, open), row, col);
 			// try to use another columns if available
 			row = (ncolumns > 1).if { 0 } { row + 1 };
@@ -182,7 +182,10 @@ VstPluginGui : ObjectGui {
 			grid.add(makePanel.value("Program"), row, col);
 			grid.add(makePanel.value("Bank"), row + 1, col);
 			rowOnset = row + 2;
-		} { programMenu = nil; rowOnset = 1 };
+		} {
+			grid.add(open, 1, 0);
+			programMenu = nil; rowOnset = 2
+		};
 
 		// build parameters
 		paramSliders = Array.new(nparams);
