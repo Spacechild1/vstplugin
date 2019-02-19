@@ -1642,9 +1642,12 @@ void vst_path_clear(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 bool probePlugin(const std::string& fullPath, const std::string& key, bool verbose = false) {
 	if (verbose) {
 		Print("probing '%s' ... ", key.c_str());
+		fflush(stdout);
 	}
 	auto plugin = loadVSTPlugin(makeVSTPluginFilePath(fullPath), true);
 	if (plugin) {
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(1s);
 		auto& info = pluginMap[key];
 		info.name = plugin->getPluginName();
 		info.key = key;
@@ -1945,7 +1948,9 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 			memcpy(data->buf, path, size);
 			auto file = args->gets();
 			if (file) {
-				strncpy(data->reply, file, sizeof(data->reply));
+                auto len = std::min(sizeof(data->reply)-1, strlen(file)+1);
+                memcpy(data->reply, file, len);
+                data->reply[len] = 0;
 			}
 			else {
 				data->reply[0] = 0;
