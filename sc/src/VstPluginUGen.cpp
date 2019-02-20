@@ -1807,10 +1807,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		// force trailing slash
 		auto root = (path.back() != '/') ? path + "/" : path;
 		std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
-			DIR *dir;
-			struct dirent *entry;
-			if ((dir = opendir(dirname.c_str()))) {
-				while ((entry = readdir(dir)) != NULL) {
+			// search alphabetically
+			struct dirent **dirlist;
+			int n = scandir(dirname.c_str(), &dirlist, NULL, alphasort);
+			if (n >= 0) {
+				for (int i = 0; i < n; ++i) {
+					auto entry = dirlist[i];
 					std::string name(entry->d_name);
 					std::string fullPath = dirname + "/" + name;
 					// *first* check the extensions because VST plugins can be files (Linux) or directories (macOS)
@@ -1841,8 +1843,9 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 							searchDir(fullPath);
 						}
 					}
+					free(entry);
 				}
-				closedir(dir);
+				free(dirlist);
 			}
 		};
 		searchDir(root);
