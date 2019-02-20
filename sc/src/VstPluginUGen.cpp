@@ -11,6 +11,7 @@ namespace fs = std::experimental::filesystem;
 #else // just because of Clang on macOS not shipping <experimental/filesystem>...
 #include <dirent.h>
 #include <unistd.h>
+#include <strings.h>
 #endif
 static InterfaceTable *ft;
 
@@ -1807,9 +1808,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		// force trailing slash
 		auto root = (path.back() != '/') ? path + "/" : path;
 		std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
-			// search alphabetically
+			// search alphabetically (ignoring case)
 			struct dirent **dirlist;
-			int n = scandir(dirname.c_str(), &dirlist, NULL, alphasort);
+			auto sortnocase = [](const struct dirent** a, const struct dirent **b) -> int {
+				return strcasecmp((*a)->d_name, (*b)->d_name);
+			};
+			int n = scandir(dirname.c_str(), &dirlist, NULL, sortnocase);
 			if (n >= 0) {
 				for (int i = 0; i < n; ++i) {
 					auto entry = dirlist[i];
