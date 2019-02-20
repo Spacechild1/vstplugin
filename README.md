@@ -18,7 +18,7 @@ features:
 
 
 NOTE: currently only VST2.x plugins are supported but VST3 support will come soon!
-64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VstPluginUGen.scx and vice versa.
+64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VstPlugin.scx and vice versa.
 
 see the help files (vstplugin~-help.pd and VstPlugin.schelp) for detailed instructions.
 
@@ -66,8 +66,8 @@ vstplugin~ uses a slightly modified version of pd-lib-builder (https://github.co
 	
 SuperCollider:
 
-in order to use the VstPlugin class you have to first build VstPluginUGen. on macOS/Linux you can use GCC or Clang,
-on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
+in order to use the VstPlugin.sc and VstPluginController.sc classes, you need to first build the VstPlugin UGen.
+on macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
 
 1) 	make sure you have CMake installed
 2) 	get the Steinberg VST2 SDK (same as with Pd, see above)
@@ -83,7 +83,7 @@ on Windows you have to use VisualStudio because MinGW builds don't seem to work 
 	Windows: you have to tell CMake to generate a VisualStudio project (e.g. "Visual Studio 15 2017 Win64" for a 64 bit build) instead of a standard Unix makefile.
 	It's recommended to use the cmake-gui GUI application instead of the cmake command line tool.
 
-6) 	macOS/Linux: type 'make', Windows: open VstPluginUGen.sln with Visual Studio and build the project.
+6) 	macOS/Linux: type 'make', Windows: open VstPlugin.sln with Visual Studio and build the project.
 7) 	copy the /sc folder into your extensions folder and rename it to VstPlugin.
-	move VstPluginUGen.scx / VstPluginUGen.so from sc/build/... to the top (next to the .sc files)
+	move VstPlugin.scx / VstPlugin.so from sc/build/... to the top (next to the .sc files)
 	and remove the build/ and src/ folders.
