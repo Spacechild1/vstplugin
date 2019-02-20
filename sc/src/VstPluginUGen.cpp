@@ -3,11 +3,14 @@
 
 #include <limits>
 #include <set>
+#include <stdio.h>
 #ifdef _WIN32
+#include <io.h>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #else // just because of Clang on macOS not shipping <experimental/filesystem>...
 #include <dirent.h>
+#include <unistd.h>
 #endif
 static InterfaceTable *ft;
 
@@ -1646,12 +1649,30 @@ void vst_path_clear(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 		LOG_WARNING("currently searching!");
 	}
 }
+
+#ifdef _WIN32
+#define DUP _dup
+#define DUP2 _dup2
+#define FILENO _fileno
+#define CLOSE _close
+#else
+#define DUP dup
+#define DUP2 dup2
+#define FILENO fileno
+#define CLOSE close
+#endif
 // scan for plugins on the Server
 bool probePlugin(const std::string& fullPath, const std::string& key, bool verbose = false) {
+	bool success = false;
 	if (verbose) {
 		Print("probing '%s' ... ", key.c_str());
-		fflush(stdout);
 	}
+	// temporarily disable stdout
+	fflush(stdout);
+	int oldStdOut = DUP(FILENO(stdout));
+	FILE *nullOut = fopen("NUL", "w");
+	DUP2(FILENO(nullOut), FILENO(stdout));
+	// probe plugin
 	auto plugin = loadVSTPlugin(makeVSTPluginFilePath(fullPath), true);
 	if (plugin) {
 		auto& info = pluginMap[key];
@@ -1671,10 +1692,12 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 		info.programs.clear();
 		for (int i = 0; i < numPrograms; ++i) {
 			auto pgm = plugin->getProgramNameIndexed(i);
+#if 0
 			if (pgm.empty()) {
 				plugin->setProgram(i);
 				pgm = plugin->getProgramName();
 			}
+#endif
 			info.programs.push_back(pgm);
 		}
 		uint32 flags = 0;
@@ -1687,17 +1710,23 @@ bool probePlugin(const std::string& fullPath, const std::string& key, bool verbo
 		info.flags = flags;
 
 		freeVSTPlugin(plugin);
-		if (verbose) {
-			Print("ok!\n");
-		}
+		success = true;
 	}
-	else {
-		if (verbose) {
-			Print("failed!\n");
-		}
+	// restore stdout
+	fflush(stdout);
+	fclose(nullOut);
+	DUP2(oldStdOut, FILENO(stdout));
+	CLOSE(oldStdOut);
+	// done
+	if (verbose) {
+		Print(success ? "ok!\n" : "failed!\n");
 	}
-	return plugin != nullptr;
+	return success;
 }
+#undef DUP
+#undef DUP2
+#undef FILENO
+#undef CLOSE
 
 // expand stuff like %ProgramFiles% or ~/, see definition.
 std::string expandSearchPath(const char *path);
