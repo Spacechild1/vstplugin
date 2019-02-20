@@ -181,8 +181,8 @@ a Boolean telling if the Server should post a message for each VST plugin being 
 The message tells the name of the plugin and the probe result. Probing can fail if the file is
 not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
 
-emphasis::verbose:: can be very helpful when a search crashes the Server because you can easily
-spot the offending plugin.
+note::emphasis::verbose:: can be very helpful when a search crashes the Server because you can easily
+spot the offending plugin.::
 
 ARGUMENT:: wait
 The wait time between OSC messages.
@@ -202,20 +202,26 @@ with link::#*plugins::. The key is a symbol generated from the folder name(s) + 
 
 For a search path containing
 
-code::GVST/GChorus.dll GVST/GBand.dll Dexed.dll::
+code::GVST/GChorus.dll  GVST/GBand.dll  Dexed.dll::
 
 the search result would be:
 table::
 ## Key || Path
-## GVST/GChorus || GVST/GChorus.dll
-## GVST/GBand || GBand.dll
-## Dexed || Dexed.dll
+## GVST/GChorus || ...GVST/GChorus.dll
+## GVST/GBand || ...GBand.dll
+## Dexed || ...Dexed.dll
 ::
 
 The keys could now be used in link::Classes/VstPluginController#-open::.
 
-note::A new search doesn't automatically clear the cache, but existing keys are overwritten. 
-You can clear the cache explicitly with link::#*reset::.::
+If a plugin can't be probed it either means it's not a valid VST2.x plugin (VST3 support will come soon)
+or it has the wrong architecture. 
+note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
+warning::Buggy plugins can even crash the Server. Search with code::verbose: true:: to find out
+which plugin causes the crash and then remove it from the directory.::
+
+A new search doesn't automatically clear the cache, but existing keys are overwritten. 
+You can clear the cache explicitly with link::#*reset::.
 
 METHOD:: probe
 Probe a single VST plugin.
@@ -232,19 +238,21 @@ the symbol under which the plugin info is stored (if the probing was successful)
 If emphasis::key:: is code::nil::, 
 the emphasis::path:: argument (converted to a symbol) is used as the key.
 
-This method is used internally by link::Classes/VstPluginController#-open:: whenever it can't find the given path in the plugin dict.
-It might be occasionally useful for other purposes.
-
 ARGUMENT:: wait
 the wait time, see link::#*search::.
 
 ARGUMENT:: action
 an action to be called after the search has finished.
 
+DISCUSSION::
+
+This method is used internally by link::Classes/VstPluginController#-open:: whenever it can't find the given path in the plugin dictionary.
+It might be occasionally useful for other purposes.
+
 On success the plugin info is returned as an link::Classes/Event::, otherwise code::nil:: is returned.
 
 METHOD:: reset
-deletes all cached plugin info for a Server.
+Deletes all cached plugin info for a Server.
 
 ARGUMENT:: server
 the Server. If this is code::nil::, the default Server is assumed.
