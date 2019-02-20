@@ -823,6 +823,11 @@ void VstPlugin::queryPrograms(int32 index, int32 count) {
 		int32 nprogram = plugin_->getNumPrograms();
 		if (index >= 0 && index < nprogram) {
 			count = std::min<int32>(count, nprogram - index);
+#if 1
+            for (int i = 0; i < count; ++i) {
+                sendProgramName(index + i);
+            }
+#else
 			auto old = plugin_->getProgram();
 			bool changed;
 			for (int i = 0; i < count; ++i) {
@@ -831,6 +836,7 @@ void VstPlugin::queryPrograms(int32 index, int32 count) {
 			if (changed) {
 				plugin_->setProgram(old);
 			}
+#endif
 		}
 		else {
 			LOG_WARNING("VstPlugin: parameter index " << index << " out of range!");
@@ -1129,12 +1135,14 @@ bool VstPlugin::sendProgramName(int32 num) {
     float buf[maxSize];
 	bool changed = false;
 	auto name = plugin_->getProgramNameIndexed(num);
+#if 0
 	// some old plugins don't support indexed program name lookup
 	if (name.empty()) {
 		plugin_->setProgram(num);
 		name = plugin_->getProgramName();
 		changed = true;
 	}
+#endif
 	// msg format: index, len, characters...
 	buf[0] = num;
     int size = string2floatArray(name, buf + 1, maxSize - 1);
