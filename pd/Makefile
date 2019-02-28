@@ -33,12 +33,12 @@ endef
 define forLinux
   common.sources += ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
-  ldflags += -L/usr/X11R6/lib -lX11
+  ldlibs += -L/usr/X11R6/lib -lX11
 endef
 define forDarwin
  common.sources += ../vst/VSTWindowCocoa.mm
  cflags += -fno-objc-arc -DVSTTHREADS=0
- ldflags += -framework Cocoa
+ ldlibs += -framework Cocoa
 endef
 
 
