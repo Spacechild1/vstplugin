@@ -21,7 +21,7 @@ LOGLEVEL = 2
 cflags = -Wno-unused -Wno-unused-parameter \
 	-g \
 	-std=c++11 \
-        -I ../vst \
+        -I../vst \
 	-I"${VST2DIR}/pluginterfaces/vst2.x/" \
 	-DLOGLEVEL=${LOGLEVEL} \
 	$(empty)
