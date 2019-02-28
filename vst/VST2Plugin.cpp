@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <cmath>
+#include <cstring>
 #include <algorithm>
 
 /*------------------ endianess -------------------*/
