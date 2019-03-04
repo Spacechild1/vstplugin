@@ -13,6 +13,7 @@ namespace fs = std::experimental::filesystem;
 # include <dirent.h>
 # include <unistd.h>
 # include <strings.h>
+# include <sys/wait.h>
 #endif
 
 #if DL_OPEN
@@ -433,11 +434,11 @@ VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 		// child process
 		auto plugin = loadVSTPlugin(path, true);
 		if (plugin) {
-			VstPluginInfo info;
-			info.set(*plugin);
+			VstPluginInfo probeInfo;
+			probeInfo.set(*plugin);
 			std::ofstream file(tmpPath, std::ios::binary);
 			if (file.is_open()) {
-				info.serialize(file);
+				probeInfo.serialize(file);
 			}
 			freeVSTPlugin(plugin);
 			std::exit(1);
