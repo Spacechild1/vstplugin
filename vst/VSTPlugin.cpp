@@ -440,10 +440,10 @@ VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 				info.serialize(file);
 			}
 			freeVSTPlugin(plugin);
-			return 1;
+			std::exit(1);
 		}
 		else {
-			return 0;
+			std::exit(0);
 		}
 	}
 	else {
@@ -515,7 +515,7 @@ void searchPlugins(const std::string &dir, std::function<void(const std::string&
 	}
 #else // Unix
 	// force trailing slash
-	auto root = (path.back() != '/') ? path + "/" : path;
+	auto root = (dir.back() != '/') ? dir + "/" : dir;
 	std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
 		// search alphabetically (ignoring case)
 		struct dirent **dirlist;
