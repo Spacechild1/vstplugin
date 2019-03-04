@@ -367,8 +367,8 @@ VstPlugin : MultiOutUGen {
 		^(
 			parent: parentInfo,
 			key: key,
-			name: info[0],
-			path: info[1].asString,
+			path: info[0].asString,
+			name: info[1].asString,
 			version: info[2].asInt,
 			id: info[3].asInt,
 			numInputs: info[4].asInt,

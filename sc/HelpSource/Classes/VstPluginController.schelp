@@ -763,7 +763,7 @@ code::
 (
 SynthDef.new(\vsti, {arg out = 0;
 	// VST instruments usually don't have inputs
-	ReplaceOut.ar(out, VstPlugin.ar(nil, 2));
+	Out.ar(out, VstPlugin.ar(nil, 2));
 }).add;
 )
 
