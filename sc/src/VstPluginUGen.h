@@ -13,41 +13,11 @@
 #endif
 
 #include <memory>
-#include <fstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
-
-enum VstPluginFlags {
-	HasEditor = 0,
-	IsSynth,
-	SinglePrecision,
-	DoublePrecision,
-	MidiInput,
-	MidiOutput,
-	SysexInput,
-	SysexOutput
-};
-
-struct VstPluginInfo {
-	void serialize(std::ofstream& file);
-	// data
-	std::string key;
-	std::string name;
-	std::string fullPath;
-	int version = 0;
-	int id = 0;
-	int numInputs = 0;
-	int numOutputs = 0;
-	// parameter name + label
-	std::vector<std::pair<std::string, std::string>> parameters;
-	// default programs
-	std::vector<std::string> programs;
-	// see VstPluginFlags
-	uint32 flags = 0;
-};
 
 using VstPluginMap = std::unordered_map<std::string, VstPluginInfo>;
 

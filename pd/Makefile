@@ -23,7 +23,7 @@ LOGLEVEL = 2
 cflags = -Wno-unused -Wno-unused-parameter \
 	-g \
 	-std=c++11 \
-        -I../vst \
+    -I../vst \
 	${VST2_CFLAGS} \
 	-DLOGLEVEL=${LOGLEVEL} \
 	$(empty)
@@ -32,6 +32,7 @@ ldlibs = $(VST2_LIBS)
 define forWindows
   common.sources += ../vst/VSTWindowWin32.cpp
   cflags += -DVSTTHREADS=1
+  ldlibs += -lstdc++fs
 endef
 define forLinux
   common.sources += ../vst/VSTWindowX11.cpp

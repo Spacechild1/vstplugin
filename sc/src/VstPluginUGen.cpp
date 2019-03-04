@@ -4,56 +4,13 @@
 #include <limits>
 #include <set>
 #include <stdio.h>
-#ifdef _WIN32
-#include <io.h>
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
-#else // just because of Clang on macOS not shipping <experimental/filesystem>...
-#include <dirent.h>
-#include <unistd.h>
-#include <strings.h>
-#endif
+
 static InterfaceTable *ft;
 
 void SCLog(const std::string& msg){
 	Print(msg.c_str());
 }
 
-static const char * platformExtensions[] = {
-#ifdef __APPLE__
-	".vst",
-#endif
-#ifdef _WIN32
-	".dll",
-#endif
-#ifdef __linux__
-	".so",
-#endif
-	nullptr
-};
-
-static const char * defaultSearchPaths[] = {
-// macOS
-#ifdef __APPLE__
-	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST",
-#endif
-// Windows
-#ifdef _WIN32
-#ifdef _WIN64 // 64 bit
-#define PROGRAMFILES "%ProgramFiles%\\"
-#else // 32 bit
-#define PROGRAMFILES "%ProgramFiles(x86)%\\"
-#endif
-	PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins\\",
-	PROGRAMFILES "Common Files\\VST2\\", PROGRAMFILES "Common Files\\Steinberg\\VST2\\",
-#undef PROGRAMFILES
-#endif
-// Linux
-#ifdef __linux__
-	"/usr/lib/vst", "/usr/local/lib/vst",
-#endif
-	nullptr
-};
 static std::vector<std::string> userSearchPaths;
 static std::vector<std::string> pluginList;
 static VstPluginMap pluginMap;
@@ -459,7 +416,7 @@ void VstPluginCmdData::tryOpen(){
     }
 #endif
         // create plugin in main thread
-    plugin = loadVSTPlugin(makeVSTPluginFilePath(buf));
+    plugin = loadVSTPlugin(buf);
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin && plugin->hasEditor() && value){
@@ -480,7 +437,7 @@ void VstPluginCmdData::tryOpen(){
 
 #if VSTTHREADS
 void threadFunction(VstPluginCmdPromise promise, const char *path){
-    IVSTPlugin *plugin = loadVSTPlugin(makeVSTPluginFilePath(path));
+    IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
             // signal other thread
 		promise.set_value({ nullptr, nullptr });
@@ -1126,7 +1083,10 @@ void VstPlugin::vendorSpecific(int32 index, int32 value, void *ptr, float opt) {
 
 float VstPlugin::readControlBus(int32 num, int32 maxChannel) {
     if (num >= 0 && num < maxChannel) {
-		return mWorld->mControlBus[num];
+		ACQUIRE_BUS_CONTROL(num);
+		float value = mWorld->mControlBus[num];
+		RELEASE_BUS_CONTROL(num);
+		return value;
 	}
 	else {
 		return 0.f;
@@ -1651,104 +1611,43 @@ void vst_path_clear(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 	}
 }
 
-#ifdef _WIN32
-#define DUP _dup
-#define DUP2 _dup2
-#define FILENO _fileno
-#define CLOSE _close
-#else
-#define DUP dup
-#define DUP2 dup2
-#define FILENO fileno
-#define CLOSE close
-#endif
-// scan for plugins on the Server
-bool probePlugin(const std::string& fullPath, const std::string& key, bool verbose = false) {
-	bool success = false;
+bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose) {
+	if (verbose) Print("probing '%s' ... ", path.c_str());
+	auto result = probePlugin(path, info);
 	if (verbose) {
-		Print("probing '%s' ... ", key.c_str());
-	}
-	// temporarily disable stdout
-	fflush(stdout);
-	int oldStdOut = DUP(FILENO(stdout));
-	FILE *nullOut = fopen("NUL", "w");
-	DUP2(FILENO(nullOut), FILENO(stdout));
-	// probe plugin
-	auto plugin = loadVSTPlugin(makeVSTPluginFilePath(fullPath), true);
-	if (plugin) {
-		auto& info = pluginMap[key];
-		info.name = plugin->getPluginName();
-		info.key = key;
-		info.fullPath = fullPath;
-		info.version = plugin->getPluginVersion();
-		info.id = plugin->getPluginUniqueID();
-		info.numInputs = plugin->getNumInputs();
-		info.numOutputs = plugin->getNumOutputs();
-		int numParameters = plugin->getNumParameters();
-		info.parameters.clear();
-		for (int i = 0; i < numParameters; ++i) {
-			info.parameters.emplace_back(plugin->getParameterName(i), plugin->getParameterLabel(i));
+		if (result == VstProbeResult::success) {
+			Print("ok!\n");
+			return true;
 		}
-		int numPrograms = plugin->getNumPrograms();
-		info.programs.clear();
-		for (int i = 0; i < numPrograms; ++i) {
-			auto pgm = plugin->getProgramNameIndexed(i);
-#if 0
-			if (pgm.empty()) {
-				plugin->setProgram(i);
-				pgm = plugin->getProgramName();
-			}
-#endif
-			info.programs.push_back(pgm);
+		else if (result == VstProbeResult::fail) {
+			Print("failed!\n");
 		}
-		uint32 flags = 0;
-		flags |= plugin->hasEditor() << HasEditor;
-		flags |= plugin->isSynth() << IsSynth;
-		flags |= plugin->hasPrecision(VSTProcessPrecision::Single) << SinglePrecision;
-		flags |= plugin->hasPrecision(VSTProcessPrecision::Double) << DoublePrecision;
-		flags |= plugin->hasMidiInput() << MidiInput;
-		flags |= plugin->hasMidiOutput() << MidiOutput;
-		info.flags = flags;
-
-		freeVSTPlugin(plugin);
-		success = true;
+		else if (result == VstProbeResult::crash) {
+			Print("crashed!\n");
+		}
+		else if (result == VstProbeResult::error) {
+			Print("error!\n");
+		}
 	}
-	// restore stdout
-	fflush(stdout);
-	fclose(nullOut);
-	DUP2(oldStdOut, FILENO(stdout));
-	CLOSE(oldStdOut);
-	// done
-	if (verbose) {
-		Print(success ? "ok!\n" : "failed!\n");
-	}
-	return success;
+	return false;
 }
-#undef DUP
-#undef DUP2
-#undef FILENO
-#undef CLOSE
-
-// expand stuff like %ProgramFiles% or ~/, see definition.
-std::string expandSearchPath(const char *path);
 
 // recursively searches directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
 	auto data = (QueryCmdData *)cmdData;
 	bool verbose = data->index;
 	bool local = data->buf[0];
+	int total = 0;
+	std::vector<std::string> searchPaths;
 	// list of new plugin keys (so plugins can be queried by index)
 	pluginList.clear();
-	// search paths
-	std::vector<std::string> searchPaths;
-	// use defaults?
+	// use default search paths?
 	if (data->value) {
-		auto it = defaultSearchPaths;
-		while (*it) {
-			searchPaths.push_back(expandSearchPath(*it));
-			it++;
+		for (auto& path : getDefaultSearchPaths()) {
+			searchPaths.push_back(path);
 		}
 	}
+	// add user search paths
 	if (local) {
 		// get search paths from file
 		std::ifstream file(data->buf);
@@ -1766,106 +1665,33 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		// use search paths added with '/vst_path_add'
 		searchPaths.insert(searchPaths.end(), userSearchPaths.begin(), userSearchPaths.end());
 	}
-	// extensions
-	std::set<std::string> extensions;
-	auto e = platformExtensions;
-	while (*e) extensions.insert(*e++);
-	// search recursively
-	int total = 0;
 	for (auto& path : searchPaths) {
+		LOG_VERBOSE("searching in '" << path << "':");
 		int count = 0;
-		if (verbose) Print("searching in %s ...\n", path.c_str());
-		else LOG_VERBOSE("searching in " << path << " ...");
-#ifdef _WIN32
-		// root will have a trailing slash
-		auto root = fs::path(path).u8string();
-		for (auto& entry : fs::recursive_directory_iterator(root)) {
-			if (fs::is_regular_file(entry)) {
-				auto ext = entry.path().extension().u8string();
-				if (extensions.count(ext)) {
-					auto fullPath = entry.path().u8string();
-					// shortPath: fullPath minus root minus extension (without leading slash)
-					auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
-					// only forward slashes
-					for (auto& c : shortPath) {
-						if (c == '\\') c = '/';
-					}
-					if (!pluginMap.count(shortPath)) {
-						// only probe plugin if hasn't been added to the map yet
-						if (probePlugin(fullPath, shortPath, verbose)) {
-							// push new key to list
-							pluginList.push_back(shortPath);
-							count++;
-						}
-					}
-					else {
-						count++;
-					}
+		searchPlugins(path, [&](const std::string& absPath, const std::string& relPath) {
+			// check if the plugin hasn't been successfully probed already
+			if (!pluginMap.count(relPath)) {
+				VstPluginInfo info;
+				if (doProbePlugin(absPath, info, verbose)) {
+					pluginMap[relPath] = info;
+				}
+				else {
+					return;
 				}
 			}
-		}
-#else // Unix
-		// force trailing slash
-		auto root = (path.back() != '/') ? path + "/" : path;
-		std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
-			// search alphabetically (ignoring case)
-			struct dirent **dirlist;
-			auto sortnocase = [](const struct dirent** a, const struct dirent **b) -> int {
-				return strcasecmp((*a)->d_name, (*b)->d_name);
-			};
-			int n = scandir(dirname.c_str(), &dirlist, NULL, sortnocase);
-			if (n >= 0) {
-				for (int i = 0; i < n; ++i) {
-					auto entry = dirlist[i];
-					std::string name(entry->d_name);
-					std::string fullPath = dirname + "/" + name;
-					// *first* check the extensions because VST plugins can be files (Linux) or directories (macOS)
-					std::string ext;
-					auto extPos = name.find('.');
-					if (extPos != std::string::npos) {
-						ext = name.substr(extPos);
-					}
-					// found extension - probe it!
-					if (extensions.count(ext)) {
-						// shortPath: fullPath minus root minus extension (without leading slash)
-						auto shortPath = fullPath.substr(root.size() + 1, fullPath.size() - root.size() - ext.size() - 1);
-						if (!pluginMap.count(shortPath)) {
-							// only probe plugin if hasn't been added to the map yet
-							if (probePlugin(fullPath, shortPath, verbose)) {
-								// push new key to list
-								pluginList.push_back(shortPath);
-								count++;
-							}
-						}
-						else {
-							count++;
-						}
-					}
-					// otherwise search it if it's a directory
-					else if (entry->d_type == DT_DIR) {
-						if (strcmp(name.c_str(), ".") != 0 && strcmp(name.c_str(), "..") != 0) {
-							searchDir(fullPath);
-						}
-					}
-					free(entry);
-				}
-				free(dirlist);
-			}
-		};
-		searchDir(root);
-#endif
-		if (verbose) Print("found %d plugins.\n", count);
-		else LOG_VERBOSE("found " << count << " plugins.");
+			count++;
+			pluginList.push_back(relPath);
+		});
+		LOG_VERBOSE("found " << count << " plugins.");
 		total += count;
 	}
-	if (verbose) Print("total number of plugins: %d\n", total);
-	else LOG_VERBOSE("total number of plugins: " << total);
 	// write new info to file (only for local Servers)
 	if (local) {
 		std::ofstream file(data->buf);
 		if (file.is_open()) {
 			LOG_DEBUG("writing plugin info file");
 			for (auto& key : pluginList) {
+				file << key << "\t";
 				pluginMap[key].serialize(file);
 				file << "\n"; // seperate plugins with newlines
 			}
@@ -1877,27 +1703,6 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	// report the number of plugins
 	makeReply(data->reply, sizeof(data->reply), "/vst_search", (int)pluginList.size());
 	return true;
-}
-
-void VstPluginInfo::serialize(std::ofstream& file) {
-	// seperate data with tabs
-	file << key << "\t";
-	file << name << "\t";
-	file << fullPath << "\t";
-	file << version << "\t";
-	file << id << "\t";
-	file << numInputs << "\t";
-	file << numOutputs << "\t";
-	file << (int)parameters.size() << "\t";
-	file << (int)programs.size() << "\t";
-	file << (int)flags << "\t";
-	for (auto& param : parameters) {
-		file << param.first << "\t";
-		file << param.second << "\t";
-	}
-	for (auto& pgm : programs) {
-		file << pgm << "\t";
-	}
 }
 
 bool cmdSearchDone(World *inWorld, void *cmdData) {
@@ -1939,7 +1744,10 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 	if (data->buf[0]) {
 		key.assign(data->buf);
 		if (!pluginMap.count(key)) {
-			probePlugin(key, key); // key == path!
+			VstPluginInfo info;
+			if (doProbePlugin(key, info, verbose)) {
+				pluginMap[key] = info;
+			}
 		}
 	}
 	// by index (already probed)
@@ -1957,6 +1765,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 			// write to file
 			std::ofstream file(data->reply);
 			if (file.is_open()) {
+				file << key << "\t";
 				info.serialize(file);
 			}
 			else {
@@ -1965,7 +1774,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 		}
 		// reply with plugin info
 		makeReply(data->reply, sizeof(data->reply), "/vst_info", key,
-			info.name, info.fullPath, info.version, info.id, info.numInputs, info.numOutputs,
+			info.path, info.name, info.version, info.id, info.numInputs, info.numOutputs,
 			(int)info.parameters.size(), (int)info.programs.size(), (int)info.flags);
 	}
 	else {
@@ -2172,27 +1981,4 @@ PluginLoad(VstPlugin) {
 	PluginCmd(vst_path_clear);
 }
 
-// define the function at the very end to avoid clashes with SC headers
-#ifdef _WIN32
-#undef IN
-#undef OUT
-#undef PURE
-#include <Windows.h>
-std::string expandSearchPath(const char *path) {
-	char buf[MAX_PATH];
-	ExpandEnvironmentStringsA(path, buf, MAX_PATH);
-	return buf;
-}
-#else
-#include <stdlib.h>
-std::string expandSearchPath(const char *path) {
-	// expand ~ to home directory
-	if (path && *path == '~') {
-		const char *home = getenv("HOME");
-		if (home) {
-			return std::string(home) + std::string(path + 1);
-		}
-	}
-	return path;
-}
-#endif
+

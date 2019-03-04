@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <fstream>
+#include <functional>
 
 // for intptr_t
 #ifdef _MSC_VER
@@ -9,6 +12,7 @@ typedef __int64 intptr_t;
 #else
 typedef __int32 intptr_t;
 #endif
+typedef unsigned int uint32_t;
 #else
 #include <stdint.h>
 #endif
@@ -43,6 +47,36 @@ namespace VSTWindowFactory {
         // poll the main loop (needed if the editor is in the main thread)
     void mainLoopPoll();
 }
+
+enum VstPluginFlags {
+	HasEditor = 0,
+	IsSynth,
+	SinglePrecision,
+	DoublePrecision,
+	MidiInput,
+	MidiOutput,
+	SysexInput,
+	SysexOutput
+};
+
+struct VstPluginInfo {
+	void set(IVSTPlugin& plugin);
+	void serialize(std::ofstream& file, char sep = '\t');
+	void deserialize(std::ifstream& file, char sep = '\t');
+	// data
+	std::string path;
+	std::string name;
+	int version = 0;
+	int id = 0;
+	int numInputs = 0;
+	int numOutputs = 0;
+	// parameter name + label
+	std::vector<std::pair<std::string, std::string>> parameters;
+	// default programs
+	std::vector<std::string> programs;
+	// see VstPluginFlags
+	uint32_t flags = 0;
+};
 
 struct VSTMidiEvent {
     VSTMidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
@@ -160,14 +194,24 @@ class IVSTPlugin {
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
 };
 
-// expects an absolute path to the actual plugin file (e.g. "myplugin.dll" on Windows,
-// "myplugin.so" on Linux, "myplugin.vst" on Apple).
-// use 'makeVSTPluginFilePath' to avoid typing the extension.
+// expects an absolute path to the actual plugin file with or without extension
 // set 'silent' to true if you don't want to report errors when a plugin couldn't be opened
 // (e.g. for probing plugins)
 IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent = false);
 
 void freeVSTPlugin(IVSTPlugin* plugin);
 
-// check the path and append platform specific extension (if needed)
-std::string makeVSTPluginFilePath(const std::string& path);
+enum class VstProbeResult {
+	success,
+	fail,
+	crash,
+	error
+};
+
+VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info);
+
+void searchPlugins(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
+
+const std::vector<std::string>& getDefaultSearchPaths();
+
+const std::vector<const char *>& getPluginExtensions();

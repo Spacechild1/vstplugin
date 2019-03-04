@@ -1,11 +1,23 @@
 #include "VST2Plugin.h"
 #include "Utility.h"
 
+#include <unordered_set>
+
 #ifdef _WIN32
-# include <windows.h>
+# include <Windows.h>
+# include <process.h>
+#include <io.h>
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#else // just because of Clang on macOS not shipping <experimental/filesystem>...
+# include <dirent.h>
+# include <unistd.h>
+# include <strings.h>
 #endif
+
 #if DL_OPEN
 # include <dlfcn.h>
+# include <stdlib.h>
 #endif
 
 #ifdef __APPLE__
@@ -13,6 +25,43 @@
 # include <mach-o/dyld.h>
 # include <unistd.h>
 #endif
+
+static std::vector<const char *> platformExtensions = {
+#ifdef __APPLE__
+	".vst"
+#endif
+#ifdef _WIN32
+	".dll"
+#endif
+#ifdef __linux__
+	".so"
+#endif
+};
+
+static std::vector<const char *> defaultSearchPaths = {
+	// macOS
+#ifdef __APPLE__
+	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
+#endif
+	// Windows
+#ifdef _WIN32
+#ifdef _WIN64 // 64 bit
+#define PROGRAMFILES "%ProgramFiles%\\"
+#else // 32 bit
+#define PROGRAMFILES "%ProgramFiles(x86)%\\"
+#endif
+	PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins\\",
+	PROGRAMFILES "Common Files\\VST2\\", PROGRAMFILES "Common Files\\Steinberg\\VST2\\"
+#undef PROGRAMFILES
+#endif
+	// Linux
+#ifdef __linux__
+	"/usr/lib/vst", "/usr/local/lib/vst"
+#endif
+};
+
+// expanded search paths
+static std::vector<std::string> realDefaultSearchPaths;
 
 #ifdef _WIN32
 std::wstring widen(const std::string& s){
@@ -38,13 +87,29 @@ std::string shorten(const std::wstring& s){
 #endif
 
 
+
 IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
     AEffect *plugin = nullptr;
     vstPluginFuncPtr mainEntryPoint = nullptr;
     bool openedlib = false;
+	std::string fullPath = path;
+	auto dot = path.find_last_of('.');
+#ifdef _WIN32
+	const char *ext = ".dll";
+#elif defined(__linux__)
+	const char *ext = ".so";
+#elif defined(__APPLE__)
+	const char *ext = ".vst";
+#else
+	LOG_ERROR("makeVSTPluginFilePath: unknown platform!");
+	return name;
+#endif
+	if (dot == std::string::npos || path.find(ext, dot) == std::string::npos) {
+		fullPath += ext;
+	}
 #ifdef _WIN32
     if(!mainEntryPoint) {
-        HMODULE handle = LoadLibraryW(widen(path).c_str());
+        HMODULE handle = LoadLibraryW(widen(fullPath).c_str());
         if (handle) {
             openedlib = true;
             mainEntryPoint = (vstPluginFuncPtr)(GetProcAddress(handle, "VSTPluginMain"));
@@ -55,16 +120,16 @@ IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
                 FreeLibrary(handle);
             }
         } else if (!silent) {
-            LOG_ERROR("loadVSTPlugin: LoadLibrary failed for " << path);
+            LOG_ERROR("loadVSTPlugin: LoadLibrary failed for " << fullPath);
         }
     }
 #endif
 #if defined __APPLE__
     if(!mainEntryPoint) {
-            // Create a path to the bundle
+            // Create a fullPath to the bundle
             // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
         CFStringRef pluginPathStringRef = CFStringCreateWithCString(NULL,
-            path.c_str(), kCFStringEncodingUTF8);
+            fullPath.c_str(), kCFStringEncodingUTF8);
         CFURLRef bundleUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
             pluginPathStringRef, kCFURLPOSIXPathStyle, true);
         CFBundleRef bundle = nullptr;
@@ -72,7 +137,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
                 // Open the bundle
             bundle = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
             if(!bundle && !silent) {
-                LOG_ERROR("loadVSTPlugin: couldn't create bundle reference for " << path);
+                LOG_ERROR("loadVSTPlugin: couldn't create bundle reference for " << fullPath);
             }
         }
         if (bundle) {
@@ -96,7 +161,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
 #endif
 #if DL_OPEN
     if(!mainEntryPoint) {
-        void *handle = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
+        void *handle = dlopen(fullPath.c_str(), RTLD_NOW | RTLD_DEEPBIND);
         dlerror();
         if(handle) {
             openedlib = true;
@@ -108,7 +173,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
                 dlclose(handle);
             }
         } else if (!silent) {
-            LOG_ERROR("loadVSTPlugin: couldn't dlopen " << path);
+            LOG_ERROR("loadVSTPlugin: couldn't dlopen " << fullPath);
         }
     }
 #endif
@@ -129,7 +194,7 @@ IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
         LOG_ERROR("loadVSTPlugin: not a VST plugin!");
         return nullptr;
     }
-    return new VST2Plugin(plugin, path);
+    return new VST2Plugin(plugin, fullPath);
 }
 
 void freeVSTPlugin(IVSTPlugin *plugin){
@@ -187,21 +252,305 @@ namespace VSTWindowFactory {
 #endif
 }
 
-std::string makeVSTPluginFilePath(const std::string& name){
-    auto dot = name.find_last_of('.');
 #ifdef _WIN32
-    const char *ext = ".dll";
-#elif defined(__linux__)
-    const char *ext = ".so";
-#elif defined(__APPLE__)
-    const char *ext = ".vst";
-#else
-    LOG_ERROR("makeVSTPluginFilePath: unknown platform!");
-    return name;
-#endif
-    if (dot == std::string::npos || name.find(ext, dot) == std::string::npos){
-        return name + ext;
-    } else {
-        return name; // already has proper extension, return unchanged
-    }
+std::string expandPath(const char *path) {
+	char buf[MAX_PATH];
+	ExpandEnvironmentStringsA(path, buf, MAX_PATH);
+	return buf;
 }
+#else
+std::string expandPath(const char *path) {
+	// expand ~ to home directory
+	if (path && *path == '~') {
+		const char *home = getenv("HOME");
+		if (home) {
+			return std::string(home) + std::string(path + 1);
+		}
+	}
+	return path;
+}
+#endif
+
+const std::vector<std::string>& getDefaultSearchPaths() {
+	// not thread safe (yet)
+	if (realDefaultSearchPaths.empty()) {
+		for (auto& path : defaultSearchPaths) {
+			realDefaultSearchPaths.push_back(expandPath(path));
+		}
+	}
+	return realDefaultSearchPaths;
+}
+
+const std::vector<const char *>& getPluginExtensions() {
+	return platformExtensions;
+}
+
+void VstPluginInfo::set(IVSTPlugin& plugin) {
+	name = plugin.getPluginName();
+	version = plugin.getPluginVersion();
+	id = plugin.getPluginUniqueID();
+	numInputs = plugin.getNumInputs();
+	numOutputs = plugin.getNumOutputs();
+	int numParameters = plugin.getNumParameters();
+	parameters.clear();
+	for (int i = 0; i < numParameters; ++i) {
+		parameters.emplace_back(plugin.getParameterName(i), plugin.getParameterLabel(i));
+	}
+	int numPrograms = plugin.getNumPrograms();
+	programs.clear();
+	for (int i = 0; i < numPrograms; ++i) {
+		auto pgm = plugin.getProgramNameIndexed(i);
+#if 0
+		if (pgm.empty()) {
+			plugin.setProgram(i);
+			pgm = plugin.getProgramName();
+		}
+#endif
+		programs.push_back(pgm);
+	}
+	flags = 0;
+	flags |= plugin.hasEditor() << HasEditor;
+	flags |= plugin.isSynth() << IsSynth;
+	flags |= plugin.hasPrecision(VSTProcessPrecision::Single) << SinglePrecision;
+	flags |= plugin.hasPrecision(VSTProcessPrecision::Double) << DoublePrecision;
+	flags |= plugin.hasMidiInput() << MidiInput;
+	flags |= plugin.hasMidiOutput() << MidiOutput;
+}
+
+void VstPluginInfo::serialize(std::ofstream& file, char sep) {
+	file << path << sep;
+	file << name << sep;
+	file << version << sep;
+	file << id << sep;
+	file << numInputs << sep;
+	file << numOutputs << sep;
+	file << (int)parameters.size() << sep;
+	file << (int)programs.size() << sep;
+	file << (uint32_t)flags << sep;
+	for (auto& param : parameters) {
+		file << param.first << sep;
+		file << param.second << sep;
+	}
+	for (auto& pgm : programs) {
+		file << pgm << sep;
+	}
+}
+
+void VstPluginInfo::deserialize(std::ifstream& file, char sep) {
+	try {
+		std::vector<std::string> lines;
+		std::string line;
+		int numParameters = 0;
+		int numPrograms = 0;
+		int numLines = 9;
+		while (numLines--) {
+			std::getline(file, line, sep);
+			lines.push_back(std::move(line));
+		}
+		path = lines[0];
+		name = lines[1];
+		version = stol(lines[2]);
+		id = stol(lines[3]);
+		numInputs = stol(lines[4]);
+		numOutputs = stol(lines[5]);
+		numParameters = stol(lines[6]);
+		numPrograms = stol(lines[7]);
+		flags = stoul(lines[8]);
+		// parameters
+		parameters.clear();
+		for (int i = 0; i < numParameters; ++i) {
+			std::pair<std::string, std::string> param;
+			std::getline(file, param.first, sep);
+			std::getline(file, param.second, sep);
+			parameters.push_back(std::move(param));
+		}
+		// programs
+		programs.clear();
+		for (int i = 0; i < numPrograms; ++i) {
+			std::string program;
+			std::getline(file, program, sep);
+			programs.push_back(std::move(program));
+		}
+	}
+	catch (const std::invalid_argument& e) {
+		LOG_ERROR("VstPluginInfo::deserialize: invalid argument");
+	}
+	catch (const std::out_of_range& e) {
+		LOG_ERROR("VstPluginInfo::deserialize: out of range");
+	}
+}
+
+#ifdef _WIN32
+#define DUP _dup
+#define DUP2 _dup2
+#define FILENO _fileno
+#define CLOSE _close
+#else
+#define DUP dup
+#define DUP2 dup2
+#define FILENO fileno
+#define CLOSE close
+#endif
+// scan for plugins on the Server
+VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
+	int result = 0;
+	std::string tmpPath = std::tmpnam(nullptr);
+	// LOG_DEBUG("temp path: " << tmpPath);
+	// temporarily disable stdout
+#if 1
+	fflush(stdout);
+	int oldStdOut = DUP(FILENO(stdout));
+	FILE *nullOut = fopen("NUL", "w");
+	DUP2(FILENO(nullOut), FILENO(stdout));
+#endif
+#ifdef _WIN32
+	// probe the plugin in a new process
+	// get full path to probe.exe
+	char exePath[MAX_PATH + 1] = { 0 };
+#ifdef SUPERNOVA
+	const char *libName = "VstPlugin_supernova.scx"
+#else
+	const char *libName = "VstPlugin.scx";
+#endif
+	GetModuleFileNameA(GetModuleHandleA(libName), exePath, MAX_PATH);
+	auto pos = strstr(exePath, libName);
+	if (pos) {
+		strcpy(pos, "probe.exe");
+	}
+	// LOG_DEBUG("exe path: " << exePath);
+	std::string quotedPluginPath = "\"" + path + "\"";
+	std::string quotedTmpPath = "\"" + tmpPath + "\"";
+	// start new process with plugin path and temp file path as arguments
+	result = _spawnl(_P_WAIT, exePath, libName, quotedPluginPath.c_str(), quotedTmpPath.c_str(), nullptr);
+#else // Unix
+	// fork
+	pid_t pid = fork();
+	if (pid == -1) {
+		LOG_ERROR("probePluging: fork failed!");
+		return VstProbeResult::error;
+	}
+	else if (pid == 0) {
+		// child process
+		auto plugin = loadVSTPlugin(path, true);
+		if (plugin) {
+			VstPluginInfo info;
+			info.set(*plugin);
+			std::ofstream file(tmpPath, std::ios::binary);
+			if (file.is_open()) {
+				info.serialize(file);
+			}
+			freeVSTPlugin(plugin);
+			return 1;
+		}
+		else {
+			return 0;
+		}
+	}
+	else {
+		// parent process (waiting for child)
+		waitpid(pid, &result, 0);
+	}
+#endif
+#if 1
+	// restore stdout
+	fflush(stdout);
+	fclose(nullOut);
+	DUP2(oldStdOut, FILENO(stdout));
+	CLOSE(oldStdOut);
+#endif
+	if (result > 0) {
+		// get info from temp file
+		std::ifstream file(tmpPath, std::ios::binary);
+		if (file.is_open()) {
+			info.deserialize(file);
+			info.path = path;
+			file.close();
+			if (std::remove(tmpPath.c_str()) != 0) {
+				LOG_ERROR("probePlugin: couldn't remove temp file!");
+				return VstProbeResult::error;
+			}
+			return VstProbeResult::success;
+		}
+		else {
+			LOG_ERROR("probePlugin: couldn't read temp file!");
+			return VstProbeResult::error;
+		}
+	}
+	else if (result == 0) {
+		return VstProbeResult::fail;
+	}
+	else {
+		return VstProbeResult::crash;
+	}
+}
+#undef DUP
+#undef DUP2
+#undef FILENO
+#undef CLOSE
+
+void searchPlugins(const std::string &dir, std::function<void(const std::string&, const std::string&)> fn) {
+	// extensions
+	std::unordered_set<std::string> extensions;
+	for (auto& ext : platformExtensions) {
+		extensions.insert(ext);
+	}
+	// search recursively
+#ifdef _WIN32
+	// root will have a trailing slash
+	auto root = fs::path(dir).u8string();
+	for (auto& entry : fs::recursive_directory_iterator(root)) {
+		if (fs::is_regular_file(entry)) {
+			auto ext = entry.path().extension().u8string();
+			if (extensions.count(ext)) {
+				auto absPath = entry.path().u8string();
+				// relPath: fullPath minus root minus extension (without leading slash)
+				auto relPath = absPath.substr(root.size() + 1, absPath.size() - root.size() - ext.size() - 1);
+				// only forward slashes
+				for (auto& c : relPath) {
+					if (c == '\\') c = '/';
+				}
+				fn(absPath, relPath);
+			}
+		}
+	}
+#else // Unix
+	// force trailing slash
+	auto root = (path.back() != '/') ? path + "/" : path;
+	std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
+		// search alphabetically (ignoring case)
+		struct dirent **dirlist;
+		auto sortnocase = [](const struct dirent** a, const struct dirent **b) -> int {
+			return strcasecmp((*a)->d_name, (*b)->d_name);
+		};
+		int n = scandir(dirname.c_str(), &dirlist, NULL, sortnocase);
+		if (n >= 0) {
+			for (int i = 0; i < n; ++i) {
+				auto entry = dirlist[i];
+				std::string name(entry->d_name);
+				std::string absPath = dirname + "/" + name;
+				// *first* check the extensions because VST plugins can be files (Linux) or directories (macOS)
+				std::string ext;
+				auto extPos = name.find('.');
+				if (extPos != std::string::npos) {
+					ext = name.substr(extPos);
+				}
+				if (extensions.count(ext)) {
+					// shortPath: fullPath minus root minus extension (without leading slash)
+					auto relPath = absPath.substr(root.size() + 1, absPath.size() - root.size() - ext.size() - 1);
+					fn(absPath, relPath);
+				}
+				// otherwise search it if it's a directory
+				else if (entry->d_type == DT_DIR) {
+					if (strcmp(name.c_str(), ".") != 0 && strcmp(name.c_str(), "..") != 0) {
+						searchDir(absPath);
+					}
+				}
+				free(entry);
+			}
+			free(dirlist);
+		}
+	};
+	searchDir(root);
+#endif
+}
+

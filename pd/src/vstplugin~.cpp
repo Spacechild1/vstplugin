@@ -435,11 +435,21 @@ static void vstplugin_close(t_vstplugin *x){
 static void vstplugin_open(t_vstplugin *x, t_symbol *s){
     vstplugin_close(x);
     char dirresult[MAXPDSTRING];
-    char *name;
-    std::string vstpath = makeVSTPluginFilePath(s->s_name);
+    char *name = nullptr;
+#ifdef _WIN32
+    const char *ext = ".dll";
+#elif defined(__APPLE__)
+    const char *ext = ".vst";
+#else
+    const char *ext = ".so";
+#endif
+    std::string vstpath = s->s_name;
+    if (vstpath.find(ext) == std::string::npos){
+        vstpath += ext;
+    }
 #ifdef __APPLE__
     const char *bundleinfo = "/Contents/Info.plist";
-    vstpath += bundleinfo; // on MacOS VSTs are bundles but canvas_open needs a real file
+    vstpath += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
 #endif
     int fd = canvas_open(x->x_canvas, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
     if (fd >= 0){
