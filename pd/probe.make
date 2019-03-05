@@ -1,5 +1,7 @@
 # Windows only
 
+libname = vstplugin~.$(extension)
+
 .PHONY: all clean install
 
 all: probe.exe
@@ -17,6 +19,6 @@ install-strip: install
 ../vst/probe.o: ../vst/probe.cpp
 	$(CXX) $(cxx.flags) -o $@ -c $<
 
-probe.exe: ../vst/probe.o
-	$(CXX) $(cxx.flags) -o $@ $^ -static-libgcc -static-libstdc++ -L. -l:vstplugin~.dll
+probe.exe: ../vst/probe.o $(libname)
+	$(CXX) $(cxx.flags) -o $@ $< -static-libgcc -static-libstdc++ -L. -l:$(libname)
 
