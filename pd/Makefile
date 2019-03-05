@@ -9,10 +9,12 @@
 #
 # make install PDDIR=/path/to/pure-data PDLIBDIR=./build
 
+export
+export cxx.flags
+
 lib.name = vstplugin~
 
 class.sources = src/vstplugin~.cpp
-
 common.sources = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
@@ -33,6 +35,7 @@ define forWindows
   common.sources += ../vst/VSTWindowWin32.cpp
   cflags += -DVSTTHREADS=1
   ldlibs += -lstdc++fs
+  makefiles = probe.make
 endef
 define forLinux
   common.sources += ../vst/VSTWindowX11.cpp
@@ -44,7 +47,6 @@ define forDarwin
  cflags += -fno-objc-arc -DVSTTHREADS=0
  ldlibs += -framework Cocoa
 endef
-
 
 # all extra files to be included in binary distribution of the library
 datafiles = vstplugin~-help.pd ../README.md ../LICENSE.txt
