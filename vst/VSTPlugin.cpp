@@ -382,26 +382,31 @@ void VstPluginInfo::deserialize(std::ifstream& file, char sep) {
 }
 
 #if _WIN32
-static std::wstring dllDir;
+static HINSTANCE hInstance = 0;
+
+static std::wstring getDirectory(){
+    wchar_t wpath[MAX_PATH+1];
+    if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
+        wchar_t *ptr = wpath;
+        int pos = 0;
+        while (*ptr){
+            if (*ptr == '\\'){
+                pos = (ptr - wpath);
+            }
+            ++ptr;
+        }
+        wpath[pos] = 0;
+        LOG_DEBUG("dll directory: " << shorten(wpath));
+        return std::wstring(wpath);
+    } else {
+        LOG_ERROR("couldn't get module file name");
+        return std::wstring();
+    }
+}
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
     if (fdwReason == DLL_PROCESS_ATTACH){
-        wchar_t wpath[MAX_PATH+1];
-        if (GetModuleFileNameW(hinstDLL, wpath, MAX_PATH) > 0){
-            wchar_t *ptr = wpath;
-            int pos = 0;
-            while (*ptr){
-                if (*ptr == '\\'){
-                    pos = (ptr - wpath);
-                }
-                ++ptr;
-            }
-            wpath[pos] = 0;
-            dllDir = wpath;
-            LOG_DEBUG("dll directory: " << shorten(dllDir));
-        } else {
-            LOG_ERROR("couldn't get module file name");
-        }
+        hInstance = hinstDLL;
     }
     return true;
 }
@@ -439,7 +444,7 @@ VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 #endif
 #ifdef _WIN32
     // probe the plugin in a new process
-    std::wstring probePath = dllDir + L"\\probe.exe";
+    std::wstring probePath = getDirectory() + L"\\probe.exe";
     std::wstring quotedPluginPath = L"\"" + widen(path) + L"\"";
     std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
     // start new process with plugin path and temp file path as arguments
