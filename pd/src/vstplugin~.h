@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <unordered_map>
 #include <type_traits>
 
 #ifndef VSTTHREADS
@@ -46,6 +47,8 @@ class t_vstplugin {
     std::vector<t_sample *> x_sigoutlets;
         // VST plugin
     IVSTPlugin* x_plugin = nullptr;
+    VstPluginInfo *x_info = nullptr;
+    t_symbol *x_path = nullptr;
     int x_bypass = 0;
     int x_dp; // single/double precision
     std::unique_ptr<t_vsteditor> x_editor;
@@ -84,7 +87,7 @@ class t_vsteditor : IVSTPluginListener {
     t_vsteditor(t_vstplugin &owner, t_gui gui);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const char* path);
+    IVSTPlugin* open_plugin(const std::string& path);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -110,7 +113,7 @@ class t_vsteditor : IVSTPluginListener {
     }
 #if VSTTHREADS
         // open plugin in a new thread
-    void thread_function(std::promise<IVSTPlugin *> promise, const char *path);
+    void thread_function(std::promise<IVSTPlugin *> promise, const std::string& path);
 #endif
         // notify Pd (e.g. for MIDI event or GUI automation)
     template<typename T, typename U>

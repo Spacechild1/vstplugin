@@ -22,6 +22,9 @@ static void substitute_whitespace(char *buf){
     }
 }
 
+// static std::unordered_map<t_canvas *, std::unordered_map<t_symbol *, std::string>> canvasPathDict;
+static std::unordered_map<std::string, VstPluginInfo> pluginInfoDict;
+
 /*--------------------- t_vstparam --------------------------*/
 
 static t_class *vstparam_class;
@@ -217,7 +220,7 @@ void t_vsteditor::tick(t_vsteditor *x){
 
 #if VSTTHREADS
     // create plugin + editor GUI (in another thread)
-void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char *path){
+void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const std::string& path){
     LOG_DEBUG("enter thread");
     IVSTPlugin *plugin = loadVSTPlugin(path);
     if (!plugin){
@@ -257,7 +260,7 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const char
 }
 #endif
 
-IVSTPlugin* t_vsteditor::open_plugin(const char *path){
+IVSTPlugin* t_vsteditor::open_plugin(const std::string& path){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
     if (e_gui == VST_GUI){
@@ -429,43 +432,102 @@ void t_vsteditor::vis(bool v){
 // close
 static void vstplugin_close(t_vstplugin *x){
     x->x_editor->close_plugin();
+    x->x_info = nullptr;
+    x->x_path = nullptr;
+}
+
+static bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose){
+    if (verbose) startpost("probing '%s' ... ", path.c_str());
+    auto result = probePlugin(path, info);
+    if (verbose) {
+        if (result == VstProbeResult::success) {
+            poststring("ok!");
+        }
+        else if (result == VstProbeResult::fail) {
+            poststring("failed!");
+        }
+        else if (result == VstProbeResult::crash) {
+            poststring("crashed!");
+        }
+        else if (result == VstProbeResult::error) {
+            poststring("error!");
+        }
+        endpost();
+    }
+    return result == VstProbeResult::success;
 }
 
 // open
 static void vstplugin_open(t_vstplugin *x, t_symbol *s){
-    vstplugin_close(x);
-    char dirresult[MAXPDSTRING];
-    char *name = nullptr;
-#ifdef _WIN32
-    const char *ext = ".dll";
-#elif defined(__APPLE__)
-    const char *ext = ".vst";
-#else
-    const char *ext = ".so";
-#endif
-    std::string vstpath = s->s_name;
-    if (vstpath.find(ext) == std::string::npos){
-        vstpath += ext;
+    if (s == x->x_path){
+        return;
     }
-#ifdef __APPLE__
-    const char *bundleinfo = "/Contents/Info.plist";
-    vstpath += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
-#endif
-    int fd = canvas_open(x->x_canvas, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
-    if (fd >= 0){
-        sys_close(fd);
-        char path[MAXPDSTRING];
-        snprintf(path, MAXPDSTRING, "%s/%s", dirresult, name);
-#ifdef __APPLE__
-        char *find = strstr(path, bundleinfo);
-        if (find){
-            *find = 0; // restore the bundle path
+    vstplugin_close(x);
+    std::string path;
+        // resolve relative path
+    if (!sys_isabsolutepath(s->s_name)){
+        char buf[MAXPDSTRING+1];
+    #ifdef _WIN32
+        const char *ext = ".dll";
+    #elif defined(__APPLE__)
+        const char *ext = ".vst";
+    #else
+        const char *ext = ".so";
+    #endif
+        std::string vstpath = s->s_name;
+        if (vstpath.find(ext) == std::string::npos){
+            vstpath += ext;
         }
-#endif
-        sys_bashfilename(path, path);
-            // load VST plugin in new thread
+            // first try canvas search paths
+        char dirresult[MAXPDSTRING];
+        char *name = nullptr;
+    #ifdef __APPLE__
+        const char *bundleinfo = "/Contents/Info.plist";
+        vstpath += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
+    #endif
+        int fd = canvas_open(x->x_canvas, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        if (fd >= 0){
+            sys_close(fd);
+            snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
+    #ifdef __APPLE__
+            char *find = strstr(buf, bundleinfo);
+            if (find){
+                *find = 0; // restore the bundle path
+            }
+    #endif
+            path = buf;
+        } else {
+                // otherwise try default VST paths
+            for (auto& vstPath : getDefaultSearchPaths()){
+                snprintf(buf, MAXPDSTRING, "%s/%s", vstPath.c_str(), vstpath.c_str());
+                LOG_DEBUG("trying " << buf);
+                fd = sys_open(buf, 0);
+                if (fd >= 0){
+                    sys_close(fd);
+                    path = buf;
+                    break;
+                }
+            }
+        }
+    } else {
+        path = s->s_name;
+    }
+    if (!path.empty()){
+        sys_bashfilename(&path[0], &path[0]);
+            // probe plugin (if necessary)
+        if (!pluginInfoDict.count(path)){
+            VstPluginInfo info;
+            if (doProbePlugin(path, info, true)){
+                pluginInfoDict[path] = info;
+            } else {
+                return;
+            }
+        }
+            // open VST plugin
         IVSTPlugin *plugin = x->x_editor->open_plugin(path);
         if (plugin){
+            x->x_info = &pluginInfoDict[path]; // items are never removed
+            x->x_path = s;
             post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
                 // initially, blocksize is 0 (before the 'dsp' message is sent).
                 // some plugins might not like 0, so we send some sane default size.
@@ -476,10 +538,11 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
             x->update_buffer();
             x->x_editor->setup();
         } else {
-            pd_error(x, "%s: couldn't open \"%s\" - not a VST plugin!", classname(x), path);
+                // shouldn't happen...
+            pd_error(x, "%s: couldn't open '%s'", classname(x), path.c_str());
         }
     } else {
-        pd_error(x, "%s: couldn't open \"%s\" - no such file!", classname(x), s->s_name);
+        pd_error(x, "%s: couldn't open '%s' - no such file!", classname(x), s->s_name);
     }
 }
 
