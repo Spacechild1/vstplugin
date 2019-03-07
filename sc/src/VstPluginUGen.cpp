@@ -1616,8 +1616,7 @@ bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose) {
 	auto result = probePlugin(path, info);
 	if (verbose) {
 		if (result == VstProbeResult::success) {
-			Print("ok!\n");
-			return true;
+            Print("ok!\n");
 		}
 		else if (result == VstProbeResult::fail) {
 			Print("failed!\n");
@@ -1629,7 +1628,7 @@ bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose) {
 			Print("error!\n");
 		}
 	}
-	return false;
+    return result == VstProbeResult::ok;
 }
 
 // recursively searches directories for VST plugins.
@@ -1643,7 +1642,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	pluginList.clear();
 	// use default search paths?
 	if (data->value) {
-		for (auto& path : getDefaultSearchPaths()) {
+        for (auto& path : getDefaultSearchPaths()) {
 			searchPaths.push_back(path);
 		}
 	}
