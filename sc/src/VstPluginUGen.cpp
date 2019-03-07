@@ -1628,7 +1628,7 @@ bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose) {
 			Print("error!\n");
 		}
 	}
-    return result == VstProbeResult::ok;
+	return result == VstProbeResult::success;
 }
 
 // recursively searches directories for VST plugins.
