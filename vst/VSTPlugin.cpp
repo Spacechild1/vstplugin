@@ -51,8 +51,8 @@ static std::vector<const char *> defaultSearchPaths = {
 #else // 32 bit
 #define PROGRAMFILES "%ProgramFiles(x86)%\\"
 #endif
-	PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins\\",
-	PROGRAMFILES "Common Files\\VST2\\", PROGRAMFILES "Common Files\\Steinberg\\VST2\\"
+    PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins",
+    PROGRAMFILES "Common Files\\VST2", PROGRAMFILES "Common Files\\Steinberg\\VST2"
 #undef PROGRAMFILES
 #endif
 	// Linux
@@ -381,6 +381,32 @@ void VstPluginInfo::deserialize(std::ifstream& file, char sep) {
 	}
 }
 
+#if _WIN32
+static std::wstring dllDir;
+
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
+    if (fdwReason == DLL_PROCESS_ATTACH){
+        wchar_t wpath[MAX_PATH+1];
+        if (GetModuleFileNameW(hinstDLL, wpath, MAX_PATH) > 0){
+            wchar_t *ptr = wpath;
+            int pos = 0;
+            while (*ptr){
+                if (*ptr == '\\'){
+                    pos = (ptr - wpath);
+                }
+                ++ptr;
+            }
+            wpath[pos] = 0;
+            dllDir = wpath;
+            LOG_DEBUG("dll directory: " << shorten(dllDir));
+        } else {
+            LOG_ERROR("couldn't get module file name");
+        }
+    }
+    return true;
+}
+#endif
+
 #ifdef _WIN32
 #define DUP _dup
 #define DUP2 _dup2
@@ -395,8 +421,15 @@ void VstPluginInfo::deserialize(std::ifstream& file, char sep) {
 // scan for plugins on the Server
 VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 	int result = 0;
-	std::string tmpPath = std::tmpnam(nullptr);
-	// LOG_DEBUG("temp path: " << tmpPath);
+#ifdef _WIN32
+    wchar_t tmpDir[MAX_PATH+1] = { 0 };
+    GetTempPathW(MAX_PATH, tmpDir);
+    std::wstring tmpPath = std::wstring(tmpDir) + _wtmpnam(nullptr);
+    LOG_DEBUG("temp path: " << shorten(tmpPath));
+#else
+    std::string tmpPath = tmpnam(nullptr);
+    LOG_DEBUG("temp path: " << tmpPath);
+#endif
 	// temporarily disable stdout
 #if 1
 	fflush(stdout);
@@ -405,24 +438,12 @@ VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 	DUP2(FILENO(nullOut), FILENO(stdout));
 #endif
 #ifdef _WIN32
-	// probe the plugin in a new process
-	// get full path to probe.exe
-	char exePath[MAX_PATH + 1] = { 0 };
-#ifdef SUPERNOVA
-	const char *libName = "VstPlugin_supernova.scx"
-#else
-	const char *libName = "VstPlugin.scx";
-#endif
-	GetModuleFileNameA(GetModuleHandleA(libName), exePath, MAX_PATH);
-	auto pos = strstr(exePath, libName);
-	if (pos) {
-		strcpy(pos, "probe.exe");
-	}
-	// LOG_DEBUG("exe path: " << exePath);
-	std::string quotedPluginPath = "\"" + path + "\"";
-	std::string quotedTmpPath = "\"" + tmpPath + "\"";
-	// start new process with plugin path and temp file path as arguments
-	result = _spawnl(_P_WAIT, exePath, libName, quotedPluginPath.c_str(), quotedTmpPath.c_str(), nullptr);
+    // probe the plugin in a new process
+    std::wstring probePath = dllDir + L"\\probe.exe";
+    std::wstring quotedPluginPath = L"\"" + widen(path) + L"\"";
+    std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
+    // start new process with plugin path and temp file path as arguments
+    result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
 	// fork
 	pid_t pid = fork();
@@ -460,13 +481,24 @@ VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 	CLOSE(oldStdOut);
 #endif
 	if (result > 0) {
-		// get info from temp file
-		std::ifstream file(tmpPath, std::ios::binary);
+        // get info from temp file
+    #ifdef _WIN32
+        // there's no way to open a fstream with a wide character path...
+        // (the C++17 standard allows filesystem::path but this isn't widely available yet)
+        // for now let's assume temp paths are always ASCII. LATER fix this!
+        std::ifstream file(shorten(tmpPath), std::ios::binary);
+    #else
+        std::ifstream file(tmpPath, std::ios::binary);
+    #endif
 		if (file.is_open()) {
 			info.deserialize(file);
 			info.path = path;
 			file.close();
-			if (std::remove(tmpPath.c_str()) != 0) {
+        #ifdef _WIN32
+            if (!fs::remove(tmpPath)) {
+        #else
+            if (std::remove(tmpPath.c_str()) != 0) {
+        #endif
 				LOG_ERROR("probePlugin: couldn't remove temp file!");
 				return VstProbeResult::error;
 			}
