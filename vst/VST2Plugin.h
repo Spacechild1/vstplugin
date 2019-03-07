@@ -23,7 +23,7 @@ class VST2Plugin final : public IVSTPlugin {
     int getPluginVersion() const override;
     int getPluginUniqueID() const override;
     virtual int canDo(const char *what) const override;
-    virtual intptr_t vedorSpecific(int index, intptr_t value, void *ptr, float opt) override;
+    virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) override;
 
 	void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;

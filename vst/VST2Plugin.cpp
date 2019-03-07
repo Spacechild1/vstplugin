@@ -178,7 +178,7 @@ int VST2Plugin::canDo(const char *what) const {
     return dispatch(effCanDo, 0, 0, (char *)what);
 }
 
-intptr_t VST2Plugin::vedorSpecific(int index, intptr_t value, void *ptr, float opt){
+intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *ptr, float opt){
     return dispatch(effVendorSpecific, index, value, ptr, opt);
 }
 

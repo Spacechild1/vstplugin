@@ -525,7 +525,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
             data[i] = atom_getfloat(argv + j);
         }
     }
-    int result = x->x_plugin->vedorSpecific(index, value, data, opt);
+    int result = x->x_plugin->vendorSpecific(index, value, data, opt);
     t_atom msg;
     SETFLOAT(&msg, result);
     outlet_anything(x->x_messout, gensym("vendor_method"), 1, &msg);

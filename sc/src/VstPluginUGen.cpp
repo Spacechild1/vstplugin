@@ -1074,7 +1074,7 @@ void VstPlugin::canDo(const char *what) {
 
 void VstPlugin::vendorSpecific(int32 index, int32 value, void *ptr, float opt) {
 	if (check()) {
-		auto result = plugin_->vedorSpecific(index, value, ptr, opt);
+        auto result = plugin_->vendorSpecific(index, value, ptr, opt);
 		sendMsg("/vst_vendor_method", (float)result);
 	}
 }

@@ -117,7 +117,7 @@ class IVSTPlugin {
     virtual int getPluginVersion() const = 0;
     virtual int getPluginUniqueID() const = 0;
     virtual int canDo(const char *what) const = 0;
-    virtual intptr_t vedorSpecific(int index, intptr_t value, void *ptr, float opt) = 0;
+    virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) = 0;
 
     virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
     virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;
