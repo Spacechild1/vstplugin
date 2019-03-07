@@ -20,5 +20,5 @@ install-strip: install
 	$(CXX) $(cxx.flags) -o $@ -c $<
 
 probe.exe: ../vst/probe.o $(libname)
-	$(CXX) $(cxx.flags) -o $@ $< -static-libgcc -static-libstdc++ -L. -l:$(libname)
+	$(CXX) $(cxx.flags) -o $@ $< -static-libgcc -static-libstdc++ -municode -L. -l:$(libname)
 
