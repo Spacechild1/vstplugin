@@ -427,13 +427,15 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
 VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 	int result = 0;
 #ifdef _WIN32
-    wchar_t tmpDir[MAX_PATH+1] = { 0 };
-    GetTempPathW(MAX_PATH, tmpDir);
-    std::wstring tmpPath = std::wstring(tmpDir) + _wtmpnam(nullptr);
-    LOG_DEBUG("temp path: " << shorten(tmpPath));
+    // tmpnam/tempnam work differently on MSVC and MinGW, so we use the Win32 API instead
+    wchar_t tmpDir[MAX_PATH+1];
+    auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
+    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"%p", (void *)tmpDir);
+    std::wstring tmpPath = tmpDir;
+    // LOG_DEBUG("temp path: " << shorten(tmpPath));
 #else
     std::string tmpPath = tmpnam(nullptr);
-    LOG_DEBUG("temp path: " << tmpPath);
+    // LOG_DEBUG("temp path: " << tmpPath);
 #endif
 	// temporarily disable stdout
 #if 1
