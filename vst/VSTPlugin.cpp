@@ -396,7 +396,7 @@ static std::wstring getDirectory(){
             ++ptr;
         }
         wpath[pos] = 0;
-        LOG_DEBUG("dll directory: " << shorten(wpath));
+        // LOG_DEBUG("dll directory: " << shorten(wpath));
         return std::wstring(wpath);
     } else {
         LOG_ERROR("couldn't get module file name");
@@ -536,23 +536,25 @@ void searchPlugins(const std::string &dir, std::function<void(const std::string&
 	}
 	// search recursively
 #ifdef _WIN32
-	// root will have a trailing slash
-	auto root = fs::path(dir).u8string();
-	for (auto& entry : fs::recursive_directory_iterator(root)) {
-		if (fs::is_regular_file(entry)) {
-			auto ext = entry.path().extension().u8string();
-			if (extensions.count(ext)) {
-				auto absPath = entry.path().u8string();
-				// relPath: fullPath minus root minus extension (without leading slash)
-				auto relPath = absPath.substr(root.size() + 1, absPath.size() - root.size() - ext.size() - 1);
-				// only forward slashes
-				for (auto& c : relPath) {
-					if (c == '\\') c = '/';
-				}
-				fn(absPath, relPath);
-			}
-		}
-	}
+    try {
+        // root will have a trailing slash
+        auto root = fs::path(dir).u8string();
+        for (auto& entry : fs::recursive_directory_iterator(root)) {
+            if (fs::is_regular_file(entry)) {
+                auto ext = entry.path().extension().u8string();
+                if (extensions.count(ext)) {
+                    auto absPath = entry.path().u8string();
+                    // relPath: fullPath minus root minus extension (without leading slash)
+                    auto relPath = absPath.substr(root.size() + 1, absPath.size() - root.size() - ext.size() - 1);
+                    // only forward slashes
+                    for (auto& c : relPath) {
+                        if (c == '\\') c = '/';
+                    }
+                    fn(absPath, relPath);
+                }
+            }
+        }
+    } catch (const fs::filesystem_error& e) {};
 #else // Unix
 	// force trailing slash
 	auto root = (dir.back() != '/') ? dir + "/" : dir;
