@@ -457,6 +457,65 @@ static bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool ver
     return result == VstProbeResult::success;
 }
 
+// search
+static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    bool verbose = false;
+    bool useDefault = true;
+
+    auto doSearch = [&](const char *path){
+        int count = 0;
+        post("searching in '%s' ...", path);
+        searchPlugins(path, [&](const std::string& absPath, const std::string& relPath){
+            t_symbol *pluginName = nullptr;
+            std::string pluginPath = absPath;
+            sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
+                // probe plugin (if necessary)
+            auto it = pluginInfoDict.find(pluginPath);
+            if (it == pluginInfoDict.end()){
+                VstPluginInfo info;
+                if (doProbePlugin(pluginPath, info, verbose)){
+                    pluginInfoDict[pluginPath] = info;
+                    pluginName = gensym(info.name.c_str());
+                }
+            } else {
+                pluginName = gensym(it->second.name.c_str());
+            }
+            if (pluginName){
+                t_atom msg[2];
+                SETSYMBOL(&msg[0], pluginName);
+                SETSYMBOL(&msg[1], gensym(pluginPath.c_str()));
+                outlet_anything(x->x_messout, gensym("plugin"), 2, msg);
+                count++;
+            }
+        });
+        post("found %d plugins.", count);
+    };
+
+    while (argc && argv->a_type == A_SYMBOL){
+        const char *sym = argv->a_w.w_symbol->s_name;
+        if (*sym == '-'){
+            if (!strcmp(sym, "-v")){
+                verbose = true;
+            } else if (!strcmp(sym, "-n")) {
+                useDefault = false;
+            } else {
+                pd_error(x, "%s: unknown flag '%s'", classname(x), sym);
+            }
+        } else {
+            char path[MAXPDSTRING];
+            canvas_makefilename(x->x_canvas, sym, path, MAXPDSTRING);
+            doSearch(path);
+        }
+        argc--; argv++;
+    }
+
+    if (useDefault){
+        for (auto& path : getDefaultSearchPaths()){
+            doSearch(path.c_str());
+        }
+    }
+}
+
 // open
 static void vstplugin_open(t_vstplugin *x, t_symbol *s){
     if (s == x->x_path){
@@ -513,7 +572,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
         path = s->s_name;
     }
     if (!path.empty()){
-        sys_bashfilename(&path[0], &path[0]);
+        sys_unbashfilename(&path[0], &path[0]);
             // probe plugin (if necessary)
         if (!pluginInfoDict.count(path)){
             VstPluginInfo info;
@@ -1001,7 +1060,7 @@ static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     sys_close(fd);
     char path[MAXPDSTRING];
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
-    sys_bashfilename(path, path);
+    // sys_bashfilename(path, path);
     if (x->x_plugin->readProgramFile(path)){
         x->x_editor->update();
     } else {
@@ -1064,7 +1123,7 @@ static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
     sys_close(fd);
     char path[MAXPDSTRING];
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
-    sys_bashfilename(path, path);
+    // sys_bashfilename(path, path);
     if (x->x_plugin->readBankFile(path)){
         x->x_editor->update();
     } else {
@@ -1405,6 +1464,7 @@ void vstplugin_tilde_setup(void)
         // plugin
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
