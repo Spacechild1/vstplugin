@@ -492,7 +492,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     };
 
     while (argc && argv->a_type == A_SYMBOL){
-        const char *sym = argv->a_w.w_symbol->s_name;
+        auto sym = argv->a_w.w_symbol->s_name;
         if (*sym == '-'){
             if (!strcmp(sym, "-v")){
                 verbose = true;
