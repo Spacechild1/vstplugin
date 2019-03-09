@@ -622,7 +622,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         pd_error(x, "%s: 'open' needs a symbol argument!", classname(x));
         return;
     }
-    vstplugin_close(x);
         // probe plugin (if necessary)
     if (!pluginInfoDict.count(path)){
         VstPluginInfo info;
@@ -632,7 +631,9 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             return;
         }
     }
-        // open VST plugin
+        // *now* close the old plugin
+    vstplugin_close(x);
+        // open the new VST plugin
     IVSTPlugin *plugin = x->x_editor->open_plugin(path, editor);
     if (plugin){
         x->x_info = &pluginInfoDict[path]; // items are never removed
