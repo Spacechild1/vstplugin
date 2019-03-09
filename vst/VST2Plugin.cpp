@@ -816,9 +816,14 @@ bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
 }
 
 bool VST2Plugin::canHostDo(const char *what) const {
-    bool result = !strcmp(what, "sendVstMidiEvent")
-            || !strcmp(what, "receiveVstMidiEvent");
-    return result;
+    auto matches = [&](const char *s){
+        return (bool)(!strcmp(what, s));
+    };
+    LOG_DEBUG("canHostDo: " << what);
+    return matches("sendVstMidiEvent") || matches("receiveVstMidiEvent")
+        || matches("sendVstTimeInfo") || matches("receiveVstTimeInfo")
+        || matches("sendVstMidiEventFlagIsRealtime")
+        || matches("reportConnectionChanges");
 }
 
 void VST2Plugin::parameterAutomated(int index, float value){
