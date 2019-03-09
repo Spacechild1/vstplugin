@@ -570,12 +570,11 @@ void VstPlugin::next(int inNumSamples) {
 	if (plugin_ && !bypass && plugin_->hasPrecision(VSTProcessPrecision::Single)) {
 		if (paramStates_) {
 			// update parameters from mapped control busses
-			int maxControlChannel = mWorld->mNumControlBusChannels;
 			int nparam = plugin_->getNumParameters();
 			for (int i = 0; i < nparam; ++i) {
 				int bus = paramStates_[i].bus;
 				if (bus >= 0) {
-					float value = readControlBus(bus, maxControlChannel);
+					float value = readControlBus(bus);
 					if (value != paramStates_[i].value) {
 						plugin_->setParameter(i, value);
 						paramStates_[i].value = value;
@@ -1110,8 +1109,8 @@ void VstPlugin::vendorSpecific(int32 index, int32 value, void *ptr, float opt) {
 
 /*** helper methods ***/
 
-float VstPlugin::readControlBus(int32 num, int32 maxChannel) {
-    if (num >= 0 && num < maxChannel) {
+float VstPlugin::readControlBus(int32 num) {
+    if (num >= 0 && num < mWorld->mNumControlBusChannels) {
 		ACQUIRE_BUS_CONTROL(num);
 		float value = mWorld->mControlBus[num];
 		RELEASE_BUS_CONTROL(num);

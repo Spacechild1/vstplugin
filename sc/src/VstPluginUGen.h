@@ -130,7 +130,7 @@ public:
 		int32 bus;
     };
     // helper methods
-    float readControlBus(int32 num, int32 maxChannel);
+    float readControlBus(int32 num);
     void resizeBuffer();
 	bool sendProgramName(int32 num); // unchecked
 	void sendCurrentProgramName();
