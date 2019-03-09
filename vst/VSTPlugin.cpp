@@ -57,7 +57,7 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif
 	// Linux
 #ifdef __linux__
-	"/usr/lib/vst", "/usr/local/lib/vst"
+    "/usr/local/lib/vst", "/usr/lib/vst"
 #endif
 };
 
