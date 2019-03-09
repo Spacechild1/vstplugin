@@ -22,6 +22,23 @@ static void substitute_whitespace(char *buf){
     }
 }
 
+template<typename T>
+static bool fromHex(const std::string& s, T& u){
+    try {
+        u = std::stoull(s, 0, 0);
+        return true;
+    } catch (...){
+        return false;
+    }
+}
+
+template<typename T>
+static std::string toHex(T u){
+    char buf[MAXPDSTRING];
+    snprintf(buf, MAXPDSTRING, "0x%x", u);
+    return buf;
+}
+
 // static std::unordered_map<t_canvas *, std::unordered_map<t_symbol *, std::string>> canvasPathDict;
 static std::unordered_map<std::string, VstPluginInfo> pluginInfoDict;
 
@@ -633,11 +650,30 @@ static void vstplugin_can_do(t_vstplugin *x, t_symbol *s){
     outlet_anything(x->x_messout, gensym("can_do"), 2, msg);
 }
 
-// vendor specific action
+// vendor specific action (index, value, opt, data)
 static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
-    int index = atom_getfloatarg(0, argc, argv);
-    intptr_t value = atom_getfloatarg(1, argc, argv);
+    int index = 0;
+    intptr_t value = 0;
+
+        // get integer argument as number or hex string
+    auto getInt = [&](int which, auto& var){
+        if (argc > which){
+            if (argv->a_type == A_SYMBOL){
+                auto c = argv->a_w.w_symbol->s_name;
+                if (!fromHex(c, var)){
+                    pd_error(x, "%s: couldn't convert '%s'", classname(x), c);
+                    return false;
+                }
+            } else {
+                var = atom_getfloat(argv);
+            }
+        }
+        return true;
+    };
+
+    if (!getInt(0, index)) return;
+    if (!getInt(1, value)) return;
     float opt = atom_getfloatarg(2, argc, argv);
     char *data = nullptr;
     int size = argc - 3;
@@ -647,10 +683,11 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
             data[i] = atom_getfloat(argv + j);
         }
     }
-    int result = x->x_plugin->vendorSpecific(index, value, data, opt);
-    t_atom msg;
-    SETFLOAT(&msg, result);
-    outlet_anything(x->x_messout, gensym("vendor_method"), 1, &msg);
+    intptr_t result = x->x_plugin->vendorSpecific(index, value, data, opt);
+    t_atom msg[2];
+    SETFLOAT(&msg[0], result);
+    SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
+    outlet_anything(x->x_messout, gensym("vendor_method"), 2, msg);
     if (data){
         freebytes(data, size);
     }
