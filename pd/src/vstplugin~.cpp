@@ -1341,7 +1341,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int in = 2;
     if (argc > 0){
             // min. 1 because of CLASS_MAINSIGNALIN
-        std::max<int>(1, atom_getfloat(argv));
+        in = std::max<int>(1, atom_getfloat(argv));
     }
         // signal outlets (default: 2)
     int out = 2;
