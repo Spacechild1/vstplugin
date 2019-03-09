@@ -24,7 +24,7 @@ LOGLEVEL = 2
 
 cflags = -Wno-unused -Wno-unused-parameter \
 	-g \
-	-std=c++11 \
+	-std=c++14 \
     -I../vst \
 	${VST2_CFLAGS} \
 	-DLOGLEVEL=${LOGLEVEL} \

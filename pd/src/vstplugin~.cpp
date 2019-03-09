@@ -100,25 +100,16 @@ static void vstparam_setup(){
 
 /*-------------------- t_vsteditor ------------------------*/
 
-t_vsteditor::t_vsteditor(t_vstplugin &owner, t_gui gui)
+t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
     : e_owner(&owner){
 #if VSTTHREADS
     e_mainthread = std::this_thread::get_id();
 #endif
-    if (gui != NO_GUI){
+    if (gui){
         pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
         e_canvas = (t_canvas *)s__X.s_thing;
         send_vmess(gensym("pop"), "i", 0);
     }
-        // initialize GUI backend (if needed)
-    if (gui == VST_GUI){
-        static bool initialized = false;
-        if (!initialized){
-            VSTWindowFactory::initialize();
-            initialized = true;
-        }
-    }
-    e_gui = gui;
     e_clock = clock_new(this, (t_method)tick);
 }
 
@@ -277,10 +268,22 @@ void t_vsteditor::thread_function(std::promise<IVSTPlugin *> promise, const std:
 }
 #endif
 
-IVSTPlugin* t_vsteditor::open_plugin(const std::string& path){
+IVSTPlugin* t_vsteditor::open_plugin(const std::string& path, bool editor){
+        // -n flag (no gui)
+    if (!e_canvas){
+        editor = false;
+    }
+    if (editor){
+        // initialize GUI backend (if needed)
+        static bool initialized = false;
+        if (!initialized){
+            VSTWindowFactory::initialize();
+            initialized = true;
+        }
+    }
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
-    if (e_gui == VST_GUI){
+    if (editor){
         std::promise<IVSTPlugin *> promise;
         auto future = promise.get_future();
         e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), path);
@@ -297,7 +300,7 @@ IVSTPlugin* t_vsteditor::open_plugin(const std::string& path){
     plugin->setListener(this);
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
-    if (plugin->hasEditor() && e_gui == VST_GUI){
+    if (editor && plugin->hasEditor()){
         e_window = std::unique_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
@@ -477,7 +480,7 @@ static bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool ver
 // search
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool verbose = false;
-    bool useDefault = true;
+    bool didSearch = false;
 
     auto doSearch = [&](const char *path){
         int count = 0;
@@ -513,8 +516,6 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         if (*sym == '-'){
             if (!strcmp(sym, "-v")){
                 verbose = true;
-            } else if (!strcmp(sym, "-n")) {
-                useDefault = false;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), sym);
             }
@@ -522,23 +523,19 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             char path[MAXPDSTRING];
             canvas_makefilename(x->x_canvas, sym, path, MAXPDSTRING);
             doSearch(path);
+            didSearch = true;
         }
         argc--; argv++;
     }
-
-    if (useDefault){
+        // search in the default VST search paths if no user paths were provided
+    if (!didSearch){
         for (auto& path : getDefaultSearchPaths()){
             doSearch(path.c_str());
         }
     }
 }
 
-// open
-static void vstplugin_open(t_vstplugin *x, t_symbol *s){
-    if (s == x->x_path){
-        return;
-    }
-    vstplugin_close(x);
+static std::string resolvePath(t_canvas *c, t_symbol *s){
     std::string path;
         // resolve relative path
     if (!sys_isabsolutepath(s->s_name)){
@@ -561,7 +558,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
         const char *bundleinfo = "/Contents/Info.plist";
         vstpath += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
     #endif
-        int fd = canvas_open(x->x_canvas, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        int fd = canvas_open(c, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
         if (fd >= 0){
             sys_close(fd);
             snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
@@ -571,7 +568,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
                 *find = 0; // restore the bundle path
             }
     #endif
-            path = buf;
+            path = buf; // success
         } else {
                 // otherwise try default VST paths
             for (auto& vstPath : getDefaultSearchPaths()){
@@ -580,64 +577,130 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s){
                 fd = sys_open(buf, 0);
                 if (fd >= 0){
                     sys_close(fd);
-                    path = buf;
-                    break;
+                    path = buf; // success
                 }
             }
         }
     } else {
-        path = s->s_name;
+        path = s->s_name; // success
     }
-    if (!path.empty()){
-        sys_unbashfilename(&path[0], &path[0]);
-            // probe plugin (if necessary)
-        if (!pluginInfoDict.count(path)){
-            VstPluginInfo info;
-            if (doProbePlugin(path, info, true)){
-                pluginInfoDict[path] = info;
+    sys_unbashfilename(&path[0], &path[0]);
+    return path;
+}
+
+// open
+static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    std::string path;
+    t_symbol *pathsym = nullptr;
+    bool editor = false;
+        // parse arguments
+    while (argc && argv->a_type == A_SYMBOL){
+        auto sym = argv->a_w.w_symbol;
+        auto flag = sym->s_name;
+        if (*flag == '-'){
+            if (!strcmp(flag, "-e")){
+                editor = true;
             } else {
+                pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
+            }
+            argc--; argv++;
+        } else {
+            pathsym = argv->a_w.w_symbol;
+            path = resolvePath(x->x_canvas, pathsym);
+            if (path.empty()){
+                pd_error(x, "%s: couldn't open '%s' - no such file!", classname(x), sym->s_name);
                 return;
             }
+            break;
         }
-            // open VST plugin
-        IVSTPlugin *plugin = x->x_editor->open_plugin(path);
-        if (plugin){
-            x->x_info = &pluginInfoDict[path]; // items are never removed
-            x->x_path = s;
-            post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
-                // initially, blocksize is 0 (before the 'dsp' message is sent).
-                // some plugins might not like 0, so we send some sane default size.
-            plugin->setBlockSize(x->x_blocksize > 0 ? x->x_blocksize : 64);
-            plugin->setSampleRate(x->x_sr);
-            x->x_plugin = plugin;
-            x->update_precision();
-            x->update_buffer();
-            x->x_editor->setup();
+    }
+    if (!pathsym){
+        pd_error(x, "%s: 'open' needs a symbol argument!", classname(x));
+        return;
+    }
+    vstplugin_close(x);
+        // probe plugin (if necessary)
+    if (!pluginInfoDict.count(path)){
+        VstPluginInfo info;
+        if (doProbePlugin(path, info, true)){
+            pluginInfoDict[path] = info;
         } else {
-                // shouldn't happen...
-            pd_error(x, "%s: couldn't open '%s'", classname(x), path.c_str());
+            return;
         }
+    }
+        // open VST plugin
+    IVSTPlugin *plugin = x->x_editor->open_plugin(path, editor);
+    if (plugin){
+        x->x_info = &pluginInfoDict[path]; // items are never removed
+        x->x_path = pathsym;
+        post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
+            // initially, blocksize is 0 (before the 'dsp' message is sent).
+            // some plugins might not like 0, so we send some sane default size.
+        plugin->setBlockSize(x->x_blocksize > 0 ? x->x_blocksize : 64);
+        plugin->setSampleRate(x->x_sr);
+        x->x_plugin = plugin;
+        x->update_precision();
+        x->update_buffer();
+        x->x_editor->setup();
     } else {
-        pd_error(x, "%s: couldn't open '%s' - no such file!", classname(x), s->s_name);
+            // shouldn't happen...
+        pd_error(x, "%s: couldn't open '%s'", classname(x), path.c_str());
     }
 }
 
-// plugin name
-static void vstplugin_name(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    t_symbol *name = gensym(x->x_plugin->getPluginName().c_str());
-    t_atom msg;
-    SETSYMBOL(&msg, name);
-    outlet_anything(x->x_messout, gensym("name"), 1, &msg);
+static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
+    t_atom msg[2];
+    SETSYMBOL(&msg[0], gensym(what));
+    SETSYMBOL(&msg[1], gensym(value.c_str()));
+    outlet_anything(x->x_messout, gensym("info"), 2, msg);
 }
 
-// plugin version
-static void vstplugin_version(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    int version = x->x_plugin->getPluginVersion();
-    t_atom msg;
-    SETFLOAT(&msg, version);
-    outlet_anything(x->x_messout, gensym("version"), 1, &msg);
+static void sendInfo(t_vstplugin *x, const char *what, int value){
+    t_atom msg[2];
+    SETSYMBOL(&msg[0], gensym(what));
+    SETFLOAT(&msg[1], value);
+    outlet_anything(x->x_messout, gensym("info"), 2, msg);
+}
+
+// plugin info (no args: currently loaded plugin, symbol arg: path of plugin to query)
+static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    VstPluginInfo *info = nullptr;
+    if (argc > 0){
+        auto path = resolvePath(x->x_canvas, atom_getsymbol(argv));
+        if (!path.empty()){
+                // probe plugin (if necessary)
+            auto it = pluginInfoDict.find(path);
+            if (it == pluginInfoDict.end()){
+                VstPluginInfo probeInfo;
+                if (doProbePlugin(path, probeInfo, true)){
+                    info = &(pluginInfoDict[path] = probeInfo);
+                }
+            } else {
+                info = &it->second;
+            }
+        } else {
+            pd_error(x, "%s: couldn't query '%s' - no such file!", classname(x), s->s_name);
+        }
+    } else {
+        if (!x->check_plugin()) return;
+        info = x->x_info;
+    }
+    if (info){
+        sendInfo(x, "name", info->name);
+        sendInfo(x, "path", info->path);
+        sendInfo(x, "version", info->version);
+        sendInfo(x, "inputs", info->numInputs);
+        sendInfo(x, "outputs", info->numOutputs);
+        sendInfo(x, "id", toHex(info->id));
+        sendInfo(x, "editor", info->flags >> HasEditor & 1);
+        sendInfo(x, "synth", info->flags >> IsSynth & 1);
+        sendInfo(x, "single", info->flags >> SinglePrecision & 1);
+        sendInfo(x, "double", info->flags >> DoublePrecision & 1);
+        sendInfo(x, "midiin", info->flags >> MidiInput & 1);
+        sendInfo(x, "midiout", info->flags >> MidiOutput & 1);
+        sendInfo(x, "sysexin", info->flags >> SysexInput & 1);
+        sendInfo(x, "sysexout", info->flags >> SysexOutput & 1);
+    }
 }
 
 // query plugin for capabilities
@@ -694,7 +757,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 }
 
 // print plugin info in Pd console
-static void vstplugin_info(t_vstplugin *x){
+static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     post("~~~ VST plugin info ~~~");
     post("name: %s", x->x_plugin->getPluginName().c_str());
@@ -1240,23 +1303,18 @@ void t_vstplugin::update_precision(){
 // constructor
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
 t_vstplugin::t_vstplugin(int argc, t_atom *argv){
-#ifdef __APPLE__
-    t_gui gui = PD_GUI; // use generic Pd GUI by default
-#else
-    t_gui gui = VST_GUI; // use VST GUI by default
-#endif
+    bool gui = true; // use GUI?
     int dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
-    t_symbol *file = nullptr; // plugin to load (optional)
+    t_symbol *file = nullptr; // plugin to open (optional)
+    bool editor = false; // open plugin with VST editor?
 
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = argv->a_w.w_symbol->s_name;
         if (*flag == '-'){
-            if (!strcmp(flag, "-vstgui")){
-                gui = VST_GUI;
-            } else if (!strcmp(flag, "-pdgui")){
-                gui = PD_GUI;
-            } else if (!strcmp(flag, "-nogui")){
-                gui = NO_GUI;
+            if (!strcmp(flag, "-n")){
+                gui = false;
+            } else if (!strcmp(flag, "-e")){
+                editor = true;
             } else if (!strcmp(flag, "-sp")){
                 dp = 0;
             } else if (!strcmp(flag, "-dp")){
@@ -1271,14 +1329,21 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             break;
         }
     }
-    int in = atom_getfloatarg(0, argc, argv); // signal inlets
-    int out = atom_getfloatarg(1, argc, argv); // signal outlets
-    if (in < 1) in = 2;
-    if (out < 1) out = 2;
+        // signal inlets (default: 2)
+    int in = 2;
+    if (argc > 0){
+            // min. 1 because of CLASS_MAINSIGNALIN
+        std::max<int>(1, atom_getfloat(argv));
+    }
+        // signal outlets (default: 2)
+    int out = 2;
+    if (argc > 1){
+        out = std::max<int>(0, atom_getfloat(argv + 1));
+    }
 
     x_dp = dp;
     x_canvas = canvas_getcurrent();
-    x_editor = std::unique_ptr<t_vsteditor>(new t_vsteditor(*this, gui)); // C++11
+    x_editor = std::make_unique<t_vsteditor>(*this, gui);
 
         // inlets (skip first):
     for (int i = 1; i < in; ++i){
@@ -1293,7 +1358,14 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_sigoutlets.resize(out);
 
     if (file){
-        vstplugin_open(this, file);
+        t_atom msg[2];
+        if (editor){
+            SETSYMBOL(&msg[0], gensym("-e"));
+            SETSYMBOL(&msg[1], file);
+        } else {
+            SETSYMBOL(&msg[0], file);
+        }
+        vstplugin_open(this, 0, (int)editor + 1, msg);
     }
 }
 
@@ -1474,7 +1546,7 @@ void vstplugin_tilde_setup(void)
     CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
     class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
         // plugin
-    class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
@@ -1482,11 +1554,10 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_name, gensym("name"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_print, gensym("print"), A_NULL);
         // transport
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);

@@ -23,12 +23,6 @@
 #include <future>
 #endif
 
-enum t_gui {
-    NO_GUI,
-    PD_GUI,
-    VST_GUI
-};
-
 class t_vsteditor;
 
 // vstplugin~ object (no virtual methods!)
@@ -49,8 +43,9 @@ class t_vstplugin {
     IVSTPlugin* x_plugin = nullptr;
     VstPluginInfo *x_info = nullptr;
     t_symbol *x_path = nullptr;
-    int x_bypass = 0;
-    int x_dp; // single/double precision
+    bool x_keep = false;
+    bool x_bypass = false;
+    bool x_dp; // single/double precision
     std::unique_ptr<t_vsteditor> x_editor;
         // contiguous input/outputs buffer
     std::vector<char> x_inbuf;
@@ -84,10 +79,10 @@ class t_vstparam {
 // VST editor
 class t_vsteditor : IVSTPluginListener {
  public:
-    t_vsteditor(t_vstplugin &owner, t_gui gui);
+    t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const std::string& path);
+    IVSTPlugin* open_plugin(const std::string& path, bool editor);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -98,6 +93,12 @@ class t_vsteditor : IVSTPluginListener {
     void param_changed(int index, float value, bool automated = false);
         // show/hide window
     void vis(bool v);
+    bool pd_gui() const {
+        return e_canvas && !e_window;
+    }
+    bool vst_gui() const {
+        return e_window != nullptr;
+    }
  private:
         // plugin callbacks
     void parameterAutomated(int index, float value) override;
@@ -119,12 +120,8 @@ class t_vsteditor : IVSTPluginListener {
     template<typename T, typename U>
     void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
-    bool pd_gui() const {
-        return !e_window && (e_gui != NO_GUI);
-    }
         // data
     t_vstplugin *e_owner;
-    t_gui e_gui = NO_GUI;
 #if VSTTHREADS
     std::thread e_thread;
     std::thread::id e_mainthread;
