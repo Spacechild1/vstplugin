@@ -110,6 +110,10 @@ struct ParamAutomatedData {
 	float value;
 };
 
+// NOTE: in case we don't have a GUI window we *could* get rid of nrtThreadID
+// and just assume that std::this_thread::get_id() != rtThreadID_ means
+// we're on the NRT thread - but I don't know if can be 100% sure about this,
+// so let's play it safe.
 void VstPluginListener::parameterAutomated(int index, float value) {
 	// RT thread
 	if (std::this_thread::get_id() == owner_->rtThreadID_) {
@@ -162,10 +166,8 @@ void VstPluginListener::sysexEvent(const VSTSysexEvent& sysex) {
 // VstPlugin
 
 VstPlugin::VstPlugin(){
-#if VSTTHREADS
 	rtThreadID_ = std::this_thread::get_id();
-	// LOG_DEBUG("thread ID constructor: " << rtThreadID_);
-#endif
+	// LOG_DEBUG("RT thread ID: " << rtThreadID_);
 	listener_ = std::make_unique<VstPluginListener>(*this);
 
 	numInChannels_ = in0(1);
@@ -390,6 +392,7 @@ void VstPlugin::doneOpen(VstPluginCmdData& cmd){
 	plugin_ = cmd.plugin;
 	window_ = cmd.window;
 	nrtThreadID_ = cmd.threadID;
+	// LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
 #if VSTTHREADS
 	thread_ = std::move(cmd.thread);
 #endif
@@ -602,8 +605,8 @@ void VstPlugin::next(int inNumSamples) {
 #if VSTTHREADS
 		// send parameter automation notification posted from the GUI thread.
 		// we assume this is only possible if we have a VST editor window.
-		// try_lock() won't block the audio thread and we don't mind if
-		// notifications will be delayed if try_lock() fails (which happens rarely in practice).
+		// try_lock() won't block the audio thread and we don't mind if notifications
+		// will be delayed if try_lock() fails (which happens rarely in practice).
 		if (window_ && mutex_.try_lock()) {
 			std::vector<std::pair<int, float>> queue;
 			queue.swap(paramQueue_);

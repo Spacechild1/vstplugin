@@ -170,10 +170,10 @@ private:
     // threading
 #if VSTTHREADS
     std::thread thread_;
-	std::thread::id rtThreadID_;
     std::mutex mutex_;
 	std::vector<std::pair<int, float>> paramQueue_;
 #endif
+	std::thread::id rtThreadID_;
 	std::thread::id nrtThreadID_;
 
 	// send program/bank data
