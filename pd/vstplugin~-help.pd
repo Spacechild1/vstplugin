@@ -395,40 +395,44 @@ f 51;
 0;
 #X text 31 20 [vstplugin~]: load VST plugins in Pd on all platforms
 ;
-#N canvas 260 94 436 518 creation 0;
+#N canvas 260 94 436 604 creation 0;
 #X text 24 154 -sp: prefer single precision (default on single precision
 Pd), f 62;
-#X text 25 170 -dp: prefer double precision (default on double precision
+#X text 24 171 -dp: prefer double precision (default on double precision
 Pd), f 62;
-#X obj 17 190 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 17 240 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 13 12 vstplugin~ takes the following optional creation arguments
 (in the given order):, f 40;
-#X text 14 200 file:;
-#X text 14 244 nin \, nout:;
-#X text 83 243 the number of input and output channels (default is
+#X text 14 250 file:;
+#X text 14 294 nin \, nout:;
+#X text 83 293 the number of input and output channels (default is
 2), f 30;
 #X text 14 79 flags:;
-#X obj 16 291 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 16 341 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 24 292 examples:;
-#X text 11 453 [vstplugin~];
+#X text 24 342 examples:;
+#X text 14 504 [vstplugin~];
 #X text 13 49 [flags...] \, [file] \, [nin \, nout];
 #X text 25 100 -n: don't use any editor GUI, f 31;
 #X text 25 118 -e: open the plugin with the VST editor;
 #X text 46 136 (ignored if no file name is given);
-#X text 83 198 open a plugin on creation (see the 'open' message),
+#X text 57 249 open a plugin on creation (see the 'open' message),
 f 27;
-#X text 13 408 [vstplugin~ 1 2];
-#X text 39 471 2 in \, 2 out;
-#X text 34 427 1 in \, 2 out;
-#X text 13 319 [vstplugin~ -e GVST/GChorus 2 4];
-#X text 32 371 "GVST" might be folder in your patch/Pd search paths
+#X text 16 459 [vstplugin~ 1 2];
+#X text 42 522 2 in \, 2 out;
+#X text 37 478 1 in \, 2 out;
+#X text 16 370 [vstplugin~ -e GVST/GChorus 2 4];
+#X text 35 422 "GVST" might be folder in your patch/Pd search paths
 or in the default VST search paths (see 'search'), f 55;
-#X obj 15 233 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 15 283 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 33 341 2 input channels \, 4 output channels \, opening the
+#X text 36 392 2 input channels \, 4 output channels \, opening the
 plugin "GChorus" with the VST editor GUI., f 56;
+#X text 25 189 -k: keep current plugin state (similar to [text define
+-k]);
+#X text 49 205 NOTE: for large \, complex plugins this can lead to
+significant increases in patch file size., f 47;
 #X restore 150 55 pd creation arguments;
 #X text 23 55 creation arguments:;
 #X text 21 146 signal outlets + 1 message outlet, f 16;

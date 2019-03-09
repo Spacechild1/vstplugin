@@ -606,6 +606,10 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             argc--; argv++;
         } else {
             pathsym = argv->a_w.w_symbol;
+                // don't reopen the same plugin (mainly for -k flag)
+            if (pathsym == x->x_path && x->x_editor->vst_gui() == editor){
+                return;
+            }
             path = resolvePath(x->x_canvas, pathsym);
             if (path.empty()){
                 pd_error(x, "%s: couldn't open '%s' - no such file!", classname(x), sym->s_name);
@@ -1304,6 +1308,7 @@ void t_vstplugin::update_precision(){
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
 t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool gui = true; // use GUI?
+    bool keep = false; // remember plugin + state?
     int dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
     t_symbol *file = nullptr; // plugin to open (optional)
     bool editor = false; // open plugin with VST editor?
@@ -1313,6 +1318,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         if (*flag == '-'){
             if (!strcmp(flag, "-n")){
                 gui = false;
+            } else if (!strcmp(flag, "-k")){
+                keep = true;
             } else if (!strcmp(flag, "-e")){
                 editor = true;
             } else if (!strcmp(flag, "-sp")){
@@ -1341,6 +1348,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         out = std::max<int>(0, atom_getfloat(argv + 1));
     }
 
+    x_keep = keep;
     x_dp = dp;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_unique<t_vsteditor>(*this, gui);
@@ -1367,6 +1375,11 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         }
         vstplugin_open(this, 0, (int)editor + 1, msg);
     }
+    t_symbol *asym = gensym("#A");
+        // bashily unbind #A
+    asym->s_thing = 0;
+        // now bind #A to us to receive following messages
+    pd_bind(&x_obj.ob_pd, asym);
 }
 
 static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
@@ -1509,6 +1522,48 @@ static t_int *vstplugin_perform(t_int *w){
     return (w+3);
 }
 
+// save function
+static void vstplugin_save(t_gobj *z, t_binbuf *bb){
+    t_vstplugin *x = (t_vstplugin *)z;
+    binbuf_addv(bb, "ssff", &s__X, gensym("obj"),
+        (float)x->x_obj.te_xpix, (float)x->x_obj.te_ypix);
+    binbuf_addbinbuf(bb, x->x_obj.ob_binbuf);
+    binbuf_addsemi(bb);
+    if (x->x_keep && x->x_plugin){
+            // 1) precision
+        binbuf_addv(bb, "sss", gensym("#A"), gensym("precision"), gensym(x->x_dp ? "double" : "single"));
+        binbuf_addsemi(bb);
+            // 2) plugin
+        if (x->x_editor->vst_gui()){
+            binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
+        } else {
+            binbuf_addv(bb, "sss", gensym("#A"), gensym("open"), x->x_path);
+        }
+        binbuf_addsemi(bb);
+            // 3) program number
+        binbuf_addv(bb, "ssi", gensym("#A"), gensym("program_set"), x->x_plugin->getProgram());
+        binbuf_addsemi(bb);
+            // 4) program data
+        std::string buffer;
+        x->x_plugin->writeProgramData(buffer);
+        int n = buffer.size();
+        if (n){
+            binbuf_addv(bb, "ss", gensym("#A"), gensym("program_data_set"));
+            std::vector<t_atom> atoms;
+            atoms.resize(n);
+            for (int i = 0; i < n; ++i){
+                    // first convert to range 0-255, then assign to t_float (not 100% portable...)
+                SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
+            }
+            binbuf_add(bb, n, atoms.data());
+            binbuf_addsemi(bb);
+        } else {
+            pd_error(x, "%s: couldn't save program data", classname(x));
+        }
+    }
+    obj_saveformat(&x->x_obj, bb);
+}
+
 // dsp callback
 static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
@@ -1544,6 +1599,7 @@ void vstplugin_tilde_setup(void)
     vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)vstplugin_new, (t_method)vstplugin_free,
         sizeof(t_vstplugin), 0, A_GIMME, A_NULL);
     CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
+    class_setsavefn(vstplugin_class, vstplugin_save);
     class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
         // plugin
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
