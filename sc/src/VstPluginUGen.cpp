@@ -104,19 +104,37 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 VstPluginListener::VstPluginListener(VstPlugin &owner)
 	: owner_(&owner) {}
 
+struct ParamAutomatedData {
+	VstPlugin *owner;
+	int32 index;
+	float value;
+};
+
 void VstPluginListener::parameterAutomated(int index, float value) {
+	// RT thread
+	if (std::this_thread::get_id() == owner_->rtThreadID_) {
+		owner_->parameterAutomated(index, value);
+	}
+	// NRT thread
+	else if (std::this_thread::get_id() == owner_->nrtThreadID_) {
+		FifoMsg msg;
+		auto data = new ParamAutomatedData{ owner_, index, value };
+		msg.Set(owner_->mWorld, // world
+			[](FifoMsg *msg) { // perform
+				auto data = (ParamAutomatedData *)msg->mData;
+				data->owner->parameterAutomated(data->index, data->value);
+			}, [](FifoMsg *msg) { // free
+				delete msg->mData;
+			}, data); // data
+		SendMsgToRT(owner_->mWorld, msg);
+	}
 #if VSTTHREADS
-	// only push it to the queue when we're not in the realtime thread
-	if (std::this_thread::get_id() != owner_->rtThreadID_) {
+	// GUI thread (neither RT nor NRT thread) - push to queue
+	else {
 		std::lock_guard<std::mutex> guard(owner_->mutex_);
 		owner_->paramQueue_.emplace_back(index, value);
 	}
-	else {
-#else
-	{
 #endif
-		owner_->parameterAutomated(index, value);
-	}
 }
 
 void VstPluginListener::midiEvent(const VSTMidiEvent& midi) {
@@ -304,6 +322,7 @@ bool cmdOpen(World *world, void* cmdData) {
 	LOG_DEBUG("cmdOpen");
 	// initialize GUI backend (if needed)
 	auto data = (VstPluginCmdData *)cmdData;
+	data->threadID = std::this_thread::get_id();
 	if (data->value) { // VST gui?
 #ifdef __APPLE__
 		LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
@@ -370,6 +389,7 @@ void VstPlugin::doneOpen(VstPluginCmdData& cmd){
 	isLoading_ = false;
 	plugin_ = cmd.plugin;
 	window_ = cmd.window;
+	nrtThreadID_ = cmd.threadID;
 #if VSTTHREADS
 	thread_ = std::move(cmd.thread);
 #endif
@@ -581,7 +601,7 @@ void VstPlugin::next(int inNumSamples) {
 		offset = plugin_->getNumOutputs();
 
 #if VSTTHREADS
-		// send parameter automation notification posted from another thread.
+		// send parameter automation notification posted from the GUI thread.
 		// we assume this is only possible if we have a VST editor window.
 		// try_lock() won't block the audio thread and we don't mind if
 		// notifications will be delayed if try_lock() fails (which happens rarely in practice).

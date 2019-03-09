@@ -8,10 +8,10 @@
 #endif
 
 #if VSTTHREADS
-#include <thread>
 #include <future>
 #endif
 
+#include <thread>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,6 +30,7 @@ struct VstPluginCmdData {
 	VstPlugin *owner;
 	IVSTPlugin *plugin = nullptr;
 	std::shared_ptr<IVSTWindow> window;
+	std::thread::id threadID;
 #if VSTTHREADS
 	std::thread thread;
 #endif
@@ -173,6 +174,7 @@ private:
     std::mutex mutex_;
 	std::vector<std::pair<int, float>> paramQueue_;
 #endif
+	std::thread::id nrtThreadID_;
 
 	// send program/bank data
 	std::string dataNRT_;
