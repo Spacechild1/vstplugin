@@ -265,6 +265,45 @@ void VST2Plugin::setBypass(bool bypass){
     dispatch(effSetBypass, 0, bypass);
 }
 
+void VST2Plugin::setNumSpeakers(int in, int out){
+    in = std::max<int>(0, in);
+    out = std::max<int>(0, out);
+    // VstSpeakerArrangment already has 8 speakers
+    int ain = std::max<int>(0, in - 8);
+    int aout = std::max<int>(0, out - 8);
+    auto input = (VstSpeakerArrangement *)calloc(sizeof(VstSpeakerArrangement) + sizeof(VstSpeakerProperties) * ain, 1);
+    auto output = (VstSpeakerArrangement *)calloc(sizeof(VstSpeakerArrangement) + sizeof(VstSpeakerProperties) * aout, 1);
+    input->numChannels = in;
+    output->numChannels = out;
+    auto setSpeakerArr = [](VstSpeakerArrangement& arr, int num){
+        switch (num){
+        case 0:
+            arr.type = kSpeakerArrEmpty;
+            break;
+        case 1:
+            arr.type = kSpeakerArrMono;
+            arr.speakers[0].type = kSpeakerM;
+            break;
+        case 2:
+            arr.type = kSpeakerArrStereo;
+            arr.speakers[0].type = kSpeakerL;
+            arr.speakers[1].type = kSpeakerR;
+            break;
+        default:
+            arr.type = kSpeakerArrUserDefined;
+            for (int i = 0; i < num; ++i){
+                arr.speakers[i].type = kSpeakerUndefined;
+            }
+            break;
+        }
+    };
+    setSpeakerArr(*input, in);
+    setSpeakerArr(*output, out);
+    dispatch(effSetSpeakerArrangement, 0, reinterpret_cast<VstIntPtr>(input), output);
+    free(input);
+    free(output);
+}
+
 void VST2Plugin::setTempoBPM(double tempo){
     if (tempo > 0) {
         timeInfo_.tempo = tempo;

@@ -134,6 +134,7 @@ class IVSTPlugin {
     virtual int getTailSize() const = 0;
     virtual bool hasBypass() const = 0;
     virtual void setBypass(bool bypass) = 0;
+    virtual void setNumSpeakers(int in, int out) = 0;
 
     virtual void setListener(IVSTPluginListener *listener) = 0;
 

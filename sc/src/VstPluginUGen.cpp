@@ -317,6 +317,24 @@ bool cmdOpen(World *world, void* cmdData) {
 #endif
 	}
 	data->tryOpen();
+	auto plugin = data->plugin;
+	if (plugin) {
+		auto owner = data->owner;
+		plugin->suspend();
+		// we only access immutable members of owner
+		plugin->setSampleRate(owner->sampleRate());
+		plugin->setBlockSize(owner->bufferSize());
+		if (plugin->hasPrecision(VSTProcessPrecision::Single)) {
+			plugin->setPrecision(VSTProcessPrecision::Single);
+		}
+		else {
+			LOG_WARNING("VstPlugin: plugin '" << plugin->getPluginName() << "' doesn't support single precision processing - bypassing!");
+		}
+		int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
+		int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
+		plugin->setNumSpeakers(nin, nout);
+		plugin->resume();
+	}
 	return true;
 }
 
@@ -358,15 +376,6 @@ void VstPlugin::doneOpen(VstPluginCmdData& cmd){
     if (plugin_){
 		LOG_DEBUG("loaded " << cmd.buf);
 		plugin_->setListener(listener_.get());
-		int blockSize = bufferSize();
-		plugin_->setSampleRate(sampleRate());
-		plugin_->setBlockSize(blockSize);
-		if (plugin_->hasPrecision(VSTProcessPrecision::Single)) {
-			plugin_->setPrecision(VSTProcessPrecision::Single);
-		}
-		else {
-			LOG_WARNING("VstPlugin: plugin '" << plugin_->getPluginName() << "' doesn't support single precision processing - bypassing!");
-		}
         resizeBuffer();
 		// allocate arrays for parameter values/states
 		int nParams = plugin_->getNumParameters();

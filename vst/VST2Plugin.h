@@ -40,6 +40,7 @@ class VST2Plugin final : public IVSTPlugin {
     int getTailSize() const override;
     bool hasBypass() const override;
     void setBypass(bool bypass) override;
+    void setNumSpeakers(int in, int out) override;
 
     void setListener(IVSTPluginListener *listener) override {
         listener_ = listener;

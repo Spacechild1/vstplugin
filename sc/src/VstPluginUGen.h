@@ -82,6 +82,8 @@ public:
 	void showEditor(bool show);
 	void reset(bool async = false);
 	void next(int inNumSamples);
+	int numInChannels() const { return numInChannels_; }
+	int numOutChannels() const { return numOutChannels_;  }
 	// param
 	void setParam(int32 index, float value);
 	void setParam(int32 index, const char* display);

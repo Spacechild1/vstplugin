@@ -639,10 +639,15 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         x->x_info = &pluginInfoDict[path]; // items are never removed
         x->x_path = pathsym;
         post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
+        plugin->suspend();
             // initially, blocksize is 0 (before the 'dsp' message is sent).
             // some plugins might not like 0, so we send some sane default size.
         plugin->setBlockSize(x->x_blocksize > 0 ? x->x_blocksize : 64);
         plugin->setSampleRate(x->x_sr);
+        int nin = std::min<int>(plugin->getNumInputs(), x->x_siginlets.size());
+        int nout = std::min<int>(plugin->getNumOutputs(), x->x_sigoutlets.size());
+        plugin->setNumSpeakers(nin, nout);
+        plugin->resume();
         x->x_plugin = plugin;
         x->update_precision();
         x->update_buffer();
