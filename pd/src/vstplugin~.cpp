@@ -799,60 +799,35 @@ static void vstplugin_param_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
     }
 }
 
-// get parameter value
+// get parameter state (value + display)
 static void vstplugin_param_get(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
-		t_atom msg[2];
+        t_atom msg[3];
 		SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
-		outlet_anything(x->x_messout, gensym("param_value"), 2, msg);
+        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterDisplay(index).c_str()));
+        outlet_anything(x->x_messout, gensym("param_state"), 3, msg);
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
 	}
 }
 
-// get parameter name
-static void vstplugin_param_name(t_vstplugin *x, t_floatarg _index){
+// get parameter info (name + label + ...)
+static void vstplugin_param_info(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
-		t_atom msg[2];
+        t_atom msg[3];
 		SETFLOAT(&msg[0], index);
         SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterName(index).c_str()));
-		outlet_anything(x->x_messout, gensym("param_name"), 2, msg);
+        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterLabel(index).c_str()));
+        // LATER add more info
+        outlet_anything(x->x_messout, gensym("param_info"), 3, msg);
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
 	}
-}
-
-// get parameter label (unit of measurement, e.g. ms or dB)
-static void vstplugin_param_label(t_vstplugin *x, t_floatarg _index){
-    if (!x->check_plugin()) return;
-    int index = _index;
-    if (index >= 0 && index < x->x_plugin->getNumParameters()){
-        t_atom msg[2];
-        SETFLOAT(&msg[0], index);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterLabel(index).c_str()));
-        outlet_anything(x->x_messout, gensym("param_label"), 2, msg);
-    } else {
-        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
-    }
-}
-
-// get stringified parameter value
-static void vstplugin_param_display(t_vstplugin *x, t_floatarg _index){
-    if (!x->check_plugin()) return;
-    int index = _index;
-    if (index >= 0 && index < x->x_plugin->getNumParameters()){
-        t_atom msg[2];
-        SETFLOAT(&msg[0], index);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterDisplay(index).c_str()));
-        outlet_anything(x->x_messout, gensym("param_display"), 2, msg);
-    } else {
-        pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
-    }
 }
 
 // number of parameters
@@ -863,12 +838,12 @@ static void vstplugin_param_count(t_vstplugin *x){
 	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
-// list parameters (index + name)
+// list parameters (index + info)
 static void vstplugin_param_list(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
 	for (int i = 0; i < n; ++i){
-        vstplugin_param_name(x, i);
+        vstplugin_param_info(x, i);
 	}
 }
 
@@ -1489,9 +1464,7 @@ void vstplugin_tilde_setup(void)
         // parameters
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_param_name, gensym("param_name"), A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_param_label, gensym("param_label"), A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_param_display, gensym("param_display"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_info, gensym("param_info"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_count, gensym("param_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_list, gensym("param_list"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_dump, gensym("param_dump"), A_NULL);
