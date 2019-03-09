@@ -619,10 +619,10 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X restore 286 508 pd preset;
 #X f 17;
 #X msg 215 300 print;
-#X obj 263 139 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X obj 262 182 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 263 159 openpanel;
-#X obj 199 224 t a;
+#X obj 262 202 openpanel;
+#X obj 199 240 t a;
 #N canvas 157 125 772 591 search 0;
 #X obj 22 543 s \$0-msg;
 #X text 179 25 search directories for VST plugins.;
@@ -692,8 +692,8 @@ each plugin (see below);
 #X restore 406 508 pd search;
 #X f 14;
 #X text 404 486 search + info;
-#X msg 263 183 open -e \$1;
-#X text 339 150 both absolute and relative paths are allowed \, the
+#X msg 262 226 open -e \$1;
+#X text 339 151 both absolute and relative paths are allowed \, the
 extension (.dll \, .so \, .vst) can be omitted, f 47;
 #N canvas 582 228 451 307 editor 0;
 #X text 10 120 on MacOS \, however \, because of technical limitations
@@ -715,15 +715,17 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 531 252 pd editor;
+#X restore 547 251 pd editor;
 #X f 10;
-#X text 339 219 by default \, a generic Pd editor is created. use the
--e flag to enable the VST editor, f 45;
-#X text 463 253 more info:;
+#X text 479 252 more info:;
 #X text 339 131 open a VST plugin;
-#X text 338 180 relative paths are searched like abstractions. if that
+#X text 339 179 relative paths are searched like abstractions. if that
 fails \, the standard VST search paths are used (see 'search'), f
 46;
+#X text 340 220 by default \, a generic Pd editor is created \, use
+the -e flag to enable the VST editor., f 45;
+#X text 220 136 Pd GUI;
+#X text 281 182 VST GUI;
 #X connect 1 0 30 0;
 #X connect 1 1 30 1;
 #X connect 2 0 42 0;
