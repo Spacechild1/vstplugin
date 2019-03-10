@@ -110,14 +110,17 @@ struct ParamAutomatedData {
 	float value;
 };
 
-// NOTE: in case we don't have a GUI window we *could* get rid of nrtThreadID
+// NOTE: in case we don't have a GUI thread we *could* get rid of nrtThreadID
 // and just assume that std::this_thread::get_id() != rtThreadID_ means
 // we're on the NRT thread - but I don't know if can be 100% sure about this,
 // so let's play it safe.
 void VstPluginListener::parameterAutomated(int index, float value) {
 	// RT thread
 	if (std::this_thread::get_id() == owner_->rtThreadID_) {
+#if 0
+		// linked parameters automated by control busses or Ugens
 		owner_->parameterAutomated(index, value);
+#endif
 	}
 	// NRT thread
 	else if (std::this_thread::get_id() == owner_->nrtThreadID_) {
@@ -128,7 +131,7 @@ void VstPluginListener::parameterAutomated(int index, float value) {
 				auto data = (ParamAutomatedData *)msg->mData;
 				data->owner->parameterAutomated(data->index, data->value);
 			}, [](FifoMsg *msg) { // free
-				delete msg->mData;
+				delete (ParamAutomatedData *)msg->mData;
 			}, data); // data
 		SendMsgToRT(owner_->mWorld, msg);
 	}
