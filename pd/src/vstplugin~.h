@@ -23,6 +23,14 @@
 #include <future>
 #endif
 
+enum PdLogLevel {
+    PD_FATAL = -3,
+    PD_ERROR,
+    PD_NORMAL,
+    PD_DEBUG,
+    PD_ALL
+};
+
 class t_vsteditor;
 
 // vstplugin~ object (no virtual methods!)

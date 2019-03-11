@@ -1,4 +1,4 @@
-#N canvas 424 66 645 599 10;
+#N canvas 614 129 712 599 10;
 #N canvas 346 106 450 485 output 0;
 #X obj 110 255 nbx 5 14 -100 0 0 0 empty empty Volume 0 -8 0 10 -262144
 -1 -1 -100 256;
@@ -82,25 +82,25 @@
 #X obj 199 138 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
 #X obj 199 158 openpanel;
-#X msg 207 271 close;
-#X msg 229 347 vis \$1;
-#X obj 229 327 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X msg 207 286 close;
+#X msg 229 359 vis \$1;
+#X obj 229 339 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 236 396 bypass \$1;
-#X obj 236 376 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X msg 236 405 bypass \$1;
+#X obj 236 385 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#N canvas 200 228 1094 481 message-outlet 0;
-#X obj 9 37 inlet;
-#X obj 9 58 t a a;
-#X floatatom 10 176 5 0 0 0 - - -;
-#X floatatom 50 177 5 0 0 0 - - -;
+#N canvas 200 228 986 481 message-outlet 0;
+#X obj 9 15 inlet;
+#X obj 9 36 t a a;
+#X floatatom 10 171 5 0 0 0 - - -;
+#X floatatom 50 172 5 0 0 0 - - -;
 #X floatatom 115 138 5 0 0 0 - - -;
-#X text 6 194 index;
-#X text 50 193 value;
-#X floatatom 222 180 5 0 0 0 - - -;
-#X text 218 198 index;
-#X symbolatom 262 182 16 0 0 0 - - -;
-#X text 262 197 name;
+#X text 6 189 index;
+#X text 50 188 value;
+#X floatatom 198 180 5 0 0 0 - - -;
+#X text 194 198 index;
+#X symbolatom 238 182 16 0 0 0 - - -;
+#X text 238 197 name;
 #X floatatom 9 278 5 0 0 0 - - -;
 #X text 6 296 index;
 #X obj 168 283 route program_name, f 29;
@@ -112,26 +112,20 @@
 #X obj 9 257 route program program_count;
 #X floatatom 88 282 5 0 0 0 - - -;
 #X text 88 298 count;
-#X text 115 157 count;
+#X text 113 153 count;
 #X obj 339 332 s \$0-program-data;
 #X obj 339 309 route program_data bank_data, f 39;
 #X obj 454 332 s \$0-bank-data;
-#X text 83 29 param_count <f>: number of parameters;
-#X text 83 11 param_value <f> <f>: parameter index + value;
-#X text 83 48 param_name <f> <s>: parameter index + name;
-#X text 84 68 param_label <f> <s>: parameter index + label (unit of
-measurement), f 67;
-#X text 84 88 param_display <f> <s>: parameter index + display (stringified
-value), f 69;
-#X text 9 386 program_count <f>: number of programs;
-#X text 9 366 program <f>: index of current program;
-#X text 8 405 program_name <f> <s>: program index + name;
-#X text 9 424 program_data <list>: current program data;
-#X text 8 443 bank_data <list>: current bank data;
-#X text 605 214 param_automated <f> <f>: parameter index + value;
-#X text 604 308 sysex <list>: system exclusive message (from the plugin)
+#X text 105 49 param_count <f>: number of parameters;
+#X text 438 123 program_count <f>: number of programs;
+#X text 438 103 program <f>: index of current program;
+#X text 437 142 program_name <f> <s>: program index + name;
+#X text 438 161 program_data <list>: current program data;
+#X text 437 180 bank_data <list>: current bank data;
+#X text 594 214 param_automated <f> <f>: parameter index + value;
+#X text 593 308 sysex <list>: system exclusive message (from the plugin)
 ;
-#X obj 426 243 t a;
+#X obj 402 243 t a;
 #X obj 570 335 route param_automated, f 27;
 #X obj 729 387 unpack f f f, f 14;
 #X floatatom 729 408 5 0 0 0 - - -;
@@ -146,42 +140,92 @@ value), f 69;
 #X text 569 396 index;
 #X text 624 397 value;
 #X obj 729 366 route midi, f 18;
-#X text 604 233 (this message is sent whenever you change a parameter
+#X text 593 233 (this message is sent whenever you change a parameter
 in the GUI. this is useful if you want to record automation data),
 f 44;
-#X text 603 284 midi <list>: MIDI message (from the plugin);
-#X obj 9 115 route param_state param_count, f 36;
+#X text 592 284 midi <list>: MIDI message (from the plugin);
+#X obj 9 115 route param_state param_count, f 32;
 #X obj 10 135 unpack f f s, f 14;
-#X symbolatom 91 178 12 0 0 0 - - -;
-#X text 91 194 display;
-#X obj 222 136 route param_info, f 25;
-#X obj 222 156 unpack f s s, f 14;
-#X symbolatom 303 205 10 0 0 0 - - -;
-#X text 303 224 label;
-#X obj 36 82 print;
-#X obj 369 160 route info;
-#X symbolatom 444 179 10 0 0 0 - - -;
-#X symbolatom 486 200 16 0 0 0 - - -;
-#X floatatom 528 160 5 0 0 0 - - -;
-#X floatatom 568 159 5 0 0 0 - - -;
-#X floatatom 613 160 5 0 0 0 - - -;
-#X obj 655 161 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X symbolatom 91 173 12 0 0 0 - - -;
+#X text 91 189 display;
+#X obj 198 136 route param_info, f 25;
+#X obj 198 156 unpack f s s, f 14;
+#X symbolatom 279 205 10 0 0 0 - - -;
+#X text 279 224 label;
+#X obj 36 78 print;
+#X obj 345 160 route info;
+#N canvas 664 174 730 446 info 0;
+#X obj 21 24 inlet;
+#X symbolatom 21 88 10 0 0 0 - - -;
+#X floatatom 68 258 5 0 0 0 - - -;
+#X floatatom 116 256 5 0 0 0 - - -;
+#X obj 163 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 697 162 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 203 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 740 161 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 248 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 782 161 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 286 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 444 138 route name path version inputs outputs midiin midiout
-editor synth id, f 71;
-#X symbolatom 824 180 16 0 0 0 - - -;
-#X obj 824 159 symbol;
-#X obj 444 159 symbol;
-#X obj 486 159 symbol;
+#X obj 21 234 route inputs outputs midiin midiout editor synth;
+#X obj 21 45 route name, f 12;
+#X obj 21 66 symbol;
+#X symbolatom 89 109 10 0 0 0 - - -;
+#X obj 89 87 symbol;
+#X symbolatom 158 132 10 0 0 0 - - -;
+#X obj 158 110 symbol;
+#X symbolatom 227 155 10 0 0 0 - - -;
+#X obj 227 133 symbol;
+#X symbolatom 308 178 10 0 0 0 - - -;
+#X obj 308 156 symbol;
+#X symbolatom 383 202 10 0 0 0 - - -;
+#X obj 383 180 symbol;
+#X obj 89 65 route path, f 12;
+#X obj 158 89 route vendor;
+#X obj 227 112 route category;
+#X obj 308 135 route version;
+#X obj 383 159 route id, f 12;
+#X obj 452 220 t a;
+#X connect 0 0 9 0;
+#X connect 8 0 2 0;
+#X connect 8 1 3 0;
+#X connect 8 2 4 0;
+#X connect 8 3 5 0;
+#X connect 8 4 6 0;
+#X connect 8 5 7 0;
+#X connect 9 0 10 0;
+#X connect 9 1 21 0;
+#X connect 10 0 1 0;
+#X connect 12 0 11 0;
+#X connect 14 0 13 0;
+#X connect 16 0 15 0;
+#X connect 18 0 17 0;
+#X connect 20 0 19 0;
+#X connect 21 0 12 0;
+#X connect 21 1 22 0;
+#X connect 22 0 14 0;
+#X connect 22 1 23 0;
+#X connect 23 0 16 0;
+#X connect 23 1 24 0;
+#X connect 24 0 18 0;
+#X connect 24 1 25 0;
+#X connect 25 0 20 0;
+#X connect 25 1 26 0;
+#X connect 26 0 8 0;
+#X restore 345 184 pd info;
+#X obj 36 57 spigot 1;
+#X obj 81 36 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0 1
+;
+#X text 105 31 param_state <f> <f> <s>: parameter index + value + display
+;
+#X text 105 68 param_info <f> <s> <s> ...: parameter index + name +
+label;
+#X text 458 67 (unit of measurement);
+#X text 461 31 (stringified value);
+#X text 589 68 ... LATER more info;
 #X connect 0 0 1 0;
-#X connect 1 0 55 0;
-#X connect 1 1 63 0;
+#X connect 1 0 51 0;
+#X connect 1 1 62 0;
 #X connect 13 0 16 0;
 #X connect 13 1 24 0;
 #X connect 16 0 14 0;
@@ -191,52 +235,41 @@ editor synth id, f 71;
 #X connect 19 2 13 0;
 #X connect 24 0 23 0;
 #X connect 24 1 25 0;
-#X connect 24 2 39 0;
-#X connect 38 0 19 0;
-#X connect 39 0 47 0;
-#X connect 39 1 52 0;
-#X connect 40 0 41 0;
-#X connect 40 1 42 0;
-#X connect 40 2 43 0;
-#X connect 47 0 48 0;
-#X connect 47 1 49 0;
-#X connect 52 0 40 0;
+#X connect 24 2 35 0;
+#X connect 34 0 19 0;
+#X connect 35 0 43 0;
+#X connect 35 1 48 0;
+#X connect 36 0 37 0;
+#X connect 36 1 38 0;
+#X connect 36 2 39 0;
+#X connect 43 0 44 0;
+#X connect 43 1 45 0;
+#X connect 48 0 36 0;
+#X connect 51 0 52 0;
+#X connect 51 1 4 0;
+#X connect 51 2 55 0;
+#X connect 52 0 2 0;
+#X connect 52 1 3 0;
+#X connect 52 2 53 0;
 #X connect 55 0 56 0;
-#X connect 55 1 4 0;
-#X connect 55 2 59 0;
-#X connect 56 0 2 0;
-#X connect 56 1 3 0;
+#X connect 55 1 60 0;
+#X connect 56 0 7 0;
+#X connect 56 1 9 0;
 #X connect 56 2 57 0;
-#X connect 59 0 60 0;
-#X connect 59 1 64 0;
-#X connect 60 0 7 0;
-#X connect 60 1 9 0;
-#X connect 60 2 61 0;
-#X connect 64 0 74 0;
-#X connect 64 1 38 0;
-#X connect 74 0 77 0;
-#X connect 74 1 78 0;
-#X connect 74 2 67 0;
-#X connect 74 3 68 0;
-#X connect 74 4 69 0;
-#X connect 74 5 70 0;
-#X connect 74 6 71 0;
-#X connect 74 7 72 0;
-#X connect 74 8 73 0;
-#X connect 74 9 76 0;
-#X connect 76 0 75 0;
-#X connect 77 0 65 0;
-#X connect 78 0 66 0;
+#X connect 60 0 61 0;
+#X connect 60 1 34 0;
+#X connect 62 0 59 0;
+#X connect 63 0 62 1;
 #X restore 81 361 pd message-outlet;
 #X obj 199 459 s \$0-msg;
 #X obj 30 315 r \$0-msg;
-#X text 254 272 close the plugin;
-#X text 279 347 show/hide editor;
-#X text 303 396 bypass on/off;
-#X text 256 300 print plugin info to console;
+#X text 254 287 close the plugin;
+#X text 279 359 show/hide editor;
+#X text 303 405 bypass on/off;
+#X text 256 313 print plugin info to console;
 #X text 196 488 parameters;
 #X text 285 487 FX programs/banks;
-#N canvas 652 163 726 527 parameter 0;
+#N canvas 753 189 726 527 parameter 0;
 #X obj 98 68 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X obj 17 21 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
@@ -388,13 +421,11 @@ f 51;
 #X restore 293 547 pd transport;
 #X f 16;
 #X text 291 528 transport/timing;
-#X msg 242 428 reset;
-#X text 284 427 reset the plugin (e.g. clear delay lines);
+#X msg 242 433 reset;
+#X text 284 432 reset the plugin (e.g. clear delay lines);
 #X obj 24 339 vstplugin~;
 #X obj 22 13 cnv 15 350 30 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 31 20 [vstplugin~]: load VST plugins in Pd on all platforms
-;
 #N canvas 260 94 436 604 creation 0;
 #X text 24 154 -sp: prefer single precision (default on single precision
 Pd), f 62;
@@ -618,82 +649,95 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X connect 52 0 0 0;
 #X restore 286 508 pd preset;
 #X f 17;
-#X msg 215 300 print;
+#X msg 215 313 print;
 #X obj 262 182 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
 #X obj 262 202 openpanel;
 #X obj 199 240 t a;
-#N canvas 157 125 772 591 search 0;
-#X obj 22 543 s \$0-msg;
-#X text 179 25 search directories for VST plugins.;
-#X msg 30 84 search;
-#X msg 38 116 search -v;
-#X text 111 49 optional arguments: [-v] + list of user search paths.
-relative paths are resolved to the current patch directory.;
-#X text 112 83 if no user search paths are provided \, the standard
+#N canvas 765 207 690 521 search 0;
+#X obj 25 440 s \$0-msg;
+#X msg 33 226 search;
+#X text 95 222 if no user search paths are provided \, the standard
 VST search paths are used., f 39;
-#X msg 44 212 info;
-#X msg 22 26 search <dir1> <dir2> ...;
-#X text 112 211 get info of currently loaded plugin;
-#X text 133 258 the info method will output the following messages:
-;
-#X text 133 282 info name <s>: plugin name;
-#X text 134 302 info path <s>: full plugin path;
-#X text 135 324 info version <f>: plugin version;
-#X text 136 387 info id <f>: plugin id;
-#X text 136 408 info editor <f>: has editor (0|1);
-#X text 137 429 info synth <f>: is synth (0|1);
-#X text 138 450 info single <f>: has single precision (0|1);
-#X text 139 470 info double <f>: has double precision (0|1);
-#X text 138 491 info midiin <f>: has midi input (0|1);
-#X text 138 510 info midiout <f>: has midi output (0|1);
-#X text 139 530 info sysexin <f>: has sysex input (0|1);
-#X text 139 549 info sysexout <f>: has sysex output (0|1);
-#X text 114 114 use -v for verbose output (show probe result);
-#X text 112 138 for each plugin \, a message [plugin <name> <path>(
-is sent through the rightmost outlet., f 50;
-#X text 113 168 you can do [info <path>( to collect information about
-each plugin (see below);
-#X text 136 345 info inputs <f>: number of inputs;
-#X text 136 365 info outputs <f>: number of outputs;
-#X msg 50 278 info \$1;
-#X obj 50 257 openpanel;
-#X obj 50 236 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 53 347 info;
+#X text 138 398 the info method will output the following messages:
+, f 28;
+#X msg 64 412 info \$1;
+#X obj 64 391 openpanel;
+#X obj 64 370 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X text 113 233 get info of any plugin (file path);
-#X text 478 219 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
+#X text 390 224 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
-#X text 478 83 %ProgramFiles%/VSTPlugins %ProgramFiles%/Steinberg/VSTPlugins
+#X text 390 88 %ProgramFiles%/VSTPlugins %ProgramFiles%/Steinberg/VSTPlugins
 %ProgramFiles%/Common Files/VST2 %ProgramFiles%/Common Files/Steinberg/VST2
 , f 43;
-#X text 515 166 path names are case insensitive;
-#X text 477 278 /usr/local/lib/vst /usr/lib/vst, f 20;
-#X obj 476 27 cnv 15 180 20 empty empty empty 20 12 0 14 -233017 -66577
+#X text 427 171 path names are case insensitive;
+#X text 389 283 /usr/local/lib/vst /usr/lib/vst, f 20;
+#X obj 388 32 cnv 15 180 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 482 29 default VST search paths:;
-#X obj 475 54 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
+#X text 394 34 default VST search paths:;
+#X obj 387 59 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X obj 473 194 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 385 199 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X obj 472 255 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 384 260 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 478 57 Windows:;
-#X text 477 197 macOS:;
-#X text 476 258 Linux:;
-#X text 479 135 NOTE: on 32bit Pd "%ProgramFiles%";
-#X text 515 151 is "%ProgramFiles(x86)";
-#X connect 2 0 0 0;
+#X text 390 62 Windows:;
+#X text 389 202 macOS:;
+#X text 388 263 Linux:;
+#X text 391 140 NOTE: on 32bit Pd "%ProgramFiles%";
+#X text 427 156 is "%ProgramFiles(x86)";
+#N canvas 738 353 330 316 info 0;
+#X text 16 12 info name <s>: plugin name;
+#X text 17 32 info path <s>: full plugin path;
+#X text 19 148 info id <f>: plugin id;
+#X text 19 169 info editor <f>: has editor (0|1);
+#X text 20 190 info synth <f>: is synth (0|1);
+#X text 21 211 info single <f>: has single precision (0|1);
+#X text 22 231 info double <f>: has double precision (0|1);
+#X text 21 252 info midiin <f>: has midi input (0|1);
+#X text 21 271 info midiout <f>: has midi output (0|1);
+#X text 22 291 info sysexin <f>: has sysex input (0|1);
+#X text 22 310 info sysexout <f>: has sysex output (0|1);
+#X text 19 106 info inputs <f>: number of inputs;
+#X text 19 126 info outputs <f>: number of outputs;
+#X text 18 85 info version <s>: plugin version;
+#X text 18 49 info vendor <s>: plugin vendor;
+#X text 18 67 info category <s>: plugin category;
+#X restore 140 428 pd info;
+#X text 23 67 [declare -lib vstsearch];
+#X text 98 161 search directories for VST plugins;
+#X text 96 181 optional arguments: list of user search paths. relative
+paths are resolved to the current patch directory., f 42;
+#X msg 25 161 search <l>;
+#X text 94 251 for each plugin \, a message [plugin <name>( is sent
+through the rightmost outlet., f 43;
+#X text 24 88 searched plugins are stored in a global dictionary by
+their name \, which can be used as the creation argument to [vstplugin~]
+or together with the [open ...( message., f 56;
+#X msg 48 314 info <name>;
+#X text 22 26 you can search the standard VST directories on startup
+by loading [vstsearch] \, either by adding it to the startup flags
+or with declare:, f 54;
+#X text 24 134 additionally \, you can use the following methods:;
+#X text 92 346 get info about currently loaded plugin;
+#X text 91 368 get info about any plugin (file path);
+#X text 129 314 get info about a searched plugin., f 34;
+#X msg 39 286 search_clear;
+#X text 129 287 clear the plugin dictionary;
+#X connect 1 0 0 0;
 #X connect 3 0 0 0;
-#X connect 6 0 0 0;
-#X connect 7 0 0 0;
-#X connect 27 0 0 0;
-#X connect 28 0 27 0;
-#X connect 29 0 28 0;
+#X connect 5 0 0 0;
+#X connect 6 0 5 0;
+#X connect 7 0 6 0;
+#X connect 26 0 0 0;
+#X connect 29 0 0 0;
+#X connect 35 0 0 0;
 #X restore 406 508 pd search;
 #X f 14;
 #X text 404 486 search + info;
 #X msg 262 226 open -e \$1;
-#X text 339 151 both absolute and relative paths are allowed \, the
+#X text 339 175 both absolute and relative paths are allowed \, the
 extension (.dll \, .so \, .vst) can be omitted, f 47;
 #N canvas 582 228 451 307 editor 0;
 #X text 10 120 on MacOS \, however \, because of technical limitations
@@ -715,20 +759,25 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 547 251 pd editor;
+#X restore 547 275 pd editor;
 #X f 10;
-#X text 479 252 more info:;
-#X text 339 131 open a VST plugin;
-#X text 339 179 relative paths are searched like abstractions. if that
-fails \, the standard VST search paths are used (see 'search'), f
-46;
-#X text 340 220 by default \, a generic Pd editor is created \, use
+#X text 479 276 more info:;
+#X text 339 128 open a VST plugin;
+#X text 340 244 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
 #X text 220 136 Pd GUI;
 #X text 281 182 VST GUI;
+#X text 339 203 relative paths are searched like abstractions. if that
+fails \, the standard VST search paths are used (see [pd search]),
+f 46;
+#X text 339 145 the argument can be the name of a searched plugin (see
+[pd search] or a file path., f 44;
+#X text 31 20 [vstplugin~]: load VST plugins in Pd on all platforms
+;
+#X text 385 23 NOTE: VST3 is not supported (yet);
 #X connect 1 0 30 0;
 #X connect 1 1 30 1;
-#X connect 2 0 42 0;
+#X connect 2 0 41 0;
 #X connect 3 0 4 0;
 #X connect 4 0 2 0;
 #X connect 5 0 11 0;
@@ -741,8 +790,8 @@ the -e flag to enable the VST editor., f 45;
 #X connect 30 0 0 0;
 #X connect 30 1 0 1;
 #X connect 30 2 10 0;
-#X connect 39 0 11 0;
-#X connect 40 0 41 0;
-#X connect 41 0 45 0;
-#X connect 42 0 11 0;
-#X connect 45 0 42 0;
+#X connect 38 0 11 0;
+#X connect 39 0 40 0;
+#X connect 40 0 44 0;
+#X connect 41 0 11 0;
+#X connect 44 0 41 0;

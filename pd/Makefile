@@ -14,8 +14,8 @@ export cxx.flags
 
 lib.name = vstplugin~
 
-class.sources = src/vstplugin~.cpp
-common.sources = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
+class.sources = src/vstplugin~.cpp src/vstsearch.cpp
+vstplugin~.class.sources = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
 VST2_CFLAGS = -I"$(VST2DIR)/pluginterfaces/vst2.x/"
@@ -32,21 +32,23 @@ cflags = -Wno-unused -Wno-unused-parameter \
 ldlibs = $(VST2_LIBS)
 
 define forWindows
-  common.sources += ../vst/VSTWindowWin32.cpp
+  vstplugin~.class.sources += ../vst/VSTWindowWin32.cpp
   cflags += -DVSTTHREADS=1
   ldlibs += -lstdc++fs
   makefiles = probe.make
 endef
 define forLinux
-  common.sources += ../vst/VSTWindowX11.cpp
+  vstplugin~.class.sources += ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   ldlibs += -L/usr/X11R6/lib -lX11
 endef
 define forDarwin
- common.sources += ../vst/VSTWindowCocoa.mm
+ vstplugin~.class.sources += ../vst/VSTWindowCocoa.mm
  cflags += -fno-objc-arc -DVSTTHREADS=0
  ldlibs += -framework Cocoa
 endef
+
+vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
 
 # all extra files to be included in binary distribution of the library
 datafiles = vstplugin~-help.pd ../README.md ../LICENSE.txt
