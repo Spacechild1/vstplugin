@@ -4,6 +4,8 @@ related:: Classes/VstPluginController, Classes/VstPluginGui
 categories:: UGens>FX
 
 DESCRIPTION::
+note::VST3 plugins are not supported (yet)!::
+
 This UGen represents a single VST plugin instance on the link::Classes/Server::. See the helpfile of link::Classes/VstPluginController:: for how to control it from the SuperCollider language.
 
 VstPlugin also has class methods to scan a Server for plugins and cache the info in the Client, see link::#Plugin Management::.
@@ -153,7 +155,7 @@ Scan a local or remote Server for VST plugins and cache the info in the Client.
 ARGUMENT:: server
 The server to scan for plugins. If the argument is code::nil::, the default Server is used.
 
-ARGUMENT:: path
+ARGUMENT:: dir
 An optional Array of directories to search. Relative paths are resolved to the currently executing file (must have been saved!).
 
 ARGUMENT:: useDefault
@@ -183,9 +185,6 @@ a Boolean telling if the Server should post a message for each VST plugin being 
 The message tells the name of the plugin and the probe result. Probing can fail if the file is
 not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
 
-note::emphasis::verbose:: can be very helpful when a search crashes the Server because you can easily
-spot the offending plugin.::
-
 ARGUMENT:: wait
 The wait time between OSC messages.
 
@@ -199,28 +198,14 @@ ARGUMENT:: action
 an action to be called after the search has finished.
 
 DISCUSSION::
-Directories are searched recursively. For each valid VST plugin, the information is stored in the Client and can be retrieved
-with link::#*plugins::. The key is a symbol generated from the folder name(s) + the plugin file name without extensions.
+Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary in the Client and can be retrieved
+with link::#*plugins::, using the plugin name as the key. 
 
-For a search path containing
+The key also works as the emphasis::path:: argument for link::Classes/VstPluginController#-open::.
 
-code::GVST/GChorus.dll  GVST/GBand.dll  Dexed.dll::
-
-the search result would be:
-table::
-## Key || Path
-## GVST/GChorus || ...GVST/GChorus.dll
-## GVST/GBand || ...GBand.dll
-## Dexed || ...Dexed.dll
-::
-
-The keys could now be used in link::Classes/VstPluginController#-open::.
-
-If a plugin can't be probed it either means it's not a valid VST2.x plugin (VST3 support will come soon)
+If a plugin can't be probed ("... failed!") it either means it's not a valid VST2.x plugin (VST3 is not supported yet)
 or it has the wrong architecture. 
 note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
-warning::Buggy plugins can even crash the Server. Search with code::verbose: true:: to find out
-which plugin causes the crash and then remove it from the directory.::
 
 A new search doesn't automatically clear the cache, but existing keys are overwritten. 
 You can clear the cache explicitly with link::#*reset::.

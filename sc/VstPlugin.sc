@@ -85,15 +85,15 @@ VstPlugin : MultiOutUGen {
 		// clear plugin dictionary
 		pluginDict[server] = IdentityDictionary.new;
 	}
-	*search { arg server, path, useDefault=true, verbose=false, wait = -1, action;
+	*search { arg server, dir, useDefault=true, verbose=false, wait = -1, action;
 		server = server ?? Server.default;
-		path.isString.if { path = [path] };
-		(path.isNil or: path.isArray).not.if { ^"bad type for 'path' argument!".throw };
-		path = path.collect { arg p; this.prResolvePath(p) };
+		dir.isString.if { dir = [dir] };
+		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
+		dir = dir.collect { arg p; this.prResolvePath(p) };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prSearchLocal(server, path, useDefault, verbose, action) }
-		{ this.prSearchRemote(server, path, useDefault, verbose, wait, action) };
+		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, action) }
+		{ this.prSearchRemote(server, dir, useDefault, verbose, wait, action) };
 	}
 	*prSearchLocal { arg server, searchPaths, useDefault, verbose, action;
 		{

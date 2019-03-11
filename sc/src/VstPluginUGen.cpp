@@ -1709,17 +1709,23 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		int count = 0;
 		searchPlugins(path, [&](const std::string& absPath, const std::string& relPath) {
 			// check if the plugin hasn't been successfully probed already
-			if (!pluginMap.count(relPath)) {
+			auto it = pluginMap.find(absPath);
+			if (it == pluginMap.end()) {
 				VSTPluginInfo info;
 				if (doProbePlugin(absPath, info, verbose)) {
-					pluginMap[relPath] = info;
-				}
-				else {
-					return;
+					// we're lazy and just duplicate the info (we have to change the whole thing later anyway for VST3...)
+					pluginMap[absPath] = info;
+					pluginMap[info.name] = info;
+					pluginList.push_back(info.name);
+					count++;
 				}
 			}
-			count++;
-			pluginList.push_back(relPath);
+			else {
+				auto& info = it->second;
+				if (verbose) Print("%s", info.name.c_str());
+				pluginList.push_back(info.name);
+				count++;
+			}
 		});
 		LOG_VERBOSE("found " << count << " plugins.");
 		total += count;
