@@ -19,9 +19,11 @@ class VST2Plugin final : public IVSTPlugin {
     VST2Plugin(void* plugin, const std::string& path);
     ~VST2Plugin();
 
-    std::string getPluginName() const override;
-    int getPluginVersion() const override;
-    int getPluginUniqueID() const override;
+    virtual std::string getPluginName() const override;
+    virtual std::string getPluginVendor() const override;
+    virtual std::string getPluginCategory() const override;
+    virtual std::string getPluginVersion() const override;
+    virtual int getPluginUniqueID() const override;
     virtual int canDo(const char *what) const override;
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) override;
 

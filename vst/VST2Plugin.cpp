@@ -155,18 +155,58 @@ VST2Plugin::~VST2Plugin(){
 }
 
 std::string VST2Plugin::getPluginName() const {
-    char buf[256] = {0};
+    char buf[256] = { 0 };
     dispatch(effGetEffectName, 0, 0, buf);
-    std::string name(buf);
-    if (name.size()){
-        return name;
+    if (*buf){
+        return buf;
     } else {
         return getBaseName();
     }
 }
 
-int VST2Plugin::getPluginVersion() const {
-    return plugin_->version;
+std::string VST2Plugin::getPluginVendor() const {
+    char buf[256] = { 0 };
+    dispatch(effGetVendorString, 0, 0, buf);
+    return buf;
+}
+
+std::string VST2Plugin::getPluginCategory() const {
+    switch (dispatch(effGetPlugCategory)){
+    case kPlugCategEffect:
+        return "Effect";
+    case kPlugCategSynth:
+        return "Synth";
+    case kPlugCategAnalysis:
+        return "Analysis";
+    case kPlugCategMastering:
+        return "Mastering";
+    case kPlugCategSpacializer:
+        return "Spacializer";
+    case kPlugCategRoomFx:
+        return "RoomFx";
+    case kPlugSurroundFx:
+        return "SurroundFx";
+    case kPlugCategRestoration:
+        return "Restoration";
+    case kPlugCategOfflineProcess:
+        return "OfflineProcess";
+    case kPlugCategShell:
+        return "Shell";
+    case kPlugCategGenerator:
+        return "Generator";
+    default:
+        return "Undefined";
+    }
+}
+
+std::string VST2Plugin::getPluginVersion() const {
+    char buf[64] = { 0 };
+    auto n = snprintf(buf, 64, "%d", plugin_->version);
+    if (n > 0 && n < 64){
+        return buf;
+    } else {
+        return "";
+    }
 }
 
 int VST2Plugin::getPluginUniqueID() const {
@@ -601,7 +641,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     header[0] = cMagic;
     header[3] = 1; // format version (always 1)
     header[4] = getPluginUniqueID();
-    header[5] = getPluginVersion();
+    header[5] = plugin_->version;
     header[6] = getNumParameters();
 
     char prgName[28];
@@ -749,7 +789,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
     header[0] = cMagic;
     header[3] = 1; // format version (always 1)
     header[4] = getPluginUniqueID();
-    header[5] = getPluginVersion();
+    header[5] = plugin_->version;
     header[6] = getNumPrograms();
     header[7] = getProgram();
 

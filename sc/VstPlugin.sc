@@ -26,6 +26,9 @@ VstPlugin : MultiOutUGen {
 					var s;
 					s = "name: %".format(self.name) ++ sep
 					++ "path: %".format(self.path) ++ sep
+					++ "vendor: %".format(self.vendor) ++ sep
+					++ "category: %".format(self.category) ++ sep
+					++ "version: %".format(self.version) ++ sep
 					++ "input channels: %".format(self.numInputs) ++ sep
 					++ "output channels: %".format(self.numOutputs) ++ sep
 					++ "parameters: %".format(self.numParameters) ++ sep
@@ -35,7 +38,6 @@ VstPlugin : MultiOutUGen {
 					++ "sysex input: %".format(self.sysexInput) ++ sep
 					++ "sysex output: %".format(self.sysexOutput) ++ sep
 					++ "synth: %".format(self.isSynth) ++ sep
-					++ "version: %".format(self.version) ++ sep
 					++ "editor: %".format(self.hasEditor) ++ sep
 					++ "single precision: %".format(self.singlePrecision) ++ sep
 					++ "double precision: %".format(self.doublePrecision);
@@ -182,13 +184,13 @@ VstPlugin : MultiOutUGen {
 		// data is seperated by tabs
 		data = string.split($\t);
 		key = data[0].asSymbol;
-		info = this.prMakeInfo(key, data[1..9]);
+		info = this.prMakeInfo(key, data[1..11]);
 		// get parameters (name + label)
 		nparam = info.numParameters;
 		info.parameterNames = Array.new(nparam);
 		info.parameterLabels = Array.new(nparam);
 		nparam.do { arg i;
-			var onset = 10 + (i * 2);
+			var onset = 12 + (i * 2);
 			info.parameterNames.add(data[onset]);
 			info.parameterLabels.add(data[onset + 1]);
 		};
@@ -196,7 +198,7 @@ VstPlugin : MultiOutUGen {
 		nprogram = info.numPrograms;
 		info.programNames = Array.new(nprogram);
 		nprogram.do { arg i;
-			var onset = 10 + (nparam * 2) + i;
+			var onset = 12 + (nparam * 2) + i;
 			info.programNames.add(data[onset]);
 		};
 		^info;
@@ -362,19 +364,21 @@ VstPlugin : MultiOutUGen {
 	}
 	*prMakeInfo { arg key, info;
 		var f, flags;
-		f = info[8].asInt;
+		f = info[10].asInt;
 		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 		^(
 			parent: parentInfo,
 			key: key,
 			path: info[0].asString,
 			name: info[1].asString,
-			version: info[2].asInt,
-			id: info[3].asInt,
-			numInputs: info[4].asInt,
-			numOutputs: info[5].asInt,
-			numParameters: info[6].asInt,
-			numPrograms: info[7].asInt,
+			vendor: info[2].asString,
+			category: info[3].asString,
+			version: info[4].asString,
+			id: info[5].asInt,
+			numInputs: info[6].asInt,
+			numOutputs: info[7].asInt,
+			numParameters: info[8].asInt,
+			numPrograms: info[9].asInt,
 			hasEditor: flags[0],
 			isSynth: flags[1],
 			singlePrecision: flags[2],

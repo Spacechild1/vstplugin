@@ -19,7 +19,7 @@
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
-using VstPluginMap = std::unordered_map<std::string, VstPluginInfo>;
+using VstPluginMap = std::unordered_map<std::string, VSTPluginInfo>;
 
 class VstPlugin;
 

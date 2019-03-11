@@ -9,7 +9,7 @@ int wmain(int argc, const wchar_t *argv[]){
         auto plugin = loadVSTPlugin(shorten(argv[1]), true);
         if (plugin) {
             if (argc >= 3){
-                VstPluginInfo info;
+                VSTPluginInfo info;
                 info.set(*plugin);
                 // there's no way to open a fstream with a wide character path...
                 // (the C++17 standard allows filesystem::path but this isn't widely available yet)

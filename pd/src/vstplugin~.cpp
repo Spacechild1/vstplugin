@@ -40,7 +40,7 @@ static std::string toHex(T u){
 }
 
 // static std::unordered_map<t_canvas *, std::unordered_map<t_symbol *, std::string>> canvasPathDict;
-static std::unordered_map<std::string, VstPluginInfo> pluginInfoDict;
+static std::unordered_map<std::string, VSTPluginInfo> pluginInfoDict;
 
 /*--------------------- t_vstparam --------------------------*/
 
@@ -456,7 +456,7 @@ static void vstplugin_close(t_vstplugin *x){
     x->x_path = nullptr;
 }
 
-static bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose){
+static bool doProbePlugin(const std::string& path, VSTPluginInfo& info, bool verbose){
     if (verbose) startpost("probing '%s' ... ", path.c_str());
     auto result = probePlugin(path, info);
     if (verbose) {
@@ -492,7 +492,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
                 // probe plugin (if necessary)
             auto it = pluginInfoDict.find(pluginPath);
             if (it == pluginInfoDict.end()){
-                VstPluginInfo info;
+                VSTPluginInfo info;
                 if (doProbePlugin(pluginPath, info, verbose)){
                     pluginInfoDict[pluginPath] = info;
                     pluginName = gensym(info.name.c_str());
@@ -624,7 +624,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     }
         // probe plugin (if necessary)
     if (!pluginInfoDict.count(path)){
-        VstPluginInfo info;
+        VSTPluginInfo info;
         if (doProbePlugin(path, info, true)){
             pluginInfoDict[path] = info;
         } else {
@@ -674,14 +674,14 @@ static void sendInfo(t_vstplugin *x, const char *what, int value){
 
 // plugin info (no args: currently loaded plugin, symbol arg: path of plugin to query)
 static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
-    VstPluginInfo *info = nullptr;
+    VSTPluginInfo *info = nullptr;
     if (argc > 0){
         auto path = resolvePath(x->x_canvas, atom_getsymbol(argv));
         if (!path.empty()){
                 // probe plugin (if necessary)
             auto it = pluginInfoDict.find(path);
             if (it == pluginInfoDict.end()){
-                VstPluginInfo probeInfo;
+                VSTPluginInfo probeInfo;
                 if (doProbePlugin(path, probeInfo, true)){
                     info = &(pluginInfoDict[path] = probeInfo);
                 }
@@ -696,8 +696,10 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         info = x->x_info;
     }
     if (info){
-        sendInfo(x, "name", info->name);
         sendInfo(x, "path", info->path);
+        sendInfo(x, "name", info->name);
+        sendInfo(x, "vendor", info->vendor);
+        sendInfo(x, "category", info->category);
         sendInfo(x, "version", info->version);
         sendInfo(x, "inputs", info->numInputs);
         sendInfo(x, "outputs", info->numOutputs);
@@ -770,10 +772,13 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     post("~~~ VST plugin info ~~~");
-    post("name: %s", x->x_plugin->getPluginName().c_str());
-    post("version: %d", x->x_plugin->getPluginVersion());
-    post("input channels: %d", x->x_plugin->getNumInputs());
-    post("output channels: %d", x->x_plugin->getNumOutputs());
+    post("name: %s", x->x_info->name.c_str());
+    post("path: %s", x->x_info->path.c_str());
+    post("vendor: %s", x->x_info->vendor.c_str());
+    post("category: %s", x->x_info->category.c_str());
+    post("version: %s", x->x_info->version.c_str());
+    post("input channels: %d", x->x_info->numInputs);
+    post("output channels: %d", x->x_info->numOutputs);
     post("single precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Single) ? "yes" : "no");
     post("double precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Double) ? "yes" : "no");
     post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");

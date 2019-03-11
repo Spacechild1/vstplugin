@@ -80,7 +80,9 @@ table::
 ## key || the key under which the plugin info is stored
 ## path || the file path
 ## name || the plugin name
-## version || the plugin version (Integer)
+## vendor || the plugin vendor
+## category || the plugin category name
+## version || the plugin version string
 ## id || the unique plugin ID (Integer)
 ## hasEditor || if the plugin has an editor
 ## numInputs || the number of input channels

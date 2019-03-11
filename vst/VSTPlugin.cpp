@@ -286,9 +286,11 @@ const std::vector<const char *>& getPluginExtensions() {
 	return platformExtensions;
 }
 
-void VstPluginInfo::set(IVSTPlugin& plugin) {
+void VSTPluginInfo::set(IVSTPlugin& plugin) {
 	name = plugin.getPluginName();
-	version = plugin.getPluginVersion();
+    vendor = plugin.getPluginVendor();
+    category = plugin.getPluginCategory();
+    version = plugin.getPluginVersion();
 	id = plugin.getPluginUniqueID();
 	numInputs = plugin.getNumInputs();
 	numOutputs = plugin.getNumOutputs();
@@ -318,9 +320,11 @@ void VstPluginInfo::set(IVSTPlugin& plugin) {
 	flags |= plugin.hasMidiOutput() << MidiOutput;
 }
 
-void VstPluginInfo::serialize(std::ofstream& file, char sep) {
+void VSTPluginInfo::serialize(std::ofstream& file, char sep) {
 	file << path << sep;
 	file << name << sep;
+    file << vendor << sep;
+    file << category << sep;
 	file << version << sep;
 	file << id << sep;
 	file << numInputs << sep;
@@ -337,26 +341,28 @@ void VstPluginInfo::serialize(std::ofstream& file, char sep) {
 	}
 }
 
-void VstPluginInfo::deserialize(std::ifstream& file, char sep) {
+void VSTPluginInfo::deserialize(std::ifstream& file, char sep) {
 	try {
 		std::vector<std::string> lines;
 		std::string line;
 		int numParameters = 0;
 		int numPrograms = 0;
-		int numLines = 9;
+        int numLines = 11;
 		while (numLines--) {
 			std::getline(file, line, sep);
 			lines.push_back(std::move(line));
 		}
 		path = lines[0];
 		name = lines[1];
-		version = stol(lines[2]);
-		id = stol(lines[3]);
-		numInputs = stol(lines[4]);
-		numOutputs = stol(lines[5]);
-		numParameters = stol(lines[6]);
-		numPrograms = stol(lines[7]);
-		flags = stoul(lines[8]);
+        vendor = lines[2];
+        category = lines[3];
+        version = lines[4];
+        id = stol(lines[5]);
+        numInputs = stol(lines[6]);
+        numOutputs = stol(lines[7]);
+        numParameters = stol(lines[8]);
+        numPrograms = stol(lines[9]);
+        flags = stoul(lines[10]);
 		// parameters
 		parameters.clear();
 		for (int i = 0; i < numParameters; ++i) {
@@ -374,10 +380,10 @@ void VstPluginInfo::deserialize(std::ifstream& file, char sep) {
 		}
 	}
 	catch (const std::invalid_argument& e) {
-		LOG_ERROR("VstPluginInfo::deserialize: invalid argument");
+        LOG_ERROR("VSTPluginInfo::deserialize: invalid argument");
 	}
 	catch (const std::out_of_range& e) {
-		LOG_ERROR("VstPluginInfo::deserialize: out of range");
+        LOG_ERROR("VSTPluginInfo::deserialize: out of range");
 	}
 }
 
@@ -424,7 +430,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
 #define CLOSE close
 #endif
 // scan for plugins on the Server
-VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
+VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	int result = 0;
 #ifdef _WIN32
     // tmpnam/tempnam work differently on MSVC and MinGW, so we use the Win32 API instead
@@ -462,7 +468,7 @@ VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info) {
 		// child process
 		auto plugin = loadVSTPlugin(path, true);
 		if (plugin) {
-			VstPluginInfo probeInfo;
+            VSTPluginInfo probeInfo;
 			probeInfo.set(*plugin);
 			std::ofstream file(tmpPath, std::ios::binary);
 			if (file.is_open()) {

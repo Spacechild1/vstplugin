@@ -48,7 +48,7 @@ namespace VSTWindowFactory {
     void mainLoopPoll();
 }
 
-enum VstPluginFlags {
+enum VSTPluginFlags {
 	HasEditor = 0,
 	IsSynth,
 	SinglePrecision,
@@ -59,15 +59,17 @@ enum VstPluginFlags {
 	SysexOutput
 };
 
-struct VstPluginInfo {
+struct VSTPluginInfo {
 	void set(IVSTPlugin& plugin);
 	void serialize(std::ofstream& file, char sep = '\t');
 	void deserialize(std::ifstream& file, char sep = '\t');
 	// data
 	std::string path;
 	std::string name;
-	int version = 0;
-	int id = 0;
+    std::string vendor;
+    std::string category;
+    std::string version;
+    int id = 0;
 	int numInputs = 0;
 	int numOutputs = 0;
 	// parameter name + label
@@ -114,7 +116,9 @@ class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
     virtual std::string getPluginName() const = 0;
-    virtual int getPluginVersion() const = 0;
+    virtual std::string getPluginVendor() const = 0;
+    virtual std::string getPluginCategory() const = 0;
+    virtual std::string getPluginVersion() const = 0;
     virtual int getPluginUniqueID() const = 0;
     virtual int canDo(const char *what) const = 0;
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) = 0;
@@ -209,7 +213,7 @@ enum class VstProbeResult {
 	error
 };
 
-VstProbeResult probePlugin(const std::string& path, VstPluginInfo& info);
+VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info);
 
 void searchPlugins(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
 

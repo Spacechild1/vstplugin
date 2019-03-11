@@ -1645,7 +1645,7 @@ void vst_path_clear(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 	}
 }
 
-bool doProbePlugin(const std::string& path, VstPluginInfo& info, bool verbose) {
+bool doProbePlugin(const std::string& path, VSTPluginInfo& info, bool verbose) {
 	if (verbose) Print("probing '%s' ... ", path.c_str());
 	auto result = probePlugin(path, info);
 	if (verbose) {
@@ -1704,7 +1704,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		searchPlugins(path, [&](const std::string& absPath, const std::string& relPath) {
 			// check if the plugin hasn't been successfully probed already
 			if (!pluginMap.count(relPath)) {
-				VstPluginInfo info;
+				VSTPluginInfo info;
 				if (doProbePlugin(absPath, info, verbose)) {
 					pluginMap[relPath] = info;
 				}
@@ -1777,7 +1777,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 	if (data->buf[0]) {
 		key.assign(data->buf);
 		if (!pluginMap.count(key)) {
-			VstPluginInfo info;
+			VSTPluginInfo info;
 			if (doProbePlugin(key, info, verbose)) {
 				pluginMap[key] = info;
 			}
@@ -1807,7 +1807,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 		}
 		// reply with plugin info
 		makeReply(data->reply, sizeof(data->reply), "/vst_info", key,
-			info.path, info.name, info.version, info.id, info.numInputs, info.numOutputs,
+			info.path, info.name, info.vendor, info.category, info.version, info.id, info.numInputs, info.numOutputs,
 			(int)info.parameters.size(), (int)info.programs.size(), (int)info.flags);
 	}
 	else {
