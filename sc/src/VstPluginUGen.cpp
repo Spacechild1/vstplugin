@@ -1,6 +1,10 @@
 #include "VstPluginUGen.h"
 #include "Utility.h"
 
+#ifdef SUPERNOVA
+#include "spin_lock.hpp"
+#endif
+
 #include <limits>
 #include <set>
 #include <stdio.h>
@@ -1117,10 +1121,12 @@ void VstPlugin::vendorSpecific(int32 index, int32 value, void *ptr, float opt) {
 
 float VstPlugin::readControlBus(int32 num) {
     if (num >= 0 && num < mWorld->mNumControlBusChannels) {
+#define unit this
 		ACQUIRE_BUS_CONTROL(num);
 		float value = mWorld->mControlBus[num];
 		RELEASE_BUS_CONTROL(num);
 		return value;
+#undef unit
 	}
 	else {
 		return 0.f;
