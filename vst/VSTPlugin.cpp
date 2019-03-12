@@ -497,8 +497,8 @@ VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	}
 	else if (pid == 0) {
 		// child process
-        auto result = probe(path.c_str(), tmpPath.c_str());
-        std::exit(result);
+        auto ret = probe(path.c_str(), tmpPath.c_str());
+        std::exit(ret);
 	}
 	else {
 		// parent process (waiting for child)
