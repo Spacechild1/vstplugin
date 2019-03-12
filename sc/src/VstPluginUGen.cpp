@@ -1722,7 +1722,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 			}
 			else {
 				auto& info = it->second;
-				if (verbose) Print("%s", info.name.c_str());
+				if (verbose) Print("%s\n", absPath.c_str());
 				pluginList.push_back(info.name);
 				count++;
 			}
