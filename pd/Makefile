@@ -33,22 +33,23 @@ ldlibs = $(VST2_LIBS)
 
 define forWindows
   vstplugin~.class.sources += ../vst/VSTWindowWin32.cpp
+  vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
   cflags += -DVSTTHREADS=1
   ldlibs += -lstdc++fs
   makefiles = probe.make
 endef
 define forLinux
   vstplugin~.class.sources += ../vst/VSTWindowX11.cpp
+  vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   ldlibs += -L/usr/X11R6/lib -lX11
 endef
 define forDarwin
- vstplugin~.class.sources += ../vst/VSTWindowCocoa.mm
- cflags += -fno-objc-arc -DVSTTHREADS=0
- ldlibs += -framework Cocoa
+  common.sources += ../vst/VSTWindowCocoa.mm
+  vstsearch.class.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp 
+  cflags += -fno-objc-arc -DVSTTHREADS=0
+  ldlibs += -framework Cocoa
 endef
-
-vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
 
 # all extra files to be included in binary distribution of the library
 datafiles = vstplugin~-help.pd ../README.md ../LICENSE.txt
