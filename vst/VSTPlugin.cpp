@@ -497,7 +497,7 @@ VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	}
 	else if (pid == 0) {
 		// child process
-        auto result = probe(path.c_str(), tempPath.c_str());
+        auto result = probe(path.c_str(), tmpPath.c_str());
         std::exit(result);
 	}
 	else {

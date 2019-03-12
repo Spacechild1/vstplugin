@@ -1,4 +1,4 @@
-extern "C" __declspec(dllimport) int probe(const wchar_t *pluginPath, const wchar_t *filePath);
+extern "C" int probe(const wchar_t *pluginPath, const wchar_t *filePath);
 
 int wmain(int argc, const wchar_t *argv[]){
     if (argc >= 2){
