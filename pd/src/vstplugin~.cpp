@@ -35,7 +35,7 @@ static bool fromHex(const std::string& s, T& u){
 template<typename T>
 static std::string toHex(T u){
     char buf[MAXPDSTRING];
-    snprintf(buf, MAXPDSTRING, "0x%x", u);
+    snprintf(buf, MAXPDSTRING, "0x%x", (unsigned int)u);
     return buf;
 }
 
