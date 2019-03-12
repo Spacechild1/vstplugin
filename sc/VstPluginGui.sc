@@ -256,58 +256,85 @@ VstPluginGui : ObjectGui {
 	}
 	prOpen {
 		model.notNil.if {
-			var window, browser, file, search, path, ok, cancel, status, key, absPath;
+			var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
+			var showPath, showSearch, updateBrowser, plugins;
 			// prevent opening the dialog multiple times
 			dialog !? { ^this };
 			// build dialog
 			window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
-			browser = ListView.new.selectionMode_(\single).items_(VstPlugin.pluginKeys(model.synth.server));
+			browser = ListView.new.selectionMode_(\single);
 			browser.action = {
 				var info;
-				key = browser.items[browser.value].asSymbol;
+				key = plugins[browser.value].asSymbol;
 				info = VstPlugin.plugins(model.synth.server)[key];
 				info.notNil.if {
 					absPath = info.path;
-					path.string = "Path:" + absPath;
+					showPath.value;
 				} { "bug: no info!".error; }; // should never happen
 			};
+			updateBrowser = {
+				var items;
+				plugins = VstPlugin.pluginKeys;
+				items = plugins.collect({ arg item;
+					var vendor = VstPlugin.plugins(model.synth.server)[item].vendor;
+					// append vendor string
+					(vendor.size > 0).if { "% (%)".format(item, vendor) } { item };
+				});
+				browser.items = items;
+				browser.value !? { browser.action.value } ?? { showPath.value };
+			};
+			updateBrowser.value;
+
+			status = StaticText.new.align_(\left).string_("Path:");
+			showPath = { status.stringColor_(Color.black);
+				absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
+			};
+			showSearch = { status.stringColor_(Color.red); status.string_("searching..."); };
+
 			search = Button.new.states_([["Search"]]).maxWidth_(60)
 			.toolTip_("Search for VST plugins in the platform specific default paths\n(see VstPlugin*search)");
 			search.action = {
-				status.string_("searching...");
+				showSearch.value;
 				VstPlugin.search(model.synth.server, verbose: true, action: {
-					{
-						status.string_("");
-						browser.items = VstPlugin.pluginKeys(model.synth.server);
-						browser.value !? { browser.action.value };
-					}.defer;
+					{ updateBrowser.value; }.defer;
 				});
 			};
+			dir = Button.new.states_([["Directory"]]).maxWidth_(60)
+			.toolTip_("Search a directory for VST plugins");
+			dir.action = {
+				FileDialog.new({ arg d;
+					showSearch.value;
+					VstPlugin.search(model.synth.server, dir: d, useDefault: false, verbose: true, action: {
+						{ updateBrowser.value; }.defer;
+					});
+				}, nil, 2, 0, true, pluginPath);
+			};
 			file = Button.new.states_([["File"]]).maxWidth_(60)
-			.toolTip_("Open a file dialog");
+			.toolTip_("Open a VST plugin file");
 			file.action = {
 				FileDialog.new({ arg p;
 					absPath = p;
 					key = absPath;
-					path.string = "Path:" + absPath;
+					showPath.value;
 					ok.action.value;
 				}, nil, 1, 0, true, pluginPath);
 			};
-			path = StaticText.new.align_(\left).string_("Path:");
+			editor = CheckBox.new(text: "editor");
+
 			cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
 			cancel.action = { window.close };
 			ok = Button.new.states_([["OK"]]).maxWidth_(60);
 			ok.action = {
 				key !? {
 					// open with key - not absPath!
-					model.open(key);
+					model.open(key, editor: editor.value);
 					pluginPath = absPath;
 					window.close;
 				};
 			};
-			status = StaticText.new.stringColor_(Color.red).align_(\left);
+
 			window.layout_(VLayout(
-				browser, path, HLayout(search, file, status, nil, cancel, ok)
+				browser, status, HLayout(search, dir, file, editor, nil, cancel, ok)
 			));
 			window.view.addAction({ dialog = nil }, 'onClose');
 			dialog = window;
