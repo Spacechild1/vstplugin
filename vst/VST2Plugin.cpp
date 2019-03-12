@@ -1049,6 +1049,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     }
 }
 
+//#define DEBUG_HOSTCODE_IMPLEMENTATION 1
 VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *ptr, float opt){
     switch(opcode) {
     case audioMasterAutomate:
@@ -1058,9 +1059,11 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterVersion:
         // LOG_DEBUG("opcode: audioMasterVersion");
         return 2400;
+#if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterCurrentId:
         LOG_DEBUG("opcode: audioMasterCurrentId");
         break;
+#endif
     case audioMasterIdle:
         LOG_DEBUG("opcode: audioMasterIdle");
         dispatch(effEditIdle);
@@ -1072,6 +1075,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         // LOG_DEBUG("opcode: audioMasterProcessEvents");
         processEvents((VstEvents *)ptr);
         break;
+#if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterIOChanged:
         LOG_DEBUG("opcode: audioMasterIOChanged");
         break;
@@ -1096,6 +1100,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterGetAutomationState:
         LOG_DEBUG("opcode: audioMasterGetAutomationState");
         break;
+#endif
     case audioMasterGetVendorString:
     case audioMasterGetProductString:
     case audioMasterGetVendorVersion:
@@ -1105,6 +1110,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterCanDo:
         LOG_DEBUG("opcode: audioMasterCanDo " << (const char*)ptr);
         return canHostDo((const char *)ptr);
+#if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterGetLanguage:
         LOG_DEBUG("opcode: audioMasterGetLanguage");
         break;
@@ -1126,6 +1132,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterCloseFileSelector:
         LOG_DEBUG("opcode: audioMasterCloseFileSelector");
         break;
+#endif
     default:
         LOG_DEBUG("plugin requested unknown/deprecated opcode " << opcode);
         return 0;
