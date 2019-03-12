@@ -2,6 +2,7 @@
 #include "Utility.h"
 
 #include <unordered_set>
+#include <stdlib.h>
 
 #ifdef _WIN32
 # include <Windows.h>
@@ -9,24 +10,21 @@
 #include <io.h>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
-#else // just because of Clang on macOS not shipping <experimental/filesystem>...
+#else 
+// just because of Clang on macOS not shipping <experimental/filesystem>...
 # include <dirent.h>
 # include <unistd.h>
 # include <strings.h>
 # include <sys/wait.h>
-#endif
-
-#if DL_OPEN
+// for probing (and dlopen)
 # include <dlfcn.h>
-# include <stdlib.h>
+# include <stdio.h>
 #endif
 
 #ifdef __APPLE__
 # include <CoreFoundation/CoreFoundation.h>
 # include <mach-o/dyld.h>
 # include <unistd.h>
-# include <stdlib.h>
-# include <stdio.h>
 #endif
 
 static std::vector<const char *> platformExtensions = {
@@ -430,7 +428,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
 // used in probePlugin, but can be also exported and called by probe.exe
 extern "C" {
     int probe(const CHAR *pluginPath, const CHAR *filePath){
-        auto plugin = loadVSTPlugin(shorten(pluginPath), true);
+        // LOG_DEBUG("probe: pluginPath '" << pluginPath << "', filePath '" << filePath << "'");
+        auto plugin = loadVSTPlugin(shorten(pluginPath), false);
         if (plugin) {
             if (filePath){
                 VSTPluginInfo info;
@@ -441,27 +440,21 @@ extern "C" {
                 std::ofstream file(shorten(filePath), std::ios::binary);
                 if (file.is_open()) {
                     info.serialize(file);
+                    file.flush();
+                    file.close();
+                    // LOG_DEBUG("info written");
                 }
             }
             freeVSTPlugin(plugin);
+            // LOG_DEBUG("probe success");
             return 1;
         }
+        // LOG_DEBUG("couldn't load plugin");
         return 0;
     }
 }
 #undef CHAR
 
-#ifdef _WIN32
-#define DUP _dup
-#define DUP2 _dup2
-#define FILENO _fileno
-#define CLOSE _close
-#else
-#define DUP dup
-#define DUP2 dup2
-#define FILENO fileno
-#define CLOSE close
-#endif
 // scan for plugins on the Server
 VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	int result = 0;
@@ -477,65 +470,51 @@ VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
     // LOG_DEBUG("temp path: " << tmpPath);
 #endif
 	// temporarily disable stdout
-#if 1
-	fflush(stdout);
-	int oldStdOut = DUP(FILENO(stdout));
-	FILE *nullOut = fopen("NUL", "w");
-	DUP2(FILENO(nullOut), FILENO(stdout));
-#endif
 #ifdef _WIN32
     // probe the plugin in a new process
     std::wstring probePath = getDirectory() + L"\\probe.exe";
     std::wstring quotedPluginPath = L"\"" + widen(path) + L"\"";
     std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
-    // start new process with plugin path and temp file path as arguments
+    // start new process with plugin path and temp file path as arguments.
+    // we need to quote arguments to _spawn to handle spaces in file names.
     result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
-	// fork
-	pid_t pid = fork();
-	if (pid == -1) {
-		LOG_ERROR("probePluging: fork failed!");
-		return VSTProbeResult::error;
-	}
-	else if (pid == 0) {
-        // child process
-#ifdef __APPLE__
-		// exec because fork is not safe on macOS!
-		Dl_info dlinfo;
-		if (dladdr(probe, &dlinfo)) {
-			std::string modulePath = dlinfo.dli_fname;
-			auto end = modulePath.find_last_of('/');
-			std::string probePath = modulePath.substr(0, end) + "/probe"
-			std::string quotedPluginPath = "\"" + path + "\"";
-			std::string quotedTmpPath = "\"" + tmpPath + "\"";
-			// start new process with plugin path and temp file path as arguments
-			if (execl(probePath, "probe", quotedPluginPath, quotedTmpPath, 0) < 0) {
-				LOG_ERROR("probePluging: couldn't exec!");
-				return VSTProbeResult::error;
-			}
-		}
-		else {
-			LOG_ERROR("probePluging: couldn't get module path!");
-			return VSTProbeResult::error;
-		}
-#else
-        auto ret = probe(path.c_str(), tmpPath.c_str());
-        std::exit(ret);
+    Dl_info dlinfo;
+    if (dladdr((void *)probe, &dlinfo)) {
+        std::string modulePath = dlinfo.dli_fname;
+        auto end = modulePath.find_last_of('/');
+        std::string probePath = modulePath.substr(0, end) + "/probe";
+        // fork
+        pid_t pid = fork();
+        if (pid == -1) {
+            LOG_ERROR("probePlugin: fork failed!");
+            return VSTProbeResult::error;
+        }
+        else if (pid == 0) {
+            // child process: start new process with plugin path and temp file path as arguments.
+            // we must *not* quote arguments to exec
+            if (execl(probePath.c_str(), "probe", path.c_str(), tmpPath.c_str(), nullptr) < 0) {
+                LOG_ERROR("probePlugin: exec failed!");
+                return VSTProbeResult::error;
+            }
+            std::exit(-1);
+        }
+        else {
+            // parent process: wait for child
+            int status = -1;
+            waitpid(pid, &status, 0);
+            if (WIFEXITED(status)){
+                result = WEXITSTATUS(status);    
+            }
+        }
+    }
+    else {
+        LOG_ERROR("probePlugin: couldn't get module path!");
+        return VSTProbeResult::error;
+    }
 #endif
-	}
-	else {
-		// parent process (waiting for child)
-		waitpid(pid, &result, 0);
-	}
-#endif
-#if 1
-	// restore stdout
-	fflush(stdout);
-	fclose(nullOut);
-	DUP2(oldStdOut, FILENO(stdout));
-	CLOSE(oldStdOut);
-#endif
-	if (result > 0) {
+    // LOG_DEBUG("result: " << result);
+	if (result == EXIT_SUCCESS) {
         // get info from temp file
     #ifdef _WIN32
         // there's no way to open a fstream with a wide character path...
@@ -564,17 +543,13 @@ VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 			return VSTProbeResult::error;
 		}
 	}
-	else if (result == 0) {
+	else if (result == EXIT_FAILURE) {
 		return VSTProbeResult::fail;
 	}
 	else {
 		return VSTProbeResult::crash;
 	}
 }
-#undef DUP
-#undef DUP2
-#undef FILENO
-#undef CLOSE
 
 void searchPlugins(const std::string &dir, std::function<void(const std::string&, const std::string&)> fn) {
 	// extensions
@@ -604,8 +579,8 @@ void searchPlugins(const std::string &dir, std::function<void(const std::string&
         }
     } catch (const fs::filesystem_error& e) {};
 #else // Unix
-	// force trailing slash
-	auto root = (dir.back() != '/') ? dir + "/" : dir;
+	// force no trailing slash
+	auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
 	std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
 		// search alphabetically (ignoring case)
 		struct dirent **dirlist;

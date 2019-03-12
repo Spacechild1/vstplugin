@@ -1,24 +1,21 @@
-# Windows only
-
-libname = vstplugin~.$(extension)
-
 .PHONY: all clean install
 
-all: probe.exe
+all: ${PROBE_EXE}
 
 clean:
-	rm -f ../vst/probe.o probe.exe
+	rm -f ../vst/${PROBE}.o ${PROBE_EXE}
+	rm -f -r *.dSYM
 
 install:
 	$(INSTALL_DIR) -v "$(installpath)"
-	$(INSTALL_PROGRAM) 'probe.exe' "$(installpath)"
+	$(INSTALL_PROGRAM) '${PROBE_EXE}' "$(installpath)"
 
 install-strip: stripflags := --strip-program=$(STRIP) -s
 install-strip: install
 
-../vst/probe.o: ../vst/probe.cpp
+%.o: %.cpp ${PROBE_DEPS}
 	$(CXX) $(cxx.flags) -o $@ -c $<
 
-probe.exe: ../vst/probe.o $(libname)
-	$(CXX) $(cxx.flags) -o $@ $< -static-libgcc -static-libstdc++ -municode -mwindows -L. -l:$(libname)
+${PROBE_EXE}: ${PROBE_SRC}
+	$(CXX) $(cxx.flags) -o $@ $^ ${PROBE_LDLIBS}
 
