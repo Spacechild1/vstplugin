@@ -25,6 +25,8 @@ namespace fs = std::experimental::filesystem;
 # include <CoreFoundation/CoreFoundation.h>
 # include <mach-o/dyld.h>
 # include <unistd.h>
+# include <stdlib.h>
+# include <stdio.h>
 #endif
 
 static std::vector<const char *> platformExtensions = {
@@ -496,9 +498,30 @@ VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 		return VSTProbeResult::error;
 	}
 	else if (pid == 0) {
-		// child process
+        // child process
+#ifdef __APPLE__
+		// exec because fork is not safe on macOS!
+		Dl_info dlinfo;
+		if (dladdr(probe, &dlinfo)) {
+			std::string modulePath = dlinfo.dli_fname;
+			auto end = modulePath.find_last_of('/');
+			std::string probePath = modulePath.substr(0, end) + "/probe"
+			std::string quotedPluginPath = "\"" + path + "\"";
+			std::string quotedTmpPath = "\"" + tmpPath + "\"";
+			// start new process with plugin path and temp file path as arguments
+			if (execl(probePath, "probe", quotedPluginPath, quotedTmpPath, 0) < 0) {
+				LOG_ERROR("probePluging: couldn't exec!");
+				return VSTProbeResult::error;
+			}
+		}
+		else {
+			LOG_ERROR("probePluging: couldn't get module path!");
+			return VSTProbeResult::error;
+		}
+#else
         auto ret = probe(path.c_str(), tmpPath.c_str());
         std::exit(ret);
+#endif
 	}
 	else {
 		// parent process (waiting for child)
