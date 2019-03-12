@@ -25,7 +25,6 @@ include_directories(src)
 include_directories(../vst)
 
 set(LOGLEVEL 2 CACHE STRING "LOGLEVEL")
-add_definitions(-DLOGLEVEL=${LOGLEVEL} -DLOGFUNCTION=SCLog)
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
 if(APPLE OR MINGW OR WIN32)
@@ -35,8 +34,10 @@ endif()
 option(SUPERNOVA "Build plugins for supernova" OFF)
 if (SUPERNOVA)
     include_directories(${SC_PATH}/external_libraries/nova-tt)
+	include_directories(${SC_PATH}/external_libraries/nova-tt/nova-tt)
     # actually just boost.atomic
     include_directories(${SC_PATH}/external_libraries/boost)
+	include_directories(${SC_PATH}/external_libraries/boost/lockfree)
     include_directories(${SC_PATH}/external_libraries/boost_lockfree)
     include_directories(${SC_PATH}/external_libraries/boost-lockfree)
 endif()
@@ -106,6 +107,8 @@ if(MINGW)
 endif()
 
 add_library(${PROJECT} MODULE src/${FILENAME} ../vst/VST2Plugin.cpp ../vst/VSTPlugin.cpp)
+add_definitions(-DLOGLEVEL=${LOGLEVEL})
+target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog) # only for target!
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
     target_sources(${PROJECT} PUBLIC ../vst/VSTWindowX11.cpp)
@@ -128,7 +131,7 @@ endif()
 
 if(SUPERNOVA)
     add_library(${PROJECT}_supernova MODULE src/${FILENAME} ../vst/VST2Plugin.cpp ../vst/VSTPlugin.cpp)
-    set_property(TARGET ${PROJECT}_supernova PROPERTY COMPILE_DEFINITIONS SUPERNOVA)
+	target_compile_definitions(${PROJECT}_supernova PUBLIC -DSUPERNOVA=1 -DLOGFUNCTION=SCLog) # only for target!
     if (LINUX)
         target_sources(${PROJECT}_supernova PUBLIC ../vst/VSTWindowX11.cpp)
         target_link_libraries(${PROJECT}_supernova -ldl -L/usr/X11R6/lib -lX11)

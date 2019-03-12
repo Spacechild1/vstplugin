@@ -85,9 +85,10 @@ std::string shorten(const std::wstring& s){
     WideCharToMultiByte(CP_UTF8, 0, s.data(), s.size(), &buf[0], n, NULL, NULL);
     return buf;
 }
+#else
+#define widen(x) x
+#define shorten(x) x
 #endif
-
-
 
 IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent){
     AEffect *plugin = nullptr;
@@ -419,6 +420,36 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
 #endif
 
 #ifdef _WIN32
+#define CHAR wchar_t
+#else
+#define CHAR char
+#endif
+// probe a plugin and write info to file.
+// used in probePlugin, but can be also exported and called by probe.exe
+extern "C" {
+    int probe(const CHAR *pluginPath, const CHAR *filePath){
+        auto plugin = loadVSTPlugin(shorten(pluginPath), true);
+        if (plugin) {
+            if (filePath){
+                VSTPluginInfo info;
+                info.set(*plugin);
+                // there's no way to open a fstream with a wide character path...
+                // (the C++17 standard allows filesystem::path but this isn't widely available yet)
+                // for now let's assume temp paths are always ASCII. LATER fix this!
+                std::ofstream file(shorten(filePath), std::ios::binary);
+                if (file.is_open()) {
+                    info.serialize(file);
+                }
+            }
+            freeVSTPlugin(plugin);
+            return 1;
+        }
+        return 0;
+    }
+}
+#undef CHAR
+
+#ifdef _WIN32
 #define DUP _dup
 #define DUP2 _dup2
 #define FILENO _fileno
@@ -466,20 +497,8 @@ VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	}
 	else if (pid == 0) {
 		// child process
-		auto plugin = loadVSTPlugin(path, true);
-		if (plugin) {
-            VSTPluginInfo probeInfo;
-			probeInfo.set(*plugin);
-			std::ofstream file(tmpPath, std::ios::binary);
-			if (file.is_open()) {
-				probeInfo.serialize(file);
-			}
-			freeVSTPlugin(plugin);
-			std::exit(1);
-		}
-		else {
-			std::exit(0);
-		}
+        auto result = probe(path.c_str(), tempPath.c_str());
+        std::exit(result);
 	}
 	else {
 		// parent process (waiting for child)

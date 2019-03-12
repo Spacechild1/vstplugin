@@ -491,7 +491,7 @@ void doSearch(const char *path, t_vstplugin *x = nullptr){
                 pluginName = gensym(info.name.c_str());
             }
         } else {
-            // already probed, just post the name
+            // already probed, just post the path
             verbose(PD_DEBUG, "%s", pluginPath.c_str());
             pluginName = gensym(it->second.name.c_str());
         }
