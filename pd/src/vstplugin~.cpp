@@ -460,19 +460,19 @@ static void vstplugin_close(t_vstplugin *x){
 
 static bool doProbePlugin(const std::string& path, VSTPluginInfo& info){
     auto result = probePlugin(path, info);
-    if (result == VstProbeResult::success) {
+    if (result == VSTProbeResult::success) {
         verbose(PD_DEBUG, "probing '%s' ... ok!", path.c_str());
     }
-    else if (result == VstProbeResult::fail) {
+    else if (result == VSTProbeResult::fail) {
         verbose(PD_DEBUG, "probing '%s' ... failed!", path.c_str());
     }
-    else if (result == VstProbeResult::crash) {
+    else if (result == VSTProbeResult::crash) {
         verbose(PD_NORMAL, "probing '%s' ... crashed!", path.c_str());
     }
-    else if (result == VstProbeResult::error) {
+    else if (result == VSTProbeResult::error) {
         verbose(PD_ERROR, "probing '%s' ... error!", path.c_str());
     }
-    return result == VstProbeResult::success;
+    return result == VSTProbeResult::success;
 }
 
 void doSearch(const char *path, t_vstplugin *x = nullptr){

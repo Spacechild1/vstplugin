@@ -1,4 +1,4 @@
-VstPluginController {
+VSTPluginController {
 	// class var
 	const oscPacketSize = 1600; // safe max. OSC packet size
 	// public
@@ -20,7 +20,7 @@ VstPluginController {
 	var window;
 
 	*guiClass {
-		^VstPluginGui;
+		^VSTPluginGui;
 	}
 	*new { arg synth, id, synthDef, wait= -1;
 		var synthIndex;
@@ -31,24 +31,24 @@ VstPluginController {
 			desc.isNil.if { ^"couldn't find synthDef in global SynthDescLib!".throw };
 			synthDef = desc.def;
 		};
-		// walk the list of UGens and get the VstPlugin instance which matches the given ID.
-		// if 'id' is nil, pick the first instance. throw an error if no VstPlugin is found.
+		// walk the list of UGens and get the VSTPlugin instance which matches the given ID.
+		// if 'id' is nil, pick the first instance. throw an error if no VSTPlugin is found.
 		synthDef.children.do { arg ugen, index;
-			(ugen.class == VstPlugin).if {
+			(ugen.class == VSTPlugin).if {
 				(id.isNil || (ugen.id == id)).if {
 					^super.new.init(synth, index, wait);
 				}
 			};
 		};
-		id.isNil.if {^"synth doesn't contain a VstPlugin!".throw;}
-		{^"synth doesn't contain a VstPlugin with ID '%'".format(id).throw;}
+		id.isNil.if {^"synth doesn't contain a VSTPlugin!".throw;}
+		{^"synth doesn't contain a VSTPlugin with ID '%'".format(id).throw;}
 	}
 	init { arg theSynth, theIndex, waitTime;
 		synth = theSynth;
 		synthIndex = theIndex;
 		wait = waitTime;
 		loaded = false;
-		midi = VstPluginMIDIProxy(this);
+		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
 		// parameter changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -99,7 +99,7 @@ VstPluginController {
 		synth.onFree { this.prFree };
 	}
 	prFree {
-		// "VstPluginController: synth freed!".postln;
+		// "VSTPluginController: synth freed!".postln;
 		oscFuncs.do { arg func;
 			func.free;
 		};
@@ -141,7 +141,7 @@ VstPluginController {
 			action.value(this, loaded);
 			this.changed('/open', path, loaded);
 		}, '/vst_open').oneShot;
-		VstPlugin.prGetInfo(synth.server, path, wait, { arg i, resPath;
+		VSTPlugin.prGetInfo(synth.server, path, wait, { arg i, resPath;
 			// don't set 'info' property yet
 			theInfo = i;
 			// if no plugin info could be obtained (probing failed),
@@ -234,7 +234,7 @@ VstPluginController {
 		this.sendMsg('/program_name', name);
 	}
 	readProgram { arg path, action;
-		path = VstPlugin.prResolvePath(path);
+		path = VSTPlugin.prResolvePath(path);
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -243,7 +243,7 @@ VstPluginController {
 		this.sendMsg('/program_read', path);
 	}
 	readBank { arg path, action;
-		path = VstPlugin.prResolvePath(path);
+		path = VSTPlugin.prResolvePath(path);
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -253,7 +253,7 @@ VstPluginController {
 		this.sendMsg('/bank_read', path);
 	}
 	writeProgram { arg path, action;
-		path = VstPlugin.prResolvePath(path);
+		path = VSTPlugin.prResolvePath(path);
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -261,7 +261,7 @@ VstPluginController {
 		this.sendMsg('/program_write', path);
 	}
 	writeBank { arg path, action;
-		path = VstPlugin.prResolvePath(path);
+		path = VSTPlugin.prResolvePath(path);
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -495,7 +495,7 @@ VstPluginController {
 }
 
 // mimicks MIDIOut
-VstPluginMIDIProxy {
+VSTPluginMIDIProxy {
 	var <>latency = 0;
 	var <>port = 0;
 	var <>uid = 0;

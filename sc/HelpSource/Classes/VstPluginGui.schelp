@@ -1,19 +1,19 @@
-TITLE:: VstPluginGui
-summary:: a generic Qt GUI for VstPluginController
+TITLE:: VSTPluginGui
+summary:: a generic Qt GUI for VSTPluginController
 categories:: GUI
-related:: Classes/VstPlugin, Classes/VstPluginController
+related:: Classes/VSTPlugin, Classes/VSTPluginController
 
 DESCRIPTION::
-This class is the default Qt GUI class for link::Classes/VstPluginController::, see link::Classes/VstPluginController#-gui::.
+This class is the default Qt GUI class for link::Classes/VSTPluginController::, see link::Classes/VSTPluginController#-gui::.
 
 For each parameter, the GUI shows the parameter name, a slider, a text display and the parameter label (e.g. "dB").
 
-note::For performance reasons, the Qt GUI will emphasis::not:: reflect parameter automation via link::Classes/VstPluginController#-map:: or UGen arguments
-(link::Classes/VstPlugin#*ar::).::
+note::For performance reasons, the Qt GUI will emphasis::not:: reflect parameter automation via link::Classes/VSTPluginController#-map:: or UGen arguments
+(link::Classes/VSTPlugin#*ar::).::
 
 You can automate parameters by moving the slider or entering text into the text display (not supported by all plugins).
 
-note::Automating parameters from the Qt GUI will automatically unmap it from any control busses (see link::Classes/VstPluginController#-map::)::
+note::Automating parameters from the Qt GUI will automatically unmap it from any control busses (see link::Classes/VSTPluginController#-map::)::
 
 To get some information about the plugin, just hover over the name.
 
@@ -22,7 +22,7 @@ The GUI also features a pop-up menu with available programs and panels for readi
 IMAGE::editor.jpg::
 
 Pressing the "Open" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories
-(see link::Classes/VstPlugin#*search::) or load a plugin from a file dialog.
+(see link::Classes/VSTPlugin#*search::) or load a plugin from a file dialog.
 
 IMAGE::browser.jpg::
 
@@ -46,26 +46,26 @@ If parent is code::nil::, this will set the window geometry, otherwise it
 determines the size and position of the embedded GUI.
 
 DISCUSSION::
-Usually, this is called indirectly by link::Classes/VstPluginController#-gui::.
+Usually, this is called indirectly by link::Classes/VSTPluginController#-gui::.
 
 Occasionally you might want to call it directly, e.g. to create an initially empty view where you can
 set the link::#-model:: later.
 
 METHOD:: model
-the model (a link::Classes/VstPluginController:: instance).
+the model (a link::Classes/VSTPluginController:: instance).
 
 DISCUSSION::
-VstPluginGui receives notifications for relevant changes in the model, e.g. when a new plugin has been loaded or a parameter has changed.
+VSTPluginGui receives notifications for relevant changes in the model, e.g. when a new plugin has been loaded or a parameter has changed.
 
 You can always set another model and the view will update automatically (see link::#Changing Models::).
 
 SUBSECTION:: Customization
 
-The following instance methods allow you to customize the appearance and behavior of link::Classes/VstPluginGui::.
+The following instance methods allow you to customize the appearance and behavior of link::Classes/VSTPluginGui::.
 You can also customize globally by setting the class methods of the same name. Instance members override class members.
 
 METHOD:: closeOnFree
-whether the GUI window should be closed when the link::Classes/VstPlugin:: is freed (default: code::true::).
+whether the GUI window should be closed when the link::Classes/VSTPlugin:: is freed (default: code::true::).
 DISCUSSION::
 This is only for top level windows, embedded GUIs are not affected.
 
@@ -93,7 +93,7 @@ This method is usually called by the model to notify the view for important chan
 However, it can also be called by the user (with no arguments) to update the view, e.g. after changing GUI properties:
 code::
 // here it's not necessary to call update because the GUI is customized *before* the 'gui' method is called
-~gui = VstPluginGui.new(~model).sliderWidth_(250).gui;
+~gui = VSTPluginGui.new(~model).sliderWidth_(250).gui;
 // otherwise you need to call 'update' to see the effect of your customization
 ~gui.sliderWidth_(300).displayWidth_(80).update;
 // also here
@@ -106,14 +106,14 @@ code::
 (
 // a simple insert FX:
 SynthDef.new(\insert, {arg bus = 0;
-	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
+	ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2));
 }).add;
 )
 
 (
-// create 2 VstPlugins
-~fx1 = VstPluginController(Synth(\insert));
-~fx2 = VstPluginController(Synth(\insert));
+// create 2 VSTPlugins
+~fx1 = VSTPluginController(Synth(\insert));
+~fx2 = VSTPluginController(Synth(\insert));
 )
 
 // show each GUI in its own window
@@ -124,7 +124,7 @@ SynthDef.new(\insert, {arg bus = 0;
 ::
 
 SUBSECTION:: Embedding
-It's possible to embed several VstPluginGui instances within a single view. 
+It's possible to embed several VSTPluginGui instances within a single view. 
 
 The emphasis::bounds:: argument determines the size and position of each subview. 
 (In link::Classes/FlowLayout::s the position is managed automatically,
@@ -134,7 +134,7 @@ If the plugin editor needs more space than emphasis::bounds::, scrollbars are sh
 
 code::
 (
-// create a Window large enough to hold two VstPluginGuis per row (see below).
+// create a Window large enough to hold two VSTPluginGuis per row (see below).
 ~view = Window.new(bounds: 850@450, scroll: true);
 ~view.view.decorator = FlowLayout(w.view.bounds);
 ~view.front;
@@ -146,15 +146,15 @@ code::
 ::
 
 SUBSECTION:: Changing Models
-Here we use a emphasis::single:: VstPluginGui instance to show different link::Classes/VstPluginController::s.
-Say you have an FX chain with several link::Classes/VstPlugin:: instances but you only need to see one at the time.
+Here we use a emphasis::single:: VSTPluginGui instance to show different link::Classes/VSTPluginController::s.
+Say you have an FX chain with several link::Classes/VSTPlugin:: instances but you only need to see one at the time.
 
 code::
 // make an empty GUI
-~gui = VstPluginGui.new.gui;
+~gui = VSTPluginGui.new.gui;
 // show fx1
 ~gui.model_(~fx1);
 // show fx2
 ~gui.model_(~fx2);
 ::
-We could even build a link::Classes/PopUpMenu:: to change between link::Classes/VstPluginController:: instances.
+We could even build a link::Classes/PopUpMenu:: to change between link::Classes/VSTPluginController:: instances.

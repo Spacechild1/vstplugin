@@ -19,15 +19,15 @@
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
-using VstPluginMap = std::unordered_map<std::string, VSTPluginInfo>;
+using VSTPluginMap = std::unordered_map<std::string, VSTPluginInfo>;
 
-class VstPlugin;
+class VSTPlugin;
 
-struct VstPluginCmdData {
+struct VSTPluginCmdData {
 	void tryOpen();
 	void close();
 	// data
-	VstPlugin *owner;
+	VSTPlugin *owner;
 	IVSTPlugin *plugin = nullptr;
 	std::shared_ptr<IVSTWindow> window;
 	std::thread::id threadID;
@@ -42,7 +42,7 @@ struct VstPluginCmdData {
 };
 
 struct ParamCmdData {
-	VstPlugin *owner;
+	VSTPlugin *owner;
 	int index;
 	float value;
 	// flexible array
@@ -57,28 +57,28 @@ struct QueryCmdData {
 	char buf[1];
 };
 
-class VstPluginListener : public IVSTPluginListener {
+class VSTPluginListener : public IVSTPluginListener {
 public:
-	VstPluginListener(VstPlugin& owner);
+	VSTPluginListener(VSTPlugin& owner);
 	void parameterAutomated(int index, float value) override;
 	void midiEvent(const VSTMidiEvent& midi) override;
 	void sysexEvent(const VSTSysexEvent& sysex) override;
 private:
-	VstPlugin *owner_ = nullptr;
+	VSTPlugin *owner_ = nullptr;
 };
 
-class VstPlugin : public SCUnit {
-	friend class VstPluginListener;
-	friend struct VstPluginCmdData;
+class VSTPlugin : public SCUnit {
+	friend class VSTPluginListener;
+	friend struct VSTPluginCmdData;
 	static const uint32 MagicNumber = 0x5da815bc;
 public:
-	VstPlugin();
-	~VstPlugin();
+	VSTPlugin();
+	~VSTPlugin();
 	IVSTPlugin *plugin();
 	bool check();
 	bool valid();
     void open(const char *path, bool gui);
-	void doneOpen(VstPluginCmdData& msg);
+	void doneOpen(VSTPluginCmdData& msg);
 	void close();
 	void showEditor(bool show);
 	void reset(bool async = false);
@@ -140,10 +140,10 @@ public:
 	void sysexEvent(const VSTSysexEvent& sysex);
 	void sendData(int32 totalSize, int32 onset, const char *data, int32 n, bool bank);
 	// for asynchronous commands
-    VstPluginCmdData* makeCmdData(const char *s);
-	VstPluginCmdData* makeCmdData(const char *data, size_t size);
-	VstPluginCmdData* makeCmdData(size_t size);
-	VstPluginCmdData* makeCmdData();
+    VSTPluginCmdData* makeCmdData(const char *s);
+	VSTPluginCmdData* makeCmdData(const char *data, size_t size);
+	VSTPluginCmdData* makeCmdData(size_t size);
+	VSTPluginCmdData* makeCmdData();
 	template<typename T>
 	void doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt=nullptr);
 	static bool cmdGetData(World *world, void *cmdData, bool bank);
@@ -155,7 +155,7 @@ private:
 	bool isLoading_ = false;
 	bool bypass_ = false;
 	std::shared_ptr<IVSTWindow> window_;
-	std::unique_ptr<VstPluginListener> listener_;
+	std::unique_ptr<VSTPluginListener> listener_;
 
     float *buf_ = nullptr;
     int numInChannels_ = 0;

@@ -461,7 +461,7 @@ extern "C" {
 #define CLOSE close
 #endif
 // scan for plugins on the Server
-VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
+VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	int result = 0;
 #ifdef _WIN32
     // tmpnam/tempnam work differently on MSVC and MinGW, so we use the Win32 API instead
@@ -493,7 +493,7 @@ VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
 	pid_t pid = fork();
 	if (pid == -1) {
 		LOG_ERROR("probePluging: fork failed!");
-		return VstProbeResult::error;
+		return VSTProbeResult::error;
 	}
 	else if (pid == 0) {
 		// child process
@@ -532,20 +532,20 @@ VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
             if (std::remove(tmpPath.c_str()) != 0) {
         #endif
 				LOG_ERROR("probePlugin: couldn't remove temp file!");
-				return VstProbeResult::error;
+				return VSTProbeResult::error;
 			}
-			return VstProbeResult::success;
+			return VSTProbeResult::success;
 		}
 		else {
 			LOG_ERROR("probePlugin: couldn't read temp file!");
-			return VstProbeResult::error;
+			return VSTProbeResult::error;
 		}
 	}
 	else if (result == 0) {
-		return VstProbeResult::fail;
+		return VSTProbeResult::fail;
 	}
 	else {
-		return VstProbeResult::crash;
+		return VSTProbeResult::crash;
 	}
 }
 #undef DUP

@@ -76,7 +76,7 @@ struct VSTPluginInfo {
 	std::vector<std::pair<std::string, std::string>> parameters;
 	// default programs
 	std::vector<std::string> programs;
-	// see VstPluginFlags
+	// see VSTPluginFlags
 	uint32_t flags = 0;
 };
 
@@ -206,14 +206,14 @@ IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent = false);
 
 void freeVSTPlugin(IVSTPlugin* plugin);
 
-enum class VstProbeResult {
+enum class VSTProbeResult {
 	success,
 	fail,
 	crash,
 	error
 };
 
-VstProbeResult probePlugin(const std::string& path, VSTPluginInfo& info);
+VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info);
 
 void searchPlugins(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
 

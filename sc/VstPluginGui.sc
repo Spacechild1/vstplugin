@@ -1,4 +1,4 @@
-VstPluginGui : ObjectGui {
+VSTPluginGui : ObjectGui {
 	// class defaults (can be overwritten per instance)
 	classvar <>numRows = 10; // max. number of parameters per column
 	classvar <>closeOnFree = true;
@@ -127,7 +127,7 @@ VstPluginGui : ObjectGui {
 		font = Font.new(*GUI.skin.fontSpecs).pointSize_(12);
 		// change window header
 		embedded.not.if {
-			view.parent.name_(name !? { "VstPlugin (%)".format(name) } ?? { "VstPlugin (empty)" });
+			view.parent.name_(name !? { "VSTPlugin (%)".format(name) } ?? { "VSTPlugin (empty)" });
 		};
 
 		header = StaticText.new
@@ -266,7 +266,7 @@ VstPluginGui : ObjectGui {
 			browser.action = {
 				var info;
 				key = plugins[browser.value].asSymbol;
-				info = VstPlugin.plugins(model.synth.server)[key];
+				info = VSTPlugin.plugins(model.synth.server)[key];
 				info.notNil.if {
 					absPath = info.path;
 					showPath.value;
@@ -274,9 +274,9 @@ VstPluginGui : ObjectGui {
 			};
 			updateBrowser = {
 				var items;
-				plugins = VstPlugin.pluginKeys;
+				plugins = VSTPlugin.pluginKeys;
 				items = plugins.collect({ arg item;
-					var vendor = VstPlugin.plugins(model.synth.server)[item].vendor;
+					var vendor = VSTPlugin.plugins(model.synth.server)[item].vendor;
 					// append vendor string
 					(vendor.size > 0).if { "% (%)".format(item, vendor) } { item };
 				});
@@ -292,10 +292,10 @@ VstPluginGui : ObjectGui {
 			showSearch = { status.stringColor_(Color.red); status.string_("searching..."); };
 
 			search = Button.new.states_([["Search"]]).maxWidth_(60)
-			.toolTip_("Search for VST plugins in the platform specific default paths\n(see VstPlugin*search)");
+			.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)");
 			search.action = {
 				showSearch.value;
-				VstPlugin.search(model.synth.server, verbose: true, action: {
+				VSTPlugin.search(model.synth.server, verbose: true, action: {
 					{ updateBrowser.value; }.defer;
 				});
 			};
@@ -304,7 +304,7 @@ VstPluginGui : ObjectGui {
 			dir.action = {
 				FileDialog.new({ arg d;
 					showSearch.value;
-					VstPlugin.search(model.synth.server, dir: d, useDefault: false, verbose: true, action: {
+					VSTPlugin.search(model.synth.server, dir: d, useDefault: false, verbose: true, action: {
 						{ updateBrowser.value; }.defer;
 					});
 				}, nil, 2, 0, true, pluginPath);

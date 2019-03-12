@@ -1,4 +1,4 @@
-VstPlugin : MultiOutUGen {
+VSTPlugin : MultiOutUGen {
 	// class members
 	classvar pluginDict;
 	classvar parentInfo;

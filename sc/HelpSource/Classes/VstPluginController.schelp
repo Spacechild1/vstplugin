@@ -1,11 +1,11 @@
-TITLE:: VstPluginController
-summary:: Client-side representation of a VstPlugin UGen instance
+TITLE:: VSTPluginController
+summary:: Client-side representation of a VSTPlugin UGen instance
 categories:: Server>Abstractions
-related:: Classes/VstPlugin, Classes/VstPluginGui, Classes/VstPluginMIDIProxy
+related:: Classes/VSTPlugin, Classes/VSTPluginGui, Classes/VSTPluginMIDIProxy
 
 DESCRIPTION::
 
-This class is used to control a specific link::Classes/VstPlugin:: instance in a link::Classes/Synth::, so you can
+This class is used to control a specific link::Classes/VSTPlugin:: instance in a link::Classes/Synth::, so you can
 open plugins, automate parameters, change programs, send MIDI messages, etc. Have a look at the examples at the bottom!
 
 Subsection:: Introduction
@@ -15,13 +15,13 @@ Here's a quick example showing a simple insert effect on a 2-channel audio bus:
 code::
 (
 SynthDef(\insert, { arg bus;
-    ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));  
+    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2));  
 }).add;
 )
 // create the synth:
 ~synth = Synth(\insert, [\bus, 0]);
-// get a handle to the VstPlugin:
-~fx = VstPluginController(~synth);
+// get a handle to the VSTPlugin:
+~fx = VSTPluginController(~synth);
 // open a plugin:
 ~fx.open("/path/to/plugin", info: true);
 // show the GUI:
@@ -29,7 +29,7 @@ SynthDef(\insert, { arg bus;
 // etc.
 ::
 
-If you have more than one instance of VstPlugin in your SynthDef, you need to give them unique IDs so that VstPluginController can find the right instance:
+If you have more than one instance of VSTPlugin in your SynthDef, you need to give them unique IDs so that VSTPluginController can find the right instance:
 
 code::
 (
@@ -37,17 +37,17 @@ code::
 SynthDef(\insert2, { arg bus;
     var sig;
 	sig = In.ar(bus, 2);
-    sig = VstPlugin.ar(sig, 2, id: \eq);
-    sig = VstPlugin.ar(sig, 2, id: \chorus);
+    sig = VSTPlugin.ar(sig, 2, id: \eq);
+    sig = VSTPlugin.ar(sig, 2, id: \chorus);
     ReplaceOut.ar(bus, );  
 }).add;
 )
 // create the synth:
 ~synth = Synth(\insert2, [\bus, 0]);
 (
-// get handles to the VstPlugins:
-~eq = VstPluginController(~synth, \eq);
-~chorus = VstPluginController(~synth, \chorus);
+// get handles to the VSTPlugins:
+~eq = VSTPluginController(~synth, \eq);
+~chorus = VSTPluginController(~synth, \chorus);
 )
 // etc.
 ::
@@ -68,15 +68,15 @@ code::
 ~fx.map(2, ~c);
 ~c.set(0.5);
 ::
-## with the code::params:: UGen input of link::Classes/VstPlugin#*ar::
+## with the code::params:: UGen input of link::Classes/VSTPlugin#*ar::
 code::
 (
 SynthDef(\insert, { arg bus, f;
-    ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2, params: [0, f]));  
+    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2, params: [0, f]));  
 }).add;
 )
-// create a VstPlugin instance with parameter 0 set to 0.5
-~fx = VstPluginController(Synth(\insert, [\bus, 0, \f, 0.5]));
+// create a VSTPlugin instance with parameter 0 set to 0.5
+~fx = VSTPluginController(Synth(\insert, [\bus, 0, \f, 0.5]));
 // now set it to 0.7
 ~fx.synth.set(\f, 0.7);
 // of course, 'f' could be any UGen input (e.g. SinOsc.ar)
@@ -166,7 +166,7 @@ code::
 ::
 You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins).
 Additionally, you can browse for plugins, select programs and read/write preset files.
-See link::#-gui:: and link::Classes/VstPluginGui:: for more information.
+See link::#-gui:: and link::Classes/VSTPluginGui:: for more information.
 ::
 
 CLASSMETHODS::
@@ -174,16 +174,16 @@ CLASSMETHODS::
 PRIVATE:: guiClass, msg2string
 
 METHOD:: new
-Create a new VstPluginController.
+Create a new VSTPluginController.
 
 ARGUMENT:: synth
-the link::Classes/Synth:: containing the link::Classes/VstPlugin:: you want to control.
+the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to control.
 
 ARGUMENT:: id
-a symbol or number which uniquely identifies the link::Classes/VstPlugin:: within the link::Classes/SynthDef::.
+a symbol or number which uniquely identifies the link::Classes/VSTPlugin:: within the link::Classes/SynthDef::.
 
-If this is code::nil::, VstPluginController will take the first instance it can find. 
-This implies that you don't need an emphasis::id:: if there's only a single VstPlugin in the SynthDef.
+If this is code::nil::, VSTPluginController will take the first instance it can find. 
+This implies that you don't need an emphasis::id:: if there's only a single VSTPlugin in the SynthDef.
 
 ARGUMENT:: synthDef
 the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::.
@@ -208,14 +208,14 @@ open a VST plugin.
 ARGUMENT:: path
 plugin path/key.
 
-This can be either a file path (with or without extension) or a key to an already loaded plugin (see link::Classes/VstPlugin#*search::).
+This can be either a file path (with or without extension) or a key to an already loaded plugin (see link::Classes/VSTPlugin#*search::).
 File paths can be absolute or relative, the latter are resolved to the currently executing file (must have been saved!).
 
 emphasis::path:: is first tried as a key for the plugin dictionary. If no plugin can be found it is treated as a file path
 and probed on the Server. (On success, the plugin is added to the dictionary with emphasis::path:: as the key.)
 
 note::A relative path like "GChorus" can be ambiguous if such a key already exists in the dictionary
-(e.g. as a result of link::Classes/VstPlugin#*search::). You can "force" a relative path by writing "./GChorus" instead.::
+(e.g. as a result of link::Classes/VSTPlugin#*search::). You can "force" a relative path by writing "./GChorus" instead.::
 
 ARGUMENT:: editor
 request the VST plugin editor.
@@ -250,7 +250,7 @@ The plugin has to be opened with emphasis::editor:: set to code::true::.
 note::This is not supported (yet) on macOS!::
 
 METHOD:: gui
-creates a generic Qt GUI (see link::Classes/VstPluginGui::).
+creates a generic Qt GUI (see link::Classes/VSTPluginGui::).
 
 ARGUMENT:: parent
 the parent. If code::nil::, the GUI is created in a new toplevel window.
@@ -258,10 +258,10 @@ the parent. If code::nil::, the GUI is created in a new toplevel window.
 ARGUMENT:: bounds
 the bounds.
 
-RETURNS:: a new link::Classes/VstPluginGui:: instance.
+RETURNS:: a new link::Classes/VSTPluginGui:: instance.
 
 METHOD:: info
-returns:: the (static) plugin info (see link::Classes/VstPlugin#Plugin Info::).
+returns:: the (static) plugin info (see link::Classes/VSTPlugin#Plugin Info::).
 
 METHOD:: loaded
 returns:: whether a plugin is currently loaded.
@@ -282,10 +282,10 @@ Some plugins crash when being reset in the non-realtime thread, so use with care
 ::
 
 METHOD:: synth
-returns:: the link::Classes/Synth:: containing the currently controlled link::Classes/VstPlugin:: instance.
+returns:: the link::Classes/Synth:: containing the currently controlled link::Classes/VSTPlugin:: instance.
 
 METHOD:: synthIndex
-returns:: the index of the link::Classes/VstPlugin:: instance within the link::Classes/Synth::.
+returns:: the index of the link::Classes/VSTPlugin:: instance within the link::Classes/Synth::.
 
 METHOD:: wait
 the wait time between OSC messages (in seconds).
@@ -296,7 +296,7 @@ DISCUSSION::
 0 is not safe with UDP, but is probably ok with TCP.
 
 Some methods may require lots of OSC messages (e.g. when changing programs, the UGen has to send the new
-state of all parameters). VstPluginController waits for the given time after a certain number of bytes
+state of all parameters). VSTPluginController waits for the given time after a certain number of bytes
 to avoid messages getting dropped. This is mostly relevant for UDP connections, 
 especially for remote Servers, high network traffic and plugins with a large number of parameters.
 
@@ -521,10 +521,10 @@ subsection:: MIDI
 METHOD:: midi
 send MIDI messages to the plugin via a proxy class.
 
-RETURNS:: an instance of link::Classes/VstPluginMIDIProxy::.
+RETURNS:: an instance of link::Classes/VSTPluginMIDIProxy::.
 
 DISCUSSION::
-link::Classes/VstPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably.
+link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably.
 
 This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
 
@@ -611,7 +611,7 @@ code::
 // a simple stereo insert FX which reads from an audio bus
 // and replaces the content with the processed output:
 SynthDef.new(\insert, {arg bus;
-	ReplaceOut.ar(bus, VstPlugin.ar(In.ar(bus, 2), 2));
+	ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2));
 }).add;
 
 // load sound file
@@ -641,12 +641,12 @@ SynthDef(\output, {arg in = 0, out = 0;
 )
 
 // add an insert FX to the bus (after the test signal)
-~fx1 = VstPluginController(Synth(\insert, [\bus, ~fxBus], ~test, addAction: \addAfter));
+~fx1 = VSTPluginController(Synth(\insert, [\bus, ~fxBus], ~test, addAction: \addAfter));
 // open a plugin from the GUI and play with the parameters
 ~fx1.gui;
 
 // add another insert FX (after '~fx1'):
-~fx2 = VstPluginController(Synth(\insert, [\bus, ~fxBus], ~fx1.synth, addAction: \addAfter));
+~fx2 = VSTPluginController(Synth(\insert, [\bus, ~fxBus], ~fx1.synth, addAction: \addAfter));
 // open plugin
 ~fx2.gui;
 
@@ -657,14 +657,14 @@ SynthDef(\output, {arg in = 0, out = 0;
 ~fx2.synth.free; // remove from FX chain
 ::
 
-You can also create fixed FX chains by using several VstPlugins inside a SynthDef:
+You can also create fixed FX chains by using several VSTPlugins inside a SynthDef:
 code::
 (
 // an insert FX with two plugins hardcoded in series:
 SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 	var sig = In.ar(bus, 2);
-	sig = VstPlugin.ar(sig, 2, bypass1, id: \fx1);
-	sig = VstPlugin.ar(sig, 2, bypass2, id: \fx2);
+	sig = VSTPlugin.ar(sig, 2, bypass1, id: \fx1);
+	sig = VSTPlugin.ar(sig, 2, bypass2, id: \fx2);
 	ReplaceOut.ar(bus, sig);
 }).add;
 )
@@ -673,8 +673,8 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 // insert into the FX bus
 ~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
-~fx1 = VstPluginController(~synth, \fx1);
-~fx2 = VstPluginController(~synth, \fx2);
+~fx1 = VSTPluginController(~synth, \fx1);
+~fx2 = VSTPluginController(~synth, \fx2);
 )
 
 // open plugins
@@ -696,8 +696,8 @@ code::
 // add a group *after* the default group
 ~fxGroup = Group.after(1); 
 // add two stereo insert effects to the FX group (in series)
-~fx1 = VstPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
-~fx2 = VstPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
+~fx1 = VSTPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
+~fx2 = VSTPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
 
 // open plugins
 ~fx1.gui
@@ -718,7 +718,7 @@ code::
 ~test = Synth(\test, [\out, 0]);
 
 // insert FX (after ~test)
-~fx = VstPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
+~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin
 ~fx.gui;
 // create control bus
@@ -741,12 +741,12 @@ SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 	var lfo, sig;
 	lfo = SinOsc.kr(rate, 0, 0.5, 0.5);
 	// parameter 0 will be modulated by a SinOsc
-	sig = VstPlugin.ar(In.ar(bus, 2), 2, bypass, params: [0, lfo]);
+	sig = VSTPlugin.ar(In.ar(bus, 2), 2, bypass, params: [0, lfo]);
 	ReplaceOut.ar(bus, sig);
 }).add;
 )
 
-~fx = VstPluginController(Synth.new(\mod, [\bus, 0], ~test, addAction: \addAfter));
+~fx = VSTPluginController(Synth.new(\mod, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin
 ~fx.gui;
 
@@ -763,12 +763,12 @@ code::
 (
 SynthDef.new(\vsti, {arg out = 0;
 	// VST instruments usually don't have inputs
-	Out.ar(out, VstPlugin.ar(nil, 2));
+	Out.ar(out, VSTPlugin.ar(nil, 2));
 }).add;
 )
 
 // create Synth with VST instrument
-~vsti = VstPluginController(Synth(\vsti));
+~vsti = VSTPluginController(Synth(\vsti));
 // open plugin
 ~vsti.gui;
 // or if you want the VST editor:
