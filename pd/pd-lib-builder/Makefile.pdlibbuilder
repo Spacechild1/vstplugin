@@ -366,14 +366,17 @@ uname := $(shell uname)
 
 ifeq ($(findstring $(uname), Linux GNU GNU/kFreeBSD), $(uname))
   system = Linux
+  extension = pd_linux
 endif
 
 ifeq ($(uname), Darwin)
   system = Darwin
+  extension = pd_darwin
 endif
 
 ifeq ($(filter MINGW% MSYS%, $(uname)), $(uname)) 
   system = Windows
+  extension = dll
 endif
 
 # Unfortunately not all Mingw versions provide a link cc > gcc, therefore
@@ -526,7 +529,6 @@ ifeq ($(system), Linux)
   libdir := $(prefix)/lib
   pkglibdir = $(libdir)/pd-externals
   pdincludepath := $(wildcard /usr/include/pd)
-  extension = pd_linux
   cpp.flags := -DUNIX
   c.flags := -fPIC
   c.ldflags := -rdynamic -shared -fPIC -Wl,-rpath,"\$$ORIGIN",--enable-new-dtags
@@ -552,7 +554,6 @@ ifeq ($(system), Darwin)
   pkglibdir = $(HOME)/Library/Pd
   pdincludepath := $(firstword $(wildcard \
     /Applications/Pd*.app/Contents/Resources/src))
-  extension = pd_darwin
   cpp.flags := -DUNIX -DMACOSX -I /sw/include
   c.flags :=
   c.ldflags := -undefined suppress -flat_namespace -bundle
@@ -623,7 +624,6 @@ ifeq ($(system), Windows)
   else
     arch.c.flags =
   endif
-  extension = dll
   c.flags :=
   c.ldflags := -static-libgcc -shared \
     -Wl,--enable-auto-import "$(PDBINDIR)/pd.dll"
