@@ -27,6 +27,8 @@ namespace fs = std::experimental::filesystem;
 # include <unistd.h>
 #endif
 
+#include <cstring>
+
 static std::vector<const char *> platformExtensions = {
 #ifdef __APPLE__
 	".vst"
