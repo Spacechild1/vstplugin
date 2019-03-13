@@ -39,27 +39,25 @@ suppress-wunused = 1
 
 makefiles = ${PROBE}.make
 
-# on Windows (MinGW) and Linux, vstsearch and probe are just stubs which dynamically link to vstplugin~ 
-# (dramatically reduces binary size on Windows: ~20kB vs ~1MB)
+# on Windows (MinGW), vstsearch and probe are just stubs which dynamically link to vstplugin~.dll
+# (dramatically reduces binary size: ~20kB vs ~1MB)
 define forWindows
   vstplugin~.class.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowWin32.cpp
   vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
   PROBE_EXE = ${PROBE_EXE}.exe
   PROBE_DEPS += vstplugin~.$(extension)
-  # -municode for wmain, -mwindows to hide console
-  PROBE_LDLIBS += -static-libgcc -static-libstdc++ -municode -mwindows -L. -l:vstplugin~.$(extension)
   cflags += -DVSTTHREADS=1
   ldlibs += -lstdc++fs
+  # -municode for wmain, -mwindows to hide console
+  PROBE_LDLIBS += -static-libgcc -static-libstdc++ -municode -mwindows -L. -l:vstplugin~.$(extension)
 endef
 define forLinux
-  vstplugin~.class.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowX11.cpp
-  vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
-  PROBE_DEPS += vstplugin~.$(extension)
-  PROBE_LDLIBS += -L/usr/X11R6/lib -lX11 -L. -l:vstplugin~.$(extension)
+  common.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowX11.cpp
+  PROBE_SRC += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
-  ldlibs += -L/usr/X11R6/lib -lX11
+  ldlibs += -L/usr/X11R6/lib -lX11 -ldl
+  PROBE_LDLIBS += -L/usr/X11R6/lib -lX11 -ldl
 endef
-# on macOS, vstplugin~ is a bundle, which means we can't link to it
 define forDarwin
   common.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowCocoa.mm
   PROBE_SRC += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowCocoa.mm
