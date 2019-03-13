@@ -428,7 +428,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
 // used in probePlugin, but can be also exported and called by probe.exe
 extern "C" {
     int probe(const CHAR *pluginPath, const CHAR *filePath){
-        // LOG_DEBUG("probe: pluginPath '" << pluginPath << "', filePath '" << filePath << "'");
+        /// LOG_DEBUG("probe: pluginPath '" << pluginPath << "', filePath '" << filePath << "'");
         auto plugin = loadVSTPlugin(shorten(pluginPath), false);
         if (plugin) {
             if (filePath){
@@ -440,80 +440,81 @@ extern "C" {
                 std::ofstream file(shorten(filePath), std::ios::binary);
                 if (file.is_open()) {
                     info.serialize(file);
-                    file.flush();
-                    file.close();
-                    // LOG_DEBUG("info written");
+                    /// LOG_DEBUG("info written");
                 }
             }
             freeVSTPlugin(plugin);
-            // LOG_DEBUG("probe success");
+            /// LOG_DEBUG("probe success");
             return 1;
         }
-        // LOG_DEBUG("couldn't load plugin");
+        /// LOG_DEBUG("couldn't load plugin");
         return 0;
     }
 }
 #undef CHAR
 
-// scan for plugins on the Server
+// probe a plugin in a seperate process and return the info in a file
 VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info) {
-	int result = 0;
+	int result = -1;
 #ifdef _WIN32
-    // tmpnam/tempnam work differently on MSVC and MinGW, so we use the Win32 API instead
+	// create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
     wchar_t tmpDir[MAX_PATH+1];
     auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
-    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"%p", (void *)tmpDir);
+    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst%x", (uint32_t)rand()); // lazy
     std::wstring tmpPath = tmpDir;
-    // LOG_DEBUG("temp path: " << shorten(tmpPath));
-#else
-    std::string tmpPath = tmpnam(nullptr);
-    // LOG_DEBUG("temp path: " << tmpPath);
-#endif
-	// temporarily disable stdout
-#ifdef _WIN32
-    // probe the plugin in a new process
+    /// LOG_DEBUG("temp path: " << shorten(tmpPath));
+    // get full path to probe exe
     std::wstring probePath = getDirectory() + L"\\probe.exe";
+    // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::wstring quotedPluginPath = L"\"" + widen(path) + L"\"";
     std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
-    // start new process with plugin path and temp file path as arguments.
-    // we need to quote arguments to _spawn to handle spaces in file names.
+    // start a new process with plugin path and temp file path as arguments:
     result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
+	// create temp file path
+	auto tmpBuf = tempnam(nullptr, nullptr);
+	std::string tmpPath;
+	if (tmpBuf){
+		tmpPath = tmpBuf;
+		free(tmpBuf);
+	} else {
+		LOG_ERROR("couldn't make create file name");
+		return VSTProbeResult::error;
+	}
+	/// LOG_DEBUG("temp path: " << tmpPath);
     Dl_info dlinfo;
-    if (dladdr((void *)probe, &dlinfo)) {
-        std::string modulePath = dlinfo.dli_fname;
-        auto end = modulePath.find_last_of('/');
-        std::string probePath = modulePath.substr(0, end) + "/probe";
-        // fork
-        pid_t pid = fork();
-        if (pid == -1) {
-            LOG_ERROR("probePlugin: fork failed!");
-            return VSTProbeResult::error;
-        }
-        else if (pid == 0) {
-            // child process: start new process with plugin path and temp file path as arguments.
-            // we must *not* quote arguments to exec
-            if (execl(probePath.c_str(), "probe", path.c_str(), tmpPath.c_str(), nullptr) < 0) {
-                LOG_ERROR("probePlugin: exec failed!");
-                return VSTProbeResult::error;
-            }
-            std::exit(-1);
-        }
-        else {
-            // parent process: wait for child
-            int status = -1;
-            waitpid(pid, &status, 0);
-            if (WIFEXITED(status)){
-                result = WEXITSTATUS(status);    
-            }
-        }
-    }
-    else {
+    if (!dladdr((void *)probe, &dlinfo)) {
         LOG_ERROR("probePlugin: couldn't get module path!");
         return VSTProbeResult::error;
     }
+    // get full path to probe exe
+	std::string modulePath = dlinfo.dli_fname;
+	auto end = modulePath.find_last_of('/');
+	std::string probePath = modulePath.substr(0, end) + "/probe";
+	// fork
+	pid_t pid = fork();
+	if (pid == -1) {
+		LOG_ERROR("probePlugin: fork failed!");
+		return VSTProbeResult::error;
+	}
+	else if (pid == 0) {
+		// child process: start new process with plugin path and temp file path as arguments.
+		// we must not quote arguments to exec!
+		if (execl(probePath.c_str(), "probe", path.c_str(), tmpPath.c_str(), nullptr) < 0) {
+			LOG_ERROR("probePlugin: exec failed!");
+		}
+		std::exit(EXIT_FAILURE);
+	}
+	else {
+		// parent process: wait for child
+		int status = 0;
+		waitpid(pid, &status, 0);
+		if (WIFEXITED(status)){
+			result = WEXITSTATUS(status);
+		}
+	}
 #endif
-    // LOG_DEBUG("result: " << result);
+    /// LOG_DEBUG("result: " << result);
 	if (result == EXIT_SUCCESS) {
         // get info from temp file
     #ifdef _WIN32
