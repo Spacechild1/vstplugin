@@ -146,7 +146,7 @@ VSTPluginController {
 			// don't set 'info' property yet
 			theInfo = i;
 			theInfo.notNil.if { this.sendMsg('/open', theInfo.path, editor.asInt); }
-			{ "couldn't open '%'".format(VSTPlugin.prResolvePath(path)).error; };
+			{ "couldn't open '%'".format(path).error; };
 		});
 	}
 	prClear {
