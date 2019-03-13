@@ -1,13 +1,12 @@
-vstplugin 0.1.1
+vstplugin 0.1.0
 ==============================================================================
 
-*** WARNING: this is an alpha release, some things may change in the future ***
-
-this project allows you to load VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
-it includes a Pd external called [vstplugin~] and a SuperCollider class called VstPlugin.sc.
+this project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
+it includes a Pd external called "vstplugin~" and a SuperCollider UGen called "VSTPlugin".
 
 features:
-* load any kind of VST plugin (audio effect, MIDI effect, soft synth etc.)
+* use any VST plugin (audio effect, MIDI effect, soft synth etc.)
+* search and probe plugins in the standard VST directories or in user defined paths
 * automate plugin parameters programmatically
 * use either the native VST GUI (WIN32, Cocoa, X11) or a generic editor
   (NOTE: the VST GUI doesn't work [yet] for SuperCollider on macOS)
@@ -18,9 +17,9 @@ features:
 
 
 NOTE: currently only VST2.x plugins are supported but VST3 support will come soon!
-64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VstPlugin.scx and vice versa.
+64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VSTPlugin.scx and vice versa.
 
-see the help files (vstplugin~-help.pd and VstPlugin.schelp) for detailed instructions.
+see the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
 please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues
 
@@ -61,29 +60,30 @@ vstplugin~ uses a slightly modified version of pd-lib-builder (https://github.co
 2) 	cd into pd/ and type 'make'. in case the Makefile doesn't automatically find your Pd installation,
 	you can provide the path to Pd explicitly with:
 	$ make PDDIR=/path/to/pd
-	type 'make install' if you wan't to install the library. you can choose the installation directory with
+	type 'make install' if you want to install the library. you can choose the installation directory with
 	$ make install PDLIBDIR=...
 	
 SuperCollider:
 
-in order to use the VstPlugin.sc and VstPluginController.sc classes, you need to first build the VstPlugin UGen.
+in order to use the VSTPlugin.sc and VSTPluginController.sc classes, you need to first build the VSTPlugin UGen.
 on macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
 
 1) 	make sure you have CMake installed
 2) 	get the Steinberg VST2 SDK (same as with Pd, see above)
 3) 	get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider)
 4) 	cd into sc/ and create a build directory (e.g. build/)
-5) 	macOS/Linux:	cd into the build directory and do
+5) 	macOS/Linux: cd into the build directory and do
 
-	cmake -DCMAKE_BUILD_TYPE=RELEASE -DSC_PATH=/path/to/supercollider ..
+	cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=/install/path -DSC_PATH=/path/to/supercollider ..
 	
-	the SC_PATH variable must point to the folder containing the SuperCollider source code with the subfolders common/ and include/.
-	you can change CMAKE_BUILD_TYPE to DEBUG if you want a debug build.
+	you can change CMAKE_BUILD_TYPE from RELEASE to DEBUG if you want a debug build. 
+	CMAKE_INSTALL_PREFIX would typically be your SuperCollider Extensions folder.
+	SC_PATH must point to the folder containing the SuperCollider source code (with the subfolders common/ and include/).
 	
 	Windows: you have to tell CMake to generate a VisualStudio project (e.g. "Visual Studio 15 2017 Win64" for a 64 bit build) instead of a standard Unix makefile.
-	It's recommended to use the cmake-gui GUI application instead of the cmake command line tool.
+	It is recommended to use the cmake-gui GUI application to set the variables mentioned above.
 
-6) 	macOS/Linux: type 'make', Windows: open VstPlugin.sln with Visual Studio and build the project.
-7) 	copy the /sc folder into your extensions folder and rename it to VstPlugin.
-	move VstPlugin.scx / VstPlugin.so from sc/build/... to the top (next to the .sc files)
-	and remove the build/ and src/ folders.
+6) 	macOS/Linux: type 'make', Windows: open VSTPlugin.sln with Visual Studio and build the solution.
+7)	installation
+	macOS/Linux: type 'make install'
+	Windows: build the project 'INSTALL'
