@@ -213,11 +213,6 @@ VSTPlugin : MultiOutUGen {
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		cb = { arg info;
-			info.notNil.if {
-				"'%' successfully probed".format(key).postln;
-			} {
-				"couldn't probe '%'".format(key).postln;
-			};
 			action.value(info, path); // also pass the resolved path
 		};
 		server.isLocal.if { this.prProbeLocal(server, path, key, cb); }

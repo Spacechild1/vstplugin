@@ -15,14 +15,18 @@ export cxx.flags
 lib.name = vstplugin~
 
 class.sources = src/vstplugin~.cpp src/vstsearch.cpp
-vstplugin~.class.sources = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
 VST2_CFLAGS = -I"$(VST2DIR)/pluginterfaces/vst2.x/"
 VST2_LIBS =
 LOGLEVEL = 2
+PROBE = probe
+PROBE_EXE = ${PROBE}
+PROBE_SRC = ../vst/${PROBE}.cpp
+PROBE_DEPS =
+PROBE_LDLIBS =
 
-cflags = -Wno-unused -Wno-unused-parameter \
+cflags = \
 	-g \
 	-std=c++14 \
     -I../vst \
@@ -31,24 +35,35 @@ cflags = -Wno-unused -Wno-unused-parameter \
 	$(empty)
 ldlibs = $(VST2_LIBS)
 
+suppress-wunused = 1
+
+makefiles = ${PROBE}.make
+
+# on Windows (MinGW), vstsearch and probe are just stubs which dynamically link to vstplugin~.dll
+# (dramatically reduces binary size: ~20kB vs ~1MB)
 define forWindows
-  vstplugin~.class.sources += ../vst/VSTWindowWin32.cpp
+  vstplugin~.class.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowWin32.cpp
   vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
+  PROBE_EXE = ${PROBE_EXE}.exe
+  PROBE_DEPS += vstplugin~.$(extension)
   cflags += -DVSTTHREADS=1
   ldlibs += -lstdc++fs
-  makefiles = probe.make
+  # -municode for wmain, -mwindows to hide console
+  PROBE_LDLIBS += -static-libgcc -static-libstdc++ -municode -mwindows -L. -l:vstplugin~.$(extension)
 endef
 define forLinux
-  vstplugin~.class.sources += ../vst/VSTWindowX11.cpp
-  vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
+  common.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowX11.cpp
+  PROBE_SRC += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
-  ldlibs += -L/usr/X11R6/lib -lX11
+  ldlibs += -L/usr/X11R6/lib -lX11 -ldl
+  PROBE_LDLIBS += -L/usr/X11R6/lib -lX11 -ldl
 endef
 define forDarwin
-  common.sources += ../vst/VSTWindowCocoa.mm
-  vstsearch.class.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp 
+  common.sources += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowCocoa.mm
+  PROBE_SRC += ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp ../vst/VSTWindowCocoa.mm
   cflags += -fno-objc-arc -DVSTTHREADS=0
   ldlibs += -framework Cocoa
+  PROBE_LDLIBS += -framework Cocoa
 endef
 
 # all extra files to be included in binary distribution of the library
