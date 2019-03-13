@@ -5,6 +5,7 @@ set(PROJECT "VSTPlugin") #alternatively set project name manually
 message(STATUS "Project name is ${PROJECT}")
 project (${PROJECT})
 
+message(STATUS "Installation path is ${CMAKE_INSTALL_PREFIX}")
 set(PROBE "probe")
 
 if(UNIX AND NOT APPLE AND NOT MINGW)
