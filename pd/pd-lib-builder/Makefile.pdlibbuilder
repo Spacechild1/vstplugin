@@ -1059,7 +1059,7 @@ endef
 # Use recursive expansion for INSTALL_PROGRAM because variable 'stripflags' is
 # not defined yet, it is target-specific for 'install-strip'.
 INSTALL = install
-INSTALL_PROGRAM = $(INSTALL) $(stripflags) -p -m 744
+INSTALL_PROGRAM = $(INSTALL) $(stripflags) -p -m 644
 INSTALL_DATA := $(INSTALL) -p -m 644
 INSTALL_DIR := $(INSTALL) -m 755 -d
 

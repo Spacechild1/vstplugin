@@ -1,4 +1,4 @@
-.PHONY: all clean install
+.PHONY: all clean install install-strip
 
 all: ${PROBE_EXE}
 
@@ -6,9 +6,9 @@ clean:
 	rm -f ../vst/${PROBE}.o ${PROBE_EXE}
 	rm -f -r *.dSYM
 
-install:
+install: all
 	$(INSTALL_DIR) -v "$(installpath)"
-	$(INSTALL_PROGRAM) '${PROBE_EXE}' "$(installpath)"
+	$(INSTALL) $(stripflags) -p -m 755 '${PROBE_EXE}' "$(installpath)"
 
 install-strip: stripflags := --strip-program=$(STRIP) -s
 install-strip: install
