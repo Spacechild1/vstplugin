@@ -137,6 +137,10 @@ if (APPLE)
 	target_link_libraries(${PROBE} "-framework Cocoa")
 endif()
 
+install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT}/plugins)
+install(FILES VSTPlugin.sc VSTPluginController.sc VSTPluginGui.sc DESTINATION ${PROJECT}/classes)
+install(DIRECTORY HelpSource DESTINATION ${PROJECT})
+
 if(SUPERNOVA)
     add_library(${PROJECT}_supernova MODULE src/${FILENAME} ../vst/VST2Plugin.cpp ../vst/VSTPlugin.cpp)
 	target_compile_definitions(${PROJECT}_supernova PUBLIC -DSUPERNOVA=1 -DLOGFUNCTION=SCLog) # only for target!
@@ -154,4 +158,6 @@ if(SUPERNOVA)
         target_sources(${PROJECT}_supernova PUBLIC ../vst/VSTWindowCocoa.mm)
         target_link_libraries(${PROJECT}_supernova "-framework Cocoa")
     endif()
+
+	install(${PROJECT}_supernova DESTINATION ${PROJECT}/plugins)
 endif()
