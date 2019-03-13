@@ -136,7 +136,8 @@ VSTPluginController {
 					loaded = false; window = false;
 				};
 			} {
-				"couldn't open '%'".format(path).error;
+				// shouldn't happen because /open is only sent if the plugin has been successfully probed
+				"bug: couldn't open '%'".format(path).error;
 			};
 			action.value(this, loaded);
 			this.changed('/open', path, loaded);
@@ -144,10 +145,8 @@ VSTPluginController {
 		VSTPlugin.prGetInfo(synth.server, path, wait, { arg i, resPath;
 			// don't set 'info' property yet
 			theInfo = i;
-			// if no plugin info could be obtained (probing failed),
-			// we open the plugin nevertheless to get some error messages.
-			// in this case it's import to pass the resolved path.
-			this.sendMsg('/open', theInfo !? { theInfo.path } ?? resPath, editor.asInt);
+			theInfo.notNil.if { this.sendMsg('/open', theInfo.path, editor.asInt); }
+			{ "couldn't open '%'".format(VSTPlugin.prResolvePath(path)).error; };
 		});
 	}
 	prClear {
