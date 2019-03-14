@@ -477,6 +477,7 @@ static bool doProbePlugin(const std::string& path, VSTPluginInfo& info){
 
 void doSearch(const char *path, t_vstplugin *x = nullptr){
     int count = 0;
+    std::vector<t_symbol *> pluginList;
     verbose(PD_NORMAL, "searching in '%s' ...", path);
     searchPlugins(path, [&](const std::string& absPath, const std::string& relPath){
         t_symbol *pluginName = nullptr;
@@ -498,16 +499,29 @@ void doSearch(const char *path, t_vstplugin *x = nullptr){
         if (pluginName){
             // add to global dict
             pluginPathDict[pluginName] = pluginPath;
-            // output message
+            // safe path for later
             if (x){
-                t_atom msg;
-                SETSYMBOL(&msg, pluginName);
-                outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
+                pluginList.push_back(pluginName);
             }
             count++;
         }
     });
     verbose(PD_NORMAL, "found %d plugins.", count);
+    if (x){
+        // sort plugin names alphabetically and case independent
+        std::sort(pluginList.begin(), pluginList.end(), [](const auto& lhs, const auto& rhs){
+            std::string s1 = lhs->s_name;
+            std::string s2 = rhs->s_name;
+            for (auto& c : s1) { c = std::tolower(c); }
+            for (auto& c : s2) { c = std::tolower(c); }
+            return strcmp(s1.c_str(), s2.c_str()) < 0;
+        });
+        for (auto& plugin : pluginList){
+            t_atom msg;
+            SETSYMBOL(&msg, plugin);
+            outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
+        }
+    }
 }
 
 // called by [vstsearch]

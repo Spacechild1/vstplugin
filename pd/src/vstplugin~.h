@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <algorithm>
 #include <vector>
 #include <unordered_map>
 #include <type_traits>
