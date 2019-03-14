@@ -1,9 +1,11 @@
 .PHONY: all clean install install-strip
 
+PROBE_OBJ = $(PROBE_SRC:.cpp=.o)
+
 all: ${PROBE_EXE}
 
 clean:
-	rm -f ../vst/${PROBE}.o ${PROBE_EXE}
+	rm -f ${PROBE_OBJ} ${PROBE_EXE}
 	rm -f -r *.dSYM
 
 install: all
@@ -16,6 +18,5 @@ install-strip: install
 %.o: %.cpp ${PROBE_DEPS}
 	$(CXX) $(cxx.flags) -o $@ -c $<
 
-${PROBE_EXE}: ${PROBE_SRC}
+${PROBE_EXE}: ${PROBE_OBJ}
 	$(CXX) $(cxx.flags) -o $@ $^ ${PROBE_LDLIBS}
-
