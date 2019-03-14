@@ -338,7 +338,7 @@ the limited precision of decimal numbers in Pd., f 63;
 #X restore 394 508 pd advanced;
 #X f 14;
 #X text 391 489 advanced stuff;
-#N canvas 395 307 669 774 preset 0;
+#N canvas 327 22 669 774 preset 0;
 #X obj 23 333 s \$0-msg;
 #X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
@@ -479,7 +479,7 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X restore 274 469 pd preset;
 #X f 17;
 #X msg 216 276 print;
-#N canvas 765 207 690 521 search 0;
+#N canvas 196 168 690 521 search 0;
 #X obj 25 440 s \$0-msg;
 #X msg 33 226 search;
 #X text 95 222 if no user search paths are provided \, the standard
@@ -561,7 +561,7 @@ or with declare:, f 54;
 #X restore 394 469 pd search;
 #X f 14;
 #X text 392 447 search + info;
-#N canvas 0 50 513 300 open 0;
+#N canvas 498 210 513 300 open 0;
 #X msg 37 117 open \$1;
 #X obj 37 71 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;

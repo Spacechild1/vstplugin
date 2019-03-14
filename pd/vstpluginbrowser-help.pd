@@ -1,4 +1,4 @@
-#N canvas 2488 407 602 360 10;
+#N canvas 0 0 602 360 10;
 #X obj 17 218 print open message;
 #X obj 75 245 vstplugin~;
 #X text 213 135 recursively search a directory for VST plugins. in

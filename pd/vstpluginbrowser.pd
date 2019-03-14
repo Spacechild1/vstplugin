@@ -1,5 +1,5 @@
-#N canvas 2007 289 473 481 10;
-#N canvas 1664 194 320 616 \$0-plugins 0;
+#N canvas 600 200 473 481 10;
+#N canvas 0 0 320 616 \$0-plugins 0;
 #X coords 0 616 1 615 300 400 0;
 #X restore 100 259 pd \$0-plugins;
 #X obj 107 127 bng 15 250 50 0 \$0-plugins-show empty show plugins
@@ -17,7 +17,7 @@
 #X obj 226 228 bng 15 250 50 0 \$0-open empty open 18 7 0 10 -4034
 -1 -1;
 #X symbolatom 107 208 26 0 0 0 - #0-path #0-foo;
-#N canvas 2577 471 450 376 \$0-open 0;
+#N canvas 600 200 450 376 \$0-open 0;
 #X obj 20 256 outlet;
 #X obj 35 -40 r \$0-file;
 #X obj 53 5 r \$0-open;
@@ -49,7 +49,7 @@
 #X connect 13 1 7 0;
 #X restore 99 307 pd \$0-open;
 #X obj 99 328 outlet;
-#N canvas 2363 29 780 949 \$0-search 0;
+#N canvas 600 29 780 949 \$0-search 0;
 #X obj 62 159 vstplugin~ 0 0;
 #X obj 45 63 r \$0-search;
 #X obj 45 84 list prepend search;
@@ -82,7 +82,7 @@
 #X obj 64 566 f;
 #X obj 90 567 + 1;
 #X msg 101 546 0;
-#N canvas 1913 308 450 445 makelabel 0;
+#N canvas 600 308 450 445 makelabel 0;
 #X obj 42 32 text get \$0-info;
 #X obj 200 79 loadbang;
 #X msg 200 103 symbol;
