@@ -160,5 +160,5 @@ if(SUPERNOVA)
         target_link_libraries(${PROJECT}_supernova "-framework Cocoa")
     endif()
 
-	install(${PROJECT}_supernova DESTINATION ${PROJECT}/plugins)
+	install(TARGETS ${PROJECT}_supernova DESTINATION ${PROJECT}/plugins)
 endif()
