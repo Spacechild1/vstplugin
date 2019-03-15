@@ -46,11 +46,12 @@ variables:
     - export PD=/usr/bin/pd
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
+    - make -C sc/build install VERBOSE=1
 
 .build:macos: &build_macos
   tags:
@@ -64,11 +65,12 @@ variables:
     - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
+    - make -C sc/build install VERBOSE=1
 
 .build:w32: &build_w32
   stage: build
