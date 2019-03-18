@@ -42,7 +42,7 @@ makefiles = ${PROBE}.make
 
 # on Windows (MinGW), vstsearch.dll is just a stub which dynamically links to vstplugin~.dll
 # (dramatically reduces binary size: ~20kB vs ~1MB)
-# we don't do this for probe.exe to make it work independent from Pd
+# we don't do this for probe.exe to make it work independently from Pd
 define forWindows
   vstplugin~.class.sources += ${VST_SRC} ../vst/VSTWindowWin32.cpp
   vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
@@ -55,6 +55,7 @@ define forWindows
 endef
 define forLinux
   common.sources += ${VST_SRC} ../vst/VSTWindowX11.cpp
+  vstsearch.class.sources += src/vstplugin~.cpp
   PROBE_SRC += ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   ldlibs += -L/usr/X11R6/lib -lX11 -ldl
@@ -62,6 +63,7 @@ define forLinux
 endef
 define forDarwin
   common.sources += ${VST_SRC} ../vst/VSTWindowCocoa.mm
+  vstsearch.class.sources += src/vstplugin~.cpp
   PROBE_SRC += ../vst/VSTWindowCocoa.mm
   cflags += -fno-objc-arc -DVSTTHREADS=0
   ldlibs += -framework Cocoa
