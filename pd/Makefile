@@ -27,6 +27,8 @@ PROBE_SRC = ../vst/${PROBE}.cpp ${VST_SRC}
 PROBE_DEPS =
 PROBE_LDLIBS =
 
+shared.sources = src/vstcommon.cpp ${VST_SRC}
+
 cflags = \
 	-g \
 	-std=c++14 \
@@ -40,28 +42,26 @@ suppress-wunused = 1
 
 makefiles = ${PROBE}.make
 
-# on Windows (MinGW), vstsearch.dll is just a stub which dynamically links to vstplugin~.dll
-# (dramatically reduces binary size: ~20kB vs ~1MB)
-# we don't do this for probe.exe to make it work independent from Pd
+# vstplugin~ and vstsearch.dll both link to a shared library.
+# we don't do this for probe.exe to make it work independently from Pd
 define forWindows
-  vstplugin~.class.sources += ${VST_SRC} ../vst/VSTWindowWin32.cpp
-  vstsearch.class.ldlibs += -L. -l:vstplugin~.$(extension)
+  shared.sources += ../vst/VSTWindowWin32.cpp
+  shared.ldlibs += -lstdc++fs
   PROBE_EXE = ${PROBE_EXE}.exe
   PROBE_SRC += ../vst/VSTWindowWin32.cpp
   cflags += -DVSTTHREADS=1
-  ldlibs += -lstdc++fs
   # -municode for wmain, -mwindows to hide console
   PROBE_LDLIBS += -lstdc++fs -static-libgcc -static-libstdc++ -municode -mwindows -static -lpthread
 endef
 define forLinux
-  common.sources += ${VST_SRC} ../vst/VSTWindowX11.cpp
+  shared.sources += ../vst/VSTWindowX11.cpp
   PROBE_SRC += ../vst/VSTWindowX11.cpp
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   ldlibs += -L/usr/X11R6/lib -lX11 -ldl
   PROBE_LDLIBS += -L/usr/X11R6/lib -lX11 -ldl
 endef
 define forDarwin
-  common.sources += ${VST_SRC} ../vst/VSTWindowCocoa.mm
+  shared.sources += ../vst/VSTWindowCocoa.mm
   PROBE_SRC += ../vst/VSTWindowCocoa.mm
   cflags += -fno-objc-arc -DVSTTHREADS=0
   ldlibs += -framework Cocoa

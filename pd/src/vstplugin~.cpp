@@ -39,11 +39,6 @@ static std::string toHex(T u){
     return buf;
 }
 
-// map paths to plugin info (if the plugin has been successfully probed)
-static std::unordered_map<std::string, VSTPluginInfo> pluginInfoDict;
-// map plugin names (symbols) to paths, added via 'search'
-static std::unordered_map<t_symbol *, std::string> pluginPathDict;
-
 /*--------------------- t_vstparam --------------------------*/
 
 static t_class *vstparam_class;
@@ -458,81 +453,6 @@ static void vstplugin_close(t_vstplugin *x){
     x->x_path = nullptr;
 }
 
-static bool doProbePlugin(const std::string& path, VSTPluginInfo& info){
-    auto result = probePlugin(path, info);
-    if (result == VSTProbeResult::success) {
-        verbose(PD_DEBUG, "probing '%s' ... ok!", path.c_str());
-    }
-    else if (result == VSTProbeResult::fail) {
-        verbose(PD_DEBUG, "probing '%s' ... failed!", path.c_str());
-    }
-    else if (result == VSTProbeResult::crash) {
-        verbose(PD_NORMAL, "probing '%s' ... crashed!", path.c_str());
-    }
-    else if (result == VSTProbeResult::error) {
-        verbose(PD_ERROR, "probing '%s' ... error!", path.c_str());
-    }
-    return result == VSTProbeResult::success;
-}
-
-void doSearch(const char *path, t_vstplugin *x = nullptr){
-    int count = 0;
-    std::vector<t_symbol *> pluginList;
-    verbose(PD_NORMAL, "searching in '%s' ...", path);
-    searchPlugins(path, [&](const std::string& absPath, const std::string& relPath){
-        t_symbol *pluginName = nullptr;
-        std::string pluginPath = absPath;
-        sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
-            // probe plugin (if necessary)
-        auto it = pluginInfoDict.find(pluginPath);
-        if (it == pluginInfoDict.end()){
-            VSTPluginInfo info;
-            if (doProbePlugin(pluginPath, info)){
-                pluginInfoDict[pluginPath] = info;
-                pluginName = gensym(info.name.c_str());
-            }
-        } else {
-            // already probed, just post the path
-            verbose(PD_DEBUG, "%s", pluginPath.c_str());
-            pluginName = gensym(it->second.name.c_str());
-        }
-        if (pluginName){
-            // add to global dict
-            pluginPathDict[pluginName] = pluginPath;
-            // safe path for later
-            if (x){
-                pluginList.push_back(pluginName);
-            }
-            count++;
-        }
-    });
-    verbose(PD_NORMAL, "found %d plugins.", count);
-    if (x){
-        // sort plugin names alphabetically and case independent
-        std::sort(pluginList.begin(), pluginList.end(), [](const auto& lhs, const auto& rhs){
-            std::string s1 = lhs->s_name;
-            std::string s2 = rhs->s_name;
-            for (auto& c : s1) { c = std::tolower(c); }
-            for (auto& c : s2) { c = std::tolower(c); }
-            return strcmp(s1.c_str(), s2.c_str()) < 0;
-        });
-        for (auto& plugin : pluginList){
-            t_atom msg;
-            SETSYMBOL(&msg, plugin);
-            outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
-        }
-    }
-}
-
-// called by [vstsearch]
-extern "C" {
-    void vst_search(void){
-        for (auto& path : getDefaultSearchPaths()){
-            doSearch(path.c_str());
-        }
-    }
-}
-
 // search
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (argc > 0){
@@ -550,14 +470,14 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
 }
 
 static void vstplugin_search_clear(t_vstplugin *x){
-    pluginPathDict.clear();
+    getPluginPathDict().clear();
 }
 
 static std::string resolvePath(t_canvas *c, t_symbol *s){
     std::string path;
         // first try to look up in global dict
-    auto it = pluginPathDict.find(s);
-    if (it != pluginPathDict.end()){
+    auto it = getPluginPathDict().find(s);
+    if (it != getPluginPathDict().end()){
         return it->second;
     }
         // resolve relative path
@@ -646,10 +566,10 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
         // probe plugin (if necessary)
-    if (!pluginInfoDict.count(path)){
+    if (!getPluginInfoDict().count(path)){
         VSTPluginInfo info;
         if (doProbePlugin(path, info)){
-            pluginInfoDict[path] = info;
+            getPluginInfoDict()[path] = info;
         } else {
             return;
         }
@@ -659,7 +579,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         // open the new VST plugin
     IVSTPlugin *plugin = x->x_editor->open_plugin(path, editor);
     if (plugin){
-        x->x_info = &pluginInfoDict[path]; // items are never removed
+        x->x_info = &getPluginInfoDict()[path]; // items are never removed
         x->x_path = pathsym;
         post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
         plugin->suspend();
@@ -702,11 +622,11 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         auto path = resolvePath(x->x_canvas, atom_getsymbol(argv));
         if (!path.empty()){
                 // probe plugin (if necessary)
-            auto it = pluginInfoDict.find(path);
-            if (it == pluginInfoDict.end()){
+            auto it = getPluginInfoDict().find(path);
+            if (it == getPluginInfoDict().end()){
                 VSTPluginInfo probeInfo;
                 if (doProbePlugin(path, probeInfo)){
-                    info = &(pluginInfoDict[path] = probeInfo);
+                    info = &(getPluginInfoDict()[path] = probeInfo);
                 }
             } else {
                 info = &it->second;
