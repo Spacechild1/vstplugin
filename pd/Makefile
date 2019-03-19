@@ -17,8 +17,22 @@ lib.name = vstplugin~
 class.sources = src/vstplugin~.cpp src/vstsearch.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
+
+ifeq ($(wildcard $(VST2DIR)),)
+# no VST2 headers, assume FST
+
+ifneq ($(FST),)
+# only add $(FST) to includes if not empty
+fst_includes = -I"$(FST)"
+endif
+VST2_CFLAGS = -DUSE_FST=1 $(fst_includes)
+VST2_LIBS =
+else
+# VST2 SDK found, use it!
 VST2_CFLAGS = -I"$(VST2DIR)/pluginterfaces/vst2.x/"
 VST2_LIBS =
+endif
+
 LOGLEVEL = 2
 VST_SRC = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
 PROBE = probe
