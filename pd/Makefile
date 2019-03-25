@@ -41,7 +41,7 @@ PROBE_SRC = ../vst/${PROBE}.cpp ${VST_SRC}
 PROBE_DEPS =
 PROBE_LDLIBS =
 
-shared.sources = src/vstcommon.cpp ${VST_SRC}
+shared.sources = src/vstplugin.cpp ${VST_SRC}
 
 cflags = \
 	-g \
