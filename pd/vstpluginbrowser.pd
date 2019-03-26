@@ -291,4 +291,4 @@
 #X connect 96 0 32 0;
 #X restore 100 283 pd \$0-search;
 #X connect 9 0 10 0;
-#X coords 0 -1 1 1 180 150 1 100 100;
+#X coords 0 -1 1 1 180 150 2 100 100;
