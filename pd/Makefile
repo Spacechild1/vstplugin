@@ -36,32 +36,32 @@ endif
 LOGLEVEL = 2
 VST_SRC = ../vst/VSTPlugin.cpp ../vst/VST2Plugin.cpp
 PROBE = probe
-PROBE_EXE = ${PROBE}
-PROBE_SRC = ../vst/${PROBE}.cpp ${VST_SRC}
+PROBE_EXE = $(PROBE)
+PROBE_SRC = ../vst/$(PROBE).cpp $(VST_SRC)
 PROBE_DEPS =
 PROBE_LDLIBS =
 
-shared.sources = src/vstplugin.cpp ${VST_SRC}
+shared.sources = src/vstplugin.cpp $(VST_SRC)
 
 cflags = \
 	-g \
 	-std=c++14 \
     -I../vst \
-	${VST2_CFLAGS} \
-	-DLOGLEVEL=${LOGLEVEL} \
+	$(VST2_CFLAGS) \
+	-DLOGLEVEL=$(LOGLEVEL) \
 	$(empty)
 ldlibs = $(VST2_LIBS)
 
 suppress-wunused = 1
 
-makefiles = ${PROBE}.make
+makefiles = $(PROBE).make
 
 # vstplugin~ and vstsearch.dll both link to a shared library.
 # we don't do this for probe.exe to make it work independently from Pd
 define forWindows
   shared.sources += ../vst/VSTWindowWin32.cpp
   shared.ldlibs += -lstdc++fs
-  PROBE_EXE = ${PROBE_EXE}.exe
+  PROBE_EXE = $(PROBE_EXE).exe
   PROBE_SRC += ../vst/VSTWindowWin32.cpp
   cflags += -DVSTTHREADS=1
   # -municode for wmain, -mwindows to hide console
