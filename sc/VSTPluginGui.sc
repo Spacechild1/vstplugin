@@ -68,7 +68,7 @@ VSTPluginGui : ObjectGui {
 	}
 
 	gui { arg parent, bounds;
-		var layout = this.guify(parent, bounds);
+		var numRows, sliderWidth, layout = this.guify(parent, bounds);
 		parent.isNil.if {
 			view = View(layout, bounds).background_(this.background);
 			embedded = false;
@@ -85,8 +85,8 @@ VSTPluginGui : ObjectGui {
 		// window
 		parent.isNil.if {
 			bounds.isNil.if {
-				var numRows = this.numRows ?? this.class.numRows;
-				var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
+				numRows = this.numRows ?? this.class.numRows;
+				sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 				layout.setInnerExtent(sliderWidth * 2, numRows * 40);
 			};
 			layout.front;
@@ -99,8 +99,8 @@ VSTPluginGui : ObjectGui {
 	}
 
 	prUpdateGui {
-		var rowOnset, nparams=0, name, info, header, open, ncolumns=0, nrows=0;
-		var grid, font, minWidth, minHeight, minSize, displayFont;
+		var rowOnset, nparams=0, name, info, header, open, nrows=0, ncolumns=0, row, col;
+		var grid, font, minWidth, minHeight, minSize, displayFont, makePanel;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
@@ -147,8 +147,8 @@ VSTPluginGui : ObjectGui {
 		grid = GridLayout.new;
 		grid.add(header, 0, 0);
 		menu.if {
-			var row = 1, col = 0;
-			var makePanel = { arg what;
+			row = 1; col = 0;
+			makePanel = { arg what;
 				var label, read, write;
 				label = StaticText.new.string_(what).align_(\right)
 				.toolTip_("Read/write % files (.fx%)".format(what.toLower, what[0].toLower)); // let's be creative :-)
@@ -191,7 +191,7 @@ VSTPluginGui : ObjectGui {
 		paramSliders = Array.new(nparams);
 		paramDisplays = Array.new(nparams);
 		nparams.do { arg i;
-			var col, row, name, label, display, slider, bar, unit, param;
+			var name, label, display, slider, bar, unit, param;
 			param = model.paramCache[i];
 			col = i.div(nrows);
 			row = i % nrows;
@@ -255,9 +255,9 @@ VSTPluginGui : ObjectGui {
 		this.prUpdateGui;
 	}
 	prOpen {
+		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
+		var showPath, showSearch, updateBrowser, plugins;
 		model.notNil.if {
-			var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
-			var showPath, showSearch, updateBrowser, plugins;
 			// prevent opening the dialog multiple times
 			dialog !? { ^this };
 			// build dialog

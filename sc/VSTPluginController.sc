@@ -23,10 +23,9 @@ VSTPluginController {
 		^VSTPluginGui;
 	}
 	*new { arg synth, id, synthDef, wait= -1;
-		var synthIndex;
+		var synthIndex, desc;
 		// if the synthDef is nil, we try to get it from the global SynthDescLib
 		synthDef.isNil.if {
-			var desc;
 			desc = SynthDescLib.global.at(synth.defName);
 			desc.isNil.if { ^"couldn't find synthDef in global SynthDescLib!".throw };
 			synthDef = desc.def;
@@ -311,7 +310,7 @@ VSTPluginController {
 		// wait = -1 allows an OSC roundtrip between packets.
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
-		var totalSize, address, resp, sym, pos = 0;
+		var totalSize, address, resp, sym, end, pos = 0;
 		wait = wait ?? this.wait;
 		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
@@ -327,7 +326,7 @@ VSTPluginController {
 
 		{
 			while { pos < totalSize } {
-				var end = pos + oscPacketSize - 1; // 'end' can safely exceed 'totalSize'
+				end = pos + oscPacketSize - 1; // 'end' can safely exceed 'totalSize'
 				this.sendMsg(address, totalSize, pos, data[pos..end]);
 				pos = pos + oscPacketSize;
 				(wait >= 0).if { wait.wait } { synth.server.sync };

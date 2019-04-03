@@ -115,8 +115,9 @@ VSTPlugin : MultiOutUGen {
 						File.use(filePath, "rb", { arg file;
 							// plugins are seperated by newlines
 							file.readAllString.split($\n).do { arg line;
+								var info;
 								(line.size > 0).if {
-									var info = this.prParseInfo(line);
+									info = this.prParseInfo(line);
 									dict[info.key] = info;
 								}
 							};
@@ -134,9 +135,9 @@ VSTPlugin : MultiOutUGen {
 	*prSearchRemote { arg server, searchPaths, useDefault, verbose, wait, action;
 		var cb, dict = pluginDict[server];
 		cb = OSCFunc({ arg msg;
-			var result = msg[1].asString.split($\n);
+			var fn, num, count = 0, result = msg[1].asString.split($\n);
 			(result[0] == "/vst_search").if {
-				var fn, count = 0, num = result[1].asInteger;
+				num = result[1].asInteger;
 				cb.free; // got correct /done message, free it!
 				(num == 0).if {
 					action.value;
@@ -244,11 +245,11 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prProbeRemote { arg server, path, key, wait, action;
 		var cb = OSCFunc({ arg msg;
-			var result = msg[1].asString.split($\n);
+			var info, result = msg[1].asString.split($\n);
 			(result[0] == "/vst_info").if {
 				cb.free; // got correct /done message, free it!
 				(result.size > 1).if {
-					var info = this.prMakeInfo(key, result[2..]);
+					info = this.prMakeInfo(key, result[2..]);
 					info.key = key; // overwrite
 					pluginDict[server][key] = info;
 					this.prQueryPlugin(server, key, wait, { action.value(info) });
@@ -299,12 +300,12 @@ VSTPlugin : MultiOutUGen {
 			^this;
 		};
 		fn = OSCFunc({ arg msg;
-			var result = msg[1].asString.split($\n);
+			var n, result = msg[1].asString.split($\n);
 			// result.postln;
 			((result[0].asSymbol == '/vst_param_info')
 				&& (result[1].asSymbol == key)
 			).if {
-				var n = (result.size - 2).div(2);
+				n = (result.size - 2).div(2);
 				// "got % parameters for %".format(n, key).postln;
 				n.do { arg i;
 					var idx = (i * 2) + 2;
@@ -328,12 +329,12 @@ VSTPlugin : MultiOutUGen {
 			^this;
 		};
 		fn = OSCFunc({ arg msg;
-			var result = msg[1].asString.split($\n);
+			var n, result = msg[1].asString.split($\n);
 			// result.postln;
 			((result[0].asSymbol == '/vst_program_info')
 				&& (result[1].asSymbol == key)
 			).if {
-				var n = result.size - 2;
+				n = result.size - 2;
 				// "got % programs for %".format(n, key).postln;
 				n.do { arg i;
 					info.programNames.add(result[i + 2].asSymbol);
@@ -385,12 +386,14 @@ VSTPlugin : MultiOutUGen {
 		);
 	}
 	*prGetInfo { arg server, key, wait, action;
+		var info, dict = pluginDict[server];
 		key = key.asSymbol;
 		// if the key already exists, return the info, otherwise probe the plugin
-		pluginDict[server] !? { arg dict; dict[key] } !? { arg info; action.value(info, key) }
+		dict !? { info = dict[key] } !? { action.value(info, key) }
 		?? { this.probe(server, key, key, wait, action) };
 	}
 	*prResolvePath { arg path;
+		var root;
 		path = path.asString;
 		(thisProcess.platform.name == \windows).if {
 			// replace / with \ because of a bug in PathName
@@ -400,7 +403,7 @@ VSTPlugin : MultiOutUGen {
 		// other methods don't work for folders...
 		PathName(path).isAbsolutePath.not.if {
 			// resolve relative paths to the currently executing file
-			var root = thisProcess.nowExecutingPath;
+			root = thisProcess.nowExecutingPath;
 			root.notNil.if {
 				path = root.dirname +/+ path;
 			} {
