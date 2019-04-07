@@ -602,6 +602,9 @@ a Float.
 ARGUMENT:: action
 will be called with an Integer result. The meaning depends on the VST plugin.
 
+ARGUMENT:: async
+whether the method call should be executed in the NRT thread (true) or in the RT thread (false).
+
 EXAMPLES::
 
 The following code is needed for most examples:

@@ -49,6 +49,15 @@ struct ParamCmdData {
 	char display[1];
 };
 
+struct VendorCmdData {
+	VSTPlugin *owner;
+	int32 index;
+	int32 value;
+	float opt;
+	size_t size;
+	char data[1];
+};
+
 struct QueryCmdData {
 	char reply[1600];
 	int value;
@@ -121,7 +130,7 @@ public:
 	void getTransportPos();
 	// advanced
 	void canDo(const char *what);
-	void vendorSpecific(int32 index, int32 value, void *ptr, float opt);
+	void vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async);
 	// node reply
 	void sendMsg(const char *cmd, float f);
 	void sendMsg(const char *cmd, int n, const float *data);

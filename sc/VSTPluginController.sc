@@ -448,12 +448,11 @@ VSTPluginController {
 		}, '/vst_can_do').oneShot;
 		this.sendMsg('/can_do', what);
 	}
-	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action=0;
+	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=false;
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3].asInt);
 		}, '/vst_vendor_method').oneShot;
-		ptr = ptr ?? Int8Array.new;
-		this.sendMsg('/vendor_method', index, value, ptr, opt);
+		this.sendMsg('/vendor_method', index.asInt, value.asInt, ptr.as(Int8Array), opt.asFloat, async.asInt);
 	}
 	// internal
 	sendMsg { arg cmd ... args;
