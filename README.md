@@ -1,4 +1,4 @@
-vstplugin 0.1.0
+vstplugin 0.1.2
 ==============================================================================
 
 this project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
