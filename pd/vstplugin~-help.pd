@@ -1,4 +1,4 @@
-#N canvas 625 129 550 618 10;
+#N canvas 625 129 589 618 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -53,7 +53,7 @@
 #X connect 26 0 8 0;
 #X connect 26 1 23 0;
 #X coords 0 -1 1 1 150 180 2 100 100;
-#X restore 20 403 pd output;
+#X restore 20 409 pd output;
 #N canvas 219 289 450 355 open 0;
 #X obj 36 294 outlet~;
 #X obj 91 294 outlet~;
@@ -89,22 +89,22 @@
 #X connect 13 0 9 0;
 #X connect 15 0 12 1;
 #X coords 0 -1 1 1 70 110 2 100 100;
-#X restore 20 216 pd open;
-#X msg 208 249 close;
-#X msg 222 320 vis \$1;
-#X obj 222 300 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X restore 20 222 pd open;
+#X msg 208 255 close;
+#X msg 222 326 vis \$1;
+#X obj 222 306 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 227 363 bypass \$1;
-#X obj 227 343 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X msg 227 369 bypass \$1;
+#X obj 227 349 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 187 422 s \$0-msg;
-#X obj 27 333 r \$0-msg;
-#X text 255 250 close the plugin;
-#X text 272 320 show/hide editor;
-#X text 294 363 bypass on/off;
-#X text 257 276 print plugin info to console;
-#X text 184 449 parameters;
-#X text 273 448 FX programs/banks;
+#X obj 187 428 s \$0-msg;
+#X obj 27 339 r \$0-msg;
+#X text 255 256 close the plugin;
+#X text 272 326 show/hide editor;
+#X text 294 369 bypass on/off;
+#X text 257 282 print plugin info to console;
+#X text 184 455 parameters;
+#X text 273 454 FX programs/banks;
 #N canvas 753 189 726 527 parameter 0;
 #X obj 98 68 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
@@ -162,7 +162,7 @@ ms, f 33;
 #X connect 15 0 24 0;
 #X connect 24 0 2 0;
 #X connect 26 0 9 0;
-#X restore 185 469 pd parameter;
+#X restore 185 475 pd parameter;
 #N canvas 672 104 609 465 midi 0;
 #X obj 33 442 s \$0-msg;
 #X msg 33 34 midi_raw <list>;
@@ -205,9 +205,9 @@ ms, f 33;
 #X connect 22 0 0 0;
 #X connect 23 0 0 0;
 #X connect 24 0 0 0;
-#X restore 185 508 pd midi;
+#X restore 185 514 pd midi;
 #X f 13;
-#X text 185 490 MIDI messages;
+#X text 185 496 MIDI messages;
 #N canvas 814 225 469 439 transport 0;
 #X obj 22 299 s \$0-msg;
 #X msg 22 78 tempo \$1;
@@ -249,12 +249,12 @@ f 51;
 #X connect 10 0 12 0;
 #X connect 11 0 0 0;
 #X connect 12 0 0 0;
-#X restore 281 508 pd transport;
+#X restore 281 514 pd transport;
 #X f 16;
-#X text 279 489 transport/timing;
-#X msg 233 391 reset;
-#X text 275 391 reset the plugin (e.g. clear delay lines);
-#X obj 21 357 vstplugin~;
+#X text 279 495 transport/timing;
+#X msg 233 397 reset;
+#X text 275 397 reset the plugin (e.g. clear delay lines);
+#X obj 21 363 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #N canvas 260 94 436 604 creation 0;
@@ -295,7 +295,7 @@ plugin "GChorus" with the VST editor GUI., f 56;
 -k]);
 #X text 49 205 NOTE: for large \, complex plugins this can lead to
 significant increases in patch file size., f 47;
-#X restore 23 89 pd creation arguments;
+#X restore 23 95 pd creation arguments;
 #N canvas 387 235 555 506 advanced 0;
 #X msg 28 59 precision \$1;
 #X msg 28 13 symbol single;
@@ -335,9 +335,9 @@ the limited precision of decimal numbers in Pd., f 63;
 #X connect 7 0 3 0;
 #X connect 8 0 7 0;
 #X connect 13 0 3 0;
-#X restore 394 508 pd advanced;
+#X restore 394 514 pd advanced;
 #X f 14;
-#X text 391 489 advanced stuff;
+#X text 391 495 advanced stuff;
 #N canvas 327 22 669 774 preset 0;
 #X obj 23 333 s \$0-msg;
 #X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
@@ -476,9 +476,9 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X connect 50 0 42 0;
 #X connect 51 0 42 0;
 #X connect 52 0 0 0;
-#X restore 274 469 pd preset;
+#X restore 274 475 pd preset;
 #X f 17;
-#X msg 216 276 print;
+#X msg 216 282 print;
 #N canvas 196 168 690 521 search 0;
 #X obj 25 440 s \$0-msg;
 #X msg 33 226 search;
@@ -558,10 +558,10 @@ or with declare:, f 54;
 #X connect 26 0 0 0;
 #X connect 29 0 0 0;
 #X connect 35 0 0 0;
-#X restore 394 469 pd search;
+#X restore 394 475 pd search;
 #X f 14;
-#X text 392 447 search + info;
-#N canvas 498 210 513 300 open 0;
+#X text 392 453 search + info;
+#N canvas 498 210 513 366 open 0;
 #X msg 37 117 open \$1;
 #X obj 37 71 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
@@ -593,9 +593,8 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 339 186 pd editor;
+#X restore 345 243 pd editor;
 #X f 10;
-#X text 271 187 more info:;
 #X text 131 39 open a VST plugin;
 #X text 132 155 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
@@ -608,26 +607,31 @@ f 46;
 [pd search] or a file path., f 44;
 #X obj 24 240 outlet;
 #X msg 24 42 open <s>;
+#X obj 129 187 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+0;
+#X text 175 243 more info about the editor:;
+#X text 137 192 NOTE: on macOS \, the VST editor is highly experimental
+and runs on the audio thread! see the README for more information.
+, f 44;
 #X connect 0 0 5 0;
 #X connect 1 0 2 0;
 #X connect 2 0 0 0;
 #X connect 3 0 4 0;
 #X connect 4 0 6 0;
-#X connect 5 0 16 0;
+#X connect 5 0 15 0;
 #X connect 6 0 5 0;
-#X connect 17 0 5 0;
-#X restore 199 224 pd open;
-#X text 252 225 open a plugin;
-#X obj 20 114 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
+#X connect 16 0 5 0;
+#X restore 199 230 pd open;
+#X text 252 231 open a plugin;
+#X obj 20 120 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
-#X text 22 38 NOTE: VST3 is not supported (yet);
-#X text 22 116 inlets:;
-#X obj 20 162 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
+#X text 22 122 inlets:;
+#X obj 20 168 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
-#X text 24 164 outlets:;
-#X obj 19 61 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
+#X text 24 170 outlets:;
+#X obj 19 67 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
-#X text 20 63 creation arguments:;
+#X text 20 69 creation arguments:;
 #N canvas 200 228 986 481 message-out 0;
 #X obj 9 15 inlet;
 #X obj 9 36 t a a;
@@ -799,14 +803,17 @@ label;
 #X connect 60 1 34 0;
 #X connect 62 0 59 0;
 #X connect 63 0 62 1;
-#X restore 78 379 pd message-out;
+#X restore 78 385 pd message-out;
 #X text 23 14 [vstplugin~] - load VST plugins in Pd on all platforms
 ;
-#X text 89 334 < message in;
-#X text 91 358 < message out, f 16;
-#X text 22 139 input signals;
-#X text 24 184 output signals + 1 message outlet, f 16;
-#X obj 187 66 vstpluginbrowser;
+#X text 89 340 < message in;
+#X text 91 364 < message out, f 16;
+#X text 22 145 input signals;
+#X text 24 190 output signals + 1 message outlet, f 16;
+#X obj 187 72 vstpluginbrowser;
+#X obj 19 41 cnv 20 220 20 empty empty empty 20 12 0 14 -257985 -66577
+0;
+#X text 25 43 NOTE: VST3 is not supported (yet);
 #X connect 1 0 22 0;
 #X connect 1 1 22 1;
 #X connect 2 0 7 0;
@@ -818,7 +825,7 @@ label;
 #X connect 20 0 7 0;
 #X connect 22 0 0 0;
 #X connect 22 1 0 1;
-#X connect 22 2 40 0;
+#X connect 22 2 39 0;
 #X connect 28 0 7 0;
 #X connect 31 0 7 0;
-#X connect 46 0 7 0;
+#X connect 45 0 7 0;

@@ -148,3 +148,11 @@ class t_vsteditor : IVSTPluginListener {
     std::vector<VSTSysexEvent> e_sysex;
 };
 
+// TODO clean this up
+bool doProbePlugin(const std::string& path, VSTPluginInfo& info);
+void doSearch(const char *path, t_vstplugin *x = nullptr);
+// these will go away (a proper factory is needed for VST3)
+using PluginInfoDict = std::unordered_map<std::string, VSTPluginInfo>;
+using PluginPathDict = std::unordered_map<t_symbol *, std::string>;
+PluginInfoDict& getPluginInfoDict();
+PluginPathDict& getPluginPathDict();

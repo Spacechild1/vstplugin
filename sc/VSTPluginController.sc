@@ -23,10 +23,9 @@ VSTPluginController {
 		^VSTPluginGui;
 	}
 	*new { arg synth, id, synthDef, wait= -1;
-		var synthIndex;
+		var synthIndex, desc;
 		// if the synthDef is nil, we try to get it from the global SynthDescLib
 		synthDef.isNil.if {
-			var desc;
 			desc = SynthDescLib.global.at(synth.defName);
 			desc.isNil.if { ^"couldn't find synthDef in global SynthDescLib!".throw };
 			synthDef = desc.def;
@@ -53,7 +52,7 @@ VSTPluginController {
 		// parameter changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			var index, value, display;
-			index = msg[3].asInt;
+			index = msg[3].asInteger;
 			value = msg[4].asFloat;
 			(msg.size > 5).if {
 				display = this.class.msg2string(msg, 5);
@@ -65,14 +64,14 @@ VSTPluginController {
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
-			program = msg[3].asInt;
+			program = msg[3].asInteger;
 			// notify dependants
 			this.changed('/program_index', program);
 		}, '/vst_program_index'));
 		// program name:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			var index, name;
-			index = msg[3].asInt;
+			index = msg[3].asInteger;
 			name = this.class.msg2string(msg, 4);
 			programNames[index] = name;
 			// notify dependants
@@ -81,7 +80,7 @@ VSTPluginController {
 		// parameter automated:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			var index, value;
-			index = msg[3].asInt;
+			index = msg[3].asInteger;
 			value = msg[4].asFloat;
 			parameterAutomated.value(index, value);
 		}, '/vst_auto'));
@@ -107,7 +106,7 @@ VSTPluginController {
 		this.changed('/free');
 	}
 	editor { arg show=true;
-		window.if { this.sendMsg('/vis', show.asInt); }
+		window.if { this.sendMsg('/vis', show.asInteger); }
 		{ "no editor!".postln; };
 	}
 	gui { arg parent, bounds;
@@ -145,7 +144,7 @@ VSTPluginController {
 		VSTPlugin.prGetInfo(synth.server, path, wait, { arg i, resPath;
 			// don't set 'info' property yet
 			theInfo = i;
-			theInfo.notNil.if { this.sendMsg('/open', theInfo.path, editor.asInt); }
+			theInfo.notNil.if { this.sendMsg('/open', theInfo.path, editor.asInteger); }
 			{ "couldn't open '%'".format(path).error; };
 		});
 	}
@@ -158,7 +157,7 @@ VSTPluginController {
 		this.changed('/close');
 	}
 	reset { arg async = false;
-		this.sendMsg('/reset', async.asInt);
+		this.sendMsg('/reset', async.asInteger);
 	}
 	// parameters
 	numParameters {
@@ -311,7 +310,7 @@ VSTPluginController {
 		// wait = -1 allows an OSC roundtrip between packets.
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
-		var totalSize, address, resp, sym, pos = 0;
+		var totalSize, address, resp, sym, end, pos = 0;
 		wait = wait ?? this.wait;
 		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
@@ -327,7 +326,7 @@ VSTPluginController {
 
 		{
 			while { pos < totalSize } {
-				var end = pos + oscPacketSize - 1; // 'end' can safely exceed 'totalSize'
+				end = pos + oscPacketSize - 1; // 'end' can safely exceed 'totalSize'
 				this.sendMsg(address, totalSize, pos, data[pos..end]);
 				pos = pos + oscPacketSize;
 				(wait >= 0).if { wait.wait } { synth.server.sync };
@@ -379,9 +378,9 @@ VSTPluginController {
 
 		resp = this.prMakeOscFunc({ arg msg;
 			var total, onset, size;
-			total = msg[3].asInt;
-			onset = msg[4].asInt;
-			size = msg[5].asInt;
+			total = msg[3].asInteger;
+			onset = msg[4].asInteger;
+			size = msg[5].asInteger;
 			// allocate array on the first packet
 			(onset == 0).if { data = Int8Array.new(total) };
 			// add packet
@@ -431,7 +430,7 @@ VSTPluginController {
 		this.sendMsg('/time_sig', num, denom);
 	}
 	setPlaying { arg b;
-		this.sendMsg('/transport_play', b.asInt);
+		this.sendMsg('/transport_play', b.asInteger);
 	}
 	setTransportPos { arg pos;
 		this.sendMsg('/transport_set', pos);
@@ -445,16 +444,15 @@ VSTPluginController {
 	// advanced
 	canDo { arg what, action;
 		this.prMakeOscFunc({ arg msg;
-			action.value(msg[3].asInt);
+			action.value(msg[3].asInteger);
 		}, '/vst_can_do').oneShot;
 		this.sendMsg('/can_do', what);
 	}
-	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action=0;
+	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=false;
 		this.prMakeOscFunc({ arg msg;
-			action.value(msg[3].asInt);
+			action.value(msg[3].asInteger);
 		}, '/vst_vendor_method').oneShot;
-		ptr = ptr ?? Int8Array.new;
-		this.sendMsg('/vendor_method', index, value, ptr, opt);
+		this.sendMsg('/vendor_method', index.asInteger, value.asInteger, ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}
 	// internal
 	sendMsg { arg cmd ... args;
@@ -465,9 +463,9 @@ VSTPluginController {
 	}
 	*msg2string { arg msg, onset=0;
 		// format: len, chars...
-		var len = msg[onset].asInt;
+		var len = msg[onset].asInteger;
 		(len > 0).if {
-			^msg[(onset+1)..(onset+len)].collectAs({arg item; item.asInt.asAscii}, String);
+			^msg[(onset+1)..(onset+len)].collectAs({arg item; item.asInteger.asAscii}, String);
 		} { ^"" };
 	}
 	prQueryParams { arg wait;

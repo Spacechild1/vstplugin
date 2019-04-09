@@ -1110,10 +1110,40 @@ void VSTPlugin::canDo(const char *what) {
 	}
 }
 
-void VSTPlugin::vendorSpecific(int32 index, int32 value, void *ptr, float opt) {
+bool cmdVendorSpecific(World *world, void *cmdData) {
+	auto data = (VendorCmdData *)cmdData;
+	auto result = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
+	data->index = result; // save result
+	return true;
+}
+
+bool cmdVendorSpecificDone(World *world, void *cmdData) {
+	auto data = (VendorCmdData *)cmdData;
+	data->owner->sendMsg("/vst_vendor_method", (float)(data->index));
+	return true;
+}
+
+void VSTPlugin::vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async) {
 	if (check()) {
-        auto result = plugin_->vendorSpecific(index, value, ptr, opt);
-		sendMsg("/vst_vendor_method", (float)result);
+		if (async) {
+			auto cmdData = (VendorCmdData *)RTAlloc(mWorld, sizeof(VendorCmdData) + size);
+			if (cmdData) {
+				cmdData->owner = this;
+				cmdData->index = index;
+				cmdData->value = value;
+				cmdData->opt = opt;
+				cmdData->size = size;
+				memcpy(cmdData->data, data, size);
+				doCmd(cmdData, cmdVendorSpecific, cmdVendorSpecificDone);
+			}
+			else {
+				LOG_WARNING("RTAlloc failed!");
+			}
+		}
+		else {
+			auto result = plugin_->vendorSpecific(index, value, (void *)data, opt);
+			sendMsg("/vst_vendor_method", (float)result);
+		}
 	}
 }
 
@@ -1269,8 +1299,8 @@ void VSTPlugin::doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt) {
 
 /*** unit command callbacks ***/
 
-#define CHECK_UNIT {if (!CAST_UNIT->valid()) return; }
 #define CAST_UNIT (static_cast<VSTPlugin*>(unit))
+#define CHECK_UNIT {if (!CAST_UNIT->valid()) return; }
 
 void vst_open(Unit *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
@@ -1618,7 +1648,8 @@ void vst_vendor_method(Unit *unit, sc_msg_iter *args) {
 		}
 	}
 	float opt = args->getf();
-	CAST_UNIT->vendorSpecific(index, value, data, opt);
+	bool async = args->geti();
+	CAST_UNIT->vendorSpecific(index, value, size, data, opt, async);
 	if (data) {
 		RTFree(unit->mWorld, data);
 	}

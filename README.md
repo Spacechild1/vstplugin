@@ -1,4 +1,4 @@
-<h1>vstplugin v0.1.1</h1>
+<h1>vstplugin v0.1.2</h1>
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
 It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "VSTPlugin" (+ various SC classes).

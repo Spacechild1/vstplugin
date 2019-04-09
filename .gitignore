@@ -1,4 +1,4 @@
-# vsthost specific ignores
+# vstplugin specific ignores
 test**
 vst/VST_SDK**
 build**
@@ -6,6 +6,7 @@ build**
 *.vs
 *.pd_darwin
 *.pd_linux
+probe
 
 # MacOS
 *.DS_STORE

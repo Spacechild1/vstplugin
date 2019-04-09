@@ -4,9 +4,14 @@
 
 #include <vector>
 
+#ifdef USE_FST
+# define FST2VST
+# include "fst/fst.h"
+#else
 //#include "aeffect.h"
-#include "aeffectx.h"
+# include "aeffectx.h"
 // #include "vstfxstore.h"
+#endif
 
 // Plugin's entry point
 typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);

@@ -633,7 +633,7 @@ ifeq ($(system), Windows)
     -Wl,--enable-auto-import "$(PDBINDIR)/pd.dll"
   cxx.ldlibs :=
   shared.extension = dll
-  shared.ldflags := -static-libgcc -shared "$(PDBINDIR)/pd.dll"
+  shared.ldflags := -static-libgcc -static-libstdc++ -shared "$(PDBINDIR)/pd.dll"
 endif
 
 
