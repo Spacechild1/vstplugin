@@ -119,9 +119,9 @@ VSTPluginGui : ObjectGui {
 			menu = menu.asBoolean;
 			// parameters: calculate number of rows and columns
 			nparams = model.numParameters;
-			ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInt;
+			ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInteger;
 			(ncolumns == 0).if {ncolumns = 1}; // just to prevent division by zero
-			nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInt;
+			nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInteger;
 		} { menu = false };
 
 		font = Font.new(*GUI.skin.fontSpecs).pointSize_(12);
@@ -178,7 +178,7 @@ VSTPluginGui : ObjectGui {
 			grid.add(HLayout.new(programMenu, open), row, col);
 			// try to use another columns if available
 			row = (ncolumns > 1).if { 0 } { row + 1 };
-			col = (ncolumns > 1).asInt;
+			col = (ncolumns > 1).asInteger;
 			grid.add(makePanel.value("Program"), row, col);
 			grid.add(makePanel.value("Bank"), row + 1, col);
 			rowOnset = row + 2;

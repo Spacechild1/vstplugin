@@ -360,7 +360,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prMakeInfo { arg key, info;
 		var f, flags;
-		f = info[10].asInt;
+		f = info[10].asInteger;
 		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 		^(
 			parent: parentInfo,
@@ -370,11 +370,11 @@ VSTPlugin : MultiOutUGen {
 			vendor: info[2].asString,
 			category: info[3].asString,
 			version: info[4].asString,
-			id: info[5].asInt,
-			numInputs: info[6].asInt,
-			numOutputs: info[7].asInt,
-			numParameters: info[8].asInt,
-			numPrograms: info[9].asInt,
+			id: info[5].asInteger,
+			numInputs: info[6].asInteger,
+			numOutputs: info[7].asInteger,
+			numParameters: info[8].asInteger,
+			numPrograms: info[9].asInteger,
 			hasEditor: flags[0],
 			isSynth: flags[1],
 			singlePrecision: flags[2],
