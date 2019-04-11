@@ -93,3 +93,7 @@ On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio
 	Windows: build the project `INSTALL` if you want to install
 
 ---
+
+### Final words
+
+Now comes the mystery.
