@@ -61,7 +61,7 @@ vstplugin~ uses a *modified* version of pd-lib-builder (https://github.com/pure-
 	`$ make PDDIR=/path/to/pd`
 	Type 'make install' if you want to install the library. You can choose the installation directory with `PDLIBIDR`:
 	`$ make install PDLIBDIR=...`
-	
+
 #### SuperCollider:
 
 In order to use the VSTPlugin.sc and VSTPluginController.sc classes, you need to first build the VSTPlugin UGen.
@@ -76,18 +76,18 @@ On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio
 5) 	*macOS/Linux:* cd into the build directory and do
 
 	`cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=/install/path -DSC_PATH=/path/to/supercollider ..`
-	
-	You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build. 
+
+	You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build.
 	`CMAKE_INSTALL_PREFIX` would typically be your SuperCollider Extensions folder.
 	`SC_PATH` must point to the folder containing the SuperCollider source code (with the subfolders common/ and include/).
-	
+
 	*Windows:* you have to tell CMake to generate a VisualStudio project (e.g. "Visual Studio 15 2017 Win64" for a 64 bit build) instead of a standard Unix makefile.
 	It is recommended to use the cmake-gui GUI application to set the variables mentioned above.
 
 6) 	*macOS/Linux:* type `make`
-    
+
     *Windows:* open VSTPlugin.sln with Visual Studio and build the solution.
-    
+
 7)	*macOS/Linux:* type `make install` if you want to install
-	
+
 	Windows: build the project `INSTALL` if you want to install
