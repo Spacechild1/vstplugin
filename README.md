@@ -1,9 +1,10 @@
-<h1>vstplugin v0.1.2</h1>
+vstplugin v0.1.2
+================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
 It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "VSTPlugin" (+ various SC classes).
 
-<h3>Features:</h3>
+### Features:
 
 * use any VST plugin (audio effect, MIDI effect, soft synth etc.)
 * search and probe plugins in the standard VST directories or in user defined paths
@@ -16,7 +17,7 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 * basic sequencing support (for arpeggiators, sequencers etc.)
 
 
-<b>NOTE:</b> currently only VST2.x plugins are supported but VST3 support will come soon!
+**NOTE:** currently only VST2.x plugins are supported but VST3 support will come soon!
 64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VSTPlugin.scx and vice versa.
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
@@ -25,7 +26,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ---
 
-<h3>Known issues:</h3>
+### Known issues:
 
 On Windows and Linux, the native GUI window runs in its own thread, which means
 that GUI updates shouldn't have a noticable effect on audio performance.
@@ -45,9 +46,9 @@ and install an event polling routine, which is a bit adventurous to say the leas
 
 ---
 
-<h3>Build instructions:</h3>
+### Build instructions:
 
-<h4>Pd:</h4>
+#### Pd:
 
 vstplugin~ uses a *modified* version of pd-lib-builder (https://github.com/pure-data/pd-lib-builder)
 (to compile on Windows you need MinGW; it is recommended to use Msys2: https://www.msys2.org/)
@@ -61,7 +62,7 @@ vstplugin~ uses a *modified* version of pd-lib-builder (https://github.com/pure-
 	Type 'make install' if you want to install the library. You can choose the installation directory with `PDLIBIDR`:
 	`$ make install PDLIBDIR=...`
 	
-<h4>SuperCollider:</h4>
+#### SuperCollider:
 
 In order to use the VSTPlugin.sc and VSTPluginController.sc classes, you need to first build the VSTPlugin UGen.
 On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
