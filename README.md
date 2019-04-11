@@ -32,7 +32,7 @@ On Windows and Linux, the native GUI window runs in its own thread, which means
 that GUI updates shouldn't have a noticable effect on audio performance.
 
 On MacOS, however, because of technical limitations the GUI must run on
-the main thread *)- which happens to be the audio thread in Pd...
+the main thread[^1] - which happens to be the audio thread in Pd...
 Until we've found a better solution, macOS users are adviced to keep native GUI
 windows closed in low-latency realtime situations to avoid audio hick-ups.
 For this reason, the default GUI on MacOS is the generic Pd editor.
@@ -41,7 +41,7 @@ You have to explicitly provide the "-vstgui" flag to get the VST GUI.
 On SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
 to open a plugin with "editor: true".
 
-*) to make the GUI work for Pd on macOS we have to 'transform' Pd into a Cocoa app
+[^1]: to make the GUI work for Pd on macOS we have to 'transform' Pd into a Cocoa app
 and install an event polling routine, which is a bit adventurous to say the least.
 
 ---
@@ -91,3 +91,5 @@ On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio
 7)	*macOS/Linux:* type `make install` if you want to install
 
 	Windows: build the project `INSTALL` if you want to install
+
+---
