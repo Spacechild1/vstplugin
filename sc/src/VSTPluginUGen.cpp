@@ -276,11 +276,6 @@ void VSTPlugin::resizeBuffer(){
 	}
 }
 
-bool cmdClose(World *world, void* cmdData) {
-	((VSTPluginCmdData *)cmdData)->close();
-	return true;
-}
-
 	// try to close the plugin in the NRT thread with an asynchronous command
 void VSTPlugin::close() {
 	if (plugin_) {
@@ -291,11 +286,14 @@ void VSTPlugin::close() {
 		// plugin, window and thread don't depend on VSTPlugin so they can be
 		// safely moved to cmdData (which takes care of the actual closing)
 		cmdData->plugin = plugin_;
-		cmdData->window = window_;
+		cmdData->window = std::move(window_);
 #if VSTTHREADS
 		cmdData->thread = std::move(thread_);
 #endif
-		doCmd(cmdData, cmdClose);
+		doCmd(cmdData, [](World *world, void* data) {
+			((VSTPluginCmdData *)data)->close();
+			return false; // done
+		});
 		window_ = nullptr;
 		plugin_ = nullptr;
 	}
@@ -369,7 +367,7 @@ bool cmdOpen(World *world, void* cmdData) {
 bool cmdOpenDone(World *world, void* cmdData) {
 	auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->doneOpen(*data);
-	return true;
+	return false; // done
 }
 
 	// try to open the plugin in the NRT thread with an asynchronous command
@@ -397,7 +395,7 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 	LOG_DEBUG("doneOpen");
 	isLoading_ = false;
 	plugin_ = cmd.plugin;
-	window_ = cmd.window;
+	window_ = std::move(cmd.window);
 	nrtThreadID_ = cmd.threadID;
 	// LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
 #if VSTTHREADS
@@ -516,7 +514,7 @@ bool cmdShowEditor(World *world, void *cmdData) {
 	else {
 		data->window->hide();
 	}
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::showEditor(bool show) {
@@ -537,7 +535,7 @@ bool cmdReset(World *world, void *cmdData) {
 	auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->plugin()->suspend();
 	data->owner->plugin()->resume();
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::reset(bool async) {
@@ -653,7 +651,7 @@ bool cmdSetParam(World *world, void *cmdData) {
 bool cmdSetParamDone(World *world, void *cmdData) {
 	auto data = (ParamCmdData *)cmdData;
 	data->owner->setParamDone(data->index);
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::setParam(int32 index, float value) {
@@ -790,7 +788,7 @@ bool cmdSetProgram(World *world, void *cmdData) {
 bool cmdSetProgramDone(World *world, void *cmdData) {
 	auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->sendMsg("/vst_program_index", data->owner->plugin()->getProgram());
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::setProgram(int32 index) {
@@ -871,14 +869,14 @@ bool cmdProgramDone(World *world, void *cmdData){
     auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->sendMsg("/vst_program_read", data->value);
 	data->owner->sendCurrentProgramName();
-    return true;
+    return false; // done
 }
 
 bool cmdBankDone(World *world, void *cmdData){
 	auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->sendMsg("/vst_bank_read", data->value);
 	data->owner->sendMsg("/vst_program_index", data->owner->plugin()->getProgram());
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::readProgram(const char *path){
@@ -956,13 +954,13 @@ bool cmdWriteBank(World *world, void *cmdData){
 bool cmdWriteProgramDone(World *world, void *cmdData){
     auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->sendMsg("/vst_program_write", 1); // LATER get real return value
-    return true;
+    return false; // done
 }
 
 bool cmdWriteBankDone(World *world, void *cmdData) {
 	auto data = (VSTPluginCmdData *)cmdData;
 	data->owner->sendMsg("/vst_bank_write", 1); // LATER get real return value
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::writeProgram(const char *path) {
@@ -1037,7 +1035,7 @@ bool VSTPlugin::cmdGetDataDone(World *world, void *cmdData, bool bank) {
 			data->owner->sendMsg("/vst_program_data", data->size, (const float *)data->buf);
 		}
 	}
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::receiveProgramData(int count) {
@@ -1120,7 +1118,7 @@ bool cmdVendorSpecific(World *world, void *cmdData) {
 bool cmdVendorSpecificDone(World *world, void *cmdData) {
 	auto data = (VendorCmdData *)cmdData;
 	data->owner->sendMsg("/vst_vendor_method", (float)(data->index));
-	return true;
+	return false; // done
 }
 
 void VSTPlugin::vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async) {
@@ -1279,21 +1277,24 @@ VSTPluginCmdData* VSTPlugin::makeCmdData() {
 	return makeCmdData(nullptr, 0);
 }
 
-void cmdRTfree(World *world, void* cmdData) {
+void cmdRTfree(World *world, void * cmdData) {
 	RTFree(world, cmdData);
 	// LOG_DEBUG("cmdRTfree!");
 }
+
+// 'clean' version for non-POD data
 template<typename T>
-bool cmdNRTfree(World *world, void* cmdData) {
+void cmdRTfree(World *world, void * cmdData) {
 	((T*)cmdData)->~T();
-	// LOG_DEBUG("cmdNRTfree!");
-	return true;
+	RTFree(world, cmdData);
+	// LOG_DEBUG("cmdRTfree!");
 }
+
 template<typename T>
 void VSTPlugin::doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt) {
 	// so we don't have to always check the return value of makeCmdData
 	if (cmdData) {
-		DoAsynchronousCommand(mWorld, 0, 0, cmdData, nrt, rt, cmdNRTfree<T>, cmdRTfree, 0, 0);
+		DoAsynchronousCommand(mWorld, 0, 0, cmdData, nrt, rt, 0, cmdRTfree<T>, 0, 0);
 	}
 }
 
@@ -1784,7 +1785,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 bool cmdSearchDone(World *inWorld, void *cmdData) {
 	isSearching = false;
 	// LOG_DEBUG("search done!");
-	return true;
+	return true; // we want to send a /done message
 }
 
 void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
@@ -1857,7 +1858,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 		// empty reply
 		makeReply(data->reply, sizeof(data->reply), "/vst_info");
 	}
-	return true;
+	return true; // we want to send a /done message
 }
 
 void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
@@ -1930,7 +1931,7 @@ bool cmdQueryParam(World *inWorld, void *cmdData) {
 		// empty reply
 		makeReply(data->reply, sizeof(data->reply), "/vst_param_info");
 	}
-	return true;
+	return true; // we want to send a /done message
 }
 
 void vst_query_param(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
@@ -1977,7 +1978,7 @@ bool cmdQueryProgram(World *inWorld, void *cmdData) {
 		makeReply(data->reply, sizeof(data->reply), "/vst_program_info");
 	}
 
-	return true;
+	return true; // we want to send the /done message
 }
 
 void vst_query_program(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
