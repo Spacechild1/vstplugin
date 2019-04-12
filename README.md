@@ -35,8 +35,6 @@ On MacOS, however, because of technical limitations the GUI must run on
 the main thread[^1] - which happens to be the audio thread in Pd...
 Until we've found a better solution, macOS users are adviced to keep native GUI
 windows closed in low-latency realtime situations to avoid audio hick-ups.
-For this reason, the default GUI on MacOS is the generic Pd editor.
-You have to explicitly provide the "-vstgui" flag to get the VST GUI.
 
 On SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
 to open a plugin with "editor: true".
