@@ -150,6 +150,7 @@ endif()
 
 install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT}/plugins)
 install(FILES VSTPlugin.sc VSTPluginController.sc VSTPluginGui.sc DESTINATION ${PROJECT}/classes)
+install(FILES ../README.md ../LICENSE.txt DESTINATION ${PROJECT})
 install(DIRECTORY HelpSource DESTINATION ${PROJECT})
 
 if(SUPERNOVA)
