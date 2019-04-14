@@ -1,8 +1,7 @@
 // VST2Plugin
+#pragma once
 
 #include "VSTPluginInterface.h"
-
-#include <vector>
 
 #ifdef USE_FST
 # define FST2VST
@@ -13,8 +12,28 @@
 // #include "vstfxstore.h"
 #endif
 
-// Plugin's entry point
-typedef AEffect *(*vstPluginFuncPtr)(audioMasterCallback);
+namespace vst {
+
+class VST2Factory : public IVSTFactory {
+ public:
+    VST2Factory(const std::string& path);
+    virtual ~VST2Factory(){}
+    // get a list of all available plugins
+    std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const override;
+    // probe plugins (in a seperate process)
+    void probe() override;
+    bool isProbed() const override {
+        return plugin_ != nullptr;
+    }
+    // create a new plugin instance
+    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const override;
+ private:
+    using EntryPoint = AEffect *(*)(audioMasterCallback);
+    std::string path_;
+    std::unique_ptr<IModule> module_;
+    EntryPoint entry_;
+    std::shared_ptr<VSTPluginDesc> plugin_;
+};
 
 class VST2Plugin final : public IVSTPlugin {
  public:
@@ -141,3 +160,5 @@ class VST2Plugin final : public IVSTPlugin {
     int vstEventBufferSize_ = 0;
     bool vstTimeWarned_ = false;
 };
+
+} // vst

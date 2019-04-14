@@ -2,6 +2,7 @@
 
 #include "VSTPluginInterface.h"
 #include "Utility.h"
+using namespace vst;
 
 #include "m_pd.h"
 
@@ -9,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
@@ -49,8 +51,8 @@ class t_vstplugin {
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
         // VST plugin
-    IVSTPlugin* x_plugin = nullptr;
-    VSTPluginInfo *x_info = nullptr;
+    std::shared_ptr<IVSTPlugin> x_plugin;
+    const VSTPluginDesc *x_info = nullptr;
     t_symbol *x_path = nullptr;
     bool x_keep = false;
     bool x_bypass = false;
@@ -86,12 +88,12 @@ class t_vstparam {
 };
 
 // VST editor
-class t_vsteditor : IVSTPluginListener {
+class t_vsteditor : public IVSTPluginListener {
  public:
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin* open_plugin(const std::string& path, bool editor);
+    std::shared_ptr<IVSTPlugin> open_plugin(const VSTPluginDesc& desc, bool editor);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -122,8 +124,9 @@ class t_vsteditor : IVSTPluginListener {
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
 #if VSTTHREADS
+    using VSTPluginPromise = std::promise<std::shared_ptr<IVSTPlugin>>;
         // open plugin in a new thread
-    void thread_function(std::promise<IVSTPlugin *> promise, const std::string& path);
+    void thread_function(VSTPluginPromise promise, const VSTPluginDesc *desc);
 #endif
         // notify Pd (e.g. for MIDI event or GUI automation)
     template<typename T, typename U>
@@ -147,12 +150,3 @@ class t_vsteditor : IVSTPluginListener {
     std::vector<VSTMidiEvent> e_midi;
     std::vector<VSTSysexEvent> e_sysex;
 };
-
-// TODO clean this up
-bool doProbePlugin(const std::string& path, VSTPluginInfo& info);
-void doSearch(const char *path, t_vstplugin *x = nullptr);
-// these will go away (a proper factory is needed for VST3)
-using PluginInfoDict = std::unordered_map<std::string, VSTPluginInfo>;
-using PluginPathDict = std::unordered_map<t_symbol *, std::string>;
-PluginInfoDict& getPluginInfoDict();
-PluginPathDict& getPluginPathDict();

@@ -4,6 +4,7 @@
 #include <vector>
 #include <fstream>
 #include <functional>
+#include <memory>
 
 // for intptr_t
 #ifdef _MSC_VER
@@ -17,8 +18,19 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
+namespace vst {
+
+class IVSTPlugin;
+
 class IVSTWindow {
  public:
+    // call this once before you create any windows. not thread safe (yet)
+    static void initialize();
+    // make a new window
+    static std::unique_ptr<IVSTWindow> create(IVSTPlugin &plugin);
+    // poll the main loop (needed if the editor is in the main thread)
+    static void poll();
+
     virtual ~IVSTWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
@@ -36,18 +48,6 @@ class IVSTWindow {
     virtual void update() {}
 };
 
-class IVSTPlugin;
-
-// creates a platform dependend window
-namespace VSTWindowFactory {
-		// call this once before you create any windows. not thread safe (yet)
-    void initialize();
-		// make a new window
-    IVSTWindow* create(IVSTPlugin *plugin);
-        // poll the main loop (needed if the editor is in the main thread)
-    void mainLoopPoll();
-}
-
 enum VSTPluginFlags {
 	HasEditor = 0,
 	IsSynth,
@@ -57,27 +57,6 @@ enum VSTPluginFlags {
 	MidiOutput,
 	SysexInput,
 	SysexOutput
-};
-
-struct VSTPluginInfo {
-	void set(IVSTPlugin& plugin);
-	void serialize(std::ofstream& file, char sep = '\t');
-	void deserialize(std::ifstream& file, char sep = '\t');
-	// data
-	std::string path;
-	std::string name;
-    std::string vendor;
-    std::string category;
-    std::string version;
-    int id = 0;
-	int numInputs = 0;
-	int numOutputs = 0;
-	// parameter name + label
-	std::vector<std::pair<std::string, std::string>> parameters;
-	// default programs
-	std::vector<std::string> programs;
-	// see VSTPluginFlags
-	uint32_t flags = 0;
 };
 
 struct VSTMidiEvent {
@@ -199,24 +178,79 @@ class IVSTPlugin {
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
 };
 
-// expects an absolute path to the actual plugin file with or without extension
-// set 'silent' to true if you don't want to report errors when a plugin couldn't be opened
-// (e.g. for probing plugins)
-IVSTPlugin* loadVSTPlugin(const std::string& path, bool silent = false);
+class IVSTFactory;
 
-void freeVSTPlugin(IVSTPlugin* plugin);
-
-enum class VSTProbeResult {
-	success,
-	fail,
-	crash,
-	error
+enum class ProbeResult {
+    success,
+    fail,
+    crash,
+    error,
+    none
 };
 
-VSTProbeResult probePlugin(const std::string& path, VSTPluginInfo& info);
+struct VSTPluginDesc {
+	VSTPluginDesc() = default;
+    VSTPluginDesc(IVSTFactory& factory);
+    VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin);
+    void serialize(std::ofstream& file, char sep = '\t') const;
+    void deserialize(std::ifstream& file, char sep = '\t');
+    bool valid() const {
+        return probeResult == ProbeResult::success;
+    }
+    // data
+    ProbeResult probeResult = ProbeResult::none;
+    std::string path;
+    std::string name;
+    std::string vendor;
+    std::string category;
+    std::string version;
+    int id = 0;
+    int numInputs = 0;
+    int numOutputs = 0;
+    // parameter name + label
+    std::vector<std::pair<std::string, std::string>> parameters;
+    // default programs
+    std::vector<std::string> programs;
+    // see VSTPluginFlags
+    uint32_t flags = 0;
+    // create new instances
+    std::unique_ptr<IVSTPlugin> create() const;
+ private:
+    IVSTFactory * factory_ = nullptr;
+};
 
-void searchPlugins(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
+class IModule {
+ public:
+    static std::unique_ptr<IModule> load(const std::string& path);
+    virtual ~IModule(){}
+    template<typename T>
+    T getFnPtr(const char *name) const {
+        return (T)doGetFnPtr(name);
+    }
+ protected:
+    virtual void *doGetFnPtr(const char *name) const = 0;
+};
+
+class IVSTFactory {
+ public:
+    // expects an absolute path to the actual plugin file with or without extension
+    static std::unique_ptr<IVSTFactory> load(const std::string& path);
+
+    virtual ~IVSTFactory(){}
+    // get a list of all available plugins (probed in a seperate process)
+    virtual std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const = 0;
+    virtual void probe() = 0;
+    virtual bool isProbed() const = 0;
+    // create a new plugin instance
+    virtual std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const = 0;
+};
+
+ProbeResult probe(const std::string& path, const std::string& name, VSTPluginDesc& desc);
+
+void search(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
 
 const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
+
+} // vst

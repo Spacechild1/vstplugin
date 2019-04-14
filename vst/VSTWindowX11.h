@@ -1,11 +1,20 @@
+#pragma once
+
 #include "VSTPluginInterface.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+namespace vst {
+
+namespace VSTWindowFactory {
+    void initializeX11();
+    IVSTWindow * createX11(IVSTPlugin &plugin);
+}
+
 class VSTWindowX11 : public IVSTWindow {
  public:
-    VSTWindowX11(IVSTPlugin* plugin);
+    VSTWindowX11(IVSTPlugin& plugin);
     ~VSTWindowX11();
 
     void* getHandle() override {
@@ -31,3 +40,5 @@ class VSTWindowX11 : public IVSTWindow {
     Atom wmDelete_;
     Atom wmQuit_; // custom quit message
 };
+
+} // vst

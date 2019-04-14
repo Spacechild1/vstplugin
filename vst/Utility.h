@@ -2,30 +2,29 @@
 
 #include <iostream>
 
-// log level: 0 (error), 1 (warning), 2 (verbose), 3 (debug)
+	// log level: 0 (error), 1 (warning), 2 (verbose), 3 (debug)
 #ifndef LOGLEVEL
 #define LOGLEVEL 0
 #endif
 
 #ifdef LOGFUNCTION
 #include <sstream>
-void LOGFUNCTION(const std::string& msg);
-
-class Log {
-public:
-	~Log(){
-		stream_ << "\n";
-		std::string msg = stream_.str();
-		LOGFUNCTION(msg.c_str());
-	}
-	template<typename T>
-	Log& operator<<(T&& t){
-		stream_ << std::move(t);
-        return *this;
-	}
-private:
-	std::ostringstream stream_;
-};
+	void LOGFUNCTION(const std::string& msg);
+	class Log {
+	public:
+		~Log() {
+			stream_ << "\n";
+			std::string msg = stream_.str();
+			LOGFUNCTION(msg.c_str());
+		}
+		template<typename T>
+		Log& operator<<(T&& t) {
+			stream_ << std::move(t);
+			return *this;
+		}
+	private:
+		std::ostringstream stream_;
+	};
 #define DO_LOG(x) (Log() << x)
 #else // default log function
 #define DO_LOG(x) std::cerr << x << std::endl

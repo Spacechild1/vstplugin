@@ -3,6 +3,8 @@
 
 #include <cstring>
 
+namespace vst {
+
 namespace VSTWindowFactory {
     void initializeX11(){
         static bool initialized = false;
@@ -13,14 +15,15 @@ namespace VSTWindowFactory {
                 initialized = true;
             }
         }
-	}
-    IVSTWindow* createX11(IVSTPlugin *plugin) {
+    }
+
+    IVSTWindow * createX11(IVSTPlugin &plugin){
         return new VSTWindowX11(plugin);
     }
 }
 
-VSTWindowX11::VSTWindowX11(IVSTPlugin *plugin)
-    : plugin_(plugin)
+VSTWindowX11::VSTWindowX11(IVSTPlugin &plugin)
+    : plugin_(&plugin)
 {
 	display_ = XOpenDisplay(NULL);
 	if (!display_){
@@ -133,3 +136,5 @@ void VSTWindowX11::bringToTop(){
 	restore();
     LOG_DEBUG("VSTWindowX11::bringToTop");
 }
+
+} // vst

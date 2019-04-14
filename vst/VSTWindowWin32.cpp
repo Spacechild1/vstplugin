@@ -2,8 +2,11 @@
 #include "Utility.h"
 
 #include <cstring>
+#include <process.h>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
+
+namespace vst {
 
 std::wstring widen(const std::string& s); // VSTPlugin.cpp
 
@@ -39,13 +42,14 @@ namespace VSTWindowFactory {
             }
         }
     }
-    IVSTWindow* createWin32(IVSTPlugin *plugin) {
+
+    IVSTWindow * createWin32(IVSTPlugin &plugin){
         return new VSTWindowWin32(plugin);
     }
 }
 
-VSTWindowWin32::VSTWindowWin32(IVSTPlugin *plugin)
-    : plugin_(plugin)
+VSTWindowWin32::VSTWindowWin32(IVSTPlugin &plugin)
+    : plugin_(&plugin)
 {
     hwnd_ = CreateWindowW(
           VST_EDITOR_CLASS_NAME, L"Untitled",
@@ -125,3 +129,5 @@ void VSTWindowWin32::bringToTop(){
 void VSTWindowWin32::update(){
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
+
+} // vst

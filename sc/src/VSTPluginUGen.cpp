@@ -197,7 +197,7 @@ VSTPlugin::~VSTPlugin(){
 }
 
 IVSTPlugin *VSTPlugin::plugin() {
-	return plugin_;
+	return plugin_.get();
 }
 
 bool VSTPlugin::check(){
@@ -285,7 +285,7 @@ void VSTPlugin::close() {
 		}
 		// plugin, window and thread don't depend on VSTPlugin so they can be
 		// safely moved to cmdData (which takes care of the actual closing)
-		cmdData->plugin = plugin_;
+		cmdData->plugin = std::move(plugin_);
 		cmdData->window = std::move(window_);
 #if VSTTHREADS
 		cmdData->thread = std::move(thread_);
@@ -303,14 +303,16 @@ void VSTPluginCmdData::close() {
 	if (!plugin) return;
 #if VSTTHREADS
 	if (window) {
-		// terminate the message loop (will implicitly release the plugin)
+		plugin = nullptr; // release our plugin reference
+        // terminate the message loop - will implicitly release the plugin in the GUI thread!
+        // (some plugins expect to be released in the same thread where they have been created.)
 		window->quit();
 		// now join the thread
 		if (thread.joinable()) {
 			thread.join();
 			LOG_DEBUG("thread joined");
 		}
-		// then destroy the window
+        // finally destroy the window
 		window = nullptr;
 	}
 	else {
@@ -320,7 +322,7 @@ void VSTPluginCmdData::close() {
 		// first destroy the window (if any)
 		window = nullptr;
 		// then release the plugin
-		freeVSTPlugin(plugin);
+		plugin = nullptr;
 	}
 	LOG_DEBUG("VST plugin closed");
 }
@@ -337,13 +339,13 @@ bool cmdOpen(World *world, void* cmdData) {
 #else
 		static bool initialized = false;
 		if (!initialized) {
-			VSTWindowFactory::initialize();
+			IVSTWindow::initialize();
 			initialized = true;
 		}
 #endif
 	}
 	data->tryOpen();
-	auto plugin = data->plugin;
+	auto plugin = data->plugin.get();
 	if (plugin) {
 		auto owner = data->owner;
 		plugin->suspend();
@@ -394,7 +396,7 @@ void VSTPlugin::open(const char *path, bool gui) {
 void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 	LOG_DEBUG("doneOpen");
 	isLoading_ = false;
-	plugin_ = cmd.plugin;
+	plugin_ = std::move(cmd.plugin);
 	window_ = std::move(cmd.window);
 	nrtThreadID_ = cmd.threadID;
 	// LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
@@ -403,6 +405,7 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 #endif
     if (plugin_){
 		LOG_DEBUG("loaded " << cmd.buf);
+        // receive events from plugin
 		plugin_->setListener(listener_.get());
         resizeBuffer();
 		// allocate arrays for parameter values/states
@@ -429,7 +432,7 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 }
 
 #if VSTTHREADS
-using VSTPluginCmdPromise = std::promise<std::pair<IVSTPlugin *, std::shared_ptr<IVSTWindow>>>;
+using VSTPluginCmdPromise = std::promise<std::pair<std::shared_ptr<IVSTPlugin>, std::shared_ptr<IVSTWindow>>>;
 void threadFunction(VSTPluginCmdPromise promise, const char *path);
 #endif
 
@@ -453,11 +456,14 @@ void VSTPluginCmdData::tryOpen(){
     }
 #endif
         // create plugin in main thread
-    plugin = loadVSTPlugin(buf);
+	auto factory = IVSTFactory::load(buf);
+	if (factory) {
+        plugin = factory->create(buf);
+	}
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin && plugin->hasEditor() && value){
-        window = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        window = IVSTWindow::create(plugin);
         if (window){
 			window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
@@ -474,8 +480,12 @@ void VSTPluginCmdData::tryOpen(){
 
 #if VSTTHREADS
 void threadFunction(VSTPluginCmdPromise promise, const char *path){
-    IVSTPlugin *plugin = loadVSTPlugin(path);
-    if (!plugin){
+	std::shared_ptr<IVSTPlugin> plugin;
+	auto factory = IVSTFactory::load(path);
+	if (factory) {
+        plugin = factory->create(path);
+	}
+	if (!plugin){
             // signal other thread
 		promise.set_value({ nullptr, nullptr });
         return;
@@ -483,9 +493,10 @@ void threadFunction(VSTPluginCmdPromise promise, const char *path){
         // create GUI window (if needed)
 	std::shared_ptr<IVSTWindow> window;
     if (plugin->hasEditor()){
-        window = std::shared_ptr<IVSTWindow>(VSTWindowFactory::create(plugin));
+        window = IVSTWindow::create(*plugin);
     }
         // return plugin and window to other thread
+        // (but keep references in the GUI thread)
 	promise.set_value({ plugin, window });
         // setup GUI window (if any)
     if (window){
@@ -499,9 +510,7 @@ void threadFunction(VSTPluginCmdPromise promise, const char *path){
 			// (the editor will we closed implicitly)
 		LOG_DEBUG("start message loop");
 		window->run();
-		LOG_DEBUG("end message loop");
-            // some plugins expect to released in the same thread where they have been created.
-        freeVSTPlugin(plugin);
+        LOG_DEBUG("end message loop");
     }
 }
 #endif
@@ -1683,24 +1692,24 @@ void vst_path_clear(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 	}
 }
 
-bool doProbePlugin(const std::string& path, VSTPluginInfo& info, bool verbose) {
+bool doProbePlugin(const std::string& path, VSTPluginDesc& desc, bool verbose) {
 	if (verbose) Print("probing '%s' ... ", path.c_str());
-	auto result = probePlugin(path, info);
+	auto result = vst::probe(path, "", desc);
 	if (verbose) {
-		if (result == VSTProbeResult::success) {
+        if (result == ProbeResult::success) {
             Print("ok!\n");
 		}
-		else if (result == VSTProbeResult::fail) {
+        else if (result == ProbeResult::fail) {
 			Print("failed!\n");
 		}
-		else if (result == VSTProbeResult::crash) {
+        else if (result == ProbeResult::crash) {
 			Print("crashed!\n");
 		}
-		else if (result == VSTProbeResult::error) {
+        else if (result == ProbeResult::error) {
 			Print("error!\n");
 		}
 	}
-	return result == VSTProbeResult::success;
+    return result == ProbeResult::success;
 }
 
 // recursively searches directories for VST plugins.
@@ -1739,16 +1748,16 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 	for (auto& path : searchPaths) {
 		LOG_VERBOSE("searching in '" << path << "':");
 		int count = 0;
-		searchPlugins(path, [&](const std::string& absPath, const std::string& relPath) {
+		vst::search(path, [&](const std::string& absPath, const std::string& relPath) {
 			// check if the plugin hasn't been successfully probed already
 			auto it = pluginMap.find(absPath);
 			if (it == pluginMap.end()) {
-				VSTPluginInfo info;
-				if (doProbePlugin(absPath, info, verbose)) {
+				VSTPluginDesc desc;
+				if (doProbePlugin(absPath, desc, verbose)) {
 					// we're lazy and just duplicate the info (we have to change the whole thing later anyway for VST3...)
-					pluginMap[absPath] = info;
-					pluginMap[info.name] = info;
-					pluginList.push_back(info.name);
+					pluginMap[absPath] = desc;
+					pluginMap[desc.name] = desc;
+					pluginList.push_back(desc.name);
 					count++;
 				}
 			}
@@ -1821,7 +1830,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 	if (data->buf[0]) {
 		key.assign(data->buf);
 		if (!pluginMap.count(key)) {
-			VSTPluginInfo info;
+			VSTPluginDesc info;
 			if (doProbePlugin(key, info, verbose)) {
 				pluginMap[key] = info;
 			}

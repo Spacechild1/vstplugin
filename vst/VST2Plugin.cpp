@@ -32,6 +32,8 @@
 #error No byte order defined
 #endif
 
+namespace vst {
+
 union union32 {
     float un_float;
     int32_t un_int32;
@@ -117,6 +119,66 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 #define chunkPresetMagic CCONST('F', 'P', 'C', 'h')
 #define chunkBankMagic CCONST('F', 'B', 'C', 'h')
 
+/*/////////////////////// VST2Factory ////////////////////////////*/
+
+VST2Factory::VST2Factory(const std::string& path)
+    : path_(path), module_(IModule::load(path))
+{
+    if (module_){
+        entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
+        if (!entry_){
+        #ifdef __APPLE__
+            // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
+            // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
+            entry_ = module_->getFnPtr<EntryPoint>("main_macho");
+        #else
+            entry_ = module_->getFnPtr<EntryPoint>("main");
+        #endif
+        }
+        if (!entry_){
+            LOG_ERROR("VST2Factory: couldn't find entry point in VST plugin");
+            throw std::exception();
+        }
+        // LOG_DEBUG("VST2Factory: loaded " << path);
+    } else {
+        throw std::exception();
+    }
+}
+
+std::vector<std::shared_ptr<VSTPluginDesc>> VST2Factory::plugins() const {
+    return {plugin_};
+}
+
+void VST2Factory::probe() {
+    VSTPluginDesc desc(*this);
+    auto result = vst::probe(path_, "", desc);
+    desc.probeResult = result;
+    desc.path = path_;
+    plugin_ = std::make_shared<VSTPluginDesc>(std::move(desc));
+}
+
+std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool unsafe) const {
+    if (!plugin_ && !unsafe){
+        LOG_WARNING("VST2Factory: no plugin");
+        return nullptr;
+    }
+    if (!plugin_->valid() && !unsafe){
+        LOG_WARNING("VST2Factory: plugin not probed successfully");
+        return nullptr;
+    }
+    AEffect *plugin = entry_(&VST2Plugin::hostCallback);
+    if (!plugin){
+        LOG_ERROR("VST2Factory: couldn't initialize plugin");
+        return nullptr;
+    }
+    if (plugin->magic != kEffectMagic){
+        LOG_ERROR("VST2Factory: not a VST2.x plugin!");
+        return nullptr;
+    }
+    return std::make_unique<VST2Plugin>(plugin, path_);
+}
+
+
 /*/////////////////////// VST2Plugin /////////////////////////////*/
 
 // initial size of VstEvents queue (can grow later as needed)
@@ -152,6 +214,7 @@ VST2Plugin::~VST2Plugin(){
         free(sysex.sysexDump);
     }
     free(vstEvents_);
+    LOG_DEBUG("destroyed VST2 plugin");
 }
 
 std::string VST2Plugin::getPluginName() const {
@@ -1139,3 +1202,5 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     }
     return 0; // ?
 }
+
+} // vst

@@ -1,11 +1,19 @@
+#pragma once
+
 #include "VSTPluginInterface.h"
 
 #include <windows.h>
-#include <process.h>
+
+namespace vst {
+
+namespace VSTWindowFactory {
+    void initializeWin32();
+    IVSTWindow * createWin32(IVSTPlugin &plugin);
+}
 
 class VSTWindowWin32 : public IVSTWindow {
  public:
-    VSTWindowWin32(IVSTPlugin *plugin);
+    VSTWindowWin32(IVSTPlugin &plugin);
     ~VSTWindowWin32();
 
     void* getHandle() override {
@@ -27,3 +35,5 @@ class VSTWindowWin32 : public IVSTWindow {
     HWND hwnd_ = nullptr;
     IVSTPlugin *plugin_ = nullptr;
 };
+
+} // vst

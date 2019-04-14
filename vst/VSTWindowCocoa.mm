@@ -7,6 +7,8 @@
 
 #include <iostream>
 
+namespace vst {
+
 @implementation VSTEditorWindow {
 }
 
@@ -41,18 +43,18 @@ namespace VSTWindowFactory {
                 LOG_WARNING("NSApp already initialized!");
                 return;
             }
-                // NSApp will automatically point to the NSApplication singleton 
+                // NSApp will automatically point to the NSApplication singleton
             [NSApplication sharedApplication];
             initialized = true;
         }
-	}
-    IVSTWindow* createCocoa(IVSTPlugin *plugin) {
+    }
+    IVSTWindow * createCocoa(IVSTPlugin &plugin) {
         return new VSTWindowCocoa(plugin);
     }
-    void mainLoopPollCocoa(){
+    void pollCocoa(){
         NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
         while (true) {
-            NSEvent *event = [NSApp 
+            NSEvent *event = [NSApp
                 nextEventMatchingMask:NSAnyEventMask
                 untilDate:[[NSDate alloc] init]
                 inMode:NSDefaultRunLoopMode
@@ -143,3 +145,5 @@ void VSTWindowCocoa::restore(){
 void VSTWindowCocoa::bringToTop(){
     restore();
 }
+
+} // vst

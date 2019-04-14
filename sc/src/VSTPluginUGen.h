@@ -2,6 +2,7 @@
 
 #include "SC_PlugIn.hpp"
 #include "VSTPluginInterface.h"
+using namespace vst;
 
 #ifndef VSTTHREADS
 #define VSTTHREADS 1
@@ -19,7 +20,7 @@
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
-using VSTPluginMap = std::unordered_map<std::string, VSTPluginInfo>;
+using VSTPluginMap = std::unordered_map<std::string, VSTPluginDesc>;
 
 class VSTPlugin;
 
@@ -28,7 +29,7 @@ struct VSTPluginCmdData {
 	void close();
 	// data
 	VSTPlugin *owner;
-	IVSTPlugin *plugin = nullptr;
+	std::shared_ptr<IVSTPlugin> plugin;
 	std::shared_ptr<IVSTWindow> window;
 	std::thread::id threadID;
 #if VSTTHREADS
@@ -160,7 +161,7 @@ public:
 private:
 	// data members
 	uint32 magic_ = MagicNumber;
-	IVSTPlugin *plugin_ = nullptr;
+	std::shared_ptr<IVSTPlugin> plugin_ = nullptr;
 	bool isLoading_ = false;
 	bool bypass_ = false;
 	std::shared_ptr<IVSTWindow> window_;

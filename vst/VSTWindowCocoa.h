@@ -2,6 +2,8 @@
 
 #import <Cocoa/Cocoa.h>
 
+namespace vst {
+
 @interface VSTEditorWindow : NSWindow {
     IVSTPlugin *_plugin;
 }
@@ -15,9 +17,15 @@
 */
 @end
 
+namespace VSTWindowFactory {
+    void initializeCocoa();
+    void pollCocoa();
+    IVSTWindow * createCocoa(IVSTPlugin &plugin);
+}
+
 class VSTWindowCocoa : public IVSTWindow {
  public:
-    VSTWindowCocoa(IVSTPlugin *plugin);
+    VSTWindowCocoa(IVSTPlugin &plugin);
     ~VSTWindowCocoa();
 
     void* getHandle() override;
@@ -35,3 +43,5 @@ class VSTWindowCocoa : public IVSTWindow {
  private:
     VSTEditorWindow * window_ = nullptr;
 };
+
+} // vst
