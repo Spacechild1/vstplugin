@@ -1,3 +1,4 @@
+#include "VSTPluginInterface.h"
 #include "VST2Plugin.h"
 #include "Utility.h"
 

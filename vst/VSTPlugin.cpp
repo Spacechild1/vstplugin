@@ -433,14 +433,14 @@ class ModuleApple : public IModule {
         CFRelease(bundle_);
     }
     void *doGetFnPtr(const char *name) const override {
-        return (void *)CFBundleGetFunctionPointerForName(bundle, CFSTR(name));
+        return (void *)CFBundleGetFunctionPointerForName(bundle_, CFSTR(name));
     }
  private:
     CFBundleRef bundle_;
 };
 #endif
 
-#ifdef DL_OPEN
+#if DL_OPEN
 class ModuleDlOpen : public IModule {
  public:
     ModuleDlOpen(const std::string& path){
@@ -455,12 +455,12 @@ class ModuleDlOpen : public IModule {
     ~ModuleDlOpen(){
         dlclose(handle_);
     }
-    void *doGetFnPtr(const char *name) const override {
+    void * doGetFnPtr(const char* name) const override {
         return dlsym(handle_, name);
     }
  private:
     void *handle_;
-}
+};
 #endif
 
 
