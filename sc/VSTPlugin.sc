@@ -99,42 +99,36 @@ VSTPlugin : MultiOutUGen {
 		{
 			var dict = pluginDict[server];
 			var filePath = PathName.tmp ++ this.hash.asString;
+			// flags: local, use default, verbose
+			var flags = 1 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
+			server.sendMsg('/cmd', '/vst_search', flags, *(searchPaths ++ [filePath]));
+			// wait for cmd to finish
+			server.sync;
+			// read file
 			protect {
-				// first write search paths to tmp file
-				File.use(filePath, "wb", { arg file;
-					searchPaths.do { arg path; file.write(path); file.write("\n"); }
+				File.use(filePath, "rb", { arg file;
+					// plugins are seperated by newlines
+					file.readAllString.split($\n).do { arg line;
+						var info;
+						(line.size > 0).if {
+							info = this.prParseInfo(line);
+							dict[info.key] = info;
+						}
+					};
 				});
 			} { arg error;
-				error.isNil.if {
-					// ask server to read tmp file and replace the content with the plugin info
-					server.sendMsg('/cmd', '/vst_search', useDefault, verbose, filePath);
-					// wait for cmd to finish
-					server.sync;
-					// read file
-					protect {
-						File.use(filePath, "rb", { arg file;
-							// plugins are seperated by newlines
-							file.readAllString.split($\n).do { arg line;
-								var info;
-								(line.size > 0).if {
-									info = this.prParseInfo(line);
-									dict[info.key] = info;
-								}
-							};
-						});
-					} { arg error;
-						error.notNil.if { "Failed to read tmp file!".warn };
-						File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
-						// done
-						action.value;
-					}
-				} { "Failed to write tmp file!".warn };
+				error.notNil.if { "Failed to read tmp file!".warn };
+				File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
+				// done
+				action.value;
 			};
 		}.forkIfNeeded;
 	}
 	*prSearchRemote { arg server, searchPaths, useDefault, verbose, wait, action;
-		var cb, dict = pluginDict[server];
-		cb = OSCFunc({ arg msg;
+		var dict = pluginDict[server];
+		// flags: local, use default, verbose
+		var flags = 0 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
+		var cb = OSCFunc({ arg msg;
 			var fn, num, count = 0, result = msg[1].asString.split($\n);
 			(result[0] == "/vst_search").if {
 				num = result[1].asInteger;
@@ -171,14 +165,7 @@ VSTPlugin : MultiOutUGen {
 				}.forkIfNeeded;
 			};
 		}, '/done');
-		{
-			server.sendMsg('/cmd', '/vst_path_clear');
-			searchPaths.do { arg path;
-				server.sendMsg('/cmd', '/vst_path_add', path);
-				if(wait >= 0) { wait.wait } { server.sync }; // for safety
-			};
-			server.sendMsg('/cmd', '/vst_search', useDefault, verbose);
-		}.forkIfNeeded;
+		server.sendMsg('/cmd', '/vst_search', flags, *searchPaths);
 	}
 	*prParseInfo { arg string;
 		var data, key, info, nparam, nprogram;
