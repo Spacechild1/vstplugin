@@ -25,9 +25,11 @@ int MAIN(int argc, const CHAR *argv[]) {
         /// LOG_DEBUG("probe: pluginPath '" << pluginPath << "', pluginName, '" << pluginName);
 		auto factory = vst::IVSTFactory::load(shorten(pluginPath));
 		if (factory) {
+            /// LOG_DEBUG("create plugin");
             auto plugin = factory->create(shorten(pluginName), true);
 			if (plugin) {
 				if (filePath) {
+                    /// LOG_DEBUG("get plugin info");
 					vst::VSTPluginDesc desc(*factory, *plugin);
 					// there's no way to open a fstream with a wide character path...
 					// (the C++17 standard allows filesystem::path but this isn't widely available yet)

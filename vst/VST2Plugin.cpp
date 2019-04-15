@@ -159,13 +159,15 @@ void VST2Factory::probe() {
 }
 
 std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool unsafe) const {
-    if (!plugin_ && !unsafe){
-        LOG_WARNING("VST2Factory: no plugin");
-        return nullptr;
-    }
-    if (!plugin_->valid() && !unsafe){
-        LOG_WARNING("VST2Factory: plugin not probed successfully");
-        return nullptr;
+    if (!unsafe){
+        if (!plugin_){
+            LOG_WARNING("VST2Factory: no plugin");
+            return nullptr;
+        }
+        if (!plugin_->valid()){
+            LOG_WARNING("VST2Factory: plugin not probed successfully");
+            return nullptr;
+        }
     }
     AEffect *plugin = entry_(&VST2Plugin::hostCallback);
     if (!plugin){
