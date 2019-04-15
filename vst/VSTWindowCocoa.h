@@ -2,13 +2,11 @@
 
 #import <Cocoa/Cocoa.h>
 
-namespace vst {
-
 @interface VSTEditorWindow : NSWindow {
-    IVSTPlugin *_plugin;
+    vst::IVSTPlugin *_plugin;
 }
 
-@property (nonatomic, readwrite) IVSTPlugin *plugin;
+@property (nonatomic, readwrite) vst::IVSTPlugin *plugin;
 
 - (BOOL)windowShouldClose:(id)sender;
 /*
@@ -16,6 +14,8 @@ namespace vst {
 - (void)windowDidDeminiaturize:(id)sender;
 */
 @end
+
+namespace vst {
 
 namespace VSTWindowFactory {
     void initializeCocoa();

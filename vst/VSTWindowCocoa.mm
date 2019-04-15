@@ -7,17 +7,15 @@
 
 #include <iostream>
 
-namespace vst {
 
-@implementation VSTEditorWindow {
-}
+@implementation VSTEditorWindow {}
 
 @synthesize plugin = _plugin;
 
 - (BOOL)windowShouldClose:(id)sender {
     LOG_DEBUG("window should close");
     [self orderOut:NSApp];
-    IVSTPlugin *plugin = [self plugin];
+    vst::IVSTPlugin *plugin = [self plugin];
     plugin->closeEditor();
     return NO;
 }
@@ -30,6 +28,8 @@ namespace vst {
 }
 */
 @end
+
+namespace vst {
 
 namespace VSTWindowFactory {
     void initializeCocoa(){
@@ -71,7 +71,7 @@ namespace VSTWindowFactory {
     }
 }
 
-VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
+VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin &plugin){
     LOG_DEBUG("try opening VSTWindowCocoa");
     
     NSRect frame = NSMakeRect(0, 0, 200, 200);
@@ -81,7 +81,7 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin *plugin){
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        [window setPlugin:plugin];
+        [window setPlugin:&plugin];
         window_ = window;
         LOG_DEBUG("created VSTWindowCocoa");
     }

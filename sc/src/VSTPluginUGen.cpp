@@ -463,7 +463,7 @@ void VSTPluginCmdData::tryOpen(){
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin && plugin->hasEditor() && value){
-        window = IVSTWindow::create(plugin);
+        window = IVSTWindow::create(*plugin);
         if (window){
 			window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;

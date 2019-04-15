@@ -397,7 +397,7 @@ class ModuleWin32 : public IModule {
     ~ModuleWin32(){
         FreeLibrary(handle_);
     }
-    void *doGetFnPtr(const char *name) const override {
+    void * doGetFnPtr(const char *name) const override {
         return (void *)GetProcAddress(handle_, name);
     }
  private:
@@ -411,18 +411,14 @@ class ModuleApple : public IModule {
     ModuleApple(const std::string& path){
         // Create a fullPath to the bundle
         // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
-        CFStringRef pluginPathStringRef = CFStringCreateWithCString(NULL,
-            path.c_str(), kCFStringEncodingUTF8);
-        CFURLRef bundleUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-            pluginPathStringRef, kCFURLPOSIXPathStyle, true);
+        auto pluginPath = CFStringCreateWithCString(NULL, path.c_str(), kCFStringEncodingUTF8);
+        auto bundleUrl = CFURLCreateWithFileSystemPath(NULL, pluginPath, kCFURLPOSIXPathStyle, true);
         if (bundleUrl) {
                 // Open the bundle
-            bundle_ = CFBundleCreate(kCFAllocatorDefault, bundleUrl);
+            bundle_ = CFBundleCreate(NULL, bundleUrl);
         }
-        if (pluginPathStringRef)
-            CFRelease(pluginPathStringRef);
-        if (bundleUrl)
-            CFRelease(bundleUrl);
+        if (pluginPath) CFRelease(pluginPath);
+        if (bundleUrl) CFRelease(bundleUrl);
         if (!bundle_){
             LOG_ERROR("couldn't create bundle reference for " << path);
             throw std::exception();
@@ -432,8 +428,11 @@ class ModuleApple : public IModule {
     ~ModuleApple(){
         CFRelease(bundle_);
     }
-    void *doGetFnPtr(const char *name) const override {
-        return (void *)CFBundleGetFunctionPointerForName(bundle_, CFSTR(name));
+    void * doGetFnPtr(const char *name) const override {
+        auto str = CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8);
+        auto fnPtr = CFBundleGetFunctionPointerForName(bundle_, str);
+        if (str) CFRelease(str);
+        return fnPtr;
     }
  private:
     CFBundleRef bundle_;
@@ -441,9 +440,9 @@ class ModuleApple : public IModule {
 #endif
 
 #if DL_OPEN
-class ModuleDlOpen : public IModule {
+class ModuleDL : public IModule {
  public:
-    ModuleDlOpen(const std::string& path){
+    ModuleDL(const std::string& path){
         handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
         auto error = dlerror();
         if (!handle_) {
@@ -452,10 +451,10 @@ class ModuleDlOpen : public IModule {
         }
         // LOG_DEBUG("loaded dynamic library " << path);
     }
-    ~ModuleDlOpen(){
+    ~ModuleDL(){
         dlclose(handle_);
     }
-    void * doGetFnPtr(const char* name) const override {
+    void * doGetFnPtr(const char *name) const override {
         return dlsym(handle_, name);
     }
  private:
@@ -478,7 +477,7 @@ std::unique_ptr<IModule> IModule::load(const std::string& path){
 #endif
 #if DL_OPEN
     try {
-        if (!module) module = std::make_unique<ModuleDlOpen>(path);
+        if (!module) module = std::make_unique<ModuleDL>(path);
     } catch (const std::exception& e){}
 #endif
     return module;
