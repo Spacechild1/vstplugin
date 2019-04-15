@@ -8,7 +8,7 @@
 # define MAIN_LOOP_POLL_INT 20
 static t_clock *mainLoopClock = nullptr;
 static void mainLoopTick(void *x){
-    VSTWindowFactory::mainLoopPoll();
+    IVSTWindow::poll();
     clock_delay(mainLoopClock, MAIN_LOOP_POLL_INT);
 }
 #endif
@@ -91,7 +91,7 @@ static IVSTFactory * probePlugin(const std::string& path){
     if (!factory){
     #if 1
         msg << "failed!";
-        verbose(PD_DEBUG, msg.str().c_str());
+        verbose(PD_DEBUG, "%s", msg.str().c_str());
     #endif
         return nullptr;
     }
@@ -126,7 +126,7 @@ static IVSTFactory * probePlugin(const std::string& path){
         auto& plugin = plugins[0];
         postResult(msg, plugin->probeResult);
     } else {
-        verbose(PD_DEBUG, msg.str().c_str());
+        verbose(PD_DEBUG, "%s", msg.str().c_str());
         for (auto& plugin : plugins){
             std::stringstream m;
             if (!plugin->name.empty()){
@@ -474,7 +474,7 @@ std::shared_ptr<IVSTPlugin> t_vsteditor::open_plugin(const VSTPluginDesc& desc, 
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (editor && plugin->hasEditor()){
-        e_window = VSTWindowFactory::create(plugin);
+        e_window = IVSTWindow::create(*plugin);
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
@@ -487,7 +487,7 @@ std::shared_ptr<IVSTPlugin> t_vsteditor::open_plugin(const VSTPluginDesc& desc, 
         }
     }
 #endif
-    return std::move(plugin);
+    return plugin;
 }
 
 void t_vsteditor::close_plugin(){
