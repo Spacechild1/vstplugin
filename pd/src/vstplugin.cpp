@@ -66,7 +66,7 @@ static const VSTPluginDesc * findPlugin(const std::string& name){
     return nullptr;
 }
 
-static void mapPlugins(const IVSTFactory& factory){
+static void addPlugins(const IVSTFactory& factory){
     auto plugins = factory.plugins();
     for (auto& plugin : plugins){
         if (plugin->valid()){
@@ -77,6 +77,10 @@ static void mapPlugins(const IVSTFactory& factory){
         // factories with a single plugin can also be aliased by their file path
         pluginDescDict[plugins[0]->path] = plugins[0];
     }
+}
+
+static void clearPlugins(){
+    pluginDescDict.clear();
 }
 
 static IVSTFactory * probePlugin(const std::string& path){
@@ -137,7 +141,7 @@ static IVSTFactory * probePlugin(const std::string& path){
             postResult(m, plugin->probeResult);
         }
     }
-    mapPlugins(*factory);
+    addPlugins(*factory);
     return (pluginFactoryDict[path] = std::move(factory)).get();
 }
 
@@ -176,10 +180,10 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
                     }
                 }
             }
-            // (re)map plugins (in case they have been removed by 'search_clear'
-            mapPlugins(*factory);
+            // (re)add plugins (in case they have been removed by 'search_clear'
+            addPlugins(*factory);
         } else {
-            // probe (will post results and map plugins)
+            // probe (will post results and add plugins)
             if ((factory = probePlugin(pluginPath))){
                 for (auto& plugin : factory->plugins()){
                     if (plugin->valid()){
@@ -651,7 +655,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
 static void vstplugin_search_clear(t_vstplugin *x){
         // clear the plugin description dictionary
         // (doesn't remove the actual plugin descriptions!)
-    pluginDescDict.clear();
+    clearPlugins();
 }
 
 // resolves relative paths to the canvas search paths or VST search paths
@@ -726,7 +730,7 @@ static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path
                 // plugin descs might have been removed by 'search_clear'
             auto factory = findFactory(abspath);
             if (factory){
-                mapPlugins(*factory);
+                addPlugins(*factory);
             }
             if (!(desc = findPlugin(abspath))){
                     // finally probe plugin
