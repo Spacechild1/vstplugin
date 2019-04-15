@@ -697,7 +697,14 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
                 fd = sys_open(buf, 0);
                 if (fd >= 0){
                     sys_close(fd);
+                #ifdef __APPLE__
+                    char *find = strstr(buf, bundleinfo);
+                    if (find){
+                        *find = 0; // restore the bundle path
+                    }
+                #endif
                     path = buf; // success
+                    break;
                 }
             }
         }
