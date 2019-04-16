@@ -70,15 +70,28 @@ VSTPlugin : MultiOutUGen {
 		server = server ?? Server.default;
 		^pluginDict[server];
 	}
-	*pluginKeys { arg server;
+	*pluginList { arg server, sorted = false;
 		var dict = this.plugins(server);
+		var array = [];
 		dict.notNil.if {
-			// return sorted list of plugin keys (case insensitive)
-			^Array.newFrom(dict.keys).sort({ arg a, b; a.asString.compare(b.asString, true) < 0});
-		} { ^[] };
+			// get list of unique plugins (which have been inserted under various keys)
+			array = dict.as(IdentitySet).asArray;
+			sorted.if {
+				// sort by name
+				array = array.sort({ arg a, b; a.name.compare(b.name, true) < 0});
+			}
+		};
+		^array;
+	}
+	*pluginKeys { arg server;
+		^this.pluginList(server).collect({ arg i; i.key });
 	}
 	*print { arg server;
-		this.pluginKeys(server).do { arg p; p.postln; }
+		// print plugins sorted by name in ascending order
+		// (together with path to distinguish plugins of the same name)
+		this.pluginList(server, true).do { arg item;
+			"% (%) [%]".format(item.name, item.vendor, item.path).postln;
+		};
 	}
 	*reset { arg server;
 		server = server ?? Server.default;
