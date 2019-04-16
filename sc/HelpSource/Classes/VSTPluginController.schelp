@@ -839,3 +839,55 @@ p = Pbind(
 p.stop;
 ::
 
+Subsection:: Non-Realtime Synthesis
+
+Many methods of VSTPluginController have a corresponding emphasis::*Msg:: version
+returning a Server message which can be added to a link::Classes/Score:: for non-realtime synthesis.
+
+note::Using these messages in a realtime context is not recommended because the Client state may not always be updated correctly.::
+
+The following code snippet will create a short soundfile containing a random melody played by a VST instrument;
+it can be executed in a single block.
+code::
+(
+~score = Score.new;
+
+SynthDef.new(\vsti, { arg out;
+	Out.ar(out, VSTPlugin.ar(nil,  numOut: 2));
+}).store;
+
+// 1) first create the synth and controller in the language:
+~fx = VSTPluginController(Synth.basicNew(\vsti));
+
+// 2) create score:
+~score.add([0.0, VSTPlugin.searchMsg(verbose: true)]); // search for plugins in default search paths
+// ~score.add([0.0, VSTPlugin.searchMsg(["/my/plugin/directory"], useDefault: false, verbose: true)]); // use custom search path
+
+~score.add([0.0, ~fx.synth.newMsg]); // create the synth
+~score.add([0.01, ~fx.openMsg("Dexed")]); // open a VSTi plugin (slightly after creating the synth!)
+~score.add([0.01, ~fx.programMsg(1)]); // choose FX program
+
+// make a random melody
+~pos = 1.0;
+~stop = 16.0;
+~melody = Pbind(
+	\dur, Prand(#[0.125, 0.25, 0.5, 1], inf),
+	\veloc, Pwhite(70, 127, inf),
+	\pitch, Pwhite(48, 72, inf)
+).asStream;
+{ ~pos < ~stop }.while ({
+	var note = ~melody.next(());
+	~score.add([~pos, ~fx.midi.noteOnMsg(0, note.pitch, note.veloc)]);
+	~pos = ~pos + note.dur;
+	~score.add([~pos, ~fx.midi.noteOffMsg(0, note.pitch, note.veloc)]);
+});
+~score.add([~stop, [0]]);
+
+// 3) render as stereo aiff file
+~score.recordNRT("~/nrt_test".standardizePath, "~/nrt_test.aiff".standardizePath,
+	options: ServerOptions.new.numOutputBusChannels_(2));
+
+// 4) save the Score to a file
+~score.saveToFile("~/nrt_test.txt".standardizePath);
+)
+::
