@@ -201,7 +201,7 @@ table::
 note::here, emphasis::%ProgramFiles%:: stands for "C:\Program Files" on a 64 bit Server and "C:\Program Files (x86)" on a 32 bit Server.::
 
 ARGUMENT:: verbose
-a Boolean telling if the Server should post a message for each VST plugin being probed.
+a Boolean telling if the Server should post a message for each VST plugin being found.
 
 The message tells the name of the plugin and the probe result. Probing can fail if the file is
 not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
@@ -231,6 +231,16 @@ note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!
 A new search doesn't automatically clear the cache, but existing keys are overwritten. 
 You can clear the cache explicitly with link::#*reset::.
 
+METHOD:: searchMsg
+
+RETURNS:: the message for a emphasis::search:: command (see link::#*search::).
+
+DISCUSSION::
+
+Sending the message to the Server will emphasis::not:: update any info in the Client!
+Useful for NRT synthesis.
+
+
 METHOD:: probe
 Probe a single VST plugin.
 
@@ -258,6 +268,14 @@ the file path and the (optional) key argument.
 This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find a key in the plugin dictionary.
 It might be occasionally useful for other purposes.
 
+
+METHOD:: probeMsg
+
+RETURNS:: the message for a emphasis::probe:: command (see link::#*probe::).
+
+DISCUSSION::
+
+Sending this message to the Server will emphasis::not:: update any info in the Client!
 
 
 METHOD:: reset

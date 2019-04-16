@@ -202,12 +202,11 @@ ARGUMENT:: wait
 see link::#-wait::.
 
 DISCUSSION::
-
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
 INSTANCEMETHODS::
 
-PRIVATE:: prFree, prClear, init, sendMsg, prQuery, prQueryParams, prQueryPrograms
+PRIVATE:: prFree, prClear, init, prQuery, prQueryParams, prQueryPrograms
 PRIVATE:: prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
 
 
@@ -234,23 +233,33 @@ ARGUMENT:: info
 post the plugin info to the console (if loaded successfully).
 
 ARGUMENT:: action
-
 an action to be called with code::this:: and a Boolean (success/fail).
 
 DISCUSSION::
-
 This method is realtime-safe because VST plugins are opened asynchronously (in the non-realtime thread).
 
+METHOD:: openMsg
+
+ARGUMENT:: path
+the plugin name or an emphasis::absolute:: file path.
+
+ARGUMENT:: editor
+request the VST editor.
+
+RETURNS:: the message for an emphasis::open:: command (see link::#-open::).
+
 METHOD:: close
+METHOD:: closeMsg
 close the current plugin (but don't free the Synth!). You can open another plugin later.
 
 DISCUSSION::
-
 This will automatically bypass the plugin (i.e. the input is just passed through).
 
 Just like link::#-open::, this method is realtime-safe.
 
+
 METHOD:: editor
+METHOD:: editorMsg
 shows/hide the VST editor window.
 
 DISCUSSION::
@@ -269,6 +278,7 @@ the bounds.
 
 RETURNS:: a new link::Classes/VSTPluginGui:: instance.
 
+
 METHOD:: info
 returns:: the (static) plugin info (see link::Classes/VSTPlugin#Plugin Info::).
 
@@ -276,6 +286,7 @@ METHOD:: loaded
 returns:: whether a plugin is currently loaded.
 
 METHOD:: reset
+METHOD:: resetMsg
 reset the plugin state.
 
 ARGUMENT:: async
@@ -317,6 +328,7 @@ METHOD:: numParameters
 returns:: the number of parameters.
 
 METHOD:: set
+METHOD:: setMsg
 Set plugin parameters.
 
 discussion::
@@ -340,6 +352,7 @@ The parameter(s) will be automatically unmapped from any control bus, see link::
 ::
 
 METHOD:: setn
+METHOD:: setnMsg
 set sequential ranges of parameters.
 
 discussion::
@@ -352,6 +365,7 @@ code::
 ::
 
 METHOD:: map
+METHOD:: mapMsg
 map parameters to control busses.
 
 discussion::
@@ -373,6 +387,7 @@ Mapped parameters are updated synchronously
 triggers CPU heavy computations, does memory allocations, etc.). In that case, consider using link::#-set:: / link::#-setn:: instead.
 
 METHOD:: unmap
+METHOD:: unmapMsg
 Unmap parameters from a control bus.
 
 discussion::
@@ -435,18 +450,20 @@ METHOD:: numPrograms
 returns:: the number of available plugin programs.
 
 METHOD:: program
-set/get the program number.
+METHOD:: programMsg
+get/set the program number.
+
+DISCUSSION::
+use the setter to change between FX programs.
 
 METHOD:: programName
+METHOD:: programNameMsg
 
-set/get the name of the current program.
+get/set the name of the current program.
 
 METHOD:: readProgram
-
 METHOD:: readBank
-
 METHOD:: writeProgram
-
 METHOD:: writeBank
 read/write program/bank files.
 
@@ -462,11 +479,19 @@ an action to be called with code::this:: and a Boolean (success/fail).
 
 discussion::
 The program and bank files are in a standard format which is recogized by every decent DAW or VST host. 
-This means you can freely exchange presets between different applications.
+This means you can freely exchange presets between different applications!
 
+METHOD:: readProgramMsg
+METHOD:: readBankMsg
+METHOD:: writeProgramMsg
+METHOD:: writeBankMsg
+
+ARGUMENT:: path
+an emphasis::absolute:: file path.
+
+RETURNS:: the message for reading/writing a program/bank file.
 
 METHOD:: setProgramData
-
 METHOD:: setBankData
 
 set the new program/bank state as an link::Classes/Int8Array::.
@@ -478,9 +503,6 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 METHOD:: getProgramData
-
-METHOD:: getProgramData
-
 METHOD:: getBankData
 get the current program/bank state as an link::Classes/Int8Array::.
 
@@ -492,9 +514,7 @@ Internally, the program data is exchanged via temp files.
 note::This only works with a local Server!::
 
 METHOD:: sendProgramData
-
 METHOD:: sendBankData
-
 send the new program/bank state as an link::Classes/Int8Array::.
 
 ARGUMENT:: data
@@ -507,7 +527,6 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 METHOD:: receiveProgramData
-
 METHOD:: receiveBankData
 receive the current program/bank state as an link::Classes/Int8Array::.
 
@@ -538,9 +557,11 @@ link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOu
 This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
 
 METHOD:: sendMidi
+METHOD:: sendMidiMsg
 send a raw MIDI message with 2-3 bytes (status, data1, data2).
 
 METHOD:: sendSysex
+METHOD:: sendSysexMsg
 send a system exclusive message as an link::Classes/Int8Array::.
 
 METHOD:: midiReceived
@@ -561,15 +582,19 @@ The SysEx data is passed to the action as an link::Classes/Int8Array::.
 subsection:: Transport
 
 METHOD:: setPlaying
+METHOD:: setPlayingMsg
 set the transport playing state to true or false. Only necessary for VST plugins which do some kind of sequencing.
 
 METHOD:: setTempo
+METHOD:: setTempoMsg
 set the tempo in BPM (beats per minute).
 
 METHOD:: setTimeSignature
+METHOD:: setTimeSignatureMsg
 set the time signature, e.g. 3/4 -> num = 3, denom = 4.
 
 METHOD:: setTransportPos
+METHOD:: setTransportPosMsg
 set the current transport position (in quarter notes).
 
 METHOD:: getTransportPos
@@ -596,6 +621,7 @@ table::
 ::
 
 METHOD:: vendorMethod
+METHOD:: vendorMethodMsg
 access special functionality of a plugin which is not available via the standard parameter interface.
 Generally, you have to know what you're doing. Check the documentation of the plugin to see what data it expects
 

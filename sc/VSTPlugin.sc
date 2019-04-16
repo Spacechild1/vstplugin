@@ -108,6 +108,15 @@ VSTPlugin : MultiOutUGen {
 		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, action) }
 		{ this.prSearchRemote(server, dir, useDefault, verbose, wait, action) };
 	}
+	*searchMsg { arg dir, useDefault=true, verbose=false;
+		var flags;
+		dir.isString.if { dir = [dir] };
+		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
+		dir = dir.collect { arg p; this.prResolvePath(p) };
+		// use remote search (won't write to temp file)!
+		flags = 0 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
+		^['/cmd', '/vst_search', flags] ++ dir;
+	}
 	*prSearchLocal { arg server, searchPaths, useDefault, verbose, action;
 		{
 			var dict = pluginDict[server];
@@ -215,6 +224,11 @@ VSTPlugin : MultiOutUGen {
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
 		{ this.prProbeRemote(server, path, key, wait, action); };
+	}
+	*probeMsg { arg path;
+		path = this.prResolvePath(path);
+		// use remote probe (won't write to temp file)!
+		^['/cmd', '/vst_query', path];
 	}
 	*prProbeLocal { arg server, path, key, action;
 		{
