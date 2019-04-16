@@ -1970,18 +1970,20 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 bool cmdQuery(World *inWorld, void *cmdData) {
 	auto data = (QueryCmdData *)cmdData;
 	bool verbose = data->value;
-	std::string key;
     const VSTPluginDesc* desc = nullptr;
 	// query by path (probe if necessary)
-	if (data->buf[0]) {
-        queryPlugin(data->buf);
+	if (data->buf[0] != 0) {
+        desc = queryPlugin(data->buf);
 	}
 	// by index (already probed)
 	else {
 		int index = data->index;
 		if (index >= 0 && index < pluginList.size()) {
 			desc = pluginList[index];
-		}
+        }
+        else {
+            LOG_ERROR("cmdQuery: index out of range!");
+        }
 	}
 	// send info
     if (desc){
@@ -1997,13 +1999,15 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 			}
 		}
 		// reply with plugin info
-		makeReply(data->reply, sizeof(data->reply), "/vst_info", key,
+		makeReply(data->reply, sizeof(data->reply), "/vst_info", desc->name,
 			desc->path, desc->name, desc->vendor, desc->category, desc->version, desc->id, desc->numInputs, desc->numOutputs,
 			(int)desc->parameters.size(), (int)desc->programs.size(), (int)desc->flags);
+        LOG_DEBUG("replying");
 	}
 	else {
 		// empty reply
 		makeReply(data->reply, sizeof(data->reply), "/vst_info");
+        LOG_DEBUG("empty reply");
 	}
 	return true; // we want to send a /done message
 }
