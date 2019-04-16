@@ -1891,7 +1891,13 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		if (file.is_open()) {
 			LOG_DEBUG("writing plugin info file");
 			for (auto plugin : pluginList) {
-				file << plugin->name << "\t";
+                // if unique, use the path as search key
+                if (plugin->unique()) {
+                    file << plugin->path << "\t";
+                }
+                else {
+                    file << plugin->name << "\t";
+                }
 				plugin->serialize(file);
 				file << "\n"; // seperate plugins with newlines
 			}
@@ -1991,7 +1997,13 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 			// write to file
 			std::ofstream file(data->reply);
 			if (file.is_open()) {
-				file << desc->name << "\t";
+                // if unique, use the path as search key
+                if (desc->unique()) {
+                    file << desc->path << "\t";
+                }
+                else {
+                    file << desc->name << "\t";
+                }
 				desc->serialize(file);
 			}
 			else {
