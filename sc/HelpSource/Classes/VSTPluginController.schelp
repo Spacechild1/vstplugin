@@ -18,12 +18,21 @@ SynthDef(\insert, { arg bus;
     ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2));  
 }).add;
 )
+
+// search of available VST plugins in the default VST search paths
+VSTPlugin.search;
+
 // create the synth:
 ~synth = Synth(\insert, [\bus, 0]);
 // get a handle to the VSTPlugin:
 ~fx = VSTPluginController(~synth);
-// open a plugin:
+
+// open a plugin by name (requires VSTPlugin.search!)
+~fx.open("some_plugin", info: true);
+// alternatively, you can open a plugin via its file path 
+// (this only works if the file contains a single plugin, like most VST2.x plugins)
 ~fx.open("/path/to/plugin", info: true);
+
 // show the GUI:
 ~fx.gui;
 // etc.
@@ -206,16 +215,16 @@ METHOD:: open
 open a VST plugin.
 
 ARGUMENT:: path
-plugin path/key.
+the plugin name or file path.
 
-This can be either a file path (with or without extension) or a key to an already loaded plugin (see link::Classes/VSTPlugin#*search::).
-File paths can be absolute or relative, the latter are resolved to the currently executing file (must have been saved!).
+Opening plugins by strong::name:: requires that the plugin has already been probed (e.g. as a result of link::Classes/VSTPlugin#*search::).
 
-emphasis::path:: is first tried as a key for the plugin dictionary. If no plugin can be found it is treated as a file path
-and probed on the Server. (On success, the plugin is added to the dictionary with emphasis::path:: as the key.)
+---
 
-note::A relative path like "GChorus" can be ambiguous if such a key already exists in the dictionary
-(e.g. as a result of link::Classes/VSTPlugin#*search::). You can "force" a relative path by writing "./GChorus" instead.::
+Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (which must have been saved!).
+After the plugin has been successfully probed on the Server, it is added to the dictionary with emphasis::path:: as an additional key.
+
+note::This method only works for files which contain a single plugin (most VST2.x and VST3 plugins).::
 
 ARGUMENT:: editor
 request the VST plugin editor.

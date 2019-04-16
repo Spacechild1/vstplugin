@@ -133,19 +133,40 @@ VSTPlugin.plugins(s)["CoolPlugins/AwesomePlugin"].print;
 VSTPlugin.plugins["CoolPlugins/AwesomePlugin"].print;
 ::
 
-METHOD:: pluginKeys
-get the keys of all plugins on a Server.
+METHOD:: pluginList
+get all available plugins on a Server.
 
 ARGUMENT:: server
-the Server. If this is code::nil::, the default Server is assumed.
+the Server. If code::nil::, the default Server is assumed.
 
-RETURNS:: an alphabetically sorted Array of plugin keys.
+ARGUMENT:: sorted
+whether the Array should be sorted alphabetically (plugin name).
+
+RETURNS:: an Array of plugin info Events.
+
+METHOD:: pluginKeys
+get the keys of all plugins on a given Server.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+RETURNS:: an Array of plugin keys.
+
+DISCUSSION::
+This method only considers the keys stored in the plugin info Event,
+not the additional keys in the plugin dictionary. 
+
 
 METHOD:: print
-post all plugin keys to the console in alphabetical order.
+post all available plugins.
 
 ARGUMENT::
-the Server. If this is code::nil::, the default Server is assumed.
+the Server. If code::nil::, the default Server is assumed.
+
+DISCUSSION::
+The plugins are posted in alphabetical order in the following format:
+
+code::name (vendor) [path]::
 
 SUBSECTION:: Searching for plugins
 
@@ -199,9 +220,9 @@ an action to be called after the search has finished.
 
 DISCUSSION::
 Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary in the Client and can be retrieved
-with link::#*plugins::, using the plugin name as the key. 
+with link::#*plugins::, using the plugin name as the key.
 
-The key also works as the emphasis::path:: argument for link::Classes/VSTPluginController#-open::.
+(The plugin name also works as the emphasis::path:: argument for link::Classes/VSTPluginController#-open::.)
 
 If a plugin can't be probed ("... failed!") it either means it's not a valid VST2.x plugin (VST3 is not supported yet)
 or it has the wrong architecture. 
@@ -220,23 +241,24 @@ ARGUMENT:: path
 the plugin path. Relative paths are resolved to the currently executing file (must have been saved!).
 
 ARGUMENT:: key
-the symbol under which the plugin info is stored (if the probing was successful). 
-
-If emphasis::key:: is code::nil::, 
-the emphasis::path:: argument (converted to a symbol) is used as the key.
+an (optional) additional key under which the plugin info is stored.
 
 ARGUMENT:: wait
 the wait time, see link::#*search::.
 
 ARGUMENT:: action
-an action to be called after the search has finished.
+an action to be evaluated after the search has finished.
+On success, the plugin info is passed as an link::Classes/Event::, otherwise the argument is code::nil::.
 
 DISCUSSION::
 
-This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find the given path in the plugin dictionary.
+The given plugin file path is probed on the Server (in a seperate process). On success, the plugin info is stored under the plugin name,
+the file path and the (optional) key argument.
+
+This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find a key in the plugin dictionary.
 It might be occasionally useful for other purposes.
 
-On success the plugin info is returned as an link::Classes/Event::, otherwise code::nil:: is returned.
+
 
 METHOD:: reset
 Deletes all cached plugin info for a Server.
