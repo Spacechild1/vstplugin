@@ -204,6 +204,14 @@ see link::#-wait::.
 DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
+warning::Because of a bug in SuperCollider, you must not call any method (which sends a message to the UGen) immediately after creating the Synth;
+otherwise the command will fail and you get the following warning:
+
+code::VSTPlugin (<nodeID>, <synthIndex>) not ready!::
+
+Instead, execute the code in blocks or use link::Classes/Server#-sync:: to add a single OSC roundtrip.
+::
+
 INSTANCEMETHODS::
 
 PRIVATE:: prFree, prClear, init, prQuery, prQueryParams, prQueryPrograms
@@ -236,7 +244,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 DISCUSSION::
-This method is realtime-safe because VST plugins are opened asynchronously (in the non-realtime thread).
+This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
 
 METHOD:: openMsg
 
