@@ -16,6 +16,7 @@ VSTPluginGui : ObjectGui {
 	// private
 	classvar pluginPath;
 	classvar presetPath;
+	var server;
 	var programMenu;
 	var paramSliders;
 	var paramDisplays;
@@ -27,6 +28,7 @@ VSTPluginGui : ObjectGui {
 		model.removeDependant(this);
 		model = newModel;
 		model.addDependant(this);
+		model.notNil.if { server = model.synth.server } { Server.default };
 		// close the browser (if opened)
 		dialog !? { dialog.close };
 		// only update if we have a view (i.e. -gui has been called)
@@ -264,9 +266,8 @@ VSTPluginGui : ObjectGui {
 			window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 			browser = ListView.new.selectionMode_(\single);
 			browser.action = {
-				var info;
-				key = plugins[browser.value].asSymbol;
-				info = VSTPlugin.plugins(model.synth.server)[key];
+				var info = plugins[browser.value];
+				key = info.key;
 				info.notNil.if {
 					absPath = info.path;
 					showPath.value;
@@ -274,17 +275,13 @@ VSTPluginGui : ObjectGui {
 			};
 			updateBrowser = {
 				var items;
-				plugins = VSTPlugin.pluginKeys;
+				plugins = VSTPlugin.pluginList(server, sorted: true);
 				items = plugins.collect({ arg item;
-					var vendor = VSTPlugin.plugins(model.synth.server)[item].vendor;
-					// append vendor string
-					(vendor.size > 0).if { "% (%)".format(item, vendor) } { item };
+					"% (%)".format(item.name, item.vendor);
 				});
 				browser.items = items;
 				browser.value !? { browser.action.value } ?? { showPath.value };
 			};
-			updateBrowser.value;
-
 			status = StaticText.new.align_(\left).string_("Path:");
 			showPath = { status.stringColor_(Color.black);
 				absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
@@ -295,7 +292,7 @@ VSTPluginGui : ObjectGui {
 			.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)");
 			search.action = {
 				showSearch.value;
-				VSTPlugin.search(model.synth.server, verbose: true, action: {
+				VSTPlugin.search(server, verbose: true, action: {
 					{ updateBrowser.value; }.defer;
 				});
 			};
@@ -304,7 +301,7 @@ VSTPluginGui : ObjectGui {
 			dir.action = {
 				FileDialog.new({ arg d;
 					showSearch.value;
-					VSTPlugin.search(model.synth.server, dir: d, useDefault: false, verbose: true, action: {
+					VSTPlugin.search(server, dir: d, useDefault: false, verbose: true, action: {
 						{ updateBrowser.value; }.defer;
 					});
 				}, nil, 2, 0, true, pluginPath);
@@ -339,6 +336,7 @@ VSTPluginGui : ObjectGui {
 			window.view.addAction({ dialog = nil }, 'onClose');
 			dialog = window;
 			window.front;
+			updateBrowser.value;
 		} { "no model!".error };
 	}
 	writeName {}
