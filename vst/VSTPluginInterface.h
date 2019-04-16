@@ -48,17 +48,6 @@ class IVSTWindow {
     virtual void update() {}
 };
 
-enum VSTPluginFlags {
-	HasEditor = 0,
-	IsSynth,
-	SinglePrecision,
-	DoublePrecision,
-	MidiInput,
-	MidiOutput,
-	SysexInput,
-	SysexOutput
-};
-
 struct VSTMidiEvent {
     VSTMidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
         data[0] = status; data[1] = data1; data[2] = data2; delta = _delta;
@@ -180,6 +169,17 @@ class IVSTPlugin {
 
 class IVSTFactory;
 
+enum VSTPluginFlags {
+    HasEditor = 0,
+    IsSynth,
+    SinglePrecision,
+    DoublePrecision,
+    MidiInput,
+    MidiOutput,
+    SysexInput,
+    SysexOutput
+};
+
 enum class ProbeResult {
     success,
     fail,
@@ -197,6 +197,8 @@ struct VSTPluginDesc {
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
+    // is it the factory's only plugin?
+    bool unique() const;
     // data
     ProbeResult probeResult = ProbeResult::none;
     std::string path;
@@ -239,6 +241,7 @@ class IVSTFactory {
     virtual ~IVSTFactory(){}
     // get a list of all available plugins (probed in a seperate process)
     virtual std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const = 0;
+    virtual int numPlugins() const = 0;
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;
     // create a new plugin instance

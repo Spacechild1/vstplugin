@@ -150,6 +150,10 @@ std::vector<std::shared_ptr<VSTPluginDesc>> VST2Factory::plugins() const {
     return {plugin_};
 }
 
+int VST2Factory::numPlugins() const {
+    return (plugin_ ? 1 : 0);
+}
+
 void VST2Factory::probe() {
     VSTPluginDesc desc(*this);
     auto result = vst::probe(path_, "", desc);

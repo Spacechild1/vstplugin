@@ -20,6 +20,7 @@ class VST2Factory : public IVSTFactory {
     virtual ~VST2Factory(){}
     // get a list of all available plugins
     std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const override;
+    int numPlugins() const override;
     // probe plugins (in a seperate process)
     void probe() override;
     bool isProbed() const override {

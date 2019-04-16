@@ -620,6 +620,10 @@ void VSTPluginDesc::deserialize(std::ifstream& file, char sep) {
 	}
 }
 
+bool VSTPluginDesc::unique() const {
+    return (factory_ ? factory_->numPlugins() == 1 : false);
+}
+
 std::unique_ptr<IVSTPlugin> VSTPluginDesc::create() const {
     return factory_ ? factory_->create(name) : nullptr;
 }
