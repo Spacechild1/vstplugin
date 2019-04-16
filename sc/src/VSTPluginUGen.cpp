@@ -1867,7 +1867,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     while (size--) {
         if (*buf++ == '\0') {
             auto diff = buf - onset;
-            searchPaths.emplace_back(onset, diff);
+            searchPaths.emplace_back(onset, diff - 1); // don't store '\0'!
             onset = buf;
         }
     }
