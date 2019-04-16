@@ -141,10 +141,10 @@ VSTPluginController {
 			action.value(this, loaded);
 			this.changed('/open', path, loaded);
 		}, '/vst_open').oneShot;
-		VSTPlugin.prGetInfo(synth.server, path, wait, { arg i, resPath;
+		VSTPlugin.prGetInfo(synth.server, path, wait, { arg i;
 			// don't set 'info' property yet
 			theInfo = i;
-			theInfo.notNil.if { this.sendMsg('/open', theInfo.path, editor.asInteger); }
+			theInfo.notNil.if { this.sendMsg('/open', theInfo.key, editor.asInteger); }
 			{ "couldn't open '%'".format(path).error; };
 		});
 	}

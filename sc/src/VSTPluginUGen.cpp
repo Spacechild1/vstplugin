@@ -220,6 +220,7 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
         if (!(desc = findPlugin(path))) {
             // finally probe plugin
             if (probePlugin(path, true)) {
+                // this fails if the module contains several plugins (so the path is not used as a key)
                 desc = findPlugin(path);
             }
             else {

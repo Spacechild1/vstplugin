@@ -735,6 +735,8 @@ static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path
             if (!(desc = findPlugin(abspath))){
                     // finally probe plugin
                 if (probePlugin(abspath)){
+                        // this fails if the module contains several plugins
+                        // (so the path is not used as a key)
                     desc = findPlugin(abspath);
                 }
             }

@@ -112,7 +112,9 @@ VSTPlugin : MultiOutUGen {
 						var info;
 						(line.size > 0).if {
 							info = this.prParseInfo(line);
+							// store under name and key
 							dict[info.key] = info;
+							dict[info.name.asSymbol] = info;
 						}
 					};
 				});
@@ -143,7 +145,9 @@ VSTPlugin : MultiOutUGen {
 					(result[0].asSymbol == '/vst_info').if {
 						key = result[1].asSymbol;
 						info = this.prMakeInfo(key, result[2..]);
-						dict[key] = info;
+						// store under name and key
+						dict[info.key] = info;
+						dict[info.name.asSymbol] = info;
 						count = count + 1;
 						// exit condition
 						(count == num).if {
@@ -168,11 +172,10 @@ VSTPlugin : MultiOutUGen {
 		server.sendMsg('/cmd', '/vst_search', flags, *searchPaths);
 	}
 	*prParseInfo { arg string;
-		var data, key, info, nparam, nprogram;
+		var nparam, nprogram;
 		// data is seperated by tabs
-		data = string.split($\t);
-		key = data[0].asSymbol;
-		info = this.prMakeInfo(key, data[1..11]);
+		var data = string.split($\t);
+		var info = this.prMakeInfo(data);
 		// get parameters (name + label)
 		nparam = info.numParameters;
 		info.parameterNames = Array.new(nparam);
@@ -192,23 +195,18 @@ VSTPlugin : MultiOutUGen {
 		^info;
 	}
 	*probe { arg server, path, key, wait = -1, action;
-		var cb;
 		server = server ?? Server.default;
-		// if key is nil, use the plugin path as key
-		key = key.notNil.if { key.asSymbol } { path.asSymbol };
 		// resolve the path
 		path = this.prResolvePath(path);
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		cb = { arg info;
-			action.value(info, path); // also pass the resolved path
-		};
-		server.isLocal.if { this.prProbeLocal(server, path, key, cb); }
-		{ this.prProbeRemote(server, path, key, wait, cb); };
+		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
+		{ this.prProbeRemote(server, path, key, wait, action); };
 	}
 	*prProbeLocal { arg server, path, key, action;
 		{
-			var info, filePath = PathName.tmp ++ this.hash.asString;
+			var info, dict = pluginDict[server];
+			var filePath = PathName.tmp ++ this.hash.asString;
 			// ask server to read tmp file and replace the content with the plugin info
 			server.sendMsg('/cmd', '/vst_query', path, filePath);
 			// wait for cmd to finish
@@ -218,8 +216,12 @@ VSTPlugin : MultiOutUGen {
 				protect {
 					File.use(filePath, "rb", { arg file;
 						info = this.prParseInfo(file.readAllString);
-						info.key = key; // overwrite
-						pluginDict[server][key] = info;
+						// store under name and key
+						dict[info.key] = info;
+						dict[info.name.asSymbol] = info;
+						// also store under resolved path and custom key
+						dict[path.asSymbol] = info;
+						key !? { dict[key.asSymbol] = info };
 					});
 				} { arg error;
 					error.notNil.if { "Failed to read tmp file!".warn };
@@ -233,13 +235,18 @@ VSTPlugin : MultiOutUGen {
 	*prProbeRemote { arg server, path, key, wait, action;
 		var cb = OSCFunc({ arg msg;
 			var info, result = msg[1].asString.split($\n);
+			var dict = pluginDict[server];
 			(result[0] == "/vst_info").if {
 				cb.free; // got correct /done message, free it!
 				(result.size > 1).if {
-					info = this.prMakeInfo(key, result[2..]);
-					info.key = key; // overwrite
-					pluginDict[server][key] = info;
-					this.prQueryPlugin(server, key, wait, { action.value(info) });
+					info = this.prMakeInfo(result[1..]);
+					// store under name and key
+					dict[info.key] = info;
+					dict[info.name.asSymbol] = info;
+					// also store under resolved path and custom key
+					dict[path.asSymbol] = info;
+					key !? { dict[key.asSymbol] = info };
+					this.prQueryPlugin(server, info.key, wait, { action.value(info) });
 				} { action.value };
 			};
 		}, '/done');
@@ -254,7 +261,8 @@ VSTPlugin : MultiOutUGen {
 		};
 		// make a generator for plugin keys
 		gen = Routine.new({
-			dict.keysDo { arg key; yield(key) };
+			var plugins = dict.as(IdentitySet);
+			plugins.do { arg item; yield(item.key) };
 		});
 		// recursively call the generator
 		fn = { arg key;
@@ -345,23 +353,23 @@ VSTPlugin : MultiOutUGen {
 			(mod > 0).if { server.sendMsg('/cmd', cmd, key, num - mod, mod) };
 		}.forkIfNeeded;
 	}
-	*prMakeInfo { arg key, info;
+	*prMakeInfo { arg data;
 		var f, flags;
-		f = info[10].asInteger;
+		f = data[11].asInteger;
 		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 		^(
 			parent: parentInfo,
-			key: key,
-			path: info[0].asString,
-			name: info[1].asString,
-			vendor: info[2].asString,
-			category: info[3].asString,
-			version: info[4].asString,
-			id: info[5].asInteger,
-			numInputs: info[6].asInteger,
-			numOutputs: info[7].asInteger,
-			numParameters: info[8].asInteger,
-			numPrograms: info[9].asInteger,
+			key: data[0].asSymbol,
+			path: data[1].asString,
+			name: data[2].asString,
+			vendor: data[3].asString,
+			category: data[4].asString,
+			version: data[5].asString,
+			id: data[6].asInteger,
+			numInputs: data[7].asInteger,
+			numOutputs: data[8].asInteger,
+			numParameters: data[9].asInteger,
+			numPrograms: data[10].asInteger,
 			hasEditor: flags[0],
 			isSynth: flags[1],
 			singlePrecision: flags[2],
@@ -375,8 +383,9 @@ VSTPlugin : MultiOutUGen {
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];
 		key = key.asSymbol;
-		// if the key already exists, return the info, otherwise probe the plugin
-		dict !? { info = dict[key] } !? { action.value(info, key) }
+		// if the key already exists, return the info.
+		// otherwise probe the plugin and store it under the given key
+		dict !? { info = dict[key] } !? { action.value(info) }
 		?? { this.probe(server, key, key, wait, action) };
 	}
 	*prResolvePath { arg path;
