@@ -135,11 +135,8 @@ static void addPlugins(const IVSTFactory& factory) {
 	for (auto& plugin : plugins) {
 		if (plugin->valid()) {
 			pluginDescDict[plugin->name.c_str()] = plugin;
+            // LOG_DEBUG("added plugin " << plugin->name);
 		}
-	}
-	if (plugins.size() == 1) {
-		// factories with a single plugin can also be aliased by their file path
-		pluginDescDict[plugins[0]->path] = plugins[0];
 	}
 }
 
@@ -185,8 +182,10 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
 	};
 
 	if (plugins.size() == 1) {
-		auto& plugin = plugins[0];
-		if (verbose) postResult(plugin->probeResult);
+		if (verbose) postResult(plugins[0]->probeResult);
+        // factories with a single plugin can also be aliased by their file path(s)
+        pluginDescDict[plugins[0]->path] = plugins[0];
+        pluginDescDict[path] = plugins[0];
 	}
 	else {
 		Print("\n");
@@ -204,7 +203,12 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
 	return (pluginFactoryDict[path] = std::move(factory)).get();
 }
 
-static const VSTPluginDesc* queryPlugin(const std::string& path) {
+static const VSTPluginDesc* queryPlugin(std::string path) {
+#ifdef _WIN32
+    for (auto& c : path) {
+        if (c == '\\') c = '/';
+    }
+#endif
     // query plugin
     auto desc = findPlugin(path);
     if (!desc) {
@@ -218,8 +222,12 @@ static const VSTPluginDesc* queryPlugin(const std::string& path) {
             if (probePlugin(path, true)) {
                 desc = findPlugin(path);
             }
+            else {
+                LOG_DEBUG("couldn't probe plugin");
+            }
         }
     }
+    if (!desc) LOG_DEBUG("couldn't query plugin");
     return desc;
 }
 

@@ -18,7 +18,7 @@ namespace vst {
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 int MAIN(int argc, const CHAR *argv[]) {
-	if (argc >= 3){
+    if (argc >= 3){
 		const CHAR *pluginPath = argv[1];
 		const CHAR *pluginName = argv[2];
 		const CHAR *filePath = argc > 3 ? argv[3] : nullptr;

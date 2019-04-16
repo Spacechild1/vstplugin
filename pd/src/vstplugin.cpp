@@ -73,10 +73,6 @@ static void addPlugins(const IVSTFactory& factory){
             pluginDescDict[plugin->name.c_str()] = plugin;
         }
     }
-    if (plugins.size() == 1){
-        // factories with a single plugin can also be aliased by their file path
-        pluginDescDict[plugins[0]->path] = plugins[0];
-    }
 }
 
 static void clearPlugins(){
@@ -91,6 +87,7 @@ static IVSTFactory * probePlugin(const std::string& path){
     // load factory and probe plugins
     std::stringstream msg;
     msg << "probing '" << path << "'... ";
+    LOG_DEBUG("probing " << path);
     auto factory = IVSTFactory::load(path);
     if (!factory){
     #if 1
@@ -129,6 +126,9 @@ static IVSTFactory * probePlugin(const std::string& path){
     if (plugins.size() == 1){
         auto& plugin = plugins[0];
         postResult(msg, plugin->probeResult);
+        // factories with a single plugin can also be aliased by their file path(s)
+        pluginDescDict[plugins[0]->path] = plugins[0];
+        pluginDescDict[path] = plugins[0];
     } else {
         verbose(PD_DEBUG, "%s", msg.str().c_str());
         for (auto& plugin : plugins){
