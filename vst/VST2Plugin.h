@@ -17,7 +17,7 @@ namespace vst {
 class VST2Factory : public IVSTFactory {
  public:
     VST2Factory(const std::string& path);
-    virtual ~VST2Factory(){}
+    ~VST2Factory();
     // get a list of all available plugins
     std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const override;
     int numPlugins() const override;

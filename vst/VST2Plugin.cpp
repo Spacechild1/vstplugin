@@ -125,25 +125,28 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 VST2Factory::VST2Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
 {
-    if (module_){
-        entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
-        if (!entry_){
-        #ifdef __APPLE__
-            // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
-            // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
-            entry_ = module_->getFnPtr<EntryPoint>("main_macho");
-        #else
-            entry_ = module_->getFnPtr<EntryPoint>("main");
-        #endif
-        }
-        if (!entry_){
-            LOG_ERROR("VST2Factory: couldn't find entry point in VST plugin");
-            throw std::exception();
-        }
-        // LOG_DEBUG("VST2Factory: loaded " << path);
-    } else {
-        throw std::exception();
+    if (!module_){
+        // shouldn't happen...
+        throw VSTError("couldn't load module!");
     }
+    entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
+    if (!entry_){
+    #ifdef __APPLE__
+        // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
+        // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
+        entry_ = module_->getFnPtr<EntryPoint>("main_macho");
+    #else
+        entry_ = module_->getFnPtr<EntryPoint>("main");
+    #endif
+    }
+    if (!entry_){
+        throw VSTError("couldn't find entry point in VST plugin");
+    }
+    // LOG_DEBUG("VST2Factory: loaded " << path);
+}
+
+VST2Factory::~VST2Factory(){
+    // LOG_DEBUG("freed VST2 module " << path_);
 }
 
 std::vector<std::shared_ptr<VSTPluginDesc>> VST2Factory::plugins() const {

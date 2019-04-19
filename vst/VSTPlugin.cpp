@@ -404,8 +404,9 @@ class ModuleWin32 : public IModule {
         handle_ = LoadLibraryW(widen(path).c_str());
         if (!handle_){
             auto error = GetLastError();
-            LOG_ERROR("LoadLibrary failed for " << path << " with error code " << error);
-            throw std::exception();
+            std::stringstream ss;
+            ss << "LoadLibrary failed with error code " << error;
+            throw VSTError(ss.str());
         }
         // LOG_DEBUG("loaded Win32 library " << path);
     }
@@ -445,8 +446,7 @@ class ModuleApple : public IModule {
         if (pluginPath) CFRelease(pluginPath);
         if (bundleUrl) CFRelease(bundleUrl);
         if (!bundle_){
-            LOG_ERROR("couldn't create bundle reference for " << path);
-            throw std::exception();
+            throw VSTError("couldn't create bundle reference");
         }
         // LOG_DEBUG("loaded macOS bundle " << path);
     }
@@ -481,8 +481,9 @@ class ModuleSO : public IModule {
         handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
         auto error = dlerror();
         if (!handle_) {
-            LOG_ERROR("couldn't dlopen " << path << ": " << (error ? error : ""));
-            throw std::exception();
+            std::stringstream ss;
+            ss << "dlopen failed with error code " << (error ? error : "?");
+            throw VSTError(ss.str());
         }
         // LOG_DEBUG("loaded dynamic library " << path);
     }
@@ -505,25 +506,18 @@ class ModuleSO : public IModule {
 };
 #endif
 
-
+// exceptions can propogate from the Module's constructor!
 std::unique_ptr<IModule> IModule::load(const std::string& path){
-    std::unique_ptr<IModule> module;
 #ifdef _WIN32
-    try {
-        if (!module) module = std::make_unique<ModuleWin32>(path);
-    } catch (const std::exception& e){}
+    return std::make_unique<ModuleWin32>(path);
 #endif
 #if defined __APPLE__
-    try {
-        if (!module) module = std::make_unique<ModuleApple>(path);
-    } catch (const std::exception& e){}
+    return std::make_unique<ModuleApple>(path);
 #endif
 #if DL_OPEN
-    try {
-        if (!module) module = std::make_unique<ModuleDL>(path);
-    } catch (const std::exception& e){}
+    return std::make_unique<ModuleSO>(path);
 #endif
-    return module;
+    return std::unique_ptr<IModule>{};
 }
 
 /*///////////////////// IVSTFactory ////////////////////////*/
@@ -561,7 +555,9 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
             return nullptr;
         #endif
         }
-    } catch (const std::exception& e){
+    } catch (const VSTError& e){
+        LOG_ERROR("couldn't load '" << path << "':");
+        LOG_ERROR(e.what());
         return nullptr;
     }
 }

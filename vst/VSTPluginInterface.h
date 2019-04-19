@@ -250,6 +250,17 @@ class IVSTFactory {
     virtual std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const = 0;
 };
 
+class VSTError : public std::exception {
+ public:
+    VSTError(const std::string& msg)
+        : msg_(msg){}
+    const char * what() const noexcept override {
+        return msg_.c_str();
+    }
+ private:
+    std::string msg_;
+};
+
 ProbeResult probe(const std::string& path, const std::string& name, VSTPluginDesc& desc);
 
 void search(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
