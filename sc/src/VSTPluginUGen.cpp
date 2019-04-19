@@ -280,7 +280,7 @@ static void searchPlugins(const std::string & path, bool verbose) {
 			}
 		}
 	});
-	LOG_VERBOSE("found " << count << " plugins.");
+        LOG_VERBOSE("found " << count << " plugin" << (count == 1 ? "." : "s."));
 }
 
 // VSTPluginListener

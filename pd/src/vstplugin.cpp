@@ -196,7 +196,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
             }
          }
     });
-    verbose(PD_NORMAL, "found %d plugins.", count);
+    verbose(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
     if (x){
         // sort plugin names alphabetically and case independent
         std::sort(pluginList.begin(), pluginList.end(), [](const auto& lhs, const auto& rhs){
