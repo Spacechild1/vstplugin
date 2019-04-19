@@ -225,8 +225,8 @@ class IModule {
  public:
     static std::unique_ptr<IModule> load(const std::string& path);
     virtual ~IModule(){}
-    virtual bool init(); // VST3 only
-    virtual bool exit(); // VST3 only
+    virtual bool init() = 0; // VST3 only
+    virtual bool exit() = 0; // VST3 only
     template<typename T>
     T getFnPtr(const char *name) const {
         return (T)doGetFnPtr(name);

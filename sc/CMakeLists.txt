@@ -159,7 +159,7 @@ if (MINGW)
 endif()
 if (APPLE)
     add_definitions(-fno-objc-arc -DVSTTHREADS=0)
-    list(APPEND VST_SRC ../vst/VSTWindowCocoa.cpp)
+    list(APPEND VST_SRC ../vst/VSTWindowCocoa.mm)
     list(APPEND VST_LIBS "-framework Cocoa")
 endif()
 

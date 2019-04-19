@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <stdlib.h>
 #include <cstring>
+#include <sstream>
 
 #ifdef _WIN32
 # include <Windows.h>
