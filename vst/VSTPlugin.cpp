@@ -388,9 +388,18 @@ void IVSTWindow::poll(){
 
 /*///////////// IModule //////////////*/
 
+// from VST3_SDK/pluginterfaces/base/fplatform.h
+#ifdef _WIN32
+#define PLUGIN_API __stdcall
+#else
+#define PLUGIN_API
+#endif
+
 #ifdef _WIN32
 class ModuleWin32 : public IModule {
  public:
+    typedef bool (PLUGIN_API* InitFunc)();
+    typedef bool (PLUGIN_API* ExitFunc)();
     ModuleWin32(const std::string& path){
         handle_ = LoadLibraryW(widen(path).c_str());
         if (!handle_){
@@ -403,6 +412,14 @@ class ModuleWin32 : public IModule {
     ~ModuleWin32(){
         FreeLibrary(handle_);
     }
+    bool init() override {
+        auto fn = getFnPtr<InitFunc>("InitDll");
+        return (!fn || fn()); // init is optional
+    }
+    bool exit() override {
+        auto fn = getFnPtr<ExitFunc>("ExitDll");
+        return (!fn || fn()); // exit is optional
+    }
     void * doGetFnPtr(const char *name) const override {
         return (void *)GetProcAddress(handle_, name);
     }
@@ -414,6 +431,8 @@ class ModuleWin32 : public IModule {
 #ifdef __APPLE__
 class ModuleApple : public IModule {
  public:
+    typedef bool (PLUGIN_API *InitFunc) (CFBundleRef);
+    typedef bool (PLUGIN_API *ExitFunc) ();
     ModuleApple(const std::string& path){
         // Create a fullPath to the bundle
         // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
@@ -434,6 +453,14 @@ class ModuleApple : public IModule {
     ~ModuleApple(){
         CFRelease(bundle_);
     }
+    bool init() override {
+        auto fn = getFnPtr<InitFunc>("bundleEntry");
+        return (fn && fn(bundle_)); // init is mandatory
+    }
+    bool exit() override {
+        auto fn = getFnPtr<ExitFunc>("bundleExit");
+        return (fn && fn()); // exit is mandatory
+    }
     void * doGetFnPtr(const char *name) const override {
         auto str = CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8);
         auto fnPtr = CFBundleGetFunctionPointerForName(bundle_, str);
@@ -446,9 +473,11 @@ class ModuleApple : public IModule {
 #endif
 
 #if DL_OPEN
-class ModuleDL : public IModule {
+class ModuleSO : public IModule {
  public:
-    ModuleDL(const std::string& path){
+    typedef bool (PLUGIN_API* InitFunc) (void*);
+    typedef bool (PLUGIN_API* ExitFunc) ();
+    ModuleSO(const std::string& path){
         handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
         auto error = dlerror();
         if (!handle_) {
@@ -457,8 +486,16 @@ class ModuleDL : public IModule {
         }
         // LOG_DEBUG("loaded dynamic library " << path);
     }
-    ~ModuleDL(){
+    ~ModuleSO(){
         dlclose(handle_);
+    }
+    bool init() override {
+        auto fn = getFnPtr<InitFunc>("ModuleEntry");
+        return (fn && fn(handle_)); // init is mandatory
+    }
+    bool exit() override {
+        auto fn = getFnPtr<ExitFunc>("ModuleExit");
+        return (fn && fn()); // exit is mandatory
     }
     void * doGetFnPtr(const char *name) const override {
         return dlsym(handle_, name);
