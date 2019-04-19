@@ -1,5 +1,11 @@
-#include "VST2Plugin.h"
+#include "VSTPluginInterface.h"
 #include "Utility.h"
+#if USE_VST2
+#include "VST2Plugin.h"
+#endif
+#if USE_VST3
+#include "VST3Plugin.h"
+#endif
 
 #include <unordered_set>
 #include <stdlib.h>
@@ -500,12 +506,23 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
     try {
         // LOG_DEBUG("IVSTFactory: loading " << path);
         if (path.find(".vst3", dot) != std::string::npos){
-            // return new VST3Factory(path);
+        #if USE_VST3
+            return std::make_unique<VST3Factory>(path);
+        #else
+            LOG_WARNING("VST3 plug-ins not supported!");
             return nullptr;
-        } else if (path.find(ext, dot) != std::string::npos){
-            return std::make_unique<VST2Factory>(path);
+        #endif
         } else {
-            return std::make_unique<VST2Factory>(path + ext);
+        #if USE_VST2
+            if (path.find(ext, dot) != std::string::npos){
+                return std::make_unique<VST2Factory>(path);
+            } else {
+                return std::make_unique<VST2Factory>(path + ext);
+            }
+        #else
+            LOG_WARNING("VST2.x plug-ins not supported!");
+            return nullptr;
+        #endif
         }
     } catch (const std::exception& e){
         return nullptr;
