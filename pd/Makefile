@@ -40,15 +40,15 @@ endif
 endif
 
 # VST3 (default: off)
-ifeq ($(VST3), 0)
+ifeq ($(VST3), 1)
 VST_SRC += ../vst/VST3Plugin.cpp
 VST_CFLAGS += \
-	-DUSE_VST3=1 \
-	-I"$(VST3DIR)" \
-	-I"$(VST3DIR)/pluginterfaces" \
-	-I"$(VST3DIR)/pluginterfaces/base" \
-	-I"$(VST3DIR)/pluginterfaces/vst" \
-	-I"$(VST3DIR)/pluginterfaces/gui"
+        -DUSE_VST3=1 \
+        -I"$(VST3DIR)" \
+        -I"$(VST3DIR)/pluginterfaces" \
+        -I"$(VST3DIR)/pluginterfaces/base" \
+        -I"$(VST3DIR)/pluginterfaces/vst" \
+        -I"$(VST3DIR)/pluginterfaces/gui"
 endif
 
 LOGLEVEL = 2
@@ -63,10 +63,10 @@ shared.sources = src/vstplugin.cpp $(VST_SRC)
 cflags = \
 	-g \
 	-std=c++14 \
-	-I../vst \
-	$(VST_CFLAGS) \
+        -I../vst \
+        $(VST_CFLAGS) \
 	-DLOGLEVEL=$(LOGLEVEL) \
-	$(empty)
+        $(empty)
 
 suppress-wunused = 1
 

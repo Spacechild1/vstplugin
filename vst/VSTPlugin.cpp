@@ -118,14 +118,15 @@ extern "C" {
 
 static std::vector<const char *> platformExtensions = {
 #ifdef __APPLE__
-	".vst"
+    ".vst",
 #endif
 #ifdef _WIN32
-	".dll"
+    ".dll",
 #endif
 #ifdef __linux__
-	".so"
+    ".so",
 #endif
+    ".vst3"
 };
 
 const std::vector<const char *>& getPluginExtensions() {
