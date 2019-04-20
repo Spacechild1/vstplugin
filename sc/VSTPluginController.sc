@@ -116,39 +116,38 @@ VSTPluginController {
 		^this.class.guiClass.new(this).gui(parent, bounds);
 	}
 	open { arg path, editor=false, info=false, action;
-		var theInfo;
 		path.isNil.if {^this};
-		this.prClear;
-		this.prMakeOscFunc({arg msg;
-			loaded = msg[3].asBoolean;
-			window = msg[4].asBoolean;
-			loaded.if {
-				theInfo.notNil.if {
-					this.slotPut('info', theInfo); // hack because of name clash with 'info'
-					paramCache = Array.fill(theInfo.numParameters, [0, nil]);
-					program = 0;
-					// copy default program names (might change later when loading banks)
-					programNames = Array.newFrom(theInfo.programNames);
-					this.prQueryParams;
-					// post info if wanted
-					info.if { theInfo.print };
-				} {
-					// shouldn't happen...
-					"bug: got no info!".error;
-					loaded = false; window = false;
-				};
-			} {
-				// shouldn't happen because /open is only sent if the plugin has been successfully probed
-				"bug: couldn't open '%'".format(path).error;
-			};
-			action.value(this, loaded);
-			this.changed('/open', path, loaded);
-		}, '/vst_open').oneShot;
-		VSTPlugin.prGetInfo(synth.server, path, wait, { arg i;
-			// don't set 'info' property yet
-			theInfo = i;
-			theInfo.notNil.if { this.sendMsg('/open', theInfo.key, editor.asInteger); }
-			{ "couldn't open '%'".format(path).error; };
+		VSTPlugin.prGetInfo(synth.server, path, wait, { arg theInfo;
+			theInfo.notNil.if {
+				this.prClear;
+				this.prMakeOscFunc({arg msg;
+					loaded = msg[3].asBoolean;
+					window = msg[4].asBoolean;
+					loaded.if {
+						theInfo.notNil.if {
+							this.slotPut('info', theInfo); // hack because of name clash with 'info'
+							paramCache = Array.fill(theInfo.numParameters, [0, nil]);
+							program = 0;
+							// copy default program names (might change later when loading banks)
+							programNames = Array.newFrom(theInfo.programNames);
+							this.prQueryParams;
+							// post info if wanted
+							info.if { theInfo.print };
+						} {
+							// shouldn't happen...
+							"bug: got no info!".error;
+							loaded = false; window = false;
+						};
+					} {
+						// shouldn't happen because /open is only sent if the plugin has been successfully probed
+						"bug: couldn't open '%'".format(path).error;
+					};
+					action.value(this, loaded);
+					this.changed('/open', path, loaded);
+				}, '/vst_open').oneShot;
+				// don't set 'info' property yet
+				this.sendMsg('/open', theInfo.key, editor.asInteger);
+			} { "couldn't open '%'".format(path).error; };
 		});
 	}
 	openMsg { arg path, editor=false;
