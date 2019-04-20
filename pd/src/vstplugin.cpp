@@ -58,19 +58,39 @@ static IVSTFactory * findFactory(const std::string& path){
     }
 }
 
-static const VSTPluginDesc * findPlugin(const std::string& name){
-    auto desc = pluginDescDict.find(name);
+static const VSTPluginDesc * findPlugin(const std::string& key){
+    auto desc = pluginDescDict.find(key);
     if (desc != pluginDescDict.end()){
         return desc->second.get();
     }
     return nullptr;
 }
 
+// VST2: plug-in name
+// VST3: plug-in name + ".vst3"
+static std::string makeKey(const VSTPluginDesc& desc){
+    std::string key;
+    auto ext = ".vst3";
+    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
+    if (desc.path.find(ext, onset) != std::string::npos){
+        key = desc.name + ext;
+    } else {
+        key = desc.name;
+    }
+    // replace whitespace with underscores so you can type it in Pd
+    for (auto& c : key){
+        if (c == ' '){
+            c = '_';
+        }
+    }
+    return key;
+}
+
 static void addPlugins(const IVSTFactory& factory){
     auto plugins = factory.plugins();
     for (auto& plugin : plugins){
         if (plugin->valid()){
-            pluginDescDict[plugin->name.c_str()] = plugin;
+            pluginDescDict[makeKey(*plugin)] = plugin;
         }
     }
 }
@@ -147,7 +167,7 @@ static IVSTFactory * probePlugin(const std::string& path){
 
 static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
     int count = 0;
-    std::vector<t_symbol *> pluginList;
+    std::vector<t_symbol *> pluginList; // list of plug-in keys
     verbose(PD_NORMAL, "searching in '%s' ...", path.c_str());
     vst::search(path, [&](const std::string& absPath, const std::string& relPath){
         std::string pluginPath = absPath;
@@ -160,21 +180,23 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
             if (plugins.size() == 1){
                 auto& plugin = plugins[0];
                 if (plugin->valid()){
-                    auto name = plugin->name.c_str();
-                    verbose(PD_DEBUG, "%s %s", path.c_str(), name);
+                    auto& name = plugin->name;
+                    auto key = makeKey(*plugin);
+                    verbose(PD_DEBUG, "%s %s", path.c_str(), name.c_str());
                     if (x){
-                        pluginList.push_back(gensym(name));
+                        pluginList.push_back(gensym(key.c_str()));
                     }
                     count++;
                 }
             } else {
                 verbose(PD_DEBUG, "%s", path.c_str());
-                for (auto& plugin : factory->plugins()){
+                for (auto& plugin : plugins){
                     if (plugin->valid()){
-                        auto name = plugin->name.c_str();
-                        verbose(PD_DEBUG, "  %s", name);
+                        auto& name = plugin->name;
+                        auto key = makeKey(*plugin);
+                        verbose(PD_DEBUG, "  %s", name.c_str());
                         if (x){
-                            pluginList.push_back(gensym(name));
+                            pluginList.push_back(gensym(key.c_str()));
                         }
                         count++;
                     }
@@ -188,7 +210,8 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
                 for (auto& plugin : factory->plugins()){
                     if (plugin->valid()){
                         if (x){
-                            pluginList.push_back(gensym(plugin->name.c_str()));
+                            auto key = makeKey(*plugin);
+                            pluginList.push_back(gensym(key.c_str()));
                         }
                         count++;
                     }
