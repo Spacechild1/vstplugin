@@ -169,7 +169,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
     int count = 0;
     std::vector<t_symbol *> pluginList; // list of plug-in keys
     verbose(PD_NORMAL, "searching in '%s' ...", path.c_str());
-    vst::search(path, [&](const std::string& absPath, const std::string& relPath){
+    vst::search(path, [&](const std::string& absPath, const std::string&) -> bool {
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
         // check if module has already been loaded
@@ -217,7 +217,8 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
                     }
                 }
             }
-         }
+        }
+        return true;
     });
     verbose(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
     if (x){

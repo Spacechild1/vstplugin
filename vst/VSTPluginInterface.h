@@ -264,7 +264,9 @@ class VSTError : public std::exception {
 
 ProbeResult probe(const std::string& path, const std::string& name, VSTPluginDesc& desc);
 
-void search(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
+// search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path and basename.
+// if the callback function returns 'false', the search stops
+void search(const std::string& dir, std::function<bool(const std::string&, const std::string&)> fn);
 
 const std::vector<std::string>& getDefaultSearchPaths();
 

@@ -250,7 +250,7 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
 static void searchPlugins(const std::string & path, bool verbose) {
 	int count = 0;
 	LOG_VERBOSE("searching in '" << path << "'...");
-	vst::search(path, [&](const std::string & absPath, const std::string & relPath) {
+	vst::search(path, [&](const std::string & absPath, const std::string &) {
 		std::string pluginPath = absPath;
 #ifdef _WIN32
 		for (auto& c : pluginPath) {
@@ -294,6 +294,7 @@ static void searchPlugins(const std::string & path, bool verbose) {
 				}
 			}
 		}
+        return true;
 	});
         LOG_VERBOSE("found " << count << " plugin" << (count == 1 ? "." : "s."));
 }

@@ -169,7 +169,9 @@ const std::vector<std::string>& getDefaultSearchPaths() {
     return realDefaultSearchPaths;
 }
 
-void search(const std::string &dir, std::function<void(const std::string&, const std::string&)> fn) {
+// fn: callback function for each VST plugin path. if the function returns 'false', the search stops.
+// the function receives the full path, the base name and the extension
+void search(const std::string &dir, std::function<bool(const std::string&, const std::string&)> fn) {
     // extensions
     std::unordered_set<std::string> extensions;
     for (auto& ext : platformExtensions) {
@@ -184,14 +186,9 @@ void search(const std::string &dir, std::function<void(const std::string&, const
             if (fs::is_regular_file(entry)) {
                 auto ext = entry.path().extension().u8string();
                 if (extensions.count(ext)) {
-                    auto absPath = entry.path().u8string();
-                    // relPath: fullPath minus root minus extension (without leading slash)
-                    auto relPath = absPath.substr(root.size() + 1, absPath.size() - root.size() - ext.size() - 1);
-                    // only forward slashes
-                    for (auto& c : relPath) {
-                        if (c == '\\') c = '/';
-                    }
-                    fn(absPath, relPath);
+                    auto abspath = entry.path().u8string();
+                    auto basename = entry.path().filename().u8string();
+                    if (!fn(abspath, basename)) break;
                 }
             }
         }
@@ -218,9 +215,7 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                     ext = name.substr(extPos);
                 }
                 if (extensions.count(ext)) {
-                    // shortPath: fullPath minus root minus extension (without leading slash)
-                    auto relPath = absPath.substr(root.size() + 1, absPath.size() - root.size() - ext.size() - 1);
-                    fn(absPath, relPath);
+                    if (!fn(absPath, name)) break;
                 }
                 // otherwise search it if it's a directory
                 else if (entry->d_type == DT_DIR) {
