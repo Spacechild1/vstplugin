@@ -24,6 +24,8 @@ namespace fs = std::experimental::filesystem;
 # include <unistd.h>
 # include <strings.h>
 # include <sys/wait.h>
+# include <sys/stat.h>
+# include <sys/types.h>
 // for probing (and dlopen)
 # include <dlfcn.h>
 # include <stdio.h>
@@ -169,9 +171,81 @@ const std::vector<std::string>& getDefaultSearchPaths() {
     return realDefaultSearchPaths;
 }
 
-// fn: callback function for each VST plugin path. if the function returns 'false', the search stops.
-// the function receives the full path, the base name and the extension
-void search(const std::string &dir, std::function<bool(const std::string&, const std::string&)> fn) {
+// recursively search for a VST plugin in a directory. returns empty string on failure.
+std::string search(const std::string &dir, const std::string &path){
+    std::string relpath = path;
+#ifdef _WIN32
+    const char *ext = ".dll";
+#elif defined(__APPLE__)
+    const char *ext = ".vst";
+#else // Linux/BSD/etc.
+    const char *ext = ".so";
+#endif
+    if (relpath.find(".vst3") == std::string::npos && relpath.find(ext) == std::string::npos){
+        relpath += ext;
+    }
+#ifdef _WIN32
+    try {
+        auto fpath = fs::path(relpath);
+        auto file = fs::path(dir) / fpath;
+        if (fs::is_regular_file(file)){
+            return file.u8string(); // success
+        }
+        // continue recursively
+        for (auto& entry : fs::recursive_directory_iterator(dir)) {
+            if (fs::is_directory(entry)){
+                file = entry.path() / fpath;
+                if (fs::is_regular_file(file)){
+                    return file.u8string(); // success
+                }
+            }
+        }
+    } catch (const fs::filesystem_error& e) {};
+    return std::string{};
+#else // Unix
+    std::string result;
+    // force no trailing slash
+    auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
+
+    auto isFile = [](const std::string& fname){
+        struct stat stbuf;
+        return stat(fname.c_str(), &strbuf) == 0;
+    };
+
+    std::string file = root + "/" + relpath;
+    if (isFile(file)){
+        return file; // success
+    }
+    // continue recursively
+    std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
+        DIR *directory = opendir(dirname.c_str());
+        struct dirent *entry;
+        if (directory){
+            while (result.empty() && (entry = readdir(directory))){
+                if (entry->d_type == DT_DIR){
+                    if (strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0){
+                        std::string d = dirname + "/" + entry->d_name;
+                        std::string absPath = d + "/" + relpath;
+                        if (isFile(absPath)){
+                            result = absPath;
+                            break;
+                        } else {
+                            // dive into the direcotry
+                            searchDir(d);
+                        }
+                    }
+                }
+            }
+            closedir(directory);
+        }
+    };
+    searchDir(root);
+    return result;
+#endif
+}
+
+// recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full path and base name.
+void search(const std::string &dir, std::function<void(const std::string&, const std::string&)> fn) {
     // extensions
     std::unordered_set<std::string> extensions;
     for (auto& ext : platformExtensions) {
@@ -180,15 +254,13 @@ void search(const std::string &dir, std::function<bool(const std::string&, const
     // search recursively
 #ifdef _WIN32
     try {
-        // root will have a trailing slash
-        auto root = fs::path(dir).u8string();
-        for (auto& entry : fs::recursive_directory_iterator(root)) {
+        for (auto& entry : fs::recursive_directory_iterator(dir)) {
             if (fs::is_regular_file(entry)) {
                 auto ext = entry.path().extension().u8string();
                 if (extensions.count(ext)) {
                     auto abspath = entry.path().u8string();
                     auto basename = entry.path().filename().u8string();
-                    if (!fn(abspath, basename)) break;
+                    fn(abspath, basename);
                 }
             }
         }
@@ -215,7 +287,7 @@ void search(const std::string &dir, std::function<bool(const std::string&, const
                     ext = name.substr(extPos);
                 }
                 if (extensions.count(ext)) {
-                    if (!fn(absPath, name)) break;
+                    fn(absPath, name);
                 }
                 // otherwise search it if it's a directory
                 else if (entry->d_type == DT_DIR) {

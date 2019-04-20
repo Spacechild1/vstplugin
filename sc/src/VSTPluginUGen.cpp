@@ -247,15 +247,7 @@ static std::string resolvePath(std::string path) {
     }
     // otherwise try default VST paths
     for (auto& vstpath : getDefaultSearchPaths()) {
-        // search directory recursively
-        std::string result;
-        vst::search(vstpath, [&](const std::string & abspath, const std::string & basename) -> bool {
-            if (basename == path) {
-                result = abspath;
-                return false; // stop
-            }
-            return true; // continue
-        });
+        auto result = vst::search(vstpath, path);
         if (!result.empty()) return result; // success
     }
     return std::string{}; // fail
@@ -341,7 +333,6 @@ static void searchPlugins(const std::string & path, bool verbose) {
 				}
 			}
 		}
-        return true;
 	});
         LOG_VERBOSE("found " << count << " plugin" << (count == 1 ? "." : "s."));
 }

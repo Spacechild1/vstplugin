@@ -169,7 +169,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
     int count = 0;
     std::vector<t_symbol *> pluginList; // list of plug-in keys
     verbose(PD_NORMAL, "searching in '%s' ...", path.c_str());
-    vst::search(path, [&](const std::string& absPath, const std::string&) -> bool {
+    vst::search(path, [&](const std::string& absPath, const std::string&){
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
         // check if module has already been loaded
@@ -218,7 +218,6 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
                 }
             }
         }
-        return true;
     });
     verbose(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
     if (x){
@@ -694,7 +693,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         const char *ext = ".dll";
     #elif defined(__APPLE__)
         const char *ext = ".vst";
-    #else
+    #else // Linux/BSD/etc.
         const char *ext = ".so";
     #endif
         if (path.find(".vst3") == std::string::npos && path.find(ext) == std::string::npos){
@@ -723,14 +722,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         } else {
                 // otherwise try default VST paths
             for (auto& vstpath : getDefaultSearchPaths()){
-                // search directory recursively
-                vst::search(vstpath, [&](const std::string& abspath, const std::string& basename){
-                    if (basename == path){
-                        result = abspath;
-                        return false; // stop
-                    }
-                    return true; // continue
-                });
+                result = vst::search(vstpath, path);
                 if (!result.empty()) break; // success
             }
         }
