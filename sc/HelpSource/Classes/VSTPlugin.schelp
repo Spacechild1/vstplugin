@@ -77,9 +77,9 @@ SUBSECTION:: Plugin Management
 All VST plugin information is cached on the Client. This is done mainly for performance reasons but it can be also handy for end users
 because it's possible to investigate plugins without actually creating any instances.
 
-The plugin info is stored in an link::Classes/Event:: with the following entries:
+The plugin info is an link::Classes/Event:: with the following entries:
 table::
-## key || the key under which the plugin info is stored
+## key || a symbol under which the plugin is stored
 ## path || the file path
 ## name || the plugin name
 ## vendor || the plugin vendor
@@ -113,6 +113,12 @@ if emphasis::long:: is code::true::, also list parameters and programs.
 
 note::The info is to be considered read-only!::
 
+The plugin info is stored in an link::Classes/IdentityDictionary:: under its code::key:: and code::path:: 
+and can be retrieved with link::#*plugins::.
+
+For VST 2.x plugins, the key is simply the plugin name; for VST 3 plugins, the key has an additional ".vst3" extension
+(to distinguish it from a VST 2.x plugin of the same name). It can be used in link::Classes/VSTPluginController#-open::.
+
 SUBSECTION:: Plugin Info
 
 METHOD:: plugins
@@ -124,13 +130,14 @@ the Server. If this is code::nil::, the default Server is assumed.
 RETURNS:: an link::Classes/IdentityDictionary:: containing the info of all VST plugins on the Server.
 
 DISCUSSION::
-The dictionary can be simply indexed with the plugin key:
+The dictionary can be simply indexed with the plugin code::key:: or code::path:: (see link::#Plugin Management::).
 code::
 // search in default paths
 VSTPlugin.search(s);
-VSTPlugin.plugins(s)["CoolPlugins/AwesomePlugin"].print;
+VSTPlugin.plugins(s)["AwesomePlugin"].print;
 // for the default server this can be shortend to:
-VSTPlugin.plugins["CoolPlugins/AwesomePlugin"].print;
+VSTPlugin.search;
+VSTPlugin.plugins["AwesomePlugin"].print;
 ::
 
 METHOD:: pluginList
@@ -140,7 +147,7 @@ ARGUMENT:: server
 the Server. If code::nil::, the default Server is assumed.
 
 ARGUMENT:: sorted
-whether the Array should be sorted alphabetically (plugin name).
+whether the Array should be sorted alphabetically (by name).
 
 RETURNS:: an Array of plugin info Events.
 
@@ -166,7 +173,7 @@ the Server. If code::nil::, the default Server is assumed.
 DISCUSSION::
 The plugins are posted in alphabetical order in the following format:
 
-code::name (vendor) [path]::
+code::key (vendor) [path]::
 
 SUBSECTION:: Searching for plugins
 
@@ -203,7 +210,7 @@ note::here, emphasis::%ProgramFiles%:: stands for "C:\Program Files" on a 64 bit
 ARGUMENT:: verbose
 a Boolean telling if the Server should post a message for each VST plugin being found.
 
-The message tells the name of the plugin and the probe result. Probing can fail if the file is
+The message shows the file path, name and probe result. Probing can fail if the file is
 not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
 
 ARGUMENT:: wait
@@ -219,12 +226,10 @@ ARGUMENT:: action
 an action to be called after the search has finished.
 
 DISCUSSION::
-Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary in the Client and can be retrieved
-with link::#*plugins::, using the plugin name as the key.
+Directories are searched recursively. For each valid VST plugin, the information is stored in the Client 
+and can be retrieved with its key (see link::#Plugin Management::).
 
-(The plugin name also works as the emphasis::path:: argument for link::Classes/VSTPluginController#-open::.)
-
-If a plugin can't be probed ("... failed!") it either means it's not a valid VST2.x plugin (VST3 is not supported yet)
+If a plugin can't be probed ("... failed!") it either means it's not a valid VST 2.x plugin (VST 3 is not supported yet)
 or it has the wrong architecture. 
 note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
 
@@ -245,10 +250,11 @@ METHOD:: probe
 Probe a single VST plugin.
 
 ARGUMENT:: server
-the Server, see link::#*search::.
+the Server. If code::nil::, the default Server is assumed.
 
 ARGUMENT:: path
-the plugin path. Relative paths are resolved to the currently executing file (must have been saved!).
+the plugin path. Relative paths are resolved to the currently executing file (if saved) or to the standard VST directories
+(see link::#*search::).
 
 ARGUMENT:: key
 an (optional) additional key under which the plugin info is stored.
@@ -262,8 +268,8 @@ On success, the plugin info is passed as an link::Classes/Event::, otherwise the
 
 DISCUSSION::
 
-The given plugin file path is probed on the Server (in a seperate process). On success, the plugin info is stored under the plugin name,
-the file path and the (optional) key argument.
+The given plugin file path is probed on the Server (in a seperate process). 
+On success, the plugin info is stored under its key, the file path and the (optional) key argument.
 
 This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find a key in the plugin dictionary.
 It might be occasionally useful for other purposes.

@@ -27,9 +27,9 @@ VSTPlugin.search;
 // get a handle to the VSTPlugin:
 ~fx = VSTPluginController(~synth);
 
-// open a plugin by name (requires VSTPlugin.search!)
-~fx.open("some_plugin", info: true);
-// alternatively, you can open a plugin via its file path 
+// open a plugin by name/key (might require VSTPlugin.search!)
+~fx.open("myplugin", info: true);
+// alternatively, you can open a plugin by its file path 
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
 ~fx.open("/path/to/plugin", info: true);
 
@@ -222,16 +222,16 @@ METHOD:: open
 open a VST plugin.
 
 ARGUMENT:: path
-the plugin name or file path.
+the plugin key or file path.
 
-Opening plugins by strong::name:: requires that the plugin has already been probed (e.g. as a result of link::Classes/VSTPlugin#*search::).
+Opening plugins by strong::key:: requires that the plugin has already been probed (e.g. as a result of link::Classes/VSTPlugin#*search::).
 
 ---
 
-Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (which must have been saved!).
-After the plugin has been successfully probed on the Server, it is added to the dictionary with emphasis::path:: as an additional key.
+Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (if saved)
+or to the standard VST directories (see link::Classes/VSTPlugin#*search::).
 
-note::This method only works for files which contain a single plugin (most VST2.x and VST3 plugins).::
+note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and most VST 3 plugins).::
 
 ARGUMENT:: editor
 request the VST plugin editor.
@@ -249,7 +249,7 @@ This method is realtime-safe because the VST plugin is opened asynchronously (in
 METHOD:: openMsg
 
 ARGUMENT:: path
-the plugin name or an emphasis::absolute:: file path.
+the plugin name/key or file path. Relative paths are resolved to the standard VST directories.
 
 ARGUMENT:: editor
 request the VST editor.
