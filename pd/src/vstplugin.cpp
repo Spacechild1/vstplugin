@@ -703,7 +703,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         char *name = nullptr;
     #ifdef __APPLE__
         const char *bundleinfo = "/Contents/Info.plist";
-        vstpath += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
+        path += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
     #endif
         int fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
         if (fd >= 0){
