@@ -9,7 +9,7 @@ VSTPlugin : MultiOutUGen {
 		StartUp.add {
 			pluginDict = IdentityDictionary.new;
 			parentInfo = (
-				print: { arg self, long = false;
+				print: #{ arg self, long = false;
 					"---".postln;
 					self.toString.postln;
 					long.if {
@@ -22,7 +22,7 @@ VSTPlugin : MultiOutUGen {
 					};
 					"".postln;
 				},
-				toString: { arg self, sep = $\n;
+				toString: #{ arg self, sep = $\n;
 					var s;
 					s = "name: %".format(self.name) ++ sep
 					++ "path: %".format(self.path) ++ sep
@@ -42,14 +42,14 @@ VSTPlugin : MultiOutUGen {
 					++ "single precision: %".format(self.singlePrecision) ++ sep
 					++ "double precision: %".format(self.doublePrecision);
 				},
-				printParameters: { arg self;
+				printParameters: #{ arg self;
 					self.numParameters.do { arg i;
 						var label;
 						label = (self.parameterLabels[i].size > 0).if { "(%)".format(self.parameterLabels[i]) };
 						"[%] % %".format(i, self.parameterNames[i], label ?? "").postln;
 					};
 				},
-				printPrograms: { arg self;
+				printPrograms: #{ arg self;
 					self.programNames.do { arg item, i;
 						"[%] %".format(i, item).postln;
 					};
