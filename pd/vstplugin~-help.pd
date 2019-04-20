@@ -511,7 +511,6 @@ VST search paths are used., f 39;
 #X text 389 202 macOS:;
 #X text 388 263 Linux:;
 #X text 391 140 NOTE: on 32bit Pd "%ProgramFiles%";
-#X text 427 156 is "%ProgramFiles(x86)";
 #N canvas 738 353 330 316 info 0;
 #X text 16 12 info name <s>: plugin name;
 #X text 17 32 info path <s>: full plugin path;
@@ -535,29 +534,30 @@ VST search paths are used., f 39;
 #X text 96 181 optional arguments: list of user search paths. relative
 paths are resolved to the current patch directory., f 42;
 #X msg 25 161 search <l>;
-#X text 94 251 for each plugin \, a message [plugin <name>( is sent
-through the rightmost outlet., f 43;
-#X text 24 88 searched plugins are stored in a global dictionary by
-their name \, which can be used as the creation argument to [vstplugin~]
-or together with the [open ...( message., f 56;
 #X text 22 26 you can search the standard VST directories on startup
 by loading [vstsearch] \, either by adding it to the startup flags
 or with declare:, f 54;
 #X text 24 134 additionally \, you can use the following methods:;
 #X text 92 346 get info about currently loaded plugin;
-#X text 91 368 get info about any plugin (file path);
 #X text 129 314 get info about a searched plugin., f 34;
 #X msg 39 286 search_clear;
 #X text 129 287 clear the plugin dictionary;
 #X msg 48 314 info <key>;
+#X text 24 88 searched plugins are stored in a global dictionary by
+their key \, which can be used as the creation argument to [vstplugin~]
+or in the [open( message., f 54;
+#X text 94 251 for each plugin \, a message [plugin <key>( is sent
+through the rightmost outlet., f 43;
+#X text 91 368 get info about any plugin (key or file name);
+#X text 427 156 is "Program Files (x86)";
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
 #X connect 5 0 0 0;
 #X connect 6 0 5 0;
 #X connect 7 0 6 0;
-#X connect 26 0 0 0;
-#X connect 34 0 0 0;
-#X connect 36 0 0 0;
+#X connect 25 0 0 0;
+#X connect 30 0 0 0;
+#X connect 32 0 0 0;
 #X restore 394 475 pd search;
 #X f 14;
 #X text 392 453 search + info;
@@ -595,7 +595,6 @@ f 64;
 #X f 10;
 #X text 127 350 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
-#X text 66 353 VST GUI;
 #X obj 24 455 outlet;
 #X text 171 438 more info about the editor:;
 #X text 146 105 VST3 plug-in keys get a '.vst3' extension to distinguish
@@ -610,35 +609,38 @@ and runs on the audio thread! see the README for more information.
 , f 44;
 #X text 134 26 plug-ins can be opened in 2 ways:;
 #X text 132 48 1) by KEY:;
-#X text 128 174 2) by FILE PATH:;
-#X text 144 235 for VST2 plug-ins the extension (.dll \, .so \, .vst)
-can be omitted \; for VST3 plug-ins the '.vst3' extension is mandatory.
-, f 58;
 #X text 146 194 both absolute and relative paths are allowed. relative
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are used (see [pd search]), f 58;
-#X symbolatom 24 87 16 0 0 0 - - -;
-#X msg 24 107 open \$1;
-#X text 21 68 key;
-#X text 127 280 opening by file path doesn't work if the module contains
-several plug-ins (shell plug-ins or some VST3 plug-ins)!;
-#X text 126 308 also \, plug-in keys are platform independent while
-some plug-in file names might have different names.;
-#X msg 37 135 search;
-#X obj 37 156 s \$0-msg;
+#X symbolatom 24 128 16 0 0 0 - - -;
+#X msg 24 148 open \$1;
+#X msg 24 66 search;
+#X obj 24 87 s \$0-msg;
 #X text 147 66 the key is the plug-in name with whitespace substituted
 by underscores so that the symbol can be easily typed in Pd (e.g. 'Awesome
 Reverb' becomes 'Awesome_Reverb').;
+#X text 144 235 for VST2 plug-ins the extension (.dll \, .so \, .vst)
+can be omitted \, for VST3 plug-ins the '.vst3' extension is mandatory.
+, f 58;
+#X text 127 280 opening by file path doesn't work if the module contains
+several plug-ins (shell plug-ins or certain VST3 plug-ins)!;
+#X text 128 174 2) by FILE NAME:;
+#X text 126 308 also \, keys are always platform independent while
+file names may be different (e.g. containing an architecture string
+like 'x64'), f 60;
+#X text 22 44 1) search;
+#X text 21 109 2) open by key;
+#X text 58 204 file path;
 #X connect 0 0 5 0;
 #X connect 1 0 2 0;
 #X connect 2 0 0 0;
 #X connect 3 0 4 0;
 #X connect 4 0 6 0;
-#X connect 5 0 10 0;
+#X connect 5 0 9 0;
 #X connect 6 0 5 0;
-#X connect 21 0 22 0;
-#X connect 22 0 5 0;
-#X connect 26 0 27 0;
+#X connect 18 0 19 0;
+#X connect 19 0 5 0;
+#X connect 20 0 21 0;
 #X restore 199 230 pd open;
 #X text 252 231 open a plugin;
 #X obj 20 120 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
