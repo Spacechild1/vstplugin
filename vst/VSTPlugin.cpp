@@ -209,7 +209,7 @@ std::string search(const std::string &dir, const std::string &path){
 
     auto isFile = [](const std::string& fname){
         struct stat stbuf;
-        return stat(fname.c_str(), &strbuf) == 0;
+        return stat(fname.c_str(), &stbuf) == 0;
     };
 
     std::string file = root + "/" + relpath;
