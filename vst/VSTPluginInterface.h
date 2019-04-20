@@ -87,6 +87,7 @@ class IVSTPlugin {
     virtual std::string getPluginVendor() const = 0;
     virtual std::string getPluginCategory() const = 0;
     virtual std::string getPluginVersion() const = 0;
+    virtual std::string getSDKVersion() const = 0;
     virtual int getPluginUniqueID() const = 0;
     virtual int canDo(const char *what) const = 0;
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) = 0;

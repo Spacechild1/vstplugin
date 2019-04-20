@@ -139,6 +139,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, const std::strin
         name_ = ci2.name;
         category_ = ci2.category;
         vendor_ = ci2.vendor;
+        sdkVersion_ = ci2.sdkVersion;
         // version
         // sdk version
     } else {
@@ -147,6 +148,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, const std::strin
             memcpy(uid, ci.cid, sizeof(TUID));
             name_ = ci.name;
             category_ = ci.category;
+            sdkVersion_ = "VST 3";
         } else {
             LOG_ERROR("couldn't get class info!");
             return;
@@ -187,6 +189,10 @@ std::string VST3Plugin::getPluginCategory() const {
 
 std::string VST3Plugin::getPluginVersion() const {
     return std::string{};
+}
+
+std::string VST3Plugin::getSDKVersion() const {
+    return sdkVersion_;
 }
 
 int VST3Plugin::getPluginUniqueID() const {

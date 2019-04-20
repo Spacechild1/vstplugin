@@ -282,6 +282,21 @@ std::string VST2Plugin::getPluginVersion() const {
     }
 }
 
+std::string VST2Plugin::getSDKVersion() const {
+    switch (dispatch(effGetVstVersion)){
+    case 2400:
+        return "VST 2.4";
+    case 2300:
+        return "VST 2.3";
+    case 2200:
+        return "VST 2.2";
+    case 2100:
+        return "VST 2.1";
+    default:
+        return "VST 2";
+    }
+}
+
 int VST2Plugin::getPluginUniqueID() const {
     return plugin_->uniqueID;
 }

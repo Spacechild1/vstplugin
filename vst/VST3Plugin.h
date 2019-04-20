@@ -45,6 +45,7 @@ class VST3Plugin final : public IVSTPlugin {
     std::string getPluginVendor() const override;
     std::string getPluginCategory() const override;
     std::string getPluginVersion() const override;
+    std::string getSDKVersion() const override;
     int getPluginUniqueID() const override;
     virtual int canDo(const char *what) const override;
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) override;
@@ -136,6 +137,7 @@ class VST3Plugin final : public IVSTPlugin {
     std::string name_;
     std::string vendor_;
     std::string version_;
+    std::string sdkVersion_;
     std::string category_;
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
