@@ -682,11 +682,13 @@ static void vstplugin_search_clear(t_vstplugin *x){
     clearPlugins();
 }
 
-// resolves relative paths to the canvas search paths or VST search paths
+// resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
+// returns empty string on failure!
 static std::string resolvePath(t_canvas *c, const std::string& s){
-    std::string path = s;
+    std::string result;
         // resolve relative path
-    if (!sys_isabsolutepath(path.c_str())){
+    if (!sys_isabsolutepath(s.c_str())){
+        std::string path = s;
         char buf[MAXPDSTRING+1];
     #ifdef _WIN32
         const char *ext = ".dll";
@@ -703,9 +705,11 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         char *name = nullptr;
     #ifdef __APPLE__
         const char *bundleinfo = "/Contents/Info.plist";
-        path += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
-    #endif
+        // on MacOS VST plugins are bundles (directories) but canvas_open needs a real file
+        int fd = canvas_open(c, (path + bundleinfo).c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+    #else
         int fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+    #endif
         if (fd >= 0){
             sys_close(fd);
             snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
@@ -715,29 +719,26 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
                 *find = 0; // restore the bundle path
             }
     #endif
-            path = buf; // success
+            result = buf; // success
         } else {
                 // otherwise try default VST paths
             for (auto& vstpath : getDefaultSearchPaths()){
-                snprintf(buf, MAXPDSTRING, "%s/%s", vstpath.c_str(), path.c_str());
-                LOG_DEBUG("trying " << buf);
-                fd = sys_open(buf, 0);
-                if (fd >= 0){
-                    sys_close(fd);
-                #ifdef __APPLE__
-                    char *find = strstr(buf, bundleinfo);
-                    if (find){
-                        *find = 0; // restore the bundle path
+                // search directory recursively
+                vst::search(vstpath, [&](const std::string& abspath, const std::string& basename){
+                    if (basename == path){
+                        result = abspath;
+                        return false; // stop
                     }
-                #endif
-                    path = buf; // success
-                    break;
-                }
+                    return true; // continue
+                });
+                if (!result.empty()) break; // success
             }
         }
+    } else {
+        result = s;
     }
-    sys_unbashfilename(&path[0], &path[0]);
-    return path;
+    sys_unbashfilename(&result[0], &result[0]);
+    return result;
 }
 
 // query a plugin by its name or file path and probe if necessary.
@@ -747,7 +748,7 @@ static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path
     if (!desc){
             // try as file path
         std::string abspath = resolvePath(x->x_canvas, path);
-        if (!abspath.empty()){
+        if (!abspath.empty() && !(desc = findPlugin(abspath))){
                 // plugin descs might have been removed by 'search_clear'
             auto factory = findFactory(abspath);
             if (factory){

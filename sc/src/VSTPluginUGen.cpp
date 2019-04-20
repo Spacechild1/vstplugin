@@ -218,6 +218,49 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
 	return (pluginFactoryDict[path] = std::move(factory)).get();
 }
 
+static bool isAbsolutePath(const std::string& path) {
+    if (!path.empty() &&
+        (path[0] == '/' || path[0] == '~' // Unix
+#ifdef _WIN32
+            || path[0] == '%' // environment variable
+            || (path.size() >= 3 && path[1] == ':' && (path[2] == '/' || path[2] == '\\')) // drive
+#endif
+            )) return true;
+    return false;
+}
+
+// resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
+// returns empty string on failure!
+static std::string resolvePath(std::string path) {
+    if (isAbsolutePath(path)) {
+        return path; // success
+    }
+#ifdef _WIN32
+    const char* ext = ".dll";
+#elif defined(__APPLE__)
+    const char* ext = ".vst";
+#else
+    const char* ext = ".so";
+#endif
+    if (path.find(".vst3") == std::string::npos && path.find(ext) == std::string::npos) {
+        path += ext;
+    }
+    // otherwise try default VST paths
+    for (auto& vstpath : getDefaultSearchPaths()) {
+        // search directory recursively
+        std::string result;
+        vst::search(vstpath, [&](const std::string & abspath, const std::string & basename) -> bool {
+            if (basename == path) {
+                result = abspath;
+                return false; // stop
+            }
+            return true; // continue
+        });
+        if (!result.empty()) return result; // success
+    }
+    return std::string{}; // fail
+}
+
 static const VSTPluginDesc* queryPlugin(std::string path) {
 #ifdef _WIN32
     for (auto& c : path) {
@@ -227,19 +270,23 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     // query plugin
     auto desc = findPlugin(path);
     if (!desc) {
-        // try as file path (plugin descs might have been removed by 'search_clear')
-        auto factory = findFactory(path);
-        if (factory) {
-            addPlugins(*factory);
-        }
-        if (!(desc = findPlugin(path))) {
-            // finally probe plugin
-            if (probePlugin(path, true)) {
-                // this fails if the module contains several plugins (so the path is not used as a key)
-                desc = findPlugin(path);
+        // try as file path 
+        path = resolvePath(path);
+        if (!path.empty() && !(desc = findPlugin(path))) {
+            // plugin descs might have been removed by 'search_clear'
+            auto factory = findFactory(path);
+            if (factory) {
+                addPlugins(*factory);
             }
-            else {
-                LOG_DEBUG("couldn't probe plugin");
+            if (!(desc = findPlugin(path))) {
+                // finally probe plugin
+                if (probePlugin(path, true)) {
+                    // this fails if the module contains several plugins (so the path is not used as a key)
+                    desc = findPlugin(path);
+                }
+                else {
+                    LOG_DEBUG("couldn't probe plugin");
+                }
             }
         }
     }

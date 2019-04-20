@@ -2,11 +2,15 @@ VSTPlugin : MultiOutUGen {
 	// class members
 	classvar pluginDict;
 	classvar parentInfo;
+	classvar <platformExtension;
 	// instance members
 	var <id;
 	// class methods
 	*initClass {
 		StartUp.add {
+			platformExtension = Platform.case(
+				\windows, ".dll", \osx, ".vst", \linux, ".so"
+			);
 			pluginDict = IdentityDictionary.new;
 			parentInfo = (
 				print: #{ arg self, long = false;
@@ -413,7 +417,7 @@ VSTPlugin : MultiOutUGen {
 		?? { this.probe(server, key, key, wait, action) };
 	}
 	*prResolvePath { arg path;
-		var root;
+		var root, temp;
 		path = path.asString;
 		(thisProcess.platform.name == \windows).if {
 			// replace / with \ because of a bug in PathName
@@ -425,11 +429,15 @@ VSTPlugin : MultiOutUGen {
 			// resolve relative paths to the currently executing file
 			root = thisProcess.nowExecutingPath;
 			root.notNil.if {
-				path = root.dirname +/+ path;
-			} {
-				"couldn't resolve '%' - relative paths only work on saved files!".error;
-				path = nil;
-			};
+				temp = root.dirname +/+ path;
+				// no extension: append VST2 platform extension
+				(path.find(".vst3").isNil && path.find(platformExtension).isNil).if {
+					temp = temp ++ platformExtension;
+				};
+				File.exists(temp).if { ^temp };
+			}
+			// otherwise the path is passed to the UGen which tries
+			// to resolve it to the standard VST search paths.
 		};
 		^path;
 	}
