@@ -180,15 +180,15 @@ std::string VST3Plugin::getPluginName() const {
 }
 
 std::string VST3Plugin::getPluginVendor() const {
-    return std::string{};
+    return vendor_;
 }
 
 std::string VST3Plugin::getPluginCategory() const {
-    return std::string{};
+    return category_;
 }
 
 std::string VST3Plugin::getPluginVersion() const {
-    return std::string{};
+    return version_;
 }
 
 std::string VST3Plugin::getSDKVersion() const {
