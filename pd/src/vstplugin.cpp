@@ -660,9 +660,9 @@ static void vstplugin_search_clear(t_vstplugin *x){
 
 // resolves relative paths to the canvas search paths or VST search paths
 static std::string resolvePath(t_canvas *c, const std::string& s){
-    std::string path;
+    std::string path = s;
         // resolve relative path
-    if (!sys_isabsolutepath(s.c_str())){
+    if (!sys_isabsolutepath(path.c_str())){
         char buf[MAXPDSTRING+1];
     #ifdef _WIN32
         const char *ext = ".dll";
@@ -671,9 +671,8 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
     #else
         const char *ext = ".so";
     #endif
-        std::string vstpath = s;
-        if (vstpath.find(".vst3") == std::string::npos && vstpath.find(ext) == std::string::npos){
-            vstpath += ext;
+        if (path.find(".vst3") == std::string::npos && path.find(ext) == std::string::npos){
+            path += ext;
         }
             // first try canvas search paths
         char dirresult[MAXPDSTRING];
@@ -682,7 +681,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         const char *bundleinfo = "/Contents/Info.plist";
         vstpath += bundleinfo; // on MacOS VST plugins are bundles but canvas_open needs a real file
     #endif
-        int fd = canvas_open(c, vstpath.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        int fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
         if (fd >= 0){
             sys_close(fd);
             snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
@@ -695,9 +694,9 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
             path = buf; // success
         } else {
                 // otherwise try default VST paths
-            for (auto& vstPath : getDefaultSearchPaths()){
-                snprintf(buf, MAXPDSTRING, "%s/%s", vstPath.c_str(), vstpath.c_str());
-                /// LOG_DEBUG("trying " << buf);
+            for (auto& vstpath : getDefaultSearchPaths()){
+                snprintf(buf, MAXPDSTRING, "%s/%s", vstpath.c_str(), path.c_str());
+                LOG_DEBUG("trying " << buf);
                 fd = sys_open(buf, 0);
                 if (fd >= 0){
                     sys_close(fd);
@@ -712,8 +711,6 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
                 }
             }
         }
-    } else {
-        path = s; // success
     }
     sys_unbashfilename(&path[0], &path[0]);
     return path;
