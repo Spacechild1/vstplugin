@@ -277,7 +277,7 @@ VSTPluginGui : ObjectGui {
 				var items;
 				plugins = VSTPlugin.pluginList(server, sorted: true);
 				items = plugins.collect({ arg item;
-					"% (%)".format(item.name, item.vendor);
+					"% (%)".format(item.key, item.vendor); // rather use key instead of name
 				});
 				browser.items = items;
 				browser.value !? { browser.action.value } ?? { showPath.value };

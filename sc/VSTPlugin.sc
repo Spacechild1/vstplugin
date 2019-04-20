@@ -90,7 +90,7 @@ VSTPlugin : MultiOutUGen {
 		// print plugins sorted by name in ascending order
 		// (together with path to distinguish plugins of the same name)
 		this.pluginList(server, true).do { arg item;
-			"% (%) [%]".format(item.name, item.vendor, item.path).postln;
+			"% (%) [%]".format(item.key, item.vendor, item.path).postln; // rather print key instead of name
 		};
 	}
 	*reset { arg server;
@@ -134,9 +134,8 @@ VSTPlugin : MultiOutUGen {
 						var info;
 						(line.size > 0).if {
 							info = this.prParseInfo(line);
-							// store under name and key
+							// store under key
 							dict[info.key] = info;
-							dict[info.name.asSymbol] = info;
 						}
 					};
 				});
@@ -234,7 +233,7 @@ VSTPlugin : MultiOutUGen {
 		{
 			var info, dict = pluginDict[server];
 			var filePath = PathName.tmp ++ this.hash.asString;
-			// ask server to read tmp file and replace the content with the plugin info
+			// ask server to write plugin info to tmp file
 			server.sendMsg('/cmd', '/vst_query', path, filePath);
 			// wait for cmd to finish
 			server.sync;
@@ -243,9 +242,8 @@ VSTPlugin : MultiOutUGen {
 				protect {
 					File.use(filePath, "rb", { arg file;
 						info = this.prParseInfo(file.readAllString);
-						// store under name and key
+						// store under key
 						dict[info.key] = info;
-						dict[info.name.asSymbol] = info;
 						// also store under resolved path and custom key
 						dict[path.asSymbol] = info;
 						key !? { dict[key.asSymbol] = info };
@@ -267,9 +265,8 @@ VSTPlugin : MultiOutUGen {
 				cb.free; // got correct /done message, free it!
 				(result.size > 1).if {
 					info = this.prMakeInfo(result[1..]);
-					// store under name and key
+					// store under key
 					dict[info.key] = info;
-					dict[info.name.asSymbol] = info;
 					// also store under resolved path and custom key
 					dict[path.asSymbol] = info;
 					key !? { dict[key.asSymbol] = info };

@@ -130,11 +130,26 @@ static const VSTPluginDesc* findPlugin(const std::string& name) {
 	return nullptr;
 }
 
+// VST2: plug-in name
+// VST3: plug-in name + ".vst3"
+static std::string makeKey(const VSTPluginDesc& desc) {
+    std::string key;
+    auto ext = ".vst3";
+    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
+    if (desc.path.find(ext, onset) != std::string::npos) {
+        key = desc.name + ext;
+    }
+    else {
+        key = desc.name;
+    }
+    return key;
+}
+
 static void addPlugins(const IVSTFactory& factory) {
 	auto plugins = factory.plugins();
 	for (auto& plugin : plugins) {
 		if (plugin->valid()) {
-			pluginDescDict[plugin->name.c_str()] = plugin;
+			pluginDescDict[makeKey(*plugin)] = plugin;
             // LOG_DEBUG("added plugin " << plugin->name);
 		}
 	}
@@ -1892,13 +1907,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 		if (file.is_open()) {
 			LOG_DEBUG("writing plugin info file");
 			for (auto plugin : pluginList) {
-                // if unique, use the path as search key
-                if (plugin->unique()) {
-                    file << plugin->path << "\t";
-                }
-                else {
-                    file << plugin->name << "\t";
-                }
+                file << makeKey(*plugin) << "\t";
 				plugin->serialize(file);
 				file << "\n"; // seperate plugins with newlines
 			}
@@ -1998,13 +2007,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
 			// write to file
 			std::ofstream file(data->reply);
 			if (file.is_open()) {
-                // if unique, use the path as search key
-                if (desc->unique()) {
-                    file << desc->path << "\t";
-                }
-                else {
-                    file << desc->name << "\t";
-                }
+                file << makeKey(*desc) << "\t";
 				desc->serialize(file);
 			}
 			else {
