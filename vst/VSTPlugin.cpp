@@ -592,20 +592,16 @@ std::unique_ptr<IModule> IModule::load(const std::string& path){
 /*///////////////////// IVSTFactory ////////////////////////*/
 
 std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
-	auto dot = path.find_last_of('.');
 #ifdef _WIN32
-	const char *ext = ".dll";
-#elif defined(__linux__)
-	const char *ext = ".so";
+    const char *ext = ".dll";
 #elif defined(__APPLE__)
 	const char *ext = ".vst";
-#else
-	LOG_ERROR("makeVSTPluginFilePath: unknown platform!");
-	return name;
+#else // Linux/BSD/etc.
+    const char *ext = ".so";
 #endif
     try {
         // LOG_DEBUG("IVSTFactory: loading " << path);
-        if (path.find(".vst3", dot) != std::string::npos){
+        if (path.find(".vst3") != std::string::npos){
         #if USE_VST3
             return std::make_unique<VST3Factory>(path);
         #else
@@ -614,7 +610,7 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
         #endif
         } else {
         #if USE_VST2
-            if (path.find(ext, dot) != std::string::npos){
+            if (path.find(ext) != std::string::npos){
                 return std::make_unique<VST2Factory>(path);
             } else {
                 return std::make_unique<VST2Factory>(path + ext);
