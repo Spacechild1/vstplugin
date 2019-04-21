@@ -303,7 +303,7 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                 std::string absPath = dirname + "/" + name;
                 // *first* check the extensions because VST plugins can be files (Linux) or directories (macOS)
                 std::string ext;
-                auto extPos = name.find('.');
+                auto extPos = name.find_last_of('.');
                 if (extPos != std::string::npos) {
                     ext = name.substr(extPos);
                 }
