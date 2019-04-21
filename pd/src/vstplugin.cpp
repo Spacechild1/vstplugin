@@ -193,7 +193,6 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
 
 static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
     int count = 0;
-    x->x_plugins.clear(); // list of plug-in keys
     LOCK
     verbose(PD_NORMAL, "searching in '%s' ...", path.c_str());
     UNLOCK
@@ -715,6 +714,9 @@ static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> 
 
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool async = false;
+    std::vector<std::string> searchPaths;
+    x->x_plugins.clear(); // list of plug-in keys
+
     while (argc && argv->a_type == A_SYMBOL){
         auto flag = argv->a_w.w_symbol->s_name;
         if (*flag == '-'){
@@ -724,7 +726,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         }
         argc--; argv++;
     }
-    std::vector<std::string> searchPaths;
+
     if (argc > 0){
         while (argc--){
             auto sym = atom_getsymbol(argv++);
@@ -739,14 +741,16 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     } else {  // search in the default VST search paths if no user paths were provided
         for (auto& path : getDefaultSearchPaths()){
             if (async){
-                searchPaths.emplace_back(path);
+                searchPaths.emplace_back(path); // save for later
             } else {
                 searchPlugins(path, x);
             }
         }
     }
+
     if (async){
         if (!x->x_thread.joinable()){
+                // spawn thread which does the actual searching in the background
             x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths));
         } else {
             pd_error(x, "%s: already searching!", classname(x));
