@@ -41,15 +41,19 @@ static std::string toHex(T u){
 
 /*---------------------- search/probe ----------------------------*/
 
+static std::mutex gMutex;
+#define LOCK_GUARD std::lock_guard<std::mutex> l(gMutex);
+
 // map paths to plugin factories
 using PluginFactoryDict = std::unordered_map<std::string, std::unique_ptr<IVSTFactory>>;
-static PluginFactoryDict pluginFactoryDict;
+static PluginFactoryDict pluginFactoryDict; // should be made private
 
 // map symbols to plugin descriptions (can have aliases)
 using PluginDescDict = std::unordered_map<std::string, std::shared_ptr<VSTPluginDesc>>;
-static PluginDescDict pluginDescDict;
+static PluginDescDict pluginDescDict; // should be made private
 
 static IVSTFactory * findFactory(const std::string& path){
+    LOCK_GUARD
     auto factory = pluginFactoryDict.find(path);
     if (factory != pluginFactoryDict.end()){
         return factory->second.get();
@@ -58,7 +62,13 @@ static IVSTFactory * findFactory(const std::string& path){
     }
 }
 
+static void addFactory(const std::string& path, std::unique_ptr<IVSTFactory> factory){
+    LOCK_GUARD
+    pluginFactoryDict[path] = std::move(factory);
+}
+
 static const VSTPluginDesc * findPlugin(const std::string& key){
+    LOCK_GUARD
     auto desc = pluginDescDict.find(key);
     if (desc != pluginDescDict.end()){
         return desc->second.get();
@@ -86,7 +96,13 @@ static std::string makeKey(const VSTPluginDesc& desc){
     return key;
 }
 
+static void addPlugin(const std::string& key, std::shared_ptr<VSTPluginDesc> plugin){
+    LOCK_GUARD
+    pluginDescDict[key] = std::move(plugin);
+}
+
 static void addPlugins(const IVSTFactory& factory){
+    LOCK_GUARD
     auto plugins = factory.plugins();
     for (auto& plugin : plugins){
         if (plugin->valid()){
@@ -96,10 +112,16 @@ static void addPlugins(const IVSTFactory& factory){
 }
 
 static void clearPlugins(){
+    LOCK_GUARD
     pluginDescDict.clear();
 }
 
-static IVSTFactory * probePlugin(const std::string& path){
+#undef LOCK_GUARD
+
+#define LOCK if (async) sys_lock();
+#define UNLOCK if (async) sys_unlock();
+
+static IVSTFactory * probePlugin(const std::string& path, bool async = false){
     if (findFactory(path)){
         LOG_WARNING("probePlugin: '" << path << "' already probed!");
         return nullptr;
@@ -119,7 +141,8 @@ static IVSTFactory * probePlugin(const std::string& path){
     factory->probe();
     auto plugins = factory->plugins();
 
-    auto postResult = [](std::stringstream& m, ProbeResult pr){
+    auto postResult = [&](std::stringstream& m, ProbeResult pr){
+        LOCK
         switch (pr){
         case ProbeResult::success:
             m << "ok!";
@@ -141,14 +164,15 @@ static IVSTFactory * probePlugin(const std::string& path){
             bug("probePlugin");
             break;
         }
+        UNLOCK
     };
 
     if (plugins.size() == 1){
         auto& plugin = plugins[0];
         postResult(msg, plugin->probeResult);
         // factories with a single plugin can also be aliased by their file path(s)
-        pluginDescDict[plugins[0]->path] = plugins[0];
-        pluginDescDict[path] = plugins[0];
+        addPlugin(plugins[0]->path, plugins[0]);
+        addPlugin(path, plugins[0]);
     } else {
         verbose(PD_DEBUG, "%s", msg.str().c_str());
         for (auto& plugin : plugins){
@@ -162,13 +186,17 @@ static IVSTFactory * probePlugin(const std::string& path){
         }
     }
     addPlugins(*factory);
-    return (pluginFactoryDict[path] = std::move(factory)).get();
+    auto result = factory.get();
+    addFactory(path, std::move(factory));
+    return result;
 }
 
-static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
+static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
     int count = 0;
-    std::vector<t_symbol *> pluginList; // list of plug-in keys
+    x->x_plugins.clear(); // list of plug-in keys
+    LOCK
     verbose(PD_NORMAL, "searching in '%s' ...", path.c_str());
+    UNLOCK
     vst::search(path, [&](const std::string& absPath, const std::string&){
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
@@ -182,9 +210,11 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
                 if (plugin->valid()){
                     auto& name = plugin->name;
                     auto key = makeKey(*plugin);
+                    LOCK
                     verbose(PD_DEBUG, "%s %s", path.c_str(), name.c_str());
+                    UNLOCK
                     if (x){
-                        pluginList.push_back(gensym(key.c_str()));
+                        x->x_plugins.push_back(gensym(key.c_str()));
                     }
                     count++;
                 }
@@ -194,9 +224,11 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
                     if (plugin->valid()){
                         auto& name = plugin->name;
                         auto key = makeKey(*plugin);
+                        LOCK
                         verbose(PD_DEBUG, "  %s", name.c_str());
+                        UNLOCK
                         if (x){
-                            pluginList.push_back(gensym(key.c_str()));
+                            x->x_plugins.push_back(gensym(key.c_str()));
                         }
                         count++;
                     }
@@ -206,12 +238,12 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
             addPlugins(*factory);
         } else {
             // probe (will post results and add plugins)
-            if ((factory = probePlugin(pluginPath))){
+            if ((factory = probePlugin(pluginPath, true))){
                 for (auto& plugin : factory->plugins()){
                     if (plugin->valid()){
                         if (x){
                             auto key = makeKey(*plugin);
-                            pluginList.push_back(gensym(key.c_str()));
+                            x->x_plugins.push_back(gensym(key.c_str()));
                         }
                         count++;
                     }
@@ -219,23 +251,13 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr){
             }
         }
     });
+    LOCK
     verbose(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
-    if (x){
-        // sort plugin names alphabetically and case independent
-        std::sort(pluginList.begin(), pluginList.end(), [](const auto& lhs, const auto& rhs){
-            std::string s1 = lhs->s_name;
-            std::string s2 = rhs->s_name;
-            for (auto& c : s1) { c = std::tolower(c); }
-            for (auto& c : s2) { c = std::tolower(c); }
-            return strcmp(s1.c_str(), s2.c_str()) < 0;
-        });
-        for (auto& plugin : pluginList){
-            t_atom msg;
-            SETSYMBOL(&msg, plugin);
-            outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
-        }
-    }
+    UNLOCK
 }
+
+#undef LOCK
+#undef UNLOCK
 
 // called by [vstsearch]
 extern "C" {
@@ -660,18 +682,77 @@ static void vstplugin_close(t_vstplugin *x){
 }
 
 // search
+static void vstplugin_search_done(t_vstplugin *x){
+        // for async search:
+    if (x->x_thread.joinable()){
+        x->x_thread.join();
+    }
+    // sort plugin names alphabetically and case independent
+    std::sort(x->x_plugins.begin(), x->x_plugins.end(), [](const auto& lhs, const auto& rhs){
+        std::string s1 = lhs->s_name;
+        std::string s2 = rhs->s_name;
+        for (auto& c : s1) { c = std::tolower(c); }
+        for (auto& c : s2) { c = std::tolower(c); }
+        return strcmp(s1.c_str(), s2.c_str()) < 0;
+    });
+    for (auto& plugin : x->x_plugins){
+        t_atom msg;
+        SETSYMBOL(&msg, plugin);
+        outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
+    }
+    verbose(PD_NORMAL, "search done");
+    outlet_anything(x->x_messout, gensym("search_done"), 0, nullptr);
+}
+
+static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths){
+    for (auto& path : searchPaths){
+        searchPlugins(path, x, true); // async
+    }
+    sys_lock();
+    clock_delay(x->x_clock, 0); // schedules vstplugin_search_done
+    sys_unlock();
+}
+
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    bool async = false;
+    while (argc && argv->a_type == A_SYMBOL){
+        auto flag = argv->a_w.w_symbol->s_name;
+        if (*flag == '-'){
+            if (!strcmp(flag, "-a")){
+                async = true;
+            }
+        }
+        argc--; argv++;
+    }
+    std::vector<std::string> searchPaths;
     if (argc > 0){
         while (argc--){
             auto sym = atom_getsymbol(argv++);
             char path[MAXPDSTRING];
             canvas_makefilename(x->x_canvas, sym->s_name, path, MAXPDSTRING);
-            searchPlugins(path, x);
+            if (async){
+                searchPaths.emplace_back(path);
+            } else {
+                searchPlugins(path, x);
+            }
         }
     } else {  // search in the default VST search paths if no user paths were provided
         for (auto& path : getDefaultSearchPaths()){
-            searchPlugins(path.c_str(), x);
+            if (async){
+                searchPaths.emplace_back(path);
+            } else {
+                searchPlugins(path, x);
+            }
         }
+    }
+    if (async){
+        if (!x->x_thread.joinable()){
+            x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths));
+        } else {
+            pd_error(x, "%s: already searching!", classname(x));
+        }
+    } else {
+        vstplugin_search_done(x);
     }
 }
 
@@ -1520,6 +1601,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_dp = dp;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_unique<t_vsteditor>(*this, gui);
+    x_clock = clock_new(this, (t_method)vstplugin_search_done);
 
         // inlets (skip first):
     for (int i = 1; i < in; ++i){
@@ -1560,6 +1642,10 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 // destructor
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
+    if (x_clock) clock_free(x_clock);
+    if (x_thread.joinable()){
+        x_thread.join();
+    }
     LOG_DEBUG("vstplugin free");
 }
 
