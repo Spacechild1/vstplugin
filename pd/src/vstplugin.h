@@ -1,7 +1,9 @@
 #pragma once
 
 #include "VSTPluginInterface.h"
+#include "VSTPluginManager.h"
 #include "Utility.h"
+
 using namespace vst;
 
 #include "m_pd.h"

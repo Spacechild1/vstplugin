@@ -1,5 +1,4 @@
 #include "VSTPluginUGen.h"
-#include "Utility.h"
 
 #ifdef SUPERNOVA
 #include "spin_lock.hpp"
@@ -59,30 +58,6 @@ int makeReply(char *buf, int size, const char *address, Args&&... args) {
 	return n;
 }
 
-#if 0
-template<typename... Args>
-void sendReply(World *world, void *replyAddr, const char *s, int size) {
-	// "abuse" DoAsynchronousCommand to send a reply string
-	// unfortunately, we can't send OSC messages directly, so I have to assemble a string
-	// (with the arguments seperated by newlines) which is send as the argument for a /done message.
-	// 'cmdName' isn't really copied, so we have to make sure it outlives stage 4.
-	auto data = (char *)RTAlloc(world, size + 1);
-	if (data) {
-		LOG_DEBUG("send reply");
-		memcpy(data, s, size);
-		data[size] = 0;
-		auto deleter = [](World *inWorld, void *cmdData) {
-			LOG_DEBUG("delete reply");
-			RTFree(inWorld, cmdData);
-		};
-		DoAsynchronousCommand(world, replyAddr, data, data, 0, 0, 0, deleter, 0, 0);
-	}
-	else {
-		LOG_ERROR("RTAlloc failed!");
-	}
-}
-#endif
-
 	// format: size, chars...
 int string2floatArray(const std::string& src, float *dest, int maxSize) {
 	int len = std::min<int>(src.size(), maxSize-1);
@@ -104,31 +79,7 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 static std::vector<const VSTPluginDesc *> pluginList;
 static bool isSearching = false;
 
-// map paths to plugin factories
-using PluginFactoryDict = std::unordered_map<std::string, std::unique_ptr<IVSTFactory>>;
-static PluginFactoryDict pluginFactoryDict;
-
-// map symbols to plugin descriptions (can have aliases)
-using PluginDescDict = std::unordered_map<std::string, std::shared_ptr<VSTPluginDesc>>;
-static PluginDescDict pluginDescDict;
-
-static IVSTFactory* findFactory(const std::string& path) {
-	auto factory = pluginFactoryDict.find(path);
-	if (factory != pluginFactoryDict.end()) {
-		return factory->second.get();
-	}
-	else {
-		return nullptr;
-	}
-}
-
-static const VSTPluginDesc* findPlugin(const std::string& name) {
-	auto desc = pluginDescDict.find(name);
-	if (desc != pluginDescDict.end()) {
-		return desc->second.get();
-	}
-	return nullptr;
-}
+static VSTPluginManager manager;
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
@@ -149,18 +100,14 @@ static void addPlugins(const IVSTFactory& factory) {
 	auto plugins = factory.plugins();
 	for (auto& plugin : plugins) {
 		if (plugin->valid()) {
-			pluginDescDict[makeKey(*plugin)] = plugin;
+            manager.addPlugin(makeKey(*plugin), plugin);
             // LOG_DEBUG("added plugin " << plugin->name);
 		}
 	}
 }
 
-static void clearPlugins() {
-	pluginDescDict.clear();
-}
-
 static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
-	if (findFactory(path)) {
+	if (manager.findFactory(path)) {
 		LOG_WARNING("probePlugin: '" << path << "' already probed!");
 		return nullptr;
 	}
@@ -197,10 +144,11 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
 	};
 
 	if (plugins.size() == 1) {
-		if (verbose) postResult(plugins[0]->probeResult);
+        auto& plugin = plugins[0];
+		if (verbose) postResult(plugin->probeResult);
         // factories with a single plugin can also be aliased by their file path(s)
-        pluginDescDict[plugins[0]->path] = plugins[0];
-        pluginDescDict[path] = plugins[0];
+        manager.addPlugin(plugin->path, plugin);
+        manager.addPlugin(path, plugin);
 	}
 	else {
 		Print("\n");
@@ -214,8 +162,10 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
 			if (verbose) postResult(plugin->probeResult);
 		}
 	}
-	addPlugins(*factory);
-	return (pluginFactoryDict[path] = std::move(factory)).get();
+    auto result = factory.get();
+    manager.addFactory(path, std::move(factory));
+    addPlugins(*result);
+    return result;
 }
 
 static bool isAbsolutePath(const std::string& path) {
@@ -253,6 +203,7 @@ static std::string resolvePath(std::string path) {
     return std::string{}; // fail
 }
 
+// query a plugin by its key or file path and probe if necessary.
 static const VSTPluginDesc* queryPlugin(std::string path) {
 #ifdef _WIN32
     for (auto& c : path) {
@@ -260,21 +211,21 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     }
 #endif
     // query plugin
-    auto desc = findPlugin(path);
+    auto desc = manager.findPlugin(path);
     if (!desc) {
         // try as file path 
         path = resolvePath(path);
-        if (!path.empty() && !(desc = findPlugin(path))) {
+        if (!path.empty() && !(desc = manager.findPlugin(path))) {
             // plugin descs might have been removed by 'search_clear'
-            auto factory = findFactory(path);
+            auto factory = manager.findFactory(path);
             if (factory) {
                 addPlugins(*factory);
             }
-            if (!(desc = findPlugin(path))) {
+            if (!(desc = manager.findPlugin(path))) {
                 // finally probe plugin
                 if (probePlugin(path, true)) {
                     // this fails if the module contains several plugins (so the path is not used as a key)
-                    desc = findPlugin(path);
+                    desc = manager.findPlugin(path);
                 }
                 else {
                     LOG_DEBUG("couldn't probe plugin");
@@ -283,7 +234,7 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
         }
     }
     if (!desc) LOG_DEBUG("couldn't query plugin");
-    return desc;
+    return desc.get();
 }
 
 static void searchPlugins(const std::string & path, bool verbose) {
@@ -297,7 +248,7 @@ static void searchPlugins(const std::string & path, bool verbose) {
         }
 #endif
 		// check if module has already been loaded
-		IVSTFactory* factory = findFactory(pluginPath);
+		IVSTFactory* factory = manager.findFactory(pluginPath);
 		if (factory) {
 			// just post names of valid plugins
 			auto plugins = factory->plugins();
@@ -2012,7 +1963,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
     if (!isSearching) {
         DoAsynchronousCommand(inWorld, 0, 0, 0, [](World*, void*) {
-            clearPlugins();
+            manager.clearPlugins();
             return false;
         }, 0, 0, cmdRTfree, 0, 0);
     }
@@ -2113,7 +2064,7 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 // query plugin parameter info
 bool cmdQueryParam(World *inWorld, void *cmdData) {
 	auto data = (QueryCmdData *)cmdData;
-	auto desc = findPlugin(data->buf);
+	auto desc = manager.findPlugin(data->buf);
 	if (desc) {
 		auto& params = desc->parameters;
 		auto reply = data->reply;
@@ -2163,7 +2114,7 @@ void vst_query_param(World *inWorld, void* inUserData, struct sc_msg_iter *args,
 // query plugin default program info
 bool cmdQueryProgram(World *inWorld, void *cmdData) {
 	auto data = (QueryCmdData *)cmdData;
-    auto desc = findPlugin(data->buf);
+    auto desc = manager.findPlugin(data->buf);
 	if (desc) {
 		auto& programs = desc->programs;
 		auto reply = data->reply;

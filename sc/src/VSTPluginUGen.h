@@ -2,6 +2,9 @@
 
 #include "SC_PlugIn.hpp"
 #include "VSTPluginInterface.h"
+#include "VSTPluginManager.h"
+#include "Utility.h"
+
 using namespace vst;
 
 #ifndef VSTTHREADS

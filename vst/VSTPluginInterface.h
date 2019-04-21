@@ -222,6 +222,8 @@ struct VSTPluginDesc {
     IVSTFactory * factory_ = nullptr;
 };
 
+using VSTPluginDescPtr = std::shared_ptr<VSTPluginDesc>;
+
 class IModule {
  public:
     static std::unique_ptr<IModule> load(const std::string& path);
@@ -250,6 +252,8 @@ class IVSTFactory {
     // create a new plugin instance
     virtual std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const = 0;
 };
+
+using IVSTFactoryPtr = std::unique_ptr<IVSTFactory>;
 
 class VSTError : public std::exception {
  public:
