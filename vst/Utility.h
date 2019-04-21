@@ -53,3 +53,14 @@
 #else
 #define LOG_DEBUG(x)
 #endif
+
+namespace vst {
+
+#ifdef _WIN32
+std::wstring widen(const std::string& s);
+std::string shorten(const std::wstring& s);
+#endif
+
+std::string expandPath(const char *path);
+
+} // vst

@@ -16,7 +16,6 @@
 #ifdef _WIN32
 # include <Windows.h>
 # include <process.h>
-#include <io.h>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #else 
@@ -64,28 +63,6 @@ std::string shorten(const std::wstring& s){
     return buf;
 }
 
-std::string expandPath(const char *path) {
-    char buf[MAX_PATH];
-    ExpandEnvironmentStringsA(path, buf, MAX_PATH);
-    return buf;
-}
-#else
-#define widen(x) x
-#define shorten(x) x
-
-std::string expandPath(const char *path) {
-    // expand ~ to home directory
-    if (path && *path == '~') {
-        const char *home = getenv("HOME");
-        if (home) {
-            return std::string(home) + std::string(path + 1);
-        }
-    }
-    return path;
-}
-#endif
-
-#if _WIN32
 static HINSTANCE hInstance = 0;
 
 static std::wstring getDirectory(){
@@ -115,6 +92,23 @@ extern "C" {
         }
         return TRUE;
     }
+}
+
+std::string expandPath(const char *path) {
+    char buf[MAX_PATH];
+    ExpandEnvironmentStringsA(path, buf, MAX_PATH);
+    return buf;
+}
+#else
+std::string expandPath(const char *path) {
+    // expand ~ to home directory
+    if (path && *path == '~') {
+        const char *home = getenv("HOME");
+        if (home) {
+            return std::string(home) + std::string(path + 1);
+        }
+    }
+    return path;
 }
 #endif
 

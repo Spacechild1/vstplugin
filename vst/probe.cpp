@@ -2,13 +2,11 @@
 #include "Utility.h"
 #include <stdlib.h>
 
+using namespace vst;
+
 #ifdef _WIN32
 #define MAIN wmain
 #define CHAR wchar_t
-namespace vst {
-	std::string shorten(const std::wstring&);
-}
-#define shorten(x) vst::shorten(x)
 #else
 #define MAIN main
 #define CHAR char
@@ -23,7 +21,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 		const CHAR *pluginName = argv[2];
 		const CHAR *filePath = argc > 3 ? argv[3] : nullptr;
         /// LOG_DEBUG("probe: pluginPath '" << pluginPath << "', pluginName, '" << pluginName);
-		auto factory = vst::IVSTFactory::load(shorten(pluginPath));
+        auto factory = vst::IVSTFactory::load(shorten(pluginPath));
 		if (factory) {
             /// LOG_DEBUG("create plugin");
             auto plugin = factory->create(shorten(pluginName), true);
@@ -38,7 +36,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 					if (file.is_open()) {
 						desc.serialize(file);
 						/// LOG_DEBUG("info written");
-					}
+                    }
 				}
 				/// LOG_DEBUG("probe success");
 				return EXIT_SUCCESS;
