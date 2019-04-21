@@ -180,7 +180,7 @@ static bool isDirectory(dirent *entry){
     }
 #ifdef _DIRENT_HAVE_D_TYPE
     // some filesystems don't support d_type, also we want to follow symlinks
-    if (entry->d_type != DT_UNKNOWN && d_type != DT_LNK){
+    if (entry->d_type != DT_UNKNOWN && entry->d_type != DT_LNK){
         return (entry->d_type == DT_DIR);
     } else
 #endif
@@ -189,8 +189,8 @@ static bool isDirectory(dirent *entry){
         if (stat(entry->d_name, &stbuf) == 0){
             return S_ISDIR(stbuf.st_mode);
         }
-        return false;
     }
+    return false;
 }
 #endif
 
