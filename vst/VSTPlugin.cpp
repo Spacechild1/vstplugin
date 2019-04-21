@@ -171,6 +171,29 @@ const std::vector<std::string>& getDefaultSearchPaths() {
     return realDefaultSearchPaths;
 }
 
+#ifndef _WIN32
+// helper function
+static bool isDirectory(dirent *entry){
+    // we don't count "." and ".."
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0){
+        return false;
+    }
+#ifdef _DIRENT_HAVE_D_TYPE
+    // some filesystems don't support d_type, also we want to follow symlinks
+    if (entry->d_type != DT_UNKNOWN && d_type != DT_LNK){
+        return (entry->d_type == DT_DIR);
+    } else
+#endif
+    {
+        struct stat stbuf;
+        if (stat(entry->d_name, &stbuf) == 0){
+            return S_ISDIR(stbuf.st_mode);
+        }
+        return false;
+    }
+}
+#endif
+
 // recursively search for a VST plugin in a directory. returns empty string on failure.
 std::string search(const std::string &dir, const std::string &path){
     std::string relpath = path;
@@ -222,17 +245,15 @@ std::string search(const std::string &dir, const std::string &path){
         struct dirent *entry;
         if (directory){
             while (result.empty() && (entry = readdir(directory))){
-                if (entry->d_type == DT_DIR){
-                    if (strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0){
-                        std::string d = dirname + "/" + entry->d_name;
-                        std::string absPath = d + "/" + relpath;
-                        if (isFile(absPath)){
-                            result = absPath;
-                            break;
-                        } else {
-                            // dive into the direcotry
-                            searchDir(d);
-                        }
+                if (isDirectory(entry)){
+                    std::string d = dirname + "/" + entry->d_name;
+                    std::string absPath = d + "/" + relpath;
+                    if (isFile(absPath)){
+                        result = absPath;
+                        break;
+                    } else {
+                        // dive into the direcotry
+                        searchDir(d);
                     }
                 }
             }
@@ -290,10 +311,8 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                     fn(absPath, name);
                 }
                 // otherwise search it if it's a directory
-                else if (entry->d_type == DT_DIR) {
-                    if (strcmp(name.c_str(), ".") != 0 && strcmp(name.c_str(), "..") != 0) {
-                        searchDir(absPath);
-                    }
+                else if (isDirectory(entry)) {
+                    searchDir(absPath);
                 }
                 free(entry);
             }
