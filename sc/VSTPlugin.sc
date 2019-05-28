@@ -184,7 +184,7 @@ VSTPlugin : MultiOutUGen {
 							});
 						}
 					}
-				}, '/done');
+				}, '/done', server.addr);
 				{
 					num.do { arg index;
 						server.sendMsg('/cmd', '/vst_query', index);
@@ -193,7 +193,7 @@ VSTPlugin : MultiOutUGen {
 					}
 				}.forkIfNeeded;
 			};
-		}, '/done');
+		}, '/done', server.addr);
 		server.sendMsg('/cmd', '/vst_search', flags, *searchPaths);
 	}
 	*prParseInfo { arg string;
@@ -277,7 +277,7 @@ VSTPlugin : MultiOutUGen {
 					this.prQueryPlugin(server, info.key, wait, { action.value(info) });
 				} { action.value };
 			};
-		}, '/done');
+		}, '/done', server.addr);
 		server.sendMsg('/cmd', '/vst_query', path);
 	}
 	*prQueryPlugins { arg server, wait, update, action;
@@ -339,7 +339,7 @@ VSTPlugin : MultiOutUGen {
 				// exit condition
 				(count == num).if { fn.free; action.value };
 			};
-		}, '/done');
+		}, '/done', server.addr);
 		this.prQuery(server, key, wait, num, '/vst_query_param');
 	}
 	*prQueryPrograms { arg server, key, wait, action;
@@ -366,7 +366,7 @@ VSTPlugin : MultiOutUGen {
 				// exit condition
 				(count == num).if { fn.free; action.value };
 			};
-		}, '/done');
+		}, '/done', server.addr);
 		this.prQuery(server, key, wait, num, '/vst_query_program');
 	}
 	*prQuery { arg server, key, wait, num, cmd;
