@@ -1,7 +1,7 @@
 TITLE:: VSTPluginController
 summary:: Client-side representation of a VSTPlugin UGen instance
 categories:: Server>Abstractions
-related:: Classes/VSTPlugin, Classes/VSTPluginGui, Classes/VSTPluginMIDIProxy
+related:: Classes/VSTPlugin, Classes/VSTPluginGui, Classes/VSTPluginMIDIProxy, Guides/HOA_IEM
 
 DESCRIPTION::
 
