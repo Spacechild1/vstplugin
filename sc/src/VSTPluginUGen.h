@@ -28,146 +28,146 @@ using VSTPluginMap = std::unordered_map<std::string, VSTPluginDesc>;
 class VSTPlugin;
 
 struct VSTPluginCmdData {
-	void tryOpen();
-	void close();
-	// data
-	VSTPlugin *owner;
-	std::shared_ptr<IVSTPlugin> plugin;
-	std::shared_ptr<IVSTWindow> window;
-	std::thread::id threadID;
+    void tryOpen();
+    void close();
+    // data
+    VSTPlugin *owner;
+    std::shared_ptr<IVSTPlugin> plugin;
+    std::shared_ptr<IVSTWindow> window;
+    std::thread::id threadID;
 #if VSTTHREADS
-	std::thread thread;
+    std::thread thread;
 #endif
-	// generic int value
-	int value = 0;
-	// flexible array for RT memory
-	int size = 0;
-	char buf[1];
+    // generic int value
+    int value = 0;
+    // flexible array for RT memory
+    int size = 0;
+    char buf[1];
 };
 
 struct ParamCmdData {
-	VSTPlugin *owner;
-	int index;
-	float value;
-	// flexible array
-	char display[1];
+    VSTPlugin *owner;
+    int index;
+    float value;
+    // flexible array
+    char display[1];
 };
 
 struct VendorCmdData {
-	VSTPlugin *owner;
-	int32 index;
-	int32 value;
-	float opt;
-	size_t size;
-	char data[1];
+    VSTPlugin *owner;
+    int32 index;
+    int32 value;
+    float opt;
+    size_t size;
+    char data[1];
 };
 
 struct QueryCmdData {
-	char reply[1600];
-	int value;
-	int index;
-	// flexible array
-	char buf[1];
+    char reply[1600];
+    int value;
+    int index;
+    // flexible array
+    char buf[1];
 };
 
 class VSTPluginListener : public IVSTPluginListener {
 public:
-	VSTPluginListener(VSTPlugin& owner);
-	void parameterAutomated(int index, float value) override;
-	void midiEvent(const VSTMidiEvent& midi) override;
-	void sysexEvent(const VSTSysexEvent& sysex) override;
+    VSTPluginListener(VSTPlugin& owner);
+    void parameterAutomated(int index, float value) override;
+    void midiEvent(const VSTMidiEvent& midi) override;
+    void sysexEvent(const VSTSysexEvent& sysex) override;
 private:
-	VSTPlugin *owner_ = nullptr;
+    VSTPlugin *owner_ = nullptr;
 };
 
 class VSTPlugin : public SCUnit {
-	friend class VSTPluginListener;
-	friend struct VSTPluginCmdData;
-	static const uint32 MagicInitialized = 0x5da815bc;
+    friend class VSTPluginListener;
+    friend struct VSTPluginCmdData;
+    static const uint32 MagicInitialized = 0x5da815bc;
     static const uint32 MagicQueued = 0x5da815bd;
 public:
-	VSTPlugin();
-	~VSTPlugin();
-	IVSTPlugin *plugin();
-	bool check();
-	bool initialized();
+    VSTPlugin();
+    ~VSTPlugin();
+    IVSTPlugin *plugin();
+    bool check();
+    bool initialized();
     void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
     void runUnitCmds();
 
     void open(const char *path, bool gui);
-	void doneOpen(VSTPluginCmdData& msg);
-	void close();
-	void showEditor(bool show);
-	void reset(bool async = false);
-	void next(int inNumSamples);
-	int numInChannels() const { return numInChannels_; }
-	int numOutChannels() const { return numOutChannels_;  }
-	// param
-	void setParam(int32 index, float value);
-	void setParam(int32 index, const char* display);
-	void setParamDone(int32 index);
-	void queryParams(int32 index, int32 count);
-	void getParam(int32 index);
-	void getParams(int32 index, int32 count);
-	void mapParam(int32 index, int32 bus);
-	void unmapParam(int32 index);
-	// program/bank
-	void setProgram(int32 index);
-	void setProgramName(const char *name);
-	void queryPrograms(int32 index, int32 count);
-	void readProgram(const char *path);
-	void readBank(const char *path);
-	void sendProgramData(int32 totalSize, int32 onset, const char *data, int32 n) {
-		sendData(totalSize, onset, data, n, false);
-	}
-	void sendBankData(int32 totalSize, int32 onset, const char *data, int32 n) {
-		sendData(totalSize, onset, data, n, true);
-	}
-	void writeProgram(const char *path);
-	void writeBank(const char *path);
-	void receiveProgramData(int count);
-	void receiveBankData(int count);
-	// midi
-	void sendMidiMsg(int32 status, int32 data1, int32 data2);
-	void sendSysexMsg(const char *data, int32 n);
-	// transport
-	void setTempo(float bpm);
-	void setTimeSig(int32 num, int32 denom);
-	void setTransportPlaying(bool play);
-	void setTransportPos(float pos);
-	void getTransportPos();
-	// advanced
-	void canDo(const char *what);
-	void vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async);
-	// node reply
-	void sendMsg(const char *cmd, float f);
-	void sendMsg(const char *cmd, int n, const float *data);
-	struct Param {
-		float value;
-		int32 bus;
+    void doneOpen(VSTPluginCmdData& msg);
+    void close();
+    void showEditor(bool show);
+    void reset(bool async = false);
+    void next(int inNumSamples);
+    int numInChannels() const { return numInChannels_; }
+    int numOutChannels() const { return numOutChannels_;  }
+    // param
+    void setParam(int32 index, float value);
+    void setParam(int32 index, const char* display);
+    void setParamDone(int32 index);
+    void queryParams(int32 index, int32 count);
+    void getParam(int32 index);
+    void getParams(int32 index, int32 count);
+    void mapParam(int32 index, int32 bus);
+    void unmapParam(int32 index);
+    // program/bank
+    void setProgram(int32 index);
+    void setProgramName(const char *name);
+    void queryPrograms(int32 index, int32 count);
+    void readProgram(const char *path);
+    void readBank(const char *path);
+    void sendProgramData(int32 totalSize, int32 onset, const char *data, int32 n) {
+        sendData(totalSize, onset, data, n, false);
+    }
+    void sendBankData(int32 totalSize, int32 onset, const char *data, int32 n) {
+        sendData(totalSize, onset, data, n, true);
+    }
+    void writeProgram(const char *path);
+    void writeBank(const char *path);
+    void receiveProgramData(int count);
+    void receiveBankData(int count);
+    // midi
+    void sendMidiMsg(int32 status, int32 data1, int32 data2);
+    void sendSysexMsg(const char *data, int32 n);
+    // transport
+    void setTempo(float bpm);
+    void setTimeSig(int32 num, int32 denom);
+    void setTransportPlaying(bool play);
+    void setTransportPos(float pos);
+    void getTransportPos();
+    // advanced
+    void canDo(const char *what);
+    void vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async);
+    // node reply
+    void sendMsg(const char *cmd, float f);
+    void sendMsg(const char *cmd, int n, const float *data);
+    struct Param {
+        float value;
+        int32 bus;
     };
     // helper methods
     float readControlBus(int32 num);
     void resizeBuffer();
-	bool sendProgramName(int32 num); // unchecked
-	void sendCurrentProgramName();
-	void sendParameter(int32 index); // unchecked
-	void parameterAutomated(int32 index, float value);
-	void midiEvent(const VSTMidiEvent& midi);
-	void sysexEvent(const VSTSysexEvent& sysex);
-	void sendData(int32 totalSize, int32 onset, const char *data, int32 n, bool bank);
-	// for asynchronous commands
+    bool sendProgramName(int32 num); // unchecked
+    void sendCurrentProgramName();
+    void sendParameter(int32 index); // unchecked
+    void parameterAutomated(int32 index, float value);
+    void midiEvent(const VSTMidiEvent& midi);
+    void sysexEvent(const VSTSysexEvent& sysex);
+    void sendData(int32 totalSize, int32 onset, const char *data, int32 n, bool bank);
+    // for asynchronous commands
     VSTPluginCmdData* makeCmdData(const char *s);
-	VSTPluginCmdData* makeCmdData(const char *data, size_t size);
-	VSTPluginCmdData* makeCmdData(size_t size);
-	VSTPluginCmdData* makeCmdData();
-	template<typename T>
-	void doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt=nullptr);
-	static bool cmdGetData(World *world, void *cmdData, bool bank);
-	static bool cmdGetDataDone(World *world, void *cmdData, bool bank);
+    VSTPluginCmdData* makeCmdData(const char *data, size_t size);
+    VSTPluginCmdData* makeCmdData(size_t size);
+    VSTPluginCmdData* makeCmdData();
+    template<typename T>
+    void doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt=nullptr);
+    static bool cmdGetData(World *world, void *cmdData, bool bank);
+    static bool cmdGetDataDone(World *world, void *cmdData, bool bank);
 private:
-	// data members
-	uint32 initialized_ = MagicInitialized; // set by constructor
+    // data members
+    uint32 initialized_ = MagicInitialized; // set by constructor
     uint32 queued_; // set to MagicQueued when queuing unit commands
     struct UnitCmdQueueItem {
         UnitCmdQueueItem *next;
@@ -177,38 +177,38 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_;
 
-	std::shared_ptr<IVSTPlugin> plugin_ = nullptr;
-	bool isLoading_ = false;
-	bool bypass_ = false;
-	std::shared_ptr<IVSTWindow> window_;
-	std::unique_ptr<VSTPluginListener> listener_;
+    std::shared_ptr<IVSTPlugin> plugin_ = nullptr;
+    bool isLoading_ = false;
+    bool bypass_ = false;
+    std::shared_ptr<IVSTWindow> window_;
+    std::unique_ptr<VSTPluginListener> listener_;
 
     float *buf_ = nullptr;
     int numInChannels_ = 0;
-	static const int inChannelOnset_ = 2;
-	const float **inBufVec_ = nullptr;
+    static const int inChannelOnset_ = 2;
+    const float **inBufVec_ = nullptr;
     int numOutChannels_ = 0;
-	float **outBufVec_ = nullptr;
+    float **outBufVec_ = nullptr;
     Param *paramStates_ = nullptr;
-	int numParameterControls_ = 0;
-	int parameterControlOnset_ = 0;
+    int numParameterControls_ = 0;
+    int parameterControlOnset_ = 0;
 
     // threading
 #if VSTTHREADS
     std::thread thread_;
     std::mutex mutex_;
-	std::vector<std::pair<int, float>> paramQueue_;
+    std::vector<std::pair<int, float>> paramQueue_;
 #endif
-	std::thread::id rtThreadID_;
-	std::thread::id nrtThreadID_;
+    std::thread::id rtThreadID_;
+    std::thread::id nrtThreadID_;
 
-	// send program/bank data
-	std::string dataNRT_;
-	int32 dataSent_ = 0;
-	// receive program/bank data
-	char *dataRT_ = nullptr;
-	int32 dataSize_ = 0;
-	int32 dataReceived_ = 0;
+    // send program/bank data
+    std::string dataNRT_;
+    int32 dataSent_ = 0;
+    // receive program/bank data
+    char *dataRT_ = nullptr;
+    int32 dataSize_ = 0;
+    int32 dataReceived_ = 0;
 };
 
 
