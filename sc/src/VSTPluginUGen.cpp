@@ -2181,18 +2181,20 @@ void VSTPlugin_Dtor(VSTPlugin* unit){
     unit->~VSTPlugin();
 }
 
+using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
+
 // trampoline to catch and queue unit commands before the constructor has run
-template<UnitCmdFunc fn>
-void runUnitCmd(Unit* unit, sc_msg_iter* args) {
-    if (static_cast<VSTPlugin *>(unit)->initialized()) {
+template<VSTUnitCmdFunc fn>
+void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
+    if (unit->initialized()) {
         fn(unit, args);
     } else {
         new(unit)VSTPlugin();
-        static_cast<VSTPlugin *>(unit)->queueUnitCmd(fn, args);
+        unit->queueUnitCmd((UnitCmdFunc)fn, args);
     }
 }
 
-#define UnitCmd(x) DefineUnitCmd("VSTPlugin", "/" #x, runUnitCmd<(UnitCmdFunc)vst_##x>)
+#define UnitCmd(x) DefineUnitCmd("VSTPlugin", "/" #x, (UnitCmdFunc)runUnitCmd<vst_##x>)
 #define PluginCmd(x) DefinePlugInCmd("/" #x, x, 0)
 
 PluginLoad(VSTPlugin) {
