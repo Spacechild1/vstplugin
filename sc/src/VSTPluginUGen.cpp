@@ -1498,42 +1498,41 @@ void VSTPlugin::doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt) {
 
 /*** unit command callbacks ***/
 
-#define CAST_UNIT (static_cast<VSTPlugin*>(unit))
-#define CHECK_UNIT {if (!CAST_UNIT->valid()) return; }
+#define CHECK_UNIT {if (!unit->valid()) return; }
 
-void vst_open(Unit *unit, sc_msg_iter *args) {
+void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char *path = args->gets();
 	auto gui = args->geti();
 	if (path) {
-        CAST_UNIT->open(path, gui);
+        unit->open(path, gui);
 	}
 	else {
 		LOG_WARNING("vst_open: expecting string argument!");
 	}
 }
 
-void vst_close(Unit *unit, sc_msg_iter *args) {
+void vst_close(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	CAST_UNIT->close();
+	unit->close();
 }
 
-void vst_reset(Unit *unit, sc_msg_iter *args) {
+void vst_reset(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	bool async = args->geti();
-	CAST_UNIT->reset(async);
+	unit->reset(async);
 }
 
-void vst_vis(Unit *unit, sc_msg_iter *args) {
+void vst_vis(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	bool show = args->geti();
-	CAST_UNIT->showEditor(show);
+	unit->showEditor(show);
 }
 
 // set parameters given as pairs of index and value
-void vst_set(Unit *unit, sc_msg_iter *args) {
+void vst_set(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	auto vst = CAST_UNIT;
+	auto vst = unit;
 	if (vst->check()) {
 		while (args->remain() > 0) {
 			int32 index = args->geti();
@@ -1548,9 +1547,9 @@ void vst_set(Unit *unit, sc_msg_iter *args) {
 }
 
 // set parameters given as triples of index, count and values
-void vst_setn(Unit *unit, sc_msg_iter *args) {
+void vst_setn(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	auto vst = CAST_UNIT;
+	auto vst = unit;
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
 		while (args->remain() > 0) {
@@ -1569,32 +1568,32 @@ void vst_setn(Unit *unit, sc_msg_iter *args) {
 }
 
 // query parameters starting from index (values + displays)
-void vst_param_query(Unit *unit, sc_msg_iter *args) {
+void vst_param_query(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 index = args->geti();
 	int32 count = args->geti();
-	CAST_UNIT->queryParams(index, count);
+	unit->queryParams(index, count);
 }
 
 // get a single parameter at index (only value)
-void vst_get(Unit *unit, sc_msg_iter *args) {
+void vst_get(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 index = args->geti(-1);
-	CAST_UNIT->getParam(index);
+	unit->getParam(index);
 }
 
 // get a number of parameters starting from index (only values)
-void vst_getn(Unit *unit, sc_msg_iter *args) {
+void vst_getn(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 index = args->geti();
 	int32 count = args->geti();
-	CAST_UNIT->getParams(index, count);
+	unit->getParams(index, count);
 }
 
 // map parameters to control busses
-void vst_map(Unit *unit, sc_msg_iter *args) {
+void vst_map(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	auto vst = CAST_UNIT;
+	auto vst = unit;
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
 		while (args->remain() > 0) {
@@ -1612,9 +1611,9 @@ void vst_map(Unit *unit, sc_msg_iter *args) {
 }
 
 // unmap parameters from control busses
-void vst_unmap(Unit *unit, sc_msg_iter *args) {
+void vst_unmap(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	auto vst = CAST_UNIT;
+	auto vst = unit;
 	if (vst->check()) {
 		int nparam = vst->plugin()->getNumParameters();
 		if (args->remain() > 0) {
@@ -1635,54 +1634,54 @@ void vst_unmap(Unit *unit, sc_msg_iter *args) {
 	}
 }
 
-void vst_program_set(Unit *unit, sc_msg_iter *args) {
+void vst_program_set(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 index = args->geti();
-	CAST_UNIT->setProgram(index);
+	unit->setProgram(index);
 }
 
 // query parameters (values + displays) starting from index
-void vst_program_query(Unit *unit, sc_msg_iter *args) {
+void vst_program_query(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 index = args->geti();
 	int32 count = args->geti();
-	CAST_UNIT->queryPrograms(index, count);
+	unit->queryPrograms(index, count);
 }
 
-void vst_program_name(Unit *unit, sc_msg_iter *args) {
+void vst_program_name(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char *name = args->gets();
 	if (name) {
-		CAST_UNIT->setProgramName(name);
+		unit->setProgramName(name);
 	}
 	else {
 		LOG_WARNING("vst_program_name: expecting string argument!");
 	}
 }
 
-void vst_program_read(Unit *unit, sc_msg_iter *args) {
+void vst_program_read(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char *path = args->gets();
 	if (path) {
-		CAST_UNIT->readProgram(path);
+		unit->readProgram(path);
 	}
 	else {
 		LOG_WARNING("vst_program_read: expecting string argument!");
 	}
 }
 
-void vst_program_write(Unit *unit, sc_msg_iter *args) {
+void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char *path = args->gets();
 	if (path) {
-		CAST_UNIT->writeProgram(path);
+		unit->writeProgram(path);
 	}
 	else {
 		LOG_WARNING("vst_program_write: expecting string argument!");
 	}
 }
 
-void vst_program_data_set(Unit *unit, sc_msg_iter *args) {
+void vst_program_data_set(VSTPlugin *unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int totalSize = args->geti();
 	int onset = args->geti();
@@ -1692,7 +1691,7 @@ void vst_program_data_set(Unit *unit, sc_msg_iter *args) {
 		char *buf = (char *)RTAlloc(unit->mWorld, len);
 		if (buf) {
 			args->getb(buf, len);
-			CAST_UNIT->sendProgramData(totalSize, onset, buf, len);
+			unit->sendProgramData(totalSize, onset, buf, len);
 			RTFree(unit->mWorld, buf);
 		}
 		else {
@@ -1704,35 +1703,35 @@ void vst_program_data_set(Unit *unit, sc_msg_iter *args) {
 	}
 }
 
-void vst_program_data_get(Unit *unit, sc_msg_iter *args) {
+void vst_program_data_get(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int count = args->geti();
-	CAST_UNIT->receiveProgramData(count);
+	unit->receiveProgramData(count);
 }
 
-void vst_bank_read(Unit *unit, sc_msg_iter *args) {
+void vst_bank_read(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char *path = args->gets();
 	if (path) {
-		CAST_UNIT->readBank(path);
+		unit->readBank(path);
 	}
 	else {
 		LOG_WARNING("vst_bank_read: expecting string argument!");
 	}
 }
 
-void vst_bank_write(Unit *unit, sc_msg_iter *args) {
+void vst_bank_write(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char *path = args->gets();
 	if (path) {
-		CAST_UNIT->writeBank(path);
+		unit->writeBank(path);
 	}
 	else {
 		LOG_WARNING("vst_bank_write: expecting string argument!");
 	}
 }
 
-void vst_bank_data_set(Unit *unit, sc_msg_iter *args) {
+void vst_bank_data_set(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int totalSize = args->geti();
 	int onset = args->geti();
@@ -1742,7 +1741,7 @@ void vst_bank_data_set(Unit *unit, sc_msg_iter *args) {
 		char *buf = (char *)RTAlloc(unit->mWorld, len);
 		if (buf) {
 			args->getb(buf, len);
-			CAST_UNIT->sendBankData(totalSize, onset, buf, len);
+			unit->sendBankData(totalSize, onset, buf, len);
 			RTFree(unit->mWorld, buf);
 		}
 		else {
@@ -1754,14 +1753,14 @@ void vst_bank_data_set(Unit *unit, sc_msg_iter *args) {
 	}
 }
 
-void vst_bank_data_get(Unit *unit, sc_msg_iter *args) {
+void vst_bank_data_get(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int count = args->geti();
-	CAST_UNIT->receiveBankData(count);
+	unit->receiveBankData(count);
 }
 
 
-void vst_midi_msg(Unit *unit, sc_msg_iter *args) {
+void vst_midi_msg(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	char data[4];
 	int32 len = args->getbsize();
@@ -1769,10 +1768,10 @@ void vst_midi_msg(Unit *unit, sc_msg_iter *args) {
 		LOG_WARNING("vst_midi_msg: midi message too long (" << len << " bytes)");
 	}
 	args->getb(data, len);
-	CAST_UNIT->sendMidiMsg(data[0], data[1], data[2]);
+	unit->sendMidiMsg(data[0], data[1], data[2]);
 }
 
-void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
+void vst_midi_sysex(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int len = args->getbsize();
 	if (len > 0) {
@@ -1780,7 +1779,7 @@ void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
 		char *buf = (char *)RTAlloc(unit->mWorld, len);
 		if (buf) {
 			args->getb(buf, len);
-			CAST_UNIT->sendSysexMsg(buf, len);
+			unit->sendSysexMsg(buf, len);
 			RTFree(unit->mWorld, buf);
 		}
 		else {
@@ -1792,45 +1791,45 @@ void vst_midi_sysex(Unit *unit, sc_msg_iter *args) {
 	}
 }
 
-void vst_tempo(Unit *unit, sc_msg_iter *args) {
+void vst_tempo(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	float bpm = args->getf();
-	CAST_UNIT->setTempo(bpm);
+	unit->setTempo(bpm);
 }
 
-void vst_time_sig(Unit *unit, sc_msg_iter *args) {
+void vst_time_sig(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 num = args->geti();
 	int32 denom = args->geti();
-	CAST_UNIT->setTimeSig(num, denom);
+	unit->setTimeSig(num, denom);
 }
 
-void vst_transport_play(Unit *unit, sc_msg_iter *args) {
+void vst_transport_play(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int play = args->geti();
-	CAST_UNIT->setTransportPlaying(play);
+	unit->setTransportPlaying(play);
 }
 
-void vst_transport_set(Unit *unit, sc_msg_iter *args) {
+void vst_transport_set(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	float pos = args->getf();
-	CAST_UNIT->setTransportPos(pos);
+	unit->setTransportPos(pos);
 }
 
-void vst_transport_get(Unit *unit, sc_msg_iter *args) {
+void vst_transport_get(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
-	CAST_UNIT->getTransportPos();
+	unit->getTransportPos();
 }
 
-void vst_can_do(Unit *unit, sc_msg_iter *args) {
+void vst_can_do(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	const char* what = args->gets();
 	if (what) {
-		CAST_UNIT->canDo(what);
+		unit->canDo(what);
 	}
 }
 
-void vst_vendor_method(Unit *unit, sc_msg_iter *args) {
+void vst_vendor_method(VSTPlugin*unit, sc_msg_iter *args) {
 	CHECK_UNIT;
 	int32 index = args->geti();
 	int32 value = args->geti(); // sc_msg_iter doesn't support 64bit ints...
@@ -1848,7 +1847,7 @@ void vst_vendor_method(Unit *unit, sc_msg_iter *args) {
 	}
 	float opt = args->getf();
 	bool async = args->geti();
-	CAST_UNIT->vendorSpecific(index, value, size, data, opt, async);
+	unit->vendorSpecific(index, value, size, data, opt, async);
 	if (data) {
 		RTFree(unit->mWorld, data);
 	}
@@ -2168,7 +2167,7 @@ void VSTPlugin_Dtor(VSTPlugin* unit){
 	unit->~VSTPlugin();
 }
 
-#define UnitCmd(x) DefineUnitCmd("VSTPlugin", "/" #x, vst_##x)
+#define UnitCmd(x) DefineUnitCmd("VSTPlugin", "/" #x, (UnitCmdFunc)vst_##x)
 #define PluginCmd(x) DefinePlugInCmd("/" #x, x, 0)
 
 PluginLoad(VSTPlugin) {
