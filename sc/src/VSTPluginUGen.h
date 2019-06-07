@@ -83,13 +83,17 @@ private:
 class VSTPlugin : public SCUnit {
 	friend class VSTPluginListener;
 	friend struct VSTPluginCmdData;
-	static const uint32 MagicNumber = 0x5da815bc;
+	static const uint32 MagicInitialized = 0x5da815bc;
+    static const uint32 MagicQueued = 0x5da815bd;
 public:
 	VSTPlugin();
 	~VSTPlugin();
 	IVSTPlugin *plugin();
 	bool check();
-	bool valid();
+	bool initialized();
+    void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
+    void runUnitCmds();
+
     void open(const char *path, bool gui);
 	void doneOpen(VSTPluginCmdData& msg);
 	void close();
@@ -163,7 +167,16 @@ public:
 	static bool cmdGetDataDone(World *world, void *cmdData, bool bank);
 private:
 	// data members
-	uint32 magic_ = MagicNumber;
+	uint32 initialized_ = MagicInitialized; // set by constructor
+    uint32 queued_; // set to MagicQueued when queuing unit commands
+    struct UnitCmdQueueItem {
+        UnitCmdQueueItem *next;
+        UnitCmdFunc fn;
+        int32 size;
+        char data[1];
+    };
+    UnitCmdQueueItem *unitCmdQueue_;
+
 	std::shared_ptr<IVSTPlugin> plugin_ = nullptr;
 	bool isLoading_ = false;
 	bool bypass_ = false;
