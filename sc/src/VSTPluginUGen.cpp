@@ -402,16 +402,7 @@ bool VSTPlugin::initialized() {
 }
 
 // Terrible hack to enable sending unit commands right after /s_new
-// although the UGen constructor hasn't been called yet.
-
-// In RT synthesis this is most useful for opening plugins right after
-// Synth creation, e.g.: VSTPluginController(Synth(\test)).open("some_plugin");
-// Other commands have to wait for the plugin to be opened.
-
-// In NRT synthesis this becomes even more useful because all commands are
-// executed synchronously, so you can schedule /s_new + various unit commands
-// (e.g. openMsg -> readProgramMsg) for the same timestamp.
-
+// although the UGen constructor hasn't been called yet. See "runUnitCommand".
 void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
     if (queued_ != MagicQueued) {
         unitCmdQueue_ = nullptr;
@@ -2183,14 +2174,24 @@ void VSTPlugin_Dtor(VSTPlugin* unit){
 
 using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 
-// trampoline to catch and queue unit commands before the constructor has run
+// When a Synth is created on the Server, the UGen constructors are only called during
+// the first "next" routine, so if we send a unit command right after /s_new, the receiving
+// unit hasn't been properly constructed. The previous version of VSTPlugin just ignored
+// such unit commands and posted a warning, now we queue them and run them in the constructor.
+
+// In RT synthesis this is most useful for opening plugins right after
+// Synth creation, e.g.:
+// VSTPluginController(Synth(\test)).open("some_plugin", action: { |plugin| /* do something */ });
+
+// In NRT synthesis this becomes even more useful because all commands are
+// executed synchronously, so you can schedule /s_new + various unit commands
+// (e.g. openMsg -> readProgramMsg) for the same timestamp.
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
     if (unit->initialized()) {
-        fn(unit, args);
+        fn(unit, args); // the constructor has been called, so we can savely run the command
     } else {
-        new(unit)VSTPlugin();
-        unit->queueUnitCmd((UnitCmdFunc)fn, args);
+        unit->queueUnitCmd((UnitCmdFunc)fn, args); // queue it
     }
 }
 
