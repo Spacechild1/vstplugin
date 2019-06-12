@@ -130,14 +130,14 @@ the Server. If this is code::nil::, the default Server is assumed.
 RETURNS:: an link::Classes/IdentityDictionary:: containing the info of all VST plugins on the Server.
 
 DISCUSSION::
-The dictionary can be simply indexed with the plugin code::key:: or code::path:: (see link::#Plugin Management::).
+The dictionary can be simply indexed with the plugin code::key:: or code::path:: (see link::#Plugin Management::). Both must be a symbol.
 code::
 // search in default paths
 VSTPlugin.search(s);
-VSTPlugin.plugins(s)["AwesomePlugin"].print;
+VSTPlugin.plugins(s)['AwesomePlugin'].print;
 // for the default server this can be shortend to:
 VSTPlugin.search;
-VSTPlugin.plugins["AwesomePlugin"].print;
+VSTPlugin.plugins['AwesomePlugin'].print;
 ::
 
 METHOD:: pluginList
