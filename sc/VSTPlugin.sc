@@ -1,5 +1,6 @@
 VSTPlugin : MultiOutUGen {
 	// class members
+	classvar counter = 0;
 	classvar pluginDict;
 	classvar parentInfo;
 	classvar <platformExtension;
@@ -124,7 +125,7 @@ VSTPlugin : MultiOutUGen {
 	*prSearchLocal { arg server, searchPaths, useDefault, verbose, action;
 		{
 			var dict = pluginDict[server];
-			var filePath = PathName.tmp ++ this.hash.asString;
+			var filePath = PathName.tmp ++ this.prUniqueID.asString;
 			// flags: local, use default, verbose
 			var flags = 1 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
 			server.sendMsg('/cmd', '/vst_search', flags, *(searchPaths ++ [filePath]));
@@ -236,7 +237,7 @@ VSTPlugin : MultiOutUGen {
 	*prProbeLocal { arg server, path, key, action;
 		{
 			var info, dict = pluginDict[server];
-			var filePath = PathName.tmp ++ this.hash.asString;
+			var filePath = PathName.tmp ++ this.prUniqueID.asString;
 			// ask server to write plugin info to tmp file
 			server.sendMsg('/cmd', '/vst_query', path, filePath);
 			// wait for cmd to finish
@@ -441,6 +442,12 @@ VSTPlugin : MultiOutUGen {
 		};
 		^path;
 	}
+	*prUniqueID {
+		var id = counter;
+		counter = counter + 1;
+		^id;
+	}
+
 	// instance methods
 	init { arg theID, numOut ... theInputs;
 		id = theID;
