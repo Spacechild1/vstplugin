@@ -1556,13 +1556,13 @@ void vst_reset(VSTPlugin *unit, sc_msg_iter *args) {
     unit->reset(async);
 }
 
-void vst_vis(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
     bool show = args->geti();
     unit->showEditor(show);
 }
 
 // set parameters given as pairs of index and value
-void vst_set(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
     auto vst = unit;
     if (vst->check()) {
         while (args->remain() > 0) {
@@ -1578,7 +1578,7 @@ void vst_set(VSTPlugin*unit, sc_msg_iter *args) {
 }
 
 // set parameters given as triples of index, count and values
-void vst_setn(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_setn(VSTPlugin* unit, sc_msg_iter *args) {
     auto vst = unit;
     if (vst->check()) {
         int nparam = vst->plugin()->getNumParameters();
@@ -1598,27 +1598,27 @@ void vst_setn(VSTPlugin*unit, sc_msg_iter *args) {
 }
 
 // query parameters starting from index (values + displays)
-void vst_param_query(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_param_query(VSTPlugin* unit, sc_msg_iter *args) {
     int32 index = args->geti();
     int32 count = args->geti();
     unit->queryParams(index, count);
 }
 
 // get a single parameter at index (only value)
-void vst_get(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_get(VSTPlugin* unit, sc_msg_iter *args) {
     int32 index = args->geti(-1);
     unit->getParam(index);
 }
 
 // get a number of parameters starting from index (only values)
-void vst_getn(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
     int32 index = args->geti();
     int32 count = args->geti();
     unit->getParams(index, count);
 }
 
 // map parameters to control busses
-void vst_map(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
     auto vst = unit;
     if (vst->check()) {
         int nparam = vst->plugin()->getNumParameters();
@@ -1637,7 +1637,7 @@ void vst_map(VSTPlugin*unit, sc_msg_iter *args) {
 }
 
 // unmap parameters from control busses
-void vst_unmap(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_unmap(VSTPlugin* unit, sc_msg_iter *args) {
     auto vst = unit;
     if (vst->check()) {
         int nparam = vst->plugin()->getNumParameters();
@@ -1671,7 +1671,7 @@ void vst_program_query(VSTPlugin *unit, sc_msg_iter *args) {
     unit->queryPrograms(index, count);
 }
 
-void vst_program_name(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
     const char *name = args->gets();
     if (name) {
         unit->setProgramName(name);
@@ -1681,7 +1681,7 @@ void vst_program_name(VSTPlugin*unit, sc_msg_iter *args) {
     }
 }
 
-void vst_program_read(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
     const char *path = args->gets();
     if (path) {
         unit->readProgram(path);
@@ -1722,12 +1722,12 @@ void vst_program_data_set(VSTPlugin *unit, sc_msg_iter *args) {
     }
 }
 
-void vst_program_data_get(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_program_data_get(VSTPlugin* unit, sc_msg_iter *args) {
     int count = args->geti();
     unit->receiveProgramData(count);
 }
 
-void vst_bank_read(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_bank_read(VSTPlugin* unit, sc_msg_iter *args) {
     const char *path = args->gets();
     if (path) {
         unit->readBank(path);
@@ -1737,7 +1737,7 @@ void vst_bank_read(VSTPlugin*unit, sc_msg_iter *args) {
     }
 }
 
-void vst_bank_write(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
     const char *path = args->gets();
     if (path) {
         unit->writeBank(path);
@@ -1747,7 +1747,7 @@ void vst_bank_write(VSTPlugin*unit, sc_msg_iter *args) {
     }
 }
 
-void vst_bank_data_set(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_bank_data_set(VSTPlugin* unit, sc_msg_iter *args) {
     int totalSize = args->geti();
     int onset = args->geti();
     int len = args->getbsize();
@@ -1768,13 +1768,13 @@ void vst_bank_data_set(VSTPlugin*unit, sc_msg_iter *args) {
     }
 }
 
-void vst_bank_data_get(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_bank_data_get(VSTPlugin* unit, sc_msg_iter *args) {
     int count = args->geti();
     unit->receiveBankData(count);
 }
 
 
-void vst_midi_msg(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_midi_msg(VSTPlugin* unit, sc_msg_iter *args) {
     char data[4];
     int32 len = args->getbsize();
     if (len > 4) {
@@ -1784,7 +1784,7 @@ void vst_midi_msg(VSTPlugin*unit, sc_msg_iter *args) {
     unit->sendMidiMsg(data[0], data[1], data[2]);
 }
 
-void vst_midi_sysex(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_midi_sysex(VSTPlugin* unit, sc_msg_iter *args) {
     int len = args->getbsize();
     if (len > 0) {
         // LATER avoid unnecessary copying
@@ -1803,39 +1803,39 @@ void vst_midi_sysex(VSTPlugin*unit, sc_msg_iter *args) {
     }
 }
 
-void vst_tempo(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_tempo(VSTPlugin* unit, sc_msg_iter *args) {
     float bpm = args->getf();
     unit->setTempo(bpm);
 }
 
-void vst_time_sig(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_time_sig(VSTPlugin* unit, sc_msg_iter *args) {
     int32 num = args->geti();
     int32 denom = args->geti();
     unit->setTimeSig(num, denom);
 }
 
-void vst_transport_play(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_transport_play(VSTPlugin* unit, sc_msg_iter *args) {
     int play = args->geti();
     unit->setTransportPlaying(play);
 }
 
-void vst_transport_set(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_transport_set(VSTPlugin* unit, sc_msg_iter *args) {
     float pos = args->getf();
     unit->setTransportPos(pos);
 }
 
-void vst_transport_get(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_transport_get(VSTPlugin* unit, sc_msg_iter *args) {
     unit->getTransportPos();
 }
 
-void vst_can_do(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_can_do(VSTPlugin* unit, sc_msg_iter *args) {
     const char* what = args->gets();
     if (what) {
         unit->canDo(what);
     }
 }
 
-void vst_vendor_method(VSTPlugin*unit, sc_msg_iter *args) {	
+void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
     int32 index = args->geti();
     int32 value = args->geti(); // sc_msg_iter doesn't support 64bit ints...
     int32 size = args->getbsize();
@@ -2179,13 +2179,16 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 // unit hasn't been properly constructed. The previous version of VSTPlugin just ignored
 // such unit commands and posted a warning, now we queue them and run them in the constructor.
 
-// In RT synthesis this is most useful for opening plugins right after
-// Synth creation, e.g.:
+// Unit commands likely trigger ansynchronous commands - which is not a problem in Scsynth.
+// In Supernova there's a theoretical race condition issue since the system FIFO is single producer only,
+// but UGen constructors never run in parallel, so this is safe as long as nobody else is scheduling
+// system callbacks during the "next" routine (which would be dangerous anyway).
+
+// In RT synthesis this is most useful for opening plugins right after Synth creation, e.g.:
 // VSTPluginController(Synth(\test)).open("some_plugin", action: { |plugin| /* do something */ });
 
-// In NRT synthesis this becomes even more useful because all commands are
-// executed synchronously, so you can schedule /s_new + various unit commands
-// (e.g. openMsg -> readProgramMsg) for the same timestamp.
+// In NRT synthesis this becomes even more useful because all commands are executed synchronously,
+// so you can schedule /s_new + various unit commands (e.g. openMsg -> readProgramMsg) for the same timestamp.
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
     if (unit->initialized()) {
