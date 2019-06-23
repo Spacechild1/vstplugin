@@ -90,7 +90,7 @@ variables:
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
@@ -112,7 +112,7 @@ variables:
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}"
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd extension=m_amd64 VST2DIR="${VST2DIR}"
     - make -C pd install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
