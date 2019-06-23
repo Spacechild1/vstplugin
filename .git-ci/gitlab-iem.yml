@@ -95,6 +95,7 @@ variables:
     - make -C pd VST2DIR="${VST2DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
+    - make -C sc/build install VERBOSE=1
 
 .build:w64: &build_w64
   stage: build
@@ -116,6 +117,7 @@ variables:
     - make -C pd extension=m_amd64 VST2DIR="${VST2DIR}"
     - make -C pd install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
+    - make -C sc/build install VERBOSE=1
 
 #######################################################################
 ### the actual jobs: (linux,macos,windows)*(release,snapshot)
