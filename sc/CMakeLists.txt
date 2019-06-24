@@ -1,16 +1,20 @@
-set(FILENAME "VSTPluginUGen.cpp") #specify the .cpp file here
 cmake_minimum_required (VERSION 2.8)
-# get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project name from the filename
-set(PROJECT "VSTPlugin") #alternatively set project name manually
+
+set(PROJECT "VSTPlugin")
 message(STATUS "Project name is ${PROJECT}")
 project (${PROJECT})
-
-message(STATUS "Installation path is ${CMAKE_INSTALL_PREFIX}")
-set(PROBE "probe")
 
 if(UNIX AND NOT APPLE AND NOT MINGW)
 set(LINUX TRUE)
 endif()
+
+message(STATUS "Installation path is ${CMAKE_INSTALL_PREFIX}")
+
+set(FILENAME "VSTPluginUGen.cpp")
+set(PROBE "probe")
+set(TOP "${CMAKE_SOURCE_DIR}/..")
+set(SC "${CMAKE_SOURCE_DIR}/sc")
+set(VST "${TOP}/vst")
 
 # SuperCollider API:
 set(SC_PATH "" CACHE PATH "SuperCollider source directory")
@@ -21,15 +25,15 @@ include_directories(${SC_PATH}/plugin_interface)
 include_directories(${SC_PATH}/common)
 
 # VST
-set(VST_SRC "../vst/VSTPlugin.cpp")
+set(VST_SRC "${VST}/VSTPlugin.cpp")
 set(VST_LIBS)
 
 # VST2 SDK:
 option(VST2 "Enable VST2.x plug-ins" ON)
 if (VST2)
     add_definitions(-DUSE_VST2=1)
-    list(APPEND VST_SRC "../vst/VST2Plugin.cpp")
-    set(VST2DIR "${CMAKE_CURRENT_SOURCE_DIR}/../vst/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
+    list(APPEND VST_SRC "${VST}/VST2Plugin.cpp")
+    set(VST2DIR "${VST}/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
     if(IS_DIRECTORY ${VST2DIR})
       message(STATUS "VST2DIR is ${VST2DIR}")
       include_directories(${VST2DIR}/pluginterfaces/vst2.x)
@@ -48,8 +52,8 @@ endif()
 option(VST3 "Enable VST3 plug-ins" OFF)
 if (VST3)
     add_definitions(-DUSE_VST3=1)
-    list(APPEND VST_SRC "../vst/VST3Plugin.cpp")
-    set(VST3DIR "${CMAKE_CURRENT_SOURCE_DIR}/../vst/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
+    list(APPEND VST_SRC "${VST}/VST3Plugin.cpp")
+    set(VST3DIR "${VST}/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
     include_directories(${VST3DIR})
     include_directories(${VST3DIR}/pluginterfaces)
     include_directories(${VST3DIR}/pluginterfaces/base)
@@ -58,7 +62,7 @@ if (VST3)
 endif()
 
 include_directories(src)
-include_directories(../vst)
+include_directories(${VST})
 
 set(LOGLEVEL 2 CACHE STRING "LOGLEVEL")
 
@@ -73,13 +77,10 @@ endif()
 
 option(SUPERNOVA "Build plugins for supernova" OFF)
 if (SUPERNOVA)
+	# for <nova-tt/spin_lock.h>
     include_directories(${SC_PATH}/external_libraries/nova-tt)
-    include_directories(${SC_PATH}/external_libraries/nova-tt/nova-tt)
-    # actually just boost.atomic
+    # for <boost/atomic.hpp>
     include_directories(${SC_PATH}/external_libraries/boost)
-    include_directories(${SC_PATH}/external_libraries/boost/lockfree)
-    include_directories(${SC_PATH}/external_libraries/boost_lockfree)
-    include_directories(${SC_PATH}/external_libraries/boost-lockfree)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -142,19 +143,20 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-add_library(${PROJECT} MODULE src/${FILENAME})
-add_executable(${PROBE} ../vst/probe.cpp)
+add_library(${PROJECT} MODULE src/${FILENAME}) # the UGen
+add_executable(${PROBE} ${VST}/probe.cpp ${VST_SRC}) # probe exe
+
 add_definitions(-DLOGLEVEL=${LOGLEVEL})
 target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog) # only for VSTPluginUGen!
 
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
-    list(APPEND VST_SRC "../vst/VSTWindowX11.cpp")
+    list(APPEND VST_SRC "${VST}/VSTWindowX11.cpp")
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11")
 endif()
 if (MINGW OR WIN32)
     add_definitions(-DVSTTHREADS=1)
-    list(APPEND VST_SRC "../vst/VSTWindowWin32.cpp")
+    list(APPEND VST_SRC "${VST}/VSTWindowWin32.cpp")
 endif()
 if (MINGW)
     list(APPEND VST_LIBS "-static-libgcc" "-static-libstdc++" "-lstdc++fs" "-static -lpthread")
@@ -163,19 +165,18 @@ if (MINGW)
 endif()
 if (APPLE)
     add_definitions(-fno-objc-arc -DVSTTHREADS=0)
-    list(APPEND VST_SRC "../vst/VSTWindowCocoa.mm")
+    list(APPEND VST_SRC "${VST}/VSTWindowCocoa.mm")
     list(APPEND VST_LIBS "-framework Cocoa")
 endif()
 
 target_sources(${PROJECT} PUBLIC ${VST_SRC})
 target_sources(${PROBE} PUBLIC ${VST_SRC})
-message(STATUS ${VST_LIBS})
 target_link_libraries(${PROJECT} ${VST_LIBS})
 target_link_libraries(${PROBE} ${VST_LIBS})
 
 install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT}/plugins)
 install(FILES VSTPlugin.sc VSTPluginController.sc VSTPluginGui.sc DESTINATION ${PROJECT}/classes)
-install(FILES ../README.md ../LICENSE.txt DESTINATION ${PROJECT})
+install(FILES "${TOP}/README.md" "${TOP}/LICENSE.txt" DESTINATION ${PROJECT})
 install(DIRECTORY HelpSource DESTINATION ${PROJECT})
 
 if(SUPERNOVA)

@@ -1,7 +1,7 @@
 #include "VSTPluginUGen.h"
 
 #ifdef SUPERNOVA
-#include "spin_lock.hpp"
+#include <nova-tt/spin_lock.hpp>
 #endif
 
 #include <limits>
