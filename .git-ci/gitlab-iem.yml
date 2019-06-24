@@ -49,7 +49,9 @@ variables:
     - export PD=/usr/bin/pd
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - git --git-dir "${SC_PATH}/.git" submodule init && git --git-dir "${SC_PATH}/.git" submodule update
+    - pushd "${SC_PATH}"
+    - git submodule update --init
+    - popd
     - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}"
@@ -69,7 +71,9 @@ variables:
     - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - git --git-dir "${SC_PATH}/.git" submodule init && git --git-dir "${SC_PATH}/.git" submodule update
+    - pushd "${SC_PATH}"
+    - git submodule update --init
+    - popd
     - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}"
@@ -92,7 +96,9 @@ variables:
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - git --git-dir "${SC_PATH}/.git" submodule init && git --git-dir "${SC_PATH}/.git" submodule update
+    - pushd "${SC_PATH}"
+    - git submodule update --init
+    - popd
     - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}"
@@ -115,7 +121,9 @@ variables:
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
     - .git-ci/get_vst.sh "${VST2DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - git --git-dir "${SC_PATH}/.git" submodule init && git --git-dir "${SC_PATH}/.git" submodule update
+    - pushd "${SC_PATH}"
+    - git submodule update --init
+    - popd
     - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd extension=m_amd64 VST2DIR="${VST2DIR}"
