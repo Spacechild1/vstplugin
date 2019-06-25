@@ -20,6 +20,8 @@ using namespace vst;
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <fstream>
+#include <sstream>
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
@@ -31,7 +33,8 @@ struct VSTPluginCmdData {
     void tryOpen();
     void close();
     // data
-    VSTPlugin *owner;
+    VSTPlugin* owner = nullptr;
+    void* freeData = nullptr;
     std::shared_ptr<IVSTPlugin> plugin;
     std::shared_ptr<IVSTWindow> window;
     std::thread::id threadID;
@@ -62,12 +65,17 @@ struct VendorCmdData {
     char data[1];
 };
 
-struct QueryCmdData {
-    char reply[1600];
-    int value;
-    int index;
+struct InfoCmdData {
+    VSTPlugin* owner = nullptr;
+    int32 flags = 0;
+    int32 bufnum = -1;
+    void* freeData = nullptr;
+    char path[256];
     // flexible array
+    int size = 0;
     char buf[1];
+    static InfoCmdData* create(World* world, int size = 0);
+    static bool nrtFree(World* world, void* cmdData);
 };
 
 class VSTPluginListener : public IVSTPluginListener {
@@ -116,17 +124,13 @@ public:
     void setProgramName(const char *name);
     void queryPrograms(int32 index, int32 count);
     void readProgram(const char *path);
+    void readProgram(int32 buf);
     void readBank(const char *path);
-    void sendProgramData(int32 totalSize, int32 onset, const char *data, int32 n) {
-        sendData(totalSize, onset, data, n, false);
-    }
-    void sendBankData(int32 totalSize, int32 onset, const char *data, int32 n) {
-        sendData(totalSize, onset, data, n, true);
-    }
+    void readBank(int32 buf);
     void writeProgram(const char *path);
+    void writeProgram(int32 buf);
     void writeBank(const char *path);
-    void receiveProgramData(int count);
-    void receiveBankData(int count);
+    void writeBank(int32 buf);
     // midi
     void sendMidiMsg(int32 status, int32 data1, int32 data2);
     void sendSysexMsg(const char *data, int32 n);
@@ -138,7 +142,8 @@ public:
     void getTransportPos();
     // advanced
     void canDo(const char *what);
-    void vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async);
+    void vendorSpecific(int32 index, int32 value, size_t size,
+        const char *data, float opt, bool async);
     // node reply
     void sendMsg(const char *cmd, float f);
     void sendMsg(const char *cmd, int n, const float *data);
@@ -159,12 +164,10 @@ public:
     // for asynchronous commands
     VSTPluginCmdData* makeCmdData(const char *s);
     VSTPluginCmdData* makeCmdData(const char *data, size_t size);
-    VSTPluginCmdData* makeCmdData(size_t size);
     VSTPluginCmdData* makeCmdData();
     template<typename T>
-    void doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt=nullptr);
-    static bool cmdGetData(World *world, void *cmdData, bool bank);
-    static bool cmdGetDataDone(World *world, void *cmdData, bool bank);
+    void doCmd(T *cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
+        AsyncStageFn stage4 = nullptr);
 private:
     // data members
     uint32 initialized_ = MagicInitialized; // set by constructor
@@ -201,14 +204,6 @@ private:
 #endif
     std::thread::id rtThreadID_;
     std::thread::id nrtThreadID_;
-
-    // send program/bank data
-    std::string dataNRT_;
-    int32 dataSent_ = 0;
-    // receive program/bank data
-    char *dataRT_ = nullptr;
-    int32 dataSize_ = 0;
-    int32 dataReceived_ = 0;
 };
 
 

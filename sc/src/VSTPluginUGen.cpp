@@ -4,61 +4,73 @@
 #include <nova-tt/spin_lock.hpp>
 #endif
 
-#include <limits>
-#include <set>
-#include <stdio.h>
-
 static InterfaceTable *ft;
 
 void SCLog(const std::string& msg){
     Print(msg.c_str());
 }
 
-// sending reply messages
-// we only need int, float and string
-
-int doAddArg(char *buf, int size, int i) {
-    return snprintf(buf, size, "%d\n", i);
+// SndBuffers
+static void syncBuffer(World *world, int32 index) {
+    auto src = world->mSndBufsNonRealTimeMirror + index;
+    auto dest = world->mSndBufs + index;
+    dest->samplerate = src->samplerate;
+    dest->sampledur = src->sampledur;
+    dest->data = src->data;
+    dest->channels = src->channels;
+    dest->samples = src->samples;
+    dest->frames = src->frames;
+    dest->mask = src->mask;
+    dest->mask1 = src->mask1;
+    dest->coord = src->coord;
+    dest->sndfile = src->sndfile;
+#ifdef SUPERNOVA
+    dest->isLocal = src->isLocal;
+#endif
+    world->mSndBufUpdates[index].writes++;
 }
 
-int doAddArg(char *buf, int size, float f) {
-    return snprintf(buf, size, "%f\n", f);
-}
-
-int doAddArg(char *buf, int size, const char *s) {
-    return snprintf(buf, size, "%s\n", s);
-}
-
-int doAddArg(char *buf, int size, const std::string& s) {
-    return snprintf(buf, size, "%s\n", s.c_str());
-}
-
-// end condition
-int addArgs(char *buf, int size) { return 0; }
-
-// recursively add arguments
-template<typename Arg, typename... Args>
-int addArgs(char *buf, int size, Arg&& arg, Args&&... args) {
-    auto n = doAddArg(buf, size, std::forward<Arg>(arg));
-    if (n >= 0 && n < size) {
-        n += addArgs(buf + n, size - n, std::forward<Args>(args)...);
+static void allocReadBuffer(SndBuf* buf, const std::string& data) {
+    auto n = data.size();
+    BufAlloc(buf, 1, n, 1.0);
+    for (int i = 0; i < n; ++i) {
+        buf->data[i] = data[i];
     }
-    return n;
 }
 
-template<typename... Args>
-int makeReply(char *buf, int size, const char *address, Args&&... args) {
-    auto n = snprintf(buf, size, "%s\n", address);
-    if (n >= 0 && n < size) {
-        n += addArgs(buf + n, size - n, std::forward<Args>(args)...);
+static void writeBuffer(SndBuf* buf, std::string& data) {
+    auto n = buf->frames;
+    data.resize(n);
+    for (int i = 0; i < n; ++i) {
+        data[i] = buf->data[i];
     }
-    if (n > 0) {
-        buf[n - 1] = 0; // remove trailing \n
-    }
-    return n;
 }
 
-    // format: size, chars...
+// InfoCmdData
+InfoCmdData* InfoCmdData::create(World* world, int size) {
+    auto data = RTAlloc(world, sizeof(InfoCmdData) + size);
+    if (data) {
+        new (data)InfoCmdData();
+    }
+    else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+    return (InfoCmdData *)data;
+}
+
+bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
+    auto data = (InfoCmdData*)cmdData;
+    // this is potentially dangerous because NRTFree internally uses free()
+    // while BufFreeCmd::Stage4() uses free_aligned().
+    // On the other hand, the client is supposed to pass a unused bufnum
+    // so we don't have to free any previous data.
+    // The SndBuf is then freed by the client.
+    if (data->freeData)
+        NRTFree(data->freeData);
+    return true;
+}
+
+// format: size, chars...
 int string2floatArray(const std::string& src, float *dest, int maxSize) {
     int len = std::min<int>(src.size(), maxSize-1);
     if (len >= 0) {
@@ -74,12 +86,9 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 }
 
 // search and probe
+static bool gSearching = false;
 
-// result of current search
-static std::vector<const VSTPluginDesc *> pluginList;
-static bool isSearching = false;
-
-static VSTPluginManager manager;
+static VSTPluginManager gPluginManager;
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
@@ -100,14 +109,14 @@ static void addPlugins(const IVSTFactory& factory) {
     auto plugins = factory.plugins();
     for (auto& plugin : plugins) {
         if (plugin->valid()) {
-            manager.addPlugin(makeKey(*plugin), plugin);
+            gPluginManager.addPlugin(makeKey(*plugin), plugin);
             // LOG_DEBUG("added plugin " << plugin->name);
         }
     }
 }
 
 static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
-    if (manager.findFactory(path)) {
+    if (gPluginManager.findFactory(path)) {
         LOG_WARNING("probePlugin: '" << path << "' already probed!");
         return nullptr;
     }
@@ -147,8 +156,8 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
         auto& plugin = plugins[0];
         if (verbose) postResult(plugin->probeResult);
         // factories with a single plugin can also be aliased by their file path(s)
-        manager.addPlugin(plugin->path, plugin);
-        manager.addPlugin(path, plugin);
+        gPluginManager.addPlugin(plugin->path, plugin);
+        gPluginManager.addPlugin(path, plugin);
     }
     else {
         Print("\n");
@@ -163,7 +172,7 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
         }
     }
     auto result = factory.get();
-    manager.addFactory(path, std::move(factory));
+    gPluginManager.addFactory(path, std::move(factory));
     addPlugins(*result);
     return result;
 }
@@ -211,21 +220,21 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     }
 #endif
     // query plugin
-    auto desc = manager.findPlugin(path);
+    auto desc = gPluginManager.findPlugin(path);
     if (!desc) {
         // try as file path 
         path = resolvePath(path);
-        if (!path.empty() && !(desc = manager.findPlugin(path))) {
+        if (!path.empty() && !(desc = gPluginManager.findPlugin(path))) {
             // plugin descs might have been removed by 'search_clear'
-            auto factory = manager.findFactory(path);
+            auto factory = gPluginManager.findFactory(path);
             if (factory) {
                 addPlugins(*factory);
             }
-            if (!(desc = manager.findPlugin(path))) {
+            if (!(desc = gPluginManager.findPlugin(path))) {
                 // finally probe plugin
                 if (probePlugin(path, true)) {
                     // this fails if the module contains several plugins (so the path is not used as a key)
-                    desc = manager.findPlugin(path);
+                    desc = gPluginManager.findPlugin(path);
                 }
                 else {
                     LOG_DEBUG("couldn't probe plugin");
@@ -237,8 +246,8 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     return desc.get();
 }
 
-static void searchPlugins(const std::string & path, bool verbose) {
-    int count = 0;
+std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool verbose) {
+    std::vector<vst::VSTPluginDesc*> results;
     LOG_VERBOSE("searching in '" << path << "'...");
     vst::search(path, [&](const std::string & absPath, const std::string &) {
         std::string pluginPath = absPath;
@@ -248,7 +257,7 @@ static void searchPlugins(const std::string & path, bool verbose) {
         }
 #endif
         // check if module has already been loaded
-        IVSTFactory* factory = manager.findFactory(pluginPath);
+        IVSTFactory* factory = gPluginManager.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
             auto plugins = factory->plugins();
@@ -256,8 +265,7 @@ static void searchPlugins(const std::string & path, bool verbose) {
                 auto& plugin = plugins[0];
                 if (plugin->valid()) {
                     if (verbose) LOG_VERBOSE(pluginPath << " " << plugin->name);
-                    pluginList.push_back(plugin.get());
-                    count++;
+                    results.push_back(plugin.get());
                 }
             }
             else {
@@ -265,8 +273,7 @@ static void searchPlugins(const std::string & path, bool verbose) {
                 for (auto& plugin : factory->plugins()) {
                     if (plugin->valid()) {
                         if (verbose) LOG_VERBOSE("  " << plugin->name);
-                        pluginList.push_back(plugin.get());
-                        count++;
+                        results.push_back(plugin.get());
                     }
                 }
             }
@@ -278,14 +285,15 @@ static void searchPlugins(const std::string & path, bool verbose) {
             if ((factory = probePlugin(pluginPath, verbose))) {
                 for (auto& plugin : factory->plugins()) {
                     if (plugin->valid()) {
-                        pluginList.push_back(plugin.get());
-                        count++;
+                        results.push_back(plugin.get());
                     }
                 }
             }
         }
     });
-        LOG_VERBOSE("found " << count << " plugin" << (count == 1 ? "." : "s."));
+    LOG_VERBOSE("found " << results.size() << " plugin"
+        << (results.size() == 1 ? "." : "s."));
+    return results;
 }
 
 // VSTPluginListener
@@ -1082,221 +1090,173 @@ void VSTPlugin::queryPrograms(int32 index, int32 count) {
     }
 }
 
-bool cmdSetProgramData(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->value = data->owner->plugin()->readProgramData(data->buf, data->size);
+template<bool bank>
+bool cmdReadPreset(World* world, void* cmdData) {
+    auto data = (InfoCmdData*)cmdData;
+    auto plugin = data->owner->plugin();
+    bool result;
+    if (data->bufnum < 0) {
+        // from file
+        if (bank)
+            result = plugin->readBankFile(data->path);
+        else
+            result = plugin->readProgramFile(data->path);
+    }
+    else {
+        // from buffer
+        std::string presetData;
+        auto buf = World_GetNRTBuf(world, data->bufnum);
+        writeBuffer(buf, presetData);
+        if (bank)
+            result = plugin->readBankData(presetData);
+        else
+            result = plugin->readProgramData(presetData);
+    }
+    data->flags = result;
     return true;
 }
 
-bool cmdSetBankData(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->value = data->owner->plugin()->readBankData(data->buf, data->size);
-    return true;
-}
-
-bool cmdReadProgram(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->value = data->owner->plugin()->readProgramFile(data->buf);
-    return true;
-}
-
-bool cmdReadBank(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->value = data->owner->plugin()->readBankFile(data->buf);
-    return true;
-}
-
-bool cmdProgramDone(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->owner->sendMsg("/vst_program_read", data->value);
-    data->owner->sendCurrentProgramName();
-    return false; // done
-}
-
-bool cmdBankDone(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->owner->sendMsg("/vst_bank_read", data->value);
-    data->owner->sendMsg("/vst_program_index", data->owner->plugin()->getProgram());
+template<bool bank>
+bool cmdReadPresetDone(World *world, void *cmdData){
+    auto data = (InfoCmdData *)cmdData;
+    auto owner = data->owner;
+    if (bank) {
+        owner->sendMsg("/vst_bank_read", data->flags);
+        // a bank change also sets the current program number!
+        owner->sendMsg("/vst_program_index", owner->plugin()->getProgram());
+    }
+    else {
+        owner->sendMsg("/vst_program_read", data->flags);
+    }
+    // the program name has most likely changed
+    owner->sendCurrentProgramName();
     return false; // done
 }
 
 void VSTPlugin::readProgram(const char *path){
     if (check()){
-        doCmd(makeCmdData(path), cmdReadProgram, cmdProgramDone);
+        auto data = InfoCmdData::create(mWorld);
+        if (data) {
+            data->owner = this;
+            snprintf(data->path, sizeof(data->path), "%s", path);
+            doCmd(data, cmdReadPreset<false>, cmdReadPresetDone<false>);
+        }
+    }
+}
+
+void VSTPlugin::readProgram(int32 buf) {
+    if (check()) {
+        auto data = InfoCmdData::create(mWorld);
+        if (data) {
+            data->owner = this;
+            data->bufnum = buf;
+            doCmd(data, cmdReadPreset<false>, cmdReadPresetDone<false>);
+        }
     }
 }
 
 void VSTPlugin::readBank(const char *path) {
     if (check()) {
-        doCmd(makeCmdData(path), cmdReadBank, cmdBankDone);
+        auto data = InfoCmdData::create(mWorld);
+        if (data) {
+            data->owner = this;
+            snprintf(data->path, sizeof(data->path), "%s", path);
+            doCmd(data, cmdReadPreset<true>, cmdReadPresetDone<true>);
+        }
     }
 }
 
-void VSTPlugin::sendData(int32 totalSize, int32 onset, const char *data, int32 n, bool bank) {
-    LOG_DEBUG("got packet: " << totalSize << " (total size), " << onset << " (onset), " << n << " (size)");
-    // first packet only
-    if (onset == 0) {
-        if (dataReceived_ != 0) {
-            LOG_WARNING("last data hasn't been sent completely!");
+void VSTPlugin::readBank(int32 buf) {
+    if (check()) {
+        auto data = InfoCmdData::create(mWorld);
+        if (data) {
+            data->owner = this;
+            data->bufnum = buf;
+            doCmd(data, cmdReadPreset<true>, cmdReadPresetDone<true>);
         }
-        dataReceived_ = 0;
-        auto result = RTRealloc(mWorld, dataRT_, totalSize);
-        if (result) {
-            dataRT_ = (char *)result;
-            dataSize_ = totalSize;
+    }
+}
+
+template<bool bank>
+bool cmdWritePreset(World *world, void *cmdData){
+    auto data = (InfoCmdData *)cmdData;
+    auto plugin = data->owner->plugin();
+    bool result = true;
+    if (data->bufnum < 0) {
+        // to file (LATER report failure)
+        if (bank)
+            plugin->writeBankFile(data->path);
+        else
+            plugin->writeProgramFile(data->path);
+    }
+    else {
+        // to buffer
+        std::string presetData;
+        if (bank)
+            plugin->writeBankData(presetData);
+        else
+            plugin->writeProgramData(presetData);
+        // LATER get error from method
+        if (!presetData.empty()) {
+            auto buf = World_GetNRTBuf(world, data->bufnum);
+            data->freeData = buf->data; // to be freed in stage 4
+            allocReadBuffer(buf, presetData);
         }
         else {
-            dataSize_ = 0;
-            return;
+            result = false;
         }
     }
-    else if (onset < 0 || onset >= dataSize_) {
-        LOG_ERROR("bug: bad onset!");
-        return;
-    }
-    // append data
-    auto size = dataSize_;
-    if (size > 0) {
-        if (n > (size - onset)) {
-            LOG_ERROR("bug: data exceeding total size!");
-            n = size - onset;
-        }
-        memcpy(dataRT_ + onset, data, n);
-        if (onset != dataReceived_) {
-            LOG_WARNING("onset and received data out of sync!");
-        }
-        dataReceived_ += n;
-        LOG_DEBUG("data received: " << dataReceived_);
-        // finished?
-        if (dataReceived_ >= size) {
-            if (bank) {
-                doCmd(makeCmdData(dataRT_, size), cmdSetBankData, cmdBankDone);
-            }
-            else {
-                doCmd(makeCmdData(dataRT_, size), cmdSetProgramData, cmdProgramDone);
-            }
-            dataReceived_ = 0;
-        }
-    }
-}
-
-bool cmdWriteProgram(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->owner->plugin()->writeProgramFile(data->buf);
+    data->flags = result;
     return true;
 }
 
-bool cmdWriteBank(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->owner->plugin()->writeBankFile(data->buf);
-    return true;
-}
-
-bool cmdWriteProgramDone(World *world, void *cmdData){
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->owner->sendMsg("/vst_program_write", 1); // LATER get real return value
-    return false; // done
-}
-
-bool cmdWriteBankDone(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
-    data->owner->sendMsg("/vst_bank_write", 1); // LATER get real return value
-    return false; // done
+template<bool bank>
+bool cmdWritePresetDone(World *world, void *cmdData){
+    auto data = (InfoCmdData *)cmdData;
+    data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
+    return true; // continue
 }
 
 void VSTPlugin::writeProgram(const char *path) {
     if (check()) {
-        doCmd(makeCmdData(path), cmdWriteProgram, cmdWriteProgramDone);
+        auto data = InfoCmdData::create(mWorld);
+        if (data) {
+            data->owner = this;
+            snprintf(data->path, sizeof(data->path), "%s", path);
+            doCmd(data, cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
+        }
+    }
+}
+
+void VSTPlugin::writeProgram(int32 buf) {
+    if (check()) {
+        auto data = InfoCmdData::create(mWorld);
+        if (data) {
+            data->owner = this;
+            data->bufnum = buf;
+            doCmd(data, cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
+        }
     }
 }
 
 void VSTPlugin::writeBank(const char *path) {
     if (check()) {
-        doCmd(makeCmdData(path), cmdWriteBank, cmdWriteBankDone);
-    }
-}
-
-bool VSTPlugin::cmdGetData(World *world, void *cmdData, bool bank) {
-    auto data = (VSTPluginCmdData *)cmdData;
-    auto owner = data->owner;
-    auto& buffer = owner->dataNRT_;
-    int count = data->value;
-    if (count == 0) {
-        // write whole program/bank data into buffer
-        if (bank) {
-            owner->plugin()->writeBankData(buffer);
-        }
-        else {
-            owner->plugin()->writeProgramData(buffer);
-        }
-        owner->dataSent_ = 0;
-        LOG_DEBUG("total data size: " << buffer.size());
-    }
-    // data left to send?
-    auto onset = owner->dataSent_;
-    auto remaining = buffer.size() - onset;
-    if (remaining > 0) {
-        // we want to send floats (but size is the number of bytes)
-        int maxArgs = data->size / sizeof(float);
-        // leave space for 3 extra arguments
-        auto size = std::min<int>(remaining, maxArgs - 3);
-        auto buf = (float *)data->buf;
-        buf[0] = buffer.size(); // total
-        buf[1] = onset; // onset
-        buf[2] = size; // packet size
-        // copy packet to cmdData's RT buffer
-        auto packet = buffer.data() + onset;
-        for (int i = 0; i < size; ++i) {
-            // no need to cast to unsigned because SC's Int8Array is signed anyway
-            buf[i + 3] = packet[i];
-        }
-        data->size = size + 3; // size_ becomes the number of float args
-        owner->dataSent_ += size;
-        LOG_DEBUG("send packet: " << buf[0] << " (total), " << buf[1] << " (onset), " << buf[2] << " (size)");
-    }
-    else {
-        // avoid sending packet
-        data->size = 0;
-        // free program/bank data
-        std::string empty;
-        buffer.swap(empty);
-        data->owner->dataSent_ = 0;
-        LOG_DEBUG("done! free data");
-    }
-    return true;
-}
-
-bool VSTPlugin::cmdGetDataDone(World *world, void *cmdData, bool bank) {
-    auto data = (VSTPluginCmdData *)cmdData;
-    if (data->size > 0) {
-        if (bank) {
-            data->owner->sendMsg("/vst_bank_data", data->size, (const float *)data->buf);
-        }
-        else {
-            data->owner->sendMsg("/vst_program_data", data->size, (const float *)data->buf);
-        }
-    }
-    return false; // done
-}
-
-void VSTPlugin::receiveProgramData(int count) {
-    if (check()) {
-        auto data = makeCmdData(MAX_OSC_PACKET_SIZE);
+        auto data = InfoCmdData::create(mWorld);
         if (data) {
-            data->value = count;
-            doCmd(data, [](World *world, void *cmdData) { return cmdGetData(world, cmdData, false); }, 
-                [](World *world, void *cmdData) { return cmdGetDataDone(world, cmdData, false); });
+            data->owner = this;
+            snprintf(data->path, sizeof(data->path), "%s", path);
+            doCmd(data, cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
         }
     }
 }
 
-void VSTPlugin::receiveBankData(int count) {
+void VSTPlugin::writeBank(int32 buf) {
     if (check()) {
-        auto data = makeCmdData(MAX_OSC_PACKET_SIZE);
+        auto data = InfoCmdData::create(mWorld);
         if (data) {
-            data->value = count;
-            doCmd(data, [](World *world, void *cmdData) { return cmdGetData(world, cmdData, true); },
-                [](World *world, void *cmdData) { return cmdGetDataDone(world, cmdData, true); });
+            data->owner = this;
+            data->bufnum = buf;
+            doCmd(data, cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
         }
     }
 }
@@ -1490,7 +1450,7 @@ void VSTPlugin::sendMsg(const char *cmd, int n, const float *data) {
 }
 
 VSTPluginCmdData* VSTPlugin::makeCmdData(const char *data, size_t size){
-    VSTPluginCmdData *cmdData = (VSTPluginCmdData *)RTAlloc(mWorld, sizeof(VSTPluginCmdData) + size);
+    auto *cmdData = (VSTPluginCmdData *)RTAlloc(mWorld, sizeof(VSTPluginCmdData) + size);
     if (cmdData){
         new (cmdData) VSTPluginCmdData();
         cmdData->owner = this;
@@ -1510,10 +1470,6 @@ VSTPluginCmdData* VSTPlugin::makeCmdData(const char *path){
     return makeCmdData(path, len);
 }
 
-VSTPluginCmdData* VSTPlugin::makeCmdData(size_t size) {
-    return makeCmdData(nullptr, size);
-}
-
 VSTPluginCmdData* VSTPlugin::makeCmdData() {
     return makeCmdData(nullptr, 0);
 }
@@ -1529,17 +1485,19 @@ void cmdRTfree(World *world, void * cmdData) {
 template<typename T>
 void cmdRTfree(World *world, void * cmdData) {
     if (cmdData) {
-        ((T*)cmdData)->~T();
+        ((T*)cmdData)->~T(); // should do nothing! (let's just be nice here)
         RTFree(world, cmdData);
         // LOG_DEBUG("cmdRTfree!");
     }
 }
 
 template<typename T>
-void VSTPlugin::doCmd(T *cmdData, AsyncStageFn nrt, AsyncStageFn rt) {
+void VSTPlugin::doCmd(T *cmdData, AsyncStageFn stage2,
+    AsyncStageFn stage3, AsyncStageFn stage4) {
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
-        DoAsynchronousCommand(mWorld, 0, 0, cmdData, nrt, rt, 0, cmdRTfree<T>, 0, 0);
+        DoAsynchronousCommand(mWorld,
+            0, 0, cmdData, stage2, stage3, stage4, cmdRTfree<T>, 0, 0);
     }
 }
 
@@ -1691,97 +1649,40 @@ void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
 }
 
 void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
-    const char *path = args->gets();
-    if (path) {
-        unit->readProgram(path);
+    if (args->nextTag() == 's') {
+        unit->readProgram(args->gets()); // file name
     }
     else {
-        LOG_WARNING("vst_program_read: expecting string argument!");
+        unit->readProgram(args->geti()); // buf num
     }
 }
 
 void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {	
-    const char *path = args->gets();
-    if (path) {
-        unit->writeProgram(path);
+    if (args->nextTag() == 's') {
+        unit->writeProgram(args->gets()); // file name
     }
     else {
-        LOG_WARNING("vst_program_write: expecting string argument!");
+        unit->writeProgram(args->geti()); // buf num
     }
-}
-
-void vst_program_data_set(VSTPlugin *unit, sc_msg_iter *args) {	
-    int totalSize = args->geti();
-    int onset = args->geti();
-    int len = args->getbsize();
-    if (len > 0) {
-        // LATER avoid unnecessary copying
-        char *buf = (char *)RTAlloc(unit->mWorld, len);
-        if (buf) {
-            args->getb(buf, len);
-            unit->sendProgramData(totalSize, onset, buf, len);
-            RTFree(unit->mWorld, buf);
-        }
-        else {
-            LOG_ERROR("vst_program_data_set: RTAlloc failed!");
-        }
-    }
-    else {
-        LOG_WARNING("vst_program_data_set: no data!");
-    }
-}
-
-void vst_program_data_get(VSTPlugin* unit, sc_msg_iter *args) {
-    int count = args->geti();
-    unit->receiveProgramData(count);
 }
 
 void vst_bank_read(VSTPlugin* unit, sc_msg_iter *args) {
-    const char *path = args->gets();
-    if (path) {
-        unit->readBank(path);
+    if (args->nextTag() == 's') {
+        unit->readBank(args->gets()); // file name
     }
     else {
-        LOG_WARNING("vst_bank_read: expecting string argument!");
+        unit->readBank(args->geti()); // buf num
     }
 }
 
 void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
-    const char *path = args->gets();
-    if (path) {
-        unit->writeBank(path);
+    if (args->nextTag() == 's') {
+        unit->writeBank(args->gets()); // file name
     }
     else {
-        LOG_WARNING("vst_bank_write: expecting string argument!");
+        unit->writeBank(args->geti()); // buf num
     }
 }
-
-void vst_bank_data_set(VSTPlugin* unit, sc_msg_iter *args) {
-    int totalSize = args->geti();
-    int onset = args->geti();
-    int len = args->getbsize();
-    if (len > 0) {
-        // LATER avoid unnecessary copying
-        char *buf = (char *)RTAlloc(unit->mWorld, len);
-        if (buf) {
-            args->getb(buf, len);
-            unit->sendBankData(totalSize, onset, buf, len);
-            RTFree(unit->mWorld, buf);
-        }
-        else {
-            LOG_ERROR("vst_bank_data_set: RTAlloc failed!");
-        }
-    }
-    else {
-        LOG_WARNING("vst_bank_data_set: no data!");
-    }
-}
-
-void vst_bank_data_get(VSTPlugin* unit, sc_msg_iter *args) {
-    int count = args->geti();
-    unit->receiveBankData(count);
-}
-
 
 void vst_midi_msg(VSTPlugin* unit, sc_msg_iter *args) {
     char data[4];
@@ -1869,31 +1770,24 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 
 /*** plugin command callbacks ***/
 
-// recursively searches directories for VST plugins.
+// recursively search directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
-    auto data = (QueryCmdData *)cmdData;
-    bool local = data->value & 1;
-    bool useDefault = (data->value >> 1) & 1;
-    bool verbose = (data->value >> 2) & 1;
-    // list of new plugin keys (so plugins can be queried by index)
-    pluginList.clear();
+    auto data = (InfoCmdData *)cmdData;
+    std::vector<vst::VSTPluginDesc*> plugins;
+    bool useDefault = data->flags & 1;
+    bool verbose = (data->flags >> 1) & 1;
     std::vector<std::string> searchPaths;
-    std::string filePath;
-    auto buf = data->buf;
-    auto size = data->index;
-    const char* onset = buf;
+    bool local = data->bufnum < 0;
+    auto size = data->size;
+    auto ptr = data->buf;
+    auto onset = ptr;
     // file paths are seperated by 0
     while (size--) {
-        if (*buf++ == '\0') {
-            auto diff = buf - onset;
+        if (*ptr++ == '\0') {
+            auto diff = ptr - onset;
             searchPaths.emplace_back(onset, diff - 1); // don't store '\0'!
-            onset = buf;
+            onset = ptr;
         }
-    }
-    if (local) {
-        // last string is temp file path
-        filePath = searchPaths.back();
-        searchPaths.pop_back();
     }
     // use default search paths?
     if (useDefault) {
@@ -1901,82 +1795,117 @@ bool cmdSearch(World *inWorld, void* cmdData) {
             searchPaths.push_back(path);
         }
     }
+    // search for plugins
     for (auto& path : searchPaths) {
-        searchPlugins(path, verbose);
+        auto result = searchPlugins(path, verbose);
+        plugins.insert(plugins.end(), result.begin(), result.end());
     }
-    // write new info to file (only for local Servers)
+    // write new info to file (only for local Servers) or buffer
     if (local) {
-        std::ofstream file(filePath);
+        // write to file
+        std::ofstream file(data->path);
         if (file.is_open()) {
-            LOG_DEBUG("writing plugin info file");
-            for (auto plugin : pluginList) {
+            LOG_DEBUG("writing plugin info to file");
+            for (auto plugin : plugins) {
                 file << makeKey(*plugin) << "\t";
                 plugin->serialize(file);
                 file << "\n"; // seperate plugins with newlines
             }
         }
         else {
-            LOG_ERROR("couldn't write plugin info file '" << filePath << "'!");
+            LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
         }
     }
-    // report the number of plugins
-    makeReply(data->reply, sizeof(data->reply), "/vst_search", (int)pluginList.size());
+    else {
+        // write to buffer
+        auto buf = World_GetNRTBuf(inWorld, data->bufnum);
+        data->freeData = buf->data; // to be freed in stage 4
+        std::stringstream ss;
+        LOG_DEBUG("writing plugin info to buffer");
+        for (auto plugin : plugins) {
+            ss << makeKey(*plugin) << "\t";
+            plugin->serialize(ss);
+            ss << "\n"; // seperate plugins with newlines
+        }
+        allocReadBuffer(buf, ss.str());
+    }
     return true;
 }
 
 bool cmdSearchDone(World *inWorld, void *cmdData) {
-    isSearching = false;
+    auto data = (InfoCmdData*)cmdData;
+    if (data->bufnum >= 0)
+        syncBuffer(inWorld, data->bufnum);
+    gSearching = false;
     // LOG_DEBUG("search done!");
-    return true; // we want to send a /done message
+    return true;
 }
 
 void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
-    if (isSearching) {
+    if (gSearching) {
         LOG_WARNING("already searching!");
         return;
     }
-    int flags = args->geti(); // local, use default, verbose
-    // store search paths (separated by '\0')
-    // if 'local' is true, the last string is the tmp file path
-    std::pair<const char *, size_t> searchPaths[64];
-    int i = 0;
+    int32 bufnum = -1;
+    const char* filename = nullptr;
+    // flags (useDefault, verbose, etc.)
+    int flags = args->geti();
+    // temp file or buffer to store the search results
+    if (args->nextTag() == 's') {
+        filename = args->gets();
+    }
+    else {
+        bufnum = args->geti();
+        if (bufnum < 0 || bufnum >= inWorld->mNumSndBufs) {
+            LOG_ERROR("vst_search: bad bufnum " << bufnum);
+            return;
+        }
+    }
+    // collect optional search paths
+    std::pair<const char *, size_t> paths[64];
+    int numPaths = 0;
     auto pathLen = 0;
-    while (args->remain() && i < 64) {
+    while (args->remain() && numPaths < 64) {
         auto s = args->gets();
         if (s) {
             auto len = strlen(s) + 1; // include terminating '\0'
-            searchPaths[i].first = s;
-            searchPaths[i].second = len;
+            paths[numPaths].first = s;
+            paths[numPaths].second = len;
             pathLen += len;
-            ++i;
+            ++numPaths;
         }
     }
-    auto data = (QueryCmdData *)RTAlloc(inWorld, sizeof(QueryCmdData) + pathLen);
+
+    auto data = InfoCmdData::create(inWorld, pathLen);
     if (data) {
-        isSearching = true;
-        data->value = flags;
-        data->index = pathLen;
-        auto buf = data->buf;
-        const int n = i;
-        for (i = 0; i < n; ++i) {
-            auto s = searchPaths[i].first;
-            auto len = searchPaths[i].second;
-            memcpy(buf, s, len);
-            buf += len;
+        data->flags = flags;
+        data->bufnum = bufnum;
+        if (filename) {
+            snprintf(data->path, sizeof(data->path), "%s", filename);
+        }
+        else {
+            data->path[0] = '\0';
+        }
+        // now copy search paths into a single buffer (separated by '\0')
+        data->size = pathLen;
+        auto ptr = data->buf;
+        for (int i = 0; i < numPaths; ++i) {
+            auto s = paths[i].first;
+            auto len = paths[i].second;
+            memcpy(ptr, s, len);
+            ptr += len;
         }
         // LOG_DEBUG("start search");
-        // set 'cmdName' inside stage2 (/vst_search + numPlugins)
-        DoAsynchronousCommand(inWorld, replyAddr, data->reply, data, cmdSearch, cmdSearchDone, 0, cmdRTfree, 0, 0);
-    }
-    else {
-        LOG_ERROR("RTAlloc failed!");
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_search",
+            data, cmdSearch, cmdSearchDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
+        gSearching = true;
     }
 }
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
-    if (!isSearching) {
+    if (!gSearching) {
         DoAsynchronousCommand(inWorld, 0, 0, 0, [](World*, void*) {
-            manager.clearPlugins();
+            gPluginManager.clearPlugins();
             return false;
         }, 0, 0, cmdRTfree, 0, 0);
     }
@@ -1986,188 +1915,82 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 }
 
 // query plugin info
-bool cmdQuery(World *inWorld, void *cmdData) {
-    auto data = (QueryCmdData *)cmdData;
-    bool verbose = data->value;
-    const VSTPluginDesc* desc = nullptr;
-    // query by path (probe if necessary)
-    if (data->buf[0] != 0) {
-        desc = queryPlugin(data->buf);
-    }
-    // by index (already probed)
-    else {
-        int index = data->index;
-        if (index >= 0 && index < pluginList.size()) {
-            desc = pluginList[index];
-        }
-        else {
-            LOG_ERROR("cmdQuery: index out of range!");
-        }
-    }
-    // send info
+bool cmdProbe(World *inWorld, void *cmdData) {
+    auto data = (InfoCmdData *)cmdData;
+    auto bufnum = data->bufnum;
+    auto desc = queryPlugin(data->buf);
+    // write info to file or buffer
     if (desc){
-        if (data->reply[0]) {
+        if (bufnum < 0) {
             // write to file
-            std::ofstream file(data->reply);
+            std::ofstream file(data->path);
             if (file.is_open()) {
                 file << makeKey(*desc) << "\t";
                 desc->serialize(file);
             }
             else {
-                LOG_ERROR("couldn't write plugin info file '" << data->reply << "'!");
-            }
-        }
-        // reply with plugin info
-        makeReply(data->reply, sizeof(data->reply), "/vst_info", desc->name,
-            desc->path, desc->name, desc->vendor, desc->category, desc->version, desc->id, desc->numInputs, desc->numOutputs,
-            (int)desc->parameters.size(), (int)desc->programs.size(), (int)desc->flags);
-        LOG_DEBUG("replying");
-    }
-    else {
-        // empty reply
-        makeReply(data->reply, sizeof(data->reply), "/vst_info");
-        LOG_DEBUG("empty reply");
-    }
-    return true; // we want to send a /done message
-}
-
-void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
-    if (isSearching) {
-        LOG_WARNING("currently searching!");
-        return;
-    }
-    QueryCmdData *data = nullptr;
-    if (args->nextTag() == 's') {
-        auto path = args->gets(); // plugin path
-        auto size = strlen(path) + 1;
-        data = (QueryCmdData *)RTAlloc(inWorld, sizeof(QueryCmdData) + size);
-        if (data) {
-            data->index = -1;
-            memcpy(data->buf, path, size);
-            auto file = args->gets();
-            if (file) {
-                auto len = std::min(sizeof(data->reply)-1, strlen(file)+1);
-                memcpy(data->reply, file, len);
-                data->reply[len] = 0;
-            }
-            else {
-                data->reply[0] = 0;
+                LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
             }
         }
         else {
-            LOG_ERROR("RTAlloc failed!");
-            return;
+            // write to buffer
+            auto buf = World_GetNRTBuf(inWorld, data->bufnum);
+            data->freeData = buf->data; // to be freed in stage 4
+            std::stringstream ss;
+            LOG_DEBUG("writing plugin info to buffer");
+            ss << makeKey(*desc) << "\t";
+            desc->serialize(ss);
+            allocReadBuffer(buf, ss.str());
         }
+        return true;
     }
     else {
-        data = (QueryCmdData *)RTAlloc(inWorld, sizeof(QueryCmdData));
-        if (data) {
-            data->index = args->geti();
-            data->buf[0] = 0;
+        return false;
+    }
+}
+
+bool cmdProbeDone(World* inWorld, void* cmdData) {
+    auto data = (InfoCmdData*)cmdData;
+    if (data->bufnum >= 0)
+        syncBuffer(inWorld, data->bufnum);
+    // LOG_DEBUG("probe done!");
+    return true;
+}
+
+void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
+    if (gSearching) {
+        LOG_WARNING("currently searching!");
+        return;
+    }
+    if (args->nextTag() != 's') {
+        LOG_ERROR("first argument to 'vst_probe' must be a string (plugin path)!");
+        return;
+    }
+    auto path = args->gets(); // plugin path
+    auto size = strlen(path) + 1;
+
+    auto data = InfoCmdData::create(inWorld, size);
+    if (data) {
+        // temp file or buffer to store the plugin info
+        if (args->nextTag() == 's') {
+            auto filename = args->gets();
+            snprintf(data->path, sizeof(data->path), "%s", filename);
+            data->bufnum = -1;
         }
         else {
-            LOG_ERROR("RTAlloc failed!");
-            return;
-        }
-    }
-    // set 'cmdName' inside stage2 (/vst_info + info...)
-    DoAsynchronousCommand(inWorld, replyAddr, data->reply, data, cmdQuery, 0, 0, cmdRTfree, 0, 0);
-}
-
-// query plugin parameter info
-bool cmdQueryParam(World *inWorld, void *cmdData) {
-    auto data = (QueryCmdData *)cmdData;
-    auto desc = manager.findPlugin(data->buf);
-    if (desc) {
-        auto& params = desc->parameters;
-        auto reply = data->reply;
-        int count = 0;
-        int onset = sc_clip(data->index, 0, (int)params.size());
-        int num = sc_clip(data->value, 0, (int)params.size() - onset);
-        int size = sizeof(data->reply);
-        count += doAddArg(reply, size, "/vst_param_info");
-        // add plugin key (no need to check for overflow)
-        count += doAddArg(reply + count, size - count, desc->name);
-        for (int i = 0; i < num && count < size; ++i) {
-            auto& param = params[i + onset];
-            count += doAddArg(reply + count, size - count, param.first); // name
-            if (count < size) {
-                count += doAddArg(reply + count, size - count, param.second); // label
+            auto bufnum = args->geti();
+            if (bufnum < 0 || bufnum >= inWorld->mNumSndBufs) {
+                LOG_ERROR("vst_search: bad bufnum " << bufnum);
+                return;
             }
+            data->bufnum = bufnum;
+            data->path[0] = '\0';
         }
-        reply[count - 1] = '\0'; // remove trailing newline
-    }
-    else {
-        // empty reply
-        makeReply(data->reply, sizeof(data->reply), "/vst_param_info");
-    }
-    return true; // we want to send a /done message
-}
 
-void vst_query_param(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
-    if (isSearching) {
-        LOG_WARNING("currently searching!");
-        return;
-    }
-    auto key = args->gets();
-    auto size = strlen(key) + 1;
-    auto data = (QueryCmdData *)RTAlloc(inWorld, sizeof(QueryCmdData) + size);
-    if (data) {
-        data->index = args->geti(); // parameter onset
-        data->value = args->geti(); // num parameters to query
-        memcpy(data->buf, key, size);
-        // set 'cmdName' inside stage2 (/vst_param_info + param names/labels...)
-        DoAsynchronousCommand(inWorld, replyAddr, data->reply, data, cmdQueryParam, 0, 0, cmdRTfree, 0, 0);
-    }
-    else {
-        LOG_ERROR("RTAlloc failed!");
-    }
-}
+        memcpy(data->buf, path, size); // store plugin path
 
-// query plugin default program info
-bool cmdQueryProgram(World *inWorld, void *cmdData) {
-    auto data = (QueryCmdData *)cmdData;
-    auto desc = manager.findPlugin(data->buf);
-    if (desc) {
-        auto& programs = desc->programs;
-        auto reply = data->reply;
-        int count = 0;
-        int onset = sc_clip(data->index, 0, programs.size());
-        int num = sc_clip(data->value, 0, programs.size() - onset);
-        int size = sizeof(data->reply);
-        count += doAddArg(reply, size, "/vst_program_info");
-        // add plugin key (no need to check for overflow)
-        count += doAddArg(reply + count, size - count, desc->name);
-        for (int i = 0; i < num && count < size; ++i) {
-            count += doAddArg(reply + count, size - count, programs[i + onset]); // name
-        }
-        reply[count - 1] = '\0'; // remove trailing newline
-    }
-    else {
-        // empty reply
-        makeReply(data->reply, sizeof(data->reply), "/vst_program_info");
-    }
-
-    return true; // we want to send the /done message
-}
-
-void vst_query_program(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
-    if (isSearching) {
-        LOG_WARNING("currently searching!");
-        return;
-    }
-    auto key = args->gets();
-    auto size = strlen(key) + 1;
-    auto data = (QueryCmdData *)RTAlloc(inWorld, sizeof(QueryCmdData) + size);
-    if (data) {
-        data->index = args->geti(); // program onset
-        data->value = args->geti(); // num programs to query
-        memcpy(data->buf, key, size);
-        // set 'cmdName' inside stage2 (/vst_param_info + param names/labels...)
-        DoAsynchronousCommand(inWorld, replyAddr, data->reply, data, cmdQueryProgram, 0, 0, cmdRTfree, 0, 0);
-    }
-    else {
-        LOG_ERROR("RTAlloc failed!");
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_probe",
+            data, cmdProbe, cmdProbeDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
     }
 }
 
@@ -2230,12 +2053,8 @@ PluginLoad(VSTPlugin) {
     UnitCmd(program_name);
     UnitCmd(program_read);
     UnitCmd(program_write);
-    UnitCmd(program_data_set);
-    UnitCmd(program_data_get);
     UnitCmd(bank_read);
     UnitCmd(bank_write);
-    UnitCmd(bank_data_set);
-    UnitCmd(bank_data_get);
     UnitCmd(midi_msg);
     UnitCmd(midi_sysex);
     UnitCmd(tempo);
@@ -2248,9 +2067,7 @@ PluginLoad(VSTPlugin) {
 
     PluginCmd(vst_search);
     PluginCmd(vst_clear);
-    PluginCmd(vst_query);
-    PluginCmd(vst_query_param);
-    PluginCmd(vst_query_program);
+    PluginCmd(vst_probe);
 }
 
 
