@@ -1,14 +1,14 @@
 cmake_minimum_required (VERSION 2.8)
 
 set(PROJECT "VSTPlugin")
-message(STATUS "Project name is ${PROJECT}")
+message(STATUS "Project name: ${PROJECT}")
 project (${PROJECT})
 
 if(UNIX AND NOT APPLE AND NOT MINGW)
 set(LINUX TRUE)
 endif()
 
-message(STATUS "Installation path is ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "Installation path: ${CMAKE_INSTALL_PREFIX}")
 
 set(FILENAME "VSTPluginUGen.cpp")
 set(PROBE "probe")
@@ -18,7 +18,7 @@ set(VST "${TOP}/vst")
 
 # SuperCollider API:
 set(SC_PATH "" CACHE PATH "SuperCollider source directory")
-message(STATUS "SC_PATH is ${SC_PATH}")
+message(STATUS "SC_PATH: ${SC_PATH}")
 include_directories(${SC_PATH}/include/plugin_interface)
 include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/plugin_interface)
@@ -35,7 +35,7 @@ if (VST2)
     list(APPEND VST_SRC "${VST}/VST2Plugin.cpp")
     set(VST2DIR "${VST}/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
     if(IS_DIRECTORY ${VST2DIR})
-      message(STATUS "VST2DIR is ${VST2DIR}")
+      message(STATUS "VST2DIR: ${VST2DIR}")
       include_directories(${VST2DIR}/pluginterfaces/vst2.x)
     else()
       if(IS_DIRECTORY ${FST})
@@ -65,6 +65,7 @@ include_directories(src)
 include_directories(${VST})
 
 set(LOGLEVEL 2 CACHE STRING "LOGLEVEL")
+message(STATUS "LOGLEVEL: ${LOGLEVEL}")
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
 if(APPLE OR MINGW OR WIN32)
@@ -82,6 +83,7 @@ if (SUPERNOVA)
     # for <boost/atomic.hpp>
     include_directories(${SC_PATH}/external_libraries/boost)
 endif()
+message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_COMPILER_IS_CLANG 1)
