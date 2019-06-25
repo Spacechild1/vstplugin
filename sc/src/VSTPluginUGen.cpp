@@ -460,21 +460,23 @@ void VSTPlugin::resizeBuffer(){
             buf_ = result;
             memset(buf_, 0, bufSize);
         }
-        else {
-            fail = true;
-        }
+        else goto fail;
     }
     // input buffer array
     {
-        auto result = (const float **)RTRealloc(mWorld, inBufVec_, nin * sizeof(float *));
-        if (result) {
-            inBufVec_ = result;
-            for (int i = 0; i < nin; ++i) {
-                inBufVec_[i] = &buf_[i * blockSize];
+        if (nin > 0) {
+            auto result = (const float**)RTRealloc(mWorld, inBufVec_, nin * sizeof(float*));
+            if (result || nin == 0) {
+                inBufVec_ = result;
+                for (int i = 0; i < nin; ++i) {
+                    inBufVec_[i] = &buf_[i * blockSize];
+                }
             }
+            else goto fail;
         }
         else {
-            fail = true;
+            RTFree(mWorld, inBufVec_);
+            inBufVec_ = nullptr;
         }
     }
     // output buffer array
@@ -486,17 +488,15 @@ void VSTPlugin::resizeBuffer(){
                 outBufVec_[i] = &buf_[(i + nin) * blockSize];
             }
         }
-        else {
-            fail = true;
-        }
+        else goto fail;
     }
-    if (fail) {
-        LOG_ERROR("RTRealloc failed!");
-        RTFree(mWorld, buf_);
-        RTFree(mWorld, inBufVec_);
-        RTFree(mWorld, outBufVec_);
-        buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
-    }
+    return;
+fail:
+    LOG_ERROR("RTRealloc failed!");
+    RTFree(mWorld, buf_);
+    RTFree(mWorld, inBufVec_);
+    RTFree(mWorld, outBufVec_);
+    buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
 }
 
     // try to close the plugin in the NRT thread with an asynchronous command
