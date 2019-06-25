@@ -1,6 +1,7 @@
 #include "VSTPluginInterface.h"
 #include "Utility.h"
 #include <stdlib.h>
+#include <fstream>
 
 using namespace vst;
 

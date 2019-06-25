@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <cstring>
 #include <sstream>
+#include <fstream>
 
 #ifdef _WIN32
 # include <Windows.h>
@@ -682,7 +683,7 @@ VSTPluginDesc::VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin)
 	flags |= plugin.hasMidiOutput() << MidiOutput;
 }
 
-void VSTPluginDesc::serialize(std::ofstream& file, char sep) const {
+void VSTPluginDesc::serialize(std::ostream& file, char sep) const {
 	file << path << sep;
 	file << name << sep;
     file << vendor << sep;
@@ -703,7 +704,7 @@ void VSTPluginDesc::serialize(std::ofstream& file, char sep) const {
 	}
 }
 
-void VSTPluginDesc::deserialize(std::ifstream& file, char sep) {
+void VSTPluginDesc::deserialize(std::istream& file, char sep) {
 	try {
 		std::vector<std::string> lines;
 		std::string line;

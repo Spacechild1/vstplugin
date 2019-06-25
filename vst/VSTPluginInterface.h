@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-#include <fstream>
+#include <iostream>
 #include <functional>
 #include <memory>
 
@@ -193,8 +193,8 @@ struct VSTPluginDesc {
 	VSTPluginDesc() = default;
     VSTPluginDesc(IVSTFactory& factory);
     VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin);
-    void serialize(std::ofstream& file, char sep = '\t') const;
-    void deserialize(std::ifstream& file, char sep = '\t');
+    void serialize(std::ostream& file, char sep = '\t') const;
+    void deserialize(std::istream& file, char sep = '\t');
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
