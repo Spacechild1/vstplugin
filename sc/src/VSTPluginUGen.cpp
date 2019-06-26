@@ -786,7 +786,10 @@ void VSTPlugin::reset(bool async) {
 
 // perform routine
 void VSTPlugin::next(int inNumSamples) {
-    if (!(buf_ && inBufVec_ && outBufVec_)) return;
+    if (!buf_) {
+        // only if RT memory methods failed in resizeBuffer()
+        (*ft->fClearUnitOutputs)(this, inNumSamples);
+    }
     int nin = numInChannels_;
     int nout = numOutChannels_;
     bool bypass = in0(0);
