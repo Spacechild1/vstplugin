@@ -481,14 +481,20 @@ void VSTPlugin::resizeBuffer(){
     }
     // output buffer array
     {
-        auto result = (float **)RTRealloc(mWorld, outBufVec_, nout * sizeof(float *));
-        if (result) {
-            outBufVec_ = result;
-            for (int i = 0; i < nout; ++i) {
-                outBufVec_[i] = &buf_[(i + nin) * blockSize];
+        if (nout > 0) {
+            auto result = (float**)RTRealloc(mWorld, outBufVec_, nout * sizeof(float*));
+            if (result) {
+                outBufVec_ = result;
+                for (int i = 0; i < nout; ++i) {
+                    outBufVec_[i] = &buf_[(i + nin) * blockSize];
+                }
             }
+            else goto fail;
         }
-        else goto fail;
+        else {
+            RTFree(mWorld, outBufVec_);
+            outBufVec_ = nullptr;
+        }
     }
     return;
 fail:
