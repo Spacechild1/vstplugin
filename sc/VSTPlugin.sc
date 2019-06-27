@@ -431,11 +431,15 @@ VSTPlugin : MultiOutUGen {
 			root = thisProcess.nowExecutingPath;
 			root.notNil.if {
 				temp = root.dirname +/+ path;
+				// first check if it's an existing folder
+				PathName(temp).isFolder.if { ^temp };
+				// otherwise treat it as a file path
 				// no extension: append VST2 platform extension
 				(path.find(".vst3").isNil && path.find(platformExtension).isNil).if {
 					temp = temp ++ platformExtension;
 				};
-				File.exists(temp).if { ^temp };
+				// check if the file actually exists
+				PathName(temp).isFile.if { ^temp };
 			}
 			// otherwise the path is passed to the UGen which tries
 			// to resolve it to the standard VST search paths.
