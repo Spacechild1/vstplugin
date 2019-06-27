@@ -30,7 +30,9 @@ using VSTPluginMap = std::unordered_map<std::string, VSTPluginDesc>;
 class VSTPlugin;
 
 struct VSTPluginCmdData {
-    void tryOpen();
+    // for asynchronous commands
+    static VSTPluginCmdData* create(VSTPlugin* owner, const char* path = 0);
+    void open();
     void close();
     // data
     VSTPlugin* owner = nullptr;
@@ -66,6 +68,10 @@ struct VendorCmdData {
 };
 
 struct InfoCmdData {
+    static InfoCmdData* create(World* world, int size = 0);
+    static InfoCmdData* create(VSTPlugin* owner, const char* path);
+    static InfoCmdData* create(VSTPlugin* owner, int bufnum);
+    static bool nrtFree(World* world, void* cmdData);
     VSTPlugin* owner = nullptr;
     int32 flags = 0;
     int32 bufnum = -1;
@@ -74,8 +80,6 @@ struct InfoCmdData {
     // flexible array
     int size = 0;
     char buf[1];
-    static InfoCmdData* create(World* world, int size = 0);
-    static bool nrtFree(World* world, void* cmdData);
 };
 
 class VSTPluginListener : public IVSTPluginListener {
@@ -160,11 +164,7 @@ public:
     void parameterAutomated(int32 index, float value);
     void midiEvent(const VSTMidiEvent& midi);
     void sysexEvent(const VSTSysexEvent& sysex);
-    void sendData(int32 totalSize, int32 onset, const char *data, int32 n, bool bank);
-    // for asynchronous commands
-    VSTPluginCmdData* makeCmdData(const char *s);
-    VSTPluginCmdData* makeCmdData(const char *data, size_t size);
-    VSTPluginCmdData* makeCmdData();
+    // perform sequenced command
     template<typename T>
     void doCmd(T *cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
@@ -178,7 +178,7 @@ private:
         int32 size;
         char data[1];
     };
-    UnitCmdQueueItem *unitCmdQueue_;
+    UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
     std::shared_ptr<IVSTPlugin> plugin_ = nullptr;
     bool isLoading_ = false;

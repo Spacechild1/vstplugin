@@ -58,19 +58,67 @@ InfoCmdData* InfoCmdData::create(World* world, int size) {
     return (InfoCmdData *)data;
 }
 
+InfoCmdData* InfoCmdData::create(VSTPlugin* owner, const char* path) {
+    auto data = (InfoCmdData*)RTAlloc(owner->mWorld, sizeof(InfoCmdData));
+    if (data) {
+        new (data)InfoCmdData();
+        data->owner = owner;
+        snprintf(data->path, sizeof(data->path), "%s", path);
+    }
+    else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+    return data;
+}
+
+InfoCmdData* InfoCmdData::create(VSTPlugin* owner, int bufnum) {
+    auto data = (InfoCmdData*)RTAlloc(owner->mWorld, sizeof(InfoCmdData));
+    if (data) {
+        new (data)InfoCmdData();
+        data->owner = owner;
+        data->bufnum = bufnum;
+        data->path[0] = '\0';
+    }
+    else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+    return data;
+}
+
 bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
     auto data = (InfoCmdData*)cmdData;
     // this is potentially dangerous because NRTFree internally uses free()
     // while BufFreeCmd::Stage4() uses free_aligned().
-    // On the other hand, the client is supposed to pass a unused bufnum
-    // so we don't have to free any previous data.
+    // On the other hand, the client is supposed to pass an *unused* bufnum,
+    // so ideally we don't have to free any previous data.
     // The SndBuf is then freed by the client.
     if (data->freeData)
         NRTFree(data->freeData);
     return true;
 }
 
-// format: size, chars...
+// VSTPluginCmdData
+VSTPluginCmdData* VSTPluginCmdData::create(VSTPlugin* owner, const char* path) {
+    size_t size = path ? (strlen(path) + 1) : 0; // keep trailing '\0'!
+    auto* cmdData = (VSTPluginCmdData*)RTAlloc(owner->mWorld, sizeof(VSTPluginCmdData) + size);
+    if (cmdData) {
+        new (cmdData) VSTPluginCmdData();
+        cmdData->owner = owner;
+        if (path) {
+            memcpy(cmdData->buf, path, size);
+        }
+        cmdData->size = size;
+    }
+    else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+    return cmdData;
+}
+
+// Encode a string as a list of floats.
+// This is needed because the current plugin API only
+// allows float arrays as arguments to Node replies.
+// Format: size, ASCII chars...
 int string2floatArray(const std::string& src, float *dest, int maxSize) {
     int len = std::min<int>(src.size(), maxSize-1);
     if (len >= 0) {
@@ -513,10 +561,10 @@ fail:
     buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
 }
 
-    // try to close the plugin in the NRT thread with an asynchronous command
+// try to close the plugin in the NRT thread with an asynchronous command
 void VSTPlugin::close() {
     if (plugin_) {
-        auto cmdData = makeCmdData();
+        auto cmdData = VSTPluginCmdData::create(this);
         if (!cmdData) {
             return;
         }
@@ -536,6 +584,7 @@ void VSTPlugin::close() {
     }
 }
 
+// get rid of the plugin/window (called in the NRT thread)
 void VSTPluginCmdData::close() {
     if (!plugin) return;
 #if VSTTHREADS
@@ -581,7 +630,7 @@ bool cmdOpen(World *world, void* cmdData) {
         }
 #endif
     }
-    data->tryOpen();
+    data->open();
     auto plugin = data->plugin.get();
     if (plugin) {
         auto owner = data->owner;
@@ -609,7 +658,7 @@ bool cmdOpenDone(World *world, void* cmdData) {
     return false; // done
 }
 
-    // try to open the plugin in the NRT thread with an asynchronous command
+// try to open the plugin in the NRT thread with an asynchronous command
 void VSTPlugin::open(const char *path, bool gui) {
     LOG_DEBUG("open");
     if (isLoading_) {
@@ -622,7 +671,7 @@ void VSTPlugin::open(const char *path, bool gui) {
         return;
     }
     
-    auto cmdData = makeCmdData(path);
+    auto cmdData = VSTPluginCmdData::create(this, path);
     if (cmdData) {
         cmdData->value = gui;
         doCmd(cmdData, cmdOpen, cmdOpenDone);
@@ -630,6 +679,7 @@ void VSTPlugin::open(const char *path, bool gui) {
     }
 }
 
+// "/open" command succeeded/failed - called in the RT thread
 void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
     LOG_DEBUG("doneOpen");
     isLoading_ = false;
@@ -673,7 +723,8 @@ using VSTPluginCmdPromise = std::promise<std::pair<std::shared_ptr<IVSTPlugin>, 
 void threadFunction(VSTPluginCmdPromise promise, const char *path);
 #endif
 
-void VSTPluginCmdData::tryOpen(){
+// try to open the plugin ("buf") and store the result in "plugin" and "window"
+void VSTPluginCmdData::open(){
 #if VSTTHREADS
         // creates a new thread where the plugin is created and the message loop runs
     if (value){ // VST gui?
@@ -765,7 +816,7 @@ bool cmdShowEditor(World *world, void *cmdData) {
 
 void VSTPlugin::showEditor(bool show) {
     if (plugin_ && window_) {
-        auto cmdData = makeCmdData();
+        auto cmdData = VSTPluginCmdData::create(this);
         if (cmdData) {
             cmdData->window = window_;
             cmdData->value = show;
@@ -788,7 +839,7 @@ void VSTPlugin::reset(bool async) {
     if (check()) {
         if (async) {
             // reset in the NRT thread (unsafe)
-            doCmd(makeCmdData(), cmdReset);
+            doCmd(VSTPluginCmdData::create(this), cmdReset);
         }
         else {
             // reset in the RT thread (safe)
@@ -1043,7 +1094,7 @@ bool cmdSetProgramDone(World *world, void *cmdData) {
 void VSTPlugin::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumPrograms()) {
-            auto data = makeCmdData();
+            auto data = VSTPluginCmdData::create(this);
             if (data) {
                 data->value = index;
                 doCmd(data, cmdSetProgram, cmdSetProgramDone);
@@ -1135,45 +1186,29 @@ bool cmdReadPresetDone(World *world, void *cmdData){
 
 void VSTPlugin::readProgram(const char *path){
     if (check()){
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            snprintf(data->path, sizeof(data->path), "%s", path);
-            doCmd(data, cmdReadPreset<false>, cmdReadPresetDone<false>);
-        }
+        doCmd(InfoCmdData::create(this, path),
+            cmdReadPreset<false>, cmdReadPresetDone<false>);
     }
 }
 
 void VSTPlugin::readProgram(int32 buf) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            data->bufnum = buf;
-            doCmd(data, cmdReadPreset<false>, cmdReadPresetDone<false>);
-        }
+        doCmd(InfoCmdData::create(this, buf),
+            cmdReadPreset<false>, cmdReadPresetDone<false>);
     }
 }
 
 void VSTPlugin::readBank(const char *path) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            snprintf(data->path, sizeof(data->path), "%s", path);
-            doCmd(data, cmdReadPreset<true>, cmdReadPresetDone<true>);
-        }
+        doCmd(InfoCmdData::create(this, path),
+            cmdReadPreset<true>, cmdReadPresetDone<true>);
     }
 }
 
 void VSTPlugin::readBank(int32 buf) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            data->bufnum = buf;
-            doCmd(data, cmdReadPreset<true>, cmdReadPresetDone<true>);
-        }
+        doCmd(InfoCmdData::create(this, buf),
+            cmdReadPreset<true>, cmdReadPresetDone<true>);
     }
 }
 
@@ -1219,45 +1254,29 @@ bool cmdWritePresetDone(World *world, void *cmdData){
 
 void VSTPlugin::writeProgram(const char *path) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            snprintf(data->path, sizeof(data->path), "%s", path);
-            doCmd(data, cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
-        }
+        doCmd(InfoCmdData::create(this, path), 
+            cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
     }
 }
 
 void VSTPlugin::writeProgram(int32 buf) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            data->bufnum = buf;
-            doCmd(data, cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
-        }
+        doCmd(InfoCmdData::create(this, buf),
+            cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
     }
 }
 
 void VSTPlugin::writeBank(const char *path) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            snprintf(data->path, sizeof(data->path), "%s", path);
-            doCmd(data, cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
-        }
+        doCmd(InfoCmdData::create(this, path),
+            cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
     }
 }
 
 void VSTPlugin::writeBank(int32 buf) {
     if (check()) {
-        auto data = InfoCmdData::create(mWorld);
-        if (data) {
-            data->owner = this;
-            data->bufnum = buf;
-            doCmd(data, cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
-        }
+        doCmd(InfoCmdData::create(this, buf),
+            cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
     }
 }
 
@@ -1447,31 +1466,6 @@ void VSTPlugin::sendMsg(const char *cmd, float f) {
 void VSTPlugin::sendMsg(const char *cmd, int n, const float *data) {
     // LOG_DEBUG("sending msg: " << cmd);
     SendNodeReply(&mParent->mNode, mParentIndex, cmd, n, data);
-}
-
-VSTPluginCmdData* VSTPlugin::makeCmdData(const char *data, size_t size){
-    auto *cmdData = (VSTPluginCmdData *)RTAlloc(mWorld, sizeof(VSTPluginCmdData) + size);
-    if (cmdData){
-        new (cmdData) VSTPluginCmdData();
-        cmdData->owner = this;
-        if (data){
-            memcpy(cmdData->buf, data, size);
-        }
-        cmdData->size = size; // independent from data
-    }
-    else {
-        LOG_ERROR("RTAlloc failed!");
-    }
-    return cmdData;
-}
-
-VSTPluginCmdData* VSTPlugin::makeCmdData(const char *path){
-    size_t len = path ? (strlen(path) + 1) : 0;
-    return makeCmdData(path, len);
-}
-
-VSTPluginCmdData* VSTPlugin::makeCmdData() {
-    return makeCmdData(nullptr, 0);
 }
 
 void cmdRTfree(World *world, void * cmdData) {
