@@ -1248,6 +1248,7 @@ bool cmdWritePreset(World *world, void *cmdData){
 template<bool bank>
 bool cmdWritePresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    syncBuffer(world, data->bufnum);
     data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
     return true; // continue
 }
