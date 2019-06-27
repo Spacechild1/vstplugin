@@ -273,8 +273,8 @@ VSTPluginController {
 		}, '/vst_program_read').oneShot;
 		this.sendMsg('/program_read', path);
 	}
-	readProgramMsg { arg path;
-		^this.makeMsg('/program_read', path);
+	readProgramMsg { arg dest;
+		^this.makeMsg('/program_read', VSTPlugin.prMakeDest(dest));
 	}
 	readBank { arg path, action;
 		path = VSTPlugin.prResolvePath(path);
@@ -286,8 +286,8 @@ VSTPluginController {
 		}, '/vst_bank_read').oneShot;
 		this.sendMsg('/bank_read', path);
 	}
-	readBankMsg { arg path;
-		^this.makeMsg('/bank_read', path);
+	readBankMsg { arg dest;
+		^this.makeMsg('/bank_read', VSTPlugin.prMakeDest(dest));
 	}
 	writeProgram { arg path, action;
 		path = VSTPlugin.prResolvePath(path);
@@ -297,8 +297,8 @@ VSTPluginController {
 		}, '/vst_program_write').oneShot;
 		this.sendMsg('/program_write', path);
 	}
-	writeProgramMsg { arg path;
-		^this.makeMsg('/program_write', path);
+	writeProgramMsg { arg dest;
+		^this.makeMsg('/program_write', VSTPlugin.prMakeDest(dest));
 	}
 	writeBank { arg path, action;
 		path = VSTPlugin.prResolvePath(path);
@@ -308,8 +308,8 @@ VSTPluginController {
 		}, '/vst_bank_write').oneShot;
 		this.sendMsg('/bank_write', path);
 	}
-	writeBankMsg { arg path;
-		^this.makeMsg('/bank_write', path);
+	writeBankMsg { arg dest;
+		^this.makeMsg('/bank_write', VSTPlugin.prMakeDest(dest));
 	}
 	setProgramData { arg data, action;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
@@ -351,32 +351,26 @@ VSTPluginController {
 		this.prSendData(data, wait, action, true);
 	}
 	prSendData { arg data, wait, action, bank;
-		// split data into smaller packets and send them to the plugin.
+		// stream preset data to the plugin via a Buffer.
 		// wait = -1 allows an OSC roundtrip between packets.
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
-		var totalSize, address, resp, sym, end, pos = 0;
+		var buffer, sym;
 		wait = wait ?? this.wait;
 		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
-		address = "/"++sym++"_data_set";
-		totalSize = data.size;
 
-		resp = this.prMakeOscFunc({ arg msg;
+		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
+			buffer.free;
 			action.value(this, success);
 			this.prQueryParams(wait);
 			bank.if { this.prQueryPrograms(wait) };
 		}, "/vst_"++sym++"_read").oneShot;
 
-		{
-			while { pos < totalSize } {
-				end = pos + oscPacketSize - 1; // 'end' can safely exceed 'totalSize'
-				this.sendMsg(address, totalSize, pos, data[pos..end]);
-				pos = pos + oscPacketSize;
-				(wait >= 0).if { wait.wait } { synth.server.sync };
-			};
-		}.forkIfNeeded
+		buffer = Buffer.sendCollection(synth.server, data, wait: wait, action: { arg buf;
+			this.sendMsg("/"++sym++"_read", VSTPlugin.prMakeDest(buf));
+		});
 	}
 	getProgramData { arg action;
 		this.prGetData(action, false);
@@ -410,51 +404,34 @@ VSTPluginController {
 		this.prReceiveData(wait, timeout, action, true);
 	}
 	prReceiveData { arg wait, timeout, action, bank;
-		// get data in smaller packets and assemble them.
+		// stream data from the plugin via a Buffer.
 		// wait = -1 allows an OSC roundtrip between packets.
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
-		var data, resp, address, sym, count = 0, done = false;
+		var address, sym;
 		wait = wait ?? this.wait;
 		loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
-		address = "/"++sym++"_data_get";
-		data = Int8Array.new;
-
-		resp = this.prMakeOscFunc({ arg msg;
-			var total, onset, size;
-			total = msg[3].asInteger;
-			onset = msg[4].asInteger;
-			size = msg[5].asInteger;
-			// allocate array on the first packet
-			(onset == 0).if { data = Int8Array.new(total) };
-			// add packet
-			data = data.addAll(msg[6..]);
-			// send when done
-			(data.size >= total).if {
-				done = true;
-				resp.free;
-				action.value(data);
-			};
-		}, "/vst_"++sym++"_data");
-
 		{
-			while { done.not } {
-				this.sendMsg(address, count);
-				count = count + 1;
-				if(wait >= 0) { wait.wait } { synth.server.sync };
-			};
-
+			var buf = Buffer(synth.server); // get free Buffer
+			// ask VSTPlugin to store the preset data in this Buffer
+			// (it will allocate the memory for us!)
+			this.sendMsg("/"++sym++"_write", VSTPlugin.prMakeDest(buf));
+			// wait for cmd to finish and update buffer info
+			synth.server.sync;
+			buf.updateInfo({
+				buf.postln;
+				// now read data from Buffer
+				buf.getToFloatArray(wait: wait, timeout: timeout, action: { arg array;
+					var data;
+					(array.size > 0).if {
+						data = array.as(Int8Array);
+					};
+					buf.free;
+					action.value(data); // done
+				});
+			});
 		}.forkIfNeeded;
-
-		// lose the responder if the network choked
-		SystemClock.sched(timeout, {
-			if(done.not) {
-				resp.free;
-				"Receiving data failed!".warn;
-				"Try increasing wait time".postln
-			}
-		});
 	}
 	// MIDI / Sysex
 	sendMidi { arg status, data1=0, data2=0;

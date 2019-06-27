@@ -105,30 +105,27 @@ VSTPlugin : MultiOutUGen {
 	}
 	*search { arg server, dir, useDefault=true, verbose=false, wait = -1, action;
 		server = server ?? Server.default;
-		dir.isString.if { dir = [dir] };
-		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
-		dir = dir.collect { arg p; this.prResolvePath(p) };
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, action) }
 		{ this.prSearchRemote(server, dir, useDefault, verbose, wait, action) };
 	}
-	*searchMsg { arg dir, useDefault=true, verbose=false;
+	*searchMsg { arg dir, useDefault=true, verbose=false, dest=nil;
 		var flags;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
 		dir = dir.collect { arg p; this.prResolvePath(p) };
 		// use remote search (won't write to temp file)!
-		flags = 0 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
-		^['/cmd', '/vst_search', flags] ++ dir;
+		flags = (useDefault.asInteger) | (verbose.asInteger << 1);
+		dest = this.prMakeDest(dest);
+		^['/cmd', '/vst_search', flags, dest] ++ dir;
 	}
-	*prSearchLocal { arg server, searchPaths, useDefault, verbose, action;
+	*prSearchLocal { arg server, dir, useDefault, verbose, action;
 		{
 			var dict = pluginDict[server];
 			var filePath = PathName.tmp ++ this.prUniqueID.asString;
-			// flags: local, use default, verbose
-			var flags = 1 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
-			server.sendMsg('/cmd', '/vst_search', flags, *(searchPaths ++ [filePath]));
+			// ask VSTPlugin to store the search results in a temp file
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, filePath));
 			// wait for cmd to finish
 			server.sync;
 			// read file
@@ -146,56 +143,38 @@ VSTPlugin : MultiOutUGen {
 				});
 			} { arg error;
 				error.notNil.if { "Failed to read tmp file!".warn };
+				// done - free temp file
 				File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
-				// done
 				action.value;
 			};
 		}.forkIfNeeded;
 	}
-	*prSearchRemote { arg server, searchPaths, useDefault, verbose, wait, action;
-		var dict = pluginDict[server];
-		// flags: local, use default, verbose
-		var flags = 0 | (useDefault.asInteger << 1) | (verbose.asInteger << 2);
-		var cb = OSCFunc({ arg msg;
-			var fn, num, count = 0, result = msg[1].asString.split($\n);
-			(result[0] == "/vst_search").if {
-				num = result[1].asInteger;
-				cb.free; // got correct /done message, free it!
-				(num == 0).if {
-					action.value;
-					^this;
-				};
-				"probing plugins".post;
-				fn = OSCFunc({ arg msg;
-					var key, info, result = msg[1].asString.split($\n);
-					(result[0].asSymbol == '/vst_info').if {
-						key = result[1].asSymbol;
-						info = this.prMakeInfo(key, result[2..]);
-						// store under name and key
-						dict[info.key] = info;
-						dict[info.name.asSymbol] = info;
-						count = count + 1;
-						// exit condition
-						(count == num).if {
-							fn.free;
-							this.prQueryPlugins(server, wait, {".".post}, {
-								action.value;
-								"probed % plugins.".format(num).postln;
-								"done!".postln;
-							});
+	*prSearchRemote { arg server, dir, useDefault, verbose, wait, action;
+		{
+			var dict = pluginDict[server];
+			var buf = Buffer(server); // get free Buffer
+			// ask VSTPlugin to store the search results in this Buffer
+			// (it will allocate the memory for us!)
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, buf));
+			// wait for cmd to finish and update buffer info
+			server.sync;
+			buf.updateInfo({
+				// now read data from Buffer
+				buf.getToFloatArray(wait: wait, timeout: 5, action: { arg array;
+					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
+					string.split($\n).do { arg line;
+						var info;
+						(line.size > 0).if {
+							info = this.prParseInfo(line);
+							// store under key
+							dict[info.key] = info;
 						}
-					}
-				}, '/done', server.addr);
-				{
-					num.do { arg index;
-						server.sendMsg('/cmd', '/vst_query', index);
-						".".post;
-						if(wait >= 0) { wait.wait } { server.sync };
-					}
-				}.forkIfNeeded;
-			};
-		}, '/done', server.addr);
-		server.sendMsg('/cmd', '/vst_search', flags, *searchPaths);
+					};
+					buf.free;
+					action.value; // done
+				});
+			});
+		}.forkIfNeeded;
 	}
 	*prParseInfo { arg string;
 		var nparam, nprogram;
@@ -229,23 +208,24 @@ VSTPlugin : MultiOutUGen {
 		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
 		{ this.prProbeRemote(server, path, key, wait, action); };
 	}
-	*probeMsg { arg path;
+	*probeMsg { arg path, dest=nil;
 		path = this.prResolvePath(path);
+		dest = this.prMakeDest(dest);
 		// use remote probe (won't write to temp file)!
-		^['/cmd', '/vst_query', path];
+		^['/cmd', '/vst_probe', path, dest];
 	}
 	*prProbeLocal { arg server, path, key, action;
 		{
 			var info, dict = pluginDict[server];
-			var filePath = PathName.tmp ++ this.prUniqueID.asString;
+			var tmpPath = PathName.tmp ++ this.prUniqueID.asString;
 			// ask server to write plugin info to tmp file
-			server.sendMsg('/cmd', '/vst_query', path, filePath);
+			server.listSendMsg(this.probeMsg(path, tmpPath));
 			// wait for cmd to finish
 			server.sync;
 			// read file (only written if the plugin could be probed)
-			File.exists(filePath).if {
+			File.exists(tmpPath).if {
 				protect {
-					File.use(filePath, "rb", { arg file;
+					File.use(tmpPath, "rb", { arg file;
 						info = this.prParseInfo(file.readAllString);
 						// store under key
 						dict[info.key] = info;
@@ -254,132 +234,40 @@ VSTPlugin : MultiOutUGen {
 						key !? { dict[key.asSymbol] = info };
 					});
 				} { arg error;
-					error.notNil.if { "Failed to read tmp file!".warn };
-					File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
+					error !? { "Failed to read tmp file!".warn };
+					File.delete(tmpPath).not.if { ("Could not delete temp file:" + tmpPath).warn };
 				}
 			};
-			// done
+			// done (on fail, 'info' is nil)
 			action.value(info);
 		}.forkIfNeeded;
 	}
 	*prProbeRemote { arg server, path, key, wait, action;
-		var cb = OSCFunc({ arg msg;
-			var info, result = msg[1].asString.split($\n);
-			var dict = pluginDict[server];
-			(result[0] == "/vst_info").if {
-				cb.free; // got correct /done message, free it!
-				(result.size > 1).if {
-					info = this.prMakeInfo(result[1..]);
-					// store under key
-					dict[info.key] = info;
-					// also store under resolved path and custom key
-					dict[path.asSymbol] = info;
-					key !? { dict[key.asSymbol] = info };
-					this.prQueryPlugin(server, info.key, wait, { action.value(info) });
-				} { action.value };
-			};
-		}, '/done', server.addr);
-		server.sendMsg('/cmd', '/vst_query', path);
-	}
-	*prQueryPlugins { arg server, wait, update, action;
-		var gen, fn, dict;
-		dict = pluginDict[server];
-		(dict.size == 0).if {
-			action.value;
-			^this;
-		};
-		// make a generator for plugin keys
-		gen = Routine.new({
-			var plugins = dict.as(IdentitySet);
-			plugins.do { arg item; yield(item.key) };
-		});
-		// recursively call the generator
-		fn = { arg key;
-			key.notNil.if {
-				this.prQueryPlugin(server, key, wait, {
-					update.value; // e.g. ".".postln;
-					fn.value(gen.next);
-				});
-			} { action.value }; // done (no keys left)
-		};
-		// start it
-		fn.value(gen.next);
-	}
-	*prQueryPlugin { arg server, key, wait, action;
-		this.prQueryParameters(server, key, wait, {
-			this.prQueryPrograms(server, key, wait, {
-				action.value;
-				// "plugin % queried".format(key).postln;
-			});
-		});
-	}
-	*prQueryParameters { arg server, key, wait, action;
-		var count = 0, fn, num, info;
-		info = pluginDict[server][key];
-		num = info.numParameters;
-		info.parameterNames = Array.new(num);
-		info.parameterLabels = Array.new(num);
-		(num == 0).if {
-			action.value;
-			^this;
-		};
-		fn = OSCFunc({ arg msg;
-			var n, result = msg[1].asString.split($\n);
-			// result.postln;
-			((result[0].asSymbol == '/vst_param_info')
-				&& (result[1].asSymbol == key)
-			).if {
-				n = (result.size - 2).div(2);
-				// "got % parameters for %".format(n, key).postln;
-				n.do { arg i;
-					var idx = (i * 2) + 2;
-					info.parameterNames.add(result[idx].asSymbol);
-					info.parameterLabels.add(result[idx+1].asSymbol);
-				};
-				count = count + n;
-				// exit condition
-				(count == num).if { fn.free; action.value };
-			};
-		}, '/done', server.addr);
-		this.prQuery(server, key, wait, num, '/vst_query_param');
-	}
-	*prQueryPrograms { arg server, key, wait, action;
-		var count = 0, fn, num, info;
-		info = pluginDict[server][key];
-		num = info.numPrograms;
-		info.programNames = Array.new(num);
-		(num == 0).if {
-			action.value;
-			^this;
-		};
-		fn = OSCFunc({ arg msg;
-			var n, result = msg[1].asString.split($\n);
-			// result.postln;
-			((result[0].asSymbol == '/vst_program_info')
-				&& (result[1].asSymbol == key)
-			).if {
-				n = result.size - 2;
-				// "got % programs for %".format(n, key).postln;
-				n.do { arg i;
-					info.programNames.add(result[i + 2].asSymbol);
-				};
-				count = count + n;
-				// exit condition
-				(count == num).if { fn.free; action.value };
-			};
-		}, '/done', server.addr);
-		this.prQuery(server, key, wait, num, '/vst_query_program');
-	}
-	*prQuery { arg server, key, wait, num, cmd;
 		{
-			var div = num.div(16), mod = num.mod(16);
-			// request 16 parameters/programs at once
-			div.do { arg i;
-				server.sendMsg('/cmd', cmd, key, i * 16, 16);
-				if(wait >= 0) { wait.wait } { server.sync };
-			};
-			// request remaining parameters/programs
-			(mod > 0).if { server.sendMsg('/cmd', cmd, key, num - mod, mod) };
+			var dict = pluginDict[server];
+			var buf = Buffer(server); // get free Buffer
+			// ask VSTPlugin to store the probe result in this Buffer
+			// (it will allocate the memory for us!)
+			server.listSendMsg(this.probeMsg(path, buf));
+			// wait for cmd to finish and update buffer info
+			server.sync;
+			buf.updateInfo({
+				// now read data from Buffer
+				buf.getToFloatArray(wait: wait, timeout: 5, action: { arg array;
+					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
+					var info;
+					(string.size > 0).if {
+						info = this.prParseInfo(string);
+						// store under key
+						dict[info.key] = info;
+						// also store under resolved path and custom key
+						dict[path.asSymbol] = info;
+						key !? { dict[key.asSymbol] = info };
+					};
+					buf.free;
+					action.value(info); // done
+				});
+			});
 		}.forkIfNeeded;
 	}
 	*prMakeInfo { arg data;
@@ -450,6 +338,18 @@ VSTPlugin : MultiOutUGen {
 		var id = counter;
 		counter = counter + 1;
 		^id;
+	}
+	*prMakeDest { arg dest;
+		// 'dest' may be a) temp file path, b) bufnum, c) Buffer, d) nil
+		dest !? {
+			dest.isString.if {
+				^dest; // tmp file path
+			};
+			dest = dest.asUGenInput;
+			dest.isNumber.if { ^dest.asInteger }; // bufnum
+			^"bad type for 'dest' argument (%)!".throw;
+		}
+		^-1; // invalid bufnum: don't write results
 	}
 
 	// instance methods
