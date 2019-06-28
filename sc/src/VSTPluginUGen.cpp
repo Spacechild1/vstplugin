@@ -1772,7 +1772,6 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     bool useDefault = data->flags & 1;
     bool verbose = (data->flags >> 1) & 1;
     std::vector<std::string> searchPaths;
-    bool local = data->bufnum < 0;
     auto size = data->size;
     auto ptr = data->buf;
     auto onset = ptr;
@@ -1796,7 +1795,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         plugins.insert(plugins.end(), result.begin(), result.end());
     }
     // write new info to file (only for local Servers) or buffer
-    if (local) {
+    if (data->path[0]) {
         // write to file
         std::ofstream file(data->path);
         if (file.is_open()) {
@@ -1811,7 +1810,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
             LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
         }
     }
-    else {
+    else if (data->bufnum >= 0) {
         // write to buffer
         auto buf = World_GetNRTBuf(inWorld, data->bufnum);
         data->freeData = buf->data; // to be freed in stage 4
@@ -1824,6 +1823,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         }
         allocReadBuffer(buf, ss.str());
     }
+    // else do nothing
     return true;
 }
 
@@ -1851,8 +1851,8 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     }
     else {
         bufnum = args->geti();
-        if (bufnum < 0 || bufnum >= inWorld->mNumSndBufs) {
-            LOG_ERROR("vst_search: bad bufnum " << bufnum);
+        if (bufnum >= inWorld->mNumSndBufs) {
+            LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
             return;
         }
     }
@@ -1874,7 +1874,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     auto data = InfoCmdData::create(inWorld, pathLen);
     if (data) {
         data->flags = flags;
-        data->bufnum = bufnum;
+        data->bufnum = bufnum; // negative bufnum: don't write search result
         if (filename) {
             snprintf(data->path, sizeof(data->path), "%s", filename);
         }
@@ -1912,12 +1912,12 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 // query plugin info
 bool cmdProbe(World *inWorld, void *cmdData) {
     auto data = (InfoCmdData *)cmdData;
-    auto bufnum = data->bufnum;
     auto desc = queryPlugin(data->buf);
     // write info to file or buffer
     if (desc){
-        if (bufnum < 0) {
+        if (data->path[0]) {
             // write to file
+            LOG_DEBUG("writing plugin info to file");
             std::ofstream file(data->path);
             if (file.is_open()) {
                 file << makeKey(*desc) << "\t";
@@ -1927,7 +1927,7 @@ bool cmdProbe(World *inWorld, void *cmdData) {
                 LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
             }
         }
-        else {
+        else if (data->bufnum >= 0) {
             // write to buffer
             auto buf = World_GetNRTBuf(inWorld, data->bufnum);
             data->freeData = buf->data; // to be freed in stage 4
@@ -1937,11 +1937,10 @@ bool cmdProbe(World *inWorld, void *cmdData) {
             desc->serialize(ss);
             allocReadBuffer(buf, ss.str());
         }
+        // else do nothing
         return true;
     }
-    else {
-        return false;
-    }
+    return false;
 }
 
 bool cmdProbeDone(World* inWorld, void* cmdData) {
@@ -1970,15 +1969,14 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         if (args->nextTag() == 's') {
             auto filename = args->gets();
             snprintf(data->path, sizeof(data->path), "%s", filename);
-            data->bufnum = -1;
         }
         else {
             auto bufnum = args->geti();
-            if (bufnum < 0 || bufnum >= inWorld->mNumSndBufs) {
-                LOG_ERROR("vst_search: bad bufnum " << bufnum);
+            if (bufnum >= inWorld->mNumSndBufs) {
+                LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
                 return;
             }
-            data->bufnum = bufnum;
+            data->bufnum = bufnum; // negative bufnum: don't write probe result
             data->path[0] = '\0';
         }
 
