@@ -480,16 +480,13 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X f 17;
 #X msg 216 282 print;
 #N canvas 196 168 690 521 search 0;
-#X obj 25 465 s \$0-msg;
-#X msg 33 226 search;
-#X text 95 222 if no user search paths are provided \, the standard
-VST search paths are used., f 39;
-#X msg 50 320 info;
-#X text 96 457 the info method will output the following messages:
+#X obj 25 457 s \$0-msg;
+#X msg 52 312 info;
+#X text 96 449 the info method will output the following messages:
 , f 27;
-#X msg 56 388 info \$1;
-#X obj 56 367 openpanel;
-#X obj 56 346 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 56 380 info \$1;
+#X obj 56 359 openpanel;
+#X obj 56 338 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
 #X text 390 224 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
@@ -528,37 +525,42 @@ VST search paths are used., f 39;
 #X text 18 85 info version <s>: plugin version;
 #X text 18 49 info vendor <s>: plugin vendor;
 #X text 18 67 info category <s>: plugin category;
-#X restore 270 461 pd info;
+#X restore 270 453 pd info;
 #X text 23 67 [declare -lib vstsearch];
-#X text 98 161 search directories for VST plugins;
-#X text 96 181 optional arguments: list of user search paths. relative
-paths are resolved to the current patch directory., f 42;
-#X msg 25 161 search <l>;
 #X text 22 26 you can search the standard VST directories on startup
 by loading [vstsearch] \, either by adding it to the startup flags
 or with declare:, f 54;
 #X text 24 134 additionally \, you can use the following methods:;
-#X text 89 319 get info about currently loaded plugin;
-#X msg 39 286 search_clear;
-#X text 129 287 clear the plugin dictionary;
+#X text 91 311 get info about currently loaded plugin;
+#X msg 46 285 search_clear;
+#X text 128 285 clear the plugin dictionary;
 #X text 24 88 searched plugins are stored in a global dictionary by
 their key \, which can be used as the creation argument to [vstplugin~]
 or in the [open( message., f 54;
-#X text 94 251 for each plugin \, a message [plugin <key>( is sent
-through the rightmost outlet., f 43;
-#X text 86 346 get info about any plugin (key or file name);
+#X text 86 338 get info about any plugin (key or file name);
 #X text 427 156 is "Program Files (x86)";
-#X msg 60 434 info \$1;
-#X symbolatom 60 412 16 0 0 0 - - -;
+#X msg 60 426 info \$1;
+#X symbolatom 60 404 16 0 0 0 - - -;
+#X msg 25 160 search;
+#X text 81 159 search the standard VST directories;
+#X text 111 183 alternatively \, you can provide a list of user search
+paths. relative paths are resolved to the current patch directory.
+, f 41;
+#X msg 31 188 search <l>;
+#X msg 38 229 search -a;
+#X text 112 229 search asynchronously, f 22;
+#X text 112 248 after the search has finished \, the message [search_done(
+is sent., f 35;
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
-#X connect 5 0 0 0;
-#X connect 6 0 5 0;
-#X connect 7 0 6 0;
-#X connect 25 0 0 0;
+#X connect 4 0 3 0;
+#X connect 5 0 4 0;
+#X connect 24 0 0 0;
 #X connect 29 0 0 0;
+#X connect 30 0 29 0;
+#X connect 31 0 0 0;
+#X connect 34 0 0 0;
 #X connect 35 0 0 0;
-#X connect 36 0 35 0;
 #X restore 394 475 pd search;
 #X f 14;
 #X text 392 453 search + info;

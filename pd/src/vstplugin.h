@@ -17,14 +17,14 @@ using namespace vst;
 #include <vector>
 #include <unordered_map>
 #include <type_traits>
+#include <thread>
+#include <mutex>
 
 #ifndef VSTTHREADS
 #define VSTTHREADS 1
 #endif
 
 #if VSTTHREADS
-#include <atomic>
-#include <thread>
 #include <future>
 #endif
 
@@ -66,6 +66,10 @@ class t_vstplugin {
         // array of input/output pointers
     std::vector<void *> x_invec;
     std::vector<void *> x_outvec;
+        // thread for async operations (e.g. search)
+    std::thread x_thread;
+    t_clock *x_clock;
+    std::vector<t_symbol *> x_plugins;
         // methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
