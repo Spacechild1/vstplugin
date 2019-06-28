@@ -494,10 +494,19 @@ METHOD:: readBankMsg
 METHOD:: writeProgramMsg
 METHOD:: writeBankMsg
 
-ARGUMENT:: path
-an emphasis::absolute:: file path.
+ARGUMENT:: dest
+a) String: path for a preset file to be read or written. Relative paths are resolved to the currently executing file (if saved), 
+so for remote Servers you have to specify an absolute file path.
 
-RETURNS:: the message for reading/writing a program/bank file.
+b) link::Classes/Buffer:: or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
+
+code::read*Msg::: the Buffer should contain the preset data with each float representing a single byte; 
+it has to be allocated and freed by the Client.
+
+code::write*Msg::: the Buffer should be initially empty. The UGen will fill the Buffer
+on the Server, the Client can then read the data and free the Buffer.
+
+RETURNS:: the message for reading/writing a program/bank file or exchanging program/bank data via a Buffer.
 
 METHOD:: setProgramData
 METHOD:: setBankData

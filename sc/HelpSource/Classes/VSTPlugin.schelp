@@ -238,6 +238,22 @@ You can clear the cache explicitly with link::#*reset::.
 
 METHOD:: searchMsg
 
+ARGUMENT:: dir 
+(see above)
+ARGUMENT:: useDefault
+(see above)
+ARGUMENT:: verbose
+(see above)
+ARGUMENT:: dest
+
+a) nil: don't write search results (the default)
+
+a) String: name of a temp file where the search results should be written to.
+
+b) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
+on the Server, the Client can then read the data (each float representing a single byte) and free the Buffer.
+The Buffer should be initially empty!
+
 RETURNS:: the message for a emphasis::search:: command (see link::#*search::).
 
 DISCUSSION::
@@ -276,6 +292,18 @@ It might be occasionally useful for other purposes.
 
 
 METHOD:: probeMsg
+
+ARGUMENT:: path 
+the plugin path (see above)
+ARGUMENT:: dest
+
+a) nil: don't write probe result (the default)
+
+a) String: name of a temp file where the probe result should be written to.
+
+b) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
+on the Server, the Client can then read the data (each float representing a single byte) and free the Buffer.
+The Buffer should be initially empty!
 
 RETURNS:: the message for a emphasis::probe:: command (see link::#*probe::).
 
