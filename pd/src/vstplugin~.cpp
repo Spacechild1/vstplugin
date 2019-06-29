@@ -1,4 +1,4 @@
-#include "vstplugin.h"
+#include "vstplugin~.h"
 
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))

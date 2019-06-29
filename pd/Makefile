@@ -14,7 +14,7 @@ export cxx.flags
 
 lib.name = vstplugin~
 
-class.sources = src/vstplugin.cpp
+class.sources = src/vstplugin~.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
 VST3DIR = ../vst/VST_SDK/VST3_SDK/
@@ -75,7 +75,7 @@ define forWindows
   VST_LIBS += -lstdc++fs
   cflags += -DVSTTHREADS=1
   # vstplugin~
-  vstplugin.class.sources += $$(VST_SRC)
+  vstplugin~.class.sources += $$(VST_SRC)
   ldlibs += $$(VST_LIBS)
   # probe.exe
   PROBE_SRC += $$(VST_SRC)
@@ -88,7 +88,7 @@ define forLinux
   VST_LIBS += -L/usr/X11R6/lib -lX11 -ldl
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   # vstplugin~
-  vstplugin.class.sources += $$(VST_SRC)
+  vstplugin~.class.sources += $$(VST_SRC)
   ldlibs += $$(VST_LIBS) 
   # probe
   PROBE_SRC += $$(VST_SRC)
@@ -100,7 +100,7 @@ define forDarwin
   VST_LIBS += -framework Cocoa
   cflags += -fno-objc-arc -DVSTTHREADS=0
   # vstplugin~
-  vstplugin.class.sources += $$(VST_SRC)
+  vstplugin~.class.sources += $$(VST_SRC)
   ldlibs += $$(VST_LIBS) 
   # probe
   PROBE_SRC += $$(VST_SRC)
