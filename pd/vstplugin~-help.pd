@@ -262,39 +262,41 @@ f 51;
 Pd), f 62;
 #X text 24 171 -dp: prefer double precision (default on double precision
 Pd), f 62;
-#X obj 17 240 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 17 264 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 13 12 vstplugin~ takes the following optional creation arguments
 (in the given order):, f 40;
-#X text 14 250 file:;
-#X text 14 294 nin \, nout:;
-#X text 83 293 the number of input and output channels (default is
+#X text 14 274 file:;
+#X text 14 318 nin \, nout:;
+#X text 83 317 the number of input and output channels (default is
 2), f 30;
 #X text 14 79 flags:;
-#X obj 16 341 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 16 365 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 24 342 examples:;
-#X text 14 504 [vstplugin~];
+#X text 24 366 examples:;
+#X text 14 528 [vstplugin~];
 #X text 13 49 [flags...] \, [file] \, [nin \, nout];
 #X text 25 100 -n: don't use any editor GUI, f 31;
 #X text 25 118 -e: open the plugin with the VST editor;
 #X text 46 136 (ignored if no file name is given);
-#X text 57 249 open a plugin on creation (see the 'open' message),
+#X text 57 273 open a plugin on creation (see the 'open' message),
 f 27;
-#X text 16 459 [vstplugin~ 1 2];
-#X text 42 522 2 in \, 2 out;
-#X text 37 478 1 in \, 2 out;
-#X text 16 370 [vstplugin~ -e GVST/GChorus 2 4];
-#X text 35 422 "GVST" might be folder in your patch/Pd search paths
+#X text 16 483 [vstplugin~ 1 2];
+#X text 42 546 2 in \, 2 out;
+#X text 37 502 1 in \, 2 out;
+#X text 16 394 [vstplugin~ -e GVST/GChorus 2 4];
+#X text 35 446 "GVST" might be folder in your patch/Pd search paths
 or in the default VST search paths (see 'search'), f 55;
-#X obj 15 283 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 15 307 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 36 392 2 input channels \, 4 output channels \, opening the
+#X text 36 416 2 input channels \, 4 output channels \, opening the
 plugin "GChorus" with the VST editor GUI., f 56;
 #X text 25 189 -k: keep current plugin state (similar to [text define
 -k]);
 #X text 49 205 NOTE: for large \, complex plugins this can lead to
 significant increases in patch file size., f 47;
+#X text 25 235 -s: search in the standard VST directories (see [pd
+search]);
 #X restore 23 95 pd creation arguments;
 #N canvas 387 235 555 506 advanced 0;
 #X msg 28 59 precision \$1;
@@ -479,35 +481,35 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X restore 274 475 pd preset;
 #X f 17;
 #X msg 216 282 print;
-#N canvas 196 168 690 521 search 0;
-#X obj 25 457 s \$0-msg;
-#X msg 52 312 info;
-#X text 96 449 the info method will output the following messages:
+#N canvas 196 168 690 531 search 0;
+#X obj 29 488 s \$0-msg;
+#X msg 56 343 info;
+#X text 100 480 the info method will output the following messages:
 , f 27;
-#X msg 56 380 info \$1;
-#X obj 56 359 openpanel;
-#X obj 56 338 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 60 411 info \$1;
+#X obj 60 390 openpanel;
+#X obj 60 369 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X text 390 224 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
+#X text 383 220 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
-#X text 390 88 %ProgramFiles%/VSTPlugins %ProgramFiles%/Steinberg/VSTPlugins
+#X text 383 84 %ProgramFiles%/VSTPlugins %ProgramFiles%/Steinberg/VSTPlugins
 %ProgramFiles%/Common Files/VST2 %ProgramFiles%/Common Files/Steinberg/VST2
 , f 43;
-#X text 427 171 path names are case insensitive;
-#X text 389 283 /usr/local/lib/vst /usr/lib/vst, f 20;
-#X obj 388 32 cnv 15 180 20 empty empty empty 20 12 0 14 -233017 -66577
+#X text 420 167 path names are case insensitive;
+#X text 382 279 /usr/local/lib/vst /usr/lib/vst, f 20;
+#X obj 381 28 cnv 15 180 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 394 34 default VST search paths:;
-#X obj 387 59 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
+#X text 387 30 default VST search paths:;
+#X obj 380 55 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X obj 385 199 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 378 195 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X obj 384 260 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 377 256 cnv 15 60 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 391 62 Windows:;
-#X text 389 202 macOS:;
-#X text 388 263 Linux:;
-#X text 391 140 NOTE: on 32bit Pd "%ProgramFiles%";
+#X text 384 58 Windows:;
+#X text 382 198 macOS:;
+#X text 381 259 Linux:;
+#X text 384 136 NOTE: on 32bit Pd "%ProgramFiles%";
 #N canvas 738 353 330 316 info 0;
 #X text 16 12 info name <s>: plugin name;
 #X text 17 32 info path <s>: full plugin path;
@@ -525,42 +527,44 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X text 18 85 info version <s>: plugin version;
 #X text 18 49 info vendor <s>: plugin vendor;
 #X text 18 67 info category <s>: plugin category;
-#X restore 270 453 pd info;
-#X text 23 67 [declare -lib vstsearch];
-#X text 22 26 you can search the standard VST directories on startup
-by loading [vstsearch] \, either by adding it to the startup flags
-or with declare:, f 54;
-#X text 24 134 additionally \, you can use the following methods:;
-#X text 91 311 get info about currently loaded plugin;
-#X msg 46 285 search_clear;
-#X text 128 285 clear the plugin dictionary;
-#X text 24 88 searched plugins are stored in a global dictionary by
-their key \, which can be used as the creation argument to [vstplugin~]
-or in the [open( message., f 54;
-#X text 86 338 get info about any plugin (key or file name);
-#X text 427 156 is "Program Files (x86)";
-#X msg 60 426 info \$1;
-#X symbolatom 60 404 16 0 0 0 - - -;
-#X msg 25 160 search;
-#X text 81 159 search the standard VST directories;
-#X text 111 183 alternatively \, you can provide a list of user search
+#X restore 274 484 pd info;
+#X text 28 165 additionally \, you can use the following methods:;
+#X text 95 342 get info about currently loaded plugin;
+#X msg 50 316 search_clear;
+#X text 132 316 clear the plugin dictionary;
+#X text 90 369 get info about any plugin (key or file name);
+#X text 420 152 is "Program Files (x86)";
+#X msg 64 457 info \$1;
+#X symbolatom 64 435 16 0 0 0 - - -;
+#X msg 29 191 search;
+#X text 85 190 search the standard VST directories;
+#X text 115 214 alternatively \, you can provide a list of user search
 paths. relative paths are resolved to the current patch directory.
 , f 41;
-#X msg 31 188 search <l>;
-#X msg 38 229 search -a;
-#X text 112 229 search asynchronously, f 22;
-#X text 112 248 after the search has finished \, the message [search_done(
+#X msg 35 219 search <l>;
+#X msg 42 260 search -a;
+#X text 116 260 search asynchronously, f 22;
+#X text 116 279 after the search has finished \, the message [search_done(
 is sent., f 35;
+#X text 28 113 [vstplugin~ -s];
+#X text 29 84 you can use the -s flag to perform a search in the standard
+VST directories on object creation:, f 49;
+#X text 28 131 the search is guaranteed to run only once \, even if
+several objects receive this flag., f 44;
+#X text 14 24 searched plugins are stored in a global dictionary using
+their name as the key \, which can be used as the creation argument
+to [vstplugin~] or in the [open( message.;
+#X text 12 63 (whitespace is replaced by underscores.);
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
 #X connect 4 0 3 0;
 #X connect 5 0 4 0;
-#X connect 24 0 0 0;
-#X connect 29 0 0 0;
-#X connect 30 0 29 0;
+#X connect 22 0 0 0;
+#X connect 26 0 0 0;
+#X connect 27 0 26 0;
+#X connect 28 0 0 0;
 #X connect 31 0 0 0;
-#X connect 34 0 0 0;
-#X connect 35 0 0 0;
+#X connect 32 0 0 0;
 #X restore 394 475 pd search;
 #X f 14;
 #X text 392 453 search + info;
@@ -594,46 +598,47 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 341 438 pd editor;
+#X restore 341 449 pd editor;
 #X f 10;
-#X text 127 350 by default \, a generic Pd editor is created \, use
+#X text 127 361 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
 #X obj 24 455 outlet;
-#X text 171 438 more info about the editor:;
+#X text 171 449 more info about the editor:;
 #X text 146 105 VST3 plug-in keys get a '.vst3' extension to distinguish
 them from VST2 plugins of the same name.;
 #X text 147 131 generally \, keys can only be used after a search (see
 the 'search' method) or if the plug-in has already been opened by its
 file path., f 49;
-#X obj 125 381 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 125 392 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 133 387 NOTE: on macOS \, the VST editor is highly experimental
+#X text 133 398 NOTE: on macOS \, the VST editor is highly experimental
 and runs on the audio thread! see the README for more information.
 , f 44;
 #X text 134 26 plug-ins can be opened in 2 ways:;
 #X text 132 48 1) by KEY:;
-#X text 146 194 both absolute and relative paths are allowed. relative
-paths are searched like abstractions. if that fails \, the standard
-VST search paths are used (see [pd search]), f 58;
 #X symbolatom 24 128 16 0 0 0 - - -;
 #X msg 24 148 open \$1;
-#X msg 24 66 search;
 #X obj 24 87 s \$0-msg;
-#X text 147 66 the key is the plug-in name with whitespace substituted
-by underscores so that the symbol can be easily typed in Pd (e.g. 'Awesome
-Reverb' becomes 'Awesome_Reverb').;
-#X text 144 235 for VST2 plug-ins the extension (.dll \, .so \, .vst)
-can be omitted \, for VST3 plug-ins the '.vst3' extension is mandatory.
-, f 58;
-#X text 127 280 opening by file path doesn't work if the module contains
+#X text 127 291 opening by file path doesn't work if the module contains
 several plug-ins (shell plug-ins or certain VST3 plug-ins)!;
 #X text 128 174 2) by FILE NAME:;
-#X text 126 308 also \, keys are always platform independent while
+#X text 126 319 also \, keys are always platform independent while
 file names may be different (e.g. containing an architecture string
 like 'x64'), f 60;
 #X text 22 44 1) search;
 #X text 21 109 2) open by key;
 #X text 58 204 file path;
+#X msg 24 66 search -a;
+#X text 147 66 the key is the plug-in name with whitespace substituted
+by underscores \, so that the symbol can be easily typed in Pd (e.g.
+'Awesome Reverb' becomes 'Awesome_Reverb').;
+#X text 148 246 for VST2 plug-ins the extension (.dll \, .so \, .vst)
+can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
+, f 58;
+#X text 148 194 both absolute and relative paths are allowed. relative
+paths are searched like abstractions. if that fails \, the standard
+VST search paths are searched *recursively* (see [pd search]), f 58
+;
 #X connect 0 0 5 0;
 #X connect 1 0 2 0;
 #X connect 2 0 0 0;
@@ -641,9 +646,9 @@ like 'x64'), f 60;
 #X connect 4 0 6 0;
 #X connect 5 0 9 0;
 #X connect 6 0 5 0;
-#X connect 18 0 19 0;
-#X connect 19 0 5 0;
-#X connect 20 0 21 0;
+#X connect 17 0 18 0;
+#X connect 18 0 5 0;
+#X connect 26 0 19 0;
 #X restore 199 230 pd open;
 #X text 252 231 open a plugin;
 #X obj 20 120 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
