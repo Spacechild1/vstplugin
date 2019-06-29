@@ -16,10 +16,19 @@ static void mainLoopTick(void *x){
 // substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
 static void substitute_whitespace(char *buf){
     for (char *c = buf; *c; c++){
-        if (*c == ' '){
-            *c = 160;
-        }
+        if (*c == ' ') *c = 160;
     }
+}
+
+// replace whitespace with underscores so you can type it in Pd
+static void bash_name(char *buf){
+    for (char *c = buf; *c; c++){
+        if (*c == ' ') *c = '_';
+    }
+}
+
+static void bash_name(std::string& s){
+    bash_name(&s[0]);
 }
 
 template<typename T>
@@ -55,11 +64,7 @@ static std::string makeKey(const VSTPluginDesc& desc){
         key = desc.name;
     }
     // replace whitespace with underscores so you can type it in Pd
-    for (auto& c : key){
-        if (c == ' '){
-            c = '_';
-        }
-    }
+    bash_name(key);
     return key;
 }
 
@@ -211,17 +216,12 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
     UNLOCK
 }
 
+// tell whether we've already searched the standard VST directory
+// (see '-s' flag for [vstplugin~])
+static bool gDoneSearch = false;
+
 #undef LOCK
 #undef UNLOCK
-
-// called by [vstsearch]
-extern "C" {
-    void vst_search(void){
-        for (auto& path : getDefaultSearchPaths()){
-            searchPlugins(path);
-        }
-    }
-}
 
 /*--------------------- t_vstparam --------------------------*/
 
@@ -1516,9 +1516,10 @@ void t_vstplugin::update_precision(){
 // constructor
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
 t_vstplugin::t_vstplugin(int argc, t_atom *argv){
+    bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool keep = false; // remember plugin + state?
-    int dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
+    bool dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
     t_symbol *file = nullptr; // plugin to open (optional)
     bool editor = false; // open plugin with VST editor?
 
@@ -1532,9 +1533,11 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             } else if (!strcmp(flag, "-e")){
                 editor = true;
             } else if (!strcmp(flag, "-sp")){
-                dp = 0;
+                dp = false;
             } else if (!strcmp(flag, "-dp")){
-                dp = 1;
+                dp = true;
+            } else if (!strcmp(flag, "-s")){
+                search = true;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
@@ -1574,6 +1577,13 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     }
     x_messout = outlet_new(&x_obj, 0); // additional message outlet
     x_sigoutlets.resize(out);
+
+    if (search && !gDoneSearch){
+        for (auto& path : getDefaultSearchPaths()){
+            searchPlugins(path);
+        }
+        gDoneSearch = true;
+    }
 
     if (file){
         t_atom msg[2];
@@ -1806,12 +1816,9 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
 }
 
 // setup function
-// this is called by [vstplugin~] which itself is only a stub. this is done to properly share
-// the code (and globals!) between [vstplugin~] and [vstsearch]. we can't make a single binary lib
-// because [vstsearch] should only be loaded when explicitly requested.
 extern "C" {
 
-void vstplugin_setup(void)
+void vstplugin_tilde_setup(void)
 {
     vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)vstplugin_new, (t_method)vstplugin_free,
         sizeof(t_vstplugin), 0, A_GIMME, A_NULL);

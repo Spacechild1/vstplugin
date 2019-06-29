@@ -14,7 +14,7 @@ export cxx.flags
 
 lib.name = vstplugin~
 
-class.sources = src/vstplugin~.cpp src/vstsearch.cpp
+class.sources = src/vstplugin.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
 VST3DIR = ../vst/VST_SDK/VST3_SDK/
@@ -53,12 +53,9 @@ endif
 
 LOGLEVEL = 2
 PROBE = probe
-PROBE_EXE = $(PROBE)
-PROBE_SRC = ../vst/$(PROBE).cpp $(VST_SRC)
+PROBE_SRC = ../vst/$(PROBE).cpp
 PROBE_DEPS =
 PROBE_LDLIBS =
-
-shared.sources = src/vstplugin.cpp $(VST_SRC)
 
 cflags = \
 	-g \
@@ -72,30 +69,42 @@ suppress-wunused = 1
 
 makefiles = $(PROBE).make
 
-# vstplugin~ and vstsearch.dll both link to a shared library.
-# we don't do this for probe.exe to make it work independently from Pd
 define forWindows
-  shared.sources += ../vst/VSTWindowWin32.cpp
-  shared.ldlibs += $(VST_LIBS) -lstdc++fs
-  PROBE_EXE = $(PROBE_EXE).exe
-  PROBE_SRC += ../vst/VSTWindowWin32.cpp
+  # common
+  VST_SRC += ../vst/VSTWindowWin32.cpp
+  VST_LIBS += -lstdc++fs
   cflags += -DVSTTHREADS=1
+  # vstplugin~
+  vstplugin.class.sources += $$(VST_SRC)
+  ldlibs += $$(VST_LIBS)
+  # probe.exe
+  PROBE_SRC += $$(VST_SRC)
   # -municode for wmain, -mwindows to hide console
-  PROBE_LDLIBS += $(VST_LIBS) -lstdc++fs -static-libgcc -static-libstdc++ -municode -mwindows -static -lpthread
+  PROBE_LDLIBS += $$(VST_LIBS) -lstdc++fs -static-libgcc -static-libstdc++ -municode -mwindows -static -lpthread
 endef
 define forLinux
-  shared.sources += ../vst/VSTWindowX11.cpp
-  PROBE_SRC += ../vst/VSTWindowX11.cpp
+  # common
+  VST_SRC += ../vst/VSTWindowX11.cpp
+  VST_LIBS += -L/usr/X11R6/lib -lX11 -ldl
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
-  ldlibs += $(VST_LIBS) -L/usr/X11R6/lib -lX11 -ldl
-  PROBE_LDLIBS += $(VST_LIBS) -L/usr/X11R6/lib -lX11 -ldl
+  # vstplugin~
+  vstplugin.class.sources += $$(VST_SRC)
+  ldlibs += $$(VST_LIBS) 
+  # probe
+  PROBE_SRC += $$(VST_SRC)
+  PROBE_LDLIBS += $$(VST_LIBS)
 endef
 define forDarwin
-  shared.sources += ../vst/VSTWindowCocoa.mm
-  PROBE_SRC += ../vst/VSTWindowCocoa.mm
+  # common
+  VST_SRC += ../vst/VSTWindowCocoa.mm
+  VST_LIBS += -framework Cocoa
   cflags += -fno-objc-arc -DVSTTHREADS=0
-  ldlibs += $(VST_LIBS) -framework Cocoa
-  PROBE_LDLIBS += $(VST_LIBS) -framework Cocoa
+  # vstplugin~
+  vstplugin.class.sources += $$(VST_SRC)
+  ldlibs += $$(VST_LIBS) 
+  # probe
+  PROBE_SRC += $$(VST_SRC)
+  PROBE_LDLIBS += $$(VST_LIBS)
 endef
 
 # all extra files to be included in binary distribution of the library

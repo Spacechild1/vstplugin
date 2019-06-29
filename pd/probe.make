@@ -2,7 +2,7 @@
 
 PROBE_OBJ = $(addsuffix .o,$(basename $(PROBE_SRC)))
 
-all: $(PROBE_EXE)
+all: $(PROBE)
 
 clean:
 	rm -f $(PROBE_OBJ) $(PROBE_EXE)
@@ -10,7 +10,7 @@ clean:
 
 install: all
 	$(INSTALL_DIR) -v "$(installpath)"
-	$(INSTALL) $(stripflags) -p -m 755 '$(PROBE_EXE)' "$(installpath)"
+	$(INSTALL) $(stripflags) -p -m 755 '$(PROBE)' "$(installpath)"
 
 install-strip: stripflags := --strip-program=$(STRIP) -s
 install-strip: install
@@ -21,5 +21,5 @@ install-strip: install
 %.o: %.mm $(PROBE_DEPS)
 	$(CXX) $(cxx.flags) -o $@ -c $<
 
-$(PROBE_EXE): $(PROBE_OBJ)
+$(PROBE): $(PROBE_OBJ)
 	$(CXX) $(cxx.flags) -o $@ $^ $(PROBE_LDLIBS)
