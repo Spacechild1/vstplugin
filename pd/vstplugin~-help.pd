@@ -105,63 +105,69 @@
 #X text 257 282 print plugin info to console;
 #X text 184 455 parameters;
 #X text 273 454 FX programs/banks;
-#N canvas 753 189 726 527 parameter 0;
+#N canvas 753 189 618 527 parameter 0;
 #X obj 98 68 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X obj 17 21 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+-262144 -1 -1 0.73 256;
 #X msg 17 116 param_set \$1 \$2;
 #X obj 38 222 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
 #X msg 48 343 param_count;
-#X msg 52 375 param_list;
-#X msg 28 171 param_get \$1;
-#X obj 28 150 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X msg 55 404 param_dump;
+#X msg 52 369 param_list;
+#X msg 28 182 param_get \$1;
+#X obj 28 158 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 2 256;
+#X msg 55 398 param_dump;
 #X obj 17 441 s \$0-msg;
 #X text 156 67 index;
-#X text 123 103 set parameter;
-#X text 84 148 index;
+#X text 122 115 set parameter;
 #X text 95 222 index;
 #X text 129 343 get number of parameters;
 #X symbolatom 25 43 10 0 0 0 - - -;
 #X text 80 19 float value (0.0 - 1.0);
-#X text 120 118 (index \, value);
-#X text 266 66 a VST parameter can take two forms:;
+#X text 265 66 a VST parameter can take two forms:;
 #X text 93 42 string value (not supported by all plugins);
-#X text 267 124 see [param_set <f> <f>( and [param_get <f>(;
-#X text 269 202 see [param_get <f> <s>( and [param_display <f>(;
-#X text 268 148 2) a string representation which is mainly used for
+#X text 266 124 see [param_set <f> <f>( and [param_get <f>(;
+#X text 267 148 2) a string representation which is mainly used for
 display \, but many plugins also allow you to set the parameter in
 this way. it corresponds to the symbol box in the generic editor.,
 f 47;
-#X text 266 86 1) a 'normalized' float value which is always in the
+#X text 265 86 1) a 'normalized' float value which is always in the
 range 0 to 1 and corresponds to the slider position in the generic
 editor., f 47;
 #X obj 17 90 list prepend 0;
-#X text 112 189 (index \, value \, display);
+#X text 114 192 (index \, value \, display);
 #X msg 37 248 param_info \$1;
-#X text 116 172 get parameter state;
 #X text 131 246 get parameter info;
 #X text 129 262 (index \, name \, label \, ...);
 #X text 130 281 the label is the unit of measurement \, e.g. dB \,
 ms, f 33;
 #X text 131 310 in the future \, more info might be added;
-#X text 129 378 get all parameter info;
-#X text 130 404 get all parameter state;
-#X connect 0 0 24 1;
-#X connect 1 0 24 0;
+#X text 130 370 get all parameter info;
+#X text 130 398 get all parameter state;
+#X symbolatom 113 90 10 0 0 0 - - -;
+#X symbolatom 90 158 10 0 0 0 - - -;
+#X text 26 141 index;
+#X text 89 139 name;
+#X text 115 178 get parameter;
+#X text 181 89 name;
+#X text 269 201 Each parameter can be accessed by either its index
+or name (with whitespace replaced with underscores), f 46;
+#X connect 0 0 21 1;
+#X connect 1 0 21 0;
 #X connect 2 0 9 0;
-#X connect 3 0 26 0;
+#X connect 3 0 23 0;
 #X connect 4 0 9 0;
 #X connect 5 0 9 0;
 #X connect 6 0 9 0;
 #X connect 7 0 6 0;
 #X connect 8 0 9 0;
-#X connect 15 0 24 0;
-#X connect 24 0 2 0;
-#X connect 26 0 9 0;
+#X connect 14 0 21 0;
+#X connect 21 0 2 0;
+#X connect 23 0 9 0;
+#X connect 30 0 21 1;
+#X connect 31 0 6 0;
 #X restore 185 475 pd parameter;
 #N canvas 672 104 609 465 midi 0;
 #X obj 33 442 s \$0-msg;
