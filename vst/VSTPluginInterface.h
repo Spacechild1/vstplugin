@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <iostream>
 #include <functional>
 #include <memory>
@@ -212,6 +213,8 @@ struct VSTPluginDesc {
     int numOutputs = 0;
     // parameter name + label
     std::vector<std::pair<std::string, std::string>> parameters;
+    // param name to param index
+    std::unordered_map<std::string, int> paramMap;
     // default programs
     std::vector<std::string> programs;
     // see VSTPluginFlags
