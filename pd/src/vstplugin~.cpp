@@ -1846,8 +1846,8 @@ extern "C" {
 
 void vstplugin_tilde_setup(void)
 {
-    vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)vstplugin_new, (t_method)vstplugin_free,
-        sizeof(t_vstplugin), 0, A_GIMME, A_NULL);
+    vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)(void *)vstplugin_new,
+        (t_method)vstplugin_free, sizeof(t_vstplugin), 0, A_GIMME, A_NULL);
     CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
     class_setsavefn(vstplugin_class, vstplugin_save);
     class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
