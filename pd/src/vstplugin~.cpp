@@ -72,6 +72,14 @@ static void addPlugins(const IVSTFactory& factory){
     auto plugins = factory.plugins();
     for (auto& plugin : plugins){
         if (plugin->valid()){
+            // also map bashed parameter names
+            int num = plugin->parameters.size();
+            for (int i = 0; i < num; ++i){
+                auto key = plugin->parameters[i].first;
+                bash_name(key);
+                plugin->paramMap[std::move(key)] = i;
+            }
+            // add plugin info
             manager.addPlugin(makeKey(*plugin), plugin);
         }
     }
@@ -1092,30 +1100,46 @@ static void vstplugin_transport_get(t_vstplugin *x){
 
 /*------------------------------------ parameters ------------------------------------------*/
 
+static bool findParamIndex(t_vstplugin *x, t_atom *a, int& index){
+    if (a->a_type == A_SYMBOL){
+        auto& map = x->x_info->paramMap;
+        auto name = a->a_w.w_symbol->s_name;
+        auto it = map.find(name);
+        if (it == map.end()){
+            pd_error(x, "%s: couldn't find parameter '%s'", classname(x), name);
+            return false;
+        }
+        index = it->second;
+    } else {
+        index = atom_getfloat(a);
+    }
+    return true;
+}
+
 // set parameter by float (0.0 - 1.0) or string (if supported)
 static void vstplugin_param_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     if (argc < 2){
-        pd_error(x, "%s: 'param_set' expects two arguments (index + float/symbol)", classname(x));
+        pd_error(x, "%s: 'param_set' expects two arguments (index/name + float/symbol)", classname(x));
+        return;
     }
-    int index = atom_getfloat(argv);
-    switch (argv[1].a_type){
-    case A_FLOAT:
-        x->set_param(index, argv[1].a_w.w_float, false);
-        break;
-    case A_SYMBOL:
+    int index = -1;
+    if (!findParamIndex(x, argv, index)) return;
+    if (argv[1].a_type == A_SYMBOL)
         x->set_param(index, argv[1].a_w.w_symbol->s_name, false);
-        break;
-    default:
-        pd_error(x, "%s: second argument for 'param_set' must be a float or symbol", classname(x));
-        break;
-    }
+    else
+        x->set_param(index, atom_getfloat(argv + 1), false);
 }
 
 // get parameter state (value + display)
-static void vstplugin_param_get(t_vstplugin *x, t_floatarg _index){
+static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
-    int index = _index;
+    if (!argc){
+        pd_error(x, "%s: 'param_get' expects index/name argument", classname(x));
+        return;
+    }
+    int index = -1;
+    if (!findParamIndex(x, argv, index)) return;
     if (index >= 0 && index < x->x_plugin->getNumParameters()){
         t_atom msg[3];
 		SETFLOAT(&msg[0], index);
@@ -1165,7 +1189,9 @@ static void vstplugin_param_dump(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->getNumParameters();
     for (int i = 0; i < n; ++i){
-        vstplugin_param_get(x, i);
+        t_atom a;
+        SETFLOAT(&a, i);
+        vstplugin_param_get(x, 0, 1, &a);
     }
 }
 
@@ -1852,7 +1878,7 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_get, gensym("transport_get"), A_NULL);
         // parameters
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_set, gensym("param_set"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_info, gensym("param_info"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_count, gensym("param_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_list, gensym("param_list"), A_NULL);
