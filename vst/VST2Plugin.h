@@ -19,12 +19,12 @@ class VST2Factory : public IVSTFactory {
     VST2Factory(const std::string& path);
     ~VST2Factory();
     // get a list of all available plugins
-    std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const override;
+    std::vector<VSTPluginDescPtr> plugins() const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
     void probe() override;
     bool isProbed() const override {
-        return plugin_ != nullptr;
+        return desc_ != nullptr;
     }
     // create a new plugin instance
     std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const override;
@@ -33,7 +33,7 @@ class VST2Factory : public IVSTFactory {
     std::string path_;
     std::unique_ptr<IModule> module_;
     EntryPoint entry_;
-    std::shared_ptr<VSTPluginDesc> plugin_;
+    VSTPluginDescPtr desc_;
 };
 
 class VST2Plugin final : public IVSTPlugin {
@@ -41,9 +41,10 @@ class VST2Plugin final : public IVSTPlugin {
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
         VstInt32 index, VstIntPtr value, void *ptr, float opt);
 
-    VST2Plugin(void* plugin, const std::string& path);
+    VST2Plugin(void* plugin, VSTPluginDescPtr desc);
     ~VST2Plugin();
 
+    const VSTPluginDesc& info() const { return *desc_; }
     std::string getPluginName() const override;
     std::string getPluginVendor() const override;
     std::string getPluginCategory() const override;
@@ -152,8 +153,8 @@ class VST2Plugin final : public IVSTPlugin {
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
+    VSTPluginDescPtr desc_;
     IVSTPluginListener *listener_ = nullptr;
-    std::string path_;
     VstTimeInfo timeInfo_;
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;

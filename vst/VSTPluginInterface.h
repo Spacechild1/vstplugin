@@ -81,9 +81,13 @@ enum class VSTProcessPrecision {
     Double
 };
 
+class VSTPluginDesc;
+
 class IVSTPlugin {
  public:
     virtual ~IVSTPlugin(){}
+
+    virtual const VSTPluginDesc& info() const = 0;
     virtual std::string getPluginName() const = 0;
     virtual std::string getPluginVendor() const = 0;
     virtual std::string getPluginCategory() const = 0;
@@ -248,7 +252,7 @@ class IVSTFactory {
 
     virtual ~IVSTFactory(){}
     // get a list of all available plugins (probed in a seperate process)
-    virtual std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const = 0;
+    virtual std::vector<VSTPluginDescPtr> plugins() const = 0;
     virtual int numPlugins() const = 0;
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;

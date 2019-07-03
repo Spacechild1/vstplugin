@@ -108,7 +108,7 @@ std::unique_ptr<IVSTPlugin> VST3Factory::create(const std::string& name, bool un
         }
     }
     try {
-        return std::make_unique<VST3Plugin>(factory_, which, path_);
+        return std::make_unique<VST3Plugin>(factory_, which, plugins_[which]);
     } catch (const VSTError& e){
         LOG_ERROR("couldn't create plugin: " << name);
         LOG_ERROR(e.what());
@@ -128,8 +128,8 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
-VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, const std::string& path)
-    : path_(path)
+VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, VSTPluginDescPtr desc)
+    : desc_(std::move(desc))
 {
     PClassInfo2 ci2;
     TUID uid;

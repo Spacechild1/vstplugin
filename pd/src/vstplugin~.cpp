@@ -640,7 +640,6 @@ void t_vsteditor::vis(bool v){
 // close
 static void vstplugin_close(t_vstplugin *x){
     x->x_editor->close_plugin();
-    x->x_info = nullptr;
     x->x_path = nullptr;
 }
 
@@ -850,7 +849,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         // open the new VST plugin
     std::shared_ptr<IVSTPlugin> plugin = x->x_editor->open_plugin(*info, editor);
     if (plugin){
-        x->x_info = info; // plugin descriptions are never removed
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
         post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
         plugin->suspend();
@@ -891,15 +889,15 @@ static void sendInfo(t_vstplugin *x, const char *what, int value){
 // plugin info (no args: currently loaded plugin, symbol arg: path of plugin to query)
 static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     const VSTPluginDesc *info = nullptr;
-    if (argc > 0){
+    if (argc > 0){ // some plugin
         auto path = atom_getsymbol(argv)->s_name;
         if (!(info = queryPlugin(x, path))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
             return;
         }
-    } else {
+    } else { // this plugin
         if (!x->check_plugin()) return;
-        info = x->x_info;
+        info = &x->x_plugin->info();
     }
     if (info){
         sendInfo(x, "path", info->path);
@@ -977,14 +975,15 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 // print plugin info in Pd console
 static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
+    auto& info = x->x_plugin->info();
     post("~~~ VST plugin info ~~~");
-    post("name: %s", x->x_info->name.c_str());
-    post("path: %s", x->x_info->path.c_str());
-    post("vendor: %s", x->x_info->vendor.c_str());
-    post("category: %s", x->x_info->category.c_str());
-    post("version: %s", x->x_info->version.c_str());
-    post("input channels: %d", x->x_info->numInputs);
-    post("output channels: %d", x->x_info->numOutputs);
+    post("name: %s", info.name.c_str());
+    post("path: %s", info.path.c_str());
+    post("vendor: %s", info.vendor.c_str());
+    post("category: %s", info.category.c_str());
+    post("version: %s", info.version.c_str());
+    post("input channels: %d", info.numInputs);
+    post("output channels: %d", info.numOutputs);
     post("single precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Single) ? "yes" : "no");
     post("double precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Double) ? "yes" : "no");
     post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
@@ -1102,7 +1101,7 @@ static void vstplugin_transport_get(t_vstplugin *x){
 
 static bool findParamIndex(t_vstplugin *x, t_atom *a, int& index){
     if (a->a_type == A_SYMBOL){
-        auto& map = x->x_info->paramMap;
+        auto& map = x->x_plugin->info().paramMap;
         auto name = a->a_w.w_symbol->s_name;
         auto it = map.find(name);
         if (it == map.end()){

@@ -32,15 +32,16 @@ class VST3Factory : public IVSTFactory {
     std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
-    std::vector<std::shared_ptr<VSTPluginDesc>> plugins_;
+    std::vector<VSTPluginDescPtr> plugins_;
     std::unordered_map<std::string, int> nameMap_;
 };
 
 class VST3Plugin final : public IVSTPlugin {
  public:
-    VST3Plugin(IPtr<IPluginFactory> factory, int which, const std::string& path);
+    VST3Plugin(IPtr<IPluginFactory> factory, int which, VSTPluginDescPtr desc);
     ~VST3Plugin();
 
+    const VSTPluginDesc& info() const { return *desc_; }
     std::string getPluginName() const override;
     std::string getPluginVendor() const override;
     std::string getPluginCategory() const override;
@@ -133,7 +134,7 @@ class VST3Plugin final : public IVSTPlugin {
  private:
     std::string getBaseName() const;
     IVSTPluginListener *listener_ = nullptr;
-    std::string path_;
+    VSTPluginDescPtr desc_;
     std::string name_;
     std::string vendor_;
     std::string version_;

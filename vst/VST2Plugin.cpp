@@ -149,12 +149,12 @@ VST2Factory::~VST2Factory(){
     // LOG_DEBUG("freed VST2 module " << path_);
 }
 
-std::vector<std::shared_ptr<VSTPluginDesc>> VST2Factory::plugins() const {
-    return {plugin_};
+std::vector<VSTPluginDescPtr> VST2Factory::plugins() const {
+    return {desc_};
 }
 
 int VST2Factory::numPlugins() const {
-    return (plugin_ ? 1 : 0);
+    return (desc_ ? 1 : 0);
 }
 
 void VST2Factory::probe() {
@@ -162,16 +162,16 @@ void VST2Factory::probe() {
     auto result = vst::probe(path_, "", desc);
     desc.probeResult = result;
     desc.path = path_;
-    plugin_ = std::make_shared<VSTPluginDesc>(std::move(desc));
+    desc_ = std::make_shared<VSTPluginDesc>(std::move(desc));
 }
 
 std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool unsafe) const {
     if (!unsafe){
-        if (!plugin_){
+        if (!desc_){
             LOG_WARNING("VST2Factory: no plugin");
             return nullptr;
         }
-        if (!plugin_->valid()){
+        if (!desc_->valid()){
             LOG_WARNING("VST2Factory: plugin not probed successfully");
             return nullptr;
         }
@@ -185,7 +185,7 @@ std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool un
         LOG_ERROR("VST2Factory: not a VST2.x plugin!");
         return nullptr;
     }
-    return std::make_unique<VST2Plugin>(plugin, path_);
+    return std::make_unique<VST2Plugin>(plugin, desc_);
 }
 
 
@@ -194,8 +194,8 @@ std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool un
 // initial size of VstEvents queue (can grow later as needed)
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
-VST2Plugin::VST2Plugin(void *plugin, const std::string& path)
-    : plugin_((AEffect*)plugin), path_(path)
+VST2Plugin::VST2Plugin(void *plugin, VSTPluginDescPtr desc)
+    : plugin_((AEffect*)plugin), desc_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
     timeInfo_.sampleRate = 44100;
@@ -967,15 +967,16 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 
 // private
 std::string VST2Plugin::getBaseName() const {
-    auto sep = path_.find_last_of("\\/");
-    auto dot = path_.find_last_of('.');
+    auto& path = desc_->path;
+    auto sep = path.find_last_of("\\/");
+    auto dot = path.find_last_of('.');
     if (sep == std::string::npos){
         sep = -1;
     }
     if (dot == std::string::npos){
-        dot = path_.size();
+        dot = path.size();
     }
-    return path_.substr(sep + 1, dot - sep - 1);
+    return path.substr(sep + 1, dot - sep - 1);
 }
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {

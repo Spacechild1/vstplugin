@@ -54,7 +54,6 @@ class t_vstplugin {
     std::vector<t_sample *> x_sigoutlets;
         // VST plugin
     std::shared_ptr<IVSTPlugin> x_plugin;
-    const VSTPluginDesc *x_info = nullptr;
     t_symbol *x_path = nullptr;
     bool x_keep = false;
     bool x_bypass = false;
