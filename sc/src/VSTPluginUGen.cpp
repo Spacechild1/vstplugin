@@ -1525,15 +1525,14 @@ void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
 
 // set parameters given as pairs of index and value
 void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
-    auto vst = unit;
-    if (vst->check()) {
+    if (unit->check()) {
         while (args->remain() > 0) {
             int32 index = args->geti();
             if (args->remain() > 0 && args->nextTag() == 's') {
-                vst->setParam(index, args->gets());
+                unit->setParam(index, args->gets());
             }
             else {
-                vst->setParam(index, args->getf());
+                unit->setParam(index, args->getf());
             }
         }
     }
@@ -1541,18 +1540,16 @@ void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
 
 // set parameters given as triples of index, count and values
 void vst_setn(VSTPlugin* unit, sc_msg_iter *args) {
-    auto vst = unit;
-    if (vst->check()) {
-        int nparam = vst->plugin()->getNumParameters();
+    if (unit->check()) {
         while (args->remain() > 0) {
             int32 index = args->geti();
             int32 count = args->geti();
             for (int i = 0; i < count && args->remain() > 0; ++i) {
                 if (args->nextTag() == 's') {
-                    vst->setParam(index + i, args->gets());
+                    unit->setParam(index + i, args->gets());
                 }
                 else {
-                    vst->setParam(index + i, args->getf());
+                    unit->setParam(index + i, args->getf());
                 }
             }
         }
@@ -1581,18 +1578,13 @@ void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
 
 // map parameters to control busses
 void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
-    auto vst = unit;
-    if (vst->check()) {
-        int nparam = vst->plugin()->getNumParameters();
+    if (unit->check()) {
         while (args->remain() > 0) {
             int32 index = args->geti();
             int32 bus = args->geti(-1);
             int32 numChannels = args->geti();
             for (int i = 0; i < numChannels; ++i) {
-                int32 idx = index + i;
-                if (idx >= 0 && idx < nparam) {
-                    vst->mapParam(idx, bus + i);
-                }
+                unit->mapParam(index + i, bus + i);
             }
         }
     }
@@ -1600,21 +1592,18 @@ void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
 
 // unmap parameters from control busses
 void vst_unmap(VSTPlugin* unit, sc_msg_iter *args) {
-    auto vst = unit;
-    if (vst->check()) {
-        int nparam = vst->plugin()->getNumParameters();
+    if (unit->check()) {
         if (args->remain() > 0) {
             do {
                 int32 index = args->geti();
-                if (index >= 0 && index < nparam) {
-                    vst->unmapParam(index);
-                }
+                unit->unmapParam(index);
             } while (args->remain() > 0);
         }
         else {
             // unmap all parameters:
+            int nparam = unit->plugin()->getNumParameters();
             for (int i = 0; i < nparam; ++i) {
-                vst->unmapParam(i);
+                unit->unmapParam(i);
             }
         }
         
