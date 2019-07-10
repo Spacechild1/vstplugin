@@ -1523,16 +1523,39 @@ void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
     unit->showEditor(show);
 }
 
+// helper function (only call after unit->check()!)
+bool vst_param_index(VSTPlugin* unit, sc_msg_iter *args, int& index) {
+    if (args->nextTag() == 's') {
+        auto name = args->gets();
+        auto& map = unit->plugin()->info().paramMap;
+        auto result = map.find(name);
+        if (result != map.end()) {
+            index = result->second;
+        } else {
+            LOG_ERROR("parameter '" << name << "' not found!");
+            return false;
+        }
+    } else {
+        index = args->geti();
+    }
+    return true;
+}
+
 // set parameters given as pairs of index and value
 void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
     if (unit->check()) {
         while (args->remain() > 0) {
-            int32 index = args->geti();
-            if (args->remain() > 0 && args->nextTag() == 's') {
-                unit->setParam(index, args->gets());
+            int32 index = -1;
+            if (vst_param_index(unit, args, index)) {
+                if (args->nextTag() == 's') {
+                    unit->setParam(index, args->gets());
+                }
+                else {
+                    unit->setParam(index, args->getf());
+                }
             }
             else {
-                unit->setParam(index, args->getf());
+                args->getf(); // swallow arg
             }
         }
     }
@@ -1542,14 +1565,22 @@ void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
 void vst_setn(VSTPlugin* unit, sc_msg_iter *args) {
     if (unit->check()) {
         while (args->remain() > 0) {
-            int32 index = args->geti();
-            int32 count = args->geti();
-            for (int i = 0; i < count && args->remain() > 0; ++i) {
-                if (args->nextTag() == 's') {
-                    unit->setParam(index + i, args->gets());
+            int32 index = -1;
+            if (vst_param_index(unit, args, index)) {
+                int32 count = args->geti();
+                for (int i = 0; i < count; ++i) {
+                    if (args->nextTag() == 's') {
+                        unit->setParam(index + i, args->gets());
+                    }
+                    else {
+                        unit->setParam(index + i, args->getf());
+                    }
                 }
-                else {
-                    unit->setParam(index + i, args->getf());
+            }
+            else {
+                int32 count = args->geti();
+                while (count--) {
+                    args->getf(); // swallow args
                 }
             }
         }
@@ -1565,26 +1596,42 @@ void vst_param_query(VSTPlugin* unit, sc_msg_iter *args) {
 
 // get a single parameter at index (only value)
 void vst_get(VSTPlugin* unit, sc_msg_iter *args) {
-    int32 index = args->geti(-1);
-    unit->getParam(index);
+    int32 index = -1;
+    if (vst_param_index(unit, args, index)) {
+        unit->getParam(index);
+    }
+    else {
+        unit->sendMsg("/vst_set", -1);
+    }
 }
 
 // get a number of parameters starting from index (only values)
 void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
-    int32 index = args->geti();
-    int32 count = args->geti();
-    unit->getParams(index, count);
+    int32 index = -1;
+    if (vst_param_index(unit, args, index)) {
+        int32 count = args->geti();
+        unit->getParams(index, count);
+    }
+    else {
+        unit->sendMsg("/vst_setn", -1);
+    }
 }
 
 // map parameters to control busses
 void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
     if (unit->check()) {
         while (args->remain() > 0) {
-            int32 index = args->geti();
-            int32 bus = args->geti(-1);
-            int32 numChannels = args->geti();
-            for (int i = 0; i < numChannels; ++i) {
-                unit->mapParam(index + i, bus + i);
+            int32 index = -1;
+            if (vst_param_index(unit, args, index)) {
+                int32 bus = args->geti(-1);
+                int32 numChannels = args->geti();
+                for (int i = 0; i < numChannels; ++i) {
+                    unit->mapParam(index + i, bus + i);
+                }
+            }
+            else {
+                args->geti(); // swallow bus
+                args->geti(); // swallow numChannels
             }
         }
     }
@@ -1595,8 +1642,10 @@ void vst_unmap(VSTPlugin* unit, sc_msg_iter *args) {
     if (unit->check()) {
         if (args->remain() > 0) {
             do {
-                int32 index = args->geti();
-                unit->unmapParam(index);
+                int32 index = -1;
+                if (vst_param_index(unit, args, index)) {
+                    unit->unmapParam(index);
+                }
             } while (args->remain() > 0);
         }
         else {
