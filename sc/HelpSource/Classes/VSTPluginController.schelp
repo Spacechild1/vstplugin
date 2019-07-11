@@ -90,7 +90,6 @@ SynthDef(\insert, { arg bus, f;
 ~fx.synth.set(\f, 0.7);
 // of course, 'f' could be any UGen input (e.g. SinOsc.ar)
 ::
-::
 
 note:: 
 link::#-set:: and link::#-setn:: work asynchronously (in the non-realtime thread),
@@ -107,6 +106,13 @@ Use link::#-get:: and link::#-getn:: to obtain current parameter values:
 code::
 // get the current value of parameter 3 and post it to the console:
 ~fx.get(3, {arg f; f.postln;});
+::
+
+link::#-set::, link::#-map and link::#-get:: also accept parameter names instead of indices:
+code::
+// with the GChorus (GVST) plugin:
+~fx.set(\Depth, 0.5);
+~fx.get(\Depth, {arg f; f.postln;});
 ::
 
 Change FX programs with link::#-program:::
@@ -340,7 +346,7 @@ METHOD:: setMsg
 Set plugin parameters.
 
 discussion::
-This method expects pairs of parameter index and value. Each value should be either a number between 0.0 and 1.0
+This method expects pairs of parameter index/name and value. Each value should be either a number between 0.0 and 1.0
 or a string/symbol. This method works asynchronously and is emphasis::realtime-safe::.
 
 note::
@@ -350,10 +356,13 @@ Some plugins don't support setting parameters by strings, others only allow it f
 code::
 // set parameter 3 to value 0.9:
 ~fx.set(3, 0.9);
-// set parameters 1 and 5:
-~fx.set(1, 0.5, 5, 0.75);
-// set parameter 3 by string
-~fx.set(3, "800");
+// set parameter 'Mix' to 0.5:
+~fx.set(\Mix, 0.5);
+// set parameters 1 and 3:
+~fx.set(1, 0.5, 3, 0.75);
+// GChorus (GVST):
+~fx.set(\Freq, "3.16"); // set frequency in Hz as string
+
 ::
 note::
 The parameter(s) will be automatically unmapped from any control bus, see link::#-map::.
@@ -377,14 +386,14 @@ METHOD:: mapMsg
 map parameters to control busses.
 
 discussion::
-This methods expects pairs of parameter index and bus.
-In case of multi-channel control busses the channels are mapped to a sequential range of parameters starting at the given index.
+This methods expects pairs of parameter index/name and bus.
+In case of multi-channel control busses the channels are mapped to a sequential range of parameters starting at the given index/name.
 code::
 ~bus1 = Bus.control;
 ~bus2 = Bus.control(numChannels: 2);
-~fx.map(3, ~bus1, 5, ~bus2);
-~bus1.set(0.5); // set parameter 3
-~bus2.set(0.75, 0.9); // set parameters 5 and 6.
+~fx.map(\Mix, ~bus1, 5, ~bus2);
+~bus1.set(0.5); // set parameter 'Mix'
+~bus2.set(0.75, 0.9); // set parameters 5 and 6 (because of 2-channel control bus)
 ::
 Each parameter can only be mapped to one control bus channel at the time. 
 
@@ -409,7 +418,7 @@ METHOD:: get
 get the current value of a plugin parameter.
 
 ARGUMENT:: index
-the index of the parameter.
+the index/name of the parameter.
 
 ARGUMENT:: action
 an action to be evaluated with the value passed as an argument.
@@ -418,13 +427,15 @@ discussion::
 code::
 // get the value of parameter 4 and post it to the console:
 ~fx.get(4, {arg f: f.postln;});
+// get the value of parameter 'Mix':
+~fx.get(\Mix, {arg f: f.postln;});
 ::
 
 METHOD:: getn
 get a sequential range of parameter values. 
 
 ARGUMENT:: index
-the starting index.
+the starting index/name.
 
 ARGUMENT:: count
 the number of sequential parameter values. -1 will return all parameters starting from emphasis::index::.

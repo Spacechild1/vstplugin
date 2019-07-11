@@ -56,7 +56,7 @@ code::
 // an EQ and Chorus in parallel:
 SynthDef(\test, { arg in, out;
 	var sig;
-	sig = VSTPlugin.ar(In.ar(in1, 2), 2, id: \eq);
+	sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
 	sig = VSTPlugin.ar(sig, 2, id: \chorus);
 	Out.ar(out, sig);
 }).add;
@@ -70,6 +70,20 @@ SynthDef(\test, { arg in, out;
 // load plugins, etc:
 ~eq.open("...");
 ~chorus.open("...");
+::
+
+ARGUMENT:: info
+An optional plugin info Event used for parameter name lookup.
+If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices,
+given that the plugin has been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
+code::
+(
+SynthDef(\chorus, { arg bus;
+	var plugin = VSTPlugin.plugins['GChorus'];
+	var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: plugin);
+	ReplaceOut.ar(bus, sig);
+}).add;
+)
 ::
 
 SUBSECTION:: Plugin Management
