@@ -62,12 +62,12 @@ VSTPlugin : MultiOutUGen {
 			);
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id;
+	*ar { arg input, numOut=1, bypass=0, params, id, info;
 		var numIn = 0;
 		input.notNil.if {
 			numIn = input.isArray.if {input.size} { 1 };
 		}
-		^this.multiNewList([\audio, id, numOut, bypass, numIn] ++ input ++ params);
+		^this.multiNewList([\audio, id, info, numOut, bypass, numIn] ++ input ++ params);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
@@ -190,6 +190,11 @@ VSTPlugin : MultiOutUGen {
 			info.parameterNames.add(data[onset]);
 			info.parameterLabels.add(data[onset + 1]);
 		};
+		// create inverse parameter mapping (name -> index)
+		info.parameterIndex = IdentityDictionary.new;
+		info.parameterNames.do { arg name, idx;
+			info.parameterIndex[name.asSymbol] = idx;
+		};
 		// get programs
 		nprogram = info.numPrograms;
 		info.programNames = Array.new(nprogram);
@@ -274,8 +279,9 @@ VSTPlugin : MultiOutUGen {
 		var f, flags;
 		f = data[11].asInteger;
 		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
-		^(
-			parent: parentInfo,
+		// we have to use an IdentityDictionary instead of Event because the latter
+		// overrides the 'asUGenInput' method, which we implicitly need in VSTPlugin.ar
+		^IdentityDictionary.new(parent: parentInfo, know: true).putPairs([
 			key: data[0].asSymbol,
 			path: data[1].asString,
 			name: data[2].asString,
@@ -295,7 +301,7 @@ VSTPlugin : MultiOutUGen {
 			midiOutput: flags[5],
 			sysexInput: flags[6],
 			sysexOutput: flags[7]
-		);
+		]);
 	}
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];
@@ -353,9 +359,21 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg theID, numOut ... theInputs;
-		id = theID;
-		inputs = theInputs;
+	init { arg theID, info, numOut, bypass, numInputs ... theInputs;
+		var inputArray, paramArray;
+		id = theID; // store ID
+		inputArray = theInputs[..(numInputs-1)];
+		paramArray = theInputs[numInputs..];
+		// substitute parameter names with indices
+		paramArray.pairsDo { arg param, value, i;
+			param.isNumber.not.if {
+				info ?? { ^Error("can't resolve parameter '%' without info".format(param)).throw; };
+				param = info.parameterIndex[param.asSymbol];
+				param ?? { ^Error("bad parameter '%' for plugin '%'".format(param, info.name)).throw; };
+				paramArray[i] = param;
+			};
+		};
+		inputs = [bypass, numInputs] ++ inputArray ++ paramArray;
 		^this.initOutputs(numOut, rate)
 	}
 }
