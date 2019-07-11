@@ -663,8 +663,8 @@ VSTPluginDesc::VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin)
 		parameters.emplace_back(plugin.getParameterName(i), plugin.getParameterLabel(i));
 	}
     // inverse mapping from name to index
-    for (size_t i = 0; i < parameters.size(); ++i){
-        paramMap[parameters[0].first] = i;
+    for (int i = 0; i < numParameters; ++i){
+        paramMap[parameters[i].first] = i;
     }
 	int numPrograms = plugin.getNumPrograms();
 	programs.clear();
@@ -738,6 +738,10 @@ void VSTPluginDesc::deserialize(std::istream& file, char sep) {
 			std::getline(file, param.second, sep);
 			parameters.push_back(std::move(param));
 		}
+        // inverse mapping from name to index
+        for (int i = 0; i < numParameters; ++i){
+            paramMap[parameters[i].first] = i;
+        }
 		// programs
 		programs.clear();
 		for (int i = 0; i < numPrograms; ++i) {
