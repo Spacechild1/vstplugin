@@ -8,6 +8,11 @@ if(UNIX AND NOT APPLE AND NOT MINGW)
 set(LINUX TRUE)
 endif()
 
+if(NOT CMAKE_BUILD_TYPE)
+	set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+endif()
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
 message(STATUS "Installation path: ${CMAKE_INSTALL_PREFIX}")
 
 set(FILENAME "VSTPluginUGen.cpp")
