@@ -6,6 +6,7 @@ VSTPlugin : MultiOutUGen {
 	classvar <platformExtension;
 	// instance members
 	var <id;
+	var <info;
 	// class methods
 	*initClass {
 		StartUp.add {
@@ -359,9 +360,12 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg theID, info, numOut, bypass, numInputs ... theInputs;
+	init { arg theID, theInfo, numOut, bypass, numInputs ... theInputs;
 		var inputArray, paramArray;
-		id = theID; // store ID
+		// store id and info (both optional)
+		id = theID;
+		info = theInfo;
+		// seperate audio inputs from parameter controls
 		inputArray = theInputs[..(numInputs-1)];
 		paramArray = theInputs[numInputs..];
 		// substitute parameter names with indices
@@ -373,6 +377,7 @@ VSTPlugin : MultiOutUGen {
 				paramArray[i] = param;
 			};
 		};
+		// reassemble UGen inputs
 		inputs = [bypass, numInputs] ++ inputArray ++ paramArray;
 		^this.initOutputs(numOut, rate)
 	}

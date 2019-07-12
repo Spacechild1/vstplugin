@@ -35,17 +35,18 @@ VSTPluginController {
 		synthDef.children.do { arg ugen, index;
 			(ugen.class == VSTPlugin).if {
 				(id.isNil || (ugen.id == id)).if {
-					^super.new.init(synth, index, wait);
+					^super.new.init(synth, index, wait, ugen.info);
 				}
 			};
 		};
 		id.isNil.if {^"synth doesn't contain a VSTPlugin!".throw;}
 		{^"synth doesn't contain a VSTPlugin with ID '%'".format(id).throw;}
 	}
-	init { arg theSynth, theIndex, waitTime;
+	init { arg theSynth, theIndex, waitTime, theInfo;
 		synth = theSynth;
 		synthIndex = theIndex;
 		wait = waitTime;
+		info = theInfo;
 		loaded = false;
 		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
@@ -116,7 +117,10 @@ VSTPluginController {
 		^this.class.guiClass.new(this).gui(parent, bounds);
 	}
 	open { arg path, editor=false, info=false, action;
-		path.isNil.if {^this};
+		// if path is nil we try to get it from VSTPlugin
+		path ?? {
+			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".error }
+		};
 		VSTPlugin.prGetInfo(synth.server, path, wait, { arg theInfo;
 			theInfo.notNil.if {
 				this.prClear;
