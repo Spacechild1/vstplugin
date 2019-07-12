@@ -65,30 +65,34 @@ subsection:: Parameter Automation and Preset Management
 
 There are three different ways to automate plugin parameters:
 list::
-## with the link::#-set:: and link::#-setn:: messages
+## with the link::#-set:: and link::#-setn:: methods
 code::
-// set parameter by message
+// set parameter 1 to 0.5
 ~fx.set(1, 0.5);
 ::
-## by mapping them to control busses with link::#-map::
+## map them to control busses with link::#-map::
 code::
-// map a parameter to a control bus
+// map parameter 2 to a control bus
 ~c = Bus.control;
 ~fx.map(2, ~c);
 ~c.set(0.5);
 ::
-## with the code::params:: UGen input of link::Classes/VSTPlugin#*ar::
+## with the code::params:: argument of link::Classes/VSTPlugin#*ar::
 code::
 (
 SynthDef(\insert, { arg bus, f;
-    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2, params: [0, f]));  
+    var lfo = LFSaw.kr(0.1);
+    // set parameter 0 with Synth argument 'f'
+	// and modulate parameter 1 with LFO
+    var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [0, f, 1, lfo]);
+    ReplaceOut.ar(bus, sig);
 }).add;
 )
 // create a VSTPlugin instance with parameter 0 set to 0.5
 ~fx = VSTPluginController(Synth(\insert, [\bus, 0, \f, 0.5]));
 // now set it to 0.7
 ~fx.synth.set(\f, 0.7);
-// of course, 'f' could be any UGen input (e.g. SinOsc.ar)
+::
 ::
 
 note:: 
@@ -101,14 +105,13 @@ On the other hand, parameters mapped to control busses or UGen inputs are update
 to ensure a deterministic result. This might only be a problem if the parameter itself is not realtime-safe.
 ::
 
-
 Use link::#-get:: and link::#-getn:: to obtain current parameter values:
 code::
 // get the current value of parameter 3 and post it to the console:
 ~fx.get(3, {arg f; f.postln;});
 ::
 
-link::#-set::, link::#-map and link::#-get:: also accept parameter names instead of indices:
+link::#-set::, link::#-map:: and link::#-get:: also accept parameter names instead of indices:
 code::
 // with the GChorus (GVST) plugin:
 ~fx.set(\Depth, 0.5);
@@ -210,14 +213,6 @@ see link::#-wait::.
 DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
-warning::Because of a bug in SuperCollider, you must not call any method (which sends a message to the UGen) immediately after creating the Synth;
-otherwise the command will fail and you get the following warning:
-
-code::VSTPlugin (<nodeID>, <synthIndex>) not ready!::
-
-Instead, execute the code in blocks or use link::Classes/Server#-sync:: to add a single OSC roundtrip.
-::
-
 INSTANCEMETHODS::
 
 PRIVATE:: prFree, prClear, init, prQuery, prQueryParams, prQueryPrograms
@@ -230,14 +225,38 @@ open a VST plugin.
 ARGUMENT:: path
 the plugin key or file path.
 
-Opening plugins by strong::key:: requires that the plugin has already been probed (e.g. as a result of link::Classes/VSTPlugin#*search::).
+- Opening plugins by strong::key:: requires that the plugin has already been probed (e.g. as a result of link::Classes/VSTPlugin#*search::).
+code::
+~fx.open("GChorus"); // assuming 'GChorus' is in the Server's plugin dictionary.
+::
+- Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (if saved)
+or to the standard VST directories (see link::Classes/VSTPlugin#*search::). The latter are tried recursively, which means you don't necessarily have to specify any subfolders.
+code::
+// absolute file path:
+~fx.open("C:/Program Files/VSTPlugins/GVST/GChorus"); 
 
----
+// since C:/Program Files/VSTPlugins/ is one of the standard VST directories, 
+// the plugin can also be opened like this:
+~fx.open("GVST/GChorus");
+~fx.open("GChorus"); // even without subfolder
 
-Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (if saved)
-or to the standard VST directories (see link::Classes/VSTPlugin#*search::).
+// the plugin is in a subfolder 'myplugins' below the currently executing file:
+~fx.open("myplugins/GChorus");
+::
 
 note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and most VST 3 plugins).::
+
+- If the VSTPlugin UGen holds a plugin info Event (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor ommitted.
+code::
+VSTPlugin.search;
+(
+SynthDef(\chorus, { arg bus=0;
+    var plugin = VSTPlugin.plugins[\GChorus];
+    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2, info: plugin));
+}).add;
+)
+~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'
+::
 
 ARGUMENT:: editor
 request the VST plugin editor.

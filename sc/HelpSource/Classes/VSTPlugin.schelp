@@ -73,9 +73,9 @@ SynthDef(\test, { arg in, out;
 ::
 
 ARGUMENT:: info
-An optional plugin info Event used for parameter name lookup.
-If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices,
-given that the plugin has been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
+An optional plugin info Event; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
+
+If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices
 code::
 (
 SynthDef(\chorus, { arg bus;
@@ -84,6 +84,10 @@ SynthDef(\chorus, { arg bus;
 	ReplaceOut.ar(bus, sig);
 }).add;
 )
+::
+Also, you can omit the code::path:: argument when opening plugins:
+code::
+~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'
 ::
 
 SUBSECTION:: Plugin Management
