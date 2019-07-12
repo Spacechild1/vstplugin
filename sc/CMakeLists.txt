@@ -182,9 +182,9 @@ target_link_libraries(${PROJECT} ${VST_LIBS})
 target_link_libraries(${PROBE} ${VST_LIBS})
 
 install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT}/plugins)
-install(FILES VSTPlugin.sc VSTPluginController.sc VSTPluginGui.sc DESTINATION ${PROJECT}/classes)
-install(FILES "${TOP}/README.md" "${TOP}/LICENSE.txt" DESTINATION ${PROJECT})
+install(DIRECTORY classes DESTINATION ${PROJECT})
 install(DIRECTORY HelpSource DESTINATION ${PROJECT})
+install(FILES "${TOP}/README.md" "${TOP}/LICENSE.txt" DESTINATION ${PROJECT})
 
 if(SUPERNOVA)
     add_library(${PROJECT}_supernova MODULE src/${FILENAME} ${VST_SRC})
