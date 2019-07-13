@@ -567,8 +567,7 @@ VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
         free(tmpBuf);
     }
     else {
-        LOG_ERROR("couldn't make create file name");
-        return ProbeResult::error;
+        throw VSTError("couldn't make create file name");
     }
     /// LOG_DEBUG("temp path: " << tmpPath);
     Dl_info dlinfo;
