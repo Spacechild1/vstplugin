@@ -76,18 +76,12 @@ void VST3Factory::probe() {
     plugins_.clear();
     auto numPlugins = factory_->countClasses();
     for (int i = 0; i < numPlugins; ++i){
-        VSTPluginDesc desc(*this);
-        desc.path = path_;
         PClassInfo ci;
-        if (factory_->getClassInfo(i, &ci) == kResultTrue){
-            auto result = vst::probe(path_, ci.name, desc);
-            nameMap_[ci.name] = i;
-            desc.probeResult = result;
-        } else {
-            LOG_ERROR("couldn't get class info!");
-            desc.probeResult = ProbeResult::error;
+        if (factory_->getClassInfo(i, &ci) != kResultTrue){
+            throw VSTError("couldn't get class info!");
         }
-        plugins_.push_back(std::make_shared<VSTPluginDesc>(std::move(desc)));
+        nameMap_[ci.name] = i;
+        plugins_.push_back(std::make_shared<VSTPluginDesc>(doProbe(ci.name)));
     }
 }
 

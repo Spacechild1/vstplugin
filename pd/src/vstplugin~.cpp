@@ -109,8 +109,15 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
     #endif
         return nullptr;
     }
-    factory->probe();
-    auto plugins = factory->plugins();
+    try {
+        factory->probe();
+    } catch (const VSTError& e){
+        LOCK;
+        msg << "error!\n" << e.what();
+        verbose(PD_ERROR, "%s", msg.str().c_str());
+        UNLOCK;
+        return nullptr;
+    }
 
     auto postResult = [&](std::stringstream& m, ProbeResult pr){
         LOCK
@@ -127,10 +134,6 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
             m << "crashed!";
             verbose(PD_NORMAL, "%s", m.str().c_str());
             break;
-        case ProbeResult::error:
-            m << "error!";
-            verbose(PD_ERROR, "%s", m.str().c_str());
-            break;
         default:
             bug("probePlugin");
             break;
@@ -138,6 +141,7 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
         UNLOCK
     };
 
+    auto plugins = factory->plugins();
     if (plugins.size() == 1){
         auto& plugin = plugins[0];
         postResult(msg, plugin->probeResult);
@@ -847,7 +851,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
     if (!info->valid()){
-        pd_error(x, "%s: can't use plugin '%s'", classname(x), info->name.c_str());
+        pd_error(x, "%s: can't use plugin '%s'", classname(x), info->path.c_str());
         return;
     }
         // *now* close the old plugin

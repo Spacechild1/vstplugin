@@ -158,11 +158,7 @@ int VST2Factory::numPlugins() const {
 }
 
 void VST2Factory::probe() {
-    VSTPluginDesc desc(*this);
-    auto result = vst::probe(path_, "", desc);
-    desc.probeResult = result;
-    desc.path = path_;
-    desc_ = std::make_shared<VSTPluginDesc>(std::move(desc));
+    desc_ = std::make_shared<VSTPluginDesc>(doProbe());
 }
 
 std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool unsafe) const {
@@ -228,13 +224,10 @@ VST2Plugin::~VST2Plugin(){
 }
 
 std::string VST2Plugin::getPluginName() const {
+    if (desc_) return desc_->name;
     char buf[256] = { 0 };
     dispatch(effGetEffectName, 0, 0, buf);
-    if (*buf){
-        return buf;
-    } else {
-        return getBaseName();
-    }
+    return buf;
 }
 
 std::string VST2Plugin::getPluginVendor() const {
@@ -966,18 +959,6 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 }
 
 // private
-std::string VST2Plugin::getBaseName() const {
-    auto& path = desc_->path;
-    auto sep = path.find_last_of("\\/");
-    auto dot = path.find_last_of('.');
-    if (sep == std::string::npos){
-        sep = -1;
-    }
-    if (dot == std::string::npos){
-        dot = path.size();
-    }
-    return path.substr(sep + 1, dot - sep - 1);
-}
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;

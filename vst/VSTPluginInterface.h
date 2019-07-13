@@ -190,7 +190,6 @@ enum class ProbeResult {
     success,
     fail,
     crash,
-    error,
     none
 };
 
@@ -256,8 +255,11 @@ class IVSTFactory {
     virtual int numPlugins() const = 0;
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;
+    virtual std::string path() const = 0;
     // create a new plugin instance
     virtual std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const = 0;
+ protected:
+    VSTPluginDesc doProbe(const std::string& name = "");
 };
 
 using IVSTFactoryPtr = std::unique_ptr<IVSTFactory>;
@@ -272,8 +274,6 @@ class VSTError : public std::exception {
  private:
     std::string msg_;
 };
-
-ProbeResult probe(const std::string& path, const std::string& name, VSTPluginDesc& desc);
 
 // recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path and basename.
 void search(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);

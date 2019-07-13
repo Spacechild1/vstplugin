@@ -177,8 +177,16 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
 #endif
         return nullptr;
     }
-    factory->probe();
-    auto plugins = factory->plugins();
+    try {
+        factory->probe();
+    }
+    catch (const VSTError& e) {
+        if (verbose) {
+            Print("error!\n");
+            Print("%s\n", e.what());
+        }
+        return nullptr;
+    }
 
     auto postResult = [](ProbeResult pr) {
         switch (pr) {
@@ -191,14 +199,13 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
         case ProbeResult::crash:
             Print("crashed!\n");
             break;
-        case ProbeResult::error:
-            Print("error!\n");
-            break;
         default:
             Print("bug: probePlugin\n");
             break;
         }
     };
+
+    auto plugins = factory->plugins();
 
     if (plugins.size() == 1) {
         auto& plugin = plugins[0];

@@ -26,6 +26,9 @@ class VST2Factory : public IVSTFactory {
     bool isProbed() const override {
         return desc_ != nullptr;
     }
+    std::string path() const override {
+        return path_;
+    }
     // create a new plugin instance
     std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const override;
  private:
@@ -137,7 +140,6 @@ class VST2Plugin final : public IVSTPlugin {
     void closeEditor() override;
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
  private:
-    std::string getBaseName() const;
     bool hasFlag(VstAEffectFlags flag) const;
     bool canHostDo(const char *what) const;
     void parameterAutomated(int index, float value);

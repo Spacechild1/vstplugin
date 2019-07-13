@@ -319,110 +319,6 @@ void search(const std::string &dir, std::function<void(const std::string&, const
 #endif
 }
 
-/*////////////////////////// probe ///////////////////////////*/
-
-// probe a plugin in a seperate process and return the info in a file
-ProbeResult probe(const std::string& path, const std::string& name, VSTPluginDesc& desc) {
-	int result = -1;
-#ifdef _WIN32
-	// create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
-	wchar_t tmpDir[MAX_PATH + 1];
-	auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
-	_snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst%x", (uint32_t)rand()); // lazy
-	std::wstring tmpPath = tmpDir;
-    /// LOG_DEBUG("temp path: " << shorten(tmpPath));
-	// get full path to probe exe
-	std::wstring probePath = getDirectory() + L"\\probe.exe";
-    /// LOG_DEBUG("probe path: " << shorten(probePath));
-	// on Windows we need to quote the arguments for _spawn to handle spaces in file names.
-	std::wstring quotedPluginPath = L"\"" + widen(path) + L"\"";
-    std::wstring quotedPluginName = L"\"" + widen(name) + L"\"";
-	std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
-	// start a new process with plugin path and temp file path as arguments:
-    result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(), quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
-#else // Unix
-	// create temp file path
-	auto tmpBuf = tempnam(nullptr, nullptr);
-	std::string tmpPath;
-	if (tmpBuf) {
-		tmpPath = tmpBuf;
-		free(tmpBuf);
-	}
-	else {
-		LOG_ERROR("couldn't make create file name");
-        return ProbeResult::error;
-	}
-	/// LOG_DEBUG("temp path: " << tmpPath);
-	Dl_info dlinfo;
-	if (!dladdr((void *)probe, &dlinfo)) {
-		LOG_ERROR("probePlugin: couldn't get module path!");
-        return ProbeResult::error;
-	}
-	// get full path to probe exe
-	std::string modulePath = dlinfo.dli_fname;
-	auto end = modulePath.find_last_of('/');
-	std::string probePath = modulePath.substr(0, end) + "/probe";
-	// fork
-	pid_t pid = fork();
-	if (pid == -1) {
-		LOG_ERROR("probePlugin: fork failed!");
-        return ProbeResult::error;
-	}
-	else if (pid == 0) {
-		// child process: start new process with plugin path and temp file path as arguments.
-		// we must not quote arguments to exec!
-		if (execl(probePath.c_str(), "probe", path.c_str(), name.c_str(), tmpPath.c_str(), nullptr) < 0) {
-			LOG_ERROR("probePlugin: exec failed!");
-		}
-		std::exit(EXIT_FAILURE);
-	}
-	else {
-		// parent process: wait for child
-		int status = 0;
-		waitpid(pid, &status, 0);
-		if (WIFEXITED(status)) {
-			result = WEXITSTATUS(status);
-		}
-	}
-#endif
-    /// LOG_DEBUG("result: " << result);
-	if (result == EXIT_SUCCESS) {
-		// get info from temp file
-#ifdef _WIN32
-		// there's no way to open a fstream with a wide character path...
-		// (the C++17 standard allows filesystem::path but this isn't widely available yet)
-		// for now let's assume temp paths are always ASCII. LATER fix this!
-		std::ifstream file(shorten(tmpPath), std::ios::binary);
-#else
-		std::ifstream file(tmpPath, std::ios::binary);
-#endif
-		if (file.is_open()) {
-			desc.deserialize(file);
-            desc.path = path;
-			file.close();
-#ifdef _WIN32
-			if (!fs::remove(tmpPath)) {
-#else
-			if (std::remove(tmpPath.c_str()) != 0) {
-#endif
-				LOG_ERROR("probePlugin: couldn't remove temp file!");
-                return ProbeResult::error;
-			}
-            return ProbeResult::success;
-        }
-		else {
-			LOG_ERROR("probePlugin: couldn't read temp file!");
-            return ProbeResult::error;
-		}
-    }
-	else if (result == EXIT_FAILURE) {
-        return ProbeResult::fail;
-	}
-	else {
-        return ProbeResult::crash;
-    }
-}
-
 /*/////////// IVSTWindow //////////////////*/
 namespace VSTWindowFactory {
 #ifdef _WIN32
@@ -642,15 +538,126 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
     }
 }
 
+// probe a plugin in a seperate process and return the info in a file
+VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
+    VSTPluginDesc desc(*this);
+    int result = -1;
+#ifdef _WIN32
+    // create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
+    wchar_t tmpDir[MAX_PATH + 1];
+    auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
+    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst%x", (uint32_t)rand()); // lazy
+    std::wstring tmpPath = tmpDir;
+    /// LOG_DEBUG("temp path: " << shorten(tmpPath));
+    // get full path to probe exe
+    std::wstring probePath = getDirectory() + L"\\probe.exe";
+    /// LOG_DEBUG("probe path: " << shorten(probePath));
+    // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
+    std::wstring quotedPluginPath = L"\"" + widen(path()) + L"\"";
+    std::wstring quotedPluginName = L"\"" + widen(name) + L"\"";
+    std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
+    // start a new process with plugin path and temp file path as arguments:
+    result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(), quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
+#else // Unix
+    // create temp file path
+    auto tmpBuf = tempnam(nullptr, nullptr);
+    std::string tmpPath;
+    if (tmpBuf) {
+        tmpPath = tmpBuf;
+        free(tmpBuf);
+    }
+    else {
+        LOG_ERROR("couldn't make create file name");
+        return ProbeResult::error;
+    }
+    /// LOG_DEBUG("temp path: " << tmpPath);
+    Dl_info dlinfo;
+    // hack: get library info through a function pointer (vst::search)
+    if (!dladdr((void *)search, &dlinfo)) {
+        throw VSTError("probePlugin: couldn't get module path!");
+    }
+    // get full path to probe exe
+    std::string modulePath = dlinfo.dli_fname;
+    auto end = modulePath.find_last_of('/');
+    std::string probePath = modulePath.substr(0, end) + "/probe";
+    // fork
+    pid_t pid = fork();
+    if (pid == -1) {
+        throw VSTError("probePlugin: fork failed!");
+    }
+    else if (pid == 0) {
+        // child process: start new process with plugin path and temp file path as arguments.
+        // we must not quote arguments to exec!
+        if (execl(probePath.c_str(), "probe", path().c_str(), name.c_str(), tmpPath.c_str(), nullptr) < 0) {
+            LOG_ERROR("probePlugin: exec failed!");
+        }
+        std::exit(EXIT_FAILURE);
+    }
+    else {
+        // parent process: wait for child
+        int status = 0;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            result = WEXITSTATUS(status);
+        }
+    }
+#endif
+    /// LOG_DEBUG("result: " << result);
+    if (result == EXIT_SUCCESS) {
+        // get info from temp file
+#ifdef _WIN32
+        // there's no way to open a fstream with a wide character path...
+        // (the C++17 standard allows filesystem::path but this isn't widely available yet)
+        // for now let's assume temp paths are always ASCII. LATER fix this!
+        std::ifstream file(shorten(tmpPath), std::ios::binary);
+#else
+        std::ifstream file(tmpPath, std::ios::binary);
+#endif
+        if (file.is_open()) {
+            desc.deserialize(file);
+            file.close();
+#ifdef _WIN32
+            if (!fs::remove(tmpPath)) {
+#else
+            if (std::remove(tmpPath.c_str()) != 0) {
+#endif
+                throw VSTError("probePlugin: couldn't remove temp file!");
+            }
+            desc.probeResult = ProbeResult::success;
+        }
+        else {
+            throw VSTError("probePlugin: couldn't read temp file!");
+        }
+    }
+    else if (result == EXIT_FAILURE) {
+        desc.probeResult = ProbeResult::fail;
+    }
+    else {
+        desc.probeResult = ProbeResult::crash;
+    }
+    return desc;
+}
+
 /*///////////////////// VSTPluginDesc /////////////////////*/
 
 VSTPluginDesc::VSTPluginDesc(IVSTFactory &factory)
-    : factory_(&factory){}
+    : path(factory.path()), factory_(&factory) {}
 
 VSTPluginDesc::VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin)
     : VSTPluginDesc(factory)
 {
-	name = plugin.getPluginName();
+    name = plugin.getPluginName();
+    if (name.empty()){
+        auto sep = path.find_last_of("\\/");
+        auto dot = path.find_last_of('.');
+        if (sep == std::string::npos){
+            sep = -1;
+        }
+        if (dot == std::string::npos){
+            dot = path.size();
+        }
+        name = path.substr(sep + 1, dot - sep - 1);
+    }
     vendor = plugin.getPluginVendor();
     category = plugin.getPluginCategory();
     version = plugin.getPluginVersion();

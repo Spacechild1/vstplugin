@@ -25,6 +25,9 @@ class VST3Factory : public IVSTFactory {
     bool isProbed() const override {
         return plugins_.size() > 0;
     }
+    std::string path() const override {
+        return path_;
+    }
     // create a new plugin instance
     std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const override;
  private:
