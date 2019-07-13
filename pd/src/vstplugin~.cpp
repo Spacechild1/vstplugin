@@ -685,9 +685,13 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         if (*flag == '-'){
             if (!strcmp(flag, "-a")){
                 async = true;
+            } else {
+                pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
+            argv++; argc--;
+        } else {
+            break;
         }
-        argc--; argv++;
     }
 
     if (argc > 0){
@@ -696,7 +700,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             char path[MAXPDSTRING];
             canvas_makefilename(x->x_canvas, sym->s_name, path, MAXPDSTRING);
             if (async){
-                searchPaths.emplace_back(path);
+                searchPaths.emplace_back(path); // save for later
             } else {
                 searchPlugins(path, x);
             }
