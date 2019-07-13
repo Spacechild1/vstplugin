@@ -261,7 +261,7 @@ static std::string resolvePath(std::string path) {
     }
     // otherwise try default VST paths
     for (auto& vstpath : getDefaultSearchPaths()) {
-        auto result = vst::search(vstpath, path);
+        auto result = vst::find(vstpath, path);
         if (!result.empty()) return result; // success
     }
     return std::string{}; // fail

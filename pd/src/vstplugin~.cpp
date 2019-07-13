@@ -780,7 +780,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         } else {
                 // otherwise try default VST paths
             for (auto& vstpath : getDefaultSearchPaths()){
-                result = vst::search(vstpath, path);
+                result = vst::find(vstpath, path);
                 if (!result.empty()) break; // success
             }
         }

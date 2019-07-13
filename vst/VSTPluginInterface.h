@@ -279,7 +279,7 @@ class VSTError : public std::exception {
 void search(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
 
 // recursively search 'dir' for a VST plugin. returns empty string on failure
-std::string search(const std::string& dir, const std::string& path);
+std::string find(const std::string& dir, const std::string& path);
 
 const std::vector<std::string>& getDefaultSearchPaths();
 

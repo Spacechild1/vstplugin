@@ -191,7 +191,7 @@ static bool isDirectory(dirent *entry){
 #endif
 
 // recursively search for a VST plugin in a directory. returns empty string on failure.
-std::string search(const std::string &dir, const std::string &path){
+std::string find(const std::string &dir, const std::string &path){
     std::string relpath = path;
 #ifdef _WIN32
     const char *ext = ".dll";
