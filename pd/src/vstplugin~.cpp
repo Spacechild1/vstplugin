@@ -102,8 +102,10 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
     auto factory = IVSTFactory::load(path);
     if (!factory){
     #if 1
+        LOCK;
         msg << "failed!";
         verbose(PD_DEBUG, "%s", msg.str().c_str());
+        UNLOCK;
     #endif
         return nullptr;
     }
