@@ -329,7 +329,7 @@ VSTPluginController {
 	}
 	prSetData { arg data, action, bank;
 		var path, cb;
-		path = PathName.tmp ++ this.hash.asString;
+		path = VSTPlugin.prMakeTmpPath;
 		cb = { arg self, success;
 			success.if {
 				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
@@ -384,7 +384,7 @@ VSTPluginController {
 	}
 	prGetData { arg action, bank;
 		var path, cb, data;
-		path = PathName.tmp ++ this.hash.asString;
+		path = VSTPlugin.prMakeTmpPath;
 		cb = { arg self, success;
 			success.if {
 				protect {

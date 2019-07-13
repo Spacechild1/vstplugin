@@ -1,6 +1,5 @@
 VSTPlugin : MultiOutUGen {
 	// class members
-	classvar counter = 0;
 	classvar pluginDict;
 	classvar parentInfo;
 	classvar <platformExtension;
@@ -124,14 +123,14 @@ VSTPlugin : MultiOutUGen {
 	*prSearchLocal { arg server, dir, useDefault, verbose, action;
 		{
 			var dict = pluginDict[server];
-			var filePath = PathName.tmp ++ this.prUniqueID.asString;
+			var tmpPath = this.prMakeTmpPath;
 			// ask VSTPlugin to store the search results in a temp file
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, filePath));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, tmpPath));
 			// wait for cmd to finish
 			server.sync;
 			// read file
 			protect {
-				File.use(filePath, "rb", { arg file;
+				File.use(tmpPath, "rb", { arg file;
 					// plugins are seperated by newlines
 					file.readAllString.split($\n).do { arg line;
 						var info;
@@ -145,7 +144,7 @@ VSTPlugin : MultiOutUGen {
 			} { arg error;
 				error.notNil.if { "Failed to read tmp file!".warn };
 				// done - free temp file
-				File.delete(filePath).not.if { ("Could not delete data file:" + filePath).warn };
+				File.delete(tmpPath).not.if { ("Could not delete data file:" + tmpPath).warn };
 				action.value;
 			};
 		}.forkIfNeeded;
@@ -223,7 +222,7 @@ VSTPlugin : MultiOutUGen {
 	*prProbeLocal { arg server, path, key, action;
 		{
 			var info, dict = pluginDict[server];
-			var tmpPath = PathName.tmp ++ this.prUniqueID.asString;
+			var tmpPath = this.prMakeTmpPath;
 			// ask server to write plugin info to tmp file
 			server.listSendMsg(this.probeMsg(path, tmpPath));
 			// wait for cmd to finish
@@ -341,10 +340,8 @@ VSTPlugin : MultiOutUGen {
 		};
 		^path;
 	}
-	*prUniqueID {
-		var id = counter;
-		counter = counter + 1;
-		^id;
+	*prMakeTmpPath {
+		^PathName.tmp +/+ "vst_" ++ UniqueID.next;
 	}
 	*prMakeDest { arg dest;
 		// 'dest' may be a) temp file path, b) bufnum, c) Buffer, d) nil
