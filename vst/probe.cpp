@@ -29,10 +29,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 			if (plugin) {
 				if (filePath) {
                     /// LOG_DEBUG("get plugin info");
-					// there's no way to open a fstream with a wide character path...
-					// (the C++17 standard allows filesystem::path but this isn't widely available yet)
-					// for now let's assume temp paths are always ASCII. LATER fix this!
-					std::ofstream file(shorten(filePath), std::ios::binary);
+                    std::ofstream file(filePath, std::ios::binary);
 					if (file.is_open()) {
                         plugin->info().serialize(file);
 						/// LOG_DEBUG("info written");

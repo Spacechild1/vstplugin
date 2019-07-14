@@ -611,14 +611,7 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
     /// LOG_DEBUG("result: " << result);
     if (result == EXIT_SUCCESS) {
         // get info from temp file
-#ifdef _WIN32
-        // there's no way to open a fstream with a wide character path...
-        // (the C++17 standard allows filesystem::path but this isn't widely available yet)
-        // for now let's assume temp paths are always ASCII. LATER fix this!
-        std::ifstream file(shorten(tmpPath), std::ios::binary);
-#else
-        std::ifstream file(tmpPath, std::ios::binary);
-#endif
+        std::ifstream file(tmpPath.c_str(), std::ios::binary); // need wchar_t * on Windows!
         if (file.is_open()) {
             desc.deserialize(file);
             file.close();
