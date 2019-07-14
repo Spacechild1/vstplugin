@@ -85,79 +85,117 @@ static void addPlugins(const IVSTFactory& factory){
     }
 }
 
-#undef LOCK_GUARD
-
-#define LOCK if (async) sys_lock();
-#define UNLOCK if (async) sys_unlock();
-
-static IVSTFactory * probePlugin(const std::string& path, bool async = false){
-    if (manager.findFactory(path)){
-        LOG_WARNING("probePlugin: '" << path << "' already probed!");
-        return nullptr;
+// for asynchronous searching, we want to show the name of the plugin before
+// the result, especially if the plugin takes a long time to load (e.g. shell plugins).
+// The drawback is that we either have to post the result on a seperate line or post
+// on the normal log level. For now, we do the latter.
+class PdLog {
+public:
+    template <typename... T>
+    PdLog(bool async, PdLogLevel level, const char *fmt, T... args)
+        : async_(async), level_(level)
+    {
+        if (async_){
+            // post immediately!
+            sys_lock();
+            startpost(fmt, args...);
+            sys_unlock();
+        } else {
+            // defer posting
+            char buf[MAXPDSTRING];
+            snprintf(buf, MAXPDSTRING, fmt, args...);
+            ss_ << buf;
+        }
     }
-    // load factory and probe plugins
-    std::stringstream msg;
-    msg << "probing '" << path << "'... ";
-    LOG_DEBUG("probing " << path);
-    auto factory = IVSTFactory::load(path);
-    if (!factory){
-    #if 1
-        LOCK;
-        msg << "failed!";
-        verbose(PD_DEBUG, "%s", msg.str().c_str());
-        UNLOCK;
-    #endif
-        return nullptr;
+    ~PdLog(){
+        flush();
     }
-    try {
-        factory->probe();
-    } catch (const VSTError& e){
-        LOCK;
-        msg << "error!\n" << e.what();
-        verbose(PD_ERROR, "%s", msg.str().c_str());
-        UNLOCK;
-        return nullptr;
+    PdLog& flush(){
+        if (async_){
+            sys_lock();
+            post("%s", ss_.str().c_str());
+            sys_unlock();
+        } else {
+            verbose(level_, "%s", ss_.str().c_str());
+        }
+        ss_ = std::stringstream(); // reset stream
+        return *this;
     }
-
-    auto postResult = [&](std::stringstream& m, ProbeResult pr){
-        LOCK
-        switch (pr){
+    PdLog& operator <<(const std::string& s){
+        ss_ << s;
+        return *this;
+    }
+    PdLog& operator <<(const VSTError& e){
+        flush();
+        if (async_){
+            sys_lock();
+            verbose(PD_ERROR, "%s", e.what());
+            sys_unlock();
+        } else {
+            verbose(PD_ERROR, "%s", e.what());
+        }
+        return *this;
+    }
+    PdLog& operator <<(ProbeResult result){
+        switch (result){
         case ProbeResult::success:
-            m << "ok!";
-            verbose(PD_DEBUG, "%s", m.str().c_str());
+            *this << "ok!";
             break;
         case ProbeResult::fail:
-            m << "failed!";
-            verbose(PD_DEBUG, "%s", m.str().c_str());
+            *this << "failed!";
             break;
         case ProbeResult::crash:
-            m << "crashed!";
-            verbose(PD_NORMAL, "%s", m.str().c_str());
+            *this << "crashed!";
             break;
         default:
             bug("probePlugin");
             break;
         }
-        UNLOCK
-    };
+        return *this;
+    }
+private:
+    std::stringstream ss_;
+    bool async_;
+    PdLogLevel level_;
+};
+
+// load factory and probe plugins
+static IVSTFactory * probePlugin(const std::string& path, bool async = false){
+    if (manager.findFactory(path)){
+        LOG_WARNING("probePlugin: '" << path << "' already probed!");
+        return nullptr;
+    }
+    PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
+
+    auto factory = IVSTFactory::load(path);
+    if (!factory){
+        log << "failed!";
+        return nullptr;
+    }
+
+    try {
+        factory->probe();
+    } catch (const VSTError& e){
+        log << e;
+        return nullptr;
+    }
 
     auto plugins = factory->plugins();
     if (plugins.size() == 1){
         auto& plugin = plugins[0];
-        postResult(msg, plugin->probeResult);
+        log << plugin->probeResult;
         // factories with a single plugin can also be aliased by their file path(s)
         manager.addPlugin(plugin->path, plugin);
         manager.addPlugin(path, plugin);
     } else {
-        verbose(PD_DEBUG, "%s", msg.str().c_str());
         for (auto& plugin : plugins){
-            std::stringstream m;
+            log << "\n";
             if (!plugin->name.empty()){
-                m << "  '" << plugin->name << "' ";
+                log << "\t'" << plugin->name << "'... ";
             } else {
-                m << "  plugin ";
+                log << "\tplugin "; // e.g. "plugin crashed!"
             }
-            postResult(m, plugin->probeResult);
+            log << plugin->probeResult;
         }
     }
     auto result = factory.get();
@@ -168,9 +206,10 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
 
 static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
     int count = 0;
-    LOCK
-    verbose(PD_NORMAL, "searching in '%s' ...", path.c_str());
-    UNLOCK
+    {
+        PdLog log(async, PD_NORMAL, "searching in '%s' ...", path.c_str()); // destroy
+    }
+
     vst::search(path, [&](const std::string& absPath, const std::string&){
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
@@ -184,9 +223,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                 if (plugin->valid()){
                     auto& name = plugin->name;
                     auto key = makeKey(*plugin);
-                    LOCK
-                    verbose(PD_DEBUG, "%s %s", path.c_str(), name.c_str());
-                    UNLOCK
+                    PdLog log(async, PD_DEBUG, "%s %s", path.c_str(), name.c_str());
                     if (x){
                         x->x_plugins.push_back(gensym(key.c_str()));
                     }
@@ -198,9 +235,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                     if (plugin->valid()){
                         auto& name = plugin->name;
                         auto key = makeKey(*plugin);
-                        LOCK
-                        verbose(PD_DEBUG, "  %s", name.c_str());
-                        UNLOCK
+                        PdLog log(async, PD_DEBUG, "  %s", name.c_str());
                         if (x){
                             x->x_plugins.push_back(gensym(key.c_str()));
                         }
@@ -225,17 +260,12 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
             }
         }
     });
-    LOCK
-    verbose(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
-    UNLOCK
+    PdLog log(async, PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
 }
 
 // tell whether we've already searched the standard VST directory
 // (see '-s' flag for [vstplugin~])
 static bool gDoneSearch = false;
-
-#undef LOCK
-#undef UNLOCK
 
 /*--------------------- t_vstparam --------------------------*/
 
