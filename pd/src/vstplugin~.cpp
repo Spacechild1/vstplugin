@@ -207,7 +207,9 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
 static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
     int count = 0;
     {
-        PdLog log(async, PD_NORMAL, "searching in '%s' ...", path.c_str()); // destroy
+        std::string bashPath = path;
+        sys_unbashfilename(&bashPath[0], &bashPath[0]);
+        PdLog log(async, PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
     }
 
     vst::search(path, [&](const std::string& absPath, const std::string&){
@@ -216,26 +218,23 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
         // check if module has already been loaded
         auto factory = manager.findFactory(pluginPath);
         if (factory){
-            // just post names of valid plugins
+            // just post paths of valid plugins
+            PdLog log(async, PD_DEBUG, "%s", factory->path().c_str());
             auto plugins = factory->plugins();
             if (plugins.size() == 1){
                 auto& plugin = plugins[0];
                 if (plugin->valid()){
-                    auto& name = plugin->name;
                     auto key = makeKey(*plugin);
-                    PdLog log(async, PD_DEBUG, "%s %s", path.c_str(), name.c_str());
                     if (x){
                         x->x_plugins.push_back(gensym(key.c_str()));
                     }
                     count++;
                 }
             } else {
-                verbose(PD_DEBUG, "%s", path.c_str());
                 for (auto& plugin : plugins){
                     if (plugin->valid()){
-                        auto& name = plugin->name;
                         auto key = makeKey(*plugin);
-                        PdLog log(async, PD_DEBUG, "  %s", name.c_str());
+                        log << "\n\t" << plugin->name;
                         if (x){
                             x->x_plugins.push_back(gensym(key.c_str()));
                         }
@@ -685,6 +684,7 @@ static void vstplugin_search_done(t_vstplugin *x){
     if (x->x_thread.joinable()){
         x->x_thread.join();
     }
+    verbose(PD_NORMAL, "search done");
     // sort plugin names alphabetically and case independent
     std::sort(x->x_plugins.begin(), x->x_plugins.end(), [](const auto& lhs, const auto& rhs){
         std::string s1 = lhs->s_name;
@@ -698,7 +698,6 @@ static void vstplugin_search_done(t_vstplugin *x){
         SETSYMBOL(&msg, plugin);
         outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
     }
-    verbose(PD_NORMAL, "search done");
     outlet_anything(x->x_messout, gensym("search_done"), 0, nullptr);
 }
 
