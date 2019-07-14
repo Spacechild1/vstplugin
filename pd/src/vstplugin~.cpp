@@ -75,7 +75,7 @@ static void addPlugins(const IVSTFactory& factory){
             // also map bashed parameter names
             int num = plugin->parameters.size();
             for (int i = 0; i < num; ++i){
-                auto key = plugin->parameters[i].first;
+                auto key = plugin->parameters[i].name;
                 bash_name(key);
                 plugin->paramMap[std::move(key)] = i;
             }

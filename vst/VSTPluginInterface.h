@@ -214,8 +214,12 @@ struct VSTPluginDesc {
     int id = 0;
     int numInputs = 0;
     int numOutputs = 0;
-    // parameter name + label
-    std::vector<std::pair<std::string, std::string>> parameters;
+    // parameters
+    struct Param {
+        std::string name;
+        std::string label;
+    };
+    std::vector<Param> parameters;
     // param name to param index
     std::unordered_map<std::string, int> paramMap;
     // default programs

@@ -666,11 +666,12 @@ VSTPluginDesc::VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin)
 	int numParameters = plugin.getNumParameters();
 	parameters.clear();
 	for (int i = 0; i < numParameters; ++i) {
-		parameters.emplace_back(plugin.getParameterName(i), plugin.getParameterLabel(i));
+        Param param{plugin.getParameterName(i), plugin.getParameterLabel(i)};
+        parameters.push_back(std::move(param));
 	}
     // inverse mapping from name to index
     for (int i = 0; i < numParameters; ++i){
-        paramMap[parameters[i].first] = i;
+        paramMap[parameters[i].name] = i;
     }
 	int numPrograms = plugin.getNumPrograms();
 	programs.clear();
@@ -706,8 +707,8 @@ void VSTPluginDesc::serialize(std::ostream& file, char sep) const {
 	file << (int)programs.size() << sep;
 	file << (uint32_t)flags << sep;
 	for (auto& param : parameters) {
-		file << param.first << sep;
-		file << param.second << sep;
+        file << param.name << sep;
+        file << param.label << sep;
 	}
 	for (auto& pgm : programs) {
 		file << pgm << sep;
@@ -739,14 +740,14 @@ void VSTPluginDesc::deserialize(std::istream& file, char sep) {
 		// parameters
 		parameters.clear();
 		for (int i = 0; i < numParameters; ++i) {
-			std::pair<std::string, std::string> param;
-			std::getline(file, param.first, sep);
-			std::getline(file, param.second, sep);
+            Param param;
+            std::getline(file, param.name, sep);
+            std::getline(file, param.label, sep);
 			parameters.push_back(std::move(param));
 		}
         // inverse mapping from name to index
         for (int i = 0; i < numParameters; ++i){
-            paramMap[parameters[i].first] = i;
+            paramMap[parameters[i].name] = i;
         }
 		// programs
 		programs.clear();
