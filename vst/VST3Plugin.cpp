@@ -85,13 +85,13 @@ void VST3Factory::probe() {
     }
 }
 
-std::unique_ptr<IVSTPlugin> VST3Factory::create(const std::string& name, bool unsafe) const {
+std::unique_ptr<IVSTPlugin> VST3Factory::create(const std::string& name, bool probe) const {
     auto it = nameMap_.find(name);
     if (it == nameMap_.end()){
         return nullptr;
     }
     auto which = it->second;
-    if (!unsafe){
+    if (!probe){
         if (which < 0 || which >= (int)plugins_.size()){
             LOG_WARNING("VST3Factory: no plugin");
             return nullptr;

@@ -29,7 +29,7 @@ class VST3Factory : public IVSTFactory {
         return path_;
     }
     // create a new plugin instance
-    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const override;
+    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool probe = false) const override;
  private:
     std::string path_;
     std::unique_ptr<IModule> module_;

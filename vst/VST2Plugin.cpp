@@ -122,6 +122,8 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 
 /*/////////////////////// VST2Factory ////////////////////////////*/
 
+VstInt32 VST2Factory::shellPluginID = 0;
+
 VST2Factory::VST2Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
 {
@@ -150,29 +152,75 @@ VST2Factory::~VST2Factory(){
 }
 
 std::vector<VSTPluginDescPtr> VST2Factory::plugins() const {
-    return {desc_};
+    return plugins_;
 }
 
 int VST2Factory::numPlugins() const {
-    return (desc_ ? 1 : 0);
+    return plugins_.size();
 }
+
+// for testing we don't want to load hundreds of shell plugins
+#define SHELL_PLUGIN_LIMIT 1000
 
 void VST2Factory::probe() {
-    desc_ = std::make_shared<VSTPluginDesc>(doProbe());
+    plugins_.clear();
+    auto result = probePlugin(""); // don't need a name
+    if (result->shellPlugins_.empty()){
+        plugins_ = { result };
+    } else {
+        // shell plugin!
+    #ifdef SHELL_PLUGIN_LIMIT
+        int max = SHELL_PLUGIN_LIMIT;
+    #endif
+        for (auto& shell : result->shellPlugins_){
+            try {
+                LOG_DEBUG("probing '" << shell.name << "'");
+                plugins_.push_back(probePlugin(shell.name, shell.id));
+            } catch (const VSTError& e){
+                LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
+            }
+        #ifdef SHELL_PLUGIN_LIMIT
+            if (!--max) break;
+        #endif
+        }
+    }
+    for (auto& desc : plugins_){
+        pluginMap_[desc->name] = desc;
+    }
 }
 
-std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool unsafe) const {
-    if (!unsafe){
-        if (!desc_){
-            LOG_WARNING("VST2Factory: no plugin");
+std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool probe) const {
+    VSTPluginDescPtr desc = nullptr; // will stay nullptr when probing!
+    if (!probe){
+        if (plugins_.empty()){
+            LOG_WARNING("VST2Factory: no plugin(s)");
             return nullptr;
         }
-        if (!desc_->valid()){
+        auto it = pluginMap_.find(name);
+        if (it == pluginMap_.end()){
+            LOG_ERROR("can't find (sub)plugin '" << name << "'");
+            return nullptr;
+        }
+        desc = it->second;
+        if (!desc->valid()){
             LOG_WARNING("VST2Factory: plugin not probed successfully");
             return nullptr;
         }
+        // only for shell plugins:
+        // set (global) current plugin ID (used in hostCallback)
+        shellPluginID = desc->id;
+    } else {
+        // when probing, shell plugin ID is passed as string
+        try {
+            shellPluginID = std::stol(name);
+        } catch (...){
+            shellPluginID = 0;
+        }
     }
+
     AEffect *plugin = entry_(&VST2Plugin::hostCallback);
+    shellPluginID = 0; // just to be sure
+
     if (!plugin){
         LOG_ERROR("VST2Factory: couldn't initialize plugin");
         return nullptr;
@@ -181,7 +229,7 @@ std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool un
         LOG_ERROR("VST2Factory: not a VST2.x plugin!");
         return nullptr;
     }
-    return std::make_unique<VST2Plugin>(plugin, desc_);
+    return std::make_unique<VST2Plugin>(plugin, *this, desc);
 }
 
 
@@ -190,7 +238,7 @@ std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool un
 // initial size of VstEvents queue (can grow later as needed)
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
-VST2Plugin::VST2Plugin(void *plugin, VSTPluginDescPtr desc)
+VST2Plugin::VST2Plugin(void *plugin, const VST2Factory& f, VSTPluginDescPtr desc)
     : plugin_((AEffect*)plugin), desc_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
@@ -210,6 +258,22 @@ VST2Plugin::VST2Plugin(void *plugin, VSTPluginDescPtr desc)
     plugin_->user = this;
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
+    // are we probing?
+    if (!desc){
+        // later we might directly initialize VSTPluginDesc here and get rid of many IVSTPlugin methods
+        // (we implicitly call virtual methods within our constructor, which works in our case but is a bit edgy)
+        VSTPluginDesc newDesc(f, *this);
+        if (dispatch(effGetPlugCategory) == kPlugCategShell){
+            VstInt32 nextID = 0;
+            char name[64] = { 0 };
+            while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
+                LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
+                VSTPluginDesc::ShellPlugin shellPlugin { name, nextID };
+                newDesc.shellPlugins_.push_back(std::move(shellPlugin));
+            }
+        }
+        desc_ = std::make_shared<VSTPluginDesc>(std::move(newDesc));
+    }
 }
 
 VST2Plugin::~VST2Plugin(){
@@ -964,7 +1028,7 @@ bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;
 }
 
-bool VST2Plugin::canHostDo(const char *what) const {
+bool VST2Plugin::canHostDo(const char *what) {
     auto matches = [&](const char *s){
         return (bool)(!strcmp(what, s));
     };
@@ -972,7 +1036,8 @@ bool VST2Plugin::canHostDo(const char *what) const {
     return matches("sendVstMidiEvent") || matches("receiveVstMidiEvent")
         || matches("sendVstTimeInfo") || matches("receiveVstTimeInfo")
         || matches("sendVstMidiEventFlagIsRealtime")
-        || matches("reportConnectionChanges");
+        || matches("reportConnectionChanges")
+        || matches("shellCategory");
 }
 
 void VST2Plugin::parameterAutomated(int index, float value){
@@ -1110,30 +1175,32 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
-    if (plugin && plugin->user){
-        return ((VST2Plugin *)(plugin->user))->callback(opcode, index, value, ptr, opt);
-    } else if (opcode == audioMasterVersion){
+    switch (opcode){
+    case audioMasterCanDo:
+        return canHostDo((const char *)ptr);
+    case audioMasterVersion:
+        // LOG_DEBUG("opcode: audioMasterVersion");
         return 2400;
-    } else {
-        return 0;
+    case audioMasterCurrentId:
+        // LOG_DEBUG("opcode: audioMasterCurrentId");
+        // VST2Factory::probeShellPlugins(plugin);
+        return VST2Factory::shellPluginID;
+    default:
+        if (plugin && plugin->user){
+            return ((VST2Plugin *)(plugin->user))->callback(opcode, index, value, ptr, opt);
+        } else {
+            return 0;
+        }
     }
 }
 
-//#define DEBUG_HOSTCODE_IMPLEMENTATION 1
+#define DEBUG_HOSTCODE_IMPLEMENTATION 1
 VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *ptr, float opt){
     switch(opcode) {
     case audioMasterAutomate:
         // LOG_DEBUG("opcode: audioMasterAutomate");
         parameterAutomated(index, opt);
         break;
-    case audioMasterVersion:
-        // LOG_DEBUG("opcode: audioMasterVersion");
-        return 2400;
-#if DEBUG_HOSTCODE_IMPLEMENTATION
-    case audioMasterCurrentId:
-        LOG_DEBUG("opcode: audioMasterCurrentId");
-        break;
-#endif
     case audioMasterIdle:
         LOG_DEBUG("opcode: audioMasterIdle");
         dispatch(effEditIdle);
@@ -1177,9 +1244,6 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterVendorSpecific:
         LOG_DEBUG("opcode: vendor info");
         break;
-    case audioMasterCanDo:
-        LOG_DEBUG("opcode: audioMasterCanDo " << (const char*)ptr);
-        return canHostDo((const char *)ptr);
 #if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterGetLanguage:
         LOG_DEBUG("opcode: audioMasterGetLanguage");

@@ -539,9 +539,15 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
 }
 
 // probe a plugin in a seperate process and return the info in a file
-VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
-    VSTPluginDesc desc(*this);
+VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPluginID) {
     int result = -1;
+    VSTPluginDesc desc(*this);
+    // put the information we already have (might be overriden)
+    desc.name = name;
+    desc.id = shellPluginID;
+    desc.path = path();
+    // we pass the shell plugin ID instead of the name to probe.exe
+    std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
 #ifdef _WIN32
     // create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
     wchar_t tmpDir[MAX_PATH + 1];
@@ -554,10 +560,11 @@ VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
     /// LOG_DEBUG("probe path: " << shorten(probePath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::wstring quotedPluginPath = L"\"" + widen(path()) + L"\"";
-    std::wstring quotedPluginName = L"\"" + widen(name) + L"\"";
+    std::wstring quotedPluginName = L"\"" + widen(pluginName) + L"\"";
     std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
     // start a new process with plugin path and temp file path as arguments:
-    result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(), quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
+    result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(),
+                      quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
     // create temp file path
     auto tmpBuf = tempnam(nullptr, nullptr);
@@ -571,11 +578,11 @@ VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
     }
     /// LOG_DEBUG("temp path: " << tmpPath);
     Dl_info dlinfo;
-    // hack: get library info through a function pointer (vst::search)
+    // get full path to probe exe
+    // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
         throw VSTError("probePlugin: couldn't get module path!");
     }
-    // get full path to probe exe
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');
     std::string probePath = modulePath.substr(0, end) + "/probe";
@@ -587,7 +594,7 @@ VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
     else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
         // we must not quote arguments to exec!
-        if (execl(probePath.c_str(), "probe", path().c_str(), name.c_str(), tmpPath.c_str(), nullptr) < 0) {
+        if (execl(probePath.c_str(), "probe", path().c_str(), pluginName.c_str(), tmpPath.c_str(), nullptr) < 0) {
             LOG_ERROR("probePlugin: exec failed!");
         }
         std::exit(EXIT_FAILURE);
@@ -634,15 +641,15 @@ VSTPluginDesc IVSTFactory::doProbe(const std::string& name) {
     else {
         desc.probeResult = ProbeResult::crash;
     }
-    return desc;
+    return std::make_shared<VSTPluginDesc>(std::move(desc));
 }
 
 /*///////////////////// VSTPluginDesc /////////////////////*/
 
-VSTPluginDesc::VSTPluginDesc(IVSTFactory &factory)
+VSTPluginDesc::VSTPluginDesc(const IVSTFactory &factory)
     : path(factory.path()), factory_(&factory) {}
 
-VSTPluginDesc::VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin)
+VSTPluginDesc::VSTPluginDesc(const IVSTFactory& factory, const IVSTPlugin& plugin)
     : VSTPluginDesc(factory)
 {
     name = plugin.getPluginName();
@@ -713,6 +720,11 @@ void VSTPluginDesc::serialize(std::ostream& file, char sep) const {
 	for (auto& pgm : programs) {
 		file << pgm << sep;
 	}
+    file << (int)shellPlugins_.size() << sep;
+    for (auto& shell : shellPlugins_){
+        file << shell.name << sep;
+        file << shell.id << sep;
+    }
 }
 
 void VSTPluginDesc::deserialize(std::istream& file, char sep) {
@@ -755,7 +767,19 @@ void VSTPluginDesc::deserialize(std::istream& file, char sep) {
 			std::string program;
 			std::getline(file, program, sep);
 			programs.push_back(std::move(program));
-		}
+        }
+        // shell plugins
+        shellPlugins_.clear();
+        if (std::getline(file, line, sep)){
+            int numShellPlugins = stol(line);
+            for (int i = 0; i < numShellPlugins; ++i){
+                ShellPlugin shell;
+                std::getline(file, shell.name, sep);
+                std::getline(file, line, sep);
+                shell.id = stol(line);
+                shellPlugins_.push_back(std::move(shell));
+            }
+        }
 	}
 	catch (const std::invalid_argument& e) {
         LOG_ERROR("VSTPluginInfo::deserialize: invalid argument");
@@ -763,10 +787,6 @@ void VSTPluginDesc::deserialize(std::istream& file, char sep) {
 	catch (const std::out_of_range& e) {
         LOG_ERROR("VSTPluginInfo::deserialize: out of range");
 	}
-}
-
-bool VSTPluginDesc::unique() const {
-    return (factory_ ? factory_->numPlugins() == 1 : false);
 }
 
 std::unique_ptr<IVSTPlugin> VSTPluginDesc::create() const {

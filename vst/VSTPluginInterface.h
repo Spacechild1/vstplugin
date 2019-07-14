@@ -195,15 +195,13 @@ enum class ProbeResult {
 
 struct VSTPluginDesc {
 	VSTPluginDesc() = default;
-    VSTPluginDesc(IVSTFactory& factory);
-    VSTPluginDesc(IVSTFactory& factory, IVSTPlugin& plugin);
+    VSTPluginDesc(const IVSTFactory& factory);
+    VSTPluginDesc(const IVSTFactory& factory, const IVSTPlugin& plugin);
     void serialize(std::ostream& file, char sep = '\t') const;
     void deserialize(std::istream& file, char sep = '\t');
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
-    // is it the factory's only plugin?
-    bool unique() const;
     // data
     ProbeResult probeResult = ProbeResult::none;
     std::string path;
@@ -229,7 +227,16 @@ struct VSTPluginDesc {
     // create new instances
     std::unique_ptr<IVSTPlugin> create() const;
  private:
-    IVSTFactory * factory_ = nullptr;
+    friend class VST2Plugin;
+    friend class VST2Factory;
+    friend class VST3Plugin;
+    friend class VST3Factory;
+    const IVSTFactory * factory_ = nullptr;
+    struct ShellPlugin {
+        std::string name;
+        int id;
+    };
+    std::vector<ShellPlugin> shellPlugins_;
 };
 
 using VSTPluginDescPtr = std::shared_ptr<VSTPluginDesc>;
@@ -261,9 +268,9 @@ class IVSTFactory {
     virtual bool isProbed() const = 0;
     virtual std::string path() const = 0;
     // create a new plugin instance
-    virtual std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const = 0;
+    virtual std::unique_ptr<IVSTPlugin> create(const std::string& name, bool probe = false) const = 0;
  protected:
-    VSTPluginDesc doProbe(const std::string& name = "");
+    VSTPluginDescPtr probePlugin(const std::string& name, int shellPluginID = 0);
 };
 
 using IVSTFactoryPtr = std::unique_ptr<IVSTFactory>;

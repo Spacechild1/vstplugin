@@ -16,6 +16,8 @@ namespace vst {
 
 class VST2Factory : public IVSTFactory {
  public:
+    static VstInt32 shellPluginID;
+
     VST2Factory(const std::string& path);
     ~VST2Factory();
     // get a list of all available plugins
@@ -24,27 +26,29 @@ class VST2Factory : public IVSTFactory {
     // probe plugins (in a seperate process)
     void probe() override;
     bool isProbed() const override {
-        return desc_ != nullptr;
+        return !plugins_.empty();
     }
     std::string path() const override {
         return path_;
     }
     // create a new plugin instance
-    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool unsafe = false) const override;
+    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool probe = false) const override;
  private:
     using EntryPoint = AEffect *(*)(audioMasterCallback);
     std::string path_;
     std::unique_ptr<IModule> module_;
     EntryPoint entry_;
-    VSTPluginDescPtr desc_;
+    std::vector<VSTPluginDescPtr> plugins_;
+    std::unordered_map<std::string, VSTPluginDescPtr> pluginMap_;
 };
 
 class VST2Plugin final : public IVSTPlugin {
+    friend class VST2Factory;
  public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
         VstInt32 index, VstIntPtr value, void *ptr, float opt);
 
-    VST2Plugin(void* plugin, VSTPluginDescPtr desc);
+    VST2Plugin(void* plugin, const VST2Factory& f, VSTPluginDescPtr desc);
     ~VST2Plugin();
 
     const VSTPluginDesc& info() const { return *desc_; }
@@ -140,8 +144,9 @@ class VST2Plugin final : public IVSTPlugin {
     void closeEditor() override;
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
  private:
+    static bool canHostDo(const char *what);
+
     bool hasFlag(VstAEffectFlags flag) const;
-    bool canHostDo(const char *what) const;
     void parameterAutomated(int index, float value);
     VstTimeInfo * getTimeInfo(VstInt32 flags);
     void preProcess(int nsamples);
