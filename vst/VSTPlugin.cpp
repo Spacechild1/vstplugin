@@ -155,17 +155,18 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif
 };
 
-// expanded search paths
-static std::vector<std::string> realDefaultSearchPaths;
-
+// get "real" default search paths
 const std::vector<std::string>& getDefaultSearchPaths() {
-    // not thread safe (yet)
-    if (realDefaultSearchPaths.empty()) {
-        for (auto& path : defaultSearchPaths) {
-            realDefaultSearchPaths.push_back(expandPath(path));
+    // thread safe since C++11
+    static const struct SearchPaths {
+        SearchPaths(){
+            for (auto& path : defaultSearchPaths) {
+                list.push_back(expandPath(path));
+            }
         }
-    }
-    return realDefaultSearchPaths;
+        std::vector<std::string> list; // expanded search paths
+    } searchPaths;
+    return searchPaths.list;
 }
 
 bool fileExists(const std::string& path){
