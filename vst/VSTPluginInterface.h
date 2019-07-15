@@ -197,8 +197,8 @@ struct VSTPluginDesc {
 	VSTPluginDesc() = default;
     VSTPluginDesc(const IVSTFactory& factory);
     VSTPluginDesc(const IVSTFactory& factory, const IVSTPlugin& plugin);
-    void serialize(std::ostream& file, char sep = '\t') const;
-    void deserialize(std::istream& file, char sep = '\t');
+    void serialize(std::ostream& file) const;
+    void deserialize(std::istream& file);
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
