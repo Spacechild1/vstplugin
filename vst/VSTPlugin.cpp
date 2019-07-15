@@ -172,7 +172,7 @@ bool fileExists(const std::string& path){
     return fs::exists(widen(path));
 #else
     struct stat stbuf;
-    return stat(fname.c_str(), &stbuf) == 0;
+    return stat(path.c_str(), &stbuf) == 0;
 #endif
 }
 
