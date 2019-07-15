@@ -50,7 +50,7 @@ static std::string toHex(T u){
 
 /*---------------------- search/probe ----------------------------*/
 
-static VSTPluginManager manager;
+static VSTPluginManager gManager;
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
@@ -80,7 +80,7 @@ static void addPlugins(const IVSTFactory& factory){
                 plugin->paramMap[std::move(key)] = i;
             }
             // add plugin info
-            manager.addPlugin(makeKey(*plugin), plugin);
+            gManager.addPlugin(makeKey(*plugin), plugin);
         }
     }
 }
@@ -161,7 +161,7 @@ private:
 
 // load factory and probe plugins
 static IVSTFactory * probePlugin(const std::string& path, bool async = false){
-    if (manager.findFactory(path)){
+    if (gManager.findFactory(path)){
         LOG_WARNING("probePlugin: '" << path << "' already probed!");
         return nullptr;
     }
@@ -186,8 +186,8 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
         auto& plugin = plugins[0];
         log << plugin->probeResult;
         // factories with a single plugin can also be aliased by their file path(s)
-        manager.addPlugin(plugin->path, plugin);
-        manager.addPlugin(path, plugin);
+        gManager.addPlugin(plugin->path, plugin);
+        gManager.addPlugin(path, plugin);
     } else {
         for (auto& plugin : plugins){
             log << "\n";
@@ -200,7 +200,7 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
         }
     }
     auto result = factory.get();
-    manager.addFactory(path, std::move(factory));
+    gManager.addFactory(path, std::move(factory));
     addPlugins(*result);
     return result;
 }
@@ -217,7 +217,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
         // check if module has already been loaded
-        auto factory = manager.findFactory(pluginPath);
+        auto factory = gManager.findFactory(pluginPath);
         if (factory){
             // just post paths of valid plugins
             PdLog log(async, PD_DEBUG, "%s", factory->path().c_str());
@@ -766,7 +766,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
 static void vstplugin_search_clear(t_vstplugin *x){
         // clear the plugin description dictionary
         // (doesn't remove the actual plugin descriptions!)
-    manager.clearPlugins();
+    gManager.clearPlugins();
 }
 
 // resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
@@ -824,22 +824,22 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
 // query a plugin by its key or file path and probe if necessary.
 static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path){
     // query plugin
-    auto desc = manager.findPlugin(path);
+    auto desc = gManager.findPlugin(path);
     if (!desc){
             // try as file path
         std::string abspath = resolvePath(x->x_canvas, path);
-        if (!abspath.empty() && !(desc = manager.findPlugin(abspath))){
+        if (!abspath.empty() && !(desc = gManager.findPlugin(abspath))){
                 // plugin descs might have been removed by 'search_clear'
-            auto factory = manager.findFactory(abspath);
+            auto factory = gManager.findFactory(abspath);
             if (factory){
                 addPlugins(*factory);
             }
-            if (!(desc = manager.findPlugin(abspath))){
+            if (!(desc = gManager.findPlugin(abspath))){
                     // finally probe plugin
                 if (probePlugin(abspath)){
                         // this fails if the module contains several plugins
                         // (so the path is not used as a key)
-                    desc = manager.findPlugin(abspath);
+                    desc = gManager.findPlugin(abspath);
                 }
             }
         }
