@@ -167,6 +167,15 @@ const std::vector<std::string>& getDefaultSearchPaths() {
     return realDefaultSearchPaths;
 }
 
+bool fileExists(const std::string& path){
+#ifdef _WIN32
+    return fs::exists(widen(path));
+#else
+    struct stat stbuf;
+    return stat(fname.c_str(), &stbuf) == 0;
+#endif
+}
+
 #ifndef _WIN32
 // helper function
 static bool isDirectory(dirent *entry){
@@ -538,6 +547,39 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
     }
 }
 
+// RAII class for automatic cleanup
+class TmpFile : public std::fstream {
+public:
+#ifdef _WIN32
+    TmpFile(const std::wstring& path)
+        : std::fstream(path.c_str(), std::ios::binary | std::ios::in | std::ios::out),
+          path_(path){
+        // if (!is_open()) throw (VSTError("couldn't open " + shorten(path)));
+    }
+#else
+    TmpFile(const std::string& path)
+        : std::fstream(path, std::ios::binary | std::ios::in | std::ios::out),
+          path_(path){}
+#endif
+    ~TmpFile(){
+        close();
+        // destructor must not throw!
+        try {
+    #ifdef _WIN32
+            fs::remove(path_);
+    #else
+            std::remove(path_.c_str());
+    #endif
+        } catch (const std::exception& e) { LOG_ERROR(e.what()); };
+    }
+private:
+#ifdef _WIN32
+    std::wstring path_;
+#else
+    std::string path_;
+#endif
+};
+
 // probe a plugin in a seperate process and return the info in a file
 VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPluginID) {
     int result = -1;
@@ -611,17 +653,9 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
     /// LOG_DEBUG("result: " << result);
     if (result == EXIT_SUCCESS) {
         // get info from temp file
-        std::ifstream file(tmpPath.c_str(), std::ios::binary); // need wchar_t * on Windows!
+        TmpFile file(tmpPath);
         if (file.is_open()) {
             desc.deserialize(file);
-            file.close();
-#ifdef _WIN32
-            if (!fs::remove(tmpPath)) {
-#else
-            if (std::remove(tmpPath.c_str()) != 0) {
-#endif
-                throw VSTError("probePlugin: couldn't remove temp file!");
-            }
             desc.probeResult = ProbeResult::success;
         }
         else {
