@@ -594,7 +594,7 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
     // create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
     wchar_t tmpDir[MAX_PATH + 1];
     auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
-    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst%x", (uint32_t)rand()); // lazy
+    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst_%x", (uint64_t)this); // lazy
     std::wstring tmpPath = tmpDir;
     /// LOG_DEBUG("temp path: " << shorten(tmpPath));
     // get full path to probe exe
@@ -609,15 +609,27 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
                       quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
     // create temp file path
+    std::string tmpPath
+#if 1
     auto tmpBuf = tempnam(nullptr, nullptr);
-    std::string tmpPath;
     if (tmpBuf) {
         tmpPath = tmpBuf;
         free(tmpBuf);
     }
     else {
-        throw VSTError("couldn't make create file name");
+        throw VSTError("couldn't create tmp file name");
     }
+#else
+    char tmpBuf[MAX_PATH + 1];
+    const char *tmpDir = nullptr;
+    auto tmpVarList = { "TMPDIR", "TMP", "TEMP", "TEMPDIR", nullptr };
+    auto tmpVar = tmpVarList;
+    while (*tmpVar++ && !tmpDir){
+        tmpDir = getenv(*tmpVar);
+    }
+    snprintf(tmpBuf, MAX_PATH, L"%s/vst_%x", (tmpDir ? tmpDir : "/tmp"), (uint64_t)this); // lazy
+    tmpPath = tmpBuf;
+#endif
     /// LOG_DEBUG("temp path: " << tmpPath);
     Dl_info dlinfo;
     // get full path to probe exe
