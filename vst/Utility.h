@@ -20,7 +20,7 @@
 		}
 		template<typename T>
 		Log& operator<<(T&& t) {
-			stream_ << std::move(t);
+            stream_ << std::forward<T>(t);
 			return *this;
 		}
 	private:
@@ -64,30 +64,22 @@ std::string shorten(const std::wstring& s);
 
 std::string expandPath(const char *path);
 
-// cross platform fstream
+// cross platform fstream, taking UTF-8 file paths.
+// will become obsolete when we can switch the whole project to C++17
 class File : public std::fstream {
 public:
-#ifdef _WIN32
-    File(const std::wstring& path)
-    // supported by MSVC and newer GCC versions
-#if defined(_MSC_VER) || __GNUC__ >= 9
-        : std::fstream(path.c_str(), std::ios::binary | std::ios::in | std::ios::out),
-          path_(path){}
-#else
-        : std::fstream(shorten(path), std::ios::binary | std::ios::in | std::ios::out),
-          path_(path){} // might create problems...
-#endif // MSVC/GCC9
-#else
     File(const std::string& path)
-        : std::fstream(path, std::ios::binary | std::ios::in | std::ios::out),
-          path_(path){}
-#endif
-protected:
-#ifdef _WIN32
-    std::wstring path_;
+#if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9)
+    // UTF-16 file names supported by MSVC and newer GCC versions
+        : std::fstream(vst::widen(path).c_str(),
 #else
-    std::string path_;
+    // might create problems on Windows... LATER fix this
+        : std::fstream(path,
 #endif
+                       ios_base::binary | ios_base::in | ios_base::out | ios_base::app),
+          path_(path){}
+protected:
+    std::string path_;
 };
 
 } // vst

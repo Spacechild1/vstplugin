@@ -96,13 +96,14 @@ extern "C" {
 }
 
 std::string expandPath(const char *path) {
-    char buf[MAX_PATH];
-    ExpandEnvironmentStringsA(path, buf, MAX_PATH);
-    return buf;
+    wchar_t buf[MAX_PATH];
+    ExpandEnvironmentStringsW(widen(path).c_str(), buf, MAX_PATH);
+    return shorten(buf);
 }
+
 #else
 std::string expandPath(const char *path) {
-    // expand ~ to home directory
+    // only expands ~ to home directory so far
     if (path && *path == '~') {
         const char *home = getenv("HOME");
         if (home) {
@@ -552,15 +553,19 @@ class TmpFile : public File {
 public:
     using File::File;
     ~TmpFile(){
-        close();
-        // destructor must not throw!
-        try {
-    #ifdef _WIN32
-            fs::remove(path_);
-    #else
-            std::remove(path_.c_str());
-    #endif
-        } catch (const std::exception& e) { LOG_ERROR(e.what()); };
+        if (is_open()){
+            close();
+            // destructor must not throw!
+            try {
+        #ifdef _WIN32
+                fs::remove(vst::widen(path_));
+        #else
+                std::remove(path_.c_str());
+        #endif
+            } catch (const std::exception& e) {
+                LOG_ERROR(e.what());
+            };
+        }
     }
 };
 
@@ -579,15 +584,16 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
     wchar_t tmpDir[MAX_PATH + 1];
     auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
     _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst_%x", (uint64_t)this); // lazy
-    std::wstring tmpPath = tmpDir;
-    /// LOG_DEBUG("temp path: " << shorten(tmpPath));
+    std::wstring wideTmpPath(tmpDir);
+    std::string tmpPath = shorten(wideTmpPath);
+    /// LOG_DEBUG("temp path: " << tmpPath);
     // get full path to probe exe
     std::wstring probePath = getDirectory() + L"\\probe.exe";
     /// LOG_DEBUG("probe path: " << shorten(probePath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::wstring quotedPluginPath = L"\"" + widen(path()) + L"\"";
     std::wstring quotedPluginName = L"\"" + widen(pluginName) + L"\"";
-    std::wstring quotedTmpPath = L"\"" + tmpPath + L"\"";
+    std::wstring quotedTmpPath = L"\"" + wideTmpPath + L"\"";
     // start a new process with plugin path and temp file path as arguments:
     result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(),
                       quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
