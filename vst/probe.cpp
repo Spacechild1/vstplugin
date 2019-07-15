@@ -29,7 +29,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 			if (plugin) {
 				if (filePath) {
                     /// LOG_DEBUG("get plugin info");
-                    std::ofstream file(filePath, std::ios::binary);
+                    vst::File file(filePath);
 					if (file.is_open()) {
                         plugin->info().serialize(file);
 						/// LOG_DEBUG("info written");

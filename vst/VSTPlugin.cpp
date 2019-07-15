@@ -548,19 +548,9 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
 }
 
 // RAII class for automatic cleanup
-class TmpFile : public std::fstream {
+class TmpFile : public File {
 public:
-#ifdef _WIN32
-    TmpFile(const std::wstring& path)
-        : std::fstream(path.c_str(), std::ios::binary | std::ios::in | std::ios::out),
-          path_(path){
-        // if (!is_open()) throw (VSTError("couldn't open " + shorten(path)));
-    }
-#else
-    TmpFile(const std::string& path)
-        : std::fstream(path, std::ios::binary | std::ios::in | std::ios::out),
-          path_(path){}
-#endif
+    using File::File;
     ~TmpFile(){
         close();
         // destructor must not throw!
@@ -572,12 +562,6 @@ public:
     #endif
         } catch (const std::exception& e) { LOG_ERROR(e.what()); };
     }
-private:
-#ifdef _WIN32
-    std::wstring path_;
-#else
-    std::string path_;
-#endif
 };
 
 // probe a plugin in a seperate process and return the info in a file
