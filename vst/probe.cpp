@@ -30,17 +30,17 @@ int MAIN(int argc, const CHAR *argv[]) {
 				if (filePath) {
                     /// LOG_DEBUG("get plugin info");
                     vst::File file(filePath);
-					if (file.is_open()) {
+                    if (file.is_open()) {
                         plugin->info().serialize(file);
-						/// LOG_DEBUG("info written");
+                        /// LOG_DEBUG("info written");
                     }
-				}
-				/// LOG_DEBUG("probe success");
-				return EXIT_SUCCESS;
-			}
-			/// LOG_DEBUG("couldn't load plugin");
-		}
-		/// LOG_DEBUG("couldn't load plugin module");
+                }
+                /// LOG_DEBUG("probe success");
+                return EXIT_SUCCESS;
+            }
+            /// LOG_DEBUG("couldn't load plugin");
+        }
+        /// LOG_DEBUG("couldn't load plugin module");
 	}
     return EXIT_FAILURE;
 }
