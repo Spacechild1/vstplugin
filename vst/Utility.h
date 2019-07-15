@@ -68,7 +68,11 @@ std::string expandPath(const char *path);
 // will become obsolete when we can switch the whole project to C++17
 class File : public std::fstream {
 public:
-    File(const std::string& path)
+    enum Mode {
+        READ,
+        WRITE
+    };
+    File(const std::string& path, Mode mode = READ)
 #if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9)
     // UTF-16 file names supported by MSVC and newer GCC versions
         : std::fstream(vst::widen(path).c_str(),
@@ -76,7 +80,8 @@ public:
     // might create problems on Windows... LATER fix this
         : std::fstream(path,
 #endif
-                       ios_base::binary | ios_base::in | ios_base::out | ios_base::app),
+                       ios_base::binary |
+                       (mode == READ ? ios_base::in : (ios_base::out | ios_base::trunc))),
           path_(path){}
 protected:
     std::string path_;
