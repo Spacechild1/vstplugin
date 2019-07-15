@@ -80,7 +80,7 @@ define forWindows
   # probe.exe
   PROBE_SRC += $$(VST_SRC)
   # -municode for wmain, -mwindows to hide console
-  PROBE_LDLIBS += $$(VST_LIBS) -lstdc++fs -static-libgcc -static-libstdc++ -municode -mwindows -static -lpthread
+  PROBE_LDLIBS += $$(VST_LIBS) -static-libgcc -static-libstdc++ -municode -mwindows -static -lpthread
 endef
 define forLinux
   # common
