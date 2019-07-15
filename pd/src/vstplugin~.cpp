@@ -176,6 +176,7 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
     try {
         factory->probe();
     } catch (const VSTError& e){
+        log << "error";
         log << e;
         return nullptr;
     }
