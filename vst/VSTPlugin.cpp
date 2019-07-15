@@ -609,7 +609,7 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
                       quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
     // create temp file path
-    std::string tmpPath
+    std::string tmpPath;
 #if 1
     auto tmpBuf = tempnam(nullptr, nullptr);
     if (tmpBuf) {
