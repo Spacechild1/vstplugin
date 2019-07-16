@@ -114,6 +114,34 @@ std::string expandPath(const char *path) {
 }
 #endif
 
+bool pathExists(const std::string& path){
+#ifdef _WIN32
+    std::error_code e;
+    return fs::exists(widen(path), e);
+#else
+    struct stat stbuf;
+    return stat(path.c_str(), &stbuf) == 0;
+#endif
+}
+
+bool removeFile(const std::string& path){
+#ifdef _WIN32
+    std::error_code e;
+    return fs::remove(widen(path), e);
+#else
+    return remove(path.c_str()) == 0;
+#endif
+}
+
+bool createDirectory(const std::string& dir){
+#ifdef _WIN32
+    std::error_code err;
+    return fs::create_directory(widen(dir), err);
+#else
+    return mkdir(dir.c_str(), DEFFILEMODE) == 0;
+#endif
+}
+
 /*////////////////////// search ///////////////////////*/
 
 static std::vector<const char *> platformExtensions = {
@@ -167,15 +195,6 @@ const std::vector<std::string>& getDefaultSearchPaths() {
         std::vector<std::string> list; // expanded search paths
     } searchPaths;
     return searchPaths.list;
-}
-
-bool fileExists(const std::string& path){
-#ifdef _WIN32
-    return fs::exists(widen(path));
-#else
-    struct stat stbuf;
-    return stat(path.c_str(), &stbuf) == 0;
-#endif
 }
 
 #ifndef _WIN32
@@ -823,12 +842,12 @@ static std::string rtrim(std::string str){
     }
 }
 
-static bool isComment(const std::string& line){
+bool isComment(const std::string& line){
     auto c = line.front();
     return c == ';' || c == '#';
 }
 
-static int getCount(const std::string& line){
+int getCount(const std::string& line){
     LOG_DEBUG(line);
     auto pos = line.find('=');
     if (pos == std::string::npos){

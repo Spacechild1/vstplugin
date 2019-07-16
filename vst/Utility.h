@@ -63,6 +63,9 @@ std::string shorten(const std::wstring& s);
 #endif
 
 std::string expandPath(const char *path);
+bool pathExists(const std::string& path);
+bool removeFile(const std::string& path);
+bool createDirectory(const std::string& dir);
 
 // cross platform fstream, taking UTF-8 file paths.
 // will become obsolete when we can switch the whole project to C++17

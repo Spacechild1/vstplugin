@@ -202,6 +202,9 @@ struct VSTPluginDesc {
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
+    void setFactory(IVSTFactory* factory){
+        factory_ = factory;
+    }
     // data
     ProbeResult probeResult = ProbeResult::none;
     std::string path;
