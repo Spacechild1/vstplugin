@@ -154,8 +154,12 @@ static std::string makeKey(const VSTPluginDesc& desc) {
 }
 
 static void addPlugins(const IVSTFactory& factory) {
-    auto plugins = factory.plugins();
-    for (auto& plugin : plugins) {
+    for (int i = 0; i < factory.numPlugins(); ++i) {
+        auto plugin = factory.getPlugin(i);
+        if (!plugin) {
+            LOG_ERROR("addPlugins: bug");
+            return;
+        }
         if (plugin->valid()) {
             gPluginManager.addPlugin(makeKey(*plugin), plugin);
             // LOG_DEBUG("added plugin " << plugin->name);
@@ -205,10 +209,13 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
         }
     };
 
-    auto plugins = factory->plugins();
-
-    if (plugins.size() == 1) {
-        auto& plugin = plugins[0];
+    auto numPlugins = factory->numPlugins();
+    if (numPlugins == 1) {
+        auto plugin = factory->getPlugin(0);
+        if (!plugin) {
+            LOG_ERROR("probePlugin: bug");
+            return nullptr;
+        }
         if (verbose) postResult(plugin->probeResult);
         // factories with a single plugin can also be aliased by their file path(s)
         gPluginManager.addPlugin(plugin->path, plugin);
@@ -216,7 +223,12 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
     }
     else {
         Print("\n");
-        for (auto& plugin : plugins) {
+        for (int i = 0; i < numPlugins; ++i) {
+            auto plugin = factory->getPlugin(i);
+            if (!plugin) {
+                LOG_ERROR("probePlugin: bug");
+                return nullptr;
+            }
             if (!plugin->name.empty()) {
                 if (verbose) Print("  '%s' ", plugin->name.c_str());
             }
@@ -315,9 +327,13 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
         IVSTFactory* factory = gPluginManager.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
-            auto plugins = factory->plugins();
-            if (plugins.size() == 1) {
-                auto& plugin = plugins[0];
+            auto numPlugins = factory->numPlugins();
+            if (numPlugins == 1) {
+                auto plugin = factory->getPlugin(0);
+                if (!plugin) {
+                    LOG_ERROR("probePlugin: bug");
+                    return nullptr;
+                }
                 if (plugin->valid()) {
                     if (verbose) LOG_VERBOSE(pluginPath << " " << plugin->name);
                     results.push_back(plugin.get());
@@ -325,7 +341,12 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
             }
             else {
                 if (verbose) LOG_VERBOSE(pluginPath);
-                for (auto& plugin : factory->plugins()) {
+                for (int i = 0; i < numPlugins; ++i) {
+                    auto plugin = factory->getPlugin(i);
+                    if (!plugin) {
+                        LOG_ERROR("probePlugin: bug");
+                        return nullptr;
+                    }
                     if (plugin->valid()) {
                         if (verbose) LOG_VERBOSE("  " << plugin->name);
                         results.push_back(plugin.get());
@@ -338,7 +359,12 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
         else {
             // probe (will post results and add plugins)
             if ((factory = probePlugin(pluginPath, verbose))) {
-                for (auto& plugin : factory->plugins()) {
+                for (int i = 0; i < factory->numPlugins(); ++i) {
+                    auto plugin = factory->getPlugin(i);
+                    if (!plugin) {
+                        LOG_ERROR("probePlugin: bug");
+                        return nullptr;
+                    }
                     if (plugin->valid()) {
                         results.push_back(plugin.get());
                     }

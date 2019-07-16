@@ -69,18 +69,23 @@ static std::string makeKey(const VSTPluginDesc& desc){
 }
 
 static void addPlugins(const IVSTFactory& factory){
-    auto plugins = factory.plugins();
-    for (auto& plugin : plugins){
+    for (int i = 0; i < factory.numPlugins(); ++i){
+        auto plugin = factory.getPlugin(i);
+        if (!plugin){
+            bug("addPlugins");
+            return;
+        }
         if (plugin->valid()){
             // also map bashed parameter names
             int num = plugin->parameters.size();
-            for (int i = 0; i < num; ++i){
-                auto key = plugin->parameters[i].name;
+            for (int j = 0; j < num; ++j){
+                auto key = plugin->parameters[j].name;
                 bash_name(key);
-                plugin->paramMap[std::move(key)] = i;
+                plugin->paramMap[std::move(key)] = j;
             }
             // add plugin info
-            gManager.addPlugin(makeKey(*plugin), plugin);
+            auto key = makeKey(*plugin);
+            gManager.addPlugin(key, plugin);
         }
     }
 }
@@ -181,15 +186,24 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
         return nullptr;
     }
 
-    auto plugins = factory->plugins();
-    if (plugins.size() == 1){
-        auto& plugin = plugins[0];
+    auto numPlugins = factory->numPlugins();
+    if (numPlugins == 1){
+        auto plugin = factory->getPlugin(0);
+        if (!plugin){
+            bug("probePlugin");
+            return nullptr;
+        }
         log << plugin->probeResult;
         // factories with a single plugin can also be aliased by their file path(s)
         gManager.addPlugin(plugin->path, plugin);
         gManager.addPlugin(path, plugin);
     } else {
-        for (auto& plugin : plugins){
+        for (int i = 0; i < numPlugins; ++i){
+            auto plugin = factory->getPlugin(i);
+            if (!plugin){
+                bug("probePlugin");
+                return nullptr;
+            }
             log << "\n";
             if (!plugin->name.empty()){
                 log << "\t'" << plugin->name << "'... ";
@@ -221,9 +235,13 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
         if (factory){
             // just post paths of valid plugins
             PdLog log(async, PD_DEBUG, "%s", factory->path().c_str());
-            auto plugins = factory->plugins();
-            if (plugins.size() == 1){
-                auto& plugin = plugins[0];
+            auto numPlugins = factory->numPlugins();
+            if (numPlugins == 1){
+                auto plugin = factory->getPlugin(0);
+                if (!plugin){
+                    bug("searchPlugins");
+                    return;
+                }
                 if (plugin->valid()){
                     auto key = makeKey(*plugin);
                     if (x){
@@ -232,7 +250,12 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                     count++;
                 }
             } else {
-                for (auto& plugin : plugins){
+                for (int i = 0; i < numPlugins; ++i){
+                    auto plugin = factory->getPlugin(i);
+                    if (!plugin){
+                        bug("searchPlugins");
+                        return;
+                    }
                     if (plugin->valid()){
                         auto key = makeKey(*plugin);
                         log << "\n\t" << plugin->name;
@@ -248,7 +271,12 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
         } else {
             // probe (will post results and add plugins)
             if ((factory = probePlugin(pluginPath, true))){
-                for (auto& plugin : factory->plugins()){
+                for (int i = 0; i < factory->numPlugins(); ++i){
+                    auto plugin = factory->getPlugin(i);
+                    if (!plugin){
+                        bug("searchPlugins");
+                        return;
+                    }
                     if (plugin->valid()){
                         if (x){
                             auto key = makeKey(*plugin);

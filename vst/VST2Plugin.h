@@ -21,7 +21,8 @@ class VST2Factory : public IVSTFactory {
     VST2Factory(const std::string& path);
     ~VST2Factory();
     // get a list of all available plugins
-    std::vector<VSTPluginDescPtr> plugins() const override;
+    void addPlugin(VSTPluginDescPtr desc) override;
+    VSTPluginDescPtr getPlugin(int index) const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
     void probe() override;

@@ -261,8 +261,8 @@ class IVSTFactory {
     static std::unique_ptr<IVSTFactory> load(const std::string& path);
 
     virtual ~IVSTFactory(){}
-    // get a list of all available plugins (probed in a seperate process)
-    virtual std::vector<VSTPluginDescPtr> plugins() const = 0;
+    virtual void addPlugin(VSTPluginDescPtr desc) = 0;
+    virtual VSTPluginDescPtr getPlugin(int index) const = 0;
     virtual int numPlugins() const = 0;
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;

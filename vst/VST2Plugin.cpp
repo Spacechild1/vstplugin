@@ -151,8 +151,19 @@ VST2Factory::~VST2Factory(){
     // LOG_DEBUG("freed VST2 module " << path_);
 }
 
-std::vector<VSTPluginDescPtr> VST2Factory::plugins() const {
-    return plugins_;
+void VST2Factory::addPlugin(VSTPluginDescPtr desc){
+    if (!pluginMap_.count(desc->name)){
+        plugins_.push_back(desc);
+        pluginMap_[desc->name] = desc;
+    }
+}
+
+VSTPluginDescPtr VST2Factory::getPlugin(int index) const {
+    if (index >= 0 && index < (int)plugins_.size()){
+        return plugins_[index];
+    } else {
+        return nullptr;
+    }
 }
 
 int VST2Factory::numPlugins() const {
