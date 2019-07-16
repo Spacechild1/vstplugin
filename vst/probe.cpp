@@ -29,7 +29,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 			if (plugin) {
 				if (filePath) {
                     /// LOG_DEBUG("get plugin info");
-                    vst::File file(vst::shorten(filePath), File::WRITE);
+                    vst::File file(shorten(filePath), File::WRITE);
                     if (file.is_open()) {
                         plugin->info().serialize(file);
                         /// LOG_DEBUG("info written");
