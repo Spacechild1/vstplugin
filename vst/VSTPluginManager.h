@@ -21,7 +21,7 @@ class VSTPluginManager {
     void addPlugin(const std::string& key, VSTPluginDescPtr plugin);
     VSTPluginDescPtr findPlugin(const std::string& key) const;
     void clearPlugins();
-    void read(const std::string& path);
+    void read(const std::string& path, bool update = true);
     void write(const std::string& path);
  private:
     std::unordered_map<std::string, IVSTFactoryPtr> factories_;
@@ -66,8 +66,9 @@ void VSTPluginManager::clearPlugins() {
 bool isComment(const std::string& line);
 int getCount(const std::string& line);
 
-void VSTPluginManager::read(const std::string& path){
+void VSTPluginManager::read(const std::string& path, bool update){
     std::lock_guard<std::mutex> lock(mutex_);
+    bool outdated = false;
     LOG_DEBUG("reading cache file: " << path);
     File file(path);
     std::string line;
@@ -108,6 +109,7 @@ void VSTPluginManager::read(const std::string& path){
                     factory = newFactory.get();
                     factories_[desc->path] = std::move(newFactory);
                 } else {
+                    outdated = true;
                     continue; // plugin file has been (re)moved
                 }
             } else {
@@ -121,7 +123,16 @@ void VSTPluginManager::read(const std::string& path){
             }
         }
     }
-
+    if (update && outdated){
+        // overwrite file
+        file.close();
+        try {
+            write(path);
+        } catch (const VSTError& e){
+            throw VSTError("couldn't update cache file");
+        }
+        LOG_VERBOSE("updated cache file");
+    }
 }
 
 void VSTPluginManager::write(const std::string& path){
