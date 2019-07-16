@@ -52,6 +52,42 @@ static std::string toHex(T u){
 
 static VSTPluginManager gManager;
 
+#define SETTINGS_DIR ".vstplugin~"
+#define SETTINGS_FILE "plugins.ini"
+
+static std::string getSettingsDir(){
+#ifdef _WIN32
+    return expandPath("%USERPROFILE%\\" SETTINGS_DIR);
+#else
+    return expandPath("~/.vstplugin~" SETTINGS_DIR);
+#endif
+}
+
+static void readIniFile(){
+    try {
+        gManager.read(getSettingsDir() + "/" SETTINGS_FILE);
+    } catch (const VSTError& e){
+        error("couldn't read settings file:");
+        error("%s", e.what());
+    }
+}
+
+static void writeIniFile(){
+    try {
+        auto dir = getSettingsDir();
+        if (!pathExists(dir)){
+            if (!createDirectory(dir)){
+                throw VSTError("couldn't create directory");
+            }
+        }
+        gManager.write(dir + "/" SETTINGS_FILE);
+    } catch (const VSTError& e){
+        error("couldn't write settings file:");
+        error("%s", e.what());
+    }
+}
+
+
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const VSTPluginDesc& desc){
@@ -296,7 +332,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
 
 // tell whether we've already searched the standard VST directory
 // (see '-s' flag for [vstplugin~])
-static bool gDoneSearch = false;
+static bool gDidSearch = false;
 
 /*--------------------- t_vstparam --------------------------*/
 
@@ -733,9 +769,12 @@ static void vstplugin_search_done(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("search_done"), 0, nullptr);
 }
 
-static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths){
+static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths, bool update){
     for (auto& path : searchPaths){
         searchPlugins(path, x, true); // async
+    }
+    if (update){
+        writeIniFile();
     }
     sys_lock();
     clock_delay(x->x_clock, 0); // schedules vstplugin_search_done
@@ -744,6 +783,7 @@ static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> 
 
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool async = false;
+    bool update = true; // update cache file
     std::vector<std::string> searchPaths;
     x->x_plugins.clear(); // list of plug-in keys
 
@@ -752,6 +792,8 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         if (*flag == '-'){
             if (!strcmp(flag, "-a")){
                 async = true;
+            } else if (!strcmp(flag, "-n")){
+                update = false;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
@@ -785,19 +827,24 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     if (async){
         if (!x->x_thread.joinable()){
                 // spawn thread which does the actual searching in the background
-            x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths));
+            x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths), update);
         } else {
             pd_error(x, "%s: already searching!", classname(x));
         }
     } else {
+        if (update){
+            writeIniFile();
+        }
         vstplugin_search_done(x);
     }
 }
 
-static void vstplugin_search_clear(t_vstplugin *x){
+static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
         // clear the plugin description dictionary
-        // (doesn't remove the actual plugin descriptions!)
     gManager.clearPlugins();
+    if (f){
+        removeFile(getSettingsDir() + "/" SETTINGS_FILE);
+    }
 }
 
 // resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
@@ -1674,11 +1721,15 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_messout = outlet_new(&x_obj, 0); // additional message outlet
     x_sigoutlets.resize(out);
 
-    if (search && !gDoneSearch){
+    if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
             searchPlugins(path);
         }
-        gDoneSearch = true;
+        // shall we write cache file?
+    #if 1
+        writeIniFile();
+    #endif
+        gDidSearch = true;
     }
 
     if (file){
@@ -1925,7 +1976,7 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_search_clear, gensym("search_clear"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_search_clear, gensym("search_clear"), A_DEFFLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
@@ -1982,6 +2033,9 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
+
+    // read cached plugin info
+    readIniFile();
 
 #if !VSTTHREADS
     mainLoopClock = clock_new(0, (t_method)mainLoopTick);
