@@ -1705,10 +1705,10 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 // destructor
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
-    if (x_clock) clock_free(x_clock);
     if (x_thread.joinable()){
         x_thread.join();
     }
+    if (x_clock) clock_free(x_clock);
     LOG_DEBUG("vstplugin free");
 }
 
