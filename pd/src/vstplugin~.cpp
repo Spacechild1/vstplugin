@@ -63,8 +63,6 @@ static std::string makeKey(const VSTPluginDesc& desc){
     } else {
         key = desc.name;
     }
-    // replace whitespace with underscores so you can type it in Pd
-    bash_name(key);
     return key;
 }
 
@@ -85,6 +83,8 @@ static void addPlugins(const IVSTFactory& factory){
             }
             // add plugin info
             auto key = makeKey(*plugin);
+            gManager.addPlugin(key, plugin);
+            bash_name(key); // also add bashed version!
             gManager.addPlugin(key, plugin);
         }
     }
@@ -244,6 +244,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                 }
                 if (plugin->valid()){
                     auto key = makeKey(*plugin);
+                    bash_name(key);
                     if (x){
                         x->x_plugins.push_back(gensym(key.c_str()));
                     }
@@ -258,6 +259,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                     }
                     if (plugin->valid()){
                         auto key = makeKey(*plugin);
+                        bash_name(key);
                         log << "\n\t" << plugin->name;
                         if (x){
                             x->x_plugins.push_back(gensym(key.c_str()));
@@ -280,6 +282,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                     if (plugin->valid()){
                         if (x){
                             auto key = makeKey(*plugin);
+                            bash_name(key);
                             x->x_plugins.push_back(gensym(key.c_str()));
                         }
                         count++;
