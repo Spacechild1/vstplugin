@@ -167,7 +167,7 @@ static void addPlugins(const IVSTFactory& factory) {
     }
 }
 
-static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
+static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
     if (gPluginManager.findFactory(path)) {
         LOG_WARNING("probePlugin: '" << path << "' already probed!");
         return nullptr;
@@ -238,10 +238,9 @@ static IVSTFactory* probePlugin(const std::string& path, bool verbose) {
             if (verbose) postResult(plugin->probeResult);
         }
     }
-    auto result = factory.get();
-    gPluginManager.addFactory(path, std::move(factory));
-    addPlugins(*result);
-    return result;
+    gPluginManager.addFactory(path, factory);
+    addPlugins(*factory);
+    return factory;
 }
 
 static bool isAbsolutePath(const std::string& path) {
@@ -313,8 +312,8 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     return desc.get();
 }
 
-std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool verbose) {
-    std::vector<vst::VSTPluginDesc*> results;
+std::vector<VSTPluginDesc::const_ptr> searchPlugins(const std::string & path, bool verbose) {
+    std::vector<VSTPluginDesc::const_ptr> results;
     LOG_VERBOSE("searching in '" << path << "'...");
     vst::search(path, [&](const std::string & absPath, const std::string &) {
         std::string pluginPath = absPath;
@@ -324,7 +323,7 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
         }
 #endif
         // check if module has already been loaded
-        IVSTFactory* factory = gPluginManager.findFactory(pluginPath);
+        auto factory = gPluginManager.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
             auto numPlugins = factory->numPlugins();
@@ -336,7 +335,7 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
                 }
                 if (plugin->valid()) {
                     if (verbose) LOG_VERBOSE(pluginPath << " " << plugin->name);
-                    results.push_back(plugin.get());
+                    results.push_back(plugin);
                 }
             }
             else {
@@ -349,7 +348,7 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
                     }
                     if (plugin->valid()) {
                         if (verbose) LOG_VERBOSE("  " << plugin->name);
-                        results.push_back(plugin.get());
+                        results.push_back(plugin);
                     }
                 }
             }
@@ -366,7 +365,7 @@ std::vector<vst::VSTPluginDesc *> searchPlugins(const std::string & path, bool v
                         return nullptr;
                     }
                     if (plugin->valid()) {
-                        results.push_back(plugin.get());
+                        results.push_back(plugin);
                     }
                 }
             }
@@ -449,7 +448,7 @@ void VSTPluginListener::sysexEvent(const VSTSysexEvent& sysex) {
 VSTPlugin::VSTPlugin(){
     rtThreadID_ = std::this_thread::get_id();
     // LOG_DEBUG("RT thread ID: " << rtThreadID_);
-    listener_ = std::make_unique<VSTPluginListener>(*this);
+    listener_ = std::make_shared<VSTPluginListener>(*this);
 
     numInChannels_ = in0(1);
     numOutChannels_ = numOutputs();
@@ -726,7 +725,7 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
     if (plugin_){
         LOG_DEBUG("loaded " << cmd.buf);
         // receive events from plugin
-        plugin_->setListener(listener_.get());
+        plugin_->setListener(listener_);
         resizeBuffer();
         // allocate arrays for parameter values/states
         int nParams = plugin_->getNumParameters();
@@ -752,7 +751,7 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 }
 
 #if VSTTHREADS
-using VSTPluginCmdPromise = std::promise<std::pair<std::shared_ptr<IVSTPlugin>, std::shared_ptr<IVSTWindow>>>;
+using VSTPluginCmdPromise = std::promise<std::pair<IVSTPlugin::ptr, IVSTWindow::ptr>>;
 void threadFunction(VSTPluginCmdPromise promise, const char *path);
 #endif
 
@@ -784,7 +783,7 @@ void VSTPluginCmdData::open(){
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin && plugin->hasEditor() && value){
-        window = IVSTWindow::create(*plugin);
+        window = IVSTWindow::create(plugin);
         if (window){
             window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
@@ -801,7 +800,7 @@ void VSTPluginCmdData::open(){
 
 #if VSTTHREADS
 void threadFunction(VSTPluginCmdPromise promise, const char *path){
-    std::shared_ptr<IVSTPlugin> plugin;
+    IVSTPlugin::ptr plugin;
     auto desc = queryPlugin(path);
     if (desc) {
         plugin = desc->create();
@@ -812,9 +811,9 @@ void threadFunction(VSTPluginCmdPromise promise, const char *path){
         return;
     }
         // create GUI window (if needed)
-    std::shared_ptr<IVSTWindow> window;
+    IVSTWindow::ptr window;
     if (plugin->hasEditor()){
-        window = IVSTWindow::create(*plugin);
+        window = IVSTWindow::create(plugin);
     }
         // return plugin and window to other thread
         // (but keep references in the GUI thread)
@@ -1839,7 +1838,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 // recursively search directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
     auto data = (InfoCmdData *)cmdData;
-    std::vector<vst::VSTPluginDesc*> plugins;
+    std::vector<VSTPluginDesc::const_ptr> plugins;
     bool useDefault = data->flags & 1;
     bool verbose = (data->flags >> 1) & 1;
     std::vector<std::string> searchPaths;

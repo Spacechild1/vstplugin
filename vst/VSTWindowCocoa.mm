@@ -48,8 +48,8 @@ namespace VSTWindowFactory {
             initialized = true;
         }
     }
-    IVSTWindow * createCocoa(IVSTPlugin &plugin) {
-        return new VSTWindowCocoa(plugin);
+    IVSTWindow::ptr createCocoa(IVSTPlugin::ptr plugin) {
+        return std::make_shared<VSTWindowCocoa>(std::move(plugin));
     }
     void pollCocoa(){
         NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
@@ -71,7 +71,9 @@ namespace VSTWindowFactory {
     }
 }
 
-VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin &plugin){
+VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin::ptr plugin)
+    : plugin_(std::move(plugin))
+{
     LOG_DEBUG("try opening VSTWindowCocoa");
     
     NSRect frame = NSMakeRect(0, 0, 200, 200);
@@ -81,7 +83,7 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin &plugin){
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        [window setPlugin:&plugin];
+        [window setPlugin:plugin.get()];
         window_ = window;
         LOG_DEBUG("created VSTWindowCocoa");
     }
@@ -90,8 +92,7 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin &plugin){
 VSTWindowCocoa::~VSTWindowCocoa(){
         // close the editor *before* the window is destroyed.
         // the destructor (like any other method of VSTWindowCocoa) must be called in the main thread
-    IVSTPlugin *plugin = [window_ plugin];
-    plugin->closeEditor();
+    plugin_->closeEditor();
     [window_ close];
     [window_ release];
     LOG_DEBUG("destroyed VSTWindowCocoa");
@@ -119,19 +120,17 @@ void VSTWindowCocoa::setGeometry(int left, int top, int right, int bottom){
 
 void VSTWindowCocoa::show(){
     [window_ makeKeyAndOrderFront:nil];
-    IVSTPlugin *plugin = [window_ plugin];
     /* we open/close the editor on demand to make sure no unwanted
      * GUI drawing is happening behind the scenes
      * (for some reason, on macOS parameter automation would cause
      * redraws even if the window is hidden)
     */
-    plugin->openEditor(getHandle());
+    plugin_->openEditor(getHandle());
 }
 
 void VSTWindowCocoa::hide(){
     [window_ orderOut:nil];
-    IVSTPlugin *plugin = [window_ plugin];
-    plugin->closeEditor();
+    plugin_->closeEditor();
 }
 
 void VSTWindowCocoa::minimize(){

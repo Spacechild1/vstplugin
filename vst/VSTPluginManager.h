@@ -15,41 +15,43 @@ namespace vst {
 class VSTPluginManager {
  public:
     // factories
-    void addFactory(const std::string& path, IVSTFactoryPtr factory);
-    IVSTFactory * findFactory(const std::string& path) const;
+    void addFactory(const std::string& path, IVSTFactory::ptr factory);
+    IVSTFactory::const_ptr findFactory(const std::string& path) const;
     // plugin descriptions
-    void addPlugin(const std::string& key, VSTPluginDescPtr plugin);
-    VSTPluginDescPtr findPlugin(const std::string& key) const;
+    void addPlugin(const std::string& key, VSTPluginDesc::const_ptr plugin);
+    VSTPluginDesc::const_ptr findPlugin(const std::string& key) const;
+    // clear factories and plugin descriptions
     void clearPlugins();
+    // (de)serialize
     void read(const std::string& path, bool update = true);
     void write(const std::string& path);
  private:
-    std::unordered_map<std::string, IVSTFactoryPtr> factories_;
-    std::unordered_map<std::string, VSTPluginDescPtr> plugins_;
+    std::unordered_map<std::string, IVSTFactory::ptr> factories_;
+    std::unordered_map<std::string, VSTPluginDesc::const_ptr> plugins_;
     mutable std::mutex mutex_;
 };
 
-void VSTPluginManager::addFactory(const std::string& path, IVSTFactoryPtr factory) {
+void VSTPluginManager::addFactory(const std::string& path, IVSTFactory::ptr factory) {
     std::lock_guard<std::mutex> lock(mutex_);
     factories_[path] = std::move(factory);
 }
 
-IVSTFactory * VSTPluginManager::findFactory(const std::string& path) const {
+IVSTFactory::const_ptr VSTPluginManager::findFactory(const std::string& path) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
-        return factory->second.get();
+        return factory->second;
     } else {
         return nullptr;
     }
 }
 
-void VSTPluginManager::addPlugin(const std::string& key, VSTPluginDescPtr plugin) {
+void VSTPluginManager::addPlugin(const std::string& key, VSTPluginDesc::const_ptr plugin) {
     std::lock_guard<std::mutex> lock(mutex_);
     plugins_[key] = std::move(plugin);
 }
 
-VSTPluginDescPtr VSTPluginManager::findPlugin(const std::string& key) const {
+VSTPluginDesc::const_ptr VSTPluginManager::findPlugin(const std::string& key) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto desc = plugins_.find(key);
     if (desc != plugins_.end()){
@@ -102,18 +104,18 @@ void VSTPluginManager::read(const std::string& path, bool update){
             }
 
             // load the factory (if not loaded already) to verify that the plugin still exists
-            IVSTFactory *factory = nullptr;
+            IVSTFactory::ptr factory;
             if (!factories_.count(desc->path)){
                 auto newFactory = IVSTFactory::load(desc->path);
                 if (newFactory){
-                    factory = newFactory.get();
+                    factory = newFactory;
                     factories_[desc->path] = std::move(newFactory);
                 } else {
                     outdated = true;
                     continue; // plugin file has been (re)moved
                 }
             } else {
-                factory = factories_[desc->path].get();
+                factory = factories_[desc->path];
             }
             factory->addPlugin(desc);
             desc->setFactory(factory);
@@ -143,7 +145,7 @@ void VSTPluginManager::write(const std::string& path){
         throw VSTError("couldn't create file " + path);
     }
     // inverse mapping (plugin -> keys)
-    std::unordered_map<VSTPluginDescPtr, std::vector<std::string>> pluginMap;
+    std::unordered_map<VSTPluginDesc::const_ptr, std::vector<std::string>> pluginMap;
     for (auto& it : plugins_){
         pluginMap[it.second].push_back(it.first);
     }

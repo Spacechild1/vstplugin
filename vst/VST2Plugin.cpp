@@ -148,17 +148,17 @@ VST2Factory::VST2Factory(const std::string& path)
 }
 
 VST2Factory::~VST2Factory(){
-    // LOG_DEBUG("freed VST2 module " << path_);
+    LOG_DEBUG("freed VST2 module " << path_);
 }
 
-void VST2Factory::addPlugin(VSTPluginDescPtr desc){
+void VST2Factory::addPlugin(VSTPluginDesc::ptr desc){
     if (!pluginMap_.count(desc->name)){
         plugins_.push_back(desc);
         pluginMap_[desc->name] = desc;
     }
 }
 
-VSTPluginDescPtr VST2Factory::getPlugin(int index) const {
+VSTPluginDesc::const_ptr VST2Factory::getPlugin(int index) const {
     if (index >= 0 && index < (int)plugins_.size()){
         return plugins_[index];
     } else {
@@ -200,8 +200,8 @@ void VST2Factory::probe() {
     }
 }
 
-std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool probe) const {
-    VSTPluginDescPtr desc = nullptr; // will stay nullptr when probing!
+IVSTPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
+    VSTPluginDesc::ptr desc = nullptr; // will stay nullptr when probing!
     if (!probe){
         if (plugins_.empty()){
             LOG_WARNING("VST2Factory: no plugin(s)");
@@ -240,7 +240,7 @@ std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool pr
         LOG_ERROR("VST2Factory: not a VST2.x plugin!");
         return nullptr;
     }
-    return std::make_unique<VST2Plugin>(plugin, *this, desc);
+    return std::make_shared<VST2Plugin>(plugin, shared_from_this(), desc);
 }
 
 
@@ -249,8 +249,8 @@ std::unique_ptr<IVSTPlugin> VST2Factory::create(const std::string& name, bool pr
 // initial size of VstEvents queue (can grow later as needed)
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
-VST2Plugin::VST2Plugin(void *plugin, const VST2Factory& f, VSTPluginDescPtr desc)
-    : plugin_((AEffect*)plugin), desc_(std::move(desc))
+VST2Plugin::VST2Plugin(AEffect *plugin, IVSTFactory::const_ptr f, VSTPluginDesc::const_ptr desc)
+    : plugin_(plugin), factory_(std::move(f)), desc_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
     timeInfo_.sampleRate = 44100;
@@ -270,10 +270,10 @@ VST2Plugin::VST2Plugin(void *plugin, const VST2Factory& f, VSTPluginDescPtr desc
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
     // are we probing?
-    if (!desc){
+    if (!desc_){
         // later we might directly initialize VSTPluginDesc here and get rid of many IVSTPlugin methods
         // (we implicitly call virtual methods within our constructor, which works in our case but is a bit edgy)
-        VSTPluginDesc newDesc(f, *this);
+        VSTPluginDesc newDesc(factory_, *this);
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
             VstInt32 nextID = 0;
             char name[64] = { 0 };
@@ -374,8 +374,8 @@ int VST2Plugin::canDo(const char *what) const {
     return dispatch(effCanDo, 0, 0, (char *)what);
 }
 
-intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *ptr, float opt){
-    return dispatch(effVendorSpecific, index, value, ptr, opt);
+intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *p, float opt){
+    return dispatch(effVendorSpecific, index, value, p, opt);
 }
 
 void VST2Plugin::process(const float **inputs,
@@ -1178,8 +1178,8 @@ void VST2Plugin::processEvents(VstEvents *events){
 }
 
 VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
-    VstInt32 index, VstIntPtr value, void *ptr, float opt) const {
-    return (plugin_->dispatcher)(plugin_, opCode, index, value, ptr, opt);
+    VstInt32 index, VstIntPtr value, void *p, float opt) const {
+    return (plugin_->dispatcher)(plugin_, opCode, index, value, p, opt);
 }
 
 // Main host callback
@@ -1206,7 +1206,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
 }
 
 #define DEBUG_HOSTCODE_IMPLEMENTATION 1
-VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *ptr, float opt){
+VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *p, float opt){
     switch(opcode) {
     case audioMasterAutomate:
         // LOG_DEBUG("opcode: audioMasterAutomate");
@@ -1221,7 +1221,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         return (VstIntPtr)getTimeInfo(value);
     case audioMasterProcessEvents:
         // LOG_DEBUG("opcode: audioMasterProcessEvents");
-        processEvents((VstEvents *)ptr);
+        processEvents((VstEvents *)p);
         break;
 #if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterIOChanged:

@@ -17,13 +17,13 @@ namespace VSTWindowFactory {
         }
     }
 
-    IVSTWindow * createX11(IVSTPlugin &plugin){
-        return new VSTWindowX11(plugin);
+    IVSTWindow::ptr createX11(IVSTPlugin::ptr plugin){
+        return std::make_shared<VSTWindowX11>(std::move(plugin));
     }
 }
 
-VSTWindowX11::VSTWindowX11(IVSTPlugin &plugin)
-    : plugin_(&plugin)
+VSTWindowX11::VSTWindowX11(IVSTPlugin::ptr plugin)
+    : plugin_(std::move(plugin))
 {
 	display_ = XOpenDisplay(NULL);
 	if (!display_){

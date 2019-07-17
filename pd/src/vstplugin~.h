@@ -53,12 +53,12 @@ class t_vstplugin {
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
         // VST plugin
-    std::shared_ptr<IVSTPlugin> x_plugin;
+    IVSTPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
     bool x_keep = false;
     bool x_bypass = false;
     bool x_dp; // single/double precision
-    std::unique_ptr<t_vsteditor> x_editor;
+    std::shared_ptr<t_vsteditor> x_editor;
         // contiguous input/outputs buffer
     std::vector<char> x_inbuf;
     std::vector<char> x_outbuf;
@@ -98,7 +98,7 @@ class t_vsteditor : public IVSTPluginListener {
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    std::shared_ptr<IVSTPlugin> open_plugin(const VSTPluginDesc& desc, bool editor);
+    IVSTPlugin::ptr open_plugin(const VSTPluginDesc& desc, bool editor);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -129,7 +129,7 @@ class t_vsteditor : public IVSTPluginListener {
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
 #if VSTTHREADS
-    using VSTPluginPromise = std::promise<std::shared_ptr<IVSTPlugin>>;
+    using VSTPluginPromise = std::promise<IVSTPlugin::ptr>;
         // open plugin in a new thread
     void thread_function(VSTPluginPromise promise, const VSTPluginDesc *desc);
 #endif
@@ -143,7 +143,7 @@ class t_vsteditor : public IVSTPluginListener {
     std::thread e_thread;
     std::thread::id e_mainthread;
 #endif
-    std::unique_ptr<IVSTWindow> e_window;
+    IVSTWindow::ptr e_window;
     t_canvas *e_canvas = nullptr;
     std::vector<t_vstparam> e_params;
         // outgoing messages:

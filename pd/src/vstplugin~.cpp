@@ -115,7 +115,7 @@ static void addPlugins(const IVSTFactory& factory){
             for (int j = 0; j < num; ++j){
                 auto key = plugin->parameters[j].name;
                 bash_name(key);
-                plugin->paramMap[std::move(key)] = j;
+                const_cast<VSTPluginDesc&>(*plugin).paramMap[std::move(key)] = j;
             }
             // add plugin info
             auto key = makeKey(*plugin);
@@ -201,7 +201,7 @@ private:
 };
 
 // load factory and probe plugins
-static IVSTFactory * probePlugin(const std::string& path, bool async = false){
+static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false){
     if (gManager.findFactory(path)){
         LOG_WARNING("probePlugin: '" << path << "' already probed!");
         return nullptr;
@@ -249,10 +249,9 @@ static IVSTFactory * probePlugin(const std::string& path, bool async = false){
             log << plugin->probeResult;
         }
     }
-    auto result = factory.get();
-    gManager.addFactory(path, std::move(factory));
-    addPlugins(*result);
-    return result;
+    gManager.addFactory(path, factory);
+    addPlugins(*factory);
+    return factory;
 }
 
 static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
@@ -522,7 +521,7 @@ void t_vsteditor::tick(t_vsteditor *x){
     // create plugin + editor GUI (in another thread)
 void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc *desc){
     LOG_DEBUG("enter thread");
-    std::shared_ptr<IVSTPlugin> plugin;
+    IVSTPlugin::ptr plugin;
     if (desc && desc->valid()){
         plugin = desc->create();
     }
@@ -534,7 +533,7 @@ void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc 
     }
         // create GUI window (if needed)
     if (plugin->hasEditor()){
-        e_window = IVSTWindow::create(*plugin);
+        e_window = IVSTWindow::create(plugin);
     }
         // return plugin to main thread
         // (but keep a reference in the GUI thread)
@@ -557,7 +556,7 @@ void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc 
 }
 #endif
 
-std::shared_ptr<IVSTPlugin> t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor){
+IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor){
         // -n flag (no gui)
     if (!e_canvas){
         editor = false;
@@ -581,7 +580,7 @@ std::shared_ptr<IVSTPlugin> t_vsteditor::open_plugin(const VSTPluginDesc& desc, 
     }
 #endif
         // create plugin in main thread
-    std::shared_ptr<IVSTPlugin> plugin;
+    IVSTPlugin::ptr plugin;
     if (desc.valid()){
         plugin = desc.create();
     }
@@ -589,7 +588,7 @@ std::shared_ptr<IVSTPlugin> t_vsteditor::open_plugin(const VSTPluginDesc& desc, 
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (editor && plugin->hasEditor()){
-        e_window = IVSTWindow::create(*plugin);
+        e_window = IVSTWindow::create(plugin);
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
@@ -965,7 +964,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         // *now* close the old plugin
     vstplugin_close(x);
         // open the new VST plugin
-    std::shared_ptr<IVSTPlugin> plugin = x->x_editor->open_plugin(*info, editor);
+    auto plugin = x->x_editor->open_plugin(*info, editor);
     if (plugin){
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
         post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
@@ -980,7 +979,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         plugin->resume();
         x->x_plugin = std::move(plugin);
             // receive events from plugin
-        x->x_plugin->setListener(x->x_editor.get());
+        x->x_plugin->setListener(x->x_editor);
         x->update_precision();
         x->update_buffer();
         x->x_editor->setup();
@@ -1706,7 +1705,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_keep = keep;
     x_dp = dp;
     x_canvas = canvas_getcurrent();
-    x_editor = std::make_unique<t_vsteditor>(*this, gui);
+    x_editor = std::make_shared<t_vsteditor>(*this, gui);
     x_clock = clock_new(this, (t_method)vstplugin_search_done);
 
         // inlets (skip first):

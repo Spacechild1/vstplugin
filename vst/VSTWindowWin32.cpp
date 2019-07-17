@@ -43,13 +43,13 @@ namespace VSTWindowFactory {
         }
     }
 
-    IVSTWindow * createWin32(IVSTPlugin &plugin){
-        return new VSTWindowWin32(plugin);
+    IVSTWindow::ptr createWin32(IVSTPlugin::ptr plugin){
+        return std::make_shared<VSTWindowWin32>(std::move(plugin));
     }
 }
 
-VSTWindowWin32::VSTWindowWin32(IVSTPlugin &plugin)
-    : plugin_(&plugin)
+VSTWindowWin32::VSTWindowWin32(IVSTPlugin::ptr plugin)
+    : plugin_(std::move(plugin))
 {
     hwnd_ = CreateWindowW(
           VST_EDITOR_CLASS_NAME, L"Untitled",

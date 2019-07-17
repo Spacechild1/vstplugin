@@ -9,12 +9,12 @@ namespace vst {
 
 namespace VSTWindowFactory {
     void initializeX11();
-    IVSTWindow * createX11(IVSTPlugin &plugin);
+    IVSTWindow::ptr createX11(IVSTPlugin::ptr plugin);
 }
 
 class VSTWindowX11 : public IVSTWindow {
  public:
-    VSTWindowX11(IVSTPlugin& plugin);
+    VSTWindowX11(IVSTPlugin::ptr plugin);
     ~VSTWindowX11();
 
     void* getHandle() override {
@@ -34,7 +34,7 @@ class VSTWindowX11 : public IVSTWindow {
     void bringToTop() override;
  private:
     Display *display_ = nullptr;
-    IVSTPlugin *plugin_ = nullptr;
+    IVSTPlugin::ptr plugin_;
     Window window_ = 0;
     Atom wmProtocols_;
     Atom wmDelete_;

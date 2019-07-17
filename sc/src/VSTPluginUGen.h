@@ -37,8 +37,8 @@ struct VSTPluginCmdData {
     // data
     VSTPlugin* owner = nullptr;
     void* freeData = nullptr;
-    std::shared_ptr<IVSTPlugin> plugin;
-    std::shared_ptr<IVSTWindow> window;
+    IVSTPlugin::ptr plugin;
+    IVSTWindow::ptr window;
     std::thread::id threadID;
 #if VSTTHREADS
     std::thread thread;
@@ -180,11 +180,11 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
-    std::shared_ptr<IVSTPlugin> plugin_ = nullptr;
+    IVSTPlugin::ptr plugin_ = nullptr;
     bool isLoading_ = false;
     bool bypass_ = false;
-    std::shared_ptr<IVSTWindow> window_;
-    std::unique_ptr<VSTPluginListener> listener_;
+    IVSTWindow::ptr window_;
+    VSTPluginListener::ptr listener_;
 
     float *buf_ = nullptr;
     int numInChannels_ = 0;

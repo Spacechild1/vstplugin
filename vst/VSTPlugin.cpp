@@ -353,29 +353,29 @@ void search(const std::string &dir, std::function<void(const std::string&, const
 namespace VSTWindowFactory {
 #ifdef _WIN32
     void initializeWin32();
-    IVSTWindow *createWin32(IVSTPlugin &);
+    IVSTWindow::ptr createWin32(IVSTPlugin::ptr);
 #endif
 #ifdef __APPLE__
     void initializeCocoa();
-    IVSTWindow *createCocoa(IVSTPlugin &);
+    IVSTWindow::ptr createCocoa(IVSTPlugin::ptr);
     void pollCocoa();
 #endif
 #ifdef USE_X11
     void initializeX11();
-    IVSTWindow *createX11(IVSTPlugin &);
+    IVSTWindow::ptr createX11(IVSTPlugin::ptr);
 #endif
 }
 
-std::unique_ptr<IVSTWindow> IVSTWindow::create(IVSTPlugin &plugin){
-    IVSTWindow *win;
+IVSTWindow::ptr IVSTWindow::create(IVSTPlugin::ptr plugin){
+    IVSTWindow::ptr win;
 #ifdef _WIN32
-    win = VSTWindowFactory::createWin32(plugin);
+    win = VSTWindowFactory::createWin32(std::move(plugin));
 #elif defined(__APPLE__)
-    win = VSTWindowFactory::createCocoa(plugin);
+    win = VSTWindowFactory::createCocoa(std::move(plugin));
 #elif defined(USE_X11)
-    win = VSTWindowFactory::createX11(plugin);
+    win = VSTWindowFactory::createX11(std::move(plugin));
 #endif
-    return std::unique_ptr<IVSTWindow>(win);
+    return win;
 }
 
 void IVSTWindow::initialize(){
@@ -532,7 +532,7 @@ std::unique_ptr<IModule> IModule::load(const std::string& path){
 
 /*///////////////////// IVSTFactory ////////////////////////*/
 
-std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
+IVSTFactory::ptr IVSTFactory::load(const std::string& path){
 #ifdef _WIN32
     const char *ext = ".dll";
 #elif defined(__APPLE__)
@@ -544,7 +544,7 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
         // LOG_DEBUG("IVSTFactory: loading " << path);
         if (path.find(".vst3") != std::string::npos){
         #if USE_VST3
-            return std::make_unique<VST3Factory>(path);
+            return std::make_shared<VST3Factory>(path);
         #else
             LOG_WARNING("VST3 plug-ins not supported!");
             return nullptr;
@@ -552,9 +552,9 @@ std::unique_ptr<IVSTFactory> IVSTFactory::load(const std::string& path){
         } else {
         #if USE_VST2
             if (path.find(ext) != std::string::npos){
-                return std::make_unique<VST2Factory>(path);
+                return std::make_shared<VST2Factory>(path);
             } else {
-                return std::make_unique<VST2Factory>(path + ext);
+                return std::make_shared<VST2Factory>(path + ext);
             }
         #else
             LOG_WARNING("VST2.x plug-ins not supported!");
@@ -590,9 +590,9 @@ public:
 };
 
 // probe a plugin in a seperate process and return the info in a file
-VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPluginID) {
+VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPluginID) {
     int result = -1;
-    VSTPluginDesc desc(*this);
+    VSTPluginDesc desc(shared_from_this());
     // put the information we already have (might be overriden)
     desc.name = name;
     desc.id = shellPluginID;
@@ -603,7 +603,7 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
     // create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
     wchar_t tmpDir[MAX_PATH + 1];
     auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
-    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst_%x", (uint64_t)this); // lazy
+    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst_%p", this); // lazy
     std::wstring wideTmpPath(tmpDir);
     std::string tmpPath = shorten(wideTmpPath);
     /// LOG_DEBUG("temp path: " << tmpPath);
@@ -637,7 +637,7 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
     while (*tmpVar++ && !tmpDir){
         tmpDir = getenv(*tmpVar);
     }
-    snprintf(tmpBuf, MAX_PATH, L"%s/vst_%x", (tmpDir ? tmpDir : "/tmp"), (uint64_t)this); // lazy
+    snprintf(tmpBuf, MAX_PATH, L"%s/vst_%p", (tmpDir ? tmpDir : "/tmp"), this); // lazy
     tmpPath = tmpBuf;
 #endif
     /// LOG_DEBUG("temp path: " << tmpPath);
@@ -695,10 +695,10 @@ VSTPluginDescPtr IVSTFactory::probePlugin(const std::string& name, int shellPlug
 
 /*///////////////////// VSTPluginDesc /////////////////////*/
 
-VSTPluginDesc::VSTPluginDesc(const IVSTFactory &factory)
-    : path(factory.path()), factory_(&factory) {}
+VSTPluginDesc::VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory)
+    : path(factory->path()), factory_(factory) {}
 
-VSTPluginDesc::VSTPluginDesc(const IVSTFactory& factory, const IVSTPlugin& plugin)
+VSTPluginDesc::VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory, const IVSTPlugin& plugin)
     : VSTPluginDesc(factory)
 {
     name = plugin.getPluginName();
@@ -748,6 +748,11 @@ VSTPluginDesc::VSTPluginDesc(const IVSTFactory& factory, const IVSTPlugin& plugi
 	flags |= plugin.hasPrecision(VSTProcessPrecision::Double) << DoublePrecision;
 	flags |= plugin.hasMidiInput() << MidiInput;
 	flags |= plugin.hasMidiOutput() << MidiOutput;
+}
+
+IVSTPlugin::ptr VSTPluginDesc::create() const {
+    std::shared_ptr<const IVSTFactory> factory = factory_.lock();
+    return factory ? factory->create(name) : nullptr;
 }
 
 /// .ini file structure for each plugin:
@@ -952,10 +957,6 @@ void VSTPluginDesc::deserialize(std::istream& file) {
 	catch (const std::out_of_range& e) {
         throw VSTError("VSTPluginInfo::deserialize: out of range: " + line);
 	}
-}
-
-std::unique_ptr<IVSTPlugin> VSTPluginDesc::create() const {
-    return factory_ ? factory_->create(name) : nullptr;
 }
 
 } // vst

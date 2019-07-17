@@ -21,8 +21,8 @@ class VST2Factory : public IVSTFactory {
     VST2Factory(const std::string& path);
     ~VST2Factory();
     // get a list of all available plugins
-    void addPlugin(VSTPluginDescPtr desc) override;
-    VSTPluginDescPtr getPlugin(int index) const override;
+    void addPlugin(VSTPluginDesc::ptr desc) override;
+    VSTPluginDesc::const_ptr getPlugin(int index) const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
     void probe() override;
@@ -33,23 +33,23 @@ class VST2Factory : public IVSTFactory {
         return path_;
     }
     // create a new plugin instance
-    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool probe = false) const override;
+    IVSTPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
     using EntryPoint = AEffect *(*)(audioMasterCallback);
     std::string path_;
     std::unique_ptr<IModule> module_;
     EntryPoint entry_;
-    std::vector<VSTPluginDescPtr> plugins_;
-    std::unordered_map<std::string, VSTPluginDescPtr> pluginMap_;
+    std::vector<VSTPluginDesc::ptr> plugins_;
+    std::unordered_map<std::string, VSTPluginDesc::ptr> pluginMap_;
 };
 
 class VST2Plugin final : public IVSTPlugin {
     friend class VST2Factory;
  public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
-        VstInt32 index, VstIntPtr value, void *ptr, float opt);
+        VstInt32 index, VstIntPtr value, void *p, float opt);
 
-    VST2Plugin(void* plugin, const VST2Factory& f, VSTPluginDescPtr desc);
+    VST2Plugin(AEffect* plugin, IVSTFactory::const_ptr f, VSTPluginDesc::const_ptr desc);
     ~VST2Plugin();
 
     const VSTPluginDesc& info() const { return *desc_; }
@@ -60,7 +60,7 @@ class VST2Plugin final : public IVSTPlugin {
     std::string getSDKVersion() const override;
     int getPluginUniqueID() const override;
     int canDo(const char *what) const override;
-    intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) override;
+    intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
 
 	void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;
@@ -79,8 +79,8 @@ class VST2Plugin final : public IVSTPlugin {
     void setBypass(bool bypass) override;
     void setNumSpeakers(int in, int out) override;
 
-    void setListener(IVSTPluginListener *listener) override {
-        listener_ = listener;
+    void setListener(IVSTPluginListener::ptr listener) override {
+        listener_ = std::move(listener);
     }
 
     void setTempoBPM(double tempo) override;
@@ -156,13 +156,14 @@ class VST2Plugin final : public IVSTPlugin {
     void processEvents(VstEvents *events);
         // dispatch to plugin
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
-        void *ptr = 0, float opt = 0) const;
+        void *p = 0, float opt = 0) const;
         // data members
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
-    VSTPluginDescPtr desc_;
-    IVSTPluginListener *listener_ = nullptr;
+    IVSTFactory::const_ptr factory_; // just to ensure lifetime
+    VSTPluginDesc::const_ptr desc_;
+    IVSTPluginListener::ptr listener_ = nullptr;
     VstTimeInfo timeInfo_;
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;

@@ -20,12 +20,12 @@ namespace vst {
 namespace VSTWindowFactory {
     void initializeCocoa();
     void pollCocoa();
-    IVSTWindow * createCocoa(IVSTPlugin &plugin);
+    IVSTWindow::ptr createCocoa(IVSTPlugin::ptr plugin);
 }
 
 class VSTWindowCocoa : public IVSTWindow {
  public:
-    VSTWindowCocoa(IVSTPlugin &plugin);
+    VSTWindowCocoa(IVSTPlugin::ptr plugin);
     ~VSTWindowCocoa();
 
     void* getHandle() override;
@@ -42,6 +42,7 @@ class VSTWindowCocoa : public IVSTWindow {
     void bringToTop() override;
  private:
     VSTEditorWindow * window_ = nullptr;
+    IVSTPlugin::ptr plugin_;
 };
 
 } // vst
