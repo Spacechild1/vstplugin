@@ -135,13 +135,14 @@ class PdLog {
 public:
     template <typename... T>
     PdLog(bool async, PdLogLevel level, const char *fmt, T... args)
-        : async_(async), level_(level)
+        : PdLog(async, level)
     {
         if (async_){
             // post immediately!
             sys_lock();
             startpost(fmt, args...);
             sys_unlock();
+            force_ = true; // force newline on deletion!
         } else {
             // defer posting
             char buf[MAXPDSTRING];
@@ -149,18 +150,31 @@ public:
             ss_ << buf;
         }
     }
+    PdLog(bool async, PdLogLevel level)
+        : level_(level), async_(async){}
+    PdLog(PdLog&& other)
+        : ss_(std::move(other.ss_)), level_(other.level_), async_(other.async_)
+    {
+        force_ = other.force_;
+        other.force_ = false; // make sure that moved from object doesn't print
+    }
     ~PdLog(){
         flush();
     }
     PdLog& flush(){
-        if (async_){
-            sys_lock();
-            post("%s", ss_.str().c_str());
-            sys_unlock();
-        } else {
-            verbose(level_, "%s", ss_.str().c_str());
+        auto str = ss_.str();
+        if (!str.empty()){
+            if (async_){
+                sys_lock();
+                post("%s", ss_.str().c_str());
+                sys_unlock();
+            } else {
+                verbose(level_, "%s", ss_.str().c_str());
+            }
+            ss_ = std::stringstream(); // reset stream
+        } else if (force_){
+            endpost();
         }
-        ss_ = std::stringstream(); // reset stream
         return *this;
     }
     PdLog& operator <<(const std::string& s){
@@ -197,9 +211,15 @@ public:
     }
 private:
     std::stringstream ss_;
-    bool async_;
     PdLogLevel level_;
+    bool async_;
+    bool force_ = false;
 };
+
+template<typename T>
+void consume(T&& obj){
+    T dummy(std::move(obj));
+}
 
 // load factory and probe plugins
 static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false){
@@ -235,19 +255,21 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
         gPluginManager.addPlugin(plugin->path, plugin);
         gPluginManager.addPlugin(path, plugin);
     } else {
+        // Pd's posting methods have a size limit, so we log each plugin seperately!
+        consume(std::move(log));
         for (int i = 0; i < numPlugins; ++i){
             auto plugin = factory->getPlugin(i);
             if (!plugin){
                 bug("probePlugin");
                 return nullptr;
             }
-            log << "\n";
+            PdLog log1(async, PD_DEBUG, "\t");
             if (!plugin->name.empty()){
-                log << "\t'" << plugin->name << "'... ";
+                log1 << plugin->name << "'... ";
             } else {
-                log << "\tplugin "; // e.g. "plugin crashed!"
+                log1 << "plugin "; // e.g. "plugin crashed!"
             }
-            log << plugin->probeResult;
+            log1 << plugin->probeResult;
         }
     }
     addFactory(path, factory);
@@ -286,6 +308,8 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                     count++;
                 }
             } else {
+                // Pd's posting methods have a size limit, so we log each plugin seperately!
+                consume(std::move(log));
                 for (int i = 0; i < numPlugins; ++i){
                     auto plugin = factory->getPlugin(i);
                     if (!plugin){
@@ -295,7 +319,8 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
                     if (plugin->valid()){
                         auto key = makeKey(*plugin);
                         bash_name(key);
-                        log << "\n\t" << plugin->name;
+                        PdLog log1(async, PD_DEBUG, "\t");
+                        log1 << plugin->name;
                         if (x){
                             x->x_plugins.push_back(gensym(key.c_str()));
                         }
