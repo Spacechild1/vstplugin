@@ -153,11 +153,12 @@ static std::string makeKey(const VSTPluginDesc& desc) {
     return key;
 }
 
-static void addPlugins(const IVSTFactory& factory) {
-    for (int i = 0; i < factory.numPlugins(); ++i) {
-        auto plugin = factory.getPlugin(i);
+static void addFactory(const std::string& path, IVSTFactory::ptr factory) {
+    gPluginManager.addFactory(path, factory);
+    for (int i = 0; i < factory->numPlugins(); ++i) {
+        auto plugin = factory->getPlugin(i);
         if (!plugin) {
-            LOG_ERROR("addPlugins: bug");
+            LOG_ERROR("addFactory: bug");
             return;
         }
         if (plugin->valid()) {
@@ -238,8 +239,7 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
             if (verbose) postResult(plugin->probeResult);
         }
     }
-    gPluginManager.addFactory(path, factory);
-    addPlugins(*factory);
+    addFactory(path, factory);
     return factory;
 }
 
@@ -291,20 +291,14 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
         // try as file path 
         path = resolvePath(path);
         if (!path.empty() && !(desc = gPluginManager.findPlugin(path))) {
-            // plugin descs might have been removed by 'search_clear'
-            auto factory = gPluginManager.findFactory(path);
-            if (factory) {
-                addPlugins(*factory);
+            // finally probe plugin
+            if (probePlugin(path, true)) {
+                // findPlugin fails if the module contains several plugins 
+                // (which means the path can't be used as a key)
+                desc = gPluginManager.findPlugin(path);
             }
-            if (!(desc = gPluginManager.findPlugin(path))) {
-                // finally probe plugin
-                if (probePlugin(path, true)) {
-                    // this fails if the module contains several plugins (so the path is not used as a key)
-                    desc = gPluginManager.findPlugin(path);
-                }
-                else {
-                    LOG_DEBUG("couldn't probe plugin");
-                }
+            else {
+                LOG_DEBUG("couldn't probe plugin");
             }
         }
     }
@@ -352,8 +346,6 @@ std::vector<VSTPluginDesc::const_ptr> searchPlugins(const std::string & path, bo
                     }
                 }
             }
-            // (re)add plugins (in case they have been removed by 'search_clear'
-            addPlugins(*factory);
         }
         else {
             // probe (will post results and add plugins)
