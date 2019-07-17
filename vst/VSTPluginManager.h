@@ -20,8 +20,8 @@ class VSTPluginManager {
     // plugin descriptions
     void addPlugin(const std::string& key, VSTPluginDesc::const_ptr plugin);
     VSTPluginDesc::const_ptr findPlugin(const std::string& key) const;
-    // clear factories and plugin descriptions
-    void clearPlugins();
+    // remove factories and plugin descriptions
+    void clear();
     // (de)serialize
     void read(const std::string& path, bool update = true);
     void write(const std::string& path);
@@ -60,8 +60,9 @@ VSTPluginDesc::const_ptr VSTPluginManager::findPlugin(const std::string& key) co
     return nullptr;
 }
 
-void VSTPluginManager::clearPlugins() {
+void VSTPluginManager::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
+    factories_.clear();
     plugins_.clear();
 }
 

@@ -840,8 +840,8 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
 
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
         // clear the plugin description dictionary
-    gManager.clearPlugins();
-    if (f){
+    gManager.clear();
+    if (f != 0){
         removeFile(getSettingsDir() + "/" SETTINGS_FILE);
     }
 }

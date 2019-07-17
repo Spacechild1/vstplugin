@@ -1969,10 +1969,18 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
     if (!gSearching) {
-        DoAsynchronousCommand(inWorld, 0, 0, 0, [](World*, void*) {
-            gPluginManager.clearPlugins();
-            return false;
-        }, 0, 0, cmdRTfree, 0, 0);
+        auto data = InfoCmdData::create(inWorld);
+        if (data) {
+            data->flags = args->geti(); // 1 = remove cache file
+            DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
+                gPluginManager.clear();
+                int flags = static_cast<InfoCmdData*>(data)->flags;
+                if (flags & 1) {
+                    // remove cache file
+                }
+                return false;
+            }, 0, 0, cmdRTfree, 0, 0);
+        }
     }
     else {
         LOG_WARNING("can't clear while searching!");
