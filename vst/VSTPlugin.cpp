@@ -576,14 +576,8 @@ public:
         if (is_open()){
             close();
             // destructor must not throw!
-            try {
-        #ifdef _WIN32
-                fs::remove(vst::widen(path_));
-        #else
-                std::remove(path_.c_str());
-        #endif
-            } catch (const std::exception& e) {
-                LOG_ERROR(e.what());
+            if (!removeFile(path_)){
+                LOG_ERROR("couldn't remove tmp file!");
             };
         }
     }
