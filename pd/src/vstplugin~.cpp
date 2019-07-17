@@ -224,14 +224,19 @@ void consume(T&& obj){
 // load factory and probe plugins
 static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false){
     if (gPluginManager.findFactory(path)){
-        LOG_WARNING("probePlugin: '" << path << "' already probed!");
+        bug("probePlugin");
         return nullptr;
     }
+    if (gPluginManager.isException(path)){
+        return nullptr;
+    }
+
     PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
 
     auto factory = IVSTFactory::load(path);
     if (!factory){
         log << "failed!";
+        gPluginManager.addException(path);
         return nullptr;
     }
 
@@ -251,9 +256,11 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
             return nullptr;
         }
         log << plugin->probeResult;
-        // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path, plugin);
-        gPluginManager.addPlugin(path, plugin);
+        if (plugin->valid()){
+            // factories with a single plugin can also be aliased by their file path(s)
+            gPluginManager.addPlugin(plugin->path, plugin);
+            gPluginManager.addPlugin(path, plugin);
+        }
     } else {
         // Pd's posting methods have a size limit, so we log each plugin seperately!
         consume(std::move(log));
@@ -272,8 +279,14 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
             log1 << plugin->probeResult;
         }
     }
-    addFactory(path, factory);
-    return factory;
+
+    if (factory->valid()){
+        addFactory(path, factory);
+        return factory;
+    } else {
+        gPluginManager.addException(path);
+        return nullptr;
+    }
 }
 
 static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
@@ -330,7 +343,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
             }
         } else {
             // probe (will post results and add plugins)
-            if ((factory = probePlugin(pluginPath, true))){
+            if ((factory = probePlugin(pluginPath, async))){
                 for (int i = 0; i < factory->numPlugins(); ++i){
                     auto plugin = factory->getPlugin(i);
                     if (!plugin){

@@ -178,6 +178,7 @@ void VST2Factory::probe() {
     auto result = probePlugin(""); // don't need a name
     if (result->shellPlugins_.empty()){
         plugins_ = { result };
+        valid_ = result->valid();
     } else {
         // shell plugin!
     #ifdef SHELL_PLUGIN_LIMIT
@@ -186,7 +187,12 @@ void VST2Factory::probe() {
         for (auto& shell : result->shellPlugins_){
             try {
                 LOG_DEBUG("probing '" << shell.name << "'");
-                plugins_.push_back(probePlugin(shell.name, shell.id));
+                auto shellResult = probePlugin(shell.name, shell.id);
+                plugins_.push_back(shellResult);
+                // factory is valid if contains at least 1 valid plugin
+                if (shellResult->valid()){
+                    valid_ = true;
+                }
             } catch (const VSTError& e){
                 LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
             }

@@ -29,6 +29,9 @@ class VST2Factory : public IVSTFactory {
     bool isProbed() const override {
         return !plugins_.empty();
     }
+    bool valid() const override {
+        return valid_;
+    }
     std::string path() const override {
         return path_;
     }
@@ -41,6 +44,7 @@ class VST2Factory : public IVSTFactory {
     EntryPoint entry_;
     std::vector<VSTPluginDesc::ptr> plugins_;
     std::unordered_map<std::string, VSTPluginDesc::ptr> pluginMap_;
+    bool valid_ = false;
 };
 
 class VST2Plugin final : public IVSTPlugin {

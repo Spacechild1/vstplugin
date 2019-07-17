@@ -173,6 +173,9 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
         LOG_WARNING("probePlugin: '" << path << "' already probed!");
         return nullptr;
     }
+    if (gPluginManager.isException(path)) {
+        return nullptr;
+    }
     // load factory and probe plugins
     if (verbose) Print("probing %s... ", path.c_str());
     auto factory = IVSTFactory::load(path);
@@ -180,6 +183,7 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
 #if 1
         if (verbose) Print("failed!\n");
 #endif
+        gPluginManager.addException(path);
         return nullptr;
     }
     try {
@@ -239,8 +243,14 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
             if (verbose) postResult(plugin->probeResult);
         }
     }
-    addFactory(path, factory);
-    return factory;
+    if (factory->valid()) {
+        addFactory(path, factory);
+        return factory;
+    }
+    else {
+        gPluginManager.addException(path);
+        return nullptr;
+    }
 }
 
 static bool isAbsolutePath(const std::string& path) {

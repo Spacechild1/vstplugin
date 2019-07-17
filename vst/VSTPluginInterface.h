@@ -280,6 +280,7 @@ class IVSTFactory : public std::enable_shared_from_this<IVSTFactory> {
     virtual int numPlugins() const = 0;
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;
+    virtual bool valid() const = 0; // contains at least one valid plugin
     virtual std::string path() const = 0;
     // create a new plugin instance
     virtual IVSTPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
