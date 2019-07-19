@@ -846,21 +846,34 @@ bool isComment(const std::string& line){
     return c == ';' || c == '#';
 }
 
+bool getLine(std::istream& stream, std::string& line){
+    std::string temp;
+    while (std::getline(stream, temp)){
+        if (!temp.empty() && !isComment(temp)){
+            line = std::move(temp);
+            return true;
+        }
+    }
+    return false;
+}
+
 int getCount(const std::string& line){
-    LOG_DEBUG(line);
     auto pos = line.find('=');
     if (pos == std::string::npos){
-        throw VSTError("VSTPluginDesc::serialize: "
-                       "missing '=' after key: " + line);
+        throw VSTError("missing '=' after key: " + line);
     }
-    return std::stol(line.substr(pos + 1));
+    try {
+        return std::stol(line.substr(pos + 1));
+    }
+    catch (...){
+        throw VSTError("expected number after 'n='");
+    }
 }
 
 static void getKeyValuePair(const std::string& line, std::string& key, std::string& value){
     auto pos = line.find('=');
     if (pos == std::string::npos){
-        throw VSTError("VSTPluginDesc::serialize: "
-                       "missing '=' after key: " + line);
+        throw VSTError("missing '=' after key: " + line);
     }
     key = rtrim(line.substr(0, pos));
     value = ltrim(line.substr(pos + 1));
@@ -870,55 +883,52 @@ void VSTPluginDesc::deserialize(std::istream& file) {
     // first check for sections, then for keys!
     bool start = false;
     std::string line;
-    try {
-        while (std::getline(file, line)){
-            LOG_DEBUG(line);
-            if (isComment(line)){
-                continue;
-            } else if (line == "[plugin]"){
-                start = true;
-            } else if (line == "[parameters]"){
-                parameters.clear();
-                std::getline(file, line);
-                int n = getCount(line);
-                while (n-- && std::getline(file, line)){
-                    auto pos = line.find(',');
-                    Param param;
-                    param.name = rtrim(line.substr(0, pos));
-                    param.label = ltrim(line.substr(pos + 1));
-                    parameters.push_back(std::move(param));
-                }
-                // inverse mapping from name to index
-                for (int i = 0; i < (int)parameters.size(); ++i){
-                    paramMap[parameters[i].name] = i;
-                }
-            } else if (line == "[programs]"){
-                programs.clear();
-                std::getline(file, line);
-                int n = getCount(line);
-                while (n-- && std::getline(file, line)){
-                    programs.push_back(std::move(line));
-                }
-                // finished if we're not a shell plugin (a bit hacky...)
-                if (category != "Shell"){
-                    break; // done!
-                }
-            } else if (line == "[shell]"){
-                shellPlugins_.clear();
-                std::getline(file, line);
-                int n = getCount(line);
-                while (n-- && std::getline(file, line)){
-                    auto pos = line.find(',');
-                    ShellPlugin shell;
-                    shell.name = rtrim(line.substr(0, pos));
-                    shell.id = std::stol(line.substr(pos + 1));
-                    shellPlugins_.push_back(std::move(shell));
-                }
+    while (getLine(file, line)){
+        if (line == "[plugin]"){
+            start = true;
+        } else if (line == "[parameters]"){
+            parameters.clear();
+            std::getline(file, line);
+            int n = getCount(line);
+            while (n-- && std::getline(file, line)){
+                auto pos = line.find(',');
+                Param param;
+                param.name = rtrim(line.substr(0, pos));
+                param.label = ltrim(line.substr(pos + 1));
+                parameters.push_back(std::move(param));
+            }
+            // inverse mapping from name to index
+            for (int i = 0; i < (int)parameters.size(); ++i){
+                paramMap[parameters[i].name] = i;
+            }
+        } else if (line == "[programs]"){
+            programs.clear();
+            std::getline(file, line);
+            int n = getCount(line);
+            while (n-- && std::getline(file, line)){
+                programs.push_back(std::move(line));
+            }
+            // finished if we're not a shell plugin (a bit hacky...)
+            if (category != "Shell"){
                 break; // done!
-            } else if (start){
-                std::string key;
-                std::string value;
-                getKeyValuePair(line, key, value);
+            }
+        } else if (line == "[shell]"){
+            shellPlugins_.clear();
+            std::getline(file, line);
+            int n = getCount(line);
+            while (n-- && std::getline(file, line)){
+                auto pos = line.find(',');
+                ShellPlugin shell;
+                shell.name = rtrim(line.substr(0, pos));
+                shell.id = std::stol(line.substr(pos + 1));
+                shellPlugins_.push_back(std::move(shell));
+            }
+            break; // done!
+        } else if (start){
+            std::string key;
+            std::string value;
+            getKeyValuePair(line, key, value);
+            try {
                 if (key == "path"){
                     path = std::move(value);
                 } else if (key == "name"){
@@ -936,21 +946,21 @@ void VSTPluginDesc::deserialize(std::istream& file) {
                 } else if (key == "outputs"){
                     numOutputs = std::stol(value);
                 } else if (key == "flags"){
-                    flags = std::stol(value);
+                    flags_ = std::stol(value);
                 } else {
-                    throw VSTError("VSTPluginDesc::serialize: unknown key: " + key);
+                    throw VSTError("unknown key: " + key);
                 }
-            } else {
-                throw VSTError("VSTPluginDesc::serialize: bad data: " + line);
             }
+            catch (const std::invalid_argument& e) {
+                throw VSTError("invalid argument for key '" + key + "': " + value);
+            }
+            catch (const std::out_of_range& e) {
+                throw VSTError("out of range argument for key '" + key + "': " + value);
+            }
+        } else {
+            throw VSTError("bad data: " + line);
         }
-	}
-	catch (const std::invalid_argument& e) {
-        throw VSTError("VSTPluginInfo::deserialize: invalid argument: " + line);
-	}
-	catch (const std::out_of_range& e) {
-        throw VSTError("VSTPluginInfo::deserialize: out of range: " + line);
-	}
+    }
 }
 
 } // vst

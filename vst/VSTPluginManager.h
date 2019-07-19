@@ -84,7 +84,7 @@ void VSTPluginManager::clear() {
     exceptions_.clear();
 }
 
-bool isComment(const std::string& line);
+bool getLine(std::istream& stream, std::string& line);
 int getCount(const std::string& line);
 
 void VSTPluginManager::read(const std::string& path, bool update){
@@ -93,24 +93,17 @@ void VSTPluginManager::read(const std::string& path, bool update){
     LOG_DEBUG("reading cache file: " << path);
     File file(path);
     std::string line;
-    while (std::getline(file, line)){
-        // ignore empty lines + comments
-        if (isComment(line) || line.empty()){
-            continue;
-        } else if (line == "[plugins]"){
+    while (getLine(file, line)){
+        if (line == "[plugins]"){
             std::getline(file, line);
             int numPlugins = getCount(line);
             while (numPlugins--){
+                // deserialize plugin
                 auto desc = std::make_shared<VSTPluginDesc>();
-                LOG_DEBUG("collect plugin");
                 desc->deserialize(file);
-                LOG_DEBUG("collect keys");
                 // collect keys
                 std::vector<std::string> keys;
-                while (std::getline(file, line)){
-                    if (isComment(line)){
-                        continue; // ignore comment
-                    }
+                while (getLine(file, line)){
                     if (line == "[keys]"){
                         std::getline(file, line);
                         int n = getCount(line);
@@ -119,10 +112,9 @@ void VSTPluginManager::read(const std::string& path, bool update){
                         }
                         break;
                     } else {
-                        throw VSTError("VSTPluginManager::read: bad format");
+                        throw VSTError("bad format");
                     }
                 }
-
                 // load the factory (if not loaded already) to verify that the plugin still exists
                 IVSTFactory::ptr factory;
                 if (!factories_.count(desc->path)){
@@ -151,7 +143,7 @@ void VSTPluginManager::read(const std::string& path, bool update){
                 exceptions_.insert(line);
             }
         } else {
-            throw VSTError("bad data");
+            throw VSTError("bad data: " + line);
         }
     }
     if (update && outdated){
