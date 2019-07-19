@@ -820,7 +820,10 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     bool async = false;
     bool update = true; // update cache file
     std::vector<std::string> searchPaths;
-    x->x_plugins.clear(); // list of plug-in keys
+
+    if (!x->x_thread.joinable()){
+        pd_error(x, "%s: already searching!", classname(x));
+    }
 
     while (argc && argv->a_type == A_SYMBOL){
         auto flag = argv->a_w.w_symbol->s_name;
@@ -837,6 +840,8 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             break;
         }
     }
+
+    x->x_plugins.clear(); // clear list of plug-in keys
 
     if (argc > 0){
         while (argc--){
@@ -860,12 +865,8 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     }
 
     if (async){
-        if (!x->x_thread.joinable()){
-                // spawn thread which does the actual searching in the background
-            x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths), update);
-        } else {
-            pd_error(x, "%s: already searching!", classname(x));
-        }
+            // spawn thread which does the actual searching in the background
+        x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths), update);
     } else {
         if (update){
             writeIniFile();
