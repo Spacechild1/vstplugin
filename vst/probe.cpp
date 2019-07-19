@@ -21,26 +21,21 @@ int MAIN(int argc, const CHAR *argv[]) {
 		const CHAR *pluginPath = argv[1];
 		const CHAR *pluginName = argv[2];
 		const CHAR *filePath = argc > 3 ? argv[3] : nullptr;
-        /// LOG_DEBUG("probe: pluginPath '" << pluginPath << "', pluginName, '" << pluginName);
-        auto factory = vst::IVSTFactory::load(shorten(pluginPath));
-		if (factory) {
-            /// LOG_DEBUG("create plugin");
+        try {
+            auto factory = vst::IVSTFactory::load(shorten(pluginPath));
             auto plugin = factory->create(shorten(pluginName), true);
-			if (plugin) {
-				if (filePath) {
-                    /// LOG_DEBUG("get plugin info");
-                    vst::File file(shorten(filePath), File::WRITE);
-                    if (file.is_open()) {
-                        plugin->info().serialize(file);
-                        /// LOG_DEBUG("info written");
-                    }
+            if (filePath) {
+                vst::File file(shorten(filePath), File::WRITE);
+                if (file.is_open()) {
+                    plugin->info().serialize(file);
+                } else {
+                    LOG_ERROR("probe: couldn't write info file");
                 }
-                /// LOG_DEBUG("probe success");
-                return EXIT_SUCCESS;
             }
-            /// LOG_DEBUG("couldn't load plugin");
+            return EXIT_SUCCESS;
+        } catch (const VSTError& e){
+            LOG_DEBUG("probe failed: " << e.what());
         }
-        /// LOG_DEBUG("couldn't load plugin module");
 	}
     return EXIT_FAILURE;
 }

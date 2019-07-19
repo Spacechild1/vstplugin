@@ -131,7 +131,7 @@ class t_vsteditor : public IVSTPluginListener {
 #if VSTTHREADS
     using VSTPluginPromise = std::promise<IVSTPlugin::ptr>;
         // open plugin in a new thread
-    void thread_function(VSTPluginPromise promise, const VSTPluginDesc *desc);
+    void thread_function(VSTPluginPromise promise, const VSTPluginDesc &desc);
 #endif
         // notify Pd (e.g. for MIDI event or GUI automation)
     template<typename T, typename U>

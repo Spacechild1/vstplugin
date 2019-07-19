@@ -142,7 +142,7 @@ public:
             sys_lock();
             startpost(fmt, args...);
             sys_unlock();
-            force_ = true; // force newline on deletion!
+            force_ = true; // force newline on destruction!
         } else {
             // defer posting
             char buf[MAXPDSTRING];
@@ -221,24 +221,45 @@ void consume(T&& obj){
     T dummy(std::move(obj));
 }
 
+template<typename... T>
+void postBug(bool async, const char *fmt, T... args){
+    if (async) sys_lock();
+    bug(fmt, args...);
+    if (async) sys_unlock();
+}
+
+template<typename... T>
+void postError(bool async, const char *fmt, T... args){
+    if (async) sys_lock();
+    error(fmt, args...);
+    if (async) sys_unlock();
+}
+
+
 // load factory and probe plugins
 static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false){
+    IVSTFactory::ptr factory;
+
     if (gPluginManager.findFactory(path)){
-        bug("probePlugin");
+        postBug(async, "probePlugin");
         return nullptr;
     }
     if (gPluginManager.isException(path)){
+        PdLog log(async, PD_DEBUG,
+                  "'%s' is black-listed", path.c_str());
+        return nullptr;
+    }
+
+    try {
+        factory = IVSTFactory::load(path);
+    } catch (const VSTError& e){
+        PdLog log(async, PD_DEBUG,
+                  "couldn't load '%s': %s", path.c_str(), e.what());
+        gPluginManager.addException(path);
         return nullptr;
     }
 
     PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
-
-    auto factory = IVSTFactory::load(path);
-    if (!factory){
-        log << "failed!";
-        gPluginManager.addException(path);
-        return nullptr;
-    }
 
     try {
         factory->probe();
@@ -252,7 +273,7 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
     if (numPlugins == 1){
         auto plugin = factory->getPlugin(0);
         if (!plugin){
-            bug("probePlugin");
+            postBug(async, "probePlugin");
             return nullptr;
         }
         log << plugin->probeResult;
@@ -267,7 +288,7 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
         for (int i = 0; i < numPlugins; ++i){
             auto plugin = factory->getPlugin(i);
             if (!plugin){
-                bug("probePlugin");
+                postBug(async, "probePlugin");
                 return nullptr;
             }
             PdLog log1(async, PD_DEBUG, "\t");
@@ -555,11 +576,17 @@ void t_vsteditor::tick(t_vsteditor *x){
 
 #if VSTTHREADS
     // create plugin + editor GUI (in another thread)
-void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc *desc){
+void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc& desc){
     LOG_DEBUG("enter thread");
     IVSTPlugin::ptr plugin;
-    if (desc && desc->valid()){
-        plugin = desc->create();
+    if (desc.valid()){
+        try {
+            plugin = desc.create();
+        } catch (const VSTError& e){
+            sys_lock();
+            error("%s", e.what());
+            sys_unlock();
+        }
     }
     if (!plugin){
             // signal main thread
@@ -610,7 +637,7 @@ IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor)
     if (editor){
         VSTPluginPromise promise;
         auto future = promise.get_future();
-        e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), &desc);
+        e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), std::ref(desc));
             // wait for thread to return the plugin
         return future.get();
     }
@@ -618,7 +645,11 @@ IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor)
         // create plugin in main thread
     IVSTPlugin::ptr plugin;
     if (desc.valid()){
-        plugin = desc.create();
+        try {
+            plugin = desc.create();
+        } catch (const VSTError& e){
+            error("%s", e.what());
+        }
     }
     if (!plugin) return nullptr;
 #if !VSTTHREADS
@@ -943,12 +974,20 @@ static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path
     if (!desc){
             // try as file path
         std::string abspath = resolvePath(x->x_canvas, path);
-        if (!abspath.empty() && !(desc = gPluginManager.findPlugin(abspath))){
+        if (abspath.empty()){
+            verbose(PD_DEBUG, "'%s' is neither an existing plugin name "
+                    "nor a valid file path", path.c_str());
+        } else if (!(desc = gPluginManager.findPlugin(abspath))){
                 // finally probe plugin
             if (probePlugin(abspath)){
-                    // findPlugin fails if the module contains several plugins
-                    // (which means the path can't be used as a key)
                 desc = gPluginManager.findPlugin(abspath);
+                // findPlugin() fails if the module contains several plugins,
+                // which means the path can't be used as a key.
+                if (!desc){
+                    verbose(PD_DEBUG, "'%s' contains more than one plugin. "
+                            "Please use the 'search' method and open the desired "
+                            "plugin by its name.", abspath.c_str());
+                }
             }
         }
    }
@@ -985,7 +1024,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
     if (!(info = queryPlugin(x, pathsym->s_name))){
-        pd_error(x, "%s: can't open '%s' - no such file or plugin!", classname(x), pathsym->s_name);
+        pd_error(x, "%s: can't load '%s'", classname(x), pathsym->s_name);
         return;
     }
     if (!info->valid()){

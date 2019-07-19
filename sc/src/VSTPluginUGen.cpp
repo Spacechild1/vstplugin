@@ -209,23 +209,31 @@ static void addFactory(const std::string& path, IVSTFactory::ptr factory) {
 }
 
 static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
+    IVSTFactory::ptr factory;
+
     if (gPluginManager.findFactory(path)) {
-        LOG_WARNING("probePlugin: '" << path << "' already probed!");
+        LOG_ERROR("probePlugin: bug");
         return nullptr;
     }
     if (gPluginManager.isException(path)) {
+        if (verbose) {
+            Print("'%s' is black-listed.\n", path.c_str());
+        }
         return nullptr;
     }
     // load factory and probe plugins
-    if (verbose) Print("probing %s... ", path.c_str());
-    auto factory = IVSTFactory::load(path);
-    if (!factory) {
-#if 1
-        if (verbose) Print("failed!\n");
-#endif
+    try {
+        factory = IVSTFactory::load(path);
+    } catch (const VSTError& e){
+        if (verbose) {
+            Print("couldn't load '%s': %s\n", path.c_str(), e.what());
+        }
         gPluginManager.addException(path);
         return nullptr;
     }
+
+    if (verbose) Print("probing %s... ", path.c_str());
+
     try {
         factory->probe();
     }
@@ -339,20 +347,24 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     auto desc = gPluginManager.findPlugin(path);
     if (!desc) {
         // try as file path 
-        path = resolvePath(path);
-        if (!path.empty() && !(desc = gPluginManager.findPlugin(path))) {
+        auto absPath = resolvePath(path);
+        if (absPath.empty()){
+            Print("'%s' is neither an existing plugin name "
+                    "nor a valid file path.\n", path.c_str());
+        } else if (!(desc = gPluginManager.findPlugin(absPath))){
             // finally probe plugin
-            if (probePlugin(path, true)) {
-                // findPlugin fails if the module contains several plugins 
-                // (which means the path can't be used as a key)
-                desc = gPluginManager.findPlugin(path);
-            }
-            else {
-                LOG_DEBUG("couldn't probe plugin");
+            if (probePlugin(absPath, true)) {
+                desc = gPluginManager.findPlugin(absPath);
+                // findPlugin() fails if the module contains several plugins,
+                // which means the path can't be used as a key.
+                if (!desc){
+                    Print("'%s' contains more than one plugin. "
+                            "Please perform a search and open the desired "
+                            "plugin by its name.\n", absPath.c_str());
+                }
             }
         }
     }
-    if (!desc) LOG_DEBUG("couldn't query plugin");
     return desc.get();
 }
 
@@ -819,8 +831,12 @@ void VSTPluginCmdData::open(){
 #endif
         // create plugin in main thread
     auto desc = queryPlugin(buf);
-    if (desc) {
-        plugin = desc->create();
+    if (desc && desc->valid()){
+        try {
+            plugin = desc->create();
+        } catch (const VSTError& e){
+            Print("%s\n", e.what());
+        }
     }
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
@@ -844,8 +860,12 @@ void VSTPluginCmdData::open(){
 void threadFunction(VSTPluginCmdPromise promise, const char *path){
     IVSTPlugin::ptr plugin;
     auto desc = queryPlugin(path);
-    if (desc) {
-        plugin = desc->create();
+    if (desc && desc->valid()){
+        try {
+            plugin = desc->create();
+        } catch (const VSTError& e){
+            Print("%s\n", e.what());
+        }
     }
     if (!plugin){
             // signal other thread

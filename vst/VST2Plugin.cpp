@@ -129,7 +129,7 @@ VST2Factory::VST2Factory(const std::string& path)
 {
     if (!module_){
         // shouldn't happen...
-        throw VSTError("couldn't load module!");
+        throw VSTError("VST2Factory bug!");
     }
     entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
     if (!entry_){
@@ -142,7 +142,7 @@ VST2Factory::VST2Factory(const std::string& path)
     #endif
     }
     if (!entry_){
-        throw VSTError("couldn't find entry point in VST plugin");
+        throw VSTError("couldn't find entry point (no VST plugin?)");
     }
     // LOG_DEBUG("VST2Factory: loaded " << path);
 }
@@ -171,7 +171,7 @@ int VST2Factory::numPlugins() const {
 }
 
 // for testing we don't want to load hundreds of shell plugins
-#define SHELL_PLUGIN_LIMIT 1000
+#define SHELL_PLUGIN_LIMIT 10
 
 void VST2Factory::probe() {
     plugins_.clear();
@@ -194,6 +194,7 @@ void VST2Factory::probe() {
                     valid_ = true;
                 }
             } catch (const VSTError& e){
+                // should we rather propagate the error and break from the loop?
                 LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
             }
         #ifdef SHELL_PLUGIN_LIMIT
@@ -210,18 +211,15 @@ IVSTPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
     VSTPluginDesc::ptr desc = nullptr; // will stay nullptr when probing!
     if (!probe){
         if (plugins_.empty()){
-            LOG_WARNING("VST2Factory: no plugin(s)");
-            return nullptr;
+            throw VSTError("factory doesn't have any plugin(s)");
         }
         auto it = pluginMap_.find(name);
         if (it == pluginMap_.end()){
-            LOG_ERROR("can't find (sub)plugin '" << name << "'");
-            return nullptr;
+            throw VSTError("can't find (sub)plugin '" + name + "'");
         }
         desc = it->second;
         if (!desc->valid()){
-            LOG_WARNING("VST2Factory: plugin not probed successfully");
-            return nullptr;
+            throw VSTError("plugin not probed successfully");
         }
         // only for shell plugins:
         // set (global) current plugin ID (used in hostCallback)
@@ -239,12 +237,10 @@ IVSTPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
     shellPluginID = 0; // just to be sure
 
     if (!plugin){
-        LOG_ERROR("VST2Factory: couldn't initialize plugin");
-        return nullptr;
+        throw VSTError("couldn't initialize plugin");
     }
     if (plugin->magic != kEffectMagic){
-        LOG_ERROR("VST2Factory: not a VST2.x plugin!");
-        return nullptr;
+        throw VSTError("not a valid VST2.x plugin!");
     }
     return std::make_shared<VST2Plugin>(plugin, shared_from_this(), desc);
 }

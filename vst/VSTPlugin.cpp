@@ -550,31 +550,23 @@ IVSTFactory::ptr IVSTFactory::load(const std::string& path){
 #else // Linux/BSD/etc.
     const char *ext = ".so";
 #endif
-    try {
-        // LOG_DEBUG("IVSTFactory: loading " << path);
-        if (path.find(".vst3") != std::string::npos){
-        #if USE_VST3
-            return std::make_shared<VST3Factory>(path);
-        #else
-            LOG_WARNING("VST3 plug-ins not supported!");
-            return nullptr;
-        #endif
+    // LOG_DEBUG("IVSTFactory: loading " << path);
+    if (path.find(".vst3") != std::string::npos){
+    #if USE_VST3
+        return std::make_shared<VST3Factory>(path);
+    #else
+        throw VSTError("VST3 plug-ins not supported");
+    #endif
+    } else {
+    #if USE_VST2
+        if (path.find(ext) != std::string::npos){
+            return std::make_shared<VST2Factory>(path);
         } else {
-        #if USE_VST2
-            if (path.find(ext) != std::string::npos){
-                return std::make_shared<VST2Factory>(path);
-            } else {
-                return std::make_shared<VST2Factory>(path + ext);
-            }
-        #else
-            LOG_WARNING("VST2.x plug-ins not supported!");
-            return nullptr;
-        #endif
+            return std::make_shared<VST2Factory>(path + ext);
         }
-    } catch (const VSTError& e){
-        LOG_ERROR("couldn't load '" << path << "':");
-        LOG_ERROR(e.what());
-        return nullptr;
+    #else
+        throw VSTError("VST2 plug-ins not supported");
+    #endif
     }
 }
 

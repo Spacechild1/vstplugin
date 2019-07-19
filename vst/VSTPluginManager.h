@@ -30,21 +30,23 @@ class VSTPluginManager {
     void read(const std::string& path, bool update = true);
     void write(const std::string& path);
  private:
+    void doWrite(const std::string& path);
     std::unordered_map<std::string, IVSTFactory::ptr> factories_;
     std::unordered_map<std::string, VSTPluginDesc::const_ptr> plugins_;
     std::unordered_set<std::string> exceptions_;
+    using Lock = std::lock_guard<std::mutex>;
     mutable std::mutex mutex_;
 };
 
 // implementation
 
 void VSTPluginManager::addFactory(const std::string& path, IVSTFactory::ptr factory) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     factories_[path] = std::move(factory);
 }
 
 IVSTFactory::const_ptr VSTPluginManager::findFactory(const std::string& path) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
         return factory->second;
@@ -54,22 +56,22 @@ IVSTFactory::const_ptr VSTPluginManager::findFactory(const std::string& path) co
 }
 
 void VSTPluginManager::addException(const std::string &path){
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     exceptions_.insert(path);
 }
 
 bool VSTPluginManager::isException(const std::string& path) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     return exceptions_.count(path) != 0;
 }
 
 void VSTPluginManager::addPlugin(const std::string& key, VSTPluginDesc::const_ptr plugin) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     plugins_[key] = std::move(plugin);
 }
 
 VSTPluginDesc::const_ptr VSTPluginManager::findPlugin(const std::string& key) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     auto desc = plugins_.find(key);
     if (desc != plugins_.end()){
         return desc->second;
@@ -78,7 +80,7 @@ VSTPluginDesc::const_ptr VSTPluginManager::findPlugin(const std::string& key) co
 }
 
 void VSTPluginManager::clear() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     factories_.clear();
     plugins_.clear();
     exceptions_.clear();
@@ -88,9 +90,9 @@ bool getLine(std::istream& stream, std::string& line);
 int getCount(const std::string& line);
 
 void VSTPluginManager::read(const std::string& path, bool update){
-    std::lock_guard<std::mutex> lock(mutex_);
+    Lock lock(mutex_);
     bool outdated = false;
-    LOG_DEBUG("reading cache file: " << path);
+    LOG_VERBOSE("reading cache file: " << path);
     File file(path);
     std::string line;
     while (getLine(file, line)){
@@ -118,13 +120,14 @@ void VSTPluginManager::read(const std::string& path, bool update){
                 // load the factory (if not loaded already) to verify that the plugin still exists
                 IVSTFactory::ptr factory;
                 if (!factories_.count(desc->path)){
-                    auto newFactory = IVSTFactory::load(desc->path);
-                    if (newFactory){
-                        factory = newFactory;
-                        factories_[desc->path] = std::move(newFactory);
-                    } else {
-                        outdated = true;
-                        continue; // plugin file has been (re)moved
+                    try {
+                        factory = IVSTFactory::load(desc->path);
+                        factories_[desc->path] = factory;
+                    } catch (const VSTError& e){
+                        // this probably happens when the plugin has been (re)moved
+                        LOG_ERROR("couldn't load '" << desc->name << "': " << e.what());
+                        outdated = true; // we need to update the cache
+                        continue; // skip plugin
                     }
                 } else {
                     factory = factories_[desc->path];
@@ -150,16 +153,21 @@ void VSTPluginManager::read(const std::string& path, bool update){
         // overwrite file
         file.close();
         try {
-            write(path);
+            doWrite(path);
         } catch (const VSTError& e){
             throw VSTError("couldn't update cache file");
         }
         LOG_VERBOSE("updated cache file");
     }
+    LOG_DEBUG("done reading cache file");
 }
 
-void VSTPluginManager::write(const std::string& path){
-    std::lock_guard<std::mutex> lock(mutex_);
+void VSTPluginManager::write(const std::string &path){
+    Lock lock(mutex_);
+    doWrite(path);
+}
+
+void VSTPluginManager::doWrite(const std::string& path){
     LOG_DEBUG("writing cache file: " << path);
     File file(path, File::WRITE);
     if (!file.is_open()){
