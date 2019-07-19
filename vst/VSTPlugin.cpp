@@ -735,13 +735,13 @@ VSTPluginDesc::VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory, 
 #endif
 		programs.push_back(pgm);
 	}
-	flags = 0;
-	flags |= plugin.hasEditor() << HasEditor;
-	flags |= plugin.isSynth() << IsSynth;
-	flags |= plugin.hasPrecision(VSTProcessPrecision::Single) << SinglePrecision;
-	flags |= plugin.hasPrecision(VSTProcessPrecision::Double) << DoublePrecision;
-	flags |= plugin.hasMidiInput() << MidiInput;
-	flags |= plugin.hasMidiOutput() << MidiOutput;
+    flags_ = 0;
+    flags_ |= plugin.hasEditor() * HasEditor;
+    flags_ |= plugin.isSynth() * IsSynth;
+    flags_ |= plugin.hasPrecision(VSTProcessPrecision::Single) * SinglePrecision;
+    flags_ |= plugin.hasPrecision(VSTProcessPrecision::Double) * DoublePrecision;
+    flags_ |= plugin.hasMidiInput() * MidiInput;
+    flags_ |= plugin.hasMidiOutput() * MidiOutput;
 }
 
 IVSTPlugin::ptr VSTPluginDesc::create() const {
@@ -800,7 +800,7 @@ void VSTPluginDesc::serialize(std::ostream& file) const {
     file << "id=" << id << "\n";
     file << "inputs=" << numInputs << "\n";
     file << "outputs=" << numOutputs << "\n";
-    file << "flags=" << (uint32_t)flags << "\n";
+    file << "flags=" << (uint32_t)flags_ << "\n";
     // parameters
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";

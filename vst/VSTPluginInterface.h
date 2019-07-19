@@ -181,17 +181,6 @@ class IVSTPlugin {
 
 class IVSTFactory;
 
-enum VSTPluginFlags {
-    HasEditor = 0,
-    IsSynth,
-    SinglePrecision,
-    DoublePrecision,
-    MidiInput,
-    MidiOutput,
-    SysexInput,
-    SysexOutput
-};
-
 enum class ProbeResult {
     success,
     fail,
@@ -237,14 +226,49 @@ struct VSTPluginDesc {
     std::unordered_map<std::string, int> paramMap;
     // default programs
     std::vector<std::string> programs;
-    // see VSTPluginFlags
-    uint32_t flags = 0;
+    bool hasEditor() const {
+        return flags_ & HasEditor;
+    }
+    bool isSynth() const {
+        return flags_ & IsSynth;
+    }
+    bool singlePrecision() const {
+        return flags_ & SinglePrecision;
+    }
+    bool doublePrecision() const {
+        return flags_ & DoublePrecision;
+    }
+    bool midiInput() const {
+        return flags_ & MidiInput;
+    }
+    bool midiOutput() const {
+        return flags_ & MidiOutput;
+    }
+    bool sysexInput() const {
+        return flags_ & SysexInput;
+    }
+    bool sysexOutput() const {
+        return flags_ & SysexOutput;
+    }
  private:
     friend class VST2Plugin;
     friend class VST2Factory;
     friend class VST3Plugin;
     friend class VST3Factory;
     std::weak_ptr<const IVSTFactory> factory_;
+    // flags
+    enum Flags {
+        HasEditor = 1 << 0,
+        IsSynth = 1 << 1,
+        SinglePrecision = 1 << 2,
+        DoublePrecision = 1 << 3,
+        MidiInput = 1 << 4,
+        MidiOutput = 1 << 5,
+        SysexInput = 1 << 6,
+        SysexOutput = 1 << 7
+    };
+    uint32_t flags_ = 0;
+    // shell plugin
     struct ShellPlugin {
         std::string name;
         int id;

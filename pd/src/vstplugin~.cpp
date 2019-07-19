@@ -1055,14 +1055,14 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         sendInfo(x, "inputs", info->numInputs);
         sendInfo(x, "outputs", info->numOutputs);
         sendInfo(x, "id", toHex(info->id));
-        sendInfo(x, "editor", info->flags >> HasEditor & 1);
-        sendInfo(x, "synth", info->flags >> IsSynth & 1);
-        sendInfo(x, "single", info->flags >> SinglePrecision & 1);
-        sendInfo(x, "double", info->flags >> DoublePrecision & 1);
-        sendInfo(x, "midiin", info->flags >> MidiInput & 1);
-        sendInfo(x, "midiout", info->flags >> MidiOutput & 1);
-        sendInfo(x, "sysexin", info->flags >> SysexInput & 1);
-        sendInfo(x, "sysexout", info->flags >> SysexOutput & 1);
+        sendInfo(x, "editor", info->hasEditor());
+        sendInfo(x, "synth", info->isSynth());
+        sendInfo(x, "single", info->singlePrecision());
+        sendInfo(x, "double", info->doublePrecision());
+        sendInfo(x, "midiin", info->midiInput());
+        sendInfo(x, "midiout", info->midiOutput());
+        sendInfo(x, "sysexin", info->sysexInput());
+        sendInfo(x, "sysexout", info->sysexOutput());
     }
 }
 
