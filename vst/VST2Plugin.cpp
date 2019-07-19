@@ -186,7 +186,7 @@ void VST2Factory::probe() {
     #endif
         for (auto& shell : result->shellPlugins_){
             try {
-                LOG_DEBUG("probing '" << shell.name << "'");
+                // LOG_DEBUG("probing '" << shell.name << "'");
                 auto shellResult = probePlugin(shell.name, shell.id);
                 plugins_.push_back(shellResult);
                 // factory is valid if contains at least 1 valid plugin

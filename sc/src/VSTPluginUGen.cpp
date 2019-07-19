@@ -138,6 +138,39 @@ static bool gSearching = false;
 
 static VSTPluginManager gPluginManager;
 
+#define SETTINGS_DIR ".VSTPlugin"
+#define SETTINGS_FILE "plugins.ini"
+
+static std::string getSettingsDir(){
+#ifdef _WIN32
+    return expandPath("%USERPROFILE%\\" SETTINGS_DIR);
+#else
+    return expandPath("~/.vstplugin~" SETTINGS_DIR);
+#endif
+}
+
+static void readIniFile(){
+    try {
+        gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
+    } catch (const VSTError& e){
+        LOG_ERROR("couldn't read settings file: " << e.what());
+    }
+}
+
+static void writeIniFile(){
+    try {
+        auto dir = getSettingsDir();
+        if (!pathExists(dir)){
+            if (!createDirectory(dir)){
+                throw VSTError("couldn't create directory");
+            }
+        }
+        gPluginManager.write(dir + "/" SETTINGS_FILE);
+    } catch (const VSTError& e){
+        LOG_ERROR("couldn't write settings file: " << e.what());
+    }
+}
+
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const VSTPluginDesc& desc) {
@@ -151,6 +184,13 @@ static std::string makeKey(const VSTPluginDesc& desc) {
         key = desc.name;
     }
     return key;
+}
+
+void serializePlugin(std::ostream& os, const VSTPluginDesc& desc) {
+    desc.serialize(os);
+    os << "[keys]\n";
+    os << "n=1\n";
+    os << makeKey(desc) << "\n";
 }
 
 static void addFactory(const std::string& path, IVSTFactory::ptr factory) {
@@ -1841,8 +1881,9 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 bool cmdSearch(World *inWorld, void* cmdData) {
     auto data = (InfoCmdData *)cmdData;
     std::vector<VSTPluginDesc::const_ptr> plugins;
-    bool useDefault = data->flags & 1;
-    bool verbose = (data->flags >> 1) & 1;
+    bool useDefault = data->flags & SearchFlags::useDefault;
+    bool verbose = data->flags & SearchFlags::verbose;
+    bool save = data->flags & SearchFlags::save;
     std::vector<std::string> searchPaths;
     auto size = data->size;
     auto ptr = data->buf;
@@ -1866,16 +1907,19 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         auto result = searchPlugins(path, verbose);
         plugins.insert(plugins.end(), result.begin(), result.end());
     }
+    if (save){
+        writeIniFile();
+    }
     // write new info to file (only for local Servers) or buffer
     if (data->path[0]) {
         // write to file
-        std::ofstream file(data->path);
+        std::ofstream file(data->path, std::ios_base::binary | std::ios_base::trunc);
         if (file.is_open()) {
             LOG_DEBUG("writing plugin info to file");
-            for (auto plugin : plugins) {
-                file << makeKey(*plugin) << "\t";
-                plugin->serialize(file);
-                file << "\n"; // seperate plugins with newlines
+            file << "[plugins]\n";
+            file << "n=" << plugins.size() << "\n";
+            for (auto& plugin : plugins) {
+                serializePlugin(file, *plugin);
             }
         }
         else {
@@ -1888,14 +1932,15 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         data->freeData = buf->data; // to be freed in stage 4
         std::stringstream ss;
         LOG_DEBUG("writing plugin info to buffer");
-        for (auto plugin : plugins) {
-            ss << makeKey(*plugin) << "\t";
-            plugin->serialize(ss);
-            ss << "\n"; // seperate plugins with newlines
+        ss << "[plugins]\n";
+        ss << "n=" << plugins.size() << "\n";
+        for (auto& plugin : plugins) {
+            serializePlugin(ss, *plugin);
         }
         allocReadBuffer(buf, ss.str());
     }
     // else do nothing
+
     return true;
 }
 
@@ -1979,6 +2024,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                 int flags = static_cast<InfoCmdData*>(data)->flags;
                 if (flags & 1) {
                     // remove cache file
+                    removeFile(getSettingsDir() + "/" SETTINGS_FILE);
                 }
                 return false;
             }, 0, 0, cmdRTfree, 0, 0);
@@ -1998,10 +2044,9 @@ bool cmdProbe(World *inWorld, void *cmdData) {
         if (data->path[0]) {
             // write to file
             LOG_DEBUG("writing plugin info to file");
-            std::ofstream file(data->path);
+            std::ofstream file(data->path, std::ios_base::binary | std::ios_base::trunc);
             if (file.is_open()) {
-                file << makeKey(*desc) << "\t";
-                desc->serialize(file);
+                serializePlugin(file, *desc);
             }
             else {
                 LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
@@ -2013,8 +2058,7 @@ bool cmdProbe(World *inWorld, void *cmdData) {
             data->freeData = buf->data; // to be freed in stage 4
             std::stringstream ss;
             LOG_DEBUG("writing plugin info to buffer");
-            ss << makeKey(*desc) << "\t";
-            desc->serialize(ss);
+            serializePlugin(ss, *desc);
             allocReadBuffer(buf, ss.str());
         }
         // else do nothing
@@ -2141,6 +2185,9 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_search);
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
+
+    // read cached plugin info
+    readIniFile();
 }
 
 

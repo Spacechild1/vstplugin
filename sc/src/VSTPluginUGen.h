@@ -67,6 +67,12 @@ struct VendorCmdData {
     char data[1];
 };
 
+namespace SearchFlags {
+    const int useDefault = 1;
+    const int verbose = 2;
+    const int save = 4;
+};
+
 struct InfoCmdData {
     static InfoCmdData* create(World* world, int size = 0);
     static InfoCmdData* create(VSTPlugin* owner, const char* path);
@@ -95,8 +101,8 @@ private:
 class VSTPlugin : public SCUnit {
     friend class VSTPluginListener;
     friend struct VSTPluginCmdData;
-    static const uint32 MagicInitialized = 0x5da815bc;
-    static const uint32 MagicQueued = 0x5da815bd;
+    static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
+    static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
 public:
     VSTPlugin();
     ~VSTPlugin();

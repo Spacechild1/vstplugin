@@ -98,48 +98,50 @@ VSTPlugin : MultiOutUGen {
 			"% (%) [%]".format(item.key, item.vendor, item.path).postln; // rather print key instead of name
 		};
 	}
-	*reset { arg server;
+	*reset { arg server, remove=true;
 		server = server ?? Server.default;
-		// clear plugin dictionary
+		// clear local plugin dictionary
 		pluginDict[server] = IdentityDictionary.new;
+		// clear server plugin dictionary
+		// remove=true -> also delete temp file
+		server.listSendMsg(this.resetMsg(remove));
 	}
-	*search { arg server, dir, useDefault=true, verbose=false, wait = -1, action;
+	*resetMsg { arg remove=true;
+		^['/cmd', '/vst_clear', remove.asInt];
+	}
+	*search { arg server, dir, useDefault=true, verbose=false, save=true, wait = -1, action;
 		server = server ?? Server.default;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, action) }
-		{ this.prSearchRemote(server, dir, useDefault, verbose, wait, action) };
+		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, action) }
+		{ this.prSearchRemote(server, dir, useDefault, verbose, save, wait, action) };
 	}
-	*searchMsg { arg dir, useDefault=true, verbose=false, dest=nil;
+	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, dest=nil;
 		var flags;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
 		dir = dir.collect { arg p; this.prResolvePath(p) };
 		// use remote search (won't write to temp file)!
-		flags = (useDefault.asInteger) | (verbose.asInteger << 1);
+		flags = (useDefault.asInteger) | (verbose.asInteger << 1) | (save.asInteger << 2);
 		dest = this.prMakeDest(dest);
 		^['/cmd', '/vst_search', flags, dest] ++ dir;
 	}
-	*prSearchLocal { arg server, dir, useDefault, verbose, action;
+	*prSearchLocal { arg server, dir, useDefault, verbose, save, action;
 		{
 			var dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask VSTPlugin to store the search results in a temp file
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, tmpPath));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, tmpPath));
 			// wait for cmd to finish
 			server.sync;
 			// read file
 			protect {
 				File.use(tmpPath, "rb", { arg file;
-					// plugins are seperated by newlines
-					file.readAllString.split($\n).do { arg line;
-						var info;
-						(line.size > 0).if {
-							info = this.prParseInfo(line);
-							// store under key
-							dict[info.key] = info;
-						}
-					};
+					var stream = CollStream.new(file.readAllString);
+					this.prParseIni(stream).do { arg info;
+						// store under key
+						dict[info.key] = info;
+					}
 				});
 			} { arg error;
 				error.notNil.if { "Failed to read tmp file!".warn };
@@ -149,60 +151,28 @@ VSTPlugin : MultiOutUGen {
 			};
 		}.forkIfNeeded;
 	}
-	*prSearchRemote { arg server, dir, useDefault, verbose, wait, action;
+	*prSearchRemote { arg server, dir, useDefault, verbose, save, wait, action;
 		{
 			var dict = pluginDict[server];
 			var buf = Buffer(server); // get free Buffer
 			// ask VSTPlugin to store the search results in this Buffer
 			// (it will allocate the memory for us!)
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, buf));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, buf));
 			// wait for cmd to finish and update buffer info
 			server.sync;
 			buf.updateInfo({
 				// now read data from Buffer
 				buf.getToFloatArray(wait: wait, timeout: 5, action: { arg array;
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
-					string.split($\n).do { arg line;
-						var info;
-						(line.size > 0).if {
-							info = this.prParseInfo(line);
-							// store under key
-							dict[info.key] = info;
-						}
+					this.prParseIni(CollStream.new(string)).do { arg info;
+						// store under key
+						dict[info.key] = info;
 					};
 					buf.free;
 					action.value; // done
 				});
 			});
 		}.forkIfNeeded;
-	}
-	*prParseInfo { arg string;
-		var nparam, nprogram;
-		// data is seperated by tabs
-		var data = string.split($\t);
-		var info = this.prMakeInfo(data);
-		// get parameters (name + label)
-		nparam = info.numParameters;
-		info.parameterNames = Array.new(nparam);
-		info.parameterLabels = Array.new(nparam);
-		nparam.do { arg i;
-			var onset = 12 + (i * 2);
-			info.parameterNames.add(data[onset]);
-			info.parameterLabels.add(data[onset + 1]);
-		};
-		// create inverse parameter mapping (name -> index)
-		info.parameterIndex = IdentityDictionary.new;
-		info.parameterNames.do { arg name, idx;
-			info.parameterIndex[name.asSymbol] = idx;
-		};
-		// get programs
-		nprogram = info.numPrograms;
-		info.programNames = Array.new(nprogram);
-		nprogram.do { arg i;
-			var onset = 12 + (nparam * 2) + i;
-			info.programNames.add(data[onset]);
-		};
-		^info;
 	}
 	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
@@ -231,7 +201,8 @@ VSTPlugin : MultiOutUGen {
 			File.exists(tmpPath).if {
 				protect {
 					File.use(tmpPath, "rb", { arg file;
-						info = this.prParseInfo(file.readAllString);
+						var stream = CollStream.new(file.readAllString);
+						info = this.prParseInfo(stream);
 						// store under key
 						dict[info.key] = info;
 						// also store under resolved path and custom key
@@ -262,7 +233,7 @@ VSTPlugin : MultiOutUGen {
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
 					var info;
 					(string.size > 0).if {
-						info = this.prParseInfo(string);
+						info = this.prParseInfo(CollStream.new(string));
 						// store under key
 						dict[info.key] = info;
 						// also store under resolved path and custom key
@@ -275,33 +246,153 @@ VSTPlugin : MultiOutUGen {
 			});
 		}.forkIfNeeded;
 	}
-	*prMakeInfo { arg data;
-		var f, flags;
-		f = data[11].asInteger;
-		flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
-		// we have to use an IdentityDictionary instead of Event because the latter
-		// overrides the 'asUGenInput' method, which we implicitly need in VSTPlugin.ar
-		^IdentityDictionary.new(parent: parentInfo, know: true).putPairs([
-			key: data[0].asSymbol,
-			path: data[1].asString,
-			name: data[2].asString,
-			vendor: data[3].asString,
-			category: data[4].asString,
-			version: data[5].asString,
-			id: data[6].asInteger,
-			numInputs: data[7].asInteger,
-			numOutputs: data[8].asInteger,
-			numParameters: data[9].asInteger,
-			numPrograms: data[10].asInteger,
-			hasEditor: flags[0],
-			isSynth: flags[1],
-			singlePrecision: flags[2],
-			doublePrecision: flags[3],
-			midiInput: flags[4],
-			midiOutput: flags[5],
-			sysexInput: flags[6],
-			sysexOutput: flags[7]
-		]);
+	*prGetLine { arg stream, skipEmpty=false;
+		var pos, line;
+		{
+			pos = stream.pos;
+			line = stream.readUpTo($\n);
+			stream.pos_(pos + line.size + 1);
+			line ?? { ^nil }; // EOF
+			((skipEmpty.not || (line.size > 0)) // skip empty lines
+				&& (line[0] != $#) // skip comments
+				&& (line[0] != $;)).if { ^line };
+		}.loop;
+	}
+	*prParseCount { arg line;
+		var onset = line.find("=");
+		onset ?? { Error("plugin info: bad data (expecting 'n=<number>')").throw; };
+		^line[(onset+1)..].asInteger; // will eat whitespace and stop at newline
+	}
+	*prTrim { arg str;
+		var start, end;
+		var isWhiteSpace = { arg c; (c == $ ) || (c == $\t) };
+		(str.size == 0).if { ^str };
+		start = block { arg break;
+			str.do { arg c, i;
+				isWhiteSpace.(c).not.if {
+					break.value(i);
+				}
+			}
+			^""; // all white space
+		};
+		end = block { arg break;
+			str.reverseDo { arg c, i;
+				isWhiteSpace.(c).not.if {
+					break.value(str.size - i - 1);
+				}
+			}
+		};
+		^str[start..end]; // start and end can be both nil
+	}
+	*prParseKeyValuePair { arg line;
+		var key, value, split = line.find("=");
+		split ?? { Error("plugin info: bad data (expecting 'key=value')").throw; };
+		key = line[0..(split-1)];
+		split = split + 1;
+		(split < line.size).if {
+			value = line[split..];
+		} { value = "" };
+		^[this.prTrim(key), this.prTrim(value)];
+	}
+	*prParseIni { arg stream;
+		var results, onset, line, n, indices, last = 0;
+		// skip header
+		line = this.prGetLine(stream, true);
+		(line != "[plugins]").if { ^Error("missing [plugins] header").throw };
+		// get number of plugins
+		line = this.prGetLine(stream, true);
+		n = this.prParseCount(line);
+		results = Array.newClear(n);
+		// now serialize plugins
+		n.do { arg i;
+			results[i] = this.prParseInfo(stream);
+		};
+		^results;
+	}
+	*prParseInfo { arg stream;
+		var info = IdentityDictionary.new(parent: parentInfo, know: true);
+		var paramNames = Array.new, paramLabels = Array.new, programs = Array.new, keys = Array.new;
+		var line, key, value, onset, n, f, flags, plugin = false;
+		{
+			line = this.prGetLine(stream, true);
+			line ?? { ^Error("EOF reached").throw };
+			// line.postln;
+			switch(line,
+				"[plugin]", { plugin = true; },
+				"[parameters]",
+				{
+					line = this.prGetLine(stream);
+					n = this.prParseCount(line);
+					paramNames = Array.newClear(n);
+					paramLabels = Array.newClear(n);
+					n.do { arg i;
+						var name, label;
+						line = this.prGetLine(stream);
+						#name, label = line.split($,);
+						paramNames[i] = this.prTrim(name);
+						paramLabels[i] = this.prTrim(label);
+					};
+					info.parameterNames = paramNames;
+					info.parameterLabels = paramLabels;
+				},
+				"[programs]",
+				{
+					line = this.prGetLine(stream);
+					n = this.prParseCount(line);
+					programs = Array.newClear(n);
+					n.do { arg i;
+						programs[i] = line = this.prGetLine(stream);
+					};
+					info.programNames = programs;
+				},
+				"[keys]",
+				{
+					line = this.prGetLine(stream);
+					n = this.prParseCount(line);
+					keys = Array.newClear(n);
+					n.do { arg i;
+						keys[i] = this.prGetLine(stream);
+					};
+					// for now, there is only one key
+					info.key = keys[0];
+					// *** EXIT POINT ***
+					^info;
+				},
+				{
+					// plugin
+					plugin.not.if {
+						^Error("plugin info: bad data (%)".format(line)).throw;
+					};
+					#key, value = this.prParseKeyValuePair(line);
+					switch(key,
+						"path", { info[key] = value },
+						"name", { info[key] = value },
+						"vendor", { info[key] = value },
+						"category", { info[key] = value },
+						"version", { info[key] = value },
+						"id", { info[key] = value.asInteger },
+						"inputs", { info.numInputs = value.asInteger },
+						"outputs", { info.numOutputs = value.asInteger },
+						"flags",
+						{
+							f = value.asInteger;
+							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
+							info.putPairs([
+								hasEditor: flags[0],
+								isSynth: flags[1],
+								singlePrecision: flags[2],
+								doublePrecision: flags[3],
+								midiInput: flags[4],
+								midiOutput: flags[5],
+								sysexInput: flags[6],
+								sysexOutput: flags[7]
+							]);
+						},
+						{ ^Error("plugin info: unknown key '%'".format(key)).throw }
+					);
+				},
+			);
+		}.loop;
 	}
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];
