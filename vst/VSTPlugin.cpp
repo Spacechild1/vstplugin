@@ -138,7 +138,17 @@ bool createDirectory(const std::string& dir){
     std::error_code err;
     return fs::create_directory(widen(dir), err);
 #else
-    return mkdir(dir.c_str(), DEFFILEMODE) == 0;
+    int result = mkdir(dir.c_str(), ACCESSPERMS);
+    if (result == 0){
+        // force correct permission with chmod() in case the umask has been set
+        // to the wrong value. setting/unsetting the umask is not thread safe...
+        if (chmod(dir.c_str(), ACCESSPERMS) == 0){
+            return true;
+        } else {
+            LOG_ERROR("chmod failed!");
+        }
+    }
+    return false;
 #endif
 }
 

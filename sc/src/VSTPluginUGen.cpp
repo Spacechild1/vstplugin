@@ -145,7 +145,7 @@ static std::string getSettingsDir(){
 #ifdef _WIN32
     return expandPath("%USERPROFILE%\\" SETTINGS_DIR);
 #else
-    return expandPath("~/.vstplugin~" SETTINGS_DIR);
+    return expandPath("~/" SETTINGS_DIR);
 #endif
 }
 
