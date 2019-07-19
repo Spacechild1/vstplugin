@@ -109,7 +109,7 @@ VSTPlugin : MultiOutUGen {
 	*resetMsg { arg remove=true;
 		^['/cmd', '/vst_clear', remove.asInt];
 	}
-	*search { arg server, dir, useDefault=true, verbose=false, save=true, wait = -1, action;
+	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true;
 		server = server ?? Server.default;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
