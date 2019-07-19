@@ -821,8 +821,9 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     bool update = true; // update cache file
     std::vector<std::string> searchPaths;
 
-    if (!x->x_thread.joinable()){
+    if (x->x_thread.joinable()){
         pd_error(x, "%s: already searching!", classname(x));
+        return;
     }
 
     while (argc && argv->a_type == A_SYMBOL){
