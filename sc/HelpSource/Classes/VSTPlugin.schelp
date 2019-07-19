@@ -243,16 +243,32 @@ note::This is only relevant for remote Servers (local Servers will send the plug
 ARGUMENT:: action
 an action to be called after the search has finished.
 
+ARGUMENT:: save
+whether the search results should be written to the cache file.
+
+
 DISCUSSION::
-Directories are searched recursively. For each valid VST plugin, the information is stored in the Client 
+Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client 
 and can be retrieved with its key (see link::#Plugin Management::).
 
 If a plugin can't be probed ("... failed!") it either means it's not a valid VST 2.x plugin (VST 3 is not supported yet)
 or it has the wrong architecture. 
 note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
 
-A new search doesn't automatically clear the cache, but existing keys are overwritten. 
-You can clear the cache explicitly with link::#*reset::.
+A new search doesn't automatically clear the dictionary, but existing keys are overwritten. 
+You can clear the dictionary explicitly with link::#*reset::.
+
+For efficiency, search results are written to a cache file (on the Server's computer) to significantly speed up subsequent searches 
+(cached plugins don't have to probed again). Many DAWs use a similar strategy. If you want to search directories without updating the cache, set code::save:: to code::false::.
+
+NOTE::
+The very first search in a directory usually takes a couple of seconds, but if you have many (heavy) plugins, the process can take significantly longer. 
+However, subsequent searches will be almost instantaneous (because of the cache file).
+::
+
+WARNING::
+Shell plugins like "Waves" contain hundreds of (heavy) sub-plugins. On my machine, the very first search takes several minutes(!), so be patient :-)
+::
 
 METHOD:: searchMsg
 
@@ -261,6 +277,8 @@ ARGUMENT:: dir
 ARGUMENT:: useDefault
 (see above)
 ARGUMENT:: verbose
+(see above)
+ARGUMENT:: save
 (see above)
 ARGUMENT:: dest
 
@@ -335,6 +353,10 @@ Deletes all cached plugin info for a Server.
 
 ARGUMENT:: server
 the Server. If this is code::nil::, the default Server is assumed.
+
+ARGUMENT:: remove
+whether you want to also remove the cache file.
+
 
 INSTANCEMETHODS::
 
