@@ -387,7 +387,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, bool 
                 auto plugin = factory->getPlugin(0);
                 if (!plugin) {
                     LOG_ERROR("probePlugin: bug");
-                    return nullptr;
+                    return;
                 }
                 if (plugin->valid()) {
                     if (verbose) LOG_VERBOSE(pluginPath << " " << plugin->name);
@@ -400,7 +400,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, bool 
                     auto plugin = factory->getPlugin(i);
                     if (!plugin) {
                         LOG_ERROR("probePlugin: bug");
-                        return nullptr;
+                        return;
                     }
                     if (plugin->valid()) {
                         if (verbose) LOG_VERBOSE("  " << plugin->name);
@@ -416,7 +416,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, bool 
                     auto plugin = factory->getPlugin(i);
                     if (!plugin) {
                         LOG_ERROR("probePlugin: bug");
-                        return nullptr;
+                        return;
                     }
                     if (plugin->valid()) {
                         results.push_back(plugin);
