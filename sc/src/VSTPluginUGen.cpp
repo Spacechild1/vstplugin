@@ -1284,31 +1284,19 @@ bool cmdReadPresetDone(World *world, void *cmdData){
     return false; // done
 }
 
-void VSTPlugin::readProgram(const char *path){
+template<bool bank>
+void VSTPlugin::readPreset(const char *path){
     if (check()){
         doCmd(InfoCmdData::create(this, path),
-            cmdReadPreset<false>, cmdReadPresetDone<false>);
+            cmdReadPreset<bank>, cmdReadPresetDone<bank>);
     }
 }
 
-void VSTPlugin::readProgram(int32 buf) {
+template<bool bank>
+void VSTPlugin::readPreset(int32 buf) {
     if (check()) {
         doCmd(InfoCmdData::create(this, buf),
-            cmdReadPreset<false>, cmdReadPresetDone<false>);
-    }
-}
-
-void VSTPlugin::readBank(const char *path) {
-    if (check()) {
-        doCmd(InfoCmdData::create(this, path),
-            cmdReadPreset<true>, cmdReadPresetDone<true>);
-    }
-}
-
-void VSTPlugin::readBank(int32 buf) {
-    if (check()) {
-        doCmd(InfoCmdData::create(this, buf),
-            cmdReadPreset<true>, cmdReadPresetDone<true>);
+            cmdReadPreset<bank>, cmdReadPresetDone<bank>);
     }
 }
 
@@ -1352,31 +1340,19 @@ bool cmdWritePresetDone(World *world, void *cmdData){
     return true; // continue
 }
 
-void VSTPlugin::writeProgram(const char *path) {
+template<bool bank>
+void VSTPlugin::writePreset(const char *path) {
     if (check()) {
         doCmd(InfoCmdData::create(this, path), 
-            cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
+            cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
     }
 }
 
-void VSTPlugin::writeProgram(int32 buf) {
+template<bool bank>
+void VSTPlugin::writePreset(int32 buf) {
     if (check()) {
         doCmd(InfoCmdData::create(this, buf),
-            cmdWritePreset<false>, cmdWritePresetDone<false>, InfoCmdData::nrtFree);
-    }
-}
-
-void VSTPlugin::writeBank(const char *path) {
-    if (check()) {
-        doCmd(InfoCmdData::create(this, path),
-            cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
-    }
-}
-
-void VSTPlugin::writeBank(int32 buf) {
-    if (check()) {
-        doCmd(InfoCmdData::create(this, buf),
-            cmdWritePreset<true>, cmdWritePresetDone<true>, InfoCmdData::nrtFree);
+            cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
     }
 }
 
@@ -1782,37 +1758,37 @@ void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
 
 void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->readProgram(args->gets()); // file name
+        unit->readPreset<false>(args->gets()); // file name
     }
     else {
-        unit->readProgram(args->geti()); // buf num
+        unit->readPreset<false>(args->geti()); // buf num
     }
 }
 
 void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {	
     if (args->nextTag() == 's') {
-        unit->writeProgram(args->gets()); // file name
+        unit->writePreset<false>(args->gets()); // file name
     }
     else {
-        unit->writeProgram(args->geti()); // buf num
+        unit->writePreset<false>(args->geti()); // buf num
     }
 }
 
 void vst_bank_read(VSTPlugin* unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->readBank(args->gets()); // file name
+        unit->readPreset<true>(args->gets()); // file name
     }
     else {
-        unit->readBank(args->geti()); // buf num
+        unit->readPreset<true>(args->geti()); // buf num
     }
 }
 
 void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->writeBank(args->gets()); // file name
+        unit->writePreset<true>(args->gets()); // file name
     }
     else {
-        unit->writeBank(args->geti()); // buf num
+        unit->writePreset<true>(args->geti()); // buf num
     }
 }
 

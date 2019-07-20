@@ -1513,8 +1513,9 @@ static void vstplugin_program_list(t_vstplugin *x){
     }
 }
 
-// set program data (list of bytes)
-static void vstplugin_program_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+// set program/bank data (list of bytes)
+template<bool bank>
+static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     std::string buffer;
     buffer.resize(argc);
@@ -1523,21 +1524,30 @@ static void vstplugin_program_data_set(t_vstplugin *x, t_symbol *s, int argc, t_
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     try {
-        x->x_plugin->readProgramData(buffer);
+        if (bank)
+            x->x_plugin->readBankData(buffer);
+        else
+            x->x_plugin->readProgramData(buffer);
         x->x_editor->update();
     } catch (const VSTError& e) {
-        pd_error(x, "%s: couldn't set program data: %s", classname(x), e.what());
+        pd_error(x, "%s: couldn't set %s data: %s",
+                 classname(x), (bank ? "bank" : "program"), e.what());
     }
 }
 
-// get program data
-static void vstplugin_program_data_get(t_vstplugin *x){
+// get program/bank data
+template<bool bank>
+static void vstplugin_preset_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     try {
-        x->x_plugin->writeProgramData(buffer);
+        if (bank)
+            x->x_plugin->writeBankData(buffer);
+        else
+            x->x_plugin->writeProgramData(buffer);
     } catch (const VSTError& e){
-        pd_error(x, "%s: couldn't get program data: %s", classname(x), e.what());
+        pd_error(x, "%s: couldn't get %s data: %s",
+                 classname(x), (bank ? "bank" : "program"), e.what());
         return;
     }
     const int n = buffer.size();
@@ -1547,17 +1557,19 @@ static void vstplugin_program_data_get(t_vstplugin *x){
             // first convert to range 0-255, then assign to t_float (not 100% portable...)
         SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
     }
-    outlet_anything(x->x_messout, gensym("program_data"), n, atoms.data());
+    outlet_anything(x->x_messout, gensym(bank ? "bank_data" : "program_data"),
+                    n, atoms.data());
 }
 
-// read program file (.FXP)
-static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
+// read program/bank file (.FXP/.FXB)
+template<bool bank>
+static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char dir[MAXPDSTRING], *name;
     int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
-        pd_error(x, "%s: couldn't read program file '%s' - no such file!",
-                 classname(x), s->s_name);
+        pd_error(x, "%s: couldn't read %s file '%s' - no such file!",
+                 classname(x), (bank ? "bank" : "program"), s->s_name);
         return;
     }
     sys_close(fd);
@@ -1565,97 +1577,32 @@ static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
     // sys_bashfilename(path, path);
     try {
-        x->x_plugin->readProgramFile(path);
+        if (bank)
+            x->x_plugin->readBankFile(path);
+        else
+            x->x_plugin->readProgramFile(path);
         x->x_editor->update();
     } catch (const VSTError& e) {
-        pd_error(x, "%s: couldn't read program file '%s':\n%s",
-                 classname(x), s->s_name, e.what());
+        pd_error(x, "%s: couldn't read %s file '%s':\n%s",
+                 classname(x), s->s_name, (bank ? "bank" : "program"), e.what());
     }
 }
 
-// write program file (.FXP)
-static void vstplugin_program_write(t_vstplugin *x, t_symbol *s){
+// write program/bank file (.FXP/.FXB)
+template<bool bank>
+static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
     canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
     try {
-        x->x_plugin->writeProgramFile(path);
+        if (bank)
+            x->x_plugin->writeBankFile(path);
+        else
+            x->x_plugin->readProgramFile(path);
+
     } catch (const VSTError& e){
-        pd_error(x, "%s: couldn't write program file '%s':\n%s",
-                 classname(x), s->s_name, e.what());
-    }
-}
-
-// set bank data (list of bytes)
-static void vstplugin_bank_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
-    if (!x->check_plugin()) return;
-    std::string buffer;
-    buffer.resize(argc);
-    for (int i = 0; i < argc; ++i){
-            // first clamp to 0-255, then assign to char (not 100% portable...)
-        buffer[i] = (unsigned char)atom_getfloat(argv + i);
-    }
-    try {
-        x->x_plugin->readBankData(buffer);
-        x->x_editor->update();
-    } catch (const VSTError& e) {
-        pd_error(x, "%s: couldn't set bank data: %s", classname(x), e.what());
-    }
-}
-
-// get bank data
-static void vstplugin_bank_data_get(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    std::string buffer;
-    try {
-        x->x_plugin->writeBankData(buffer);
-    } catch (const VSTError& e){
-        pd_error(x, "%s: couldn't get bank data: %s", classname(x), e.what());
-        return;
-    }
-    const int n = buffer.size();
-    std::vector<t_atom> atoms;
-    atoms.resize(n);
-    for (int i = 0; i < n; ++i){
-            // first convert to range 0-255, then assign to t_float (not 100% portable...)
-        SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
-    }
-    outlet_anything(x->x_messout, gensym("bank_data"), n, atoms.data());
-}
-
-// read bank file (.FXB)
-static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
-    if (!x->check_plugin()) return;
-    char dir[MAXPDSTRING], *name;
-    int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
-    if (fd < 0){
-        pd_error(x, "%s: couldn't read bank file '%s' - no such file!",
-                 classname(x), s->s_name);
-        return;
-    }
-    sys_close(fd);
-    char path[MAXPDSTRING];
-    snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
-    // sys_bashfilename(path, path);
-    try {
-        x->x_plugin->readBankFile(path);
-        x->x_editor->update();
-    } catch (const VSTError& e) {
-        pd_error(x, "%s: couldn't read bank file '%s':\n%s",
-                 classname(x), s->s_name, e.what());
-    }
-}
-
-// write bank file (.FXB)
-static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
-    if (!x->check_plugin()) return;
-    char path[MAXPDSTRING];
-    canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
-    try {
-        x->x_plugin->writeBankFile(path);
-    } catch (const VSTError& e){
-        pd_error(x, "%s: couldn't write bank file '%s':\n%s",
-                 classname(x), s->s_name, e.what());
+        pd_error(x, "%s: couldn't write %s file '%s':\n%s",
+                 classname(x), (bank ? "bank" : "program"), s->s_name, e.what());
     }
 }
 
@@ -2111,15 +2058,15 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_list, gensym("program_list"), A_NULL);
         // read/write fx programs
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_data_set, gensym("program_data_set"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_data_get, gensym("program_data_get"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_read, gensym("program_read"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_write, gensym("program_write"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<false>, gensym("program_data_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<false>, gensym("program_data_get"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<false>, gensym("program_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<false>, gensym("program_write"), A_SYMBOL, A_NULL);
         // read/write fx banks
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_data_set, gensym("bank_data_set"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_data_get, gensym("bank_data_get"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_read, gensym("bank_read"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_bank_write, gensym("bank_write"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<true>, gensym("bank_data_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<true>, gensym("bank_data_get"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<true>, gensym("bank_read"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<true>, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
 

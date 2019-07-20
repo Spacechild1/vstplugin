@@ -133,14 +133,14 @@ public:
     void setProgram(int32 index);
     void setProgramName(const char *name);
     void queryPrograms(int32 index, int32 count);
-    void readProgram(const char *path);
-    void readProgram(int32 buf);
-    void readBank(const char *path);
-    void readBank(int32 buf);
-    void writeProgram(const char *path);
-    void writeProgram(int32 buf);
-    void writeBank(const char *path);
-    void writeBank(int32 buf);
+    template<bool bank>
+    void readPreset(const char *path);
+    template<bool bank>
+    void readPreset(int32 buf);
+    template<bool bank>
+    void writePreset(const char *path);
+    template<bool bank>
+    void writePreset(int32 buf);
     // midi
     void sendMidiMsg(int32 status, int32 data1, int32 data2);
     void sendSysexMsg(const char *data, int32 n);
