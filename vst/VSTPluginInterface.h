@@ -162,14 +162,19 @@ class IVSTPlugin {
     virtual void setBankChunkData(const void *data, size_t size) = 0;
     virtual void getBankChunkData(void **data, size_t *size) const = 0;
 
-    virtual bool readProgramFile(const std::string& path) = 0;
-    virtual bool readProgramData(const char *data, size_t size) = 0;
-    virtual bool readProgramData(const std::string& buffer) = 0;
+    // the following methods throws an VSTError exception on failure!
+    virtual void readProgramFile(const std::string& path) = 0;
+    virtual void readProgramData(const char *data, size_t size) = 0;
+    void readProgramData(const std::string& buffer) {
+        readProgramData(buffer.data(), buffer.size());
+    }
     virtual void writeProgramFile(const std::string& path) = 0;
     virtual void writeProgramData(std::string& buffer) = 0;
-    virtual bool readBankFile(const std::string& path) = 0;
-    virtual bool readBankData(const char *data, size_t size) = 0;
-    virtual bool readBankData(const std::string& buffer) = 0;
+    virtual void readBankFile(const std::string& path) = 0;
+    virtual void readBankData(const char *data, size_t size) = 0;
+    void readBankData(const std::string& buffer) {
+        readBankData(buffer.data(), buffer.size());
+    }
     virtual void writeBankFile(const std::string& path) = 0;
     virtual void writeBankData(std::string& buffer) = 0;
 
@@ -199,6 +204,7 @@ struct VSTPluginDesc {
         factory_ = factory;
     }
     // create new instances
+     // throws an VSTError exception on failure!
     IVSTPlugin::ptr create() const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
@@ -278,6 +284,7 @@ struct VSTPluginDesc {
 
 class IModule {
  public:
+     // throws an VSTError exception on failure!
     static std::unique_ptr<IModule> load(const std::string& path);
     virtual ~IModule(){}
     virtual bool init() = 0; // VST3 only
@@ -296,17 +303,20 @@ class IVSTFactory : public std::enable_shared_from_this<IVSTFactory> {
     using const_ptr = std::shared_ptr<const IVSTFactory>;
 
     // expects an absolute path to the actual plugin file with or without extension
+    // throws an VSTError exception on failure!
     static IVSTFactory::ptr load(const std::string& path);
 
     virtual ~IVSTFactory(){}
     virtual void addPlugin(VSTPluginDesc::ptr desc) = 0;
     virtual VSTPluginDesc::const_ptr getPlugin(int index) const = 0;
     virtual int numPlugins() const = 0;
+    // throws an VSTError exception on failure!
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin
     virtual std::string path() const = 0;
     // create a new plugin instance
+    // throws an VSTError exception on failure!
     virtual IVSTPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
  protected:
     VSTPluginDesc::ptr probePlugin(const std::string& name, int shellPluginID = 0);

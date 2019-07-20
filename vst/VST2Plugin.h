@@ -129,18 +129,12 @@ class VST2Plugin final : public IVSTPlugin {
     void setBankChunkData(const void *data, size_t size) override;
     void getBankChunkData(void **data, size_t *size) const override;
 
-    bool readProgramFile(const std::string& path) override;
-    bool readProgramData(const char *data, size_t size) override;
-    bool readProgramData(const std::string& buffer) override {
-        return readProgramData(buffer.data(), buffer.size());
-    }
+    void readProgramFile(const std::string& path) override;
+    void readProgramData(const char *data, size_t size) override;
     void writeProgramFile(const std::string& path) override;
     void writeProgramData(std::string& buffer) override;
-    bool readBankFile(const std::string& path) override;
-    bool readBankData(const char *data, size_t size) override;
-    bool readBankData(const std::string& buffer) override {
-        return readBankData(buffer.data(), buffer.size());
-    }
+    void readBankFile(const std::string& path) override;
+    void readBankData(const char *data, size_t size) override;
     void writeBankFile(const std::string& path) override;
     void writeBankData(std::string& buffer) override;
 

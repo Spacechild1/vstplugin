@@ -711,24 +711,22 @@ void VST2Plugin::getBankChunkData(void **data, size_t *size) const {
     *size = dispatch(effGetChunk, false, 0, data);
 }
 
-bool VST2Plugin::readProgramFile(const std::string& path){
+void VST2Plugin::readProgramFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){
-        LOG_ERROR("VST2Plugin::readProgramFile: couldn't open file " << path);
-        return false;
+        throw VSTError("couldn't open file " + path);
     }
     file.seekg(0, std::ios_base::end);
     std::string buffer;
     buffer.resize(file.tellg());
     file.seekg(0, std::ios_base::beg);
     file.read(&buffer[0], buffer.size());
-    return readProgramData(buffer);
+    readProgramData(buffer.data(), buffer.size());
 }
 
-bool VST2Plugin::readProgramData(const char *data, size_t size){
+void VST2Plugin::readProgramData(const char *data, size_t size){
     if (size < fxProgramHeaderSize){  // see vstfxstore.h
-        LOG_ERROR("fxProgram: bad header size");
-        return false;
+        throw VSTError("fxProgram: bad header size");
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
     const VstInt32 byteSize = bytes_to_int32(data+4);
@@ -742,22 +740,18 @@ bool VST2Plugin::readProgramData(const char *data, size_t size){
     const char *prgName = data+28;
     const char *prgData = data + fxProgramHeaderSize;
     if (chunkMagic != cMagic){
-        LOG_ERROR("fxProgram: bad format");
-        return false;
+        throw VSTError("fxProgram: bad format");
     }
     if (totalSize > size){
-        LOG_ERROR("fxProgram: too little data");
-        return false;
+        throw VSTError("fxProgram: too little data");
     }
 
     if (fxMagic == fMagic){ // list of parameters
         if (hasChunkData()){
-            LOG_ERROR("fxProgram: plugin expects chunk data");
-            return false;
+            throw VSTError("fxProgram: plugin expects chunk data");
         }
         if (numParams * sizeof(float) > totalSize - fxProgramHeaderSize){
-            LOG_ERROR("fxProgram: byte size doesn't match number of parameters");
-            return false;
+            throw VSTError("fxProgram: byte size doesn't match number of parameters");
         }
         setProgramName(prgName);
         for (int i = 0; i < numParams; ++i){
@@ -766,28 +760,23 @@ bool VST2Plugin::readProgramData(const char *data, size_t size){
         }
     } else if (fxMagic == chunkPresetMagic){ // chunk data
         if (!hasChunkData()){
-            LOG_ERROR("fxProgram: plugin doesn't expect chunk data");
-            return false;
+            throw VSTError("fxProgram: plugin doesn't expect chunk data");
         }
         const size_t chunkSize = bytes_to_int32(prgData);
         if (chunkSize != totalSize - fxProgramHeaderSize - 4){
-            LOG_ERROR("fxProgram: wrong chunk size");
-            return false;
+            throw VSTError("fxProgram: wrong chunk size");
         }
         setProgramName(prgName);
         setProgramChunkData(prgData + 4, chunkSize);
     } else {
-        LOG_ERROR("fxProgram: bad format");
-        return false;
+        throw VSTError("fxProgram: bad format");
     }
-    return true;
 }
 
 void VST2Plugin::writeProgramFile(const std::string& path){
     std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
     if (!file.is_open()){
-        LOG_ERROR("VST2Plugin::writeProgramFile: couldn't create file " << path);
-        return;
+        throw VSTError("couldn't create file " + path);
     }
     std::string buffer;
     writeProgramData(buffer);
@@ -835,8 +824,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
         getProgramChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
                 // shouldn't happen...
-            LOG_ERROR("fxProgram bug: couldn't get chunk data");
-            return;
+            throw VSTError("fxProgram bug: couldn't get chunk data");
         }
             // totalSize: header size + 'size' field + actual chunk data
         const size_t totalSize = fxProgramHeaderSize + 4 + chunkSize;
@@ -858,24 +846,22 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     }
 }
 
-bool VST2Plugin::readBankFile(const std::string& path){
+void VST2Plugin::readBankFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){
-        LOG_ERROR("VST2Plugin::readBankFile: couldn't open file " << path);
-        return false;
+        throw VSTError("couldn't open file " + path);
     }
     file.seekg(0, std::ios_base::end);
     std::string buffer;
     buffer.resize(file.tellg());
     file.seekg(0, std::ios_base::beg);
     file.read(&buffer[0], buffer.size());
-    return readBankData(buffer);
+    readBankData(buffer.data(), buffer.size());
 }
 
-bool VST2Plugin::readBankData(const char *data, size_t size){
+void VST2Plugin::readBankData(const char *data, size_t size){
     if (size < fxBankHeaderSize){  // see vstfxstore.h
-        LOG_ERROR("fxBank: bad header size");
-        return false;
+        throw VSTError("fxBank: bad header size");
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
     const VstInt32 byteSize = bytes_to_int32(data+4);
@@ -889,23 +875,19 @@ bool VST2Plugin::readBankData(const char *data, size_t size){
     const VstInt32 currentProgram = bytes_to_int32(data + 28);
     const char *bankData = data + fxBankHeaderSize;
     if (chunkMagic != cMagic){
-        LOG_ERROR("fxBank: bad format");
-        return false;
+        throw VSTError("fxBank: bad format");
     }
     if (totalSize > size){
-        LOG_ERROR("fxBank: too little data");
-        return false;
+        throw VSTError("fxBank: too little data");
     }
 
     if (fxMagic == bankMagic){ // list of parameters
         if (hasChunkData()){
-            LOG_ERROR("fxBank: plugin expects chunk data");
-            return false;
+            throw VSTError("fxBank: plugin expects chunk data");
         }
         const size_t programSize = fxProgramHeaderSize + getNumParameters() * sizeof(float);
         if (numPrograms * programSize > totalSize - fxBankHeaderSize){
-            LOG_ERROR("fxBank: byte size doesn't match number of programs");
-            return false;
+            throw VSTError("fxBank: byte size doesn't match number of programs");
         }
         for (int i = 0; i < numPrograms; ++i){
             setProgram(i);
@@ -915,27 +897,22 @@ bool VST2Plugin::readBankData(const char *data, size_t size){
         setProgram(currentProgram);
     } else if (fxMagic == chunkBankMagic){ // chunk data
         if (!hasChunkData()){
-            LOG_ERROR("fxBank: plugin doesn't expect chunk data");
-            return false;
+            throw VSTError("fxBank: plugin doesn't expect chunk data");
         }
         const size_t chunkSize = bytes_to_int32(bankData);
         if (chunkSize != totalSize - fxBankHeaderSize - 4){
-            LOG_ERROR("fxBank: wrong chunk size");
-            return false;
+            throw VSTError("fxBank: wrong chunk size");
         }
         setBankChunkData(bankData + 4, chunkSize);
     } else {
-        LOG_ERROR("fxBank: bad format");
-        return false;
+        throw VSTError("fxBank: bad format");
     }
-    return true;
 }
 
 void VST2Plugin::writeBankFile(const std::string& path){
     std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
     if (!file.is_open()){
-        LOG_ERROR("VST2Plugin::writeBankFile: couldn't create file " << path);
-        return;
+        throw VSTError("couldn't create file " + path);
     }
     std::string buffer;
     writeBankData(buffer);
@@ -973,9 +950,8 @@ void VST2Plugin::writeBankData(std::string& buffer){
             writeProgramData(progData);
             if (progData.size() != programSize){
                     // shouldn't happen...
-                LOG_ERROR("fxBank bug: wrong program data size");
                 buffer.clear();
-                return;
+                throw VSTError("fxBank bug: wrong program data size");
             }
             memcpy(bufptr, progData.data(), progData.size());
             bufptr += programSize;
@@ -989,8 +965,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
         getBankChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
                 // shouldn't happen...
-            LOG_ERROR("fxBank bug: couldn't get chunk data");
-            return;
+            throw VSTError("fxBank bug: couldn't get chunk data");
         }
             // totalSize: header size + 'size' field + actual chunk data
         size_t totalSize = fxBankHeaderSize + 4 + chunkSize;

@@ -1522,10 +1522,11 @@ static void vstplugin_program_data_set(t_vstplugin *x, t_symbol *s, int argc, t_
            // first clamp to 0-255, then assign to char (not 100% portable...)
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
-    if (x->x_plugin->readProgramData(buffer)){
+    try {
+        x->x_plugin->readProgramData(buffer);
         x->x_editor->update();
-    } else {
-        pd_error(x, "%s: bad FX program data", classname(x));
+    } catch (const VSTError& e) {
+        pd_error(x, "%s: couldn't set program data: %s", classname(x), e.what());
     }
 }
 
@@ -1533,12 +1534,13 @@ static void vstplugin_program_data_set(t_vstplugin *x, t_symbol *s, int argc, t_
 static void vstplugin_program_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
-    x->x_plugin->writeProgramData(buffer);
-    int n = buffer.size();
-    if (!n){
-        pd_error(x, "%s: couldn't get program data", classname(x));
+    try {
+        x->x_plugin->writeProgramData(buffer);
+    } catch (const VSTError& e){
+        pd_error(x, "%s: couldn't get program data: %s", classname(x), e.what());
         return;
     }
+    const int n = buffer.size();
     std::vector<t_atom> atoms;
     atoms.resize(n);
     for (int i = 0; i < n; ++i){
@@ -1554,17 +1556,20 @@ static void vstplugin_program_read(t_vstplugin *x, t_symbol *s){
     char dir[MAXPDSTRING], *name;
     int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
-        pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
+        pd_error(x, "%s: couldn't read program file '%s' - no such file!",
+                 classname(x), s->s_name);
         return;
     }
     sys_close(fd);
     char path[MAXPDSTRING];
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
     // sys_bashfilename(path, path);
-    if (x->x_plugin->readProgramFile(path)){
+    try {
+        x->x_plugin->readProgramFile(path);
         x->x_editor->update();
-    } else {
-        pd_error(x, "%s: bad FX program file '%s'", classname(x), s->s_name);
+    } catch (const VSTError& e) {
+        pd_error(x, "%s: couldn't read program file '%s':\n%s",
+                 classname(x), s->s_name, e.what());
     }
 }
 
@@ -1573,7 +1578,12 @@ static void vstplugin_program_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
     canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
-    x->x_plugin->writeProgramFile(path);
+    try {
+        x->x_plugin->writeProgramFile(path);
+    } catch (const VSTError& e){
+        pd_error(x, "%s: couldn't write program file '%s':\n%s",
+                 classname(x), s->s_name, e.what());
+    }
 }
 
 // set bank data (list of bytes)
@@ -1585,10 +1595,11 @@ static void vstplugin_bank_data_set(t_vstplugin *x, t_symbol *s, int argc, t_ato
             // first clamp to 0-255, then assign to char (not 100% portable...)
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
-    if (x->x_plugin->readBankData(buffer)){
+    try {
+        x->x_plugin->readBankData(buffer);
         x->x_editor->update();
-    } else {
-        pd_error(x, "%s: bad FX bank data", classname(x));
+    } catch (const VSTError& e) {
+        pd_error(x, "%s: couldn't set bank data: %s", classname(x), e.what());
     }
 }
 
@@ -1596,12 +1607,13 @@ static void vstplugin_bank_data_set(t_vstplugin *x, t_symbol *s, int argc, t_ato
 static void vstplugin_bank_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
-    x->x_plugin->writeBankData(buffer);
-    int n = buffer.size();
-    if (!n){
-        pd_error(x, "%s: couldn't get bank data", classname(x));
+    try {
+        x->x_plugin->writeBankData(buffer);
+    } catch (const VSTError& e){
+        pd_error(x, "%s: couldn't get bank data: %s", classname(x), e.what());
         return;
     }
+    const int n = buffer.size();
     std::vector<t_atom> atoms;
     atoms.resize(n);
     for (int i = 0; i < n; ++i){
@@ -1617,17 +1629,20 @@ static void vstplugin_bank_read(t_vstplugin *x, t_symbol *s){
     char dir[MAXPDSTRING], *name;
     int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
     if (fd < 0){
-        pd_error(x, "%s: couldn't find file '%s'", classname(x), s->s_name);
+        pd_error(x, "%s: couldn't read bank file '%s' - no such file!",
+                 classname(x), s->s_name);
         return;
     }
     sys_close(fd);
     char path[MAXPDSTRING];
     snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
     // sys_bashfilename(path, path);
-    if (x->x_plugin->readBankFile(path)){
+    try {
+        x->x_plugin->readBankFile(path);
         x->x_editor->update();
-    } else {
-        pd_error(x, "%s: bad FX bank file '%s'", classname(x), s->s_name);
+    } catch (const VSTError& e) {
+        pd_error(x, "%s: couldn't read bank file '%s':\n%s",
+                 classname(x), s->s_name, e.what());
     }
 }
 
@@ -1636,7 +1651,12 @@ static void vstplugin_bank_write(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
     char path[MAXPDSTRING];
     canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
-    x->x_plugin->writeBankFile(path);
+    try {
+        x->x_plugin->writeBankFile(path);
+    } catch (const VSTError& e){
+        pd_error(x, "%s: couldn't write bank file '%s':\n%s",
+                 classname(x), s->s_name, e.what());
+    }
 }
 
 /*---------------------------- t_vstplugin (internal methods) -------------------------------------*/

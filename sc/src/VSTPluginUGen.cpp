@@ -1239,23 +1239,29 @@ template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
     auto data = (InfoCmdData*)cmdData;
     auto plugin = data->owner->plugin();
-    bool result;
-    if (data->bufnum < 0) {
-        // from file
-        if (bank)
-            result = plugin->readBankFile(data->path);
-        else
-            result = plugin->readProgramFile(data->path);
+    bool result = true;
+    try {
+        if (data->bufnum < 0) {
+            // from file
+            if (bank)
+                plugin->readBankFile(data->path);
+            else
+                plugin->readProgramFile(data->path);
+        }
+        else {
+            // from buffer
+            std::string presetData;
+            auto buf = World_GetNRTBuf(world, data->bufnum);
+            writeBuffer(buf, presetData);
+            if (bank)
+                plugin->readBankData(presetData);
+            else
+                plugin->readProgramData(presetData);
+        }
     }
-    else {
-        // from buffer
-        std::string presetData;
-        auto buf = World_GetNRTBuf(world, data->bufnum);
-        writeBuffer(buf, presetData);
-        if (bank)
-            result = plugin->readBankData(presetData);
-        else
-            result = plugin->readProgramData(presetData);
+    catch (const VSTError& e) {
+        Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
+        result = false;
     }
     data->flags = result;
     return true;
@@ -1311,29 +1317,28 @@ bool cmdWritePreset(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
     auto plugin = data->owner->plugin();
     bool result = true;
-    if (data->bufnum < 0) {
-        // to file (LATER report failure)
-        if (bank)
-            plugin->writeBankFile(data->path);
-        else
-            plugin->writeProgramFile(data->path);
-    }
-    else {
-        // to buffer
-        std::string presetData;
-        if (bank)
-            plugin->writeBankData(presetData);
-        else
-            plugin->writeProgramData(presetData);
-        // LATER get error from method
-        if (!presetData.empty()) {
+    try {
+        if (data->bufnum < 0) {
+            if (bank)
+                plugin->writeBankFile(data->path);
+            else
+                plugin->writeProgramFile(data->path);
+        }
+        else {
+            // to buffer
+            std::string presetData;
+            if (bank)
+                plugin->writeBankData(presetData);
+            else
+                plugin->writeProgramData(presetData);
             auto buf = World_GetNRTBuf(world, data->bufnum);
             data->freeData = buf->data; // to be freed in stage 4
             allocReadBuffer(buf, presetData);
         }
-        else {
-            result = false;
-        }
+    }
+    catch (const VSTError & e) {
+        Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
+        result = false;
     }
     data->flags = result;
     return true;

@@ -27,6 +27,7 @@ class VSTPluginManager {
     // remove factories and plugin descriptions
     void clear();
     // (de)serialize
+    // throws an VSTError exception on failure!
     void read(const std::string& path, bool update = true);
     void write(const std::string& path);
  private:
