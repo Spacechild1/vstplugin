@@ -6,15 +6,15 @@
 
 namespace vst {
 
-namespace VSTWindowFactory {
+namespace WindowFactory {
     void initializeWin32();
-    IVSTWindow::ptr createWin32(IVSTPlugin::ptr plugin);
+    IWindow::ptr createWin32(IPlugin::ptr plugin);
 }
 
-class VSTWindowWin32 : public IVSTWindow {
+class WindowWin32 : public IWindow {
  public:
-    VSTWindowWin32(IVSTPlugin::ptr plugin);
-    ~VSTWindowWin32();
+    WindowWin32(IPlugin::ptr plugin);
+    ~WindowWin32();
 
     void* getHandle() override {
         return hwnd_;
@@ -33,7 +33,7 @@ class VSTWindowWin32 : public IVSTWindow {
     void update() override;
  private:
     HWND hwnd_ = nullptr;
-    IVSTPlugin::ptr plugin_;
+    IPlugin::ptr plugin_;
 };
 
 } // vst

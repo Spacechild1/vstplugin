@@ -1,4 +1,4 @@
-#include "VSTWindowWin32.h"
+#include "WindowWin32.h"
 #include "Utility.h"
 
 #include <cstring>
@@ -22,7 +22,7 @@ static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LP
     return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
 
-namespace VSTWindowFactory {
+namespace WindowFactory {
     void initializeWin32(){
         static bool initialized = false;
         if (!initialized){
@@ -43,12 +43,12 @@ namespace VSTWindowFactory {
         }
     }
 
-    IVSTWindow::ptr createWin32(IVSTPlugin::ptr plugin){
-        return std::make_shared<VSTWindowWin32>(std::move(plugin));
+    IWindow::ptr createWin32(IPlugin::ptr plugin){
+        return std::make_shared<WindowWin32>(std::move(plugin));
     }
 }
 
-VSTWindowWin32::VSTWindowWin32(IVSTPlugin::ptr plugin)
+WindowWin32::WindowWin32(IPlugin::ptr plugin)
     : plugin_(std::move(plugin))
 {
     hwnd_ = CreateWindowW(
@@ -56,15 +56,15 @@ VSTWindowWin32::VSTWindowWin32(IVSTPlugin::ptr plugin)
           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, NULL, NULL
     );
-    LOG_DEBUG("created VSTWindowWin32");
+    LOG_DEBUG("created WindowWin32");
 }
 
-VSTWindowWin32::~VSTWindowWin32(){
+WindowWin32::~WindowWin32(){
     DestroyWindow(hwnd_);
-    LOG_DEBUG("destroyed VSTWindowWin32");
+    LOG_DEBUG("destroyed WindowWin32");
 }
 
-void VSTWindowWin32::run(){
+void WindowWin32::run(){
 	MSG msg;
     int ret;
     while((ret = GetMessage(&msg, NULL, 0, 0))){
@@ -80,15 +80,15 @@ void VSTWindowWin32::run(){
     plugin_->closeEditor();
 }
 
-void VSTWindowWin32::quit(){
+void WindowWin32::quit(){
     PostMessage(hwnd_, WM_QUIT, 0, 0);
 }
 
-void VSTWindowWin32::setTitle(const std::string& title){
+void WindowWin32::setTitle(const std::string& title){
     SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
-void VSTWindowWin32::setGeometry(int left, int top, int right, int bottom){
+void WindowWin32::setGeometry(int left, int top, int right, int bottom){
     RECT rc;
     rc.left = left;
     rc.top = top;
@@ -101,32 +101,32 @@ void VSTWindowWin32::setGeometry(int left, int top, int right, int bottom){
     MoveWindow(hwnd_, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
 }
 
-void VSTWindowWin32::show(){
+void WindowWin32::show(){
     ShowWindow(hwnd_, SW_SHOW);
     UpdateWindow(hwnd_);
 }
 
-void VSTWindowWin32::hide(){
+void WindowWin32::hide(){
     ShowWindow(hwnd_, SW_HIDE);
     UpdateWindow(hwnd_);
 }
 
-void VSTWindowWin32::minimize(){
+void WindowWin32::minimize(){
     ShowWindow(hwnd_, SW_MINIMIZE);
     UpdateWindow(hwnd_);
 }
 
-void VSTWindowWin32::restore(){
+void WindowWin32::restore(){
     ShowWindow(hwnd_, SW_RESTORE);
     BringWindowToTop(hwnd_);
 }
 
-void VSTWindowWin32::bringToTop(){
+void WindowWin32::bringToTop(){
     minimize();
     restore();
 }
 
-void VSTWindowWin32::update(){
+void WindowWin32::update(){
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 

@@ -21,20 +21,20 @@ typedef unsigned int uint32_t;
 
 namespace vst {
 
-class IVSTPlugin;
+class IPlugin;
 
-class IVSTWindow {
+class IWindow {
  public:
-    using ptr = std::shared_ptr<IVSTWindow>;
-    using const_ptr = std::shared_ptr<const IVSTWindow>;
+    using ptr = std::shared_ptr<IWindow>;
+    using const_ptr = std::shared_ptr<const IWindow>;
     // call this once before you create any windows. not thread safe (yet)
     static void initialize();
     // make a new window
-    static IVSTWindow::ptr create(std::shared_ptr<IVSTPlugin> plugin);
+    static IWindow::ptr create(std::shared_ptr<IPlugin> plugin);
     // poll the main loop (needed if the editor is in the main thread)
     static void poll();
 
-    virtual ~IVSTWindow() {}
+    virtual ~IWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
 	virtual void run() = 0; // run a message loop for this window
@@ -51,49 +51,49 @@ class IVSTWindow {
     virtual void update() {}
 };
 
-struct VSTMidiEvent {
-    VSTMidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
+struct MidiEvent {
+    MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
         data[0] = status; data[1] = data1; data[2] = data2; delta = _delta;
     }
     char data[3];
     int delta;
 };
 
-struct VSTSysexEvent {
-    VSTSysexEvent(const char *_data, size_t _size, int _delta = 0)
+struct SysexEvent {
+    SysexEvent(const char *_data, size_t _size, int _delta = 0)
         : data(_data, _size), delta(_delta){}
     template <typename T>
-    VSTSysexEvent(T&& _data, int _delta = 0)
+    SysexEvent(T&& _data, int _delta = 0)
         : data(std::forward<T>(_data)), delta(_delta){}
-    VSTSysexEvent() = default;
+    SysexEvent() = default;
     std::string data;
     int delta;
 };
 
-class IVSTPluginListener {
+class IPluginListener {
  public:
-    using ptr = std::shared_ptr<IVSTPluginListener>;
-    virtual ~IVSTPluginListener(){}
+    using ptr = std::shared_ptr<IPluginListener>;
+    virtual ~IPluginListener(){}
     virtual void parameterAutomated(int index, float value) = 0;
-    virtual void midiEvent(const VSTMidiEvent& event) = 0;
-    virtual void sysexEvent(const VSTSysexEvent& event) = 0;
+    virtual void midiEvent(const MidiEvent& event) = 0;
+    virtual void sysexEvent(const SysexEvent& event) = 0;
 };
 
-enum class VSTProcessPrecision {
+enum class ProcessPrecision {
     Single,
     Double
 };
 
-struct VSTPluginDesc;
+struct PluginInfo;
 
-class IVSTPlugin {
+class IPlugin {
  public:
-    using ptr = std::shared_ptr<IVSTPlugin>;
-    using const_ptr = std::shared_ptr<const IVSTPlugin>;
+    using ptr = std::shared_ptr<IPlugin>;
+    using const_ptr = std::shared_ptr<const IPlugin>;
 
-    virtual ~IVSTPlugin(){}
+    virtual ~IPlugin(){}
 
-    virtual const VSTPluginDesc& info() const = 0;
+    virtual const PluginInfo& info() const = 0;
     virtual std::string getPluginName() const = 0;
     virtual std::string getPluginVendor() const = 0;
     virtual std::string getPluginCategory() const = 0;
@@ -105,8 +105,8 @@ class IVSTPlugin {
 
     virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
     virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;
-    virtual bool hasPrecision(VSTProcessPrecision precision) const = 0;
-    virtual void setPrecision(VSTProcessPrecision precision) = 0;
+    virtual bool hasPrecision(ProcessPrecision precision) const = 0;
+    virtual void setPrecision(ProcessPrecision precision) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
     virtual void setSampleRate(float sr) = 0;
@@ -120,7 +120,7 @@ class IVSTPlugin {
     virtual void setBypass(bool bypass) = 0;
     virtual void setNumSpeakers(int in, int out) = 0;
 
-    virtual void setListener(IVSTPluginListener::ptr listener) = 0;
+    virtual void setListener(IPluginListener::ptr listener) = 0;
 
     virtual void setTempoBPM(double tempo) = 0;
     virtual void setTimeSignature(int numerator, int denominator) = 0;
@@ -138,8 +138,8 @@ class IVSTPlugin {
     virtual int getNumMidiOutputChannels() const = 0;
     virtual bool hasMidiInput() const = 0;
     virtual bool hasMidiOutput() const = 0;
-    virtual void sendMidiEvent(const VSTMidiEvent& event) = 0;
-    virtual void sendSysexEvent(const VSTSysexEvent& event) = 0;
+    virtual void sendMidiEvent(const MidiEvent& event) = 0;
+    virtual void sendSysexEvent(const SysexEvent& event) = 0;
 
     virtual void setParameter(int index, float value) = 0;
     virtual bool setParameter(int index, const std::string& str) = 0;
@@ -162,7 +162,7 @@ class IVSTPlugin {
     virtual void setBankChunkData(const void *data, size_t size) = 0;
     virtual void getBankChunkData(void **data, size_t *size) const = 0;
 
-    // the following methods throws an VSTError exception on failure!
+    // the following methods throws an Error exception on failure!
     virtual void readProgramFile(const std::string& path) = 0;
     virtual void readProgramData(const char *data, size_t size) = 0;
     void readProgramData(const std::string& buffer) {
@@ -184,7 +184,7 @@ class IVSTPlugin {
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
 };
 
-class IVSTFactory;
+class IFactory;
 
 enum class ProbeResult {
     success,
@@ -193,19 +193,19 @@ enum class ProbeResult {
     none
 };
 
-struct VSTPluginDesc {
-    using ptr = std::shared_ptr<VSTPluginDesc>;
-    using const_ptr = std::shared_ptr<const VSTPluginDesc>;
+struct PluginInfo {
+    using ptr = std::shared_ptr<PluginInfo>;
+    using const_ptr = std::shared_ptr<const PluginInfo>;
 
-	VSTPluginDesc() = default;
-    VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory);
-    VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory, const IVSTPlugin& plugin);
-    void setFactory(const std::shared_ptr<const IVSTFactory>& factory){
+    PluginInfo() = default;
+    PluginInfo(const std::shared_ptr<const IFactory>& factory);
+    PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPlugin& plugin);
+    void setFactory(const std::shared_ptr<const IFactory>& factory){
         factory_ = factory;
     }
     // create new instances
-     // throws an VSTError exception on failure!
-    IVSTPlugin::ptr create() const;
+     // throws an Error exception on failure!
+    IPlugin::ptr create() const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file);
@@ -261,7 +261,7 @@ struct VSTPluginDesc {
     friend class VST2Factory;
     friend class VST3Plugin;
     friend class VST3Factory;
-    std::weak_ptr<const IVSTFactory> factory_;
+    std::weak_ptr<const IFactory> factory_;
     // flags
     enum Flags {
         HasEditor = 1 << 0,
@@ -284,7 +284,7 @@ struct VSTPluginDesc {
 
 class IModule {
  public:
-     // throws an VSTError exception on failure!
+     // throws an Error exception on failure!
     static std::unique_ptr<IModule> load(const std::string& path);
     virtual ~IModule(){}
     virtual bool init() = 0; // VST3 only
@@ -297,34 +297,34 @@ class IModule {
     virtual void *doGetFnPtr(const char *name) const = 0;
 };
 
-class IVSTFactory : public std::enable_shared_from_this<IVSTFactory> {
+class IFactory : public std::enable_shared_from_this<IFactory> {
  public:
-    using ptr = std::shared_ptr<IVSTFactory>;
-    using const_ptr = std::shared_ptr<const IVSTFactory>;
+    using ptr = std::shared_ptr<IFactory>;
+    using const_ptr = std::shared_ptr<const IFactory>;
 
     // expects an absolute path to the actual plugin file with or without extension
-    // throws an VSTError exception on failure!
-    static IVSTFactory::ptr load(const std::string& path);
+    // throws an Error exception on failure!
+    static IFactory::ptr load(const std::string& path);
 
-    virtual ~IVSTFactory(){}
-    virtual void addPlugin(VSTPluginDesc::ptr desc) = 0;
-    virtual VSTPluginDesc::const_ptr getPlugin(int index) const = 0;
+    virtual ~IFactory(){}
+    virtual void addPlugin(PluginInfo::ptr desc) = 0;
+    virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
     virtual int numPlugins() const = 0;
-    // throws an VSTError exception on failure!
+    // throws an Error exception on failure!
     virtual void probe() = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin
     virtual std::string path() const = 0;
     // create a new plugin instance
-    // throws an VSTError exception on failure!
-    virtual IVSTPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
+    // throws an Error exception on failure!
+    virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
  protected:
-    VSTPluginDesc::ptr probePlugin(const std::string& name, int shellPluginID = 0);
+    PluginInfo::ptr probePlugin(const std::string& name, int shellPluginID = 0);
 };
 
-class VSTError : public std::exception {
+class Error : public std::exception {
  public:
-    VSTError(const std::string& msg)
+    Error(const std::string& msg)
         : msg_(msg){}
     const char * what() const noexcept override {
         return msg_.c_str();

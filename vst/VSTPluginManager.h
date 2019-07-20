@@ -13,27 +13,27 @@ namespace vst {
 
 // thread-safe manager for VST plugins (factories and descriptions)
 
-class VSTPluginManager {
+class PluginManager {
  public:
     // factories
-    void addFactory(const std::string& path, IVSTFactory::ptr factory);
-    IVSTFactory::const_ptr findFactory(const std::string& path) const;
+    void addFactory(const std::string& path, IFactory::ptr factory);
+    IFactory::const_ptr findFactory(const std::string& path) const;
     // black-listed modules
     void addException(const std::string& path);
     bool isException(const std::string& path) const;
     // plugin descriptions
-    void addPlugin(const std::string& key, VSTPluginDesc::const_ptr plugin);
-    VSTPluginDesc::const_ptr findPlugin(const std::string& key) const;
+    void addPlugin(const std::string& key, PluginInfo::const_ptr plugin);
+    PluginInfo::const_ptr findPlugin(const std::string& key) const;
     // remove factories and plugin descriptions
     void clear();
     // (de)serialize
-    // throws an VSTError exception on failure!
+    // throws an Error exception on failure!
     void read(const std::string& path, bool update = true);
     void write(const std::string& path);
  private:
     void doWrite(const std::string& path);
-    std::unordered_map<std::string, IVSTFactory::ptr> factories_;
-    std::unordered_map<std::string, VSTPluginDesc::const_ptr> plugins_;
+    std::unordered_map<std::string, IFactory::ptr> factories_;
+    std::unordered_map<std::string, PluginInfo::const_ptr> plugins_;
     std::unordered_set<std::string> exceptions_;
     using Lock = std::lock_guard<std::mutex>;
     mutable std::mutex mutex_;
@@ -41,12 +41,12 @@ class VSTPluginManager {
 
 // implementation
 
-void VSTPluginManager::addFactory(const std::string& path, IVSTFactory::ptr factory) {
+void PluginManager::addFactory(const std::string& path, IFactory::ptr factory) {
     Lock lock(mutex_);
     factories_[path] = std::move(factory);
 }
 
-IVSTFactory::const_ptr VSTPluginManager::findFactory(const std::string& path) const {
+IFactory::const_ptr PluginManager::findFactory(const std::string& path) const {
     Lock lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
@@ -56,22 +56,22 @@ IVSTFactory::const_ptr VSTPluginManager::findFactory(const std::string& path) co
     }
 }
 
-void VSTPluginManager::addException(const std::string &path){
+void PluginManager::addException(const std::string &path){
     Lock lock(mutex_);
     exceptions_.insert(path);
 }
 
-bool VSTPluginManager::isException(const std::string& path) const {
+bool PluginManager::isException(const std::string& path) const {
     Lock lock(mutex_);
     return exceptions_.count(path) != 0;
 }
 
-void VSTPluginManager::addPlugin(const std::string& key, VSTPluginDesc::const_ptr plugin) {
+void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
     Lock lock(mutex_);
     plugins_[key] = std::move(plugin);
 }
 
-VSTPluginDesc::const_ptr VSTPluginManager::findPlugin(const std::string& key) const {
+PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
     Lock lock(mutex_);
     auto desc = plugins_.find(key);
     if (desc != plugins_.end()){
@@ -80,7 +80,7 @@ VSTPluginDesc::const_ptr VSTPluginManager::findPlugin(const std::string& key) co
     return nullptr;
 }
 
-void VSTPluginManager::clear() {
+void PluginManager::clear() {
     Lock lock(mutex_);
     factories_.clear();
     plugins_.clear();
@@ -90,7 +90,7 @@ void VSTPluginManager::clear() {
 bool getLine(std::istream& stream, std::string& line);
 int getCount(const std::string& line);
 
-void VSTPluginManager::read(const std::string& path, bool update){
+void PluginManager::read(const std::string& path, bool update){
     Lock lock(mutex_);
     bool outdated = false;
     LOG_VERBOSE("reading cache file: " << path);
@@ -102,7 +102,7 @@ void VSTPluginManager::read(const std::string& path, bool update){
             int numPlugins = getCount(line);
             while (numPlugins--){
                 // deserialize plugin
-                auto desc = std::make_shared<VSTPluginDesc>();
+                auto desc = std::make_shared<PluginInfo>();
                 desc->deserialize(file);
                 // collect keys
                 std::vector<std::string> keys;
@@ -115,16 +115,16 @@ void VSTPluginManager::read(const std::string& path, bool update){
                         }
                         break;
                     } else {
-                        throw VSTError("bad format");
+                        throw Error("bad format");
                     }
                 }
                 // load the factory (if not loaded already) to verify that the plugin still exists
-                IVSTFactory::ptr factory;
+                IFactory::ptr factory;
                 if (!factories_.count(desc->path)){
                     try {
-                        factory = IVSTFactory::load(desc->path);
+                        factory = IFactory::load(desc->path);
                         factories_[desc->path] = factory;
-                    } catch (const VSTError& e){
+                    } catch (const Error& e){
                         // this probably happens when the plugin has been (re)moved
                         LOG_ERROR("couldn't load '" << desc->name << "': " << e.what());
                         outdated = true; // we need to update the cache
@@ -147,7 +147,7 @@ void VSTPluginManager::read(const std::string& path, bool update){
                 exceptions_.insert(line);
             }
         } else {
-            throw VSTError("bad data: " + line);
+            throw Error("bad data: " + line);
         }
     }
     if (update && outdated){
@@ -155,27 +155,27 @@ void VSTPluginManager::read(const std::string& path, bool update){
         file.close();
         try {
             doWrite(path);
-        } catch (const VSTError& e){
-            throw VSTError("couldn't update cache file");
+        } catch (const Error& e){
+            throw Error("couldn't update cache file");
         }
         LOG_VERBOSE("updated cache file");
     }
     LOG_DEBUG("done reading cache file");
 }
 
-void VSTPluginManager::write(const std::string &path){
+void PluginManager::write(const std::string &path){
     Lock lock(mutex_);
     doWrite(path);
 }
 
-void VSTPluginManager::doWrite(const std::string& path){
+void PluginManager::doWrite(const std::string& path){
     LOG_DEBUG("writing cache file: " << path);
     File file(path, File::WRITE);
     if (!file.is_open()){
-        throw VSTError("couldn't create file " + path);
+        throw Error("couldn't create file " + path);
     }
     // inverse mapping (plugin -> keys)
-    std::unordered_map<VSTPluginDesc::const_ptr, std::vector<std::string>> pluginMap;
+    std::unordered_map<PluginInfo::const_ptr, std::vector<std::string>> pluginMap;
     for (auto& it : plugins_){
         if (it.second->valid()){
             pluginMap[it.second].push_back(it.first);

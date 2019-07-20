@@ -1,4 +1,4 @@
-#import "VSTWindowCocoa.h"
+#import "WindowCocoa.h"
 #include "Utility.h"
 
 #if __has_feature(objc_arc)
@@ -15,7 +15,7 @@
 - (BOOL)windowShouldClose:(id)sender {
     LOG_DEBUG("window should close");
     [self orderOut:NSApp];
-    vst::IVSTPlugin *plugin = [self plugin];
+    vst::IPlugin *plugin = [self plugin];
     plugin->closeEditor();
     return NO;
 }
@@ -31,7 +31,7 @@
 
 namespace vst {
 
-namespace VSTWindowFactory {
+namespace WindowFactory {
     void initializeCocoa(){
         static bool initialized = false;
         if (!initialized){
@@ -48,8 +48,8 @@ namespace VSTWindowFactory {
             initialized = true;
         }
     }
-    IVSTWindow::ptr createCocoa(IVSTPlugin::ptr plugin) {
-        return std::make_shared<VSTWindowCocoa>(std::move(plugin));
+    IWindow::ptr createCocoa(IPlugin::ptr plugin) {
+        return std::make_shared<WindowCocoa>(std::move(plugin));
     }
     void pollCocoa(){
         NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
@@ -71,10 +71,10 @@ namespace VSTWindowFactory {
     }
 }
 
-VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin::ptr plugin)
+WindowCocoa::WindowCocoa(IPlugin::ptr plugin)
     : plugin_(std::move(plugin))
 {
-    LOG_DEBUG("try opening VSTWindowCocoa");
+    LOG_DEBUG("try opening WindowCocoa");
     
     NSRect frame = NSMakeRect(0, 0, 200, 200);
     VSTEditorWindow *window = [[VSTEditorWindow alloc] initWithContentRect:frame
@@ -85,40 +85,40 @@ VSTWindowCocoa::VSTWindowCocoa(IVSTPlugin::ptr plugin)
     if (window){
         [window setPlugin:plugin.get()];
         window_ = window;
-        LOG_DEBUG("created VSTWindowCocoa");
+        LOG_DEBUG("created WindowCocoa");
     }
 }
 
-VSTWindowCocoa::~VSTWindowCocoa(){
+WindowCocoa::~WindowCocoa(){
         // close the editor *before* the window is destroyed.
-        // the destructor (like any other method of VSTWindowCocoa) must be called in the main thread
+        // the destructor (like any other method of WindowCocoa) must be called in the main thread
     plugin_->closeEditor();
     [window_ close];
     [window_ release];
-    LOG_DEBUG("destroyed VSTWindowCocoa");
+    LOG_DEBUG("destroyed WindowCocoa");
 }
 
-void * VSTWindowCocoa::getHandle(){
+void * WindowCocoa::getHandle(){
     return [window_ contentView];
 }
 
-void VSTWindowCocoa::run(){}
+void WindowCocoa::run(){}
 
-void VSTWindowCocoa::quit(){}
+void WindowCocoa::quit(){}
 
-void VSTWindowCocoa::setTitle(const std::string& title){
+void WindowCocoa::setTitle(const std::string& title){
     NSString *name = @(title.c_str());
     [window_ setTitle:name];
 }
 
-void VSTWindowCocoa::setGeometry(int left, int top, int right, int bottom){
+void WindowCocoa::setGeometry(int left, int top, int right, int bottom){
         // in CoreGraphics y coordinates are "flipped" (0 = bottom)
     NSRect content = NSMakeRect(left, bottom, right-left, bottom-top);
     NSRect frame = [window_  frameRectForContentRect:content];
     [window_ setFrame:frame display:YES];
 }
 
-void VSTWindowCocoa::show(){
+void WindowCocoa::show(){
     [window_ makeKeyAndOrderFront:nil];
     /* we open/close the editor on demand to make sure no unwanted
      * GUI drawing is happening behind the scenes
@@ -128,20 +128,20 @@ void VSTWindowCocoa::show(){
     plugin_->openEditor(getHandle());
 }
 
-void VSTWindowCocoa::hide(){
+void WindowCocoa::hide(){
     [window_ orderOut:nil];
     plugin_->closeEditor();
 }
 
-void VSTWindowCocoa::minimize(){
+void WindowCocoa::minimize(){
     hide();
 }
 
-void VSTWindowCocoa::restore(){
+void WindowCocoa::restore(){
     show();
 }
 
-void VSTWindowCocoa::bringToTop(){
+void WindowCocoa::bringToTop(){
     restore();
 }
 

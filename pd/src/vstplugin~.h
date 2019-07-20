@@ -53,7 +53,7 @@ class t_vstplugin {
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
         // VST plugin
-    IVSTPlugin::ptr x_plugin;
+    IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
     bool x_keep = false;
     bool x_bypass = false;
@@ -93,12 +93,12 @@ class t_vstparam {
 };
 
 // VST editor
-class t_vsteditor : public IVSTPluginListener {
+class t_vsteditor : public IPluginListener {
  public:
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
         // open the plugin (and launch GUI thread if needed)
-    IVSTPlugin::ptr open_plugin(const VSTPluginDesc& desc, bool editor);
+    IPlugin::ptr open_plugin(const PluginInfo& desc, bool editor);
         // close the plugin (and terminate GUI thread if needed)
     void close_plugin();
         // setup the generic Pd editor
@@ -118,8 +118,8 @@ class t_vsteditor : public IVSTPluginListener {
  private:
         // plugin callbacks
     void parameterAutomated(int index, float value) override;
-    void midiEvent(const VSTMidiEvent& event) override;
-    void sysexEvent(const VSTSysexEvent& event) override;
+    void midiEvent(const MidiEvent& event) override;
+    void sysexEvent(const SysexEvent& event) override;
         // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
         if (e_canvas) pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
@@ -129,9 +129,9 @@ class t_vsteditor : public IVSTPluginListener {
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
 #if VSTTHREADS
-    using VSTPluginPromise = std::promise<IVSTPlugin::ptr>;
+    using VSTPluginPromise = std::promise<IPlugin::ptr>;
         // open plugin in a new thread
-    void thread_function(VSTPluginPromise promise, const VSTPluginDesc &desc);
+    void thread_function(VSTPluginPromise promise, const PluginInfo &desc);
 #endif
         // notify Pd (e.g. for MIDI event or GUI automation)
     template<typename T, typename U>
@@ -143,7 +143,7 @@ class t_vsteditor : public IVSTPluginListener {
     std::thread e_thread;
     std::thread::id e_mainthread;
 #endif
-    IVSTWindow::ptr e_window;
+    IWindow::ptr e_window;
     t_canvas *e_canvas = nullptr;
     std::vector<t_vstparam> e_params;
         // outgoing messages:
@@ -152,6 +152,6 @@ class t_vsteditor : public IVSTPluginListener {
     std::mutex e_mutex;
 #endif
     std::vector<std::pair<int, float>> e_automated;
-    std::vector<VSTMidiEvent> e_midi;
-    std::vector<VSTSysexEvent> e_sysex;
+    std::vector<MidiEvent> e_midi;
+    std::vector<SysexEvent> e_sysex;
 };

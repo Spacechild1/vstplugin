@@ -136,7 +136,7 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 // search and probe
 static bool gSearching = false;
 
-static VSTPluginManager gPluginManager;
+static PluginManager gPluginManager;
 
 #define SETTINGS_DIR ".VSTPlugin"
 #define SETTINGS_FILE "plugins.ini"
@@ -152,7 +152,7 @@ static std::string getSettingsDir(){
 static void readIniFile(){
     try {
         gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         LOG_ERROR("couldn't read settings file: " << e.what());
     }
 }
@@ -162,18 +162,18 @@ static void writeIniFile(){
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
             if (!createDirectory(dir)){
-                throw VSTError("couldn't create directory");
+                throw Error("couldn't create directory");
             }
         }
         gPluginManager.write(dir + "/" SETTINGS_FILE);
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         LOG_ERROR("couldn't write settings file: " << e.what());
     }
 }
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
-static std::string makeKey(const VSTPluginDesc& desc) {
+static std::string makeKey(const PluginInfo& desc) {
     std::string key;
     auto ext = ".vst3";
     auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
@@ -186,14 +186,14 @@ static std::string makeKey(const VSTPluginDesc& desc) {
     return key;
 }
 
-void serializePlugin(std::ostream& os, const VSTPluginDesc& desc) {
+void serializePlugin(std::ostream& os, const PluginInfo& desc) {
     desc.serialize(os);
     os << "[keys]\n";
     os << "n=1\n";
     os << makeKey(desc) << "\n";
 }
 
-static void addFactory(const std::string& path, IVSTFactory::ptr factory) {
+static void addFactory(const std::string& path, IFactory::ptr factory) {
     gPluginManager.addFactory(path, factory);
     for (int i = 0; i < factory->numPlugins(); ++i) {
         auto plugin = factory->getPlugin(i);
@@ -208,8 +208,8 @@ static void addFactory(const std::string& path, IVSTFactory::ptr factory) {
     }
 }
 
-static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
-    IVSTFactory::ptr factory;
+static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
+    IFactory::ptr factory;
 
     if (gPluginManager.findFactory(path)) {
         LOG_ERROR("probePlugin: bug");
@@ -223,8 +223,8 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
     }
     // load factory and probe plugins
     try {
-        factory = IVSTFactory::load(path);
-    } catch (const VSTError& e){
+        factory = IFactory::load(path);
+    } catch (const Error& e){
         if (verbose) {
             Print("couldn't load '%s': %s\n", path.c_str(), e.what());
         }
@@ -237,7 +237,7 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool verbose) {
     try {
         factory->probe();
     }
-    catch (const VSTError& e) {
+    catch (const Error& e) {
         if (verbose) {
             Print("error!\n");
             Print("%s\n", e.what());
@@ -337,7 +337,7 @@ static std::string resolvePath(std::string path) {
 }
 
 // query a plugin by its key or file path and probe if necessary.
-static const VSTPluginDesc* queryPlugin(std::string path) {
+static const PluginInfo* queryPlugin(std::string path) {
 #ifdef _WIN32
     for (auto& c : path) {
         if (c == '\\') c = '/';
@@ -368,8 +368,8 @@ static const VSTPluginDesc* queryPlugin(std::string path) {
     return desc.get();
 }
 
-std::vector<VSTPluginDesc::const_ptr> searchPlugins(const std::string & path, bool verbose) {
-    std::vector<VSTPluginDesc::const_ptr> results;
+std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, bool verbose) {
+    std::vector<PluginInfo::const_ptr> results;
     LOG_VERBOSE("searching in '" << path << "'...");
     vst::search(path, [&](const std::string & absPath, const std::string &) {
         std::string pluginPath = absPath;
@@ -475,7 +475,7 @@ void VSTPluginListener::parameterAutomated(int index, float value) {
 #endif
 }
 
-void VSTPluginListener::midiEvent(const VSTMidiEvent& midi) {
+void VSTPluginListener::midiEvent(const MidiEvent& midi) {
 #if VSTTHREADS
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == owner_->rtThreadID_) {
@@ -486,7 +486,7 @@ void VSTPluginListener::midiEvent(const VSTMidiEvent& midi) {
     }
 }
 
-void VSTPluginListener::sysexEvent(const VSTSysexEvent& sysex) {
+void VSTPluginListener::sysexEvent(const SysexEvent& sysex) {
 #if VSTTHREADS
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == owner_->rtThreadID_) {
@@ -525,7 +525,7 @@ VSTPlugin::~VSTPlugin(){
     LOG_DEBUG("destroyed VSTPlugin");
 }
 
-IVSTPlugin *VSTPlugin::plugin() {
+IPlugin *VSTPlugin::plugin() {
     return plugin_.get();
 }
 
@@ -711,7 +711,7 @@ bool cmdOpen(World *world, void* cmdData) {
 #else
         static bool initialized = false;
         if (!initialized) {
-            IVSTWindow::initialize();
+            IWindow::initialize();
             initialized = true;
         }
 #endif
@@ -724,8 +724,8 @@ bool cmdOpen(World *world, void* cmdData) {
         // we only access immutable members of owner
         plugin->setSampleRate(owner->sampleRate());
         plugin->setBlockSize(owner->bufferSize());
-        if (plugin->hasPrecision(VSTProcessPrecision::Single)) {
-            plugin->setPrecision(VSTProcessPrecision::Single);
+        if (plugin->hasPrecision(ProcessPrecision::Single)) {
+            plugin->setPrecision(ProcessPrecision::Single);
         }
         else {
             LOG_WARNING("VSTPlugin: plugin '" << plugin->getPluginName() << "' doesn't support single precision processing - bypassing!");
@@ -805,7 +805,7 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 }
 
 #if VSTTHREADS
-using VSTPluginCmdPromise = std::promise<std::pair<IVSTPlugin::ptr, IVSTWindow::ptr>>;
+using VSTPluginCmdPromise = std::promise<std::pair<IPlugin::ptr, IWindow::ptr>>;
 void threadFunction(VSTPluginCmdPromise promise, const char *path);
 #endif
 
@@ -834,14 +834,14 @@ void VSTPluginCmdData::open(){
     if (desc && desc->valid()){
         try {
             plugin = desc->create();
-        } catch (const VSTError& e){
+        } catch (const Error& e){
             Print("%s\n", e.what());
         }
     }
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (plugin && plugin->hasEditor() && value){
-        window = IVSTWindow::create(plugin);
+        window = IWindow::create(plugin);
         if (window){
             window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
@@ -858,12 +858,12 @@ void VSTPluginCmdData::open(){
 
 #if VSTTHREADS
 void threadFunction(VSTPluginCmdPromise promise, const char *path){
-    IVSTPlugin::ptr plugin;
+    IPlugin::ptr plugin;
     auto desc = queryPlugin(path);
     if (desc && desc->valid()){
         try {
             plugin = desc->create();
-        } catch (const VSTError& e){
+        } catch (const Error& e){
             Print("%s\n", e.what());
         }
     }
@@ -873,9 +873,9 @@ void threadFunction(VSTPluginCmdPromise promise, const char *path){
         return;
     }
         // create GUI window (if needed)
-    IVSTWindow::ptr window;
+    IWindow::ptr window;
     if (plugin->hasEditor()){
-        window = IVSTWindow::create(plugin);
+        window = IWindow::create(plugin);
     }
         // return plugin and window to other thread
         // (but keep references in the GUI thread)
@@ -969,7 +969,7 @@ void VSTPlugin::next(int inNumSamples) {
         outBufVec_[i] = out(i);
     }
 
-    if (plugin_ && !bypass && plugin_->hasPrecision(VSTProcessPrecision::Single)) {
+    if (plugin_ && !bypass && plugin_->hasPrecision(ProcessPrecision::Single)) {
         if (paramStates_) {
             // update parameters from mapped control busses
             int nparam = plugin_->getNumParameters();
@@ -1259,7 +1259,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
                 plugin->readProgramData(presetData);
         }
     }
-    catch (const VSTError& e) {
+    catch (const Error& e) {
         Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
@@ -1324,7 +1324,7 @@ bool cmdWritePreset(World *world, void *cmdData){
             allocReadBuffer(buf, presetData);
         }
     }
-    catch (const VSTError & e) {
+    catch (const Error & e) {
         Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
@@ -1359,12 +1359,12 @@ void VSTPlugin::writePreset(int32 buf) {
 // midi
 void VSTPlugin::sendMidiMsg(int32 status, int32 data1, int32 data2) {
     if (check()) {
-        plugin_->sendMidiEvent(VSTMidiEvent(status, data1, data2));
+        plugin_->sendMidiEvent(MidiEvent(status, data1, data2));
     }
 }
 void VSTPlugin::sendSysexMsg(const char *data, int32 n) {
     if (check()) {
-        plugin_->sendSysexEvent(VSTSysexEvent(data, n));
+        plugin_->sendSysexEvent(SysexEvent(data, n));
     }
 }
 // transport
@@ -1504,7 +1504,7 @@ void VSTPlugin::parameterAutomated(int32 index, float value) {
     sendMsg("/vst_auto", 2, buf);
 }
 
-void VSTPlugin::midiEvent(const VSTMidiEvent& midi) {
+void VSTPlugin::midiEvent(const MidiEvent& midi) {
     float buf[3];
     // we don't want negative values here
     buf[0] = (unsigned char) midi.data[0];
@@ -1513,7 +1513,7 @@ void VSTPlugin::midiEvent(const VSTMidiEvent& midi) {
     sendMsg("/vst_midi", 3, buf);
 }
 
-void VSTPlugin::sysexEvent(const VSTSysexEvent& sysex) {
+void VSTPlugin::sysexEvent(const SysexEvent& sysex) {
     auto& data = sysex.data;
     int size = data.size();
     if ((size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
@@ -1881,7 +1881,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 // recursively search directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
     auto data = (InfoCmdData *)cmdData;
-    std::vector<VSTPluginDesc::const_ptr> plugins;
+    std::vector<PluginInfo::const_ptr> plugins;
     bool useDefault = data->flags & SearchFlags::useDefault;
     bool verbose = data->flags & SearchFlags::verbose;
     bool save = data->flags & SearchFlags::save;

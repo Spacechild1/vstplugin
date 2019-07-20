@@ -25,8 +25,6 @@ using namespace vst;
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
-using VSTPluginMap = std::unordered_map<std::string, VSTPluginDesc>;
-
 class VSTPlugin;
 
 struct VSTPluginCmdData {
@@ -37,8 +35,8 @@ struct VSTPluginCmdData {
     // data
     VSTPlugin* owner = nullptr;
     void* freeData = nullptr;
-    IVSTPlugin::ptr plugin;
-    IVSTWindow::ptr window;
+    IPlugin::ptr plugin;
+    IWindow::ptr window;
     std::thread::id threadID;
 #if VSTTHREADS
     std::thread thread;
@@ -88,12 +86,12 @@ struct InfoCmdData {
     char buf[1];
 };
 
-class VSTPluginListener : public IVSTPluginListener {
+class VSTPluginListener : public IPluginListener {
 public:
     VSTPluginListener(VSTPlugin& owner);
     void parameterAutomated(int index, float value) override;
-    void midiEvent(const VSTMidiEvent& midi) override;
-    void sysexEvent(const VSTSysexEvent& sysex) override;
+    void midiEvent(const MidiEvent& midi) override;
+    void sysexEvent(const SysexEvent& sysex) override;
 private:
     VSTPlugin *owner_ = nullptr;
 };
@@ -106,7 +104,7 @@ class VSTPlugin : public SCUnit {
 public:
     VSTPlugin();
     ~VSTPlugin();
-    IVSTPlugin *plugin();
+    IPlugin *plugin();
     bool check();
     bool initialized();
     void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
@@ -168,8 +166,8 @@ public:
     void sendCurrentProgramName();
     void sendParameter(int32 index); // unchecked
     void parameterAutomated(int32 index, float value);
-    void midiEvent(const VSTMidiEvent& midi);
-    void sysexEvent(const VSTSysexEvent& sysex);
+    void midiEvent(const MidiEvent& midi);
+    void sysexEvent(const SysexEvent& sysex);
     // perform sequenced command
     template<typename T>
     void doCmd(T *cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
@@ -186,10 +184,10 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
-    IVSTPlugin::ptr plugin_ = nullptr;
+    IPlugin::ptr plugin_ = nullptr;
     bool isLoading_ = false;
     bool bypass_ = false;
-    IVSTWindow::ptr window_;
+    IWindow::ptr window_;
     VSTPluginListener::ptr listener_;
 
     float *buf_ = nullptr;

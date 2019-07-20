@@ -14,15 +14,15 @@
 
 namespace vst {
 
-class VST2Factory : public IVSTFactory {
+class VST2Factory : public IFactory {
  public:
     static VstInt32 shellPluginID;
 
     VST2Factory(const std::string& path);
     ~VST2Factory();
     // get a list of all available plugins
-    void addPlugin(VSTPluginDesc::ptr desc) override;
-    VSTPluginDesc::const_ptr getPlugin(int index) const override;
+    void addPlugin(PluginInfo::ptr desc) override;
+    PluginInfo::const_ptr getPlugin(int index) const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
     void probe() override;
@@ -36,27 +36,27 @@ class VST2Factory : public IVSTFactory {
         return path_;
     }
     // create a new plugin instance
-    IVSTPlugin::ptr create(const std::string& name, bool probe = false) const override;
+    IPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
     using EntryPoint = AEffect *(*)(audioMasterCallback);
     std::string path_;
     std::unique_ptr<IModule> module_;
     EntryPoint entry_;
-    std::vector<VSTPluginDesc::ptr> plugins_;
-    std::unordered_map<std::string, VSTPluginDesc::ptr> pluginMap_;
+    std::vector<PluginInfo::ptr> plugins_;
+    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
     bool valid_ = false;
 };
 
-class VST2Plugin final : public IVSTPlugin {
+class VST2Plugin final : public IPlugin {
     friend class VST2Factory;
  public:
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
         VstInt32 index, VstIntPtr value, void *p, float opt);
 
-    VST2Plugin(AEffect* plugin, IVSTFactory::const_ptr f, VSTPluginDesc::const_ptr desc);
+    VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST2Plugin();
 
-    const VSTPluginDesc& info() const { return *desc_; }
+    const PluginInfo& info() const { return *desc_; }
     std::string getPluginName() const override;
     std::string getPluginVendor() const override;
     std::string getPluginCategory() const override;
@@ -68,8 +68,8 @@ class VST2Plugin final : public IVSTPlugin {
 
 	void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;
-    bool hasPrecision(VSTProcessPrecision precision) const override;
-    void setPrecision(VSTProcessPrecision precision) override;
+    bool hasPrecision(ProcessPrecision precision) const override;
+    void setPrecision(ProcessPrecision precision) override;
     void suspend() override;
     void resume() override;
     void setSampleRate(float sr) override;
@@ -83,7 +83,7 @@ class VST2Plugin final : public IVSTPlugin {
     void setBypass(bool bypass) override;
     void setNumSpeakers(int in, int out) override;
 
-    void setListener(IVSTPluginListener::ptr listener) override {
+    void setListener(IPluginListener::ptr listener) override {
         listener_ = std::move(listener);
     }
 
@@ -105,8 +105,8 @@ class VST2Plugin final : public IVSTPlugin {
     int getNumMidiOutputChannels() const override;
     bool hasMidiInput() const override;
     bool hasMidiOutput() const override;
-    void sendMidiEvent(const VSTMidiEvent& event) override;
-    void sendSysexEvent(const VSTSysexEvent& event) override;
+    void sendMidiEvent(const MidiEvent& event) override;
+    void sendSysexEvent(const SysexEvent& event) override;
 
     void setParameter(int index, float value) override;
     bool setParameter(int index, const std::string& str) override;
@@ -159,9 +159,9 @@ class VST2Plugin final : public IVSTPlugin {
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
-    IVSTFactory::const_ptr factory_; // just to ensure lifetime
-    VSTPluginDesc::const_ptr desc_;
-    IVSTPluginListener::ptr listener_ = nullptr;
+    IFactory::const_ptr factory_; // just to ensure lifetime
+    PluginInfo::const_ptr desc_;
+    IPluginListener::ptr listener_ = nullptr;
     VstTimeInfo timeInfo_;
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;

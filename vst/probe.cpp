@@ -22,7 +22,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 		const CHAR *pluginName = argv[2];
 		const CHAR *filePath = argc > 3 ? argv[3] : nullptr;
         try {
-            auto factory = vst::IVSTFactory::load(shorten(pluginPath));
+            auto factory = vst::IFactory::load(shorten(pluginPath));
             auto plugin = factory->create(shorten(pluginName), true);
             if (filePath) {
                 vst::File file(shorten(filePath), File::WRITE);
@@ -33,7 +33,7 @@ int MAIN(int argc, const CHAR *argv[]) {
                 }
             }
             return EXIT_SUCCESS;
-        } catch (const VSTError& e){
+        } catch (const Error& e){
             LOG_DEBUG("probe failed: " << e.what());
         }
 	}

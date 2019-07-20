@@ -27,24 +27,24 @@ VST3Factory::VST3Factory(const std::string& path)
 {
     if (!module_){
         // shouldn't happen...
-        throw VSTError("couldn't load module!");
+        throw Error("couldn't load module!");
     }
     auto factoryProc = module_->getFnPtr<GetFactoryProc>("GetPluginFactory");
     if (!factoryProc){
-        throw VSTError("couldn't find 'GetPluginFactory' function");
+        throw Error("couldn't find 'GetPluginFactory' function");
     }
     if (!module_->init()){
-        throw VSTError("couldn't init module");
+        throw Error("couldn't init module");
     }
     factory_ = IPtr<IPluginFactory>(factoryProc());
     if (!factory_){
-        throw VSTError("couldn't get VST3 plug-in factory");
+        throw Error("couldn't get VST3 plug-in factory");
     }
     /// LOG_DEBUG("VST3Factory: loaded " << path);
     // map plugin names to indices
     auto numPlugins = factory_->countClasses();
     for (int i = 0; i < numPlugins; ++i){
-        VSTPluginDesc desc(*this);
+        PluginInfo desc(*this);
         desc.path = path_;
         PClassInfo ci;
         if (factory_->getClassInfo(i, &ci) == kResultTrue){
@@ -64,7 +64,7 @@ VST3Factory::~VST3Factory(){
     LOG_DEBUG("freed VST3 module" << path_);
 }
 
-std::vector<std::shared_ptr<VSTPluginDesc>> VST3Factory::plugins() const {
+std::vector<std::shared_ptr<PluginInfo>> VST3Factory::plugins() const {
     return plugins_;
 }
 
@@ -78,14 +78,14 @@ void VST3Factory::probe() {
     for (int i = 0; i < numPlugins; ++i){
         PClassInfo ci;
         if (factory_->getClassInfo(i, &ci) != kResultTrue){
-            throw VSTError("couldn't get class info!");
+            throw Error("couldn't get class info!");
         }
         nameMap_[ci.name] = i;
-        plugins_.push_back(std::make_shared<VSTPluginDesc>(doProbe(ci.name)));
+        plugins_.push_back(std::make_shared<PluginInfo>(doProbe(ci.name)));
     }
 }
 
-std::unique_ptr<IVSTPlugin> VST3Factory::create(const std::string& name, bool probe) const {
+std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe) const {
     auto it = nameMap_.find(name);
     if (it == nameMap_.end()){
         return nullptr;
@@ -103,7 +103,7 @@ std::unique_ptr<IVSTPlugin> VST3Factory::create(const std::string& name, bool pr
     }
     try {
         return std::make_unique<VST3Plugin>(factory_, which, plugins_[which]);
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         LOG_ERROR("couldn't create plugin: " << name);
         LOG_ERROR(e.what());
         return nullptr;
@@ -122,7 +122,7 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
-VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, VSTPluginDescPtr desc)
+VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, PluginInfoPtr desc)
     : desc_(std::move(desc))
 {
     PClassInfo2 ci2;
@@ -160,7 +160,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, VSTPluginDescPtr
 #endif
     component_ = createInstance<Vst::IComponent>(factory, uid);
     if (!component_){
-        throw VSTError("couldn't create VST3 component");
+        throw Error("couldn't create VST3 component");
     }
     LOG_DEBUG("created VST3 component");
 }
@@ -209,11 +209,11 @@ void VST3Plugin::processDouble(const double **inputs, double **outputs, int samp
 
 }
 
-bool VST3Plugin::hasPrecision(VSTProcessPrecision precision) const {
+bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
     return false;
 }
 
-void VST3Plugin::setPrecision(VSTProcessPrecision precision){
+void VST3Plugin::setPrecision(ProcessPrecision precision){
 
 }
 
@@ -325,11 +325,11 @@ bool VST3Plugin::hasMidiOutput() const {
     return false;
 }
 
-void VST3Plugin::sendMidiEvent(const VSTMidiEvent &event){
+void VST3Plugin::sendMidiEvent(const MidiEvent &event){
 
 }
 
-void VST3Plugin::sendSysexEvent(const VSTSysexEvent &event){
+void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 
 }
 

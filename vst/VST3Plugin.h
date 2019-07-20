@@ -13,12 +13,12 @@ using namespace Steinberg;
 
 namespace vst {
 
-class VST3Factory : public IVSTFactory {
+class VST3Factory : public IFactory {
  public:
     VST3Factory(const std::string& path);
     ~VST3Factory();
     // get a list of all available plugins
-    std::vector<std::shared_ptr<VSTPluginDesc>> plugins() const override;
+    std::vector<std::shared_ptr<PluginInfo>> plugins() const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
     void probe() override;
@@ -29,22 +29,22 @@ class VST3Factory : public IVSTFactory {
         return path_;
     }
     // create a new plugin instance
-    std::unique_ptr<IVSTPlugin> create(const std::string& name, bool probe = false) const override;
+    std::unique_ptr<IPlugin> create(const std::string& name, bool probe = false) const override;
  private:
     std::string path_;
     std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
-    std::vector<VSTPluginDescPtr> plugins_;
+    std::vector<PluginInfoPtr> plugins_;
     std::unordered_map<std::string, int> nameMap_;
 };
 
-class VST3Plugin final : public IVSTPlugin {
+class VST3Plugin final : public IPlugin {
  public:
-    VST3Plugin(IPtr<IPluginFactory> factory, int which, VSTPluginDescPtr desc);
+    VST3Plugin(IPtr<IPluginFactory> factory, int which, PluginInfoPtr desc);
     ~VST3Plugin();
 
-    const VSTPluginDesc& info() const { return *desc_; }
+    const PluginInfo& info() const { return *desc_; }
     std::string getPluginName() const override;
     std::string getPluginVendor() const override;
     std::string getPluginCategory() const override;
@@ -56,8 +56,8 @@ class VST3Plugin final : public IVSTPlugin {
 
     void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;
-    bool hasPrecision(VSTProcessPrecision precision) const override;
-    void setPrecision(VSTProcessPrecision precision) override;
+    bool hasPrecision(ProcessPrecision precision) const override;
+    void setPrecision(ProcessPrecision precision) override;
     void suspend() override;
     void resume() override;
     void setSampleRate(float sr) override;
@@ -71,7 +71,7 @@ class VST3Plugin final : public IVSTPlugin {
     void setBypass(bool bypass) override;
     void setNumSpeakers(int in, int out) override;
 
-    void setListener(IVSTPluginListener *listener) override {
+    void setListener(IPluginListener *listener) override {
         listener_ = listener;
     }
 
@@ -91,8 +91,8 @@ class VST3Plugin final : public IVSTPlugin {
     int getNumMidiOutputChannels() const override;
     bool hasMidiInput() const override;
     bool hasMidiOutput() const override;
-    void sendMidiEvent(const VSTMidiEvent& event) override;
-    void sendSysexEvent(const VSTSysexEvent& event) override;
+    void sendMidiEvent(const MidiEvent& event) override;
+    void sendSysexEvent(const SysexEvent& event) override;
 
     void setParameter(int index, float value) override;
     bool setParameter(int index, const std::string& str) override;
@@ -136,8 +136,8 @@ class VST3Plugin final : public IVSTPlugin {
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
  private:
     std::string getBaseName() const;
-    IVSTPluginListener *listener_ = nullptr;
-    VSTPluginDescPtr desc_;
+    IPluginListener *listener_ = nullptr;
+    PluginInfoPtr desc_;
     std::string name_;
     std::string vendor_;
     std::string version_;

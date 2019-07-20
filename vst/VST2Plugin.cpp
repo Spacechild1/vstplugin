@@ -129,7 +129,7 @@ VST2Factory::VST2Factory(const std::string& path)
 {
     if (!module_){
         // shouldn't happen...
-        throw VSTError("VST2Factory bug!");
+        throw Error("VST2Factory bug!");
     }
     entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
     if (!entry_){
@@ -142,7 +142,7 @@ VST2Factory::VST2Factory(const std::string& path)
     #endif
     }
     if (!entry_){
-        throw VSTError("couldn't find entry point (no VST plugin?)");
+        throw Error("couldn't find entry point (no VST plugin?)");
     }
     // LOG_DEBUG("VST2Factory: loaded " << path);
 }
@@ -151,14 +151,14 @@ VST2Factory::~VST2Factory(){
     LOG_DEBUG("freed VST2 module " << path_);
 }
 
-void VST2Factory::addPlugin(VSTPluginDesc::ptr desc){
+void VST2Factory::addPlugin(PluginInfo::ptr desc){
     if (!pluginMap_.count(desc->name)){
         plugins_.push_back(desc);
         pluginMap_[desc->name] = desc;
     }
 }
 
-VSTPluginDesc::const_ptr VST2Factory::getPlugin(int index) const {
+PluginInfo::const_ptr VST2Factory::getPlugin(int index) const {
     if (index >= 0 && index < (int)plugins_.size()){
         return plugins_[index];
     } else {
@@ -193,7 +193,7 @@ void VST2Factory::probe() {
                 if (shellResult->valid()){
                     valid_ = true;
                 }
-            } catch (const VSTError& e){
+            } catch (const Error& e){
                 // should we rather propagate the error and break from the loop?
                 LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
             }
@@ -207,19 +207,19 @@ void VST2Factory::probe() {
     }
 }
 
-IVSTPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
-    VSTPluginDesc::ptr desc = nullptr; // will stay nullptr when probing!
+IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
+    PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
     if (!probe){
         if (plugins_.empty()){
-            throw VSTError("factory doesn't have any plugin(s)");
+            throw Error("factory doesn't have any plugin(s)");
         }
         auto it = pluginMap_.find(name);
         if (it == pluginMap_.end()){
-            throw VSTError("can't find (sub)plugin '" + name + "'");
+            throw Error("can't find (sub)plugin '" + name + "'");
         }
         desc = it->second;
         if (!desc->valid()){
-            throw VSTError("plugin not probed successfully");
+            throw Error("plugin not probed successfully");
         }
         // only for shell plugins:
         // set (global) current plugin ID (used in hostCallback)
@@ -237,10 +237,10 @@ IVSTPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
     shellPluginID = 0; // just to be sure
 
     if (!plugin){
-        throw VSTError("couldn't initialize plugin");
+        throw Error("couldn't initialize plugin");
     }
     if (plugin->magic != kEffectMagic){
-        throw VSTError("not a valid VST2.x plugin!");
+        throw Error("not a valid VST2.x plugin!");
     }
     return std::make_shared<VST2Plugin>(plugin, shared_from_this(), desc);
 }
@@ -251,7 +251,7 @@ IVSTPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
 // initial size of VstEvents queue (can grow later as needed)
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
-VST2Plugin::VST2Plugin(AEffect *plugin, IVSTFactory::const_ptr f, VSTPluginDesc::const_ptr desc)
+VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc)
     : plugin_(plugin), factory_(std::move(f)), desc_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
@@ -273,19 +273,19 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IVSTFactory::const_ptr f, VSTPluginDesc:
     dispatch(effMainsChanged, 0, 1);
     // are we probing?
     if (!desc_){
-        // later we might directly initialize VSTPluginDesc here and get rid of many IVSTPlugin methods
+        // later we might directly initialize PluginInfo here and get rid of many IPlugin methods
         // (we implicitly call virtual methods within our constructor, which works in our case but is a bit edgy)
-        VSTPluginDesc newDesc(factory_, *this);
+        PluginInfo newDesc(factory_, *this);
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
             VstInt32 nextID = 0;
             char name[64] = { 0 };
             while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
-                VSTPluginDesc::ShellPlugin shellPlugin { name, nextID };
+                PluginInfo::ShellPlugin shellPlugin { name, nextID };
                 newDesc.shellPlugins_.push_back(std::move(shellPlugin));
             }
         }
-        desc_ = std::make_shared<VSTPluginDesc>(std::move(newDesc));
+        desc_ = std::make_shared<PluginInfo>(std::move(newDesc));
     }
 }
 
@@ -398,17 +398,17 @@ void VST2Plugin::processDouble(const double **inputs,
     postProcess(sampleFrames);
 }
 
-bool VST2Plugin::hasPrecision(VSTProcessPrecision precision) const {
-    if (precision == VSTProcessPrecision::Single){
+bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
+    if (precision == ProcessPrecision::Single){
         return plugin_->flags & effFlagsCanReplacing;
     } else {
         return plugin_->flags & effFlagsCanDoubleReplacing;
     }
 }
 
-void VST2Plugin::setPrecision(VSTProcessPrecision precision){
+void VST2Plugin::setPrecision(ProcessPrecision precision){
     dispatch(effSetProcessPrecision, 0,
-             precision == VSTProcessPrecision::Single ?  kVstProcessPrecision32 : kVstProcessPrecision64);
+             precision == ProcessPrecision::Single ?  kVstProcessPrecision32 : kVstProcessPrecision64);
 }
 
 void VST2Plugin::suspend(){
@@ -593,7 +593,7 @@ bool VST2Plugin::hasMidiOutput() const {
     return canDo("sendVstMidiEvent") > 0;
 }
 
-void VST2Plugin::sendMidiEvent(const VSTMidiEvent &event){
+void VST2Plugin::sendMidiEvent(const MidiEvent &event){
     VstMidiEvent midievent;
     memset(&midievent, 0, sizeof(VstMidiEvent));
     midievent.type = kVstMidiType;
@@ -606,7 +606,7 @@ void VST2Plugin::sendMidiEvent(const VSTMidiEvent &event){
     vstEvents_->numEvents++;
 }
 
-void VST2Plugin::sendSysexEvent(const VSTSysexEvent &event){
+void VST2Plugin::sendSysexEvent(const SysexEvent &event){
     VstMidiSysexEvent sysexevent;
     memset(&sysexevent, 0, sizeof(VstMidiSysexEvent));
     sysexevent.type = kVstSysExType;
@@ -714,7 +714,7 @@ void VST2Plugin::getBankChunkData(void **data, size_t *size) const {
 void VST2Plugin::readProgramFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){
-        throw VSTError("couldn't open file " + path);
+        throw Error("couldn't open file " + path);
     }
     file.seekg(0, std::ios_base::end);
     std::string buffer;
@@ -726,7 +726,7 @@ void VST2Plugin::readProgramFile(const std::string& path){
 
 void VST2Plugin::readProgramData(const char *data, size_t size){
     if (size < fxProgramHeaderSize){  // see vstfxstore.h
-        throw VSTError("fxProgram: bad header size");
+        throw Error("fxProgram: bad header size");
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
     const VstInt32 byteSize = bytes_to_int32(data+4);
@@ -740,18 +740,18 @@ void VST2Plugin::readProgramData(const char *data, size_t size){
     const char *prgName = data+28;
     const char *prgData = data + fxProgramHeaderSize;
     if (chunkMagic != cMagic){
-        throw VSTError("fxProgram: bad format");
+        throw Error("fxProgram: bad format");
     }
     if (totalSize > size){
-        throw VSTError("fxProgram: too little data");
+        throw Error("fxProgram: too little data");
     }
 
     if (fxMagic == fMagic){ // list of parameters
         if (hasChunkData()){
-            throw VSTError("fxProgram: plugin expects chunk data");
+            throw Error("fxProgram: plugin expects chunk data");
         }
         if (numParams * sizeof(float) > totalSize - fxProgramHeaderSize){
-            throw VSTError("fxProgram: byte size doesn't match number of parameters");
+            throw Error("fxProgram: byte size doesn't match number of parameters");
         }
         setProgramName(prgName);
         for (int i = 0; i < numParams; ++i){
@@ -760,23 +760,23 @@ void VST2Plugin::readProgramData(const char *data, size_t size){
         }
     } else if (fxMagic == chunkPresetMagic){ // chunk data
         if (!hasChunkData()){
-            throw VSTError("fxProgram: plugin doesn't expect chunk data");
+            throw Error("fxProgram: plugin doesn't expect chunk data");
         }
         const size_t chunkSize = bytes_to_int32(prgData);
         if (chunkSize != totalSize - fxProgramHeaderSize - 4){
-            throw VSTError("fxProgram: wrong chunk size");
+            throw Error("fxProgram: wrong chunk size");
         }
         setProgramName(prgName);
         setProgramChunkData(prgData + 4, chunkSize);
     } else {
-        throw VSTError("fxProgram: bad format");
+        throw Error("fxProgram: bad format");
     }
 }
 
 void VST2Plugin::writeProgramFile(const std::string& path){
     std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
     if (!file.is_open()){
-        throw VSTError("couldn't create file " + path);
+        throw Error("couldn't create file " + path);
     }
     std::string buffer;
     writeProgramData(buffer);
@@ -824,7 +824,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
         getProgramChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
                 // shouldn't happen...
-            throw VSTError("fxProgram bug: couldn't get chunk data");
+            throw Error("fxProgram bug: couldn't get chunk data");
         }
             // totalSize: header size + 'size' field + actual chunk data
         const size_t totalSize = fxProgramHeaderSize + 4 + chunkSize;
@@ -849,7 +849,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
 void VST2Plugin::readBankFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){
-        throw VSTError("couldn't open file " + path);
+        throw Error("couldn't open file " + path);
     }
     file.seekg(0, std::ios_base::end);
     std::string buffer;
@@ -861,7 +861,7 @@ void VST2Plugin::readBankFile(const std::string& path){
 
 void VST2Plugin::readBankData(const char *data, size_t size){
     if (size < fxBankHeaderSize){  // see vstfxstore.h
-        throw VSTError("fxBank: bad header size");
+        throw Error("fxBank: bad header size");
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
     const VstInt32 byteSize = bytes_to_int32(data+4);
@@ -875,19 +875,19 @@ void VST2Plugin::readBankData(const char *data, size_t size){
     const VstInt32 currentProgram = bytes_to_int32(data + 28);
     const char *bankData = data + fxBankHeaderSize;
     if (chunkMagic != cMagic){
-        throw VSTError("fxBank: bad format");
+        throw Error("fxBank: bad format");
     }
     if (totalSize > size){
-        throw VSTError("fxBank: too little data");
+        throw Error("fxBank: too little data");
     }
 
     if (fxMagic == bankMagic){ // list of parameters
         if (hasChunkData()){
-            throw VSTError("fxBank: plugin expects chunk data");
+            throw Error("fxBank: plugin expects chunk data");
         }
         const size_t programSize = fxProgramHeaderSize + getNumParameters() * sizeof(float);
         if (numPrograms * programSize > totalSize - fxBankHeaderSize){
-            throw VSTError("fxBank: byte size doesn't match number of programs");
+            throw Error("fxBank: byte size doesn't match number of programs");
         }
         for (int i = 0; i < numPrograms; ++i){
             setProgram(i);
@@ -897,22 +897,22 @@ void VST2Plugin::readBankData(const char *data, size_t size){
         setProgram(currentProgram);
     } else if (fxMagic == chunkBankMagic){ // chunk data
         if (!hasChunkData()){
-            throw VSTError("fxBank: plugin doesn't expect chunk data");
+            throw Error("fxBank: plugin doesn't expect chunk data");
         }
         const size_t chunkSize = bytes_to_int32(bankData);
         if (chunkSize != totalSize - fxBankHeaderSize - 4){
-            throw VSTError("fxBank: wrong chunk size");
+            throw Error("fxBank: wrong chunk size");
         }
         setBankChunkData(bankData + 4, chunkSize);
     } else {
-        throw VSTError("fxBank: bad format");
+        throw Error("fxBank: bad format");
     }
 }
 
 void VST2Plugin::writeBankFile(const std::string& path){
     std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
     if (!file.is_open()){
-        throw VSTError("couldn't create file " + path);
+        throw Error("couldn't create file " + path);
     }
     std::string buffer;
     writeBankData(buffer);
@@ -951,7 +951,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
             if (progData.size() != programSize){
                     // shouldn't happen...
                 buffer.clear();
-                throw VSTError("fxBank bug: wrong program data size");
+                throw Error("fxBank bug: wrong program data size");
             }
             memcpy(bufptr, progData.data(), progData.size());
             bufptr += programSize;
@@ -965,7 +965,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
         getBankChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
                 // shouldn't happen...
-            throw VSTError("fxBank bug: couldn't get chunk data");
+            throw Error("fxBank bug: couldn't get chunk data");
         }
             // totalSize: header size + 'size' field + actual chunk data
         size_t totalSize = fxBankHeaderSize + 4 + chunkSize;
@@ -1141,12 +1141,12 @@ void VST2Plugin::processEvents(VstEvents *events){
             auto *midiEvent = (VstMidiEvent *)event;
             if (listener_){
                 auto *data = midiEvent->midiData;
-                listener_->midiEvent(VSTMidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
+                listener_->midiEvent(MidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
             }
         } else if (event->type == kVstSysExType){
             auto *sysexEvent = (VstMidiSysexEvent *)event;
             if (listener_){
-                listener_->sysexEvent(VSTSysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
+                listener_->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
             }
         } else {
             LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");

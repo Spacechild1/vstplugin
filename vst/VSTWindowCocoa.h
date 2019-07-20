@@ -3,10 +3,10 @@
 #import <Cocoa/Cocoa.h>
 
 @interface VSTEditorWindow : NSWindow {
-    vst::IVSTPlugin *_plugin;
+    vst::IPlugin *_plugin;
 }
 
-@property (nonatomic, readwrite) vst::IVSTPlugin *plugin;
+@property (nonatomic, readwrite) vst::IPlugin *plugin;
 
 - (BOOL)windowShouldClose:(id)sender;
 /*
@@ -17,16 +17,16 @@
 
 namespace vst {
 
-namespace VSTWindowFactory {
+namespace WindowFactory {
     void initializeCocoa();
     void pollCocoa();
-    IVSTWindow::ptr createCocoa(IVSTPlugin::ptr plugin);
+    IWindow::ptr createCocoa(IPlugin::ptr plugin);
 }
 
-class VSTWindowCocoa : public IVSTWindow {
+class WindowCocoa : public IWindow {
  public:
-    VSTWindowCocoa(IVSTPlugin::ptr plugin);
-    ~VSTWindowCocoa();
+    WindowCocoa(IPlugin::ptr plugin);
+    ~WindowCocoa();
 
     void* getHandle() override;
     void run() override;
@@ -42,7 +42,7 @@ class VSTWindowCocoa : public IVSTWindow {
     void bringToTop() override;
  private:
     VSTEditorWindow * window_ = nullptr;
-    IVSTPlugin::ptr plugin_;
+    IPlugin::ptr plugin_;
 };
 
 } // vst

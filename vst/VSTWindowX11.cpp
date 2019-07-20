@@ -1,11 +1,11 @@
-#include "VSTWindowX11.h"
+#include "WindowX11.h"
 #include "Utility.h"
 
 #include <cstring>
 
 namespace vst {
 
-namespace VSTWindowFactory {
+namespace WindowFactory {
     void initializeX11(){
         static bool initialized = false;
         if (!initialized){
@@ -17,17 +17,17 @@ namespace VSTWindowFactory {
         }
     }
 
-    IVSTWindow::ptr createX11(IVSTPlugin::ptr plugin){
-        return std::make_shared<VSTWindowX11>(std::move(plugin));
+    IWindow::ptr createX11(IPlugin::ptr plugin){
+        return std::make_shared<WindowX11>(std::move(plugin));
     }
 }
 
-VSTWindowX11::VSTWindowX11(IVSTPlugin::ptr plugin)
+WindowX11::WindowX11(IPlugin::ptr plugin)
     : plugin_(std::move(plugin))
 {
 	display_ = XOpenDisplay(NULL);
 	if (!display_){
-		LOG_ERROR("VSTWindowX11: couldn't open display!");
+        LOG_ERROR("WindowX11: couldn't open display!");
 		return;
 	}
 	int s = DefaultScreen(display_);
@@ -51,16 +51,16 @@ VSTWindowX11::VSTWindowX11(IVSTPlugin::ptr plugin)
 		XFree(ch);
 	}
 
-    LOG_DEBUG("created VSTWindowX11: " << window_);
+    LOG_DEBUG("created WindowX11: " << window_);
 }
 
-VSTWindowX11::~VSTWindowX11(){
+WindowX11::~WindowX11(){
     XDestroyWindow(display_, window_);
     XCloseDisplay(display_);
-    LOG_DEBUG("destroyed VSTWindowX11");
+    LOG_DEBUG("destroyed WindowX11");
 }
 
-void VSTWindowX11::run(){
+void WindowX11::run(){
 	XEvent e;
     while (true){
 	    XNextEvent(display_, &e);
@@ -82,7 +82,7 @@ void VSTWindowX11::run(){
     plugin_->closeEditor();
 }
 
-void VSTWindowX11::quit(){
+void WindowX11::quit(){
     XClientMessageEvent event;
     memset(&event, 0, sizeof(XClientMessageEvent));
     event.type = ClientMessage;
@@ -92,31 +92,31 @@ void VSTWindowX11::quit(){
     XFlush(display_);
 }
 
-void VSTWindowX11::setTitle(const std::string& title){
+void WindowX11::setTitle(const std::string& title){
 	XStoreName(display_, window_, title.c_str());
 	XSetIconName(display_, window_, title.c_str());
 	XFlush(display_);
-    LOG_DEBUG("VSTWindowX11::setTitle: " << title);
+    LOG_DEBUG("WindowX11::setTitle: " << title);
 }
 
-void VSTWindowX11::setGeometry(int left, int top, int right, int bottom){
+void WindowX11::setGeometry(int left, int top, int right, int bottom){
 	XMoveResizeWindow(display_, window_, left, top, right-left, bottom-top);
 	XFlush(display_);
-    LOG_DEBUG("VSTWindowX11::setGeometry: " << left << " " << top << " "
+    LOG_DEBUG("WindowX11::setGeometry: " << left << " " << top << " "
         << right << " " << bottom);
 }
 
-void VSTWindowX11::show(){
+void WindowX11::show(){
 	XMapWindow(display_, window_);
 	XFlush(display_);
 }
 
-void VSTWindowX11::hide(){
+void WindowX11::hide(){
 	XUnmapWindow(display_, window_);
 	XFlush(display_);
 }
 
-void VSTWindowX11::minimize(){
+void WindowX11::minimize(){
 #if 0
 	XIconifyWindow(display_, window_, DefaultScreen(display_));
 #else
@@ -125,16 +125,16 @@ void VSTWindowX11::minimize(){
 	XFlush(display_);
 }
 
-void VSTWindowX11::restore(){
+void WindowX11::restore(){
 		// LATER find out how to really restore
 	XMapWindow(display_, window_);
 	XFlush(display_);
 }
 
-void VSTWindowX11::bringToTop(){
+void WindowX11::bringToTop(){
 	minimize();
 	restore();
-    LOG_DEBUG("VSTWindowX11::bringToTop");
+    LOG_DEBUG("WindowX11::bringToTop");
 }
 
 } // vst

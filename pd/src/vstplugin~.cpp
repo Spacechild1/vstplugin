@@ -8,7 +8,7 @@
 # define MAIN_LOOP_POLL_INT 20
 static t_clock *mainLoopClock = nullptr;
 static void mainLoopTick(void *x){
-    IVSTWindow::poll();
+    IWindow::poll();
     clock_delay(mainLoopClock, MAIN_LOOP_POLL_INT);
 }
 #endif
@@ -50,7 +50,7 @@ static std::string toHex(T u){
 
 /*---------------------- search/probe ----------------------------*/
 
-static VSTPluginManager gPluginManager;
+static PluginManager gPluginManager;
 
 #define SETTINGS_DIR ".vstplugin~"
 #define SETTINGS_FILE "plugins.ini"
@@ -66,7 +66,7 @@ static std::string getSettingsDir(){
 static void readIniFile(){
     try {
         gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         error("couldn't read settings file:");
         error("%s", e.what());
     }
@@ -77,11 +77,11 @@ static void writeIniFile(){
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
             if (!createDirectory(dir)){
-                throw VSTError("couldn't create directory");
+                throw Error("couldn't create directory");
             }
         }
         gPluginManager.write(dir + "/" SETTINGS_FILE);
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         error("couldn't write settings file:");
         error("%s", e.what());
     }
@@ -90,7 +90,7 @@ static void writeIniFile(){
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
-static std::string makeKey(const VSTPluginDesc& desc){
+static std::string makeKey(const PluginInfo& desc){
     std::string key;
     auto ext = ".vst3";
     auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
@@ -102,7 +102,7 @@ static std::string makeKey(const VSTPluginDesc& desc){
     return key;
 }
 
-static void addFactory(const std::string& path, IVSTFactory::ptr factory){
+static void addFactory(const std::string& path, IFactory::ptr factory){
     gPluginManager.addFactory(path, factory);
     for (int i = 0; i < factory->numPlugins(); ++i){
         auto plugin = factory->getPlugin(i);
@@ -116,7 +116,7 @@ static void addFactory(const std::string& path, IVSTFactory::ptr factory){
             for (int j = 0; j < num; ++j){
                 auto key = plugin->parameters[j].name;
                 bash_name(key);
-                const_cast<VSTPluginDesc&>(*plugin).paramMap[std::move(key)] = j;
+                const_cast<PluginInfo&>(*plugin).paramMap[std::move(key)] = j;
             }
             // add plugin info
             auto key = makeKey(*plugin);
@@ -181,7 +181,7 @@ public:
         ss_ << s;
         return *this;
     }
-    PdLog& operator <<(const VSTError& e){
+    PdLog& operator <<(const Error& e){
         flush();
         if (async_){
             sys_lock();
@@ -237,8 +237,8 @@ void postError(bool async, const char *fmt, T... args){
 
 
 // load factory and probe plugins
-static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false){
-    IVSTFactory::ptr factory;
+static IFactory::ptr probePlugin(const std::string& path, bool async = false){
+    IFactory::ptr factory;
 
     if (gPluginManager.findFactory(path)){
         postBug(async, "probePlugin");
@@ -251,8 +251,8 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
     }
 
     try {
-        factory = IVSTFactory::load(path);
-    } catch (const VSTError& e){
+        factory = IFactory::load(path);
+    } catch (const Error& e){
         PdLog log(async, PD_DEBUG,
                   "couldn't load '%s': %s", path.c_str(), e.what());
         gPluginManager.addException(path);
@@ -263,7 +263,7 @@ static IVSTFactory::ptr probePlugin(const std::string& path, bool async = false)
 
     try {
         factory->probe();
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         log << "error";
         log << e;
         return nullptr;
@@ -432,7 +432,7 @@ static void vstparam_symbol(t_vstparam *x, t_symbol *s){
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
         // this method updates the display next to the label. implicitly called by t_vstparam::set
-    IVSTPlugin &plugin = *x->p_owner->x_plugin;
+    IPlugin &plugin = *x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
     snprintf(buf, sizeof(buf), "%s", plugin.getParameterDisplay(index).c_str());
@@ -501,11 +501,11 @@ void t_vsteditor::parameterAutomated(int index, float value){
 }
 
     // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
-void t_vsteditor::midiEvent(const VSTMidiEvent &event){
+void t_vsteditor::midiEvent(const MidiEvent &event){
     post_event(e_midi, event);
 }
 
-void t_vsteditor::sysexEvent(const VSTSysexEvent &event){
+void t_vsteditor::sysexEvent(const SysexEvent &event){
     post_event(e_sysex, event);
 }
 
@@ -524,9 +524,9 @@ void t_vsteditor::tick(t_vsteditor *x){
         // swap parameter, midi and sysex queues.
     std::vector<std::pair<int, float>> paramQueue;
     paramQueue.swap(x->e_automated);
-    std::vector<VSTMidiEvent> midiQueue;
+    std::vector<MidiEvent> midiQueue;
     midiQueue.swap(x->e_midi);
-    std::vector<VSTSysexEvent> sysexQueue;
+    std::vector<SysexEvent> sysexQueue;
     sysexQueue.swap(x->e_sysex);
 
 #if VSTTHREADS
@@ -576,13 +576,13 @@ void t_vsteditor::tick(t_vsteditor *x){
 
 #if VSTTHREADS
     // create plugin + editor GUI (in another thread)
-void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc& desc){
+void t_vsteditor::thread_function(VSTPluginPromise promise, const PluginInfo& desc){
     LOG_DEBUG("enter thread");
-    IVSTPlugin::ptr plugin;
+    IPlugin::ptr plugin;
     if (desc.valid()){
         try {
             plugin = desc.create();
-        } catch (const VSTError& e){
+        } catch (const Error& e){
             sys_lock();
             error("%s", e.what());
             sys_unlock();
@@ -596,7 +596,7 @@ void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc&
     }
         // create GUI window (if needed)
     if (plugin->hasEditor()){
-        e_window = IVSTWindow::create(plugin);
+        e_window = IWindow::create(plugin);
     }
         // return plugin to main thread
         // (but keep a reference in the GUI thread)
@@ -619,7 +619,7 @@ void t_vsteditor::thread_function(VSTPluginPromise promise, const VSTPluginDesc&
 }
 #endif
 
-IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor){
+IPlugin::ptr t_vsteditor::open_plugin(const PluginInfo& desc, bool editor){
         // -n flag (no gui)
     if (!e_canvas){
         editor = false;
@@ -628,7 +628,7 @@ IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor)
         // initialize GUI backend (if needed)
         static bool initialized = false;
         if (!initialized){
-            IVSTWindow::initialize();
+            IWindow::initialize();
             initialized = true;
         }
     }
@@ -643,11 +643,11 @@ IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor)
     }
 #endif
         // create plugin in main thread
-    IVSTPlugin::ptr plugin;
+    IPlugin::ptr plugin;
     if (desc.valid()){
         try {
             plugin = desc.create();
-        } catch (const VSTError& e){
+        } catch (const Error& e){
             error("%s", e.what());
         }
     }
@@ -655,7 +655,7 @@ IVSTPlugin::ptr t_vsteditor::open_plugin(const VSTPluginDesc& desc, bool editor)
 #if !VSTTHREADS
         // create and setup GUI window in main thread (if needed)
     if (editor && plugin->hasEditor()){
-        e_window = IVSTWindow::create(plugin);
+        e_window = IWindow::create(plugin);
         if (e_window){
             e_window->setTitle(plugin->getPluginName());
             int left, top, right, bottom;
@@ -968,7 +968,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
 }
 
 // query a plugin by its key or file path and probe if necessary.
-static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path){
+static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
     // query plugin
     auto desc = gPluginManager.findPlugin(path);
     if (!desc){
@@ -996,7 +996,7 @@ static const VSTPluginDesc * queryPlugin(t_vstplugin *x, const std::string& path
 
 // open
 static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
-    const VSTPluginDesc *info = nullptr;
+    const PluginInfo *info = nullptr;
     t_symbol *pathsym = nullptr;
     bool editor = false;
         // parse arguments
@@ -1075,7 +1075,7 @@ static void sendInfo(t_vstplugin *x, const char *what, int value){
 
 // plugin info (no args: currently loaded plugin, symbol arg: path of plugin to query)
 static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
-    const VSTPluginDesc *info = nullptr;
+    const PluginInfo *info = nullptr;
     if (argc > 0){ // some plugin
         auto path = atom_getsymbol(argv)->s_name;
         if (!(info = queryPlugin(x, path))){
@@ -1171,8 +1171,8 @@ static void vstplugin_print(t_vstplugin *x){
     post("version: %s", info.version.c_str());
     post("input channels: %d", info.numInputs);
     post("output channels: %d", info.numOutputs);
-    post("single precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Single) ? "yes" : "no");
-    post("double precision: %s", x->x_plugin->hasPrecision(VSTProcessPrecision::Double) ? "yes" : "no");
+    post("single precision: %s", x->x_plugin->hasPrecision(ProcessPrecision::Single) ? "yes" : "no");
+    post("double precision: %s", x->x_plugin->hasPrecision(ProcessPrecision::Double) ? "yes" : "no");
     post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
     post("number of parameters: %d", x->x_plugin->getNumParameters());
     post("number of programs: %d", x->x_plugin->getNumPrograms());
@@ -1387,7 +1387,7 @@ static void vstplugin_param_dump(t_vstplugin *x){
 static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
-    VSTMidiEvent event;
+    MidiEvent event;
     for (int i = 0; i < 3 && i < argc; ++i){
         event.data[i] = atom_getfloat(argv + i);
     }
@@ -1448,7 +1448,7 @@ static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *
         data.push_back((unsigned char)atom_getfloat(argv+i));
     }
 
-    x->x_plugin->sendSysexEvent(VSTSysexEvent(std::move(data)));
+    x->x_plugin->sendSysexEvent(SysexEvent(std::move(data)));
 }
 
 /* --------------------------------- programs --------------------------------- */
@@ -1529,7 +1529,7 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
         else
             x->x_plugin->readProgramData(buffer);
         x->x_editor->update();
-    } catch (const VSTError& e) {
+    } catch (const Error& e) {
         pd_error(x, "%s: couldn't set %s data: %s",
                  classname(x), (bank ? "bank" : "program"), e.what());
     }
@@ -1545,7 +1545,7 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
             x->x_plugin->writeBankData(buffer);
         else
             x->x_plugin->writeProgramData(buffer);
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         pd_error(x, "%s: couldn't get %s data: %s",
                  classname(x), (bank ? "bank" : "program"), e.what());
         return;
@@ -1582,7 +1582,7 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s){
         else
             x->x_plugin->readProgramFile(path);
         x->x_editor->update();
-    } catch (const VSTError& e) {
+    } catch (const Error& e) {
         pd_error(x, "%s: couldn't read %s file '%s':\n%s",
                  classname(x), s->s_name, (bank ? "bank" : "program"), e.what());
     }
@@ -1600,7 +1600,7 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s){
         else
             x->x_plugin->readProgramFile(path);
 
-    } catch (const VSTError& e){
+    } catch (const Error& e){
         pd_error(x, "%s: couldn't write %s file '%s':\n%s",
                  classname(x), (bank ? "bank" : "program"), s->s_name, e.what());
     }
@@ -1672,23 +1672,23 @@ void t_vstplugin::update_precision(){
     int dp = x_dp;
         // check precision
     if (x_plugin){
-        if (!x_plugin->hasPrecision(VSTProcessPrecision::Single) && !x_plugin->hasPrecision(VSTProcessPrecision::Double)) {
+        if (!x_plugin->hasPrecision(ProcessPrecision::Single) && !x_plugin->hasPrecision(ProcessPrecision::Double)) {
             post("%s: '%s' doesn't support single or double precision, bypassing",
                 classname(this), x_plugin->getPluginName().c_str());
             return;
         }
-        if (x_dp && !x_plugin->hasPrecision(VSTProcessPrecision::Double)){
+        if (x_dp && !x_plugin->hasPrecision(ProcessPrecision::Double)){
             post("%s: '%s' doesn't support double precision, using single precision instead",
                  classname(this), x_plugin->getPluginName().c_str());
             dp = 0;
         }
-        else if (!x_dp && !x_plugin->hasPrecision(VSTProcessPrecision::Single)){ // very unlikely...
+        else if (!x_dp && !x_plugin->hasPrecision(ProcessPrecision::Single)){ // very unlikely...
             post("%s: '%s' doesn't support single precision, using double precision instead",
                  classname(this), x_plugin->getPluginName().c_str());
             dp = 1;
         }
             // set the actual precision
-        x_plugin->setPrecision(dp ? VSTProcessPrecision::Double : VSTProcessPrecision::Single);
+        x_plugin->setPrecision(dp ? ProcessPrecision::Double : ProcessPrecision::Single);
     }
 }
 
@@ -1911,12 +1911,12 @@ static t_int *vstplugin_perform(t_int *w){
 
     if (plugin && !bypass) {
             // check processing precision (single or double)
-        if (!plugin->hasPrecision(VSTProcessPrecision::Single)
-                && !plugin->hasPrecision(VSTProcessPrecision::Double)) { // very unlikely...
+        if (!plugin->hasPrecision(ProcessPrecision::Single)
+                && !plugin->hasPrecision(ProcessPrecision::Double)) { // very unlikely...
             bypass = true;
-        } else if (dp && !plugin->hasPrecision(VSTProcessPrecision::Double)){ // possible
+        } else if (dp && !plugin->hasPrecision(ProcessPrecision::Double)){ // possible
             dp = false;
-        } else if (!dp && !plugin->hasPrecision(VSTProcessPrecision::Single)){ // pretty unlikely...
+        } else if (!dp && !plugin->hasPrecision(ProcessPrecision::Single)){ // pretty unlikely...
             dp = true;
         }
     }

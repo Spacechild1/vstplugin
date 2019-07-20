@@ -359,50 +359,50 @@ void search(const std::string &dir, std::function<void(const std::string&, const
 #endif
 }
 
-/*/////////// IVSTWindow //////////////////*/
-namespace VSTWindowFactory {
+/*/////////// IWindow //////////////////*/
+namespace WindowFactory {
 #ifdef _WIN32
     void initializeWin32();
-    IVSTWindow::ptr createWin32(IVSTPlugin::ptr);
+    IWindow::ptr createWin32(IPlugin::ptr);
 #endif
 #ifdef __APPLE__
     void initializeCocoa();
-    IVSTWindow::ptr createCocoa(IVSTPlugin::ptr);
+    IWindow::ptr createCocoa(IPlugin::ptr);
     void pollCocoa();
 #endif
 #ifdef USE_X11
     void initializeX11();
-    IVSTWindow::ptr createX11(IVSTPlugin::ptr);
+    IWindow::ptr createX11(IPlugin::ptr);
 #endif
 }
 
-IVSTWindow::ptr IVSTWindow::create(IVSTPlugin::ptr plugin){
-    IVSTWindow::ptr win;
+IWindow::ptr IWindow::create(IPlugin::ptr plugin){
+    IWindow::ptr win;
 #ifdef _WIN32
-    win = VSTWindowFactory::createWin32(std::move(plugin));
+    win = WindowFactory::createWin32(std::move(plugin));
 #elif defined(__APPLE__)
-    win = VSTWindowFactory::createCocoa(std::move(plugin));
+    win = WindowFactory::createCocoa(std::move(plugin));
 #elif defined(USE_X11)
-    win = VSTWindowFactory::createX11(std::move(plugin));
+    win = WindowFactory::createX11(std::move(plugin));
 #endif
     return win;
 }
 
-void IVSTWindow::initialize(){
+void IWindow::initialize(){
 #ifdef _WIN32
-    VSTWindowFactory::initializeWin32();
+    WindowFactory::initializeWin32();
 #endif
 #ifdef __APPLE__
-    VSTWindowFactory::initializeCocoa();
+    WindowFactory::initializeCocoa();
 #endif
 #ifdef USE_X11
-    VSTWindowFactory::initializeX11();
+    WindowFactory::initializeX11();
 #endif
 }
 
-void IVSTWindow::poll(){
+void IWindow::poll(){
 #ifdef __APPLE__
-    VSTWindowFactory::pollCocoa();
+    WindowFactory::pollCocoa();
 #endif
 }
 
@@ -426,7 +426,7 @@ class ModuleWin32 : public IModule {
             auto error = GetLastError();
             std::stringstream ss;
             ss << "LoadLibrary failed with error code " << error;
-            throw VSTError(ss.str());
+            throw Error(ss.str());
         }
         // LOG_DEBUG("loaded Win32 library " << path);
     }
@@ -466,7 +466,7 @@ class ModuleApple : public IModule {
         if (pluginPath) CFRelease(pluginPath);
         if (bundleUrl) CFRelease(bundleUrl);
         if (!bundle_){
-            throw VSTError("couldn't create bundle reference");
+            throw Error("couldn't create bundle reference");
         }
         // LOG_DEBUG("loaded macOS bundle " << path);
     }
@@ -503,7 +503,7 @@ class ModuleSO : public IModule {
         if (!handle_) {
             std::stringstream ss;
             ss << "dlopen failed with error code " << (error ? error : "?");
-            throw VSTError(ss.str());
+            throw Error(ss.str());
         }
         // LOG_DEBUG("loaded dynamic library " << path);
     }
@@ -540,9 +540,9 @@ std::unique_ptr<IModule> IModule::load(const std::string& path){
     return std::unique_ptr<IModule>{};
 }
 
-/*///////////////////// IVSTFactory ////////////////////////*/
+/*///////////////////// IFactory ////////////////////////*/
 
-IVSTFactory::ptr IVSTFactory::load(const std::string& path){
+IFactory::ptr IFactory::load(const std::string& path){
 #ifdef _WIN32
     const char *ext = ".dll";
 #elif defined(__APPLE__)
@@ -550,12 +550,12 @@ IVSTFactory::ptr IVSTFactory::load(const std::string& path){
 #else // Linux/BSD/etc.
     const char *ext = ".so";
 #endif
-    // LOG_DEBUG("IVSTFactory: loading " << path);
+    // LOG_DEBUG("IFactory: loading " << path);
     if (path.find(".vst3") != std::string::npos){
     #if USE_VST3
         return std::make_shared<VST3Factory>(path);
     #else
-        throw VSTError("VST3 plug-ins not supported");
+        throw Error("VST3 plug-ins not supported");
     #endif
     } else {
     #if USE_VST2
@@ -565,7 +565,7 @@ IVSTFactory::ptr IVSTFactory::load(const std::string& path){
             return std::make_shared<VST2Factory>(path + ext);
         }
     #else
-        throw VSTError("VST2 plug-ins not supported");
+        throw Error("VST2 plug-ins not supported");
     #endif
     }
 }
@@ -586,9 +586,9 @@ public:
 };
 
 // probe a plugin in a seperate process and return the info in a file
-VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPluginID) {
+PluginInfo::ptr IFactory::probePlugin(const std::string& name, int shellPluginID) {
     int result = -1;
-    VSTPluginDesc desc(shared_from_this());
+    PluginInfo desc(shared_from_this());
     // put the information we already have (might be overriden)
     desc.name = name;
     desc.id = shellPluginID;
@@ -623,7 +623,7 @@ VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPl
         free(tmpBuf);
     }
     else {
-        throw VSTError("couldn't create tmp file name");
+        throw Error("couldn't create tmp file name");
     }
 #else
     char tmpBuf[MAX_PATH + 1];
@@ -641,7 +641,7 @@ VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPl
     // get full path to probe exe
     // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
-        throw VSTError("probePlugin: couldn't get module path!");
+        throw Error("probePlugin: couldn't get module path!");
     }
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');
@@ -649,7 +649,7 @@ VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPl
     // fork
     pid_t pid = fork();
     if (pid == -1) {
-        throw VSTError("probePlugin: fork failed!");
+        throw Error("probePlugin: fork failed!");
     }
     else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
@@ -677,7 +677,7 @@ VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPl
             desc.probeResult = ProbeResult::success;
         }
         else {
-            throw VSTError("probePlugin: couldn't read temp file!");
+            throw Error("probePlugin: couldn't read temp file!");
         }
     }
     else if (result == EXIT_FAILURE) {
@@ -686,16 +686,16 @@ VSTPluginDesc::ptr IVSTFactory::probePlugin(const std::string& name, int shellPl
     else {
         desc.probeResult = ProbeResult::crash;
     }
-    return std::make_shared<VSTPluginDesc>(std::move(desc));
+    return std::make_shared<PluginInfo>(std::move(desc));
 }
 
-/*///////////////////// VSTPluginDesc /////////////////////*/
+/*///////////////////// PluginInfo /////////////////////*/
 
-VSTPluginDesc::VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory)
+PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
     : path(factory->path()), factory_(factory) {}
 
-VSTPluginDesc::VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory, const IVSTPlugin& plugin)
-    : VSTPluginDesc(factory)
+PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPlugin& plugin)
+    : PluginInfo(factory)
 {
     name = plugin.getPluginName();
     if (name.empty()){
@@ -740,14 +740,14 @@ VSTPluginDesc::VSTPluginDesc(const std::shared_ptr<const IVSTFactory>& factory, 
     flags_ = 0;
     flags_ |= plugin.hasEditor() * HasEditor;
     flags_ |= plugin.isSynth() * IsSynth;
-    flags_ |= plugin.hasPrecision(VSTProcessPrecision::Single) * SinglePrecision;
-    flags_ |= plugin.hasPrecision(VSTProcessPrecision::Double) * DoublePrecision;
+    flags_ |= plugin.hasPrecision(ProcessPrecision::Single) * SinglePrecision;
+    flags_ |= plugin.hasPrecision(ProcessPrecision::Double) * DoublePrecision;
     flags_ |= plugin.hasMidiInput() * MidiInput;
     flags_ |= plugin.hasMidiOutput() * MidiOutput;
 }
 
-IVSTPlugin::ptr VSTPluginDesc::create() const {
-    std::shared_ptr<const IVSTFactory> factory = factory_.lock();
+IPlugin::ptr PluginInfo::create() const {
+    std::shared_ptr<const IFactory> factory = factory_.lock();
     return factory ? factory->create(name) : nullptr;
 }
 
@@ -792,7 +792,7 @@ static std::string bashString(std::string name){
 }
 
 
-void VSTPluginDesc::serialize(std::ostream& file) const {
+void PluginInfo::serialize(std::ostream& file) const {
     file << "[plugin]\n";
     file << "path=" << path << "\n";
     file << "name=" << name << "\n";
@@ -862,26 +862,26 @@ bool getLine(std::istream& stream, std::string& line){
 int getCount(const std::string& line){
     auto pos = line.find('=');
     if (pos == std::string::npos){
-        throw VSTError("missing '=' after key: " + line);
+        throw Error("missing '=' after key: " + line);
     }
     try {
         return std::stol(line.substr(pos + 1));
     }
     catch (...){
-        throw VSTError("expected number after 'n='");
+        throw Error("expected number after 'n='");
     }
 }
 
 static void getKeyValuePair(const std::string& line, std::string& key, std::string& value){
     auto pos = line.find('=');
     if (pos == std::string::npos){
-        throw VSTError("missing '=' after key: " + line);
+        throw Error("missing '=' after key: " + line);
     }
     key = rtrim(line.substr(0, pos));
     value = ltrim(line.substr(pos + 1));
 }
 
-void VSTPluginDesc::deserialize(std::istream& file) {
+void PluginInfo::deserialize(std::istream& file) {
     // first check for sections, then for keys!
     bool start = false;
     std::string line;
@@ -950,17 +950,17 @@ void VSTPluginDesc::deserialize(std::istream& file) {
                 } else if (key == "flags"){
                     flags_ = std::stol(value);
                 } else {
-                    throw VSTError("unknown key: " + key);
+                    throw Error("unknown key: " + key);
                 }
             }
             catch (const std::invalid_argument& e) {
-                throw VSTError("invalid argument for key '" + key + "': " + value);
+                throw Error("invalid argument for key '" + key + "': " + value);
             }
             catch (const std::out_of_range& e) {
-                throw VSTError("out of range argument for key '" + key + "': " + value);
+                throw Error("out of range argument for key '" + key + "': " + value);
             }
         } else {
-            throw VSTError("bad data: " + line);
+            throw Error("bad data: " + line);
         }
     }
 }
