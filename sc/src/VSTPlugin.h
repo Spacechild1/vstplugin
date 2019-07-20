@@ -30,13 +30,10 @@ class VSTPlugin;
 struct VSTPluginCmdData {
     // for asynchronous commands
     static VSTPluginCmdData* create(VSTPlugin* owner, const char* path = 0);
-    void open();
-    void close();
     // data
     VSTPlugin* owner = nullptr;
     void* freeData = nullptr;
     IPlugin::ptr plugin;
-    IWindow::ptr window;
     std::thread::id threadID;
 #if VSTTHREADS
     std::thread thread;
@@ -185,9 +182,9 @@ private:
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
     IPlugin::ptr plugin_ = nullptr;
+    bool editor_ = false;
     bool isLoading_ = false;
     bool bypass_ = false;
-    IWindow::ptr window_;
     VSTPluginListener::ptr listener_;
 
     float *buf_ = nullptr;
@@ -202,7 +199,6 @@ private:
 
     // threading
 #if VSTTHREADS
-    std::thread thread_;
     std::mutex mutex_;
     std::vector<std::pair<int, float>> paramQueue_;
 #endif

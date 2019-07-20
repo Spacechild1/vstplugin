@@ -1,10 +1,18 @@
 #include "Interface.h"
 #include "Utility.h"
 #if USE_VST2
-#include "VST2Plugin.h"
+ #include "VST2Plugin.h"
 #endif
 #if USE_VST3
-#include "VST3Plugin.h"
+ #include "VST3Plugin.h"
+#endif
+
+#ifdef _WIN32
+ #include "WindowWin32.h"
+#elif defined(__APPLE__)
+ #include "WindowCocoa.h"
+#elif defined(USE_X11)
+ #include "WindowX11.h"
 #endif
 
 #include <unordered_set>
@@ -359,51 +367,37 @@ void search(const std::string &dir, std::function<void(const std::string&, const
 #endif
 }
 
-/*/////////// IWindow //////////////////*/
-namespace WindowFactory {
-#ifdef _WIN32
-    void initializeWin32();
-    IWindow::ptr createWin32(IPlugin::ptr);
-#endif
-#ifdef __APPLE__
-    void initializeCocoa();
-    IWindow::ptr createCocoa(IPlugin::ptr);
-    void pollCocoa();
-#endif
-#ifdef USE_X11
-    void initializeX11();
-    IWindow::ptr createX11(IPlugin::ptr);
-#endif
-}
+/*/////////// Message Loop //////////////////*/
 
-IWindow::ptr IWindow::create(IPlugin::ptr plugin){
-    IWindow::ptr win;
-#ifdef _WIN32
-    win = WindowFactory::createWin32(std::move(plugin));
-#elif defined(__APPLE__)
-    win = WindowFactory::createCocoa(std::move(plugin));
-#elif defined(USE_X11)
-    win = WindowFactory::createX11(std::move(plugin));
-#endif
-    return win;
-}
+namespace UIThread {
+    IPlugin::ptr create(const PluginInfo &info){
+        IPlugin::ptr plugin;
+    #ifdef _WIN32
+        plugin = Win32::UIThread::instance().create(info);
+    #elif defined(__APPLE__)
+        plugin = Cocoa::UIThread::instance().create(info);
+    #elif defined(USE_X11)
+        plugin = X11::UIThread::instance().create(info);
+    #endif
+        return plugin;
+    }
 
-void IWindow::initialize(){
-#ifdef _WIN32
-    WindowFactory::initializeWin32();
-#endif
-#ifdef __APPLE__
-    WindowFactory::initializeCocoa();
-#endif
-#ifdef USE_X11
-    WindowFactory::initializeX11();
-#endif
-}
+    void destroy(IPlugin::ptr plugin){
+    #ifdef _WIN32
+        Win32::UIThread::instance().destroy(std::move(plugin));
+    #elif defined(__APPLE__)
+        Cocoa::UIThread::instance().destroy(std::move(plugin));
+    #elif defined(USE_X11)
+        X11::UIThread::instance().destroy(std::move(plugin));
+    #endif
+    }
 
-void IWindow::poll(){
+    void poll(){
 #ifdef __APPLE__
-    WindowFactory::pollCocoa();
+        Cocoa::UIThread::poll();
 #endif
+    }
+
 }
 
 /*///////////// IModule //////////////*/

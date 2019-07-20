@@ -10,85 +10,187 @@ namespace vst {
 
 std::wstring widen(const std::string& s); // VSTPlugin.cpp
 
-static LRESULT WINAPI VSTPluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
+namespace Win32 {
+
+static LRESULT WINAPI PluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
     if (Msg == WM_CLOSE){
         ShowWindow(hWnd, SW_HIDE); // don't destroy Window when closed
         return true;
     }
     if (Msg == WM_DESTROY){
-        PostQuitMessage(0);
         LOG_DEBUG("WM_DESTROY");
     }
     return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
 
-namespace WindowFactory {
-    void initializeWin32(){
-        static bool initialized = false;
-        if (!initialized){
-            WNDCLASSEXW wcex;
-            memset(&wcex, 0, sizeof(WNDCLASSEXW));
-            wcex.cbSize = sizeof(WNDCLASSEXW);
-            wcex.lpfnWndProc = VSTPluginEditorProc;
-            wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
-            wchar_t exeFileName[MAX_PATH];
-            GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
-            wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
-            if (!RegisterClassExW(&wcex)){
-                LOG_WARNING("couldn't register window class!");
-            } else {
-                LOG_DEBUG("registered window class!");
-                initialized = true;
+UIThread& UIThread::instance(){
+    static UIThread thread;
+    return thread;
+}
+
+DWORD UIThread::run(void *user){
+    auto obj = (UIThread *)user;
+    MSG msg;
+    int ret;
+    // force message queue creation
+    PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
+    {
+        std::lock_guard<std::mutex> lock(obj->mutex_);
+        obj->ready_ = true;
+        obj->cond_.notify_one();
+    }
+    LOG_DEBUG("start message loop");
+    while((ret = GetMessage(&msg, NULL, 0, 0))){
+        if (ret < 0){
+            // error
+            LOG_ERROR("GetMessage: error");
+            break;
+        }
+        switch (msg.message){
+        case WM_CREATE_PLUGIN:
+        {
+            LOG_DEBUG("WM_CREATE_PLUGIN");
+            std::unique_lock<std::mutex> lock(obj->mutex_);
+            try {
+                auto plugin = obj->info_->create();
+                if (plugin->info().hasEditor()){
+                    auto window = std::make_unique<Window>(*plugin);
+                    window->setTitle(plugin->info().name);
+                    int left, top, right, bottom;
+                    plugin->getEditorRect(left, top, right, bottom);
+                    window->setGeometry(left, top, right, bottom);
+                    plugin->openEditor(window->getHandle());
+                    plugin->setWindow(std::move(window));
+                }
+                obj->plugin_ = std::move(plugin);
+            } catch (const Error& e){
+                obj->err_ = e;
+                obj->plugin_ = nullptr;
             }
+            obj->info_ = nullptr; // done
+            lock.unlock();
+            obj->cond_.notify_one();
+            break;
+        }
+        case WM_DESTROY_PLUGIN:
+        {
+            LOG_DEBUG("WM_DESTROY_PLUGIN");
+            std::unique_lock<std::mutex> lock(obj->mutex_);
+            auto plugin = std::move(obj->plugin_);
+            plugin->closeEditor(); // goes out of scope
+            lock.unlock();
+            obj->cond_.notify_one();
+            break;
+        }
+        default:
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            break;
         }
     }
+    LOG_DEBUG("quit message loop");
+    return 0;
+}
 
-    IWindow::ptr createWin32(IPlugin::ptr plugin){
-        return std::make_shared<WindowWin32>(std::move(plugin));
+UIThread::UIThread(){
+    // setup window class
+    WNDCLASSEXW wcex;
+    memset(&wcex, 0, sizeof(WNDCLASSEXW));
+    wcex.cbSize = sizeof(WNDCLASSEXW);
+    wcex.lpfnWndProc = PluginEditorProc;
+    wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
+    wchar_t exeFileName[MAX_PATH];
+    GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
+    wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
+    if (!RegisterClassExW(&wcex)){
+        LOG_WARNING("couldn't register window class!");
+    } else {
+        LOG_DEBUG("registered window class!");
+    }
+    // run thread
+    thread_ = CreateThread(NULL, 0, run, this, 0, &threadID_);
+    if (!thread_){
+        throw Error("couldn't create UI thread!");
+    };
+    std::unique_lock<std::mutex> lock(mutex_);
+    // wait for thread to create message queue
+    cond_.wait(lock, [&](){ return ready_; });
+    LOG_DEBUG("message queue created");
+}
+
+UIThread::~UIThread(){
+    if (thread_){
+        if (PostThreadMessage(threadID_, WM_QUIT, 0, 0)){
+            WaitForSingleObject(thread_, INFINITE);
+            CloseHandle(thread_);
+            LOG_DEBUG("joined thread");
+        } else {
+            LOG_ERROR("couldn't post quit message!");
+        }
     }
 }
 
-WindowWin32::WindowWin32(IPlugin::ptr plugin)
-    : plugin_(std::move(plugin))
+IPlugin::ptr UIThread::create(const PluginInfo& info){
+    if (thread_){
+        LOG_DEBUG("create plugin in UI thread");
+        std::unique_lock<std::mutex> lock(mutex_);
+        info_ = &info;
+        // notify thread
+        if (PostThreadMessage(threadID_, WM_CREATE_PLUGIN, 0, 0)){
+            // wait till done
+            LOG_DEBUG("waiting...");
+            cond_.wait(lock, [&]{return info_ == nullptr; });
+            if (plugin_){
+                LOG_DEBUG("done");
+                return std::move(plugin_);
+            } else {
+                throw err_;
+            }
+        } else {
+            throw Error("couldn't post to thread!");
+        }
+    } else {
+        throw Error("no UI thread!");
+    }
+}
+
+void UIThread::destroy(IPlugin::ptr plugin){
+    if (thread_){
+        std::unique_lock<std::mutex> lock(mutex_);
+        plugin_ = std::move(plugin);
+        // notify thread
+        if (PostThreadMessage(threadID_, WM_DESTROY_PLUGIN, 0, 0)){
+            // wait till done
+            cond_.wait(lock, [&]{return plugin_ == nullptr;});
+        } else {
+            throw Error("couldn't post to thread!");
+        }
+    } else {
+        throw Error("no UI thread!");
+    }
+}
+
+Window::Window(IPlugin& plugin)
+    : plugin_(&plugin)
 {
     hwnd_ = CreateWindowW(
           VST_EDITOR_CLASS_NAME, L"Untitled",
           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, NULL, NULL
     );
-    LOG_DEBUG("created WindowWin32");
+    LOG_DEBUG("created Window");
 }
 
-WindowWin32::~WindowWin32(){
+Window::~Window(){
     DestroyWindow(hwnd_);
-    LOG_DEBUG("destroyed WindowWin32");
+    LOG_DEBUG("destroyed Window");
 }
 
-void WindowWin32::run(){
-	MSG msg;
-    int ret;
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
-            LOG_WARNING("GetMessage: error");
-            break;
-        }
-        DispatchMessage(&msg);
-    }
-        // close the editor here (in the GUI thread).
-        // some plugins depend on this.
-    plugin_->closeEditor();
-}
-
-void WindowWin32::quit(){
-    PostMessage(hwnd_, WM_QUIT, 0, 0);
-}
-
-void WindowWin32::setTitle(const std::string& title){
+void Window::setTitle(const std::string& title){
     SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
-void WindowWin32::setGeometry(int left, int top, int right, int bottom){
+void Window::setGeometry(int left, int top, int right, int bottom){
     RECT rc;
     rc.left = left;
     rc.top = top;
@@ -101,33 +203,33 @@ void WindowWin32::setGeometry(int left, int top, int right, int bottom){
     MoveWindow(hwnd_, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
 }
 
-void WindowWin32::show(){
+void Window::show(){
     ShowWindow(hwnd_, SW_SHOW);
     UpdateWindow(hwnd_);
 }
 
-void WindowWin32::hide(){
+void Window::hide(){
     ShowWindow(hwnd_, SW_HIDE);
     UpdateWindow(hwnd_);
 }
 
-void WindowWin32::minimize(){
+void Window::minimize(){
     ShowWindow(hwnd_, SW_MINIMIZE);
     UpdateWindow(hwnd_);
 }
 
-void WindowWin32::restore(){
+void Window::restore(){
     ShowWindow(hwnd_, SW_RESTORE);
     BringWindowToTop(hwnd_);
 }
 
-void WindowWin32::bringToTop(){
+void Window::bringToTop(){
     minimize();
     restore();
 }
 
-void WindowWin32::update(){
+void Window::update(){
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
-
+} // Win32
 } // vst

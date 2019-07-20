@@ -242,7 +242,7 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
     if (plugin->magic != kEffectMagic){
         throw Error("not a valid VST2.x plugin!");
     }
-    return std::make_shared<VST2Plugin>(plugin, shared_from_this(), desc);
+    return std::make_unique<VST2Plugin>(plugin, shared_from_this(), desc);
 }
 
 

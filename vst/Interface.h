@@ -21,36 +21,6 @@ typedef unsigned int uint32_t;
 
 namespace vst {
 
-class IPlugin;
-
-class IWindow {
- public:
-    using ptr = std::shared_ptr<IWindow>;
-    using const_ptr = std::shared_ptr<const IWindow>;
-    // call this once before you create any windows. not thread safe (yet)
-    static void initialize();
-    // make a new window
-    static IWindow::ptr create(std::shared_ptr<IPlugin> plugin);
-    // poll the main loop (needed if the editor is in the main thread)
-    static void poll();
-
-    virtual ~IWindow() {}
-
-    virtual void* getHandle() = 0; // get system-specific handle to the window
-	virtual void run() = 0; // run a message loop for this window
-    virtual void quit() = 0; // post quit message
-
-    virtual void setTitle(const std::string& title) = 0;
-    virtual void setGeometry(int left, int top, int right, int bottom) = 0;
-
-    virtual void show() = 0;
-    virtual void hide() = 0;
-    virtual void minimize() = 0;
-    virtual void restore() = 0; // un-minimize
-    virtual void bringToTop() = 0;
-    virtual void update() {}
-};
-
 struct MidiEvent {
     MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
         data[0] = status; data[1] = data1; data[2] = data2; delta = _delta;
@@ -85,11 +55,12 @@ enum class ProcessPrecision {
 };
 
 struct PluginInfo;
+struct IWindow;
 
 class IPlugin {
  public:
-    using ptr = std::shared_ptr<IPlugin>;
-    using const_ptr = std::shared_ptr<const IPlugin>;
+    using ptr = std::unique_ptr<IPlugin>;
+    using const_ptr = std::unique_ptr<const IPlugin>;
 
     virtual ~IPlugin(){}
 
@@ -182,6 +153,9 @@ class IPlugin {
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
     virtual void getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
+
+    virtual void setWindow(std::unique_ptr<IWindow> window) = 0;
+    virtual IWindow* getWindow() const = 0;
 };
 
 class IFactory;
@@ -204,7 +178,7 @@ struct PluginInfo {
         factory_ = factory;
     }
     // create new instances
-     // throws an Error exception on failure!
+    // throws an Error exception on failure!
     IPlugin::ptr create() const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
@@ -324,6 +298,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
 
 class Error : public std::exception {
  public:
+    Error() = default;
     Error(const std::string& msg)
         : msg_(msg){}
     const char * what() const noexcept override {
@@ -342,5 +317,33 @@ std::string find(const std::string& dir, const std::string& path);
 const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
+
+class IWindow {
+ public:
+    using ptr = std::unique_ptr<IWindow>;
+    using const_ptr = std::unique_ptr<const IWindow>;
+
+    virtual ~IWindow() {}
+
+    virtual void* getHandle() = 0; // get system-specific handle to the window
+
+    virtual void setTitle(const std::string& title) = 0;
+    virtual void setGeometry(int left, int top, int right, int bottom) = 0;
+
+    virtual void show() = 0;
+    virtual void hide() = 0;
+    virtual void minimize() = 0;
+    virtual void restore() = 0; // un-minimize
+    virtual void bringToTop() = 0;
+    virtual void update() {}
+};
+
+namespace UIThread {
+    IPlugin::ptr create(const PluginInfo& info);
+    void destroy(IPlugin::ptr plugin);
+#if !VSTTTHREADS
+    void poll();
+#endif
+}
 
 } // vst

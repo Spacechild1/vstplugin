@@ -469,14 +469,15 @@ t_vsteditor::~t_vsteditor(){
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
 #if VSTTHREADS
+    bool vstgui = window();
         // we only need to lock for GUI windows, but never for the generic Pd editor
-    if (e_window){
+    if (vstgui){
         e_mutex.lock();
     }
 #endif
     queue.push_back(std::forward<U>(event));
 #if VSTTHREADS
-    if (e_window){
+    if (vstgui){
         e_mutex.unlock();
     }
         // sys_lock / sys_unlock are not recursive so we check if we are in the main thread
@@ -512,8 +513,9 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
 #if VSTTHREADS
+    bool vstgui = x->vst_gui();
         // we only need to lock if we have a GUI thread
-    if (x->e_window){
+    if (vstgui){
         // it's more important to not block than flushing the queues on time
         if (!x->e_mutex.try_lock()){
             LOG_DEBUG("couldn't lock mutex");
@@ -530,7 +532,7 @@ void t_vsteditor::tick(t_vsteditor *x){
     sysexQueue.swap(x->e_sysex);
 
 #if VSTTHREADS
-    if (x->e_window){
+    if (vstgui){
         x->e_mutex.unlock();
     }
 #endif
@@ -571,130 +573,6 @@ void t_vsteditor::tick(t_vsteditor *x){
             SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
         }
         outlet_anything(outlet, gensym("midi"), n, msg.data());
-    }
-}
-
-#if VSTTHREADS
-    // create plugin + editor GUI (in another thread)
-void t_vsteditor::thread_function(VSTPluginPromise promise, const PluginInfo& desc){
-    LOG_DEBUG("enter thread");
-    IPlugin::ptr plugin;
-    if (desc.valid()){
-        try {
-            plugin = desc.create();
-        } catch (const Error& e){
-            sys_lock();
-            error("%s", e.what());
-            sys_unlock();
-        }
-    }
-    if (!plugin){
-            // signal main thread
-        promise.set_value(nullptr);
-        LOG_DEBUG("exit thread");
-        return;
-    }
-        // create GUI window (if needed)
-    if (plugin->hasEditor()){
-        e_window = IWindow::create(plugin);
-    }
-        // return plugin to main thread
-        // (but keep a reference in the GUI thread)
-    promise.set_value(plugin);
-        // setup GUI window (if any)
-    if (e_window){
-        e_window->setTitle(plugin->getPluginName());
-        int left, top, right, bottom;
-        plugin->getEditorRect(left, top, right, bottom);
-        e_window->setGeometry(left, top, right, bottom);
-
-        plugin->openEditor(e_window->getHandle());
-
-        LOG_DEBUG("enter message loop");
-            // run the event loop until it gets a quit message
-        e_window->run();
-        LOG_DEBUG("VST plugin closed");
-    }
-    LOG_DEBUG("exit thread");
-}
-#endif
-
-IPlugin::ptr t_vsteditor::open_plugin(const PluginInfo& desc, bool editor){
-        // -n flag (no gui)
-    if (!e_canvas){
-        editor = false;
-    }
-    if (editor){
-        // initialize GUI backend (if needed)
-        static bool initialized = false;
-        if (!initialized){
-            IWindow::initialize();
-            initialized = true;
-        }
-    }
-#if VSTTHREADS
-        // creates a new thread where the plugin is created and the message loop runs
-    if (editor){
-        VSTPluginPromise promise;
-        auto future = promise.get_future();
-        e_thread = std::thread(&t_vsteditor::thread_function, this, std::move(promise), std::ref(desc));
-            // wait for thread to return the plugin
-        return future.get();
-    }
-#endif
-        // create plugin in main thread
-    IPlugin::ptr plugin;
-    if (desc.valid()){
-        try {
-            plugin = desc.create();
-        } catch (const Error& e){
-            error("%s", e.what());
-        }
-    }
-    if (!plugin) return nullptr;
-#if !VSTTHREADS
-        // create and setup GUI window in main thread (if needed)
-    if (editor && plugin->hasEditor()){
-        e_window = IWindow::create(plugin);
-        if (e_window){
-            e_window->setTitle(plugin->getPluginName());
-            int left, top, right, bottom;
-            plugin->getEditorRect(left, top, right, bottom);
-            e_window->setGeometry(left, top, right, bottom);
-            // don't open the editor on macOS (see VSTWindowCocoa.mm)
-#ifndef __APPLE__
-            plugin->openEditor(e_window->getHandle());
-#endif
-        }
-    }
-#endif
-    return plugin;
-}
-
-void t_vsteditor::close_plugin(){
-    if (e_window){
-#if VSTTHREADS
-            // first release our reference
-        e_owner->x_plugin = nullptr;
-            // terminate the message loop - this will implicitly release
-            // the plugin in the GUI thread (some plugins expect to be
-            // released in the same thread where they have been created)
-        e_window->quit();
-            // now join the thread
-        if (e_thread.joinable()){
-            e_thread.join();
-            LOG_DEBUG("thread joined");
-        }
-        e_window = nullptr; // finally destroy the window
-#else
-        e_window = nullptr; // first destroy the window
-        e_owner->x_plugin = nullptr; // then release the plugin
-        LOG_DEBUG("VST plugin closed");
-#endif
-    } else {
-        vis(0); // close the Pd editor
-        e_owner->x_plugin = nullptr; // release the plugin
-        LOG_DEBUG("VST plugin closed");
     }
 }
 
@@ -771,10 +649,9 @@ void t_vsteditor::setup(){
 
 void t_vsteditor::update(){
     if (!e_owner->check_plugin()) return;
-
-    if (e_window){
-        e_window->update();
-    } else if (pd_gui()) {
+    if (window()){
+        window()->update();
+    } else if (e_canvas) {
         int n = e_owner->x_plugin->getNumParameters();
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
@@ -793,24 +670,19 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
 }
 
 void t_vsteditor::vis(bool v){
-    if (e_window){
+    auto win = window();
+    if (win){
         if (v){
-            e_window->bringToTop();
+            win->bringToTop();
         } else {
-            e_window->hide();
+            win->hide();
         }
-    } else if (pd_gui()) {
+    } else if (e_canvas) {
         send_vmess(gensym("vis"), "i", (int)v);
     }
 }
 
 /*---------------- t_vstplugin (public methods) ------------------*/
-
-// close
-static void vstplugin_close(t_vstplugin *x){
-    x->x_editor->close_plugin();
-    x->x_path = nullptr;
-}
 
 // search
 static void vstplugin_search_done(t_vstplugin *x){
@@ -994,6 +866,23 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
    return desc.get();
 }
 
+// close
+static void vstplugin_close(t_vstplugin *x){
+    if (x->x_plugin){
+        if (x->x_uithread){
+            try {
+                UIThread::destroy(std::move(x->x_plugin));
+            } catch (const Error& e){
+                pd_error(x, "%s: couldn't close plugin: %s",
+                         classname(x), e.what());
+            }
+        }
+        x->x_plugin = nullptr;
+        x->x_editor->vis(false);
+        x->x_path = nullptr;
+    }
+}
+
 // open
 static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     const PluginInfo *info = nullptr;
@@ -1034,10 +923,16 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         // *now* close the old plugin
     vstplugin_close(x);
         // open the new VST plugin
-    auto plugin = x->x_editor->open_plugin(*info, editor);
-    if (plugin){
+    try {
+        IPlugin::ptr plugin;
+        if (editor){
+            plugin = UIThread::create(*info);
+        } else {
+            plugin = info->create();
+        }
+        x->x_uithread = editor;
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
-        post("loaded VST plugin '%s'", plugin->getPluginName().c_str());
+        post("opened VST plugin '%s'", plugin->getPluginName().c_str());
         plugin->suspend();
             // initially, blocksize is 0 (before the 'dsp' message is sent).
             // some plugins might not like 0, so we send some sane default size.
@@ -1053,9 +948,10 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         x->update_precision();
         x->update_buffer();
         x->x_editor->setup();
-    } else {
+    } catch (const Error& e) {
             // shouldn't happen...
-        pd_error(x, "%s: couldn't open '%s'", classname(x), info->name.c_str());
+        pd_error(x, "%s: couldn't open '%s': %s",
+                 classname(x), info->name.c_str(), e.what());
     }
 }
 
@@ -1823,7 +1719,7 @@ static void vstplugin_doperform(t_vstplugin *x, int n, bool bypass){
     int noutvec = x->x_outvec.size();
     void ** outvec = x->x_outvec.data();
     int out_offset = 0;
-    auto plugin = x->x_plugin;
+    auto plugin = x->x_plugin.get();
 
     if (!bypass){  // process audio
         int pout = plugin->getNumOutputs();
@@ -1905,7 +1801,7 @@ static void vstplugin_doperform(t_vstplugin *x, int n, bool bypass){
 static t_int *vstplugin_perform(t_int *w){
     t_vstplugin *x = (t_vstplugin *)(w[1]);
     int n = (int)(w[2]);
-    auto plugin = x->x_plugin;
+    auto plugin = x->x_plugin.get();
     bool dp = x->x_dp;
     bool bypass = plugin ? x->x_bypass : true;
 
