@@ -332,6 +332,7 @@ VSTPlugin : MultiOutUGen {
 						paramNames[i] = this.prTrim(name);
 						paramLabels[i] = this.prTrim(label);
 					};
+					info.numParameters = n;
 					info.parameterNames = paramNames;
 					info.parameterLabels = paramLabels;
 				},
@@ -343,6 +344,7 @@ VSTPlugin : MultiOutUGen {
 					n.do { arg i;
 						programs[i] = line = this.prGetLine(stream);
 					};
+					info.numPrograms = n;
 					info.programNames = programs;
 				},
 				"[keys]",
