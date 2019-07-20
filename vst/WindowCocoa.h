@@ -1,4 +1,4 @@
-#include "VSTPluginInterface.h"
+#include "Interface.h"
 
 #import <Cocoa/Cocoa.h>
 

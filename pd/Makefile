@@ -18,7 +18,7 @@ class.sources = src/vstplugin~.cpp
 
 VST2DIR = ../vst/VST_SDK/VST2_SDK/
 VST3DIR = ../vst/VST_SDK/VST3_SDK/
-VST_SRC = ../vst/VSTPlugin.cpp
+VST_SRC = ../vst/Plugin.cpp
 VST_LIBS =
 VST_CFLAGS =
 
@@ -71,7 +71,7 @@ makefiles = $(PROBE).make
 
 define forWindows
   # common
-  VST_SRC += ../vst/VSTWindowWin32.cpp
+  VST_SRC += ../vst/WindowWin32.cpp
   VST_LIBS += -lstdc++fs
   cflags += -DVSTTHREADS=1
   # vstplugin~
@@ -84,7 +84,7 @@ define forWindows
 endef
 define forLinux
   # common
-  VST_SRC += ../vst/VSTWindowX11.cpp
+  VST_SRC += ../vst/WindowX11.cpp
   VST_LIBS += -L/usr/X11R6/lib -lX11 -ldl
   cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
   # vstplugin~
@@ -96,7 +96,7 @@ define forLinux
 endef
 define forDarwin
   # common
-  VST_SRC += ../vst/VSTWindowCocoa.mm
+  VST_SRC += ../vst/WindowCocoa.mm
   VST_LIBS += -framework Cocoa
   cflags += -fno-objc-arc -DVSTTHREADS=0
   # vstplugin~

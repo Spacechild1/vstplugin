@@ -1,4 +1,4 @@
-#include "VSTPluginInterface.h"
+#include "Interface.h"
 #include "Utility.h"
 #if USE_VST2
 #include "VST2Plugin.h"

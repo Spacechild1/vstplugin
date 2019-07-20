@@ -1,4 +1,4 @@
-#include "VSTPluginInterface.h"
+#include "Interface.h"
 #include "Utility.h"
 #include <stdlib.h>
 #include <fstream>

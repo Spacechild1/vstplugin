@@ -1,5 +1,5 @@
 #pragma once
-#include "VSTPluginInterface.h"
+#include "Interface.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"

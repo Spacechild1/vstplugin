@@ -1,4 +1,4 @@
-#include "VSTPluginUGen.h"
+#include "VSTPlugin.h"
 
 #ifdef SUPERNOVA
 #include <nova-tt/spin_lock.hpp>

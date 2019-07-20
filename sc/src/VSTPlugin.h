@@ -1,8 +1,8 @@
 #pragma once
 
 #include "SC_PlugIn.hpp"
-#include "VSTPluginInterface.h"
-#include "VSTPluginManager.h"
+#include "Interface.h"
+#include "PluginManager.h"
 #include "Utility.h"
 
 using namespace vst;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "VSTPluginInterface.h"
+#include "Interface.h"
 #include "Utility.h"
 
 #include <unordered_map>

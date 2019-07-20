@@ -1,7 +1,7 @@
 // VST2Plugin
 #pragma once
 
-#include "VSTPluginInterface.h"
+#include "Interface.h"
 
 #ifdef USE_FST
 # define FST2VST

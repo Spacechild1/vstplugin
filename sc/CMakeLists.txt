@@ -15,7 +15,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 message(STATUS "Installation path: ${CMAKE_INSTALL_PREFIX}")
 
-set(FILENAME "VSTPluginUGen.cpp")
+set(FILENAME "VSTPlugin.cpp")
 set(PROBE "probe")
 set(TOP "${CMAKE_SOURCE_DIR}/..")
 set(SC "${CMAKE_SOURCE_DIR}/sc")
@@ -30,7 +30,7 @@ include_directories(${SC_PATH}/plugin_interface)
 include_directories(${SC_PATH}/common)
 
 # VST
-set(VST_SRC "${VST}/VSTPlugin.cpp")
+set(VST_SRC "${VST}/Plugin.cpp")
 set(VST_LIBS)
 
 # VST2 SDK:
@@ -158,12 +158,12 @@ target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog) # only for VST
 
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
-    list(APPEND VST_SRC "${VST}/VSTWindowX11.cpp")
+    list(APPEND VST_SRC "${VST}/WindowX11.cpp")
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11")
 endif()
 if (MINGW OR WIN32)
     add_definitions(-DVSTTHREADS=1)
-    list(APPEND VST_SRC "${VST}/VSTWindowWin32.cpp")
+    list(APPEND VST_SRC "${VST}/WindowWin32.cpp")
 endif()
 if (MINGW)
     list(APPEND VST_LIBS "-static-libgcc" "-static-libstdc++" "-lstdc++fs" "-static -lpthread")
@@ -172,7 +172,7 @@ if (MINGW)
 endif()
 if (APPLE)
     add_definitions(-fno-objc-arc -DVSTTHREADS=0)
-    list(APPEND VST_SRC "${VST}/VSTWindowCocoa.mm")
+    list(APPEND VST_SRC "${VST}/WindowCocoa.mm")
     list(APPEND VST_LIBS "-framework Cocoa")
 endif()
 
