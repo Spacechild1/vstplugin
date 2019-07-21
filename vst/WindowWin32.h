@@ -21,6 +21,7 @@ class UIThread {
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
+    bool postMessage(UINT msg, WPARAM wparam = 0, LPARAM lparam = 0);
  private:
     static DWORD WINAPI run(void *user);
     LRESULT WINAPI proc(HWND hWnd, UINT Msg,

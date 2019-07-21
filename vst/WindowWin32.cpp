@@ -120,7 +120,7 @@ UIThread::UIThread(){
 
 UIThread::~UIThread(){
     if (thread_){
-        if (PostThreadMessage(threadID_, WM_QUIT, 0, 0)){
+        if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
             CloseHandle(thread_);
             LOG_DEBUG("joined thread");
@@ -130,13 +130,17 @@ UIThread::~UIThread(){
     }
 }
 
+bool UIThread::postMessage(UINT msg, WPARAM wparam LPARAM lparam){
+    return PostThreadMessage(threadID_, msg, wparam, lparam);
+}
+
 IPlugin::ptr UIThread::create(const PluginInfo& info){
     if (thread_){
         LOG_DEBUG("create plugin in UI thread");
         std::unique_lock<std::mutex> lock(mutex_);
         info_ = &info;
         // notify thread
-        if (PostThreadMessage(threadID_, WM_CREATE_PLUGIN, 0, 0)){
+        if (postMessage(WM_CREATE_PLUGIN)){
             // wait till done
             LOG_DEBUG("waiting...");
             cond_.wait(lock, [&]{return info_ == nullptr; });
@@ -159,7 +163,7 @@ void UIThread::destroy(IPlugin::ptr plugin){
         std::unique_lock<std::mutex> lock(mutex_);
         plugin_ = std::move(plugin);
         // notify thread
-        if (PostThreadMessage(threadID_, WM_DESTROY_PLUGIN, 0, 0)){
+        if (postMessage(WM_DESTROY_PLUGIN)){
             // wait till done
             cond_.wait(lock, [&]{return plugin_ == nullptr;});
         } else {
