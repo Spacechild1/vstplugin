@@ -46,6 +46,16 @@ static void writeBuffer(SndBuf* buf, std::string& data) {
     }
 }
 
+// a hacky way to check if the plugin is still alive.
+// the memory is not actually return to the OS, so we can still access it
+bool CmdData::valid() const {
+    auto b = owner->initialized();
+    if (!b) {
+        LOG_WARNING("VSTPlugin: destroyed while background task still running");
+    }
+    return b;
+}
+
 // InfoCmdData
 InfoCmdData* InfoCmdData::create(World* world, int size) {
     auto data = RTAlloc(world, sizeof(InfoCmdData) + size);
@@ -97,12 +107,12 @@ bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
     return true;
 }
 
-// VSTPluginCmdData
-VSTPluginCmdData* VSTPluginCmdData::create(VSTPlugin* owner, const char* path) {
+// PluginCmdData
+PluginCmdData* PluginCmdData::create(VSTPlugin* owner, const char* path) {
     size_t size = path ? (strlen(path) + 1) : 0; // keep trailing '\0'!
-    auto* cmdData = (VSTPluginCmdData*)RTAlloc(owner->mWorld, sizeof(VSTPluginCmdData) + size);
+    auto* cmdData = (PluginCmdData*)RTAlloc(owner->mWorld, sizeof(PluginCmdData) + size);
     if (cmdData) {
-        new (cmdData) VSTPluginCmdData();
+        new (cmdData) PluginCmdData();
         cmdData->owner = owner;
         if (path) {
             memcpy(cmdData->buf, path, size);
@@ -435,12 +445,6 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, bool 
 VSTPluginListener::VSTPluginListener(VSTPlugin &owner)
     : owner_(&owner) {}
 
-struct ParamAutomatedData {
-    VSTPlugin *owner;
-    int32 index;
-    float value;
-};
-
 // NOTE: in case we don't have a GUI thread we *could* get rid of nrtThreadID
 // and just assume that std::this_thread::get_id() != rtThreadID_ means
 // we're on the NRT thread - but I don't know if can be 100% sure about this,
@@ -456,13 +460,17 @@ void VSTPluginListener::parameterAutomated(int index, float value) {
     // NRT thread
     else if (std::this_thread::get_id() == owner_->nrtThreadID_) {
         FifoMsg msg;
-        auto data = new ParamAutomatedData{ owner_, index, value };
+        auto data = new ParamCmdData;
+        data->owner = owner_;
+        data->index = index;
+        data->value = value;
         msg.Set(owner_->mWorld, // world
             [](FifoMsg *msg) { // perform
-                auto data = (ParamAutomatedData *)msg->mData;
+                auto data = (ParamCmdData*)msg->mData;
+                if (!data->valid()) return;
                 data->owner->parameterAutomated(data->index, data->value);
             }, [](FifoMsg *msg) { // free
-                delete (ParamAutomatedData *)msg->mData;
+                delete (ParamCmdData*)msg->mData;
             }, data); // data
         SendMsgToRT(owner_->mWorld, msg);
     }
@@ -522,6 +530,9 @@ VSTPlugin::~VSTPlugin(){
     if (inBufVec_) RTFree(mWorld, inBufVec_);
     if (outBufVec_) RTFree(mWorld, outBufVec_);
     if (paramStates_) RTFree(mWorld, paramStates_);
+    // both variables are volatile, so the compiler is not allowed to optimize this away!
+    initialized_ = 0;
+    queued_ = 0;
     LOG_DEBUG("destroyed VSTPlugin");
 }
 
@@ -650,14 +661,15 @@ fail:
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPlugin::close() {
     if (plugin_) {
-        auto cmdData = VSTPluginCmdData::create(this);
+        auto cmdData = PluginCmdData::create(this);
         if (!cmdData) {
             return;
         }
         cmdData->plugin = std::move(plugin_);
         cmdData->value = editor_;
         doCmd(cmdData, [](World *world, void* inData) {
-            auto data = (VSTPluginCmdData*)inData;
+            auto data = (PluginCmdData*)inData;
+            if (!data->valid()) return false;
             try {
                 if (data->value) {
                     UIThread::destroy(std::move(data->plugin));
@@ -678,7 +690,8 @@ void VSTPlugin::close() {
 bool cmdOpen(World *world, void* cmdData) {
     LOG_DEBUG("cmdOpen");
     // initialize GUI backend (if needed)
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->threadID = std::this_thread::get_id();
     // create plugin in main thread
     auto info = queryPlugin(data->buf);
@@ -716,6 +729,13 @@ bool cmdOpen(World *world, void* cmdData) {
     return true;
 }
 
+bool cmdOpenDone(World* world, void* cmdData) {
+    auto data = (PluginCmdData*)cmdData;
+    if (!data->valid()) return false;
+    data->owner->doneOpen(*data);
+    return false; // done
+}
+
 // try to open the plugin in the NRT thread with an asynchronous command
 void VSTPlugin::open(const char *path, bool gui) {
     LOG_DEBUG("open");
@@ -729,21 +749,17 @@ void VSTPlugin::open(const char *path, bool gui) {
         return;
     }
     
-    auto cmdData = VSTPluginCmdData::create(this, path);
+    auto cmdData = PluginCmdData::create(this, path);
     if (cmdData) {
         cmdData->value = gui;
-        doCmd(cmdData, cmdOpen, [](World * world, void* cmdData) {
-            auto data = (VSTPluginCmdData*)cmdData;
-            data->owner->doneOpen(*data);
-            return false; // done
-        });
+        doCmd(cmdData, cmdOpen, cmdOpenDone);
         editor_ = gui;
         isLoading_ = true;
     }
 }
 
 // "/open" command succeeded/failed - called in the RT thread
-void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
+void VSTPlugin::doneOpen(PluginCmdData& cmd){
     LOG_DEBUG("doneOpen");
     isLoading_ = false;
     plugin_ = std::move(cmd.plugin);
@@ -779,11 +795,12 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
 
 void VSTPlugin::showEditor(bool show) {
     if (plugin_ && plugin_->getWindow()) {
-        auto cmdData = VSTPluginCmdData::create(this);
+        auto cmdData = PluginCmdData::create(this);
         if (cmdData) {
             cmdData->value = show;
             doCmd(cmdData, [](World * inWorld, void* inData) {
-                auto data = (VSTPluginCmdData*)inData;
+                auto data = (PluginCmdData*)inData;
+                if (!data->valid()) return false;
                 auto window = data->owner->plugin()->getWindow();
                 if (data->value) {
                     window->bringToTop();
@@ -801,7 +818,8 @@ void VSTPlugin::showEditor(bool show) {
 // in the NRT thread. we let the user choose
 // and add a big fat warning in the help file.
 bool cmdReset(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->plugin()->suspend();
     data->owner->plugin()->resume();
     return false; // done
@@ -811,7 +829,7 @@ void VSTPlugin::reset(bool async) {
     if (check()) {
         if (async) {
             // reset in the NRT thread (unsafe)
-            doCmd(VSTPluginCmdData::create(this), cmdReset);
+            doCmd(PluginCmdData::create(this), cmdReset);
         }
         else {
             // reset in the RT thread (safe)
@@ -910,6 +928,7 @@ void VSTPlugin::next(int inNumSamples) {
 
 bool cmdSetParam(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto index = data->index;
     if (data->display[0]) {
         data->owner->plugin()->setParameter(index, data->display);
@@ -922,6 +941,7 @@ bool cmdSetParam(World *world, void *cmdData) {
 
 bool cmdSetParamDone(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->setParamDone(data->index);
     return false; // done
 }
@@ -1052,13 +1072,15 @@ void VSTPlugin::unmapParam(int32 index) {
 
 // program/bank
 bool cmdSetProgram(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->plugin()->setProgram(data->value);
     return true;
 }
 
 bool cmdSetProgramDone(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->sendMsg("/vst_program_index", data->owner->plugin()->getProgram());
     return false; // done
 }
@@ -1066,7 +1088,7 @@ bool cmdSetProgramDone(World *world, void *cmdData) {
 void VSTPlugin::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumPrograms()) {
-            auto data = VSTPluginCmdData::create(this);
+            auto data = PluginCmdData::create(this);
             if (data) {
                 data->value = index;
                 doCmd(data, cmdSetProgram, cmdSetProgramDone);
@@ -1116,6 +1138,7 @@ void VSTPlugin::queryPrograms(int32 index, int32 count) {
 template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
     auto data = (InfoCmdData*)cmdData;
+    if (!data->valid()) return false;
     auto plugin = data->owner->plugin();
     bool result = true;
     try {
@@ -1148,6 +1171,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
 template<bool bank>
 bool cmdReadPresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto owner = data->owner;
     if (bank) {
         owner->sendMsg("/vst_bank_read", data->flags);
@@ -1181,6 +1205,7 @@ void VSTPlugin::readPreset(int32 buf) {
 template<bool bank>
 bool cmdWritePreset(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto plugin = data->owner->plugin();
     bool result = true;
     try {
@@ -1213,6 +1238,7 @@ bool cmdWritePreset(World *world, void *cmdData){
 template<bool bank>
 bool cmdWritePresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    if (!data->valid()) return true; // will just free data
     syncBuffer(world, data->bufnum);
     data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
     return true; // continue
@@ -1284,6 +1310,7 @@ void VSTPlugin::canDo(const char *what) {
 
 bool cmdVendorSpecific(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto result = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
     data->index = result; // save result
     return true;
@@ -1291,6 +1318,7 @@ bool cmdVendorSpecific(World *world, void *cmdData) {
 
 bool cmdVendorSpecificDone(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->sendMsg("/vst_vendor_method", (float)(data->index));
     return false; // done
 }

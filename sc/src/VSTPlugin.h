@@ -19,17 +19,18 @@ const size_t MAX_OSC_PACKET_SIZE = 1600;
 
 class VSTPlugin;
 
-struct VSTPluginCmdData {
-    // for asynchronous commands
-    static VSTPluginCmdData* create(VSTPlugin* owner, const char* path = 0);
-    // data
+struct CmdData {
     VSTPlugin* owner = nullptr;
+    bool valid() const;
+};
+
+struct PluginCmdData : CmdData {
+    // for asynchronous commands
+    static PluginCmdData* create(VSTPlugin* owner, const char* path = 0);
+    // data
     void* freeData = nullptr;
     IPlugin::ptr plugin;
     std::thread::id threadID;
-#if VSTTHREADS
-    std::thread thread;
-#endif
     // generic int value
     int value = 0;
     // flexible array for RT memory
@@ -37,16 +38,14 @@ struct VSTPluginCmdData {
     char buf[1];
 };
 
-struct ParamCmdData {
-    VSTPlugin *owner;
+struct ParamCmdData : CmdData {
     int index;
     float value;
     // flexible array
     char display[1];
 };
 
-struct VendorCmdData {
-    VSTPlugin *owner;
+struct VendorCmdData : CmdData {
     int32 index;
     int32 value;
     float opt;
@@ -60,12 +59,11 @@ namespace SearchFlags {
     const int save = 4;
 };
 
-struct InfoCmdData {
+struct InfoCmdData : CmdData {
     static InfoCmdData* create(World* world, int size = 0);
     static InfoCmdData* create(VSTPlugin* owner, const char* path);
     static InfoCmdData* create(VSTPlugin* owner, int bufnum);
     static bool nrtFree(World* world, void* cmdData);
-    VSTPlugin* owner = nullptr;
     int32 flags = 0;
     int32 bufnum = -1;
     void* freeData = nullptr;
@@ -87,7 +85,7 @@ private:
 
 class VSTPlugin : public SCUnit {
     friend class VSTPluginListener;
-    friend struct VSTPluginCmdData;
+    friend struct PluginCmdData;
     static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
     static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
 public:
@@ -100,7 +98,7 @@ public:
     void runUnitCmds();
 
     void open(const char *path, bool gui);
-    void doneOpen(VSTPluginCmdData& msg);
+    void doneOpen(PluginCmdData& msg);
     void close();
     void showEditor(bool show);
     void reset(bool async = false);
@@ -163,8 +161,8 @@ public:
         AsyncStageFn stage4 = nullptr);
 private:
     // data members
-    uint32 initialized_ = MagicInitialized; // set by constructor
-    uint32 queued_; // set to MagicQueued when queuing unit commands
+    volatile uint32 initialized_ = MagicInitialized; // set by constructor
+    volatile uint32 queued_; // set to MagicQueued when queuing unit commands
     struct UnitCmdQueueItem {
         UnitCmdQueueItem *next;
         UnitCmdFunc fn;
