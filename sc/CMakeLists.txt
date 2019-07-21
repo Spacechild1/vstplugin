@@ -159,7 +159,7 @@ target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog) # only for VST
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1)
     list(APPEND VST_SRC "${VST}/WindowX11.cpp")
-    list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11")
+    list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11" "-pthread")
 endif()
 if (MINGW OR WIN32)
     add_definitions(-DVSTTHREADS=1)
