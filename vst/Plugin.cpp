@@ -209,20 +209,23 @@ const std::vector<std::string>& getDefaultSearchPaths() {
 
 #ifndef _WIN32
 // helper function
-static bool isDirectory(dirent *entry){
+static bool isDirectory(const std::string& dir, dirent *entry){
     // we don't count "." and ".."
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0){
         return false;
     }
 #ifdef _DIRENT_HAVE_D_TYPE
+    LOG_DEBUG("name: " << entry->d_name << ", d_type: " << (int)entry->d_type);
     // some filesystems don't support d_type, also we want to follow symlinks
     if (entry->d_type != DT_UNKNOWN && entry->d_type != DT_LNK){
         return (entry->d_type == DT_DIR);
-    } else
+    }
+    else
 #endif
     {
         struct stat stbuf;
-        if (stat(entry->d_name, &stbuf) == 0){
+        std::string path = dir + "/" + entry->d_name;
+        if (stat(path.c_str(), &stbuf) == 0){
             return S_ISDIR(stbuf.st_mode);
         }
     }
@@ -281,7 +284,7 @@ std::string find(const std::string &dir, const std::string &path){
         struct dirent *entry;
         if (directory){
             while (result.empty() && (entry = readdir(directory))){
-                if (isDirectory(entry)){
+                if (isDirectory(dirname, entry)){
                     std::string d = dirname + "/" + entry->d_name;
                     std::string absPath = d + "/" + relpath;
                     if (isFile(absPath)){
@@ -347,7 +350,7 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                     fn(absPath, name);
                 }
                 // otherwise search it if it's a directory
-                else if (isDirectory(entry)) {
+                else if (isDirectory(dirname, entry)) {
                     searchDir(absPath);
                 }
                 free(entry);
