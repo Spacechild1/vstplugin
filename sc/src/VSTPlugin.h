@@ -7,14 +7,6 @@
 
 using namespace vst;
 
-#ifndef VSTTHREADS
-#define VSTTHREADS 1
-#endif
-
-#if VSTTHREADS
-#include <future>
-#endif
-
 #include <thread>
 #include <memory>
 #include <string>

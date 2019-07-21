@@ -20,14 +20,6 @@ using namespace vst;
 #include <thread>
 #include <mutex>
 
-#ifndef VSTTHREADS
-#define VSTTHREADS 1
-#endif
-
-#if VSTTHREADS
-#include <future>
-#endif
-
 enum PdLogLevel {
     PD_FATAL = -3,
     PD_ERROR,

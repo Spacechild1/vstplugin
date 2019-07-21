@@ -19,6 +19,10 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
+#ifndef VSTTHREADS
+#define VSTTHREADS 1
+#endif
+
 namespace vst {
 
 struct MidiEvent {
