@@ -60,12 +60,14 @@ PROBE_LDLIBS =
 cflags = \
 	-g \
 	-std=c++14 \
-        -I../vst \
-        $(VST_CFLAGS) \
+	-I../vst \
+	$(VST_CFLAGS) \
 	-DLOGLEVEL=$(LOGLEVEL) \
-        $(empty)
+	$(empty)
 
 suppress-wunused = 1
+
+warn.flags = -Wno-format-security
 
 makefiles = $(PROBE).make
 
