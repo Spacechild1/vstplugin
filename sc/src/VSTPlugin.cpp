@@ -669,7 +669,9 @@ void VSTPlugin::close() {
         cmdData->value = editor_;
         doCmd(cmdData, [](World *world, void* inData) {
             auto data = (PluginCmdData*)inData;
-            if (!data->valid()) return false;
+            // This command doesn't touch the owner, so we don't have to do a check.
+            // Actually, it's quite expected that it will run after the owner has been
+            // destructed (to get rid of the VST plugin).
             try {
                 if (data->value) {
                     UIThread::destroy(std::move(data->plugin));
