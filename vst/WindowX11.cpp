@@ -198,7 +198,7 @@ Window::Window(Display& display, IPlugin& plugin)
     XSelectInput(display_, window_, 0xffff);
 #endif
 		// intercept request to delete window when being closed
-    XSetWMProtocols(display_, window_, &EventLoop::wmDelete, 1);
+    XSetWMProtocols(display_, window_, &UIThread::EventLoop::wmDelete, 1);
 
     XClassHint *ch = XAllocClassHint();
     if (ch){
