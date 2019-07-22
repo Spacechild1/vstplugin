@@ -269,13 +269,8 @@ std::string find(const std::string &dir, const std::string &path){
     // force no trailing slash
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
 
-    auto isFile = [](const std::string& fname){
-        struct stat stbuf;
-        return stat(fname.c_str(), &stbuf) == 0;
-    };
-
     std::string file = root + "/" + relpath;
-    if (isFile(file)){
+    if (pathExists(file)){
         return file; // success
     }
     // continue recursively
@@ -287,7 +282,7 @@ std::string find(const std::string &dir, const std::string &path){
                 if (isDirectory(dirname, entry)){
                     std::string d = dirname + "/" + entry->d_name;
                     std::string absPath = d + "/" + relpath;
-                    if (isFile(absPath)){
+                    if (pathExists(absPath)){
                         result = absPath;
                         break;
                     } else {
