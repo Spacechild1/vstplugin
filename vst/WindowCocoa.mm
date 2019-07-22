@@ -87,13 +87,33 @@ EventLoop::~EventLoop(){}
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
 #if VSTTHREADS
-    // todo
-#else
-    return doCreate(info);
+    if (NSApp != nullptr){
+        auto queue = dispatch_get_main_queue();
+        __block IPlugin::ptr plugin;
+        __block Error err;
+        LOG_DEBUG("dispatching...");
+        dispatch_sync(queue, ^{
+            try {
+                plugin = doCreate(info);
+            } catch (const Error& e){
+                err = e;
+            }
+        });
+        LOG_DEBUG("done!");
+        if (plugin){
+            return IPlugin::ptr(plugin.release()); // hack
+        } else {
+            throw err;
+        }
+    } else {
+        LOG_ERROR("EventLoop::destroy: can't dispatch to main thread - no NSApp!");
+    }
+    // fallback:
 #endif
+    return doCreate(info);
 }
 
-IPlugin::ptr EventLoop::doCreate(const PluginInfo& info){
+IPlugin::ptr EventLoop::doCreate(const PluginInfo& info) {
     auto plugin = info.create();
     if (info.hasEditor()){
         auto window = std::make_unique<Window>(*plugin);
@@ -109,13 +129,22 @@ IPlugin::ptr EventLoop::doCreate(const PluginInfo& info){
 
 void EventLoop::destroy(IPlugin::ptr plugin){
 #if VSTTHREADS
-    // todo
-#else
-    return doDestroy(std::move(plugin));
+    if (NSApp != nullptr){
+        auto queue = dispatch_get_main_queue();
+        __block IPlugin::ptr p = std::move(plugin);
+        LOG_DEBUG("dispatching...");
+        dispatch_sync(queue, ^{ doDestroy(std::move(p)); });
+        LOG_DEBUG("done!");
+        return;
+    } else {
+        LOG_ERROR("EventLoop::destroy: can't dispatch to main thread - no NSApp!");
+    }
+    // fallback:
 #endif
+    doDestroy(std::move(plugin));
 }
 
-void EventLoop::doDestroy(IPlugin::ptr plugin){
+void EventLoop::doDestroy(IPlugin::ptr plugin) {
     plugin->closeEditor();
     // goes out of scope
 }

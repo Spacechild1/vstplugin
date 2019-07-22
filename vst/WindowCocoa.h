@@ -33,12 +33,8 @@ class EventLoop {
     bool postMessage();
 #endif
  private:
-    IPlugin::ptr doCreate(const PluginInfo& info);
-    void doDestroy(IPlugin::ptr plugin);
-#if VSTTHREADS
-    IPlugin::ptr plugin_;
-    Error err_;
-#endif
+    static IPlugin::ptr doCreate(const PluginInfo& info);
+    static void doDestroy(IPlugin::ptr plugin);
 };
 
 } // UIThread
