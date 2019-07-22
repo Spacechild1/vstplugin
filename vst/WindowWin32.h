@@ -9,15 +9,17 @@
 namespace vst {
 namespace Win32 {
 
+namespace UIThread {
+
 const UINT WM_CREATE_PLUGIN = WM_USER + 100;
 const UINT WM_DESTROY_PLUGIN = WM_USER + 101;
 
-class UIThread {
+class EventLoop {
  public:
-    static UIThread& instance();
+    static EventLoop& instance();
 
-    UIThread();
-    ~UIThread();
+    EventLoop();
+    ~EventLoop();
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
@@ -35,6 +37,8 @@ class UIThread {
     Error err_;
     bool ready_ = false;
 };
+
+} // UIThread
 
 class Window : public IWindow {
  public:

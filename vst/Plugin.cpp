@@ -7,14 +7,6 @@
  #include "VST3Plugin.h"
 #endif
 
-#ifdef _WIN32
- #include "WindowWin32.h"
-#elif defined(__APPLE__)
- #include "WindowCocoa.h"
-#elif defined(USE_X11)
- #include "WindowX11.h"
-#endif
-
 #include <unordered_set>
 #include <unordered_map>
 #include <stdlib.h>
@@ -47,6 +39,36 @@ namespace fs = std::experimental::filesystem;
 #endif
 
 namespace vst {
+    
+// forward declarations to avoid including the header files 
+// (creates troubles with Cocoa)
+#ifdef _WIN32
+namespace Win32 {
+    IPlugin::ptr UIThread::create(const PluginInfo& info);
+    void UIThread::destroy(IPlugin::ptr plugin);
+#if !VSTTHREADS
+    void UIThread::poll();
+#endif
+}
+#elif defined(__APPLE__)
+namespace Cocoa {
+namespace UIThread {
+    IPlugin::ptr create(const PluginInfo& info);
+    void destroy(IPlugin::ptr plugin);
+#if !VSTTHREADS
+    void poll();
+#endif
+} // UIThread
+} // Cocoa
+#elif defined(USE_X11)
+namespace X11 {
+    IPlugin::ptr UIThread::create(const PluginInfo& info);
+    void UIThread::destroy(IPlugin::ptr plugin);
+#if !VSTTHREADS
+    void UIThread::poll();
+#endif
+}
+#endif
 
 /*////////////////////// platform ///////////////////*/
 
@@ -373,31 +395,36 @@ namespace UIThread {
     IPlugin::ptr create(const PluginInfo &info){
         IPlugin::ptr plugin;
     #ifdef _WIN32
-        plugin = Win32::UIThread::instance().create(info);
+        plugin = Win32::UIThread::create(info);
     #elif defined(__APPLE__)
-        plugin = Cocoa::UIThread::instance().create(info);
+        plugin = Cocoa::UIThread::create(info);
     #elif defined(USE_X11)
-        plugin = X11::UIThread::instance().create(info);
+        plugin = X11::UIThread::create(info);
     #endif
         return plugin;
     }
 
     void destroy(IPlugin::ptr plugin){
     #ifdef _WIN32
-        Win32::UIThread::instance().destroy(std::move(plugin));
+        Win32::UIThread::destroy(std::move(plugin));
     #elif defined(__APPLE__)
-        Cocoa::UIThread::instance().destroy(std::move(plugin));
+        Cocoa::UIThread::destroy(std::move(plugin));
     #elif defined(USE_X11)
-        X11::UIThread::instance().destroy(std::move(plugin));
+        X11::UIThread::destroy(std::move(plugin));
     #endif
     }
 
+#if !VSTTHREADS
     void poll(){
-#ifdef __APPLE__
+    #ifdef _WIN32
+        Win32::UIThread::poll();
+    #elif defined(__APPLE__)
         Cocoa::UIThread::poll();
-#endif
+    #elif defined(USE_X11)
+        X11::UIThread::poll();   
+    #endif
     }
-
+#endif
 }
 
 /*///////////// IModule //////////////*/

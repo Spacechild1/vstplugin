@@ -59,7 +59,7 @@ enum class ProcessPrecision {
 };
 
 struct PluginInfo;
-struct IWindow;
+class IWindow;
 
 class IPlugin {
  public:

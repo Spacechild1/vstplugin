@@ -11,17 +11,19 @@
 namespace vst {
 namespace X11 {
 
-class UIThread {
+namespace UIThread {
+
+class EventLoop {
  public:
     static Atom wmProtocols;
     static Atom wmDelete;
     static Atom wmQuit;
     static Atom wmCreatePlugin;
     static Atom wmDestroyPlugin;
-    static UIThread& instance();
+    static EventLoop& instance();
 
-    UIThread();
-    ~UIThread();
+    EventLoop();
+    ~EventLoop();
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
@@ -38,6 +40,8 @@ class UIThread {
     Error err_;
     bool ready_ = false;
 };
+
+} // UIThread
 
 class Window : public IWindow {
  public:

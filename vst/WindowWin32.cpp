@@ -11,6 +11,26 @@ namespace vst {
 std::wstring widen(const std::string& s); // VSTPlugin.cpp
 
 namespace Win32 {
+    
+namespace UIThread {
+
+#if !VSTTHREADS
+#error "VSTTHREADS must be defined for Windows!"
+// void poll(){}
+#endif
+
+IPlugin::ptr create(const PluginInfo& info){
+    return EventLoop::instance().create(info);
+}
+
+void destroy(IPlugin::ptr plugin){
+    EventLoop::instance().destroy(std::move(plugin));
+}
+
+EventLoop& EventLoop::instance(){
+    static EventLoop thread;
+    return thread;
+}
 
 static LRESULT WINAPI PluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
     if (Msg == WM_CLOSE){
@@ -23,13 +43,8 @@ static LRESULT WINAPI PluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARA
     return DefWindowProcW(hWnd, Msg, wParam, lParam);
 }
 
-UIThread& UIThread::instance(){
-    static UIThread thread;
-    return thread;
-}
-
-DWORD UIThread::run(void *user){
-    auto obj = (UIThread *)user;
+DWORD EventLoop::run(void *user){
+    auto obj = (EventLoop *)user;
     MSG msg;
     int ret;
     // force message queue creation
@@ -92,7 +107,7 @@ DWORD UIThread::run(void *user){
     return 0;
 }
 
-UIThread::UIThread(){
+EventLoop::EventLoop(){
     // setup window class
     WNDCLASSEXW wcex;
     memset(&wcex, 0, sizeof(WNDCLASSEXW));
@@ -118,7 +133,7 @@ UIThread::UIThread(){
     LOG_DEBUG("message queue created");
 }
 
-UIThread::~UIThread(){
+EventLoop::~EventLoop(){
     if (thread_){
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
@@ -130,11 +145,11 @@ UIThread::~UIThread(){
     }
 }
 
-bool UIThread::postMessage(UINT msg, WPARAM wparam LPARAM lparam){
+bool EventLoop::postMessage(UINT msg, WPARAM wparam LPARAM lparam){
     return PostThreadMessage(threadID_, msg, wparam, lparam);
 }
 
-IPlugin::ptr UIThread::create(const PluginInfo& info){
+IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_){
         LOG_DEBUG("create plugin in UI thread");
         std::unique_lock<std::mutex> lock(mutex_);
@@ -158,7 +173,7 @@ IPlugin::ptr UIThread::create(const PluginInfo& info){
     }
 }
 
-void UIThread::destroy(IPlugin::ptr plugin){
+void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_){
         std::unique_lock<std::mutex> lock(mutex_);
         plugin_ = std::move(plugin);
@@ -173,6 +188,8 @@ void UIThread::destroy(IPlugin::ptr plugin){
         throw Error("no UI thread!");
     }
 }
+
+} // UIThread
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin)

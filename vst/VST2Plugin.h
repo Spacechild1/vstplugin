@@ -56,7 +56,7 @@ class VST2Plugin final : public IPlugin {
     VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST2Plugin();
 
-    const PluginInfo& info() const { return *desc_; }
+    const PluginInfo& info() const override { return *desc_; }
     std::string getPluginName() const override;
     std::string getPluginVendor() const override;
     std::string getPluginCategory() const override;

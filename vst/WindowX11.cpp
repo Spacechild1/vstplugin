@@ -6,18 +6,33 @@
 namespace vst {
 namespace X11 {
 
-Atom UIThread::wmProtocols;
-Atom UIThread::wmDelete;
-Atom UIThread::wmQuit;
-Atom UIThread::wmCreatePlugin;
-Atom UIThread::wmDestroyPlugin;
+Atom EventLoop::wmProtocols;
+Atom EventLoop::wmDelete;
+Atom EventLoop::wmQuit;
+Atom EventLoop::wmCreatePlugin;
+Atom EventLoop::wmDestroyPlugin;
 
-UIThread& UIThread::instance(){
-    static UIThread thread;
+namespace UIThread {
+    
+#if !VSTTHREADS
+#error "VSTTHREADS must be defined for X11!"
+// void poll(){}
+#endif
+
+IPlugin::ptr create(const PluginInfo& info){
+    return EventLoop::instance().create(info);
+}
+
+void destroy(IPlugin::ptr plugin){
+    EventLoop::instance().destroy(std::move(plugin));
+}
+
+EventLoop& EventLoop::instance(){
+    static EventLoop thread;
     return thread;
 }
 
-UIThread::UIThread() {
+EventLoop::EventLoop() {
     if (!XInitThreads()){
         LOG_WARNING("XInitThreads failed!");
     }
@@ -40,11 +55,11 @@ UIThread::UIThread() {
     wmCreatePlugin = XInternAtom(display_, "WM_CREATE_PLUGIN", 0);
     wmDestroyPlugin = XInternAtom(display_, "WM_DESTROY_PLUGIN", 0);
     // run thread
-    thread_ = std::thread(&UIThread::run, this);
+    thread_ = std::thread(&EventLoop::run, this);
     LOG_DEBUG("X11: UI thread ready");
 }
 
-UIThread::~UIThread(){
+EventLoop::~EventLoop(){
     if (thread_.joinable()){
         // post quit message
         // https://stackoverflow.com/questions/10792361/how-do-i-gracefully-exit-an-x11-event-loop
@@ -54,11 +69,15 @@ UIThread::~UIThread(){
         LOG_VERBOSE("X11: terminated UI thread");
     }
     if (display_){
+    #if 1
+        // destroy dummy window
+        XDestroyWindow(display_, root_);
+    #endif
         XCloseDisplay(display_);
     }
 }
 
-void UIThread::run(){
+void EventLoop::run(){
     XEvent event;
     LOG_DEBUG("X11: start event loop");
     while (true){
@@ -98,7 +117,8 @@ void UIThread::run(){
                 LOG_DEBUG("WM_DESTROY_PLUGIN");
                 std::unique_lock<std::mutex> lock(mutex_);
                 auto plugin = std::move(plugin_);
-                plugin->closeEditor(); // goes out of scope
+                plugin->closeEditor();
+                // goes out of scope
                 lock.unlock();
                 cond_.notify_one();
             } else if (type == wmQuit){
@@ -111,7 +131,7 @@ void UIThread::run(){
 	}
 }
 
-bool UIThread::postClientEvent(Atom atom){
+bool EventLoop::postClientEvent(Atom atom){
     XClientMessageEvent event;
     memset(&event, 0, sizeof(XClientMessageEvent));
     event.type = ClientMessage;
@@ -125,7 +145,7 @@ bool UIThread::postClientEvent(Atom atom){
     return false;
 }
 
-IPlugin::ptr UIThread::create(const PluginInfo& info){
+IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_.joinable()){
         LOG_DEBUG("create plugin in UI thread");
         std::unique_lock<std::mutex> lock(mutex_);
@@ -149,7 +169,7 @@ IPlugin::ptr UIThread::create(const PluginInfo& info){
     }
 }
 
-void UIThread::destroy(IPlugin::ptr plugin){
+void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_.joinable()){
         std::unique_lock<std::mutex> lock(mutex_);
         plugin_ = std::move(plugin);
@@ -165,6 +185,8 @@ void UIThread::destroy(IPlugin::ptr plugin){
     }
 }
 
+} // UIThread
+
 Window::Window(Display& display, IPlugin& plugin)
     : display_(&display), plugin_(&plugin)
 {
@@ -176,7 +198,7 @@ Window::Window(Display& display, IPlugin& plugin)
     XSelectInput(display_, window_, 0xffff);
 #endif
 		// intercept request to delete window when being closed
-    XSetWMProtocols(display_, window_, &UIThread::wmDelete, 1);
+    XSetWMProtocols(display_, window_, &EventLoop::wmDelete, 1);
 
     XClassHint *ch = XAllocClassHint();
     if (ch){

@@ -5,11 +5,11 @@
 #define classname(x) (class_getname(pd_class(x)))
 
 #if !VSTTHREADS // don't use VST GUI threads
-# define MAIN_LOOP_POLL_INT 20
-static t_clock *mainLoopClock = nullptr;
-static void mainLoopTick(void *x){
-    IWindow::poll();
-    clock_delay(mainLoopClock, MAIN_LOOP_POLL_INT);
+# define EVENT_LOOP_POLL_INT 20 // time between polls in ms
+static t_clock *eventLoopClock = nullptr;
+static void eventLoopTick(void *x){
+    UIThread::poll();
+    clock_delay(eventLoopClock, EVENT_LOOP_POLL_INT);
 }
 #endif
 
@@ -1970,8 +1970,8 @@ void vstplugin_tilde_setup(void)
     readIniFile();
 
 #if !VSTTHREADS
-    mainLoopClock = clock_new(0, (t_method)mainLoopTick);
-    clock_delay(mainLoopClock, 0);
+    eventLoopClock = clock_new(0, (t_method)eventLoopTick);
+    clock_delay(eventLoopClock, 0);
 #endif
 }
 
