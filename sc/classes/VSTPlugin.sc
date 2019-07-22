@@ -292,7 +292,7 @@ VSTPlugin : MultiOutUGen {
 		(split < line.size).if {
 			value = line[split..];
 		} { value = "" };
-		^[this.prTrim(key), this.prTrim(value)];
+		^[this.prTrim(key).asSymbol, this.prTrim(value)];
 	}
 	*prParseIni { arg stream;
 		var results, onset, line, n, indices, last = 0;
@@ -356,7 +356,7 @@ VSTPlugin : MultiOutUGen {
 						keys[i] = this.prGetLine(stream);
 					};
 					// for now, there is only one key
-					info.key = keys[0];
+					info.key = keys[0].asSymbol;
 					// *** EXIT POINT ***
 					^info;
 				},
@@ -367,15 +367,15 @@ VSTPlugin : MultiOutUGen {
 					};
 					#key, value = this.prParseKeyValuePair(line);
 					switch(key,
-						"path", { info[key] = value },
-						"name", { info[key] = value },
-						"vendor", { info[key] = value },
-						"category", { info[key] = value },
-						"version", { info[key] = value },
-						"id", { info[key] = value.asInteger },
-						"inputs", { info.numInputs = value.asInteger },
-						"outputs", { info.numOutputs = value.asInteger },
-						"flags",
+						\path, { info[key] = value },
+						\name, { info[key] = value },
+						\vendor, { info[key] = value },
+						\category, { info[key] = value },
+						\version, { info[key] = value },
+						\id, { info[key] = value.asInteger },
+						\inputs, { info.numInputs = value.asInteger },
+						\outputs, { info.numOutputs = value.asInteger },
+						\flags,
 						{
 							f = value.asInteger;
 							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
