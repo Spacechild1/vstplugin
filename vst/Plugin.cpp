@@ -44,12 +44,14 @@ namespace vst {
 // (creates troubles with Cocoa)
 #ifdef _WIN32
 namespace Win32 {
-    IPlugin::ptr UIThread::create(const PluginInfo& info);
-    void UIThread::destroy(IPlugin::ptr plugin);
+namespace UIThread {
+    IPlugin::ptr create(const PluginInfo& info);
+    void destroy(IPlugin::ptr plugin);
 #if !VSTTHREADS
-    void UIThread::poll();
+    void poll();
 #endif
-}
+} // UIThread
+} // Win32
 #elif defined(__APPLE__)
 namespace Cocoa {
 namespace UIThread {
@@ -62,12 +64,14 @@ namespace UIThread {
 } // Cocoa
 #elif defined(USE_X11)
 namespace X11 {
-    IPlugin::ptr UIThread::create(const PluginInfo& info);
-    void UIThread::destroy(IPlugin::ptr plugin);
+namespace UIThread {
+    IPlugin::ptr create(const PluginInfo& info);
+    void destroy(IPlugin::ptr plugin);
 #if !VSTTHREADS
-    void UIThread::poll();
+    void poll();
 #endif
-}
+} // UIThread
+} // X11
 #endif
 
 /*////////////////////// platform ///////////////////*/
