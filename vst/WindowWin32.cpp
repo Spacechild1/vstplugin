@@ -145,7 +145,7 @@ EventLoop::~EventLoop(){
     }
 }
 
-bool EventLoop::postMessage(UINT msg, WPARAM wparam LPARAM lparam){
+bool EventLoop::postMessage(UINT msg, WPARAM wparam, LPARAM lparam){
     return PostThreadMessage(threadID_, msg, wparam, lparam);
 }
 

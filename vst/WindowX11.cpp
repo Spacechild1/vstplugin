@@ -6,18 +6,18 @@
 namespace vst {
 namespace X11 {
 
+namespace UIThread {
+
+#if !VSTTHREADS
+#error "VSTTHREADS must be defined for X11!"
+// void poll(){}
+#endif
+
 Atom EventLoop::wmProtocols;
 Atom EventLoop::wmDelete;
 Atom EventLoop::wmQuit;
 Atom EventLoop::wmCreatePlugin;
 Atom EventLoop::wmDestroyPlugin;
-
-namespace UIThread {
-    
-#if !VSTTHREADS
-#error "VSTTHREADS must be defined for X11!"
-// void poll(){}
-#endif
 
 IPlugin::ptr create(const PluginInfo& info){
     return EventLoop::instance().create(info);
