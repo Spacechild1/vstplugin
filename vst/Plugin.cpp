@@ -152,6 +152,24 @@ bool createDirectory(const std::string& dir){
 #endif
 }
 
+std::string getTmpDirectory(){
+#ifdef _WIN32
+    wchar_t tmpDir[MAX_PATH + 1];
+    auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
+    if (tmpDirLen > 0){
+        return shorten(tmpDir);
+    } else {
+        return std::string{};
+    }
+#else
+    for (auto var : { "TMPDIR", "TMP", "TEMP", "TEMPDIR"}){
+        auto dir = getenv(var);
+        if (dir) return dir;
+    }
+    return "/tmp"; // fallback
+#endif
+}
+
 /*////////////////////// search ///////////////////////*/
 
 static std::vector<const char *> platformExtensions = {
@@ -215,7 +233,6 @@ static bool isDirectory(const std::string& dir, dirent *entry){
         return false;
     }
 #ifdef _DIRENT_HAVE_D_TYPE
-    LOG_DEBUG("name: " << entry->d_name << ", d_type: " << (int)entry->d_type);
     // some filesystems don't support d_type, also we want to follow symlinks
     if (entry->d_type != DT_UNKNOWN && entry->d_type != DT_LNK){
         return (entry->d_type == DT_DIR);
@@ -593,48 +610,23 @@ PluginInfo::ptr IFactory::probePlugin(const std::string& name, int shellPluginID
     desc.path = path();
     // we pass the shell plugin ID instead of the name to probe.exe
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
+    // create temp file path
+    std::stringstream ss;
+    ss << "/vst_" << this;
+    std::string tmpPath = getTmpDirectory() + ss.str();
+    // LOG_DEBUG("temp path: " << tmpPath);
 #ifdef _WIN32
-    // create temp file path (tempnam works differently on MSVC and MinGW, so we use the Win32 API instead)
-    wchar_t tmpDir[MAX_PATH + 1];
-    auto tmpDirLen = GetTempPathW(MAX_PATH, tmpDir);
-    _snwprintf(tmpDir + tmpDirLen, MAX_PATH - tmpDirLen, L"vst_%p", this); // lazy
-    std::wstring wideTmpPath(tmpDir);
-    std::string tmpPath = shorten(wideTmpPath);
-    /// LOG_DEBUG("temp path: " << tmpPath);
     // get full path to probe exe
     std::wstring probePath = getDirectory() + L"\\probe.exe";
     /// LOG_DEBUG("probe path: " << shorten(probePath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::wstring quotedPluginPath = L"\"" + widen(path()) + L"\"";
     std::wstring quotedPluginName = L"\"" + widen(pluginName) + L"\"";
-    std::wstring quotedTmpPath = L"\"" + wideTmpPath + L"\"";
+    std::wstring quotedTmpPath = L"\"" + widen(tmpPath) + L"\"";
     // start a new process with plugin path and temp file path as arguments:
     result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(),
                       quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
 #else // Unix
-    // create temp file path
-    std::string tmpPath;
-#if 1
-    auto tmpBuf = tempnam(nullptr, nullptr);
-    if (tmpBuf) {
-        tmpPath = tmpBuf;
-        free(tmpBuf);
-    }
-    else {
-        throw Error("couldn't create tmp file name");
-    }
-#else
-    char tmpBuf[MAX_PATH + 1];
-    const char *tmpDir = nullptr;
-    auto tmpVarList = { "TMPDIR", "TMP", "TEMP", "TEMPDIR", nullptr };
-    auto tmpVar = tmpVarList;
-    while (*tmpVar++ && !tmpDir){
-        tmpDir = getenv(*tmpVar);
-    }
-    snprintf(tmpBuf, MAX_PATH, L"%s/vst_%p", (tmpDir ? tmpDir : "/tmp"), this); // lazy
-    tmpPath = tmpBuf;
-#endif
-    /// LOG_DEBUG("temp path: " << tmpPath);
     Dl_info dlinfo;
     // get full path to probe exe
     // hack: obtain library info through a function pointer (vst::search)
