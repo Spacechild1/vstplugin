@@ -46,8 +46,11 @@ static void writeBuffer(SndBuf* buf, std::string& data) {
     }
 }
 
-// a hacky way to check if the plugin is still alive.
-// the memory is not actually return to the OS, so we can still access it
+// This is a hacky way to check if the plugin is still alive.
+// The memory is not actually returned to the OS, so we can still access it.
+// Actually, this is not 100% thread-safe, the VSTPlugin struct might still
+// deleted after calling valid() in the NRT thread...
+// A better solution will come soon!
 bool CmdData::valid() const {
     auto b = owner->initialized();
     if (!b) {
@@ -550,6 +553,7 @@ bool VSTPlugin::check(){
     }
 }
 
+// HACK to check if the class has been fully constructed. See "runUnitCommand".
 bool VSTPlugin::initialized() {
     return (initialized_ == MagicInitialized);
 }
@@ -2034,19 +2038,27 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 
 // When a Synth is created on the Server, the UGen constructors are only called during
 // the first "next" routine, so if we send a unit command right after /s_new, the receiving
-// unit hasn't been properly constructed. The previous version of VSTPlugin just ignored
-// such unit commands and posted a warning, now we queue them and run them in the constructor.
+// unit hasn't been properly constructed yet, so calling member functions might lead to a crash.
 
-// Unit commands likely trigger ansynchronous commands - which is not a problem in Scsynth.
-// In Supernova there's a theoretical race condition issue since the system FIFO is single producer only,
-// but UGen constructors never run in parallel, so this is safe as long as nobody else is scheduling
-// system callbacks during the "next" routine (which would be dangerous anyway).
+// The previous version of VSTPlugin just ignored such unit commands and posted a warning,
+// now we queue them and run them in the constructor.
 
 // In RT synthesis this is most useful for opening plugins right after Synth creation, e.g.:
 // VSTPluginController(Synth(\test)).open("some_plugin", action: { |plugin| /* do something */ });
 
 // In NRT synthesis this becomes even more useful because all commands are executed synchronously,
 // so you can schedule /s_new + various unit commands (e.g. openMsg -> readProgramMsg) for the same timestamp.
+
+// Unit commands likely trigger ansynchronous commands - which is not a problem in Scsynth.
+// In Supernova there's a theoretical race condition issue since the system FIFO is single producer only,
+// but UGen constructors never run in parallel, so this is safe as long as nobody else is scheduling
+// system callbacks during the "next" routine (which would be dangerous anyway).
+
+// Another problem is that the Server doesn't zero any RT memory for performance reasons.
+// This means we can't check for 0 or nullptrs... The current solution is to set the
+// "initialized_" member to some magic value in the constructor. In the destructor we zero the
+// field to protected against cases where the next VSTPlugin instance we be allocated at the same address.
+// The member has to be volate to ensure that the compiler doesn't eliminate any stores!
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
     if (unit->initialized()) {
