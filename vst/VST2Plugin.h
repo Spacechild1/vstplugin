@@ -142,6 +142,12 @@ class VST2Plugin final : public IPlugin {
     void openEditor(void *window) override;
     void closeEditor() override;
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    void setWindow(IWindow::ptr window) override {
+        window_ = std::move(window);
+    }
+    IWindow *getWindow() const override {
+        return window_.get();
+    }
  private:
     static bool canHostDo(const char *what);
 
@@ -161,6 +167,7 @@ class VST2Plugin final : public IPlugin {
     AEffect *plugin_ = nullptr;
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginInfo::const_ptr desc_;
+    IWindow::ptr window_;
     IPluginListener::ptr listener_ = nullptr;
     VstTimeInfo timeInfo_;
         // buffers for incoming MIDI and SysEx events

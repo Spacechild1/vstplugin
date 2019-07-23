@@ -46,6 +46,16 @@ static void writeBuffer(SndBuf* buf, std::string& data) {
     }
 }
 
+// a hacky way to check if the plugin is still alive.
+// the memory is not actually return to the OS, so we can still access it
+bool CmdData::valid() const {
+    auto b = owner->initialized();
+    if (!b) {
+        LOG_WARNING("VSTPlugin: destroyed while background task still running");
+    }
+    return b;
+}
+
 // InfoCmdData
 InfoCmdData* InfoCmdData::create(World* world, int size) {
     auto data = RTAlloc(world, sizeof(InfoCmdData) + size);
@@ -97,12 +107,12 @@ bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
     return true;
 }
 
-// VSTPluginCmdData
-VSTPluginCmdData* VSTPluginCmdData::create(VSTPlugin* owner, const char* path) {
+// PluginCmdData
+PluginCmdData* PluginCmdData::create(VSTPlugin* owner, const char* path) {
     size_t size = path ? (strlen(path) + 1) : 0; // keep trailing '\0'!
-    auto* cmdData = (VSTPluginCmdData*)RTAlloc(owner->mWorld, sizeof(VSTPluginCmdData) + size);
+    auto* cmdData = (PluginCmdData*)RTAlloc(owner->mWorld, sizeof(PluginCmdData) + size);
     if (cmdData) {
-        new (cmdData) VSTPluginCmdData();
+        new (cmdData) PluginCmdData();
         cmdData->owner = owner;
         if (path) {
             memcpy(cmdData->buf, path, size);
@@ -435,12 +445,6 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, bool 
 VSTPluginListener::VSTPluginListener(VSTPlugin &owner)
     : owner_(&owner) {}
 
-struct ParamAutomatedData {
-    VSTPlugin *owner;
-    int32 index;
-    float value;
-};
-
 // NOTE: in case we don't have a GUI thread we *could* get rid of nrtThreadID
 // and just assume that std::this_thread::get_id() != rtThreadID_ means
 // we're on the NRT thread - but I don't know if can be 100% sure about this,
@@ -456,13 +460,17 @@ void VSTPluginListener::parameterAutomated(int index, float value) {
     // NRT thread
     else if (std::this_thread::get_id() == owner_->nrtThreadID_) {
         FifoMsg msg;
-        auto data = new ParamAutomatedData{ owner_, index, value };
+        auto data = new ParamCmdData;
+        data->owner = owner_;
+        data->index = index;
+        data->value = value;
         msg.Set(owner_->mWorld, // world
             [](FifoMsg *msg) { // perform
-                auto data = (ParamAutomatedData *)msg->mData;
+                auto data = (ParamCmdData*)msg->mData;
+                if (!data->valid()) return;
                 data->owner->parameterAutomated(data->index, data->value);
             }, [](FifoMsg *msg) { // free
-                delete (ParamAutomatedData *)msg->mData;
+                delete (ParamCmdData*)msg->mData;
             }, data); // data
         SendMsgToRT(owner_->mWorld, msg);
     }
@@ -522,6 +530,9 @@ VSTPlugin::~VSTPlugin(){
     if (inBufVec_) RTFree(mWorld, inBufVec_);
     if (outBufVec_) RTFree(mWorld, outBufVec_);
     if (paramStates_) RTFree(mWorld, paramStates_);
+    // both variables are volatile, so the compiler is not allowed to optimize this away!
+    initialized_ = 0;
+    queued_ = 0;
     LOG_DEBUG("destroyed VSTPlugin");
 }
 
@@ -650,96 +661,79 @@ fail:
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPlugin::close() {
     if (plugin_) {
-        auto cmdData = VSTPluginCmdData::create(this);
+        auto cmdData = PluginCmdData::create(this);
         if (!cmdData) {
             return;
         }
-        // plugin, window and thread don't depend on VSTPlugin so they can be
-        // safely moved to cmdData (which takes care of the actual closing)
         cmdData->plugin = std::move(plugin_);
-        cmdData->window = std::move(window_);
-#if VSTTHREADS
-        cmdData->thread = std::move(thread_);
-#endif
-        doCmd(cmdData, [](World *world, void* data) {
-            ((VSTPluginCmdData *)data)->close();
+        cmdData->value = editor_;
+        doCmd(cmdData, [](World *world, void* inData) {
+            auto data = (PluginCmdData*)inData;
+            // This command doesn't touch the owner, so we don't have to do a check.
+            // Actually, it's quite expected that it will run after the owner has been
+            // destructed (to get rid of the VST plugin).
+            try {
+                if (data->value) {
+                    UIThread::destroy(std::move(data->plugin));
+                }
+                else {
+                    data->plugin = nullptr; // destruct
+                }
+            }
+            catch (const Error & e) {
+                LOG_ERROR("ERROR: couldn't close plugin: " << e.what());
+            }
             return false; // done
         });
-        window_ = nullptr;
         plugin_ = nullptr;
     }
-}
-
-// get rid of the plugin/window (called in the NRT thread)
-void VSTPluginCmdData::close() {
-    if (!plugin) return;
-#if VSTTHREADS
-    if (window) {
-        plugin = nullptr; // release our plugin reference
-        // terminate the message loop - will implicitly release the plugin in the GUI thread!
-        // (some plugins expect to be released in the same thread where they have been created.)
-        window->quit();
-        // now join the thread
-        if (thread.joinable()) {
-            thread.join();
-            LOG_DEBUG("thread joined");
-        }
-        // finally destroy the window
-        window = nullptr;
-    }
-    else {
-#else
-    {
-#endif
-        // first destroy the window (if any)
-        window = nullptr;
-        // then release the plugin
-        plugin = nullptr;
-    }
-    LOG_DEBUG("VST plugin closed");
 }
 
 bool cmdOpen(World *world, void* cmdData) {
     LOG_DEBUG("cmdOpen");
     // initialize GUI backend (if needed)
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->threadID = std::this_thread::get_id();
-    if (data->value) { // VST gui?
-#ifdef __APPLE__
-        LOG_WARNING("Warning: VST GUI not supported (yet) on macOS!");
-        data->value = false;
-#else
-        static bool initialized = false;
-        if (!initialized) {
-            IWindow::initialize();
-            initialized = true;
+    // create plugin in main thread
+    auto info = queryPlugin(data->buf);
+    if (info && info->valid()) {
+        try {
+            IPlugin::ptr plugin;
+            bool editor = data->value;
+            if (editor) {
+                plugin = UIThread::create(*info);
+            }
+            else {
+                plugin = info->create();
+            }
+            auto owner = data->owner;
+            plugin->suspend();
+            // we only access immutable members of owner
+            plugin->setSampleRate(owner->sampleRate());
+            plugin->setBlockSize(owner->bufferSize());
+            if (plugin->hasPrecision(ProcessPrecision::Single)) {
+                plugin->setPrecision(ProcessPrecision::Single);
+            }
+            else {
+                LOG_WARNING("VSTPlugin: plugin '" << plugin->getPluginName() << "' doesn't support single precision processing - bypassing!");
+            }
+            int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
+            int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
+            plugin->setNumSpeakers(nin, nout);
+            plugin->resume();
+            data->plugin = std::move(plugin);
         }
-#endif
-    }
-    data->open();
-    auto plugin = data->plugin.get();
-    if (plugin) {
-        auto owner = data->owner;
-        plugin->suspend();
-        // we only access immutable members of owner
-        plugin->setSampleRate(owner->sampleRate());
-        plugin->setBlockSize(owner->bufferSize());
-        if (plugin->hasPrecision(ProcessPrecision::Single)) {
-            plugin->setPrecision(ProcessPrecision::Single);
+        catch (const Error & e) {
+            LOG_ERROR(e.what());
         }
-        else {
-            LOG_WARNING("VSTPlugin: plugin '" << plugin->getPluginName() << "' doesn't support single precision processing - bypassing!");
-        }
-        int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
-        int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
-        plugin->setNumSpeakers(nin, nout);
-        plugin->resume();
     }
     return true;
 }
 
-bool cmdOpenDone(World *world, void* cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+bool cmdOpenDone(World* world, void* cmdData) {
+    auto data = (PluginCmdData*)cmdData;
+    if (!data->valid()) return false;
     data->owner->doneOpen(*data);
     return false; // done
 }
@@ -757,27 +751,24 @@ void VSTPlugin::open(const char *path, bool gui) {
         return;
     }
     
-    auto cmdData = VSTPluginCmdData::create(this, path);
+    auto cmdData = PluginCmdData::create(this, path);
     if (cmdData) {
         cmdData->value = gui;
         doCmd(cmdData, cmdOpen, cmdOpenDone);
+        editor_ = gui;
         isLoading_ = true;
     }
 }
 
 // "/open" command succeeded/failed - called in the RT thread
-void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
+void VSTPlugin::doneOpen(PluginCmdData& cmd){
     LOG_DEBUG("doneOpen");
     isLoading_ = false;
     plugin_ = std::move(cmd.plugin);
-    window_ = std::move(cmd.window);
     nrtThreadID_ = cmd.threadID;
     // LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
-#if VSTTHREADS
-    thread_ = std::move(cmd.thread);
-#endif
     if (plugin_){
-        LOG_DEBUG("loaded " << cmd.buf);
+        LOG_DEBUG("opened " << cmd.buf);
         // receive events from plugin
         plugin_->setListener(listener_);
         resizeBuffer();
@@ -796,125 +787,31 @@ void VSTPlugin::doneOpen(VSTPluginCmdData& cmd){
             LOG_ERROR("RTRealloc failed!");
         }
         // success, window
-        float data[] = { 1.f, static_cast<float>(window_ != nullptr) };
+        float data[] = { 1.f, static_cast<float>(plugin_->getWindow() != nullptr) };
         sendMsg("/vst_open", 2, data);
     } else {
-        LOG_WARNING("VSTPlugin: couldn't load " << cmd.buf);
+        LOG_WARNING("VSTPlugin: couldn't open " << cmd.buf);
         sendMsg("/vst_open", 0);
     }
 }
 
-#if VSTTHREADS
-using VSTPluginCmdPromise = std::promise<std::pair<IPlugin::ptr, IWindow::ptr>>;
-void threadFunction(VSTPluginCmdPromise promise, const char *path);
-#endif
-
-// try to open the plugin ("buf") and store the result in "plugin" and "window"
-void VSTPluginCmdData::open(){
-#if VSTTHREADS
-        // creates a new thread where the plugin is created and the message loop runs
-    if (value){ // VST gui?
-        VSTPluginCmdPromise promise;
-        auto future = promise.get_future();
-        LOG_DEBUG("started thread");
-        thread = std::thread(threadFunction, std::move(promise), buf);
-            // wait for thread to return the plugin and window
-        auto result = future.get();
-        LOG_DEBUG("got result from thread");
-        plugin = result.first;
-        window = result.second;
-        if (!window) {
-            thread.join(); // to avoid a crash in ~VSTPluginCmdData
-        }
-        return;
-    }
-#endif
-        // create plugin in main thread
-    auto desc = queryPlugin(buf);
-    if (desc && desc->valid()){
-        try {
-            plugin = desc->create();
-        } catch (const Error& e){
-            Print("%s\n", e.what());
-        }
-    }
-#if !VSTTHREADS
-        // create and setup GUI window in main thread (if needed)
-    if (plugin && plugin->hasEditor() && value){
-        window = IWindow::create(plugin);
-        if (window){
-            window->setTitle(plugin->getPluginName());
-            int left, top, right, bottom;
-            plugin->getEditorRect(left, top, right, bottom);
-            window->setGeometry(left, top, right, bottom);
-            // don't open the editor on macOS (see VSTWindowCocoa.mm)
-#ifndef __APPLE__
-            plugin->openEditor(window->getHandle());
-#endif
-        }
-    }
-#endif
-}
-
-#if VSTTHREADS
-void threadFunction(VSTPluginCmdPromise promise, const char *path){
-    IPlugin::ptr plugin;
-    auto desc = queryPlugin(path);
-    if (desc && desc->valid()){
-        try {
-            plugin = desc->create();
-        } catch (const Error& e){
-            Print("%s\n", e.what());
-        }
-    }
-    if (!plugin){
-            // signal other thread
-        promise.set_value({ nullptr, nullptr });
-        return;
-    }
-        // create GUI window (if needed)
-    IWindow::ptr window;
-    if (plugin->hasEditor()){
-        window = IWindow::create(plugin);
-    }
-        // return plugin and window to other thread
-        // (but keep references in the GUI thread)
-    promise.set_value({ plugin, window });
-        // setup GUI window (if any)
-    if (window){
-        window->setTitle(plugin->getPluginName());
-        int left, top, right, bottom;
-        plugin->getEditorRect(left, top, right, bottom);
-        window->setGeometry(left, top, right, bottom);
-
-        plugin->openEditor(window->getHandle());
-            // run the event loop until it gets a quit message 
-            // (the editor will we closed implicitly)
-        LOG_DEBUG("start message loop");
-        window->run();
-        LOG_DEBUG("end message loop");
-    }
-}
-#endif
-
-bool cmdShowEditor(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
-    if (data->value) {
-        data->window->bringToTop();
-    }
-    else {
-        data->window->hide();
-    }
-    return false; // done
-}
-
 void VSTPlugin::showEditor(bool show) {
-    if (plugin_ && window_) {
-        auto cmdData = VSTPluginCmdData::create(this);
+    if (plugin_ && plugin_->getWindow()) {
+        auto cmdData = PluginCmdData::create(this);
         if (cmdData) {
-            cmdData->window = window_;
             cmdData->value = show;
-            doCmd(cmdData, cmdShowEditor);
+            doCmd(cmdData, [](World * inWorld, void* inData) {
+                auto data = (PluginCmdData*)inData;
+                if (!data->valid()) return false;
+                auto window = data->owner->plugin()->getWindow();
+                if (data->value) {
+                    window->bringToTop();
+                }
+                else {
+                    window->hide();
+                }
+                return false; // done
+            });
         }
     }
 }
@@ -923,7 +820,8 @@ void VSTPlugin::showEditor(bool show) {
 // in the NRT thread. we let the user choose
 // and add a big fat warning in the help file.
 bool cmdReset(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->plugin()->suspend();
     data->owner->plugin()->resume();
     return false; // done
@@ -933,7 +831,7 @@ void VSTPlugin::reset(bool async) {
     if (check()) {
         if (async) {
             // reset in the NRT thread (unsafe)
-            doCmd(VSTPluginCmdData::create(this), cmdReset);
+            doCmd(PluginCmdData::create(this), cmdReset);
         }
         else {
             // reset in the RT thread (safe)
@@ -1006,7 +904,7 @@ void VSTPlugin::next(int inNumSamples) {
         // we assume this is only possible if we have a VST editor window.
         // try_lock() won't block the audio thread and we don't mind if notifications
         // will be delayed if try_lock() fails (which happens rarely in practice).
-        if (window_ && mutex_.try_lock()) {
+        if (plugin_->getWindow() && mutex_.try_lock()) {
             std::vector<std::pair<int, float>> queue;
             queue.swap(paramQueue_);
             mutex_.unlock();
@@ -1032,6 +930,7 @@ void VSTPlugin::next(int inNumSamples) {
 
 bool cmdSetParam(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto index = data->index;
     if (data->display[0]) {
         data->owner->plugin()->setParameter(index, data->display);
@@ -1044,6 +943,7 @@ bool cmdSetParam(World *world, void *cmdData) {
 
 bool cmdSetParamDone(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->setParamDone(data->index);
     return false; // done
 }
@@ -1174,13 +1074,15 @@ void VSTPlugin::unmapParam(int32 index) {
 
 // program/bank
 bool cmdSetProgram(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->plugin()->setProgram(data->value);
     return true;
 }
 
 bool cmdSetProgramDone(World *world, void *cmdData) {
-    auto data = (VSTPluginCmdData *)cmdData;
+    auto data = (PluginCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->sendMsg("/vst_program_index", data->owner->plugin()->getProgram());
     return false; // done
 }
@@ -1188,7 +1090,7 @@ bool cmdSetProgramDone(World *world, void *cmdData) {
 void VSTPlugin::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumPrograms()) {
-            auto data = VSTPluginCmdData::create(this);
+            auto data = PluginCmdData::create(this);
             if (data) {
                 data->value = index;
                 doCmd(data, cmdSetProgram, cmdSetProgramDone);
@@ -1238,6 +1140,7 @@ void VSTPlugin::queryPrograms(int32 index, int32 count) {
 template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
     auto data = (InfoCmdData*)cmdData;
+    if (!data->valid()) return false;
     auto plugin = data->owner->plugin();
     bool result = true;
     try {
@@ -1270,6 +1173,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
 template<bool bank>
 bool cmdReadPresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto owner = data->owner;
     if (bank) {
         owner->sendMsg("/vst_bank_read", data->flags);
@@ -1303,6 +1207,7 @@ void VSTPlugin::readPreset(int32 buf) {
 template<bool bank>
 bool cmdWritePreset(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto plugin = data->owner->plugin();
     bool result = true;
     try {
@@ -1335,6 +1240,7 @@ bool cmdWritePreset(World *world, void *cmdData){
 template<bool bank>
 bool cmdWritePresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
+    if (!data->valid()) return true; // will just free data
     syncBuffer(world, data->bufnum);
     data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
     return true; // continue
@@ -1406,6 +1312,7 @@ void VSTPlugin::canDo(const char *what) {
 
 bool cmdVendorSpecific(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
+    if (!data->valid()) return false;
     auto result = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
     data->index = result; // save result
     return true;
@@ -1413,6 +1320,7 @@ bool cmdVendorSpecific(World *world, void *cmdData) {
 
 bool cmdVendorSpecificDone(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
+    if (!data->valid()) return false;
     data->owner->sendMsg("/vst_vendor_method", (float)(data->index));
     return false; // done
 }

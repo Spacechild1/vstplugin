@@ -88,10 +88,10 @@ define forLinux
   # common
   VST_SRC += ../vst/WindowX11.cpp
   VST_LIBS += -L/usr/X11R6/lib -lX11 -ldl
-  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1
+  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1 -pthread
   # vstplugin~
   vstplugin~.class.sources += $$(VST_SRC)
-  ldlibs += $$(VST_LIBS) 
+  ldlibs += $$(VST_LIBS)
   # probe
   PROBE_SRC += $$(VST_SRC)
   PROBE_LDLIBS += $$(VST_LIBS)

@@ -2,7 +2,7 @@
 
 #import <Cocoa/Cocoa.h>
 
-@interface VSTEditorWindow : NSWindow {
+@interface CocoaEditorWindow : NSWindow {
     vst::IPlugin *_plugin;
 }
 
@@ -16,21 +16,38 @@
 @end
 
 namespace vst {
+namespace Cocoa {
+    
+namespace UIThread {
 
-namespace WindowFactory {
-    void initializeCocoa();
-    void pollCocoa();
-    IWindow::ptr createCocoa(IPlugin::ptr plugin);
-}
-
-class WindowCocoa : public IWindow {
+class EventLoop {
  public:
-    WindowCocoa(IPlugin::ptr plugin);
-    ~WindowCocoa();
+    static EventLoop& instance();
+
+    EventLoop();
+    ~EventLoop();
+
+    IPlugin::ptr create(const PluginInfo& info);
+    void destroy(IPlugin::ptr plugin);
+#if VSTTHREADS
+    bool postMessage();
+#endif
+ private:
+    static IPlugin::ptr doCreate(const PluginInfo& info);
+    static void doDestroy(IPlugin::ptr plugin);
+#if VSTTHREADS
+    bool haveNSApp_ = false;
+#endif
+};
+
+} // UIThread
+
+class Window : public IWindow {
+ public:
+    Window(IPlugin& plugin);
+    ~Window();
 
     void* getHandle() override;
-    void run() override;
-    void quit() override;
 
     void setTitle(const std::string& title) override;
     void setGeometry(int left, int top, int right, int bottom) override;
@@ -41,8 +58,9 @@ class WindowCocoa : public IWindow {
     void restore() override;
     void bringToTop() override;
  private:
-    VSTEditorWindow * window_ = nullptr;
-    IPlugin::ptr plugin_;
+    CocoaEditorWindow * window_ = nullptr;
+    IPlugin * plugin_;
 };
 
+} // Cocoa
 } // vst

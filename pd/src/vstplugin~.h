@@ -20,14 +20,6 @@ using namespace vst;
 #include <thread>
 #include <mutex>
 
-#ifndef VSTTHREADS
-#define VSTTHREADS 1
-#endif
-
-#if VSTTHREADS
-#include <future>
-#endif
-
 enum PdLogLevel {
     PD_FATAL = -3,
     PD_ERROR,
@@ -55,6 +47,7 @@ class t_vstplugin {
         // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
+    bool x_uithread = false;
     bool x_keep = false;
     bool x_bypass = false;
     bool x_dp; // single/double precision
@@ -70,6 +63,7 @@ class t_vstplugin {
     t_clock *x_clock;
     std::vector<t_symbol *> x_plugins;
         // methods
+    IPlugin::ptr open_plugin(const PluginInfo& desc, bool editor);
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
@@ -97,10 +91,6 @@ class t_vsteditor : public IPluginListener {
  public:
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
-        // open the plugin (and launch GUI thread if needed)
-    IPlugin::ptr open_plugin(const PluginInfo& desc, bool editor);
-        // close the plugin (and terminate GUI thread if needed)
-    void close_plugin();
         // setup the generic Pd editor
     void setup();
         // update the parameter displays
@@ -110,10 +100,13 @@ class t_vsteditor : public IPluginListener {
         // show/hide window
     void vis(bool v);
     bool pd_gui() const {
-        return e_canvas && !e_window;
+        return e_canvas && !vst_gui();
     }
     bool vst_gui() const {
-        return e_window != nullptr;
+        return window() != nullptr;
+    }
+    IWindow * window() const {
+        return e_owner->x_plugin ? e_owner->x_plugin->getWindow() : nullptr;
     }
  private:
         // plugin callbacks
@@ -128,28 +121,19 @@ class t_vsteditor : public IPluginListener {
     void send_vmess(t_symbol *sel, const char *fmt, T... args){
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
-#if VSTTHREADS
-    using VSTPluginPromise = std::promise<IPlugin::ptr>;
-        // open plugin in a new thread
-    void thread_function(VSTPluginPromise promise, const PluginInfo &desc);
-#endif
         // notify Pd (e.g. for MIDI event or GUI automation)
     template<typename T, typename U>
     void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
         // data
     t_vstplugin *e_owner;
-#if VSTTHREADS
-    std::thread e_thread;
-    std::thread::id e_mainthread;
-#endif
-    IWindow::ptr e_window;
     t_canvas *e_canvas = nullptr;
     std::vector<t_vstparam> e_params;
         // outgoing messages:
     t_clock *e_clock;
 #if VSTTHREADS
     std::mutex e_mutex;
+    std::thread::id e_mainthread;
 #endif
     std::vector<std::pair<int, float>> e_automated;
     std::vector<MidiEvent> e_midi;
