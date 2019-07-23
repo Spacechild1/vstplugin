@@ -35,6 +35,9 @@ class EventLoop {
  private:
     static IPlugin::ptr doCreate(const PluginInfo& info);
     static void doDestroy(IPlugin::ptr plugin);
+#if VSTTHREADS
+    bool haveNSApp_ = false;
+#endif
 };
 
 } // UIThread

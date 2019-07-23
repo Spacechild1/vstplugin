@@ -16,7 +16,9 @@
     LOG_DEBUG("window should close");
     [self orderOut:NSApp];
     vst::IPlugin *plugin = [self plugin];
+#if !VSTTHREADS
     plugin->closeEditor();
+#endif
     return NO;
 }
 /*
@@ -69,8 +71,13 @@ EventLoop& EventLoop::instance(){
 }
 
 EventLoop::EventLoop(){
-#if !VSTTHREADS
-    // create NSApplication and make it the foreground application
+#if VSTTHREADS
+    // we must access NSApp only once in the beginning
+    haveNSApp_ = (NSApp != nullptr);
+    LOG_DEBUG("init cocoa event loop");
+#else
+    // create NSApplication in this thread (= main thread) 
+    // and make it the foreground application
     ProcessSerialNumber psn = {0, kCurrentProcess};
     TransformProcessType(&psn, kProcessTransformToForegroundApplication);
     // check if someone already created NSApp (just out of curiousity)
@@ -80,6 +87,7 @@ EventLoop::EventLoop(){
     }
         // NSApp will automatically point to the NSApplication singleton
     [NSApplication sharedApplication];
+    LOG_DEBUG("init cocoa event loop (polling)");
 #endif
 }
 
@@ -87,21 +95,21 @@ EventLoop::~EventLoop(){}
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
 #if VSTTHREADS
-    if (NSApp != nullptr){
+    if (haveNSApp_){
         auto queue = dispatch_get_main_queue();
-        __block IPlugin::ptr plugin;
+        __block IPlugin* plugin;
         __block Error err;
         LOG_DEBUG("dispatching...");
         dispatch_sync(queue, ^{
             try {
-                plugin = doCreate(info);
+                plugin = doCreate(info).release();
             } catch (const Error& e){
                 err = e;
             }
         });
         LOG_DEBUG("done!");
         if (plugin){
-            return IPlugin::ptr(plugin.release()); // hack
+            return IPlugin::ptr(plugin);
         } else {
             throw err;
         }
@@ -129,11 +137,11 @@ IPlugin::ptr EventLoop::doCreate(const PluginInfo& info) {
 
 void EventLoop::destroy(IPlugin::ptr plugin){
 #if VSTTHREADS
-    if (NSApp != nullptr){
+    if (haveNSApp_){
         auto queue = dispatch_get_main_queue();
-        __block IPlugin::ptr p = std::move(plugin);
+        __block IPlugin* p = plugin.release();
         LOG_DEBUG("dispatching...");
-        dispatch_sync(queue, ^{ doDestroy(std::move(p)); });
+        dispatch_sync(queue, ^{ doDestroy(IPlugin::ptr(p)); });
         LOG_DEBUG("done!");
         return;
     } else {
@@ -170,10 +178,13 @@ Window::Window(IPlugin& plugin)
 }
 
 Window::~Window(){
-        // close the editor *before* the window is destroyed.
         // the destructor (like any other method of Window) must be called in the main thread
     [window_ close];
+#if !VSTTHREADS
+    // This is necessary to really destroy the window.
+    // With VSTTHREADS, however, this leads to a segfault in the runloop (don't ask me why...)
     [window_ release];
+#endif
     LOG_DEBUG("destroyed Window");
 }
 
@@ -194,20 +205,29 @@ void Window::setGeometry(int left, int top, int right, int bottom){
 }
 
 void Window::show(){
+    LOG_DEBUG("show window");
+#if VSTTHREADS
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [window_ makeKeyAndOrderFront:nil];
+    });
+#else
     [window_ makeKeyAndOrderFront:nil];
-#if !VSTTHREADS
-    /* we open/close the editor on demand to make sure no unwanted
-     * GUI drawing is happening behind the scenes
-     * (for some reason, on macOS parameter automation would cause
-     * redraws even if the window is hidden)
-    */
+    // we open/close the editor on demand to make sure no unwanted
+    // GUI drawing is happening behind the scenes
+    // (for some reason, on macOS parameter automation would cause
+    // redraws even if the window is hidden)
     plugin_->openEditor(getHandle());
 #endif
 }
 
 void Window::hide(){
+    LOG_DEBUG("hide window");
+#if VSTTHREADS
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [window_ orderOut:nil];
+    });
+#else
     [window_ orderOut:nil];
-#if !VSTTHREADS
     plugin_->closeEditor();
 #endif
 }
