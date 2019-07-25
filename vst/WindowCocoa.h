@@ -3,16 +3,16 @@
 #import <Cocoa/Cocoa.h>
 
 @interface CocoaEditorWindow : NSWindow {
-    vst::IPlugin *_plugin;
+    vst::IWindow *_owner;
 }
 
-@property (nonatomic, readwrite) vst::IPlugin *plugin;
+@property (nonatomic, readwrite) vst::IWindow *owner;
 
 - (BOOL)windowShouldClose:(id)sender;
-/*
-- (void)windowDidMiniaturize:(id)sender;
-- (void)windowDidDeminiaturize:(id)sender;
-*/
+- (void)windowDidMiniaturize:(NSNotification *)notification;
+- (void)windowDidDeminiaturize:(NSNotification *)notification;
+- (void)windowDidMove:(NSNotification *)notification;
+
 @end
 
 namespace vst {
@@ -31,11 +31,7 @@ class EventLoop {
     void destroy(IPlugin::ptr plugin);
 #if VSTTHREADS
     bool postMessage();
-#endif
  private:
-    static IPlugin::ptr doCreate(const PluginInfo& info);
-    static void doDestroy(IPlugin::ptr plugin);
-#if VSTTHREADS
     bool haveNSApp_ = false;
 #endif
 };
@@ -57,9 +53,13 @@ class Window : public IWindow {
     void minimize() override;
     void restore() override;
     void bringToTop() override;
+    
+    void doOpen();
+    void onClose();
  private:
     CocoaEditorWindow * window_ = nullptr;
     IPlugin * plugin_;
+    NSPoint origin_;
 };
 
 } // Cocoa

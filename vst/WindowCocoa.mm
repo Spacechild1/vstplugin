@@ -10,25 +10,25 @@
 
 @implementation CocoaEditorWindow {}
 
-@synthesize plugin = _plugin;
+@synthesize owner = _owner;
 
 - (BOOL)windowShouldClose:(id)sender {
     LOG_DEBUG("window should close");
-    [self orderOut:NSApp];
-    vst::IPlugin *plugin = [self plugin];
-#if !VSTTHREADS
-    plugin->closeEditor();
-#endif
-    return NO;
+    vst::IWindow *owner = [self owner];
+    static_cast<vst::Cocoa::Window *>(owner)->onClose();
+    return YES;
 }
-/*
-- (void)windowDidMiniaturize:(id)sender {
+
+- (void)windowDidMiniaturize:(NSNotification *)notification {
     LOG_DEBUG("window miniaturized");
 }
-- (void)windowDidDeminiaturize:(id)sender {
+- (void)windowDidDeminiaturize:(NSNotification *)notification {
     LOG_DEBUG("window deminiaturized");    
 }
-*/
+- (void)windowDidMove:(NSNotification *)notification {
+    LOG_DEBUG("window did move");    
+}
+
 @end
 
 namespace vst {
@@ -71,15 +71,15 @@ EventLoop& EventLoop::instance(){
 }
 
 EventLoop::EventLoop(){
+    // transform process into foreground application
+    ProcessSerialNumber psn = {0, kCurrentProcess};
+    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
 #if VSTTHREADS
     // we must access NSApp only once in the beginning
     haveNSApp_ = (NSApp != nullptr);
     LOG_DEBUG("init cocoa event loop");
 #else
     // create NSApplication in this thread (= main thread) 
-    // and make it the foreground application
-    ProcessSerialNumber psn = {0, kCurrentProcess};
-    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
     // check if someone already created NSApp (just out of curiousity)
     if (NSApp != nullptr){
         LOG_WARNING("NSApp already initialized!");
@@ -94,6 +94,13 @@ EventLoop::EventLoop(){
 EventLoop::~EventLoop(){}
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
+    auto doCreate = [&](){
+        auto plugin = info.create();
+        if (info.hasEditor()){
+            plugin->setWindow(std::make_unique<Window>(*plugin));
+        }
+        return plugin;
+    };
 #if VSTTHREADS
     if (haveNSApp_){
         auto queue = dispatch_get_main_queue();
@@ -102,7 +109,7 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
         LOG_DEBUG("dispatching...");
         dispatch_sync(queue, ^{
             try {
-                plugin = doCreate(info).release();
+                plugin = doCreate().release();
             } catch (const Error& e){
                 err = e;
             }
@@ -118,21 +125,7 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
     }
     // fallback:
 #endif
-    return doCreate(info);
-}
-
-IPlugin::ptr EventLoop::doCreate(const PluginInfo& info) {
-    auto plugin = info.create();
-    if (info.hasEditor()){
-        auto window = std::make_unique<Window>(*plugin);
-        window->setTitle(info.name);
-        int left, top, right, bottom;
-        plugin->getEditorRect(left, top, right, bottom);
-        window->setGeometry(left, top, right, bottom);
-        plugin->openEditor(window->getHandle());
-        plugin->setWindow(std::move(window));
-    }
-    return plugin;
+    return doCreate();
 }
 
 void EventLoop::destroy(IPlugin::ptr plugin){
@@ -141,28 +134,39 @@ void EventLoop::destroy(IPlugin::ptr plugin){
         auto queue = dispatch_get_main_queue();
         __block IPlugin* p = plugin.release();
         LOG_DEBUG("dispatching...");
-        dispatch_sync(queue, ^{ doDestroy(IPlugin::ptr(p)); });
+        dispatch_sync(queue, ^{ delete p; });
         LOG_DEBUG("done!");
         return;
     } else {
         LOG_ERROR("EventLoop::destroy: can't dispatch to main thread - no NSApp!");
     }
-    // fallback:
 #endif
-    doDestroy(std::move(plugin));
-}
-
-void EventLoop::doDestroy(IPlugin::ptr plugin) {
-    plugin->closeEditor();
-    // goes out of scope
+    // plugin destroyed
 }
 
 } // UIThread
 
 Window::Window(IPlugin& plugin)
-    : plugin_(&plugin)
-{
-    LOG_DEBUG("try opening Window");
+    : plugin_(&plugin) {
+    origin_ = NSMakePoint(100, 100); // default position
+}
+
+// the destructor must be called on the main thread!
+Window::~Window(){
+    if (window_){
+        [window_ close];
+    }
+    LOG_DEBUG("destroyed Window");
+}
+
+// to be called on the main thread
+void Window::doOpen(){
+    if (window_){
+        [window_ makeKeyAndOrderFront:nil];
+        return;
+    }
+    
+    LOG_DEBUG("try create Window");
     
     NSRect frame = NSMakeRect(0, 0, 200, 200);
     CocoaEditorWindow *window = [[CocoaEditorWindow alloc] initWithContentRect:frame
@@ -171,52 +175,58 @@ Window::Window(IPlugin& plugin)
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        [window setPlugin:plugin_];
+        [window setOwner:this];
         window_ = window;
+        
+        setTitle(plugin_->info().name);
+        int left, top, right, bottom;
+        plugin_->getEditorRect(left, top, right, bottom);
+        setGeometry(left, top, right, bottom);
+        
+        [window_ setFrameOrigin:origin_];
+        
+        plugin_->openEditor(getHandle());
+        
+        [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
     }
 }
 
-Window::~Window(){
-        // the destructor (like any other method of Window) must be called in the main thread
-    [window_ close];
-#if !VSTTHREADS
-    // This is necessary to really destroy the window.
-    // With VSTTHREADS, however, this leads to a segfault in the runloop (don't ask me why...)
-    [window_ release];
-#endif
-    LOG_DEBUG("destroyed Window");
+// to be called on the main thread
+void Window::onClose(){
+    plugin_->closeEditor();
+    origin_ = [window_ frame].origin;
+    window_ = nullptr;
 }
 
 void * Window::getHandle(){
-    return [window_ contentView];
+    return window_ ? [window_ contentView] : nullptr;
 }
 
 void Window::setTitle(const std::string& title){
-    NSString *name = @(title.c_str());
-    [window_ setTitle:name];
+    if (window_){
+        NSString *name = @(title.c_str());
+        [window_ setTitle:name];
+    }
 }
 
 void Window::setGeometry(int left, int top, int right, int bottom){
+    if (window_){
         // in CoreGraphics y coordinates are "flipped" (0 = bottom)
-    NSRect content = NSMakeRect(left, bottom, right-left, bottom-top);
-    NSRect frame = [window_  frameRectForContentRect:content];
-    [window_ setFrame:frame display:YES];
+        NSRect content = NSMakeRect(left, bottom, right-left, bottom-top);
+        NSRect frame = [window_  frameRectForContentRect:content];
+        [window_ setFrame:frame display:YES];
+    }
 }
 
 void Window::show(){
     LOG_DEBUG("show window");
 #if VSTTHREADS
     dispatch_async(dispatch_get_main_queue(), ^{
-        [window_ makeKeyAndOrderFront:nil];
+        doOpen();
     });
 #else
-    [window_ makeKeyAndOrderFront:nil];
-    // we open/close the editor on demand to make sure no unwanted
-    // GUI drawing is happening behind the scenes
-    // (for some reason, on macOS parameter automation would cause
-    // redraws even if the window is hidden)
-    plugin_->openEditor(getHandle());
+    doOpen();
 #endif
 }
 
@@ -224,11 +234,10 @@ void Window::hide(){
     LOG_DEBUG("hide window");
 #if VSTTHREADS
     dispatch_async(dispatch_get_main_queue(), ^{
-        [window_ orderOut:nil];
+        [window_ performClose:nil];
     });
 #else
-    [window_ orderOut:nil];
-    plugin_->closeEditor();
+    [window_ performClose:nil];
 #endif
 }
 
