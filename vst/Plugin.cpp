@@ -730,6 +730,10 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     };
 }
 
+void IFactory::probe(ProbeCallback callback){
+    probeAsync(std::move(callback))();
+}
+
 /*///////////////////// PluginInfo /////////////////////*/
 
 PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)

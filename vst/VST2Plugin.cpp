@@ -174,64 +174,70 @@ int VST2Factory::numPlugins() const {
 #define SHELL_PLUGIN_LIMIT 1000
 #define PROBE_PROCESSES 8
 
-void VST2Factory::probe(ProbeCallback callback) {
+IFactory::ProbeFuture VST2Factory::probeAsync(ProbeCallback callback) {
     plugins_.clear();
-    auto result = probePlugin("")(); // don't need a name
-    if (result->shellPlugins_.empty()){
-        plugins_ = { result };
-        valid_ = result->valid();
-        if (callback){
-            callback(*result, 0, 1);
-        }
-    } else {
-        // shell plugin!
-        int numPlugins = result->shellPlugins_.size();
-    #ifdef SHELL_PLUGIN_LIMIT
-        numPlugins = std::min<int>(numPlugins, SHELL_PLUGIN_LIMIT);
-    #endif
-        LOG_DEBUG("numPlugins: " << numPlugins);
-        std::vector<std::tuple<int, std::string, PluginInfo::Future>> futures;
-        int i = 0;
-        while (i < numPlugins){
-            futures.clear();
-            // collect the next n plugins
-            int n = std::min<int>(numPlugins - i, PROBE_PROCESSES);
-            for (int j = 0; j < n; ++j, ++i){
-                auto& shell = result->shellPlugins_[i];
-                try {
-                    // LOG_DEBUG("probing '" << shell.name << "'");
-                    futures.emplace_back(i, shell.name, probePlugin(shell.name, shell.id));
-                } catch (const Error& e){
-                    // should we rather propagate the error and break from the loop?
-                    LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
+    auto f = probePlugin(""); // don't need a name
+    /// LOG_DEBUG("got probePlugin future");
+    return [this, callback=std::move(callback), f=std::move(f)]{
+        /// LOG_DEBUG("about to call probePlugin future");
+        auto result = f();
+        /// LOG_DEBUG("called probePlugin future");
+        if (result->shellPlugins_.empty()){
+            plugins_ = { result };
+            valid_ = result->valid();
+            if (callback){
+                callback(*result, 0, 1);
+            }
+        } else {
+            // shell plugin!
+            int numPlugins = result->shellPlugins_.size();
+        #ifdef SHELL_PLUGIN_LIMIT
+            numPlugins = std::min<int>(numPlugins, SHELL_PLUGIN_LIMIT);
+        #endif
+            /// LOG_DEBUG("numPlugins: " << numPlugins);
+            std::vector<std::tuple<int, std::string, PluginInfo::Future>> futures;
+            int i = 0;
+            while (i < numPlugins){
+                futures.clear();
+                // collect the next n plugins
+                int n = std::min<int>(numPlugins - i, PROBE_PROCESSES);
+                for (int j = 0; j < n; ++j, ++i){
+                    auto& shell = result->shellPlugins_[i];
+                    try {
+                        /// LOG_DEBUG("probing '" << shell.name << "'");
+                        futures.emplace_back(i, shell.name, probePlugin(shell.name, shell.id));
+                    } catch (const Error& e){
+                        // should we rather propagate the error and break from the loop?
+                        LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
+                    }
+                }
+                // collect results
+                for (auto& tup : futures){
+                    int index;
+                    std::string name;
+                    PluginInfo::Future future;
+                    std::tie(index, name, future) = tup;
+                    try {
+                        auto plugin = future(); // wait for process
+                        plugins_.push_back(plugin);
+                        // factory is valid if contains at least 1 valid plugin
+                        if (plugin->valid()){
+                            valid_ = true;
+                        }
+                        if (callback){
+                            callback(*plugin, index, numPlugins);
+                        }
+                    } catch (const Error& e){
+                        // should we rather propagate the error and break from the loop?
+                        LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+                    }
                 }
             }
-            // collect results
-            for (auto& tup : futures){
-                int index;
-                std::string name;
-                PluginInfo::Future future;
-                std::tie(index, name, future) = tup;
-                try {
-                    auto plugin = future(); // wait for process
-                    plugins_.push_back(plugin);
-                    // factory is valid if contains at least 1 valid plugin
-                    if (plugin->valid()){
-                        valid_ = true;
-                    }
-                    if (callback){
-                        callback(*plugin, index, numPlugins);
-                    }
-                } catch (const Error& e){
-                    // should we rather propagate the error and break from the loop?
-                    LOG_ERROR("couldn't probe '" << name << "': " << e.what());
-                }
-            }
         }
-    }
-    for (auto& desc : plugins_){
-        pluginMap_[desc->name] = desc;
-    }
+        for (auto& desc : plugins_){
+            pluginMap_[desc->name] = desc;
+        }
+    };
 }
 
 IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
