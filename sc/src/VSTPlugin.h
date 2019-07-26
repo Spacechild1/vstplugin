@@ -4,6 +4,7 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
+#include "rt_shared_ptr.hpp"
 
 using namespace vst;
 
@@ -17,16 +18,19 @@ using namespace vst;
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
-class VSTPlugin;
+class VSTPluginDelegate;
 
 struct CmdData {
-    VSTPlugin* owner = nullptr;
-    bool valid() const;
+    template<typename T>
+    static T* create(World * world, int size = 0);
+
+    rt::shared_ptr<VSTPluginDelegate> owner;
+    bool alive() const;
 };
 
 struct PluginCmdData : CmdData {
     // for asynchronous commands
-    static PluginCmdData* create(VSTPlugin* owner, const char* path = 0);
+    static PluginCmdData* create(World *world, const char* path = 0);
     // data
     void* freeData = nullptr;
     IPlugin::ptr plugin;
@@ -60,9 +64,8 @@ namespace SearchFlags {
 };
 
 struct InfoCmdData : CmdData {
-    static InfoCmdData* create(World* world, int size = 0);
-    static InfoCmdData* create(VSTPlugin* owner, const char* path);
-    static InfoCmdData* create(VSTPlugin* owner, int bufnum);
+    static InfoCmdData* create(World* world, const char* path);
+    static InfoCmdData* create(World* world, int bufnum);
     static bool nrtFree(World* world, void* cmdData);
     int32 flags = 0;
     int32 bufnum = -1;
@@ -73,38 +76,40 @@ struct InfoCmdData : CmdData {
     char buf[1];
 };
 
-class VSTPluginListener : public IPluginListener {
+// This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.
+// It is managed by a rt::shared_ptr and therefore kept alive during the execution of commands, which means
+// we don't have to worry about the actual UGen being freed concurrently while a command is still running.
+// In the RT stage we can call alive() to verify that the UGen is still alive and synchronize the state.
+// We must not access the actual UGen during a NRT stage!
+class VSTPluginDelegate :
+    public IPluginListener,
+    public std::enable_shared_from_this<VSTPluginDelegate>
+{
+    friend class VSTPlugin;
 public:
-    VSTPluginListener(VSTPlugin& owner);
+    VSTPluginDelegate(VSTPlugin& owner);
+    ~VSTPluginDelegate();
+
+    bool alive() const;
+    void setOwner(VSTPlugin *owner);
+    World* world() { return world_;  }
+    float sampleRate() const { return sampleRate_; }
+    int32 bufferSize() const { return bufferSize_; }
+    int32 numInChannels() const { return numInChannels_; }
+    int32 numOutChannels() const { return numOutChannels_; }
+
     void parameterAutomated(int index, float value) override;
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
-private:
-    VSTPlugin *owner_ = nullptr;
-};
 
-class VSTPlugin : public SCUnit {
-    friend class VSTPluginListener;
-    friend struct PluginCmdData;
-    static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
-    static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
-public:
-    VSTPlugin();
-    ~VSTPlugin();
-    IPlugin *plugin();
+    // plugin
+    IPlugin* plugin() { return plugin_.get(); }
     bool check();
-    bool initialized();
-    void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
-    void runUnitCmds();
-
-    void open(const char *path, bool gui);
+    void open(const char* path, bool gui);
     void doneOpen(PluginCmdData& msg);
     void close();
     void showEditor(bool show);
     void reset(bool async = false);
-    void next(int inNumSamples);
-    int numInChannels() const { return numInChannels_; }
-    int numOutChannels() const { return numOutChannels_;  }
     // param
     void setParam(int32 index, float value);
     void setParam(int32 index, const char* display);
@@ -116,19 +121,19 @@ public:
     void unmapParam(int32 index);
     // program/bank
     void setProgram(int32 index);
-    void setProgramName(const char *name);
+    void setProgramName(const char* name);
     void queryPrograms(int32 index, int32 count);
     template<bool bank>
-    void readPreset(const char *path);
+    void readPreset(const char* path);
     template<bool bank>
     void readPreset(int32 buf);
     template<bool bank>
-    void writePreset(const char *path);
+    void writePreset(const char* path);
     template<bool bank>
     void writePreset(int32 buf);
     // midi
     void sendMidiMsg(int32 status, int32 data1, int32 data2);
-    void sendSysexMsg(const char *data, int32 n);
+    void sendSysexMsg(const char* data, int32 n);
     // transport
     void setTempo(float bpm);
     void setTimeSig(int32 num, int32 denom);
@@ -136,29 +141,60 @@ public:
     void setTransportPos(float pos);
     void getTransportPos();
     // advanced
-    void canDo(const char *what);
+    void canDo(const char* what);
     void vendorSpecific(int32 index, int32 value, size_t size,
-        const char *data, float opt, bool async);
+        const char* data, float opt, bool async);
     // node reply
-    void sendMsg(const char *cmd, float f);
-    void sendMsg(const char *cmd, int n, const float *data);
-    struct Param {
-        float value;
-        int32 bus;
-    };
-    // helper methods
-    float readControlBus(int32 num);
-    void resizeBuffer();
+    void sendMsg(const char* cmd, float f);
+    void sendMsg(const char* cmd, int n, const float* data);
+    // helper functions
     bool sendProgramName(int32 num); // unchecked
     void sendCurrentProgramName();
     void sendParameter(int32 index); // unchecked
-    void parameterAutomated(int32 index, float value);
-    void midiEvent(const MidiEvent& midi);
-    void sysexEvent(const SysexEvent& sysex);
+    void sendParameterAutomated(int32 index, float value); // unchecked
     // perform sequenced command
-    template<typename T>
-    void doCmd(T *cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
+    template<bool owner = true, typename T>
+    void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
+    void ref();
+    void unref();
+private:
+    VSTPlugin *owner_ = nullptr;
+    IPlugin::ptr plugin_;
+    bool editor_ = false;
+    bool isLoading_ = false;
+    int pluginUseCount_ = 0; // plugin currently used by asynchronuous commands?
+    std::thread::id rtThreadID_;
+    std::thread::id nrtThreadID_;
+    World* world_;
+    // cache (for cmdOpen)
+    double sampleRate_;
+    int bufferSize_;
+    int numInChannels_;
+    int numOutChannels_;
+
+};
+
+class VSTPlugin : public SCUnit {
+    friend class VSTPluginDelegate;
+    friend struct PluginCmdData;
+    static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
+    static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
+public:
+    VSTPlugin();
+    ~VSTPlugin();
+    bool initialized();
+    void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
+    void runUnitCmds();
+    VSTPluginDelegate& delegate() { return *delegate_;  }
+
+    void next(int inNumSamples);
+    int numInChannels() const { return in0(1); }
+    int numOutChannels() const { return numOutputs(); }
+
+    float readControlBus(int32 num);
+    void resizeBuffer();
+    void resizeParameters(int n);
 private:
     // data members
     volatile uint32 initialized_ = MagicInitialized; // set by constructor
@@ -171,18 +207,17 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
-    IPlugin::ptr plugin_ = nullptr;
-    bool editor_ = false;
-    bool isLoading_ = false;
     bool bypass_ = false;
-    VSTPluginListener::ptr listener_;
+    rt::shared_ptr<VSTPluginDelegate> delegate_;
 
     float *buf_ = nullptr;
-    int numInChannels_ = 0;
     static const int inChannelOnset_ = 2;
     const float **inBufVec_ = nullptr;
-    int numOutChannels_ = 0;
     float **outBufVec_ = nullptr;
+    struct Param {
+        float value;
+        int32 bus;
+    };
     Param *paramStates_ = nullptr;
     int numParameterControls_ = 0;
     int parameterControlOnset_ = 0;
@@ -192,8 +227,6 @@ private:
     std::mutex mutex_;
     std::vector<std::pair<int, float>> paramQueue_;
 #endif
-    std::thread::id rtThreadID_;
-    std::thread::id nrtThreadID_;
 };
 
 
