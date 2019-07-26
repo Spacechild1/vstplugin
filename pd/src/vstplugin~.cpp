@@ -138,7 +138,7 @@ public:
         : PdLog(async, level)
     {
         if (async_){
-            // post immediately!
+            // post immediately
             sys_lock();
             startpost(fmt, args...);
             sys_unlock();
@@ -237,7 +237,8 @@ void postError(bool async, const char *fmt, T... args){
 
 
 // load factory and probe plugins
-static IFactory::ptr probePlugin(const std::string& path, bool async = false){
+
+static IFactory::ptr loadFactory(const std::string& path, bool async = false){
     IFactory::ptr factory;
 
     if (gPluginManager.findFactory(path)){
@@ -256,6 +257,34 @@ static IFactory::ptr probePlugin(const std::string& path, bool async = false){
         PdLog log(async, PD_DEBUG,
                   "couldn't load '%s': %s", path.c_str(), e.what());
         gPluginManager.addException(path);
+        return nullptr;
+    }
+
+    return factory;
+}
+
+static bool handleFactory(const std::string& path, IFactory::ptr factory, bool async){
+    if (factory->numPlugins() == 1){
+        auto plugin = factory->getPlugin(0);
+        if (plugin->valid()){
+            // factories with a single plugin can also be aliased by their file path(s)
+            gPluginManager.addPlugin(plugin->path, plugin);
+            gPluginManager.addPlugin(path, plugin);
+        }
+    }
+
+    if (factory->valid()){
+        addFactory(path, factory);
+        return true;
+    } else {
+        gPluginManager.addException(path);
+        return false;
+    }
+}
+
+static IFactory::ptr probePlugin(const std::string& path, bool async = false){
+    auto factory = loadFactory(path, async);
+    if (!factory){
         return nullptr;
     }
 
@@ -280,37 +309,106 @@ static IFactory::ptr probePlugin(const std::string& path, bool async = false){
                 consume(std::move(log));
             }
         });
+        if (handleFactory(path, factory, async)){
+            return factory; // success
+        }
     } catch (const Error& e){
         log << "error";
         log << e;
-        return nullptr;
     }
-
-    if (factory->numPlugins() == 1){
-        auto plugin = factory->getPlugin(0);
-        if (plugin->valid()){
-            // factories with a single plugin can also be aliased by their file path(s)
-            gPluginManager.addPlugin(plugin->path, plugin);
-            gPluginManager.addPlugin(path, plugin);
-        }
-    }
-
-    if (factory->valid()){
-        addFactory(path, factory);
-        return factory;
-    } else {
-        gPluginManager.addException(path);
-        return nullptr;
-    }
+    return nullptr;
 }
 
-static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, bool async = false){
+using FactoryFuture = std::function<IFactory::ptr()>;
+
+static FactoryFuture nullFactoryFuture([](){ return nullptr; });
+
+static FactoryFuture probePluginAsync(const std::string& path, bool async = false){
+    auto factory = loadFactory(path, async);
+    if (!factory){
+        return nullFactoryFuture;
+    }
+
+    try {
+        auto future = factory->probeAsync();
+        return [=]() -> IFactory::ptr {
+            PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
+            try {
+                future([&](const PluginInfo& desc, int which, int numPlugins){
+                    // Pd's posting methods have a size limit, so we log each plugin seperately!
+                    if (numPlugins > 1){
+                        if (which == 0){
+                            consume(std::move(log));
+                        }
+                        PdLog log1(async, PD_DEBUG, "\t'");
+                        if (!desc.name.empty()){
+                            log1 << desc.name << "' ... ";
+                        } else {
+                            log1 << "plugin "; // e.g. "plugin crashed!"
+                        }
+                        log1 << desc.probeResult;
+                    } else {
+                        log << desc.probeResult;
+                        consume(std::move(log));
+                    }
+                }); // collect result(s)
+                if (handleFactory(path, factory, async)){
+                    return factory;
+                }
+            } catch (const Error& e){
+                log << "error";
+                log << e;
+            }
+            return nullptr;
+        };
+    } catch (const Error& e){
+        PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
+        log << "error";
+        log << e;
+    }
+    return nullFactoryFuture;
+}
+
+#define PROBE_PROCESSES 8
+
+static void searchPlugins(const std::string& path, t_vstplugin *x,
+                          bool parallel, bool async = false){
     int count = 0;
     {
         std::string bashPath = path;
         sys_unbashfilename(&bashPath[0], &bashPath[0]);
         PdLog log(async, PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
     }
+
+    auto addPlugin = [&](const PluginInfo& plugin, bool post=false){
+        if (plugin.valid()){
+            if (x){
+                auto key = makeKey(plugin);
+                bash_name(key);
+                x->x_plugins.push_back(gensym(key.c_str()));
+            }
+            if (post){
+                PdLog log(async, PD_DEBUG, "\t");
+                log << plugin.name;
+            }
+            count++;
+        }
+    };
+
+    std::vector<FactoryFuture> futures;
+
+    auto processFutures = [&](){
+        for (auto& f : futures){
+            auto factory = f();
+            if (factory){
+                int numPlugins = factory->numPlugins();
+                for (int i = 0; i < numPlugins; ++i){
+                    addPlugin(*factory->getPlugin(i));
+                }
+            }
+        }
+        futures.clear();
+    };
 
     vst::search(path, [&](const std::string& absPath, const std::string&){
         std::string pluginPath = absPath;
@@ -322,61 +420,33 @@ static void searchPlugins(const std::string& path, t_vstplugin *x = nullptr, boo
             PdLog log(async, PD_DEBUG, "%s", factory->path().c_str());
             auto numPlugins = factory->numPlugins();
             if (numPlugins == 1){
-                auto plugin = factory->getPlugin(0);
-                if (!plugin){
-                    bug("searchPlugins");
-                    return;
-                }
-                if (plugin->valid()){
-                    auto key = makeKey(*plugin);
-                    bash_name(key);
-                    if (x){
-                        x->x_plugins.push_back(gensym(key.c_str()));
-                    }
-                    count++;
-                }
+                addPlugin(*factory->getPlugin(0));
             } else {
                 // Pd's posting methods have a size limit, so we log each plugin seperately!
                 consume(std::move(log));
                 for (int i = 0; i < numPlugins; ++i){
-                    auto plugin = factory->getPlugin(i);
-                    if (!plugin){
-                        bug("searchPlugins");
-                        return;
-                    }
-                    if (plugin->valid()){
-                        auto key = makeKey(*plugin);
-                        bash_name(key);
-                        PdLog log1(async, PD_DEBUG, "\t");
-                        log1 << plugin->name;
-                        if (x){
-                            x->x_plugins.push_back(gensym(key.c_str()));
-                        }
-                        count++;
-                    }
+                    addPlugin(*factory->getPlugin(i), true);
                 }
             }
         } else {
             // probe (will post results and add plugins)
-            if ((factory = probePlugin(pluginPath, async))){
-                for (int i = 0; i < factory->numPlugins(); ++i){
-                    auto plugin = factory->getPlugin(i);
-                    if (!plugin){
-                        bug("searchPlugins");
-                        return;
-                    }
-                    if (plugin->valid()){
-                        if (x){
-                            auto key = makeKey(*plugin);
-                            bash_name(key);
-                            x->x_plugins.push_back(gensym(key.c_str()));
-                        }
-                        count++;
+            if (parallel){
+                futures.push_back(probePluginAsync(pluginPath, async));
+                if (futures.size() >= PROBE_PROCESSES){
+                    processFutures();
+                }
+            } else {
+                if ((factory = probePlugin(pluginPath, async))){
+                    int numPlugins = factory->numPlugins();
+                    for (int i = 0; i < numPlugins; ++i){
+                        addPlugin(*factory->getPlugin(i));
                     }
                 }
             }
         }
     });
+    processFutures();
+
     PdLog log(async, PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
 }
 
@@ -701,9 +771,10 @@ static void vstplugin_search_done(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("search_done"), 0, nullptr);
 }
 
-static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths, bool update){
+static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths,
+                                       bool parallel, bool update){
     for (auto& path : searchPaths){
-        searchPlugins(path, x, true); // async
+        searchPlugins(path, x, parallel, true); // async
     }
     if (update){
         writeIniFile();
@@ -715,6 +786,7 @@ static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> 
 
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool async = false;
+    bool parallel = true; // for now, always do a parallel search
     bool update = true; // update cache file
     std::vector<std::string> searchPaths;
 
@@ -749,7 +821,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             if (async){
                 searchPaths.emplace_back(path); // save for later
             } else {
-                searchPlugins(path, x);
+                searchPlugins(path, x, parallel);
             }
         }
     } else {  // search in the default VST search paths if no user paths were provided
@@ -757,14 +829,14 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             if (async){
                 searchPaths.emplace_back(path); // save for later
             } else {
-                searchPlugins(path, x);
+                searchPlugins(path, x, parallel);
             }
         }
     }
 
     if (async){
             // spawn thread which does the actual searching in the background
-        x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths), update);
+        x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths), parallel, update);
     } else {
         if (update){
             writeIniFile();
@@ -1649,7 +1721,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
-            searchPlugins(path);
+            searchPlugins(path, nullptr, true);
         }
         // shall we write cache file?
     #if 1
