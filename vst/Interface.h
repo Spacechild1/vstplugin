@@ -174,6 +174,7 @@ enum class ProbeResult {
 struct PluginInfo {
     using ptr = std::shared_ptr<PluginInfo>;
     using const_ptr = std::shared_ptr<const PluginInfo>;
+    using Future = std::function<PluginInfo::ptr()>;
 
     PluginInfo() = default;
     PluginInfo(const std::shared_ptr<const IFactory>& factory);
@@ -279,6 +280,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
  public:
     using ptr = std::shared_ptr<IFactory>;
     using const_ptr = std::shared_ptr<const IFactory>;
+    using ProbeCallback = std::function<void(const PluginInfo&, int, int)>;
 
     // expects an absolute path to the actual plugin file with or without extension
     // throws an Error exception on failure!
@@ -289,7 +291,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
     virtual int numPlugins() const = 0;
     // throws an Error exception on failure!
-    virtual void probe() = 0;
+    virtual void probe(ProbeCallback callback) = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin
     virtual std::string path() const = 0;
@@ -297,7 +299,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     // throws an Error exception on failure!
     virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
  protected:
-    PluginInfo::ptr probePlugin(const std::string& name, int shellPluginID = 0);
+    PluginInfo::Future probePlugin(const std::string& name, int shellPluginID = 0);
 };
 
 class Error : public std::exception {

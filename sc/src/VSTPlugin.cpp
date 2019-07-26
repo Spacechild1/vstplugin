@@ -247,17 +247,6 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
 
     if (verbose) Print("probing %s... ", path.c_str());
 
-    try {
-        factory->probe();
-    }
-    catch (const Error& e) {
-        if (verbose) {
-            Print("error!\n");
-            Print("%s\n", e.what());
-        }
-        return nullptr;
-    }
-
     auto postResult = [](ProbeResult pr) {
         switch (pr) {
         case ProbeResult::success:
@@ -275,34 +264,37 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
         }
     };
 
-    auto numPlugins = factory->numPlugins();
-    if (numPlugins == 1) {
-        auto plugin = factory->getPlugin(0);
-        if (!plugin) {
-            LOG_ERROR("probePlugin: bug");
-            return nullptr;
+    try {
+        factory->probe([&](const PluginInfo & desc, int which, int numPlugins) {
+            if (verbose) {
+                if (numPlugins > 1) {
+                    if (which == 0) {
+                        Print("\n");
+                    }
+                    if (!desc.name.empty()) {
+                        Print("\t'%s' ", desc.name.c_str());
+                    }
+                    else {
+                        Print("  plugin "); // e.g. plugin crashed
+                    }
+                }
+                postResult(desc.probeResult);
+            }
+        });
+    }
+    catch (const Error& e) {
+        if (verbose) {
+            Print("error!\n");
+            Print("%s\n", e.what());
         }
-        if (verbose) postResult(plugin->probeResult);
+        return nullptr;
+    }
+
+    if (factory->numPlugins() == 1) {
+        auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
         gPluginManager.addPlugin(plugin->path, plugin);
         gPluginManager.addPlugin(path, plugin);
-    }
-    else {
-        Print("\n");
-        for (int i = 0; i < numPlugins; ++i) {
-            auto plugin = factory->getPlugin(i);
-            if (!plugin) {
-                LOG_ERROR("probePlugin: bug");
-                return nullptr;
-            }
-            if (!plugin->name.empty()) {
-                if (verbose) Print("  '%s' ", plugin->name.c_str());
-            }
-            else {
-                if (verbose) Print("  plugin ");
-            }
-            if (verbose) postResult(plugin->probeResult);
-        }
     }
     if (factory->valid()) {
         addFactory(path, factory);

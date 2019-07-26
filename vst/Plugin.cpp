@@ -626,18 +626,17 @@ public:
 };
 
 // probe a plugin in a seperate process and return the info in a file
-PluginInfo::ptr IFactory::probePlugin(const std::string& name, int shellPluginID) {
-    int result = -1;
-    PluginInfo desc(shared_from_this());
+PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPluginID) {
+    auto desc = std::make_shared<PluginInfo>(shared_from_this());
     // put the information we already have (might be overriden)
-    desc.name = name;
-    desc.id = shellPluginID;
-    desc.path = path();
+    desc->name = name;
+    desc->id = shellPluginID;
+    desc->path = path();
     // we pass the shell plugin ID instead of the name to probe.exe
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
     // create temp file path
     std::stringstream ss;
-    ss << "/vst_" << this;
+    ss << "/vst_" << desc.get(); // desc address should be unique as long other PluginInfos are retained.
     std::string tmpPath = getTmpDirectory() + ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
 #ifdef _WIN32
@@ -645,12 +644,43 @@ PluginInfo::ptr IFactory::probePlugin(const std::string& name, int shellPluginID
     std::wstring probePath = getDirectory() + L"\\probe.exe";
     /// LOG_DEBUG("probe path: " << shorten(probePath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
+#if 0
     std::wstring quotedPluginPath = L"\"" + widen(path()) + L"\"";
     std::wstring quotedPluginName = L"\"" + widen(pluginName) + L"\"";
     std::wstring quotedTmpPath = L"\"" + widen(tmpPath) + L"\"";
     // start a new process with plugin path and temp file path as arguments:
     result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(),
                       quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
+#else
+    std::stringstream cmdLineStream;
+    cmdLineStream << "probe.exe "
+            << "\"" << path() << "\" "
+            << "\"" << pluginName << "\" "
+            << "\"" << tmpPath + "\"";
+    auto cmdLine = widen(cmdLineStream.str());
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+
+    if (!CreateProcessW(probePath.c_str(), &cmdLine[0],
+                        NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)){
+        throw Error("probePlugin: couldn't spawn process!");
+    }
+    auto wait = [pi](){
+        if (WaitForSingleObject(pi.hProcess, INFINITE) != 0){
+            throw Error("probePlugin: couldn't wait for process!");
+        }
+        DWORD code = -1;
+        if (!GetExitCodeProcess(pi.hProcess, &code)){
+            throw Error("probePlugin: couldn't retrieve exit code!");
+        }
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return code;
+    };
+#endif
 #else // Unix
     Dl_info dlinfo;
     // get full path to probe exe
@@ -674,34 +704,39 @@ PluginInfo::ptr IFactory::probePlugin(const std::string& name, int shellPluginID
         }
         std::exit(EXIT_FAILURE);
     }
-    else {
-        // parent process: wait for child
+    // parent process: wait for child
+    auto wait = [pid](){
         int status = 0;
         waitpid(pid, &status, 0);
         if (WIFEXITED(status)) {
-            result = WEXITSTATUS(status);
+            return WEXITSTATUS(status);
+        } else {
+            return -1;
         }
     }
 #endif
-    /// LOG_DEBUG("result: " << result);
-    if (result == EXIT_SUCCESS) {
-        // get info from temp file
-        TmpFile file(tmpPath);
-        if (file.is_open()) {
-            desc.deserialize(file);
-            desc.probeResult = ProbeResult::success;
+    return [desc=std::move(desc), tmpPath=std::move(tmpPath), wait=std::move(wait)](){
+        /// LOG_DEBUG("result: " << result);
+        auto result = wait();
+        if (result == EXIT_SUCCESS) {
+            // get info from temp file
+            TmpFile file(tmpPath);
+            if (file.is_open()) {
+                desc->deserialize(file);
+                desc->probeResult = ProbeResult::success;
+            }
+            else {
+                throw Error("probePlugin: couldn't read temp file!");
+            }
+        }
+        else if (result == EXIT_FAILURE) {
+            desc->probeResult = ProbeResult::fail;
         }
         else {
-            throw Error("probePlugin: couldn't read temp file!");
+            desc->probeResult = ProbeResult::crash;
         }
-    }
-    else if (result == EXIT_FAILURE) {
-        desc.probeResult = ProbeResult::fail;
-    }
-    else {
-        desc.probeResult = ProbeResult::crash;
-    }
-    return std::make_shared<PluginInfo>(std::move(desc));
+        return desc;
+    };
 }
 
 /*///////////////////// PluginInfo /////////////////////*/

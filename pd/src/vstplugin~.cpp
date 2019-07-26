@@ -262,42 +262,36 @@ static IFactory::ptr probePlugin(const std::string& path, bool async = false){
     PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
 
     try {
-        factory->probe();
+        factory->probe([&](const PluginInfo& desc, int which, int numPlugins){
+            // Pd's posting methods have a size limit, so we log each plugin seperately!
+            if (numPlugins > 1){
+                if (which == 0){
+                    consume(std::move(log));
+                }
+                PdLog log1(async, PD_DEBUG, "\t'");
+                if (!desc.name.empty()){
+                    log1 << desc.name << "' ... ";
+                } else {
+                    log1 << "plugin "; // e.g. "plugin crashed!"
+                }
+                log1 << desc.probeResult;
+            } else {
+                log << desc.probeResult;
+                consume(std::move(log));
+            }
+        });
     } catch (const Error& e){
         log << "error";
         log << e;
         return nullptr;
     }
 
-    auto numPlugins = factory->numPlugins();
-    if (numPlugins == 1){
+    if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
-        if (!plugin){
-            postBug(async, "probePlugin");
-            return nullptr;
-        }
-        log << plugin->probeResult;
         if (plugin->valid()){
             // factories with a single plugin can also be aliased by their file path(s)
             gPluginManager.addPlugin(plugin->path, plugin);
             gPluginManager.addPlugin(path, plugin);
-        }
-    } else {
-        // Pd's posting methods have a size limit, so we log each plugin seperately!
-        consume(std::move(log));
-        for (int i = 0; i < numPlugins; ++i){
-            auto plugin = factory->getPlugin(i);
-            if (!plugin){
-                postBug(async, "probePlugin");
-                return nullptr;
-            }
-            PdLog log1(async, PD_DEBUG, "\t");
-            if (!plugin->name.empty()){
-                log1 << plugin->name << "'... ";
-            } else {
-                log1 << "plugin "; // e.g. "plugin crashed!"
-            }
-            log1 << plugin->probeResult;
         }
     }
 
