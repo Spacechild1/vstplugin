@@ -18,6 +18,7 @@ using namespace vst;
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
+class VSTPlugin;
 class VSTPluginDelegate;
 
 struct CmdData {
@@ -81,6 +82,7 @@ struct InfoCmdData : CmdData {
 // we don't have to worry about the actual UGen being freed concurrently while a command is still running.
 // In the RT stage we can call alive() to verify that the UGen is still alive and synchronize the state.
 // We must not access the actual UGen during a NRT stage!
+
 class VSTPluginDelegate :
     public IPluginListener,
     public std::enable_shared_from_this<VSTPluginDelegate>
