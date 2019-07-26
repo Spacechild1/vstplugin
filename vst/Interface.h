@@ -281,7 +281,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     using ptr = std::shared_ptr<IFactory>;
     using const_ptr = std::shared_ptr<const IFactory>;
     using ProbeCallback = std::function<void(const PluginInfo&, int, int)>;
-    using ProbeFuture = std::function<void()>;
+    using ProbeFuture = std::function<void(ProbeCallback)>;
 
     // expects an absolute path to the actual plugin file with or without extension
     // throws an Error exception on failure!
@@ -293,7 +293,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual int numPlugins() const = 0;
     // throws an Error exception on failure!
     void probe(ProbeCallback callback);
-    virtual ProbeFuture probeAsync(ProbeCallback callback) = 0;
+    virtual ProbeFuture probeAsync() = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin
     virtual std::string path() const = 0;

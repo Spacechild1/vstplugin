@@ -174,11 +174,11 @@ int VST2Factory::numPlugins() const {
 #define SHELL_PLUGIN_LIMIT 1000
 #define PROBE_PROCESSES 8
 
-IFactory::ProbeFuture VST2Factory::probeAsync(ProbeCallback callback) {
+IFactory::ProbeFuture VST2Factory::probeAsync() {
     plugins_.clear();
     auto f = probePlugin(""); // don't need a name
     /// LOG_DEBUG("got probePlugin future");
-    return [this, callback=std::move(callback), f=std::move(f)]{
+    return [this, f=std::move(f)](ProbeCallback callback){
         /// LOG_DEBUG("about to call probePlugin future");
         auto result = f();
         /// LOG_DEBUG("called probePlugin future");

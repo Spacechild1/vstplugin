@@ -25,7 +25,7 @@ class VST2Factory : public IFactory {
     PluginInfo::const_ptr getPlugin(int index) const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
-    ProbeFuture probeAsync(ProbeCallback callback) override;
+    ProbeFuture probeAsync() override;
     bool isProbed() const override {
         return !plugins_.empty();
     }
