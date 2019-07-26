@@ -168,7 +168,7 @@ class VST2Plugin final : public IPlugin {
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginInfo::const_ptr desc_;
     IWindow::ptr window_;
-    IPluginListener::ptr listener_ = nullptr;
+    std::weak_ptr<IPluginListener> listener_;
     VstTimeInfo timeInfo_;
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;

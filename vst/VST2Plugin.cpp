@@ -1029,8 +1029,9 @@ bool VST2Plugin::canHostDo(const char *what) {
 }
 
 void VST2Plugin::parameterAutomated(int index, float value){
-    if (listener_){
-        listener_->parameterAutomated(index, value);
+    auto listener = listener_.lock();
+    if (listener){
+        listener->parameterAutomated(index, value);
     }
 }
 
@@ -1135,18 +1136,19 @@ void VST2Plugin::postProcess(int nsamples){
 
 void VST2Plugin::processEvents(VstEvents *events){
     int n = events->numEvents;
+    auto listener = listener_.lock();
     for (int i = 0; i < n; ++i){
         auto *event = events->events[i];
         if (event->type == kVstMidiType){
             auto *midiEvent = (VstMidiEvent *)event;
-            if (listener_){
+            if (listener){
                 auto *data = midiEvent->midiData;
-                listener_->midiEvent(MidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
+                listener->midiEvent(MidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
             }
         } else if (event->type == kVstSysExType){
             auto *sysexEvent = (VstMidiSysexEvent *)event;
-            if (listener_){
-                listener_->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
+            if (listener){
+                listener->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
             }
         } else {
             LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");
