@@ -644,14 +644,6 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     std::wstring probePath = getDirectory() + L"\\probe.exe";
     /// LOG_DEBUG("probe path: " << shorten(probePath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
-#if 0
-    std::wstring quotedPluginPath = L"\"" + widen(path()) + L"\"";
-    std::wstring quotedPluginName = L"\"" + widen(pluginName) + L"\"";
-    std::wstring quotedTmpPath = L"\"" + widen(tmpPath) + L"\"";
-    // start a new process with plugin path and temp file path as arguments:
-    result = _wspawnl(_P_WAIT, probePath.c_str(), L"probe.exe", quotedPluginPath.c_str(),
-                      quotedPluginName.c_str(), quotedTmpPath.c_str(), nullptr);
-#else
     std::stringstream cmdLineStream;
     cmdLineStream << "probe.exe "
             << "\"" << path() << "\" "
@@ -680,7 +672,6 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
         CloseHandle(pi.hThread);
         return code;
     };
-#endif
 #else // Unix
     Dl_info dlinfo;
     // get full path to probe exe
@@ -713,7 +704,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
         } else {
             return -1;
         }
-    }
+    };
 #endif
     return [desc=std::move(desc), tmpPath=std::move(tmpPath), wait=std::move(wait)](){
         /// LOG_DEBUG("result: " << result);
