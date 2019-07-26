@@ -691,7 +691,7 @@ static void vstplugin_search_done(t_vstplugin *x){
         std::string s2 = rhs->s_name;
         for (auto& c : s1) { c = std::tolower(c); }
         for (auto& c : s2) { c = std::tolower(c); }
-        return strcmp(s1.c_str(), s2.c_str()) < 0;
+        return s1 < s2;
     });
     for (auto& plugin : x->x_plugins){
         t_atom msg;

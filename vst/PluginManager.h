@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "Utility.h"
 
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <fstream>
@@ -174,8 +175,15 @@ void PluginManager::doWrite(const std::string& path){
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
     }
-    // inverse mapping (plugin -> keys)
-    std::unordered_map<PluginInfo::const_ptr, std::vector<std::string>> pluginMap;
+    // inverse mapping (plugin -> keys), alphabetically sorted
+    auto comp = [](const auto& lhs, const auto& rhs){
+        std::string s1 = lhs->name;
+        std::string s2 = rhs->name;
+        for (auto& c : s1) { c = std::tolower(c); }
+        for (auto& c : s2) { c = std::tolower(c); }
+        return s1 < s2;
+    };
+    std::map<PluginInfo::const_ptr, std::vector<std::string>, decltype(comp)> pluginMap(comp);
     for (auto& it : plugins_){
         if (it.second->valid()){
             pluginMap[it.second].push_back(it.first);
