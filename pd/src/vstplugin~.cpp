@@ -322,12 +322,14 @@ static FactoryFuture probePluginParallel(const std::string& path){
     if (!factory){
         return nullFactoryFuture;
     }
-
     try {
+        // start probing process
         auto future = factory->probeAsync();
+        // return future
         return [=]() -> IFactory::ptr {
             PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
             try {
+                // wait for results
                 future([&](const PluginInfo& desc, int which, int numPlugins){
                     // Pd's posting methods have a size limit, so we log each plugin seperately!
                     if (numPlugins > 1){
@@ -441,7 +443,11 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
     });
     processFutures();
 
-    PdLog<async> log(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
+    if (count == 1){
+        PdLog<async> log(PD_NORMAL, "found 1 plugin");
+    } else {
+        PdLog<async> log(PD_NORMAL, "found %d plugins", count);
+    }
 }
 
 // tell whether we've already searched the standard VST directory
