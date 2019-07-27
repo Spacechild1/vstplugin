@@ -57,6 +57,7 @@ namespace SearchFlags {
     const int useDefault = 1;
     const int verbose = 2;
     const int save = 4;
+    const int parallel = 8;
 };
 
 struct InfoCmdData : CmdData {
