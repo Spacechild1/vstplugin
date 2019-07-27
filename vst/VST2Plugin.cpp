@@ -6,6 +6,10 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
 
 /*------------------ endianess -------------------*/
     // endianess check taken from Pure Data (d_osc.c)
@@ -173,6 +177,7 @@ int VST2Factory::numPlugins() const {
 // for testing we don't want to load hundreds of shell plugins
 #define SHELL_PLUGIN_LIMIT 1000
 #define PROBE_PROCESSES 8
+#define PROBE_THREADS 8 // 0: don't use threads
 
 IFactory::ProbeFuture VST2Factory::probeAsync() {
     plugins_.clear();
@@ -194,12 +199,13 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
         #ifdef SHELL_PLUGIN_LIMIT
             numPlugins = std::min<int>(numPlugins, SHELL_PLUGIN_LIMIT);
         #endif
+#if !PROBE_THREADS
             /// LOG_DEBUG("numPlugins: " << numPlugins);
             std::vector<std::tuple<int, std::string, PluginInfo::Future>> futures;
             int i = 0;
             while (i < numPlugins){
                 futures.clear();
-                // collect the next n plugins
+                // probe the next n plugins
                 int n = std::min<int>(numPlugins - i, PROBE_PROCESSES);
                 for (int j = 0; j < n; ++j, ++i){
                     auto& shell = result->shellPlugins_[i];
@@ -233,6 +239,85 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
                     }
                 }
             }
+        }
+#else
+            /// LOG_DEBUG("numPlugins: " << numPlugins);
+            auto& shellPlugins = result->shellPlugins_;
+            auto next = shellPlugins.begin();
+            auto end = next + numPlugins;
+            int count = 0;
+            std::deque<std::tuple<int, std::string, PluginInfo::ptr, Error>> results;
+
+            std::mutex mutex;
+            std::condition_variable cond;
+            int numThreads = std::min<int>(numPlugins, PROBE_THREADS);
+            std::vector<std::thread> threads;
+            // thread function
+            auto threadFun = [&](int i){
+                std::unique_lock<std::mutex> lock(mutex);
+                while (next != end){
+                    auto shell = next++;
+                    lock.unlock();
+                    try {
+                        /// LOG_DEBUG("probing '" << shell.name << "'");
+                        auto plugin = probePlugin(shell->name, shell->id)();
+                        lock.lock();
+                        results.emplace_back(count++, shell->name, plugin, Error{});
+                        LOG_DEBUG("thread " << i << ": probed " << shell->name);
+                    } catch (const Error& e){
+                        lock.lock();
+                        results.emplace_back(count++, shell->name, nullptr, e);
+                    }
+                    cond.notify_one();
+                }
+                LOG_DEBUG("worker thread " << i << " finished");
+            };
+            // spawn worker threads
+            for (int j = 0; j < numThreads; ++j){
+                threads.push_back(std::thread(threadFun, j));
+            }
+            // collect results
+            std::unique_lock<std::mutex> lock(mutex);
+            while (count < numPlugins){
+                LOG_DEBUG("wait...");
+                cond.wait(lock);
+                while (results.size() > 0){
+                    int index;
+                    std::string name;
+                    PluginInfo::ptr plugin;
+                    Error e;
+                    std::tie(index, name, plugin, e) = results.front();
+                    results.pop_front();
+                    lock.unlock();
+
+                    if (plugin){
+                        plugins_.push_back(plugin);
+                        // factory is valid if contains at least 1 valid plugin
+                        if (plugin->valid()){
+                            valid_ = true;
+                        }
+                        if (callback){
+                            callback(*plugin, index, numPlugins);
+                        }
+                    } else {
+                        // should we rather propagate the error and break from the loop?
+                        LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+                    }
+
+                    LOG_DEBUG(index << " from " << numPlugins);
+                    lock.lock();
+                }
+            }
+            lock.unlock(); // !
+            LOG_DEBUG("exit loop");
+            // join worker threads
+            for (auto& thread : threads){
+                if (thread.joinable()){
+                    thread.join();
+                }
+            }
+            LOG_DEBUG("all worker threads joined");
+#endif
         }
         for (auto& desc : plugins_){
             pluginMap_[desc->name] = desc;
