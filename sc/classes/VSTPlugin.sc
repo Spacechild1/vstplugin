@@ -13,6 +13,7 @@ VSTPlugin : MultiOutUGen {
 				\windows, ".dll", \osx, ".vst", \linux, ".so"
 			);
 			pluginDict = IdentityDictionary.new;
+			pluginDict[Server.default] = IdentityDictionary.new;
 			parentInfo = (
 				print: #{ arg self, long = false;
 					"---".postln;
@@ -98,16 +99,19 @@ VSTPlugin : MultiOutUGen {
 			"% (%) [%]".format(item.key, item.vendor, item.path).postln; // rather print key instead of name
 		};
 	}
-	*reset { arg server, remove=true;
+	*clear { arg server, remove=true;
 		server = server ?? Server.default;
 		// clear local plugin dictionary
 		pluginDict[server] = IdentityDictionary.new;
 		// clear server plugin dictionary
 		// remove=true -> also delete temp file
-		server.listSendMsg(this.resetMsg(remove));
+		server.listSendMsg(this.clearMsg(remove));
 	}
-	*resetMsg { arg remove=true;
+	*clearMsg { arg remove=true;
 		^['/cmd', '/vst_clear', remove.asInt];
+	}
+	*reset { arg server;
+		this.deprecated(thisMethod, this.class.findMethod(\clear));
 	}
 	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
 		server = server ?? Server.default;

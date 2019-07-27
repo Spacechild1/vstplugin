@@ -13,7 +13,7 @@ VSTPlugin also has class methods to scan a Server for plugins and cache the info
 CLASSMETHODS::
 
 PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prResolvePath, prMakeDest, prMakeTmpPath
-PRIVATE:: prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension
+PRIVATE:: prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension, reset
 
 METHOD:: ar
 create a UGen instance.
@@ -263,7 +263,7 @@ or it has the wrong architecture.
 note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
 
 A new search doesn't automatically clear the dictionary, but existing keys are overwritten. 
-You can clear the dictionary explicitly with link::#*reset::.
+You can clear the dictionary explicitly with link::#*clear::.
 
 For efficiency, search results are written to a cache file (on the Server's computer) to significantly speed up subsequent searches 
 (cached plugins don't have to probed again). Many DAWs use a similar strategy. If you want to search directories without updating the cache, set code::save:: to code::false::.
@@ -357,7 +357,7 @@ DISCUSSION::
 Sending this message to the Server will emphasis::not:: update any info in the Client!
 
 
-METHOD:: reset
+METHOD:: clear
 Deletes all cached plugin info for a given Server.
 
 ARGUMENT:: server
@@ -366,12 +366,12 @@ the Server. If this is code::nil::, the default Server is assumed.
 ARGUMENT:: remove
 whether you want to also remove the cache file.
 
-METHOD:: resetMsg
+METHOD:: clearMsg
 
 ARGUMENT:: remove
 (see above)
 
-RETURNS:: the message for a emphasis::reset:: command (see link::#*reset::).
+RETURNS:: the message for a emphasis::clear:: command (see link::#*clear::).
 
 DISCUSSION::
 
