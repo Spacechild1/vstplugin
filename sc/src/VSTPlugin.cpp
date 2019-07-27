@@ -212,7 +212,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     IFactory::ptr factory;
 
     if (gPluginManager.findFactory(path)) {
-        LOG_ERROR("loadFactory: bug");
+        LOG_ERROR("ERROR: bug in 'loadFactory'");
         return nullptr;
     }
     if (gPluginManager.isException(path)) {
@@ -291,11 +291,12 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
                     if (which == 0) {
                         Print("\n");
                     }
+                    Print("\t[%d/%d] ", which + 1, numPlugins);
                     if (!desc.name.empty()) {
-                        Print("\t'%s' ", desc.name.c_str());
+                        Print("'%s' ... ", desc.name.c_str());
                     }
                     else {
-                        Print("  plugin "); // e.g. plugin crashed
+                        Print("plugin "); // e.g. "plugin crashed!"
                     }
                 }
                 postResult(desc.probeResult);
@@ -307,8 +308,7 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
     }
     catch (const Error& e) {
         if (verbose) {
-            Print("error!\n");
-            Print("%s\n", e.what());
+            Print("error!\n%s\n", e.what());
         }
     }
     return nullptr;
@@ -337,11 +337,12 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
                             if (which == 0) {
                                 Print("\n");
                             }
+                            Print("\t[%d/%d] ", which + 1, numPlugins);
                             if (!desc.name.empty()) {
-                                Print("\t'%s' ", desc.name.c_str());
+                                Print("'%s' ... ", desc.name.c_str());
                             }
                             else {
-                                Print("  plugin "); // e.g. plugin crashed
+                                Print("plugin "); // e.g. "plugin crashed!"
                             }
                         }
                         postResult(desc.probeResult);
@@ -354,8 +355,7 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
             }
             catch (const Error& e) {
                 if (verbose) {
-                    Print("error!\n");
-                    Print("%s\n", e.what());
+                    Print("error!\n%s\n", e.what());
                 }
             }
             return nullptr;
@@ -363,8 +363,7 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
     }
     catch (const Error& e) {
         if (verbose) {
-            Print("error!\n");
-            Print("%s\n", e.what());
+            Print("error!\n%s\n", e.what());
         }
     }
     return nullFactoryFuture;
@@ -445,9 +444,11 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
     Print("searching in '%s'...\n", path.c_str());
     std::vector<PluginInfo::const_ptr> results;
 
-    auto addPlugin = [&](const PluginInfo::const_ptr& plugin, bool post = false){
+    auto addPlugin = [&](const PluginInfo::const_ptr& plugin, int which = 0, int n = 0){
         if (plugin->valid()) {
-            if (verbose && post) Print("\t%s\n", plugin->name.c_str());
+            if (verbose && n > 0) {
+                Print("\t[%d/%d] %s\n", which + 1, n, plugin->name.c_str());
+            }
             results.push_back(plugin);
         }
     };
@@ -487,7 +488,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                 if (verbose) LOG_VERBOSE(pluginPath);
                 for (int i = 0; i < numPlugins; ++i) {
                     // add and post plugins
-                    addPlugin(factory->getPlugin(i), true);
+                    addPlugin(factory->getPlugin(i), i, numPlugins);
                 }
             }
         }

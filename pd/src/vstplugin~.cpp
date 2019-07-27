@@ -285,12 +285,12 @@ static IFactory::ptr probePlugin(const std::string& path){
 
     try {
         factory->probe([&](const PluginInfo& desc, int which, int numPlugins){
-            // Pd's posting methods have a size limit, so we log each plugin seperately!
             if (numPlugins > 1){
                 if (which == 0){
-                    consume(std::move(log));
+                    consume(std::move(log)); // force
                 }
-                PdLog<async> log1(PD_DEBUG, "\t'");
+                // Pd's posting methods have a size limit, so we log each plugin seperately!
+                PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", which + 1, numPlugins);
                 if (!desc.name.empty()){
                     log1 << desc.name << "' ... ";
                 } else {
@@ -331,12 +331,12 @@ static FactoryFuture probePluginParallel(const std::string& path){
             try {
                 // wait for results
                 future([&](const PluginInfo& desc, int which, int numPlugins){
-                    // Pd's posting methods have a size limit, so we log each plugin seperately!
                     if (numPlugins > 1){
                         if (which == 0){
-                            consume(std::move(log));
+                            consume(std::move(log)); // force
                         }
-                        PdLog<async> log1(PD_DEBUG, "\t'");
+                        // Pd's posting methods have a size limit, so we log each plugin seperately!
+                        PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", which + 1, numPlugins);
                         if (!desc.name.empty()){
                             log1 << desc.name << "' ... ";
                         } else {
@@ -376,15 +376,16 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
         PdLog<async> log(PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
     }
 
-    auto addPlugin = [&](const PluginInfo& plugin, bool post=false){
+    auto addPlugin = [&](const PluginInfo& plugin, int which = 0, int n = 0){
         if (plugin.valid()){
             if (x){
                 auto key = makeKey(plugin);
                 bash_name(key);
                 x->x_plugins.push_back(gensym(key.c_str()));
             }
-            if (post){
-                PdLog<async> log(PD_DEBUG, "\t");
+            // Pd's posting methods have a size limit, so we log each plugin seperately!
+            if (n > 0){
+                PdLog<async> log(PD_DEBUG, "\t[%d/%d] ", which + 1, n);
                 log << plugin.name;
             }
             count++;
@@ -418,10 +419,9 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
             if (numPlugins == 1){
                 addPlugin(*factory->getPlugin(0));
             } else {
-                // Pd's posting methods have a size limit, so we log each plugin seperately!
-                consume(std::move(log));
+                consume(std::move(log)); // force
                 for (int i = 0; i < numPlugins; ++i){
-                    addPlugin(*factory->getPlugin(i), true);
+                    addPlugin(*factory->getPlugin(i), i, numPlugins);
                 }
             }
         } else {
