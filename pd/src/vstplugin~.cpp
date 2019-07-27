@@ -87,50 +87,13 @@ static void writeIniFile(){
     }
 }
 
-
-// VST2: plug-in name
-// VST3: plug-in name + ".vst3"
-static std::string makeKey(const PluginInfo& desc){
-    std::string key;
-    auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
-    if (desc.path.find(ext, onset) != std::string::npos){
-        key = desc.name + ext;
-    } else {
-        key = desc.name;
-    }
-    return key;
-}
-
-static void addFactory(const std::string& path, IFactory::ptr factory){
-    gPluginManager.addFactory(path, factory);
-    for (int i = 0; i < factory->numPlugins(); ++i){
-        auto plugin = factory->getPlugin(i);
-        if (!plugin){
-            bug("addFactory");
-            return;
-        }
-        if (plugin->valid()){
-            // also map bashed parameter names
-            int num = plugin->parameters.size();
-            for (int j = 0; j < num; ++j){
-                auto key = plugin->parameters[j].name;
-                bash_name(key);
-                const_cast<PluginInfo&>(*plugin).paramMap[std::move(key)] = j;
-            }
-            // add plugin info
-            auto key = makeKey(*plugin);
-            gPluginManager.addPlugin(key, plugin);
-            bash_name(key); // also add bashed version!
-            gPluginManager.addPlugin(key, plugin);
-        }
-    }
-}
-
 // for asynchronous searching, we want to show the name of the plugin before
 // the result, especially if the plugin takes a long time to load (e.g. shell plugins).
 // The drawback is that we either have to post the result on a seperate line or post
 // on the normal log level. For now, we do the latter.
+// NOTE: when probing plugins in parallel, we obviously can't do this, we have to
+// show the name and result at the same time. This is shouldn't be much of a problem
+// as there will be more activity.
 template<bool async = false>
 class PdLog {
 public:
@@ -261,7 +224,21 @@ static IFactory::ptr loadFactory(const std::string& path){
     return factory;
 }
 
-static bool handleFactory(const std::string& path, IFactory::ptr factory){
+// VST2: plug-in name
+// VST3: plug-in name + ".vst3"
+static std::string makeKey(const PluginInfo& desc){
+    std::string key;
+    auto ext = ".vst3";
+    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
+    if (desc.path.find(ext, onset) != std::string::npos){
+        key = desc.name + ext;
+    } else {
+        key = desc.name;
+    }
+    return key;
+}
+
+static bool addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         if (plugin->valid()){
@@ -272,7 +249,24 @@ static bool handleFactory(const std::string& path, IFactory::ptr factory){
     }
 
     if (factory->valid()){
-        addFactory(path, factory);
+        gPluginManager.addFactory(path, factory);
+        for (int i = 0; i < factory->numPlugins(); ++i){
+            auto plugin = factory->getPlugin(i);
+            if (plugin->valid()){
+                // also map bashed parameter names
+                int num = plugin->parameters.size();
+                for (int j = 0; j < num; ++j){
+                    auto key = plugin->parameters[j].name;
+                    bash_name(key);
+                    const_cast<PluginInfo&>(*plugin).paramMap[std::move(key)] = j;
+                }
+                // add plugin info
+                auto key = makeKey(*plugin);
+                gPluginManager.addPlugin(key, plugin);
+                bash_name(key); // also add bashed version!
+                gPluginManager.addPlugin(key, plugin);
+            }
+        }
         return true;
     } else {
         gPluginManager.addException(path);
@@ -308,7 +302,7 @@ static IFactory::ptr probePlugin(const std::string& path){
                 consume(std::move(log));
             }
         });
-        if (handleFactory(path, factory)){
+        if (addFactory(path, factory)){
             return factory; // success
         }
     } catch (const Error& e){
@@ -352,7 +346,7 @@ static FactoryFuture probePluginParallel(const std::string& path){
                         consume(std::move(log));
                     }
                 }); // collect result(s)
-                if (handleFactory(path, factory)){
+                if (addFactory(path, factory)){
                     return factory;
                 }
             } catch (const Error& e){
