@@ -17,6 +17,11 @@ using namespace vst;
   #define DUP(fd) _dup(fd)
   #define DUP2(fd, newfd) _dup2(fd, newfd)
   const char *nullFileName = "NUL";
+  #ifdef _MSC_VER
+   #define STDOUT_FILENO _fileno(stdout)
+   #define STDERR_FILENO _fileno(stderr)
+   #define fileno _fileno
+  #endif
  #endif
 #else
  #define MAIN main
