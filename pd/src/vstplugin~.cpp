@@ -131,13 +131,14 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
 // the result, especially if the plugin takes a long time to load (e.g. shell plugins).
 // The drawback is that we either have to post the result on a seperate line or post
 // on the normal log level. For now, we do the latter.
+template<bool async = false>
 class PdLog {
 public:
     template <typename... T>
-    PdLog(bool async, PdLogLevel level, const char *fmt, T... args)
-        : PdLog(async, level)
+    PdLog(PdLogLevel level, const char *fmt, T... args)
+        : PdLog(level)
     {
-        if (async_){
+        if (async){
             // post immediately
             sys_lock();
             startpost(fmt, args...);
@@ -150,10 +151,10 @@ public:
             ss_ << buf;
         }
     }
-    PdLog(bool async, PdLogLevel level)
-        : level_(level), async_(async){}
+    PdLog(PdLogLevel level)
+        : level_(level){}
     PdLog(PdLog&& other)
-        : ss_(std::move(other.ss_)), level_(other.level_), async_(other.async_)
+        : ss_(std::move(other.ss_)), level_(other.level_)
     {
         force_ = other.force_;
         other.force_ = false; // make sure that moved from object doesn't print
@@ -164,7 +165,7 @@ public:
     PdLog& flush(){
         auto str = ss_.str();
         if (!str.empty()){
-            if (async_){
+            if (async){
                 sys_lock();
                 post("%s", ss_.str().c_str());
                 sys_unlock();
@@ -183,7 +184,7 @@ public:
     }
     PdLog& operator <<(const Error& e){
         flush();
-        if (async_){
+        if (async){
             sys_lock();
             verbose(PD_ERROR, "%s", e.what());
             sys_unlock();
@@ -212,7 +213,6 @@ public:
 private:
     std::stringstream ss_;
     PdLogLevel level_;
-    bool async_;
     bool force_ = false;
 };
 
@@ -221,15 +221,15 @@ void consume(T&& obj){
     T dummy(std::move(obj));
 }
 
-template<typename... T>
-void postBug(bool async, const char *fmt, T... args){
+template<bool async = false, typename... T>
+void postBug(const char *fmt, T... args){
     if (async) sys_lock();
     bug(fmt, args...);
     if (async) sys_unlock();
 }
 
-template<typename... T>
-void postError(bool async, const char *fmt, T... args){
+template<bool async = false, typename... T>
+void postError(const char *fmt, T... args){
     if (async) sys_lock();
     error(fmt, args...);
     if (async) sys_unlock();
@@ -237,25 +237,23 @@ void postError(bool async, const char *fmt, T... args){
 
 
 // load factory and probe plugins
-
-static IFactory::ptr loadFactory(const std::string& path, bool async = false){
+template<bool async>
+static IFactory::ptr loadFactory(const std::string& path){
     IFactory::ptr factory;
 
     if (gPluginManager.findFactory(path)){
-        postBug(async, "probePlugin");
+        postBug<async>("loadFactory");
         return nullptr;
     }
     if (gPluginManager.isException(path)){
-        PdLog log(async, PD_DEBUG,
-                  "'%s' is black-listed", path.c_str());
+        PdLog<async> log(PD_DEBUG, "'%s' is black-listed", path.c_str());
         return nullptr;
     }
 
     try {
         factory = IFactory::load(path);
     } catch (const Error& e){
-        PdLog log(async, PD_DEBUG,
-                  "couldn't load '%s': %s", path.c_str(), e.what());
+        PdLog<async> log(PD_DEBUG, "couldn't load '%s': %s", path.c_str(), e.what());
         gPluginManager.addException(path);
         return nullptr;
     }
@@ -263,7 +261,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool async = false){
     return factory;
 }
 
-static bool handleFactory(const std::string& path, IFactory::ptr factory, bool async){
+static bool handleFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         if (plugin->valid()){
@@ -282,13 +280,14 @@ static bool handleFactory(const std::string& path, IFactory::ptr factory, bool a
     }
 }
 
-static IFactory::ptr probePlugin(const std::string& path, bool async = false){
-    auto factory = loadFactory(path, async);
+template<bool async>
+static IFactory::ptr probePlugin(const std::string& path){
+    auto factory = loadFactory<async>(path);
     if (!factory){
         return nullptr;
     }
 
-    PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
+    PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
 
     try {
         factory->probe([&](const PluginInfo& desc, int which, int numPlugins){
@@ -297,7 +296,7 @@ static IFactory::ptr probePlugin(const std::string& path, bool async = false){
                 if (which == 0){
                     consume(std::move(log));
                 }
-                PdLog log1(async, PD_DEBUG, "\t'");
+                PdLog<async> log1(PD_DEBUG, "\t'");
                 if (!desc.name.empty()){
                     log1 << desc.name << "' ... ";
                 } else {
@@ -309,7 +308,7 @@ static IFactory::ptr probePlugin(const std::string& path, bool async = false){
                 consume(std::move(log));
             }
         });
-        if (handleFactory(path, factory, async)){
+        if (handleFactory(path, factory)){
             return factory; // success
         }
     } catch (const Error& e){
@@ -323,8 +322,9 @@ using FactoryFuture = std::function<IFactory::ptr()>;
 
 static FactoryFuture nullFactoryFuture([](){ return nullptr; });
 
-static FactoryFuture probePluginAsync(const std::string& path, bool async = false){
-    auto factory = loadFactory(path, async);
+template<bool async>
+static FactoryFuture probePluginParallel(const std::string& path){
+    auto factory = loadFactory<async>(path);
     if (!factory){
         return nullFactoryFuture;
     }
@@ -332,7 +332,7 @@ static FactoryFuture probePluginAsync(const std::string& path, bool async = fals
     try {
         auto future = factory->probeAsync();
         return [=]() -> IFactory::ptr {
-            PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
+            PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
             try {
                 future([&](const PluginInfo& desc, int which, int numPlugins){
                     // Pd's posting methods have a size limit, so we log each plugin seperately!
@@ -340,7 +340,7 @@ static FactoryFuture probePluginAsync(const std::string& path, bool async = fals
                         if (which == 0){
                             consume(std::move(log));
                         }
-                        PdLog log1(async, PD_DEBUG, "\t'");
+                        PdLog<async> log1(PD_DEBUG, "\t'");
                         if (!desc.name.empty()){
                             log1 << desc.name << "' ... ";
                         } else {
@@ -352,7 +352,7 @@ static FactoryFuture probePluginAsync(const std::string& path, bool async = fals
                         consume(std::move(log));
                     }
                 }); // collect result(s)
-                if (handleFactory(path, factory, async)){
+                if (handleFactory(path, factory)){
                     return factory;
                 }
             } catch (const Error& e){
@@ -362,7 +362,7 @@ static FactoryFuture probePluginAsync(const std::string& path, bool async = fals
             return nullptr;
         };
     } catch (const Error& e){
-        PdLog log(async, PD_DEBUG, "probing '%s'... ", path.c_str());
+        PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
         log << "error";
         log << e;
     }
@@ -371,13 +371,13 @@ static FactoryFuture probePluginAsync(const std::string& path, bool async = fals
 
 #define PROBE_PROCESSES 8
 
-static void searchPlugins(const std::string& path, t_vstplugin *x,
-                          bool parallel, bool async = false){
+template<bool async>
+static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x = nullptr){
     int count = 0;
     {
         std::string bashPath = path;
         sys_unbashfilename(&bashPath[0], &bashPath[0]);
-        PdLog log(async, PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
+        PdLog<async> log(PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
     }
 
     auto addPlugin = [&](const PluginInfo& plugin, bool post=false){
@@ -388,7 +388,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x,
                 x->x_plugins.push_back(gensym(key.c_str()));
             }
             if (post){
-                PdLog log(async, PD_DEBUG, "\t");
+                PdLog<async> log(PD_DEBUG, "\t");
                 log << plugin.name;
             }
             count++;
@@ -417,7 +417,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x,
         auto factory = gPluginManager.findFactory(pluginPath);
         if (factory){
             // just post paths of valid plugins
-            PdLog log(async, PD_DEBUG, "%s", factory->path().c_str());
+            PdLog<async> log(PD_DEBUG, "%s", factory->path().c_str());
             auto numPlugins = factory->numPlugins();
             if (numPlugins == 1){
                 addPlugin(*factory->getPlugin(0));
@@ -431,12 +431,12 @@ static void searchPlugins(const std::string& path, t_vstplugin *x,
         } else {
             // probe (will post results and add plugins)
             if (parallel){
-                futures.push_back(probePluginAsync(pluginPath, async));
+                futures.push_back(probePluginParallel<async>(pluginPath));
                 if (futures.size() >= PROBE_PROCESSES){
                     processFutures();
                 }
             } else {
-                if ((factory = probePlugin(pluginPath, async))){
+                if ((factory = probePlugin<async>(pluginPath))){
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i){
                         addPlugin(*factory->getPlugin(i));
@@ -447,7 +447,7 @@ static void searchPlugins(const std::string& path, t_vstplugin *x,
     });
     processFutures();
 
-    PdLog log(async, PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
+    PdLog<async> log(PD_NORMAL, "found %d plugin%s", count, (count == 1 ? "." : "s."));
 }
 
 // tell whether we've already searched the standard VST directory
@@ -774,7 +774,7 @@ static void vstplugin_search_done(t_vstplugin *x){
 static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths,
                                        bool parallel, bool update){
     for (auto& path : searchPaths){
-        searchPlugins(path, x, parallel, true); // async
+        searchPlugins<true>(path, parallel, x); // async
     }
     if (update){
         writeIniFile();
@@ -821,7 +821,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             if (async){
                 searchPaths.emplace_back(path); // save for later
             } else {
-                searchPlugins(path, x, parallel);
+                searchPlugins<false>(path, parallel, x);
             }
         }
     } else {  // search in the default VST search paths if no user paths were provided
@@ -829,7 +829,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             if (async){
                 searchPaths.emplace_back(path); // save for later
             } else {
-                searchPlugins(path, x, parallel);
+                searchPlugins<false>(path, parallel, x);
             }
         }
     }
@@ -917,7 +917,7 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
                     "nor a valid file path", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(abspath))){
                 // finally probe plugin
-            if (probePlugin(abspath)){
+            if (probePlugin<false>(abspath)){
                 desc = gPluginManager.findPlugin(abspath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
@@ -1721,7 +1721,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
-            searchPlugins(path, nullptr, true);
+            searchPlugins<false>(path, true); // synchronous and parallel
         }
         // shall we write cache file?
     #if 1
