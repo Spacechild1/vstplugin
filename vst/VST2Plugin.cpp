@@ -176,8 +176,9 @@ int VST2Factory::numPlugins() const {
 
 // for testing we don't want to load hundreds of shell plugins
 #define SHELL_PLUGIN_LIMIT 1000
-#define PROBE_PROCESSES 8
-#define PROBE_THREADS 8 // 0: don't use threads
+// probe subplugins asynchronously with futures or worker threads
+#define PROBE_FUTURES 8 // number of futures to wait for
+#define PROBE_THREADS 8 // number of worker threads (0: use futures instead of threads)
 
 IFactory::ProbeFuture VST2Factory::probeAsync() {
     plugins_.clear();
@@ -206,7 +207,7 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
             while (i < numPlugins){
                 futures.clear();
                 // probe the next n plugins
-                int n = std::min<int>(numPlugins - i, PROBE_PROCESSES);
+                int n = std::min<int>(numPlugins - i, PROBE_FUTURES);
                 for (int j = 0; j < n; ++j, ++i){
                     auto& shell = result->shellPlugins_[i];
                     try {
