@@ -246,6 +246,13 @@ an action to be called after the search has finished.
 ARGUMENT:: save
 whether the search results should be written to the cache file.
 
+ARGUMENT:: parallel
+whether plugins should be probed in parallel. This can be significantly faster - at the cost of possible audio dropouts (because all CPU cores might be fully utilized).
+
+NOTE::
+Shell plugins like "Waves" are always probed in parallel for performance reasons.
+::
+
 
 DISCUSSION::
 Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client 
@@ -279,6 +286,8 @@ ARGUMENT:: useDefault
 ARGUMENT:: verbose
 (see above)
 ARGUMENT:: save
+(see above)
+ARGUMENT:: parallel
 (see above)
 ARGUMENT:: dest
 

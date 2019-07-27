@@ -109,29 +109,31 @@ VSTPlugin : MultiOutUGen {
 	*resetMsg { arg remove=true;
 		^['/cmd', '/vst_clear', remove.asInt];
 	}
-	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true;
+	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
 		server = server ?? Server.default;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, action) }
-		{ this.prSearchRemote(server, dir, useDefault, verbose, save, wait, action) };
+		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, parallel, action) }
+		{ this.prSearchRemote(server, dir, useDefault, verbose, save, parallel, wait, action) };
 	}
-	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, dest=nil;
-		var flags;
+	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, parallel=true, dest=nil;
+		var flags = 0;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
 		dir = dir.collect { arg p; this.prResolvePath(p) };
-		// use remote search (won't write to temp file)!
-		flags = (useDefault.asInteger) | (verbose.asInteger << 1) | (save.asInteger << 2);
-		dest = this.prMakeDest(dest);
+		// make flags
+		[useDefault, verbose, save, parallel].do { arg value, bit;
+			flags = flags | (value.asBoolean.asInteger << bit);
+		};
+		dest = this.prMakeDest(dest); // nil -> -1 = don't write results
 		^['/cmd', '/vst_search', flags, dest] ++ dir;
 	}
-	*prSearchLocal { arg server, dir, useDefault, verbose, save, action;
+	*prSearchLocal { arg server, dir, useDefault, verbose, save, parallel, action;
 		{
 			var dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask VSTPlugin to store the search results in a temp file
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, tmpPath));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, tmpPath));
 			// wait for cmd to finish
 			server.sync;
 			// read file
@@ -151,13 +153,13 @@ VSTPlugin : MultiOutUGen {
 			};
 		}.forkIfNeeded;
 	}
-	*prSearchRemote { arg server, dir, useDefault, verbose, save, wait, action;
+	*prSearchRemote { arg server, dir, useDefault, verbose, save, parallel, wait, action;
 		{
 			var dict = pluginDict[server];
 			var buf = Buffer(server); // get free Buffer
 			// ask VSTPlugin to store the search results in this Buffer
 			// (it will allocate the memory for us!)
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, buf));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, buf));
 			// wait for cmd to finish and update buffer info
 			server.sync;
 			buf.updateInfo({
