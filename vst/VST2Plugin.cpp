@@ -264,14 +264,14 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
                         auto plugin = probePlugin(shell->name, shell->id)();
                         lock.lock();
                         results.emplace_back(count++, shell->name, plugin, Error{});
-                        LOG_DEBUG("thread " << i << ": probed " << shell->name);
+                        /// LOG_DEBUG("thread " << i << ": probed " << shell->name);
                     } catch (const Error& e){
                         lock.lock();
                         results.emplace_back(count++, shell->name, nullptr, e);
                     }
                     cond.notify_one();
                 }
-                LOG_DEBUG("worker thread " << i << " finished");
+                /// LOG_DEBUG("worker thread " << i << " finished");
             };
             // spawn worker threads
             for (int j = 0; j < numThreads; ++j){
@@ -279,9 +279,8 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
             }
             // collect results
             std::unique_lock<std::mutex> lock(mutex);
-            while (count < numPlugins){
-                LOG_DEBUG("wait...");
-                cond.wait(lock);
+            while (true) {
+                // process available data
                 while (results.size() > 0){
                     int index;
                     std::string name;
@@ -304,20 +303,26 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
                         // should we rather propagate the error and break from the loop?
                         LOG_ERROR("couldn't probe '" << name << "': " << e.what());
                     }
-
-                    LOG_DEBUG(index << " from " << numPlugins);
                     lock.lock();
                 }
+                if (count < numPlugins) {
+                    /// LOG_DEBUG("wait...");
+                    cond.wait(lock); // wait for more
+                }
+                else {
+                    break; // done
+                }
             }
+
             lock.unlock(); // !
-            LOG_DEBUG("exit loop");
+            /// LOG_DEBUG("exit loop");
             // join worker threads
             for (auto& thread : threads){
                 if (thread.joinable()){
                     thread.join();
                 }
             }
-            LOG_DEBUG("all worker threads joined");
+            /// LOG_DEBUG("all worker threads joined");
 #endif
         }
         for (auto& desc : plugins_){
