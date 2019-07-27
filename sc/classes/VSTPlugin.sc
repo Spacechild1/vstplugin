@@ -317,7 +317,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseInfo { arg stream;
 		var info = IdentityDictionary.new(parent: parentInfo, know: true);
-		var paramNames = Array.new, paramLabels = Array.new, programs = Array.new, keys = Array.new;
+		var paramNames, paramLabels, paramIndex, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
 		{
 			line = this.prGetLine(stream, true);
@@ -331,6 +331,7 @@ VSTPlugin : MultiOutUGen {
 					n = this.prParseCount(line);
 					paramNames = Array.newClear(n);
 					paramLabels = Array.newClear(n);
+					paramIndex = IdentityDictionary.new;
 					n.do { arg i;
 						var name, label;
 						line = this.prGetLine(stream);
@@ -341,6 +342,10 @@ VSTPlugin : MultiOutUGen {
 					info.numParameters = n;
 					info.parameterNames = paramNames;
 					info.parameterLabels = paramLabels;
+					paramNames.do { arg param, index;
+						paramIndex[param.asSymbol] = index;
+					};
+					info.parameterIndex = paramIndex;
 				},
 				"[programs]",
 				{
@@ -457,7 +462,7 @@ VSTPlugin : MultiOutUGen {
 
 	// instance methods
 	init { arg theID, theInfo, numOut, bypass, numInputs ... theInputs;
-		var inputArray, paramArray;
+		var inputArray, paramArray, sym;
 		// store id and info (both optional)
 		id = theID;
 		info = theInfo;
@@ -468,8 +473,9 @@ VSTPlugin : MultiOutUGen {
 		paramArray.pairsDo { arg param, value, i;
 			param.isNumber.not.if {
 				info ?? { ^Error("can't resolve parameter '%' without info".format(param)).throw; };
-				param = info.parameterIndex[param.asSymbol];
-				param ?? { ^Error("bad parameter '%' for plugin '%'".format(param, info.name)).throw; };
+				sym = param.asSymbol;
+				param = info.parameterIndex[sym];
+				param ?? { ^Error("bad parameter '%' for plugin '%'".format(sym, info.name)).throw; };
 				paramArray[i] = param;
 			};
 		};
