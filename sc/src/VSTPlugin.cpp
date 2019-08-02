@@ -533,8 +533,10 @@ VSTPlugin::~VSTPlugin(){
     if (buf_) RTFree(mWorld, buf_);
     if (inBufVec_) RTFree(mWorld, inBufVec_);
     if (outBufVec_) RTFree(mWorld, outBufVec_);
-    if (paramStates_) RTFree(mWorld, paramStates_);
-    // both variables are volatile, so the compiler is not allowed to optimize this away!
+    if (paramState_) RTFree(mWorld, paramState_);
+    if (paramMapping_) RTFree(mWorld, paramMapping_);
+    clearMapping();
+    // both variables are volatile, so the compiler is not allowed to optimize it away!
     initialized_ = 0;
     queued_ = 0;
     // tell the delegate that we've been destroyed!
@@ -674,21 +676,14 @@ fail:
     buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
 }
 
-void VSTPlugin::resizeParameters(int n){
-    // allocate arrays for parameter values/states
-    auto result = (Param*)RTRealloc(mWorld, paramStates_, n * sizeof(Param));
-    if (result) {
-        paramStates_ = result;
-        for (int i = 0; i < n; ++i) {
-            paramStates_[i].value = std::numeric_limits<float>::quiet_NaN();
-            paramStates_[i].bus = -1;
-        }
+void VSTPlugin::clearMapping() {
+    auto m = paramMappingList_;
+    while (m != nullptr) {
+        auto next = m->next;
+        RTFree(mWorld, m);
+        m = next;
     }
-    else {
-        RTFree(mWorld, paramStates_);
-        paramStates_ = nullptr;
-        LOG_ERROR("RTRealloc failed!");
-    }
+    paramMapping_ = nullptr;
 }
 
 float VSTPlugin::readControlBus(int32 num) {
@@ -702,6 +697,82 @@ float VSTPlugin::readControlBus(int32 num) {
     }
     else {
         return 0.f;
+    }
+}
+
+// update data (after loading a new plugin)
+void VSTPlugin::update() {
+    resizeBuffer();
+    clearMapping();
+    int n = delegate().plugin()->getNumParameters();
+    // parameter states
+    {
+        auto result = (float*)RTRealloc(mWorld, paramState_, n * sizeof(float));
+        if (result) {
+            for (int i = 0; i < n; ++i) {
+                result[i] = std::numeric_limits<float>::quiet_NaN();
+            }
+            paramState_ = result;
+        }
+        else {
+            RTFree(mWorld, paramState_);
+            paramState_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
+        }
+    }
+    // parameter mapping
+    {
+        auto result = (Mapping**)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping *));
+        if (result) {
+            for (int i = 0; i < n; ++i) {
+                result[i] = nullptr;
+            }
+            paramMapping_ = result;
+        }
+        else {
+            RTFree(mWorld, paramMapping_);
+            paramMapping_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
+        }
+    }
+}
+
+void VSTPlugin::map(int32 index, int32 bus) {
+    if (paramMapping_[index] == nullptr) {
+        auto mapping = (Mapping*)RTAlloc(mWorld, sizeof(Mapping));
+        if (mapping) {
+            // add to head of linked list
+            mapping->index = index;
+            mapping->bus = bus;
+            mapping->prev = nullptr;
+            mapping->next = paramMappingList_;
+            if (paramMappingList_) {
+                paramMappingList_->prev = mapping;
+            }
+            paramMappingList_ = mapping;
+            paramMapping_[index] = mapping;
+        }
+        else {
+            LOG_ERROR("RTAlloc failed!");
+        }
+    }
+}
+
+void VSTPlugin::unmap(int32 index) {
+    auto mapping = paramMapping_[index];
+    if (mapping) {
+        // remove from linked list
+        if (mapping->prev) {
+            mapping->prev->next = mapping->next;
+        }
+        else { // head
+            paramMappingList_ = mapping->next;
+        }
+        if (mapping->next) {
+            mapping->next->prev = mapping->prev;
+        }
+        RTFree(mWorld, mapping);
+        paramMapping_[index] = nullptr;
     }
 }
 
@@ -727,17 +798,17 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
 
     if (plugin && !bypass && plugin->hasPrecision(ProcessPrecision::Single)) {
-        if (paramStates_) {
-            // update parameters from mapped control busses
+        if (paramState_) {
             int nparam = plugin->getNumParameters();
-            for (int i = 0; i < nparam; ++i) {
-                int bus = paramStates_[i].bus;
-                if (bus >= 0) {
-                    float value = readControlBus(bus);
-                    if (value != paramStates_[i].value) {
-                        plugin->setParameter(i, value);
-                        paramStates_[i].value = value;
-                    }
+            // update parameters from mapped control busses
+            for (auto m = paramMappingList_; m != nullptr; m = m->next) {
+                int index = m->index;
+                int bus = m->bus;
+                float value = readControlBus(bus);
+                assert(index >= 0 && index < nparam);
+                if (value != paramState_[index]) {
+                    plugin->setParameter(index, value);
+                    paramState_[index] = value;
                 }
             }
             // update parameters from UGen inputs
@@ -745,12 +816,12 @@ void VSTPlugin::next(int inNumSamples) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
                 float value = in0(k + 1);
-                // only if index is not out of range and the param is not mapped to a bus
-                if (index >= 0 && index < nparam && paramStates_[index].bus < 0
-                    && paramStates_[index].value != value)
+                // only if index is not out of range and the parameter is not mapped to a bus
+                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr
+                    && paramState_[index] != value)
                 {
                     plugin->setParameter(index, value);
-                    paramStates_[index].value = value;
+                    paramState_[index] = value;
                 }
             }
         }
@@ -911,7 +982,7 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
             RTFree(world(), buf);
         }
         else {
-            LOG_WARNING("RTAlloc failed!");
+            LOG_ERROR("RTAlloc failed!");
         }
     }
 }
@@ -1046,8 +1117,8 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         LOG_DEBUG("opened " << cmd.buf);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
-        owner_->resizeBuffer();
-        owner_->resizeParameters(plugin_->getNumParameters());
+        // update data
+        owner_->update();
         // success, window
         float data[] = { 1.f, static_cast<float>(plugin_->getWindow() != nullptr) };
         sendMsg("/vst_open", 2, data);
@@ -1162,8 +1233,8 @@ void VSTPluginDelegate::setParam(int32 index, const char *display) {
 }
 
 void VSTPluginDelegate::setParamDone(int32 index) {
-    owner_->paramStates_[index].value = plugin_->getParameter(index);
-    owner_->paramStates_[index].bus = -1; // invalidate bus num
+    owner_->paramState_[index] = plugin_->getParameter(index);
+    owner_->unmap(index);
     sendParameter(index);
 }
 
@@ -1211,7 +1282,7 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
                 RTFree(world(), buf);
             }
             else {
-                LOG_WARNING("RTAlloc failed!");
+                LOG_ERROR("RTAlloc failed!");
             }
         }
         else {
@@ -1223,7 +1294,7 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
 void VSTPluginDelegate::mapParam(int32 index, int32 bus) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
-            owner_->paramStates_[index].bus = bus;
+            owner_->map(index, bus);
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
@@ -1234,7 +1305,7 @@ void VSTPluginDelegate::mapParam(int32 index, int32 bus) {
 void VSTPluginDelegate::unmapParam(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
-            owner_->paramStates_[index].bus = -1;
+            owner_->unmap(index);
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
@@ -1504,7 +1575,7 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
                 doCmd(cmdData, cmdVendorSpecific, cmdVendorSpecificDone);
             }
             else {
-                LOG_WARNING("RTAlloc failed!");
+                LOG_ERROR("RTAlloc failed!");
             }
         }
         else {

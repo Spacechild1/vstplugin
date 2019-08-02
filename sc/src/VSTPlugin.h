@@ -195,10 +195,13 @@ public:
     int numInChannels() const { return numInChannels_; }
     int numOutChannels() const { return numOutputs(); }
 
-    float readControlBus(int32 num);
-    void resizeBuffer();
-    void resizeParameters(int n);
+    void update();
+    void map(int32 index, int32 bus);
+    void unmap(int32 index);
 private:
+    void resizeBuffer();
+    void clearMapping();
+    float readControlBus(int32 num);
     // data members
     volatile uint32 initialized_ = MagicInitialized; // set by constructor
     volatile uint32 queued_; // set to MagicQueued when queuing unit commands
@@ -218,11 +221,15 @@ private:
     float *buf_ = nullptr;
     const float **inBufVec_ = nullptr;
     float **outBufVec_ = nullptr;
-    struct Param {
-        float value;
+    struct Mapping {
+        int32 index;
         int32 bus;
+        Mapping* prev;
+        Mapping* next;
     };
-    Param *paramStates_ = nullptr;
+    Mapping* paramMappingList_ = nullptr;
+    float* paramState_ = nullptr;
+    Mapping** paramMapping_ = nullptr;
     int numParameterControls_ = 0;
     int parameterControlOnset_ = 0;
 
