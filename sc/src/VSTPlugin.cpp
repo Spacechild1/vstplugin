@@ -526,7 +526,21 @@ VSTPlugin::VSTPlugin(){
     resizeBuffer();
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
 
-    runUnitCmds();
+    // run queued unit commands
+    if (queued_ == MagicQueued) {
+        auto item = unitCmdQueue_;
+        while (item) {
+            sc_msg_iter args(item->size, item->data);
+            // swallow the first 3 arguments
+            args.geti(); // node ID
+            args.geti(); // ugen index
+            args.gets(); // unit command name
+            (item->fn)((Unit*)this, &args);
+            auto next = item->next;
+            RTFree(mWorld, item);
+            item = next;
+        }
+    }
 }
 
 VSTPlugin::~VSTPlugin(){
@@ -571,23 +585,6 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
         }
         else {
             unitCmdQueue_ = item;
-        }
-    }
-}
-
-void VSTPlugin::runUnitCmds() {
-    if (queued_ == MagicQueued) {
-        auto item = unitCmdQueue_;
-        while (item){
-            sc_msg_iter args(item->size, item->data);
-            // swallow the first 3 arguments
-            args.geti(); // node ID
-            args.geti(); // ugen index
-            args.gets(); // unit command name
-            (item->fn)((Unit*)this, &args);
-            auto next = item->next;
-            RTFree(mWorld, item);
-            item = next;
         }
     }
 }
