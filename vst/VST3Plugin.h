@@ -18,30 +18,35 @@ class VST3Factory : public IFactory {
     VST3Factory(const std::string& path);
     ~VST3Factory();
     // get a list of all available plugins
-    std::vector<std::shared_ptr<PluginInfo>> plugins() const override;
+    void addPlugin(PluginInfo::ptr desc) override;
+    PluginInfo::const_ptr getPlugin(int index) const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
-    void probe() override;
+    ProbeFuture probeAsync() override;
     bool isProbed() const override {
-        return plugins_.size() > 0;
+        return !plugins_.empty();
+    }
+    bool valid() const override {
+        return valid_;
     }
     std::string path() const override {
         return path_;
     }
     // create a new plugin instance
-    std::unique_ptr<IPlugin> create(const std::string& name, bool probe = false) const override;
+    IPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
     std::string path_;
     std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
-    std::vector<PluginInfoPtr> plugins_;
-    std::unordered_map<std::string, int> nameMap_;
+    std::vector<PluginInfo::ptr> plugins_;
+    std::unordered_map<std::string, int> pluginMap_;
+    bool valid_ = false;
 };
 
 class VST3Plugin final : public IPlugin {
  public:
-    VST3Plugin(IPtr<IPluginFactory> factory, int which, PluginInfoPtr desc);
+    VST3Plugin(IPtr<IPluginFactory> factory, int which, PluginInfo::const_ptr desc);
     ~VST3Plugin();
 
     const PluginInfo& info() const { return *desc_; }
@@ -71,8 +76,8 @@ class VST3Plugin final : public IPlugin {
     void setBypass(bool bypass) override;
     void setNumSpeakers(int in, int out) override;
 
-    void setListener(IPluginListener *listener) override {
-        listener_ = listener;
+    void setListener(IPluginListener::ptr listener) override {
+        listener_ = std::move(listener);
     }
 
     void setTempoBPM(double tempo) override;
@@ -115,18 +120,12 @@ class VST3Plugin final : public IPlugin {
     void setBankChunkData(const void *data, size_t size) override;
     void getBankChunkData(void **data, size_t *size) const override;
 
-    bool readProgramFile(const std::string& path) override;
-    bool readProgramData(const char *data, size_t size) override;
-    bool readProgramData(const std::string& buffer) override {
-        return readProgramData(buffer.data(), buffer.size());
-    }
+    void readProgramFile(const std::string& path) override;
+    void readProgramData(const char *data, size_t size) override;
     void writeProgramFile(const std::string& path) override;
     void writeProgramData(std::string& buffer) override;
-    bool readBankFile(const std::string& path) override;
-    bool readBankData(const char *data, size_t size) override;
-    bool readBankData(const std::string& buffer) override {
-        return readBankData(buffer.data(), buffer.size());
-    }
+    void readBankFile(const std::string& path) override;
+    void readBankData(const char *data, size_t size) override;
     void writeBankFile(const std::string& path) override;
     void writeBankData(std::string& buffer) override;
 
@@ -134,10 +133,17 @@ class VST3Plugin final : public IPlugin {
     void openEditor(void *window) override;
     void closeEditor() override;
     void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    void setWindow(IWindow::ptr window) override {
+        window_ = std::move(window);
+    }
+    IWindow *getWindow() const override {
+        return window_.get();
+    }
  private:
     std::string getBaseName() const;
-    IPluginListener *listener_ = nullptr;
-    PluginInfoPtr desc_;
+    std::weak_ptr<IPluginListener> listener_;
+    PluginInfo::const_ptr desc_;
+    IWindow::ptr window_;
     std::string name_;
     std::string vendor_;
     std::string version_;

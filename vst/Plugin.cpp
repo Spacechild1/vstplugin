@@ -223,27 +223,54 @@ const std::vector<const char *>& getPluginExtensions() {
     return platformExtensions;
 }
 
-static std::vector<const char *> defaultSearchPaths = {
-	// macOS
-#ifdef __APPLE__
-	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
-#endif
-	// Windows
 #ifdef _WIN32
 #ifdef _WIN64 // 64 bit
 #define PROGRAMFILES "%ProgramFiles%\\"
 #else // 32 bit
 #define PROGRAMFILES "%ProgramFiles(x86)%\\"
 #endif
+#endif // WIN32
+
+static std::vector<const char *> defaultSearchPaths = {
+    /*////// VST2 ////*/
+#if USE_VST2
+    // macOS
+#ifdef __APPLE__
+	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
+#endif
+    // Windows
+#ifdef _WIN32
     PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins",
     PROGRAMFILES "Common Files\\VST2", PROGRAMFILES "Common Files\\Steinberg\\VST2"
-#undef PROGRAMFILES
 #endif
-	// Linux
+    // Linux
 #ifdef __linux__
     "/usr/local/lib/vst", "/usr/lib/vst"
 #endif
+#endif // VST2
+#if USE_VST2 && USE_VST3
+    ,
+#endif
+    /*////// VST3 ////*/
+#if USE_VST3
+    // macOS
+#ifdef __APPLE__
+    "~/Library/Audio/Plug-Ins/VST3", "/Library/Audio/Plug-Ins/VST3"
+#endif
+    // Windows
+#ifdef _WIN32
+    PROGRAMFILES "Common Files\\VST3"
+#endif
+    // Linux
+#ifdef __linux__
+    "/usr/local/lib/vst3", "/usr/lib/vst3"
+#endif
+#endif // VST3
 };
+
+#ifdef PROGRAMFILES
+#undef PROGRAMFILES
+#endif
 
 // get "real" default search paths
 const std::vector<std::string>& getDefaultSearchPaths() {
