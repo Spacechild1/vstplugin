@@ -64,11 +64,13 @@ VSTPlugin : MultiOutUGen {
 		}
 	}
 	*ar { arg input, numOut=1, bypass=0, params, id, info;
-		var numIn = 0;
-		input.notNil.if {
-			numIn = input.isArray.if {input.size} { 1 };
-		}
-		^this.multiNewList([\audio, id, info, numOut, bypass, numIn] ++ input ++ params);
+		input = input.asArray;
+		params = params.asArray;
+		params.size.odd.if {
+			^Error("'params': expecting pairs of param index/name + value").throw;
+		};
+		^this.multiNewList([\audio, id, info, numOut, bypass, input.size]
+			++ input ++ params.size.div(2) ++ params);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
@@ -461,26 +463,28 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg theID, theInfo, numOut, bypass, numInputs ... theInputs;
-		var inputArray, paramArray, sym;
+	init { arg theID, theInfo, numOut, bypass, numInputs ... args;
+		var inputArray, numParams, paramArray, sym;
 		// store id and info (both optional)
 		id = theID;
 		info = theInfo;
 		// seperate audio inputs from parameter controls
-		inputArray = theInputs[..(numInputs-1)];
-		paramArray = theInputs[numInputs..];
+		inputArray = args[..(numInputs-1)];
+		numParams = args[numInputs];
+		paramArray = args[(numInputs+1)..(numInputs+(numParams*2))];
+		// "param array size: %".format(paramArray.size).postln;
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
 			param.isNumber.not.if {
 				info ?? { ^Error("can't resolve parameter '%' without info".format(param)).throw; };
 				sym = param.asSymbol;
 				param = info.parameterIndex[sym];
-				param ?? { ^Error("bad parameter '%' for plugin '%'".format(sym, info.name)).throw; };
+				param ?? { ^Error("Bad parameter '%' for plugin '%'".format(sym, info.name)).throw; };
 				paramArray[i] = param;
 			};
 		};
 		// reassemble UGen inputs
-		inputs = [bypass, numInputs] ++ inputArray ++ paramArray;
+		inputs = [bypass, numInputs] ++ inputArray ++ numParams ++ paramArray;
 		^this.initOutputs(numOut, rate)
 	}
 }

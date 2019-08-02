@@ -192,7 +192,7 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int numInChannels() const { return in0(1); }
+    int numInChannels() const { return numInChannels_; }
     int numOutChannels() const { return numOutputs(); }
 
     float readControlBus(int32 num);
@@ -213,8 +213,9 @@ private:
     bool bypass_ = false;
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
-    float *buf_ = nullptr;
     static const int inChannelOnset_ = 2;
+    int numInChannels_ = 0;
+    float *buf_ = nullptr;
     const float **inBufVec_ = nullptr;
     float **outBufVec_ = nullptr;
     struct Param {

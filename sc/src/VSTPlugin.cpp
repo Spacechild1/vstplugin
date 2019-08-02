@@ -510,11 +510,18 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 // -------------------- VSTPlugin ------------------------ //
 
 VSTPlugin::VSTPlugin(){
-    delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
-
-    parameterControlOnset_ = inChannelOnset_ + numInChannels();
-    numParameterControls_ = (int)(numInputs() - parameterControlOnset_) / 2;
+    // UGen inputs: bypass, nin, inputs..., nparam, params...
+    assert(numInputs() > 1);
+    numInChannels_ = in0(1);
+    int onset = inChannelOnset_ + numInChannels_;
+    assert(numInputs() > onset);
+    numParameterControls_ = in0(onset);
+    parameterControlOnset_ = onset + 1;
+    assert(numInputs() > (onset + numParameterControls_ * 2));
     // LOG_DEBUG("num in: " << numInChannels() << ", num out: " << numOutChannels() << ", num controls: " << numParameterControls_);
+ 
+    // create delegate after member initialization!
+    delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
 
     resizeBuffer();
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
