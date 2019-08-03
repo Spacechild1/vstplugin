@@ -48,7 +48,7 @@ VST3Factory::VST3Factory(const std::string& path)
         PClassInfo ci;
         if (factory_->getClassInfo(i, &ci) == kResultTrue){
             /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
-            if (!strcmp(ci.category, "Audio Module Class")){
+            if (!strcmp(ci.category, kVstAudioEffectClass)){
                 pluginList_.push_back(ci.name);
                 pluginIndexMap_[ci.name] = i;
             }
@@ -161,7 +161,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         memcpy(uid, ci2.cid, sizeof(TUID));
         if (newDesc){
             newDesc->name = ci2.name;
-            newDesc->category = ci2.category;
+            newDesc->category = ci2.subCategories;
             newDesc->vendor = ci2.vendor;
             newDesc->version = ci2.version;
             newDesc->sdkVersion = ci2.sdkVersion;
@@ -172,21 +172,23 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             memcpy(uid, ci.cid, sizeof(TUID));
             if (newDesc){
                 newDesc->name = ci.name;
-                newDesc->category = ci.category;
+                newDesc->category = "Uncategorized";
                 newDesc->version = "0.0.0";
                 newDesc->sdkVersion = "VST 3";
-                PFactoryInfo i;
-                if (factory->getFactoryInfo(&i) == kResultTrue){
-                    newDesc->vendor = i.vendor;
-                } else {
-                    newDesc->vendor = "Unknown";
-                }
             }
         } else {
             throw Error("couldn't get class info!");
         }
     }
-
+    // fill vendor
+    if (newDesc && newDesc->vendor.empty()){
+        PFactoryInfo i;
+        if (factory->getFactoryInfo(&i) == kResultTrue){
+            newDesc->vendor = i.vendor;
+        } else {
+            newDesc->vendor = "Unknown";
+        }
+    }
     component_ = createInstance<Vst::IComponent>(factory, uid);
     if (!component_){
         throw Error("couldn't create VST3 component");
