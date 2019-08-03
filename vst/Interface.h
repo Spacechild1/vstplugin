@@ -302,6 +302,9 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
  protected:
     PluginInfo::Future probePlugin(const std::string& name, int shellPluginID = 0);
+    using ProbeList = std::vector<std::pair<std::string, int>>;
+    std::vector<PluginInfo::ptr> probePlugins(const ProbeList& pluginList,
+            ProbeCallback callback, bool& valid);
 };
 
 class Error : public std::exception {

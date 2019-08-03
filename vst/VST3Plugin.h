@@ -39,8 +39,12 @@ class VST3Factory : public IFactory {
     std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
+    // probed plugins:
     std::vector<PluginInfo::ptr> plugins_;
-    std::unordered_map<std::string, int> pluginMap_;
+    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
+    // factory plugins:
+    std::vector<std::string> pluginList_;
+    mutable std::unordered_map<std::string, int> pluginIndexMap_;
     bool valid_ = false;
 };
 
