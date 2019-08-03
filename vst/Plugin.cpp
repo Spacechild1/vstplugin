@@ -249,7 +249,7 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif
     // Linux
 #ifdef __linux__
-    "/usr/local/lib/vst", "/usr/lib/vst"
+    "~/.vst", "/usr/local/lib/vst", "/usr/lib/vst"
 #endif
 #endif // VST2
 #if USE_VST2 && USE_VST3
@@ -267,7 +267,7 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif
     // Linux
 #ifdef __linux__
-    "/usr/local/lib/vst3", "/usr/lib/vst3"
+    "~/.vst3", "/usr/local/lib/vst3", "/usr/lib/vst3"
 #endif
 #endif // VST3
 };
