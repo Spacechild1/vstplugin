@@ -148,6 +148,8 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
+static FUnknown *gPluginContext = nullptr;
+
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
     : factory_(std::move(f)), desc_(std::move(desc))
 {
@@ -189,14 +191,35 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             newDesc->vendor = "Unknown";
         }
     }
-    component_ = createInstance<Vst::IComponent>(factory, uid);
-    if (!component_){
+    if (newDesc){
+        desc_ = newDesc;
+    }
+    // create component
+    if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){
         throw Error("couldn't create VST3 component");
     }
     LOG_DEBUG("created VST3 component");
-
-    if (newDesc){
-        desc_ = newDesc;
+    // initialize component
+    if (component_->initialize(gPluginContext) != kResultOk){
+        throw Error("couldn't initialize VST3 component");
+    }
+    // first try to create controller from the component part
+    if (component_->queryInterface(Vst::IEditController::iid, (void**)&controller_) != kResultTrue){
+        // if this fails, try to instantiate controller class
+        TUID controllerCID;
+        static TUID nulluid = {0};
+        if (component_->getControllerClassId(controllerCID) == kResultTrue
+                && memcmp(controllerCID, nulluid, sizeof (TUID)) != 0){
+            if ((controller_ = createInstance<Vst::IEditController>(factory, controllerCID))
+                && controller_->initialize(gPluginContext) != kResultOk){
+                throw Error("couldn't initialize VST3 controller");
+            }
+        }
+    }
+    if (controller_){
+        LOG_DEBUG("created VST3 controller");
+    } else {
+        LOG_DEBUG("no VST3 controller!");
     }
 }
 
