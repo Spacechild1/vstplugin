@@ -198,6 +198,7 @@ struct PluginInfo {
     std::string vendor;
     std::string category;
     std::string version;
+    std::string sdkVersion;
     int id = 0;
     int numInputs = 0;
     int numOutputs = 0;

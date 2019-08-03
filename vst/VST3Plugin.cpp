@@ -43,15 +43,17 @@ VST3Factory::VST3Factory(const std::string& path)
     /// LOG_DEBUG("VST3Factory: loaded " << path);
     // map plugin names to indices
     auto numPlugins = factory_->countClasses();
-    LOG_DEBUG("module contains " << numPlugins << " plugins");
+    /// LOG_DEBUG("module contains " << numPlugins << " classes");
     for (int i = 0; i < numPlugins; ++i){
         PClassInfo ci;
         if (factory_->getClassInfo(i, &ci) == kResultTrue){
-            pluginList_.push_back(ci.name);
-            pluginIndexMap_[ci.name] = i;
-            LOG_DEBUG("\t" << ci.name);
+            /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
+            if (!strcmp(ci.category, "Audio Module Class")){
+                pluginList_.push_back(ci.name);
+                pluginIndexMap_[ci.name] = i;
+            }
         } else {
-            LOG_ERROR("couldn't get class info!");
+            throw Error("couldn't get class info!");
         }
     }
 }
@@ -61,7 +63,7 @@ VST3Factory::~VST3Factory(){
         // don't throw!
         LOG_ERROR("couldn't exit module");
     }
-    LOG_DEBUG("freed VST3 module " << path_);
+    // LOG_DEBUG("freed VST3 module " << path_);
 }
 
 void VST3Factory::addPlugin(PluginInfo::ptr desc){
@@ -131,7 +133,7 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe
             throw Error("plugin not probed successfully");
         }
     }
-    return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], desc);
+    return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], shared_from_this(), desc);
 }
 
 /*/////////////////////// VST3Plugin /////////////////////////////*/
@@ -146,47 +148,54 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
-VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, PluginInfo::const_ptr desc)
-    : desc_(std::move(desc))
+VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
+    : factory_(std::move(f)), desc_(std::move(desc))
 {
-    PClassInfo2 ci2;
+    // are we probing?
+    auto newDesc = !desc_ ? std::make_shared<PluginInfo>(factory_, *this) : nullptr;
+
     TUID uid;
+    PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
     if (factory2 && factory2->getClassInfo2(which, &ci2) == kResultTrue){
         memcpy(uid, ci2.cid, sizeof(TUID));
-        name_ = ci2.name;
-        category_ = ci2.category;
-        vendor_ = ci2.vendor;
-        sdkVersion_ = ci2.sdkVersion;
-        // version
-        // sdk version
+        if (newDesc){
+            newDesc->name = ci2.name;
+            newDesc->category = ci2.category;
+            newDesc->vendor = ci2.vendor;
+            newDesc->version = ci2.version;
+            newDesc->sdkVersion = ci2.sdkVersion;
+        }
     } else {
         Steinberg::PClassInfo ci;
         if (factory->getClassInfo(which, &ci) == kResultTrue){
             memcpy(uid, ci.cid, sizeof(TUID));
-            name_ = ci.name;
-            category_ = ci.category;
-            sdkVersion_ = "VST 3";
+            if (newDesc){
+                newDesc->name = ci.name;
+                newDesc->category = ci.category;
+                newDesc->version = "0.0.0";
+                newDesc->sdkVersion = "VST 3";
+                PFactoryInfo i;
+                if (factory->getFactoryInfo(&i) == kResultTrue){
+                    newDesc->vendor = i.vendor;
+                } else {
+                    newDesc->vendor = "Unknown";
+                }
+            }
         } else {
-            LOG_ERROR("couldn't get class info!");
-            return;
+            throw Error("couldn't get class info!");
         }
     }
-    if (vendor_.empty()){
-        PFactoryInfo i;
-        factory->getFactoryInfo(&i);
-        vendor_ = i.vendor;
-    }
-#if 0
-    if (name_.empty()){
-        name_ = getBaseName();
-    }
-#endif
+
     component_ = createInstance<Vst::IComponent>(factory, uid);
     if (!component_){
         throw Error("couldn't create VST3 component");
     }
     LOG_DEBUG("created VST3 component");
+
+    if (newDesc){
+        desc_ = newDesc;
+    }
 }
 
 VST3Plugin::~VST3Plugin(){
@@ -194,23 +203,43 @@ VST3Plugin::~VST3Plugin(){
 }
 
 std::string VST3Plugin::getPluginName() const {
-    return name_;
+    if (desc_){
+        return desc_->name;
+    } else {
+        return "";
+    }
 }
 
 std::string VST3Plugin::getPluginVendor() const {
-    return vendor_;
+    if (desc_){
+        return desc_->vendor;
+    } else {
+        return "";
+    }
 }
 
 std::string VST3Plugin::getPluginCategory() const {
-    return category_;
+    if (desc_){
+        return desc_->category;
+    } else {
+        return "";
+    }
 }
 
 std::string VST3Plugin::getPluginVersion() const {
-    return version_;
+    if (desc_){
+        return desc_->version;
+    } else {
+        return "";
+    }
 }
 
 std::string VST3Plugin::getSDKVersion() const {
-    return sdkVersion_;
+    if (desc_){
+        return desc_->sdkVersion;
+    } else {
+        return "";
+    }
 }
 
 int VST3Plugin::getPluginUniqueID() const {
@@ -470,20 +499,5 @@ void VST3Plugin::closeEditor(){
 void VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
 
 }
-
-// private
-#if 0
-std::string VST3Plugin::getBaseName() const {
-    auto sep = path_.find_last_of("\\/");
-    auto dot = path_.find_last_of('.');
-    if (sep == std::string::npos){
-        sep = -1;
-    }
-    if (dot == std::string::npos){
-        dot = path_.size();
-    }
-    return path_.substr(sep + 1, dot - sep - 1);
-}
-#endif
 
 } // vst

@@ -385,6 +385,7 @@ VSTPlugin : MultiOutUGen {
 						\vendor, { info[key] = value },
 						\category, { info[key] = value },
 						\version, { info[key] = value },
+						\sdkVersion, { info[key] = value },
 						\id, { info[key] = value.asInteger },
 						\inputs, { info.numInputs = value.asInteger },
 						\outputs, { info.numOutputs = value.asInteger },

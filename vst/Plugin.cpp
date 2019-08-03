@@ -933,6 +933,7 @@ PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPl
     vendor = plugin.getPluginVendor();
     category = plugin.getPluginCategory();
     version = plugin.getPluginVersion();
+    sdkVersion = plugin.getSDKVersion();
 	id = plugin.getPluginUniqueID();
 	numInputs = plugin.getNumInputs();
 	numOutputs = plugin.getNumOutputs();
@@ -980,6 +981,7 @@ IPlugin::ptr PluginInfo::create() const {
 /// vendor=<string>
 /// category=<string>
 /// version=<string>
+/// sdkversion=<string>
 /// id=<int>
 /// inputs=<int>
 /// outputs=<int>
@@ -1020,6 +1022,7 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "vendor=" << vendor << "\n";
     file << "category=" << category << "\n";
     file << "version=" << version << "\n";
+    file << "sdkversion=" << sdkVersion << "\n";
     file << "id=" << id << "\n";
     file << "inputs=" << numInputs << "\n";
     file << "outputs=" << numOutputs << "\n";
@@ -1162,6 +1165,8 @@ void PluginInfo::deserialize(std::istream& file) {
                     category = std::move(value);
                 } else if (key == "version"){
                     version = std::move(value);
+                } else if (key == "sdkversion"){
+                    sdkVersion = std::move(value);
                 } else if (key == "id"){
                     id = std::stol(value);
                 } else if (key == "inputs"){

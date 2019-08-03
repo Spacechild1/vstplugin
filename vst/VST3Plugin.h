@@ -50,7 +50,7 @@ class VST3Factory : public IFactory {
 
 class VST3Plugin final : public IPlugin {
  public:
-    VST3Plugin(IPtr<IPluginFactory> factory, int which, PluginInfo::const_ptr desc);
+    VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
 
     const PluginInfo& info() const { return *desc_; }
@@ -144,17 +144,13 @@ class VST3Plugin final : public IPlugin {
         return window_.get();
     }
  private:
-    std::string getBaseName() const;
-    std::weak_ptr<IPluginListener> listener_;
-    PluginInfo::const_ptr desc_;
-    IWindow::ptr window_;
-    std::string name_;
-    std::string vendor_;
-    std::string version_;
-    std::string sdkVersion_;
-    std::string category_;
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
+    IFactory::const_ptr factory_;
+    PluginInfo::const_ptr desc_;
+    IWindow::ptr window_;
+    std::weak_ptr<IPluginListener> listener_;
+
 };
 
 } // vst

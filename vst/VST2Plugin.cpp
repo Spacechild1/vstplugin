@@ -148,7 +148,7 @@ VST2Factory::VST2Factory(const std::string& path)
 }
 
 VST2Factory::~VST2Factory(){
-    LOG_DEBUG("freed VST2 module " << path_);
+    // LOG_DEBUG("freed VST2 module " << path_);
 }
 
 void VST2Factory::addPlugin(PluginInfo::ptr desc){
@@ -269,17 +269,17 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     if (!desc_){
         // later we might directly initialize PluginInfo here and get rid of many IPlugin methods
         // (we implicitly call virtual methods within our constructor, which works in our case but is a bit edgy)
-        PluginInfo newDesc(factory_, *this);
+        auto newDesc = std::make_shared<PluginInfo>(factory_, *this);
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
             VstInt32 nextID = 0;
             char name[64] = { 0 };
             while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
                 PluginInfo::ShellPlugin shellPlugin { name, nextID };
-                newDesc.shellPlugins_.push_back(std::move(shellPlugin));
+                newDesc->shellPlugins_.push_back(std::move(shellPlugin));
             }
         }
-        desc_ = std::make_shared<PluginInfo>(std::move(newDesc));
+        desc_ = newDesc;
     }
 }
 
