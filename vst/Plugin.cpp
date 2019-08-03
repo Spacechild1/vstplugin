@@ -688,7 +688,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     ZeroMemory(&pi, sizeof(pi));
 
     if (!CreateProcessW(probePath.c_str(), &cmdLine[0],
-                        NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)){
+                        NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)){
         throw Error("probePlugin: couldn't spawn process!");
     }
     auto wait = [pi](){
