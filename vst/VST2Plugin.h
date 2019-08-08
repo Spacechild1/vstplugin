@@ -56,26 +56,21 @@ class VST2Plugin final : public IPlugin {
     VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST2Plugin();
 
-    const PluginInfo& info() const override { return *desc_; }
-    std::string getPluginName() const override;
-    std::string getPluginVendor() const override;
-    std::string getPluginCategory() const override;
-    std::string getPluginVersion() const override;
-    std::string getSDKVersion() const override;
-    int getPluginUniqueID() const override;
+    const PluginInfo& info() const override { return *info_; }
+
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
 
+    void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
 	void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;
     bool hasPrecision(ProcessPrecision precision) const override;
-    void setPrecision(ProcessPrecision precision) override;
     void suspend() override;
     void resume() override;
-    void setSampleRate(float sr) override;
-    void setBlockSize(int n) override;
     int getNumInputs() const override;
+    int getNumAuxInputs() const override { return 0; }
     int getNumOutputs() const override;
+    int getNumAuxOutputs() const override { return 0; }
     bool isSynth() const override;
     bool hasTail() const override;
     int getTailSize() const override;
@@ -111,9 +106,7 @@ class VST2Plugin final : public IPlugin {
     void setParameter(int index, float value) override;
     bool setParameter(int index, const std::string& str) override;
     float getParameter(int index) const override;
-    std::string getParameterName(int index) const override;
-    std::string getParameterLabel(int index) const override;
-    std::string getParameterDisplay(int index) const override;
+    std::string getParameterString(int index) const override;
     int getNumParameters() const override;
 
     void setProgram(int program) override;
@@ -149,8 +142,14 @@ class VST2Plugin final : public IPlugin {
         return window_.get();
     }
  private:
+    std::string getPluginName() const;
+    std::string getPluginVendor() const;
+    std::string getPluginCategory() const;
+    std::string getPluginVersion() const;
+    std::string getSDKVersion() const;
+    std::string getParameterName(int index) const;
+    std::string getParameterLabel(int index) const;
     static bool canHostDo(const char *what);
-
     bool hasFlag(VstAEffectFlags flag) const;
     void parameterAutomated(int index, float value);
     VstTimeInfo * getTimeInfo(VstInt32 flags);
@@ -166,7 +165,7 @@ class VST2Plugin final : public IPlugin {
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
     IFactory::const_ptr factory_; // just to ensure lifetime
-    PluginInfo::const_ptr desc_;
+    PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     VstTimeInfo timeInfo_;

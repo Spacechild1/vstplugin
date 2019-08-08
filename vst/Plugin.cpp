@@ -915,59 +915,6 @@ void IFactory::probe(ProbeCallback callback){
 PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
     : path(factory->path()), factory_(factory) {}
 
-PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPlugin& plugin)
-    : PluginInfo(factory)
-{
-    name = plugin.getPluginName();
-    if (name.empty()){
-        auto sep = path.find_last_of("\\/");
-        auto dot = path.find_last_of('.');
-        if (sep == std::string::npos){
-            sep = -1;
-        }
-        if (dot == std::string::npos){
-            dot = path.size();
-        }
-        name = path.substr(sep + 1, dot - sep - 1);
-    }
-    vendor = plugin.getPluginVendor();
-    category = plugin.getPluginCategory();
-    version = plugin.getPluginVersion();
-    sdkVersion = plugin.getSDKVersion();
-	id = plugin.getPluginUniqueID();
-	numInputs = plugin.getNumInputs();
-	numOutputs = plugin.getNumOutputs();
-	int numParameters = plugin.getNumParameters();
-	parameters.clear();
-	for (int i = 0; i < numParameters; ++i) {
-        Param param{plugin.getParameterName(i), plugin.getParameterLabel(i)};
-        parameters.push_back(std::move(param));
-	}
-    // inverse mapping from name to index
-    for (int i = 0; i < numParameters; ++i){
-        paramMap[parameters[i].name] = i;
-    }
-	int numPrograms = plugin.getNumPrograms();
-	programs.clear();
-	for (int i = 0; i < numPrograms; ++i) {
-		auto pgm = plugin.getProgramNameIndexed(i);
-#if 0
-		if (pgm.empty()) {
-			plugin.setProgram(i);
-			pgm = plugin.getProgramName();
-		}
-#endif
-		programs.push_back(pgm);
-	}
-    flags_ = 0;
-    flags_ |= plugin.hasEditor() * HasEditor;
-    flags_ |= plugin.isSynth() * IsSynth;
-    flags_ |= plugin.hasPrecision(ProcessPrecision::Single) * SinglePrecision;
-    flags_ |= plugin.hasPrecision(ProcessPrecision::Double) * DoublePrecision;
-    flags_ |= plugin.hasMidiInput() * MidiInput;
-    flags_ |= plugin.hasMidiOutput() * MidiOutput;
-}
-
 IPlugin::ptr PluginInfo::create() const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     return factory ? factory->create(name) : nullptr;

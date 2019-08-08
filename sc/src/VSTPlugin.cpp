@@ -1048,14 +1048,12 @@ bool cmdOpen(World *world, void* cmdData) {
             auto owner = data->owner;
             plugin->suspend();
             // we only access immutable members of owner
-            plugin->setSampleRate(owner->sampleRate());
-            plugin->setBlockSize(owner->bufferSize());
             // LOG_DEBUG("sr: " << owner->sampleRate() << ", bs: " << owner->bufferSize());
             if (plugin->hasPrecision(ProcessPrecision::Single)) {
-                plugin->setPrecision(ProcessPrecision::Single);
+                plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
             }
             else {
-                LOG_WARNING("VSTPlugin: plugin '" << plugin->getPluginName() << "' doesn't support single precision processing - bypassing!");
+                LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
             }
             int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
             int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
@@ -1619,7 +1617,7 @@ void VSTPluginDelegate::sendParameter(int32 index) {
     // msg format: index, value, display length, display chars...
     buf[0] = index;
     buf[1] = plugin_->getParameter(index);
-    int size = string2floatArray(plugin_->getParameterDisplay(index), buf + 2, maxSize - 2);
+    int size = string2floatArray(plugin_->getParameterString(index), buf + 2, maxSize - 2);
     sendMsg("/vst_param", size + 2, buf);
 }
 

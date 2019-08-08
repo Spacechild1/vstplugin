@@ -6,6 +6,7 @@
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
+#include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 
 #include <unordered_map>
@@ -54,26 +55,21 @@ class VST3Plugin final : public IPlugin {
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
 
-    const PluginInfo& info() const { return *desc_; }
-    std::string getPluginName() const override;
-    std::string getPluginVendor() const override;
-    std::string getPluginCategory() const override;
-    std::string getPluginVersion() const override;
-    std::string getSDKVersion() const override;
-    int getPluginUniqueID() const override;
+    const PluginInfo& info() const { return *info_; }
+
     virtual int canDo(const char *what) const override;
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) override;
 
+    void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(const float **inputs, float **outputs, int nsamples) override;
     void processDouble(const double **inputs, double **outputs, int nsamples) override;
     bool hasPrecision(ProcessPrecision precision) const override;
-    void setPrecision(ProcessPrecision precision) override;
     void suspend() override;
     void resume() override;
-    void setSampleRate(float sr) override;
-    void setBlockSize(int n) override;
     int getNumInputs() const override;
-    int getNumOutputs() const override;
+    virtual int getNumAuxInputs() const;
+    virtual int getNumOutputs() const;
+    virtual int getNumAuxOutputs() const;
     bool isSynth() const override;
     bool hasTail() const override;
     int getTailSize() const override;
@@ -107,9 +103,7 @@ class VST3Plugin final : public IPlugin {
     void setParameter(int index, float value) override;
     bool setParameter(int index, const std::string& str) override;
     float getParameter(int index) const override;
-    std::string getParameterName(int index) const override;
-    std::string getParameterLabel(int index) const override;
-    std::string getParameterDisplay(int index) const override;
+    std::string getParameterString(int index) const override;
     int getNumParameters() const override;
 
     void setProgram(int program) override;
@@ -147,11 +141,17 @@ class VST3Plugin final : public IPlugin {
  private:
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
+    FUnknownPtr<Vst::IAudioProcessor> processor_;
     IFactory::const_ptr factory_;
-    PluginInfo::const_ptr desc_;
+    PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
-
+    int numInputs_ = 0;
+    int numAuxInputs_ = 0;
+    int numOutputs_ = 0;
+    int numAuxOutputs_ = 0;
+    int numMidiInChannels_ = 0;
+    int numMidiOutChannels_ = 0;
 };
 
 } // vst

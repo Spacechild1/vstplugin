@@ -69,25 +69,21 @@ class IPlugin {
     virtual ~IPlugin(){}
 
     virtual const PluginInfo& info() const = 0;
-    virtual std::string getPluginName() const = 0;
-    virtual std::string getPluginVendor() const = 0;
-    virtual std::string getPluginCategory() const = 0;
-    virtual std::string getPluginVersion() const = 0;
-    virtual std::string getSDKVersion() const = 0;
-    virtual int getPluginUniqueID() const = 0;
+
+    // VST2
     virtual int canDo(const char *what) const = 0;
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) = 0;
 
+    virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
     virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
     virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;
     virtual bool hasPrecision(ProcessPrecision precision) const = 0;
-    virtual void setPrecision(ProcessPrecision precision) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
-    virtual void setSampleRate(float sr) = 0;
-    virtual void setBlockSize(int n) = 0;
     virtual int getNumInputs() const = 0;
+    virtual int getNumAuxInputs() const = 0;
     virtual int getNumOutputs() const = 0;
+    virtual int getNumAuxOutputs() const = 0;
     virtual bool isSynth() const = 0;
     virtual bool hasTail() const = 0;
     virtual int getTailSize() const = 0;
@@ -119,9 +115,7 @@ class IPlugin {
     virtual void setParameter(int index, float value) = 0;
     virtual bool setParameter(int index, const std::string& str) = 0;
     virtual float getParameter(int index) const = 0;
-    virtual std::string getParameterName(int index) const = 0;
-    virtual std::string getParameterLabel(int index) const = 0;
-    virtual std::string getParameterDisplay(int index) const = 0;
+    virtual std::string getParameterString(int index) const = 0;
     virtual int getNumParameters() const = 0;
 
     virtual void setProgram(int index) = 0;
@@ -178,10 +172,11 @@ struct PluginInfo {
 
     PluginInfo() = default;
     PluginInfo(const std::shared_ptr<const IFactory>& factory);
-    PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPlugin& plugin);
     void setFactory(const std::shared_ptr<const IFactory>& factory){
         factory_ = factory;
     }
+    PluginInfo(const PluginInfo&) = delete;
+    void operator =(const PluginInfo&) = delete;
     // create new instances
     // throws an Error exception on failure!
     IPlugin::ptr create() const;
@@ -212,6 +207,12 @@ struct PluginInfo {
     std::unordered_map<std::string, int> paramMap;
     // default programs
     std::vector<std::string> programs;
+    int numParameters() const {
+        return parameters.size();
+    }
+    int numPrograms() const {
+        return programs.size();
+    }
     bool hasEditor() const {
         return flags_ & HasEditor;
     }

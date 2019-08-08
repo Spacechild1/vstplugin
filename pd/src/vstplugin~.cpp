@@ -499,7 +499,7 @@ static void vstparam_set(t_vstparam *x, t_floatarg f){
     IPlugin &plugin = *x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s", plugin.getParameterDisplay(index).c_str());
+    snprintf(buf, sizeof(buf), "%s", plugin.getParameterString(index).c_str());
     pd_vmess(x->p_display_rcv->s_thing, gensym("set"), (char *)"s", gensym(buf));
 }
 
@@ -650,11 +650,12 @@ void t_vsteditor::setup(){
     if (!pd_gui()){
         return;
     }
+    auto& info = e_owner->x_plugin->info();
 
-    send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
+    send_vmess(gensym("rename"), (char *)"s", gensym(info.name.c_str()));
     send_mess(gensym("clear"));
 
-    int nparams = e_owner->x_plugin->getNumParameters();
+    int nparams = info.numParameters();
     e_params.clear();
     // reserve to avoid a reallocation (which will call destructors)
     e_params.reserve(nparams);
@@ -687,14 +688,14 @@ void t_vsteditor::setup(){
         SETSYMBOL(slider+9, e_params[i].p_slider);
         SETSYMBOL(slider+10, e_params[i].p_slider);
         char buf[64];
-        snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
+        snprintf(buf, sizeof(buf), "%d: %s", i, info.parameters[i].name.c_str());
         substitute_whitespace(buf);
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create display
         SETFLOAT(display, xpos + 128 + 10); // slider + space
         SETFLOAT(display+1, ypos);
-        SETSYMBOL(display+6, gensym(e_owner->x_plugin->getParameterLabel(i).c_str()));
+        SETSYMBOL(display+6, gensym(info.parameters[i].label.c_str()));
         SETSYMBOL(display+7, e_params[i].p_display_rcv);
         SETSYMBOL(display+8, e_params[i].p_display_snd);
         send_mess(gensym("symbolatom"), 9, display);
@@ -998,12 +999,11 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         }
         x->x_uithread = editor;
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
-        post("opened VST plugin '%s'", plugin->getPluginName().c_str());
+        post("opened VST plugin '%s'", info->name.c_str());
         plugin->suspend();
             // initially, blocksize is 0 (before the 'dsp' message is sent).
             // some plugins might not like 0, so we send some sane default size.
-        plugin->setBlockSize(x->x_blocksize > 0 ? x->x_blocksize : 64);
-        plugin->setSampleRate(x->x_sr);
+        plugin->setupProcessing(x->x_sr, x->x_blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
         int nin = std::min<int>(plugin->getNumInputs(), x->x_siginlets.size());
         int nout = std::min<int>(plugin->getNumOutputs(), x->x_sigoutlets.size());
         plugin->setNumSpeakers(nin, nout);
@@ -1133,14 +1133,14 @@ static void vstplugin_print(t_vstplugin *x){
     post("version: %s", info.version.c_str());
     post("input channels: %d", info.numInputs);
     post("output channels: %d", info.numOutputs);
-    post("single precision: %s", x->x_plugin->hasPrecision(ProcessPrecision::Single) ? "yes" : "no");
-    post("double precision: %s", x->x_plugin->hasPrecision(ProcessPrecision::Double) ? "yes" : "no");
-    post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
-    post("number of parameters: %d", x->x_plugin->getNumParameters());
-    post("number of programs: %d", x->x_plugin->getNumPrograms());
-    post("synth: %s", x->x_plugin->isSynth() ? "yes" : "no");
-    post("midi input: %s", x->x_plugin->hasMidiInput() ? "yes" : "no");
-    post("midi output: %s", x->x_plugin->hasMidiOutput() ? "yes" : "no");
+    post("single precision: %s", info.singlePrecision() ? "yes" : "no");
+    post("double precision: %s", info.doublePrecision() ? "yes" : "no");
+    post("editor: %s", info.hasEditor() ? "yes" : "no");
+    post("number of parameters: %d", info.numParameters());
+    post("number of programs: %d", info.numPrograms());
+    post("synth: %s", info.isSynth() ? "yes" : "no");
+    post("midi input: %s", info.midiInput() ? "yes" : "no");
+    post("midi output: %s", info.midiOutput() ? "yes" : "no");
     post("");
 }
 
@@ -1292,7 +1292,7 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
         t_atom msg[3];
 		SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
-        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterDisplay(index).c_str()));
+        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterString(index).c_str()));
         outlet_anything(x->x_messout, gensym("param_state"), 3, msg);
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
@@ -1303,11 +1303,12 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
 static void vstplugin_param_info(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
-    if (index >= 0 && index < x->x_plugin->getNumParameters()){
+    auto& info = x->x_plugin->info();
+    if (index >= 0 && index < info.numParameters()){
         t_atom msg[3];
 		SETFLOAT(&msg[0], index);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterName(index).c_str()));
-        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterLabel(index).c_str()));
+        SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
+        SETSYMBOL(&msg[2], gensym(info.parameters[index].label.c_str()));
         // LATER add more info
         outlet_anything(x->x_messout, gensym("param_info"), 3, msg);
 	} else {
@@ -1636,21 +1637,21 @@ void t_vstplugin::update_precision(){
     if (x_plugin){
         if (!x_plugin->hasPrecision(ProcessPrecision::Single) && !x_plugin->hasPrecision(ProcessPrecision::Double)) {
             post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(this), x_plugin->getPluginName().c_str());
+                classname(this), x_plugin->info().name.c_str());
             return;
         }
         if (x_dp && !x_plugin->hasPrecision(ProcessPrecision::Double)){
             post("%s: '%s' doesn't support double precision, using single precision instead",
-                 classname(this), x_plugin->getPluginName().c_str());
+                 classname(this), x_plugin->info().name.c_str());
             dp = 0;
         }
         else if (!x_dp && !x_plugin->hasPrecision(ProcessPrecision::Single)){ // very unlikely...
             post("%s: '%s' doesn't support single precision, using double precision instead",
-                 classname(this), x_plugin->getPluginName().c_str());
+                 classname(this), x_plugin->info().name.c_str());
             dp = 1;
         }
             // set the actual precision
-        x_plugin->setPrecision(dp ? ProcessPrecision::Double : ProcessPrecision::Single);
+        x_plugin->setupProcessing(x_sr, x_blocksize, dp ? ProcessPrecision::Double : ProcessPrecision::Single);
     }
 }
 
@@ -1945,8 +1946,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->x_sr = sr;
     if (x->x_plugin){
         x->x_plugin->suspend();
-        x->x_plugin->setBlockSize(blocksize);
-        x->x_plugin->setSampleRate(sr);
+        x->x_plugin->setupProcessing(x->x_sr, x->x_blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
         x->x_plugin->resume();
     }
     int nin = x->x_siginlets.size();

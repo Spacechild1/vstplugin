@@ -246,7 +246,7 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
 VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc)
-    : plugin_(plugin), factory_(std::move(f)), desc_(std::move(desc))
+    : plugin_(plugin), factory_(std::move(f)), info_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
     timeInfo_.sampleRate = 44100;
@@ -266,20 +266,53 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
     // are we probing?
-    if (!desc_){
-        // later we might directly initialize PluginInfo here and get rid of many IPlugin methods
-        // (we implicitly call virtual methods within our constructor, which works in our case but is a bit edgy)
-        auto newDesc = std::make_shared<PluginInfo>(factory_, *this);
+    if (!info_){
+        // create and fill plugin info
+        auto info = std::make_shared<PluginInfo>(factory_);
+        info->name = getPluginName();
+        info->vendor = getPluginVendor();
+        info->category = getPluginCategory();
+        info->version = getPluginVersion();
+        info->sdkVersion = getSDKVersion();
+        info->id = plugin_->uniqueID;
+        info->numInputs = plugin_->numInputs;
+        info->numOutputs = plugin_->numOutputs;
+        // flags
+        uint32_t flags = 0;
+        flags |= hasEditor() * PluginInfo::HasEditor;
+        flags |= isSynth() * PluginInfo::IsSynth;
+        flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
+        flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
+        flags |= hasMidiInput() * PluginInfo::MidiInput;
+        flags |= hasMidiOutput() * PluginInfo::MidiOutput;
+        info->flags_ = flags;
+        // get parameters
+        int numParameters = getNumParameters();
+        for (int i = 0; i < numParameters; ++i){
+            PluginInfo::Param p;
+            p.name = getParameterName(i);
+            p.label = getParameterLabel(i);
+            // inverse mapping
+            info->paramMap[p.name] = i;
+            // add parameter
+            info->parameters.push_back(std::move(p));
+        }
+        // programs
+        int numPrograms = getNumPrograms();
+        for (int i = 0; i < numPrograms; ++i){
+            info->programs.push_back(getProgramNameIndexed(i));
+        }
+        // VST2 shell plugins only: get sub plugins
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
             VstInt32 nextID = 0;
             char name[64] = { 0 };
             while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
                 PluginInfo::ShellPlugin shellPlugin { name, nextID };
-                newDesc->shellPlugins_.push_back(std::move(shellPlugin));
+                info->shellPlugins_.push_back(std::move(shellPlugin));
             }
         }
-        desc_ = newDesc;
+        info_ = info;
     }
 }
 
@@ -294,77 +327,6 @@ VST2Plugin::~VST2Plugin(){
     LOG_DEBUG("destroyed VST2 plugin");
 }
 
-std::string VST2Plugin::getPluginName() const {
-    if (desc_) return desc_->name;
-    char buf[256] = { 0 };
-    dispatch(effGetEffectName, 0, 0, buf);
-    return buf;
-}
-
-std::string VST2Plugin::getPluginVendor() const {
-    char buf[256] = { 0 };
-    dispatch(effGetVendorString, 0, 0, buf);
-    return buf;
-}
-
-std::string VST2Plugin::getPluginCategory() const {
-    switch (dispatch(effGetPlugCategory)){
-    case kPlugCategEffect:
-        return "Effect";
-    case kPlugCategSynth:
-        return "Synth";
-    case kPlugCategAnalysis:
-        return "Analysis";
-    case kPlugCategMastering:
-        return "Mastering";
-    case kPlugCategSpacializer:
-        return "Spacializer";
-    case kPlugCategRoomFx:
-        return "RoomFx";
-    case kPlugSurroundFx:
-        return "SurroundFx";
-    case kPlugCategRestoration:
-        return "Restoration";
-    case kPlugCategOfflineProcess:
-        return "OfflineProcess";
-    case kPlugCategShell:
-        return "Shell";
-    case kPlugCategGenerator:
-        return "Generator";
-    default:
-        return "Undefined";
-    }
-}
-
-std::string VST2Plugin::getPluginVersion() const {
-    char buf[64] = { 0 };
-    auto n = snprintf(buf, 64, "%d", plugin_->version);
-    if (n > 0 && n < 64){
-        return buf;
-    } else {
-        return "";
-    }
-}
-
-std::string VST2Plugin::getSDKVersion() const {
-    switch (dispatch(effGetVstVersion)){
-    case 2400:
-        return "VST 2.4";
-    case 2300:
-        return "VST 2.3";
-    case 2200:
-        return "VST 2.2";
-    case 2100:
-        return "VST 2.1";
-    default:
-        return "VST 2";
-    }
-}
-
-int VST2Plugin::getPluginUniqueID() const {
-    return plugin_->uniqueID;
-}
-
 int VST2Plugin::canDo(const char *what) const {
     // 1: yes, 0: no, -1: don't know
     return dispatch(effCanDo, 0, 0, (char *)what);
@@ -372,6 +334,21 @@ int VST2Plugin::canDo(const char *what) const {
 
 intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *p, float opt){
     return dispatch(effVendorSpecific, index, value, p, opt);
+}
+
+void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+    if (sampleRate > 0){
+        dispatch(effSetSampleRate, 0, 0, NULL, sampleRate);
+        if (sampleRate != timeInfo_.sampleRate){
+            timeInfo_.sampleRate = sampleRate;
+            setTransportPosition(0);
+        }
+    } else {
+        LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
+    }
+    dispatch(effSetBlockSize, 0, maxBlockSize);
+    dispatch(effSetProcessPrecision, 0,
+             precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
 }
 
 void VST2Plugin::process(const float **inputs,
@@ -400,33 +377,12 @@ bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
     }
 }
 
-void VST2Plugin::setPrecision(ProcessPrecision precision){
-    dispatch(effSetProcessPrecision, 0,
-             precision == ProcessPrecision::Single ?  kVstProcessPrecision32 : kVstProcessPrecision64);
-}
-
 void VST2Plugin::suspend(){
     dispatch(effMainsChanged, 0, 0);
 }
 
 void VST2Plugin::resume(){
     dispatch(effMainsChanged, 0, 1);
-}
-
-void VST2Plugin::setSampleRate(float sr){
-    if (sr > 0){
-        dispatch(effSetSampleRate, 0, 0, NULL, sr);
-        if (sr != timeInfo_.sampleRate){
-            timeInfo_.sampleRate = sr;
-            setTransportPosition(0);
-        }
-    } else {
-        LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
-    }
-}
-
-void VST2Plugin::setBlockSize(int n){
-    dispatch(effSetBlockSize, 0, n);
 }
 
 int VST2Plugin::getNumInputs() const {
@@ -628,19 +584,7 @@ float VST2Plugin::getParameter(int index) const {
     return (plugin_->getParameter)(plugin_, index);
 }
 
-std::string VST2Plugin::getParameterName(int index) const {
-    char buf[256] = {0};
-    dispatch(effGetParamName, index, 0, buf);
-    return std::string(buf);
-}
-
-std::string VST2Plugin::getParameterLabel(int index) const {
-    char buf[256] = {0};
-    dispatch(effGetParamLabel, index, 0, buf);
-    return std::string(buf);
-}
-
-std::string VST2Plugin::getParameterDisplay(int index) const {
+std::string VST2Plugin::getParameterString(int index) const {
     char buf[256] = {0};
     dispatch(effGetParamDisplay, index, 0, buf);
     return std::string(buf);
@@ -781,7 +725,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     VstInt32 header[7];
     header[0] = cMagic;
     header[3] = 1; // format version (always 1)
-    header[4] = getPluginUniqueID();
+    header[4] = plugin_->uniqueID;
     header[5] = plugin_->version;
     header[6] = getNumParameters();
 
@@ -917,7 +861,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
     VstInt32 header[8];
     header[0] = cMagic;
     header[3] = 1; // format version (always 1)
-    header[4] = getPluginUniqueID();
+    header[4] = plugin_->uniqueID;
     header[5] = plugin_->version;
     header[6] = getNumPrograms();
     header[7] = getProgram();
@@ -1005,6 +949,98 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 }
 
 // private
+
+std::string VST2Plugin::getPluginName() const {
+    char buf[256] = { 0 };
+    dispatch(effGetEffectName, 0, 0, buf);
+    if (buf[0] != 0){
+        return buf;
+    } else {
+        // get from file path
+        auto path = factory_->path();
+        auto sep = path.find_last_of("\\/");
+        auto dot = path.find_last_of('.');
+        if (sep == std::string::npos){
+            sep = -1;
+        }
+        if (dot == std::string::npos){
+            dot = path.size();
+        }
+        return path.substr(sep + 1, dot - sep - 1);
+    }
+}
+
+std::string VST2Plugin::getPluginVendor() const {
+    char buf[256] = { 0 };
+    dispatch(effGetVendorString, 0, 0, buf);
+    return buf;
+}
+
+std::string VST2Plugin::getPluginCategory() const {
+    switch (dispatch(effGetPlugCategory)){
+    case kPlugCategEffect:
+        return "Effect";
+    case kPlugCategSynth:
+        return "Synth";
+    case kPlugCategAnalysis:
+        return "Analysis";
+    case kPlugCategMastering:
+        return "Mastering";
+    case kPlugCategSpacializer:
+        return "Spacializer";
+    case kPlugCategRoomFx:
+        return "RoomFx";
+    case kPlugSurroundFx:
+        return "SurroundFx";
+    case kPlugCategRestoration:
+        return "Restoration";
+    case kPlugCategOfflineProcess:
+        return "OfflineProcess";
+    case kPlugCategShell:
+        return "Shell";
+    case kPlugCategGenerator:
+        return "Generator";
+    default:
+        return "Undefined";
+    }
+}
+
+std::string VST2Plugin::getPluginVersion() const {
+    char buf[64] = { 0 };
+    auto n = snprintf(buf, 64, "%d", plugin_->version);
+    if (n > 0 && n < 64){
+        return buf;
+    } else {
+        return "";
+    }
+}
+
+std::string VST2Plugin::getSDKVersion() const {
+    switch (dispatch(effGetVstVersion)){
+    case 2400:
+        return "VST 2.4";
+    case 2300:
+        return "VST 2.3";
+    case 2200:
+        return "VST 2.2";
+    case 2100:
+        return "VST 2.1";
+    default:
+        return "VST 2";
+    }
+}
+
+std::string VST2Plugin::getParameterName(int index) const {
+    char buf[256] = {0};
+    dispatch(effGetParamName, index, 0, buf);
+    return std::string(buf);
+}
+
+std::string VST2Plugin::getParameterLabel(int index) const {
+    char buf[256] = {0};
+    dispatch(effGetParamLabel, index, 0, buf);
+    return std::string(buf);
+}
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;

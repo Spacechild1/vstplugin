@@ -11,14 +11,8 @@ DEF_CLASS_IID (IPluginFactory2)
 DEF_CLASS_IID (IPluginFactory3)
 DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IEditController)
-
-#if SMTG_OS_LINUX
-DEF_CLASS_IID (Linux::IEventHandler)
-DEF_CLASS_IID (Linux::ITimerHandler)
-DEF_CLASS_IID (Linux::IRunLoop)
-#endif
-
-
+DEF_CLASS_IID (Vst::IAudioProcessor)
+DEF_CLASS_IID (Vst::IUnitInfo)
 
 namespace vst {
 
@@ -150,49 +144,54 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
 
 static FUnknown *gPluginContext = nullptr;
 
+// later replace this with a UTF-16 -> UTF-8 conversion routine
+std::string bashToAscii(const Vst::String128 s){
+    char buf[128];
+    auto from = s;
+    auto to = buf;
+    Vst::TChar c;
+    while ((c = *from++)){
+        if (c < 128){
+            *to++ = c;
+        } else {
+            *to++ = '?';
+        }
+    }
+    *to = 0; // null terminate!
+    return buf;
+}
+
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
-    : factory_(std::move(f)), desc_(std::move(desc))
+    : factory_(std::move(f)), info_(std::move(desc))
 {
     // are we probing?
-    auto newDesc = !desc_ ? std::make_shared<PluginInfo>(factory_, *this) : nullptr;
+    auto info = !info_ ? std::make_shared<PluginInfo>(factory_) : nullptr;
 
     TUID uid;
     PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
     if (factory2 && factory2->getClassInfo2(which, &ci2) == kResultTrue){
         memcpy(uid, ci2.cid, sizeof(TUID));
-        if (newDesc){
-            newDesc->name = ci2.name;
-            newDesc->category = ci2.subCategories;
-            newDesc->vendor = ci2.vendor;
-            newDesc->version = ci2.version;
-            newDesc->sdkVersion = ci2.sdkVersion;
+        if (info){
+            info->name = ci2.name;
+            info->category = ci2.subCategories;
+            info->vendor = ci2.vendor;
+            info->version = ci2.version;
+            info->sdkVersion = ci2.sdkVersion;
         }
     } else {
         Steinberg::PClassInfo ci;
         if (factory->getClassInfo(which, &ci) == kResultTrue){
             memcpy(uid, ci.cid, sizeof(TUID));
-            if (newDesc){
-                newDesc->name = ci.name;
-                newDesc->category = "Uncategorized";
-                newDesc->version = "0.0.0";
-                newDesc->sdkVersion = "VST 3";
+            if (info){
+                info->name = ci.name;
+                info->category = "Uncategorized";
+                info->version = "0.0.0";
+                info->sdkVersion = "VST 3";
             }
         } else {
             throw Error("couldn't get class info!");
         }
-    }
-    // fill vendor
-    if (newDesc && newDesc->vendor.empty()){
-        PFactoryInfo i;
-        if (factory->getFactoryInfo(&i) == kResultTrue){
-            newDesc->vendor = i.vendor;
-        } else {
-            newDesc->vendor = "Unknown";
-        }
-    }
-    if (newDesc){
-        desc_ = newDesc;
     }
     // create component
     if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){
@@ -204,71 +203,118 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         throw Error("couldn't initialize VST3 component");
     }
     // first try to create controller from the component part
-    if (component_->queryInterface(Vst::IEditController::iid, (void**)&controller_) != kResultTrue){
+    auto controller = FUnknownPtr<Vst::IEditController>(component_);
+    if (controller){
+        controller_ = shared(controller.getInterface());
+    } else {
         // if this fails, try to instantiate controller class
         TUID controllerCID;
-        static TUID nulluid = {0};
-        if (component_->getControllerClassId(controllerCID) == kResultTrue
-                && memcmp(controllerCID, nulluid, sizeof (TUID)) != 0){
-            if ((controller_ = createInstance<Vst::IEditController>(factory, controllerCID))
-                && controller_->initialize(gPluginContext) != kResultOk){
-                throw Error("couldn't initialize VST3 controller");
-            }
+        if (component_->getControllerClassId(controllerCID) == kResultTrue){
+            controller_ = createInstance<Vst::IEditController>(factory, controllerCID);
         }
     }
     if (controller_){
         LOG_DEBUG("created VST3 controller");
     } else {
-        LOG_DEBUG("no VST3 controller!");
+        throw Error("couldn't get VST3 controller!");
+    }
+    if (controller_->initialize(gPluginContext) != kResultOk){
+        throw Error("couldn't initialize VST3 controller");
+    }
+    // check processor
+    if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
+        throw Error("couldn't get VST3 processor");
+    }
+    // get IO channel count
+    auto getChannelCount = [this](auto media, auto dir, auto type) -> int {
+        auto count = component_->getBusCount(media, dir);
+        for (int i = 0; i < count; ++i){
+            Vst::BusInfo bus;
+            if (component_->getBusInfo(media, dir, i, bus) == kResultTrue
+                && bus.busType == type){
+                return bus.channelCount;
+            }
+        }
+        return 0;
+    };
+    numInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
+    numAuxInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
+    numOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
+    numAuxOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
+    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
+    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
+    // finally get remaining info
+    if (info){
+        // vendor name (if still empty)
+        if (info->vendor.empty()){
+            PFactoryInfo i;
+            if (factory->getFactoryInfo(&i) == kResultTrue){
+                info->vendor = i.vendor;
+            } else {
+                info->vendor = "Unknown";
+            }
+        }
+        info->numInputs = getNumInputs();
+        info->numOutputs = getNumOutputs();
+        uint32_t flags = 0;
+        flags |= hasEditor() * PluginInfo::HasEditor;
+        flags |= (info->category.find(Vst::PlugType::kFxInstrument) != std::string::npos) * PluginInfo::IsSynth;
+        flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
+        flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
+        flags |= hasMidiInput() * PluginInfo::MidiInput;
+        flags |= hasMidiOutput() * PluginInfo::MidiOutput;
+        info->flags_ = flags;
+        // get parameters
+        int numParameters = controller_->getParameterCount();
+        for (int i = 0; i < numParameters; ++i){
+            PluginInfo::Param param;
+            Vst::ParameterInfo pi;
+            if (controller_->getParameterInfo(i, pi) == kResultTrue){
+                param.name = bashToAscii(pi.title);
+                param.label = bashToAscii(pi.units);
+
+            } else {
+                LOG_ERROR("couldn't get parameter info!");
+            }
+            // inverse mapping
+            info->paramMap[param.name] = i;
+            // add parameter
+            info->parameters.push_back(std::move(param));
+        }
+        // programs
+        auto ui = FUnknownPtr<Vst::IUnitInfo>(controller);
+        if (ui){
+            int count = ui->getProgramListCount();
+            if (count > 0){
+                if (count > 1){
+                    LOG_DEBUG("more than 1 program list!");
+                }
+                Vst::ProgramListInfo pli;
+                // for now, just the program list for root unit (0)
+                if (ui->getProgramListInfo(0, pli) == kResultTrue){
+                    for (int i = 0; i < pli.programCount; ++i){
+                        Vst::String128 name;
+                        if (ui->getProgramName(pli.id, i, name) == kResultTrue){
+                            info->programs.push_back(bashToAscii(name));
+                        } else {
+                            LOG_ERROR("couldn't get program name!");
+                            info->programs.push_back("");
+                        }
+                    }
+                } else {
+                    LOG_ERROR("couldn't get program list info");
+                }
+            }
+        }
+        info_ = info;
     }
 }
 
 VST3Plugin::~VST3Plugin(){
-
-}
-
-std::string VST3Plugin::getPluginName() const {
-    if (desc_){
-        return desc_->name;
-    } else {
-        return "";
-    }
-}
-
-std::string VST3Plugin::getPluginVendor() const {
-    if (desc_){
-        return desc_->vendor;
-    } else {
-        return "";
-    }
-}
-
-std::string VST3Plugin::getPluginCategory() const {
-    if (desc_){
-        return desc_->category;
-    } else {
-        return "";
-    }
-}
-
-std::string VST3Plugin::getPluginVersion() const {
-    if (desc_){
-        return desc_->version;
-    } else {
-        return "";
-    }
-}
-
-std::string VST3Plugin::getSDKVersion() const {
-    if (desc_){
-        return desc_->sdkVersion;
-    } else {
-        return "";
-    }
-}
-
-int VST3Plugin::getPluginUniqueID() const {
-    return 0;
+    processor_ = nullptr;
+    controller_->terminate();
+    controller_ = nullptr;
+    component_->terminate();
 }
 
 int VST3Plugin::canDo(const char *what) const {
@@ -277,6 +323,15 @@ int VST3Plugin::canDo(const char *what) const {
 
 intptr_t VST3Plugin::vendorSpecific(int index, intptr_t value, void *p, float opt){
     return 0;
+}
+
+void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+    Vst::ProcessSetup setup;
+    setup.processMode = Vst::kRealtime;
+    setup.maxSamplesPerBlock = maxBlockSize;
+    setup.sampleRate = sampleRate;
+    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
+    processor_->setupProcessing(setup);
 }
 
 void VST3Plugin::process(const float **inputs, float **outputs, int sampleFrames){
@@ -288,39 +343,46 @@ void VST3Plugin::processDouble(const double **inputs, double **outputs, int samp
 }
 
 bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
-    return false;
-}
-
-void VST3Plugin::setPrecision(ProcessPrecision precision){
-
+    switch (precision){
+    case ProcessPrecision::Single:
+        return processor_->canProcessSampleSize(Vst::kSample32) == kResultOk;
+    case ProcessPrecision::Double:
+        return processor_->canProcessSampleSize(Vst::kSample64) == kResultOk;
+    default:
+        return false;
+    }
 }
 
 void VST3Plugin::suspend(){
-
+    processor_->setProcessing(false);
 }
 
 void VST3Plugin::resume(){
-
-}
-
-void VST3Plugin::setSampleRate(float sr){
-
-}
-
-void VST3Plugin::setBlockSize(int n){
-
+    processor_->setProcessing(true);
 }
 
 int VST3Plugin::getNumInputs() const {
-    return 0;
+    return numInputs_;
+}
+
+int VST3Plugin::getNumAuxInputs() const {
+    return numAuxInputs_;
 }
 
 int VST3Plugin::getNumOutputs() const {
-    return 0;
+    return numOutputs_;
+}
+
+int VST3Plugin::getNumAuxOutputs() const {
+    return numAuxOutputs_;
 }
 
 bool VST3Plugin::isSynth() const {
-    return false;
+    if (info_){
+        return info_->isSynth();
+    } else {
+        return false;
+    }
 }
 
 bool VST3Plugin::hasTail() const {
@@ -328,11 +390,11 @@ bool VST3Plugin::hasTail() const {
 }
 
 int VST3Plugin::getTailSize() const {
-    return 0;
+    return processor_->getTailSamples();
 }
 
 bool VST3Plugin::hasBypass() const {
-    return false;
+    return getTailSize() != 0;
 }
 
 void VST3Plugin::setBypass(bool bypass){
@@ -388,19 +450,19 @@ double VST3Plugin::getTransportPosition() const {
 }
 
 int VST3Plugin::getNumMidiInputChannels() const {
-    return 0;
+    return numMidiInChannels_;
 }
 
 int VST3Plugin::getNumMidiOutputChannels() const {
-    return 0;
+    return numMidiOutChannels_;
 }
 
 bool VST3Plugin::hasMidiInput() const {
-    return false;
+    return numMidiInChannels_ != 0;
 }
 
 bool VST3Plugin::hasMidiOutput() const {
-    return false;
+    return numMidiOutChannels_ != 0;
 }
 
 void VST3Plugin::sendMidiEvent(const MidiEvent &event){
@@ -423,20 +485,12 @@ float VST3Plugin::getParameter(int index) const {
     return 0;
 }
 
-std::string VST3Plugin::getParameterName(int index) const {
-    return std::string{};
-}
-
-std::string VST3Plugin::getParameterLabel(int index) const {
-    return std::string{};
-}
-
-std::string VST3Plugin::getParameterDisplay(int index) const {
+std::string VST3Plugin::getParameterString(int index) const {
     return std::string{};
 }
 
 int VST3Plugin::getNumParameters() const {
-    return 0;
+    return controller_->getParameterCount();
 }
 
 void VST3Plugin::setProgram(int program){
