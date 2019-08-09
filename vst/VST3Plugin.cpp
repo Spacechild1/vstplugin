@@ -14,7 +14,94 @@ DEF_CLASS_IID (Vst::IEditController)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
 
+#ifndef HAVE_VST3_BASE
+#define HAVE_VST3_BASE 0
+#endif
+#if HAVE_VST3_BASE
+#include "base/source/fstring.h"
+#else
+#include <codecvt>
+#include <locale>
+using t_string_converter = std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>;
+#endif
+
 namespace vst {
+#if HAVE_VST3_BASE
+std::string fromString128(const Vst::String128 s){
+    std::string result;
+    int bytes = ConstString::wideStringToMultiByte(0, s, 0);
+    if (bytes){
+        bytes += 1;
+        result.resize(bytes);
+        ConstString::wideStringToMultiByte(&result[0], s, bytes);
+    }
+    return result;
+}
+
+bool toString128(const std::string& s, Vst::String128 ws){
+    int bytes = ConstString::multiByteToWideString(0, s.data(), 0);
+    if (bytes){
+        bytes += sizeof(Vst::TChar);
+        if (ConstString::multiByteToWideString(ws, s.data(), s.size() + 1) > 0){
+            return true;
+        }
+    }
+    return false;
+}
+#else // HAVE_VST3_BASE
+#if 1
+t_string_converter& string_converter(){
+    static t_string_converter c;
+    return c;
+}
+
+std::string fromString128(const Vst::String128 s){
+    try {
+        return string_converter().to_bytes((const wchar_t *)s);
+    } catch (...){
+        return "";
+    }
+}
+// bash to wide characters (very bad)
+bool toString128(const std::string& s, Vst::String128 dest){
+    try {
+        auto ws = string_converter().from_bytes(s);
+        auto n = std::min<int>(ws.size(), 127);
+        memcpy(dest, ws.data(), n);
+        dest[n] = 0;
+        return true;
+    } catch (...){
+        return false;
+    }
+}
+#else
+// bash to ASCII (bad)
+std::string fromString128(const Vst::String128 s){
+    char buf[128];
+    auto from = s;
+    auto to = buf;
+    Vst::TChar c;
+    while ((c = *from++)){
+        if (c < 128){
+            *to++ = c;
+        } else {
+            *to++ = '?';
+        }
+    }
+    *to = 0; // null terminate!
+    return buf;
+}
+// bash to wide characters (very bad)
+bool toString128(const std::string& s, Vst::String128 ws){
+    int size = s.size();
+    for (int i = 0; i < size; ++i){
+        ws[i] = s[i];
+    }
+    ws[size] = 0;
+    return true;
+}
+#endif
+#endif // HAVE_VST3_BASE
 
 VST3Factory::VST3Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
@@ -104,6 +191,7 @@ IFactory::ProbeFuture VST3Factory::probeAsync() {
             auto result = f();
             plugins_ = { result };
             valid_ = result->valid();
+            /// LOG_DEBUG("probed plugin " << result->name);
             if (callback){
                 callback(*result, 0, 1);
             }
@@ -143,23 +231,6 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
 }
 
 static FUnknown *gPluginContext = nullptr;
-
-// later replace this with a UTF-16 -> UTF-8 conversion routine
-std::string bashToAscii(const Vst::String128 s){
-    char buf[128];
-    auto from = s;
-    auto to = buf;
-    Vst::TChar c;
-    while ((c = *from++)){
-        if (c < 128){
-            *to++ = c;
-        } else {
-            *to++ = '?';
-        }
-    }
-    *to = 0; // null terminate!
-    return buf;
-}
 
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
     : factory_(std::move(f)), info_(std::move(desc))
@@ -258,7 +329,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         info->numOutputs = getNumOutputs();
         uint32_t flags = 0;
         flags |= hasEditor() * PluginInfo::HasEditor;
-        flags |= (info->category.find(Vst::PlugType::kFxInstrument) != std::string::npos) * PluginInfo::IsSynth;
+        flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
         flags |= hasMidiInput() * PluginInfo::MidiInput;
@@ -270,14 +341,16 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             PluginInfo::Param param;
             Vst::ParameterInfo pi;
             if (controller_->getParameterInfo(i, pi) == kResultTrue){
-                param.name = bashToAscii(pi.title);
-                param.label = bashToAscii(pi.units);
-
+                param.name = fromString128(pi.title);
+                param.label = fromString128(pi.units);
+                param.id = pi.id;
             } else {
                 LOG_ERROR("couldn't get parameter info!");
             }
             // inverse mapping
             info->paramMap[param.name] = i;
+            // index -> ID mapping
+            info->paramIDMap[i] = param.id;
             // add parameter
             info->parameters.push_back(std::move(param));
         }
@@ -295,7 +368,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     for (int i = 0; i < pli.programCount; ++i){
                         Vst::String128 name;
                         if (ui->getProgramName(pli.id, i, name) == kResultTrue){
-                            info->programs.push_back(bashToAscii(name));
+                            info->programs.push_back(fromString128(name));
                         } else {
                             LOG_ERROR("couldn't get program name!");
                             info->programs.push_back("");
@@ -474,18 +547,46 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 }
 
 void VST3Plugin::setParameter(int index, float value){
-
+    auto it = info_->paramIDMap.find(index);
+    if (it != info_->paramIDMap.end()){
+        controller_->setParamNormalized(it->second, value);
+    }
 }
 
 bool VST3Plugin::setParameter(int index, const std::string &str){
+    Vst::ParamValue value;
+    Vst::String128 string;
+    auto it = info_->paramIDMap.find(index);
+    if (it != info_->paramIDMap.end()){
+        auto id = it->second;
+        if (toString128(str, string)){
+            if (controller_->getParamValueByString(id, string, value) == kResultOk){
+                return controller_->setParamNormalized(id, value) == kResultOk;
+            }
+        }
+    }
     return false;
 }
 
 float VST3Plugin::getParameter(int index) const {
-    return 0;
+    auto it = info_->paramIDMap.find(index);
+    if (it != info_->paramIDMap.end()){
+        return controller_->getParamNormalized(it->second);
+    } else {
+        return -1;
+    }
 }
 
 std::string VST3Plugin::getParameterString(int index) const {
+    Vst::String128 display;
+    auto it = info_->paramIDMap.find(index);
+    if (it != info_->paramIDMap.end()){
+        auto id = it->second;
+        auto value = controller_->getParamNormalized(id);
+        if (controller_->getParamStringByValue(id, value, display) == kResultOk){
+            return fromString128(display);
+        }
+    }
     return std::string{};
 }
 

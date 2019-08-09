@@ -978,7 +978,7 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
-        file << bashString(param.name) << "," << param.label << "\n";
+        file << bashString(param.name) << "," << param.label << "," << param.id << "\n";
 	}
     // programs
     file << "[programs]\n";
@@ -1052,6 +1052,23 @@ static void getKeyValuePair(const std::string& line, std::string& key, std::stri
     value = ltrim(line.substr(pos + 1));
 }
 
+std::vector<std::string> splitString(const std::string& str, char sep){
+    std::vector<std::string> result;
+    auto pos = 0;
+    while (true){
+        auto newpos = str.find(sep, pos);
+        if (newpos != std::string::npos){
+            int len = newpos - pos;
+            result.push_back(str.substr(pos, len));
+            pos = newpos + 1;
+        } else {
+            result.push_back(str.substr(pos)); // remaining string
+            break;
+        }
+    }
+    return result;
+}
+
 void PluginInfo::deserialize(std::istream& file) {
     // first check for sections, then for keys!
     bool start = false;
@@ -1064,15 +1081,21 @@ void PluginInfo::deserialize(std::istream& file) {
             std::getline(file, line);
             int n = getCount(line);
             while (n-- && std::getline(file, line)){
-                auto pos = line.find(',');
+                auto args = splitString(line, ',');
                 Param param;
-                param.name = rtrim(line.substr(0, pos));
-                param.label = ltrim(line.substr(pos + 1));
+                if (args.size() >= 2){
+                    param.name = rtrim(args[0]);
+                    param.label = ltrim(args[1]);
+                }
+                if (args.size() >= 3){
+                    param.id = std::stol(args[2]);
+                }
                 parameters.push_back(std::move(param));
             }
-            // inverse mapping from name to index
+            // inverse mapping name -> index and index -> id (VST3 only)
             for (int i = 0; i < (int)parameters.size(); ++i){
                 paramMap[parameters[i].name] = i;
+                paramIDMap[i] = parameters[i].id;
             }
         } else if (line == "[programs]"){
             programs.clear();

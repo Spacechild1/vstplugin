@@ -201,10 +201,13 @@ struct PluginInfo {
     struct Param {
         std::string name;
         std::string label;
+        uint32_t id = 0; // VST3 only
     };
     std::vector<Param> parameters;
     // param name to param index
     std::unordered_map<std::string, int> paramMap;
+    // param index to ID (VST3 only)
+    std::unordered_map<int, uint32_t> paramIDMap;
     // default programs
     std::vector<std::string> programs;
     int numParameters() const {
