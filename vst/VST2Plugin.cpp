@@ -351,22 +351,20 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
              precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
 }
 
-void VST2Plugin::process(const float **inputs,
-    float **outputs, VstInt32 sampleFrames){
-    preProcess(sampleFrames);
+void VST2Plugin::process(ProcessData<float>& data){
+    preProcess(data.numSamples);
     if (plugin_->processReplacing){
-        (plugin_->processReplacing)(plugin_, (float **)inputs, outputs, sampleFrames);
+        (plugin_->processReplacing)(plugin_, (float **)data.input, data.output, data.numSamples);
     }
-    postProcess(sampleFrames);
+    postProcess(data.numSamples);
 }
 
-void VST2Plugin::processDouble(const double **inputs,
-    double **outputs, VstInt32 sampleFrames){
-    preProcess(sampleFrames);
+void VST2Plugin::process(ProcessData<double>& data){
+    preProcess(data.numSamples);
     if (plugin_->processDoubleReplacing){
-        (plugin_->processDoubleReplacing)(plugin_, (double **)inputs, outputs, sampleFrames);
+        (plugin_->processDoubleReplacing)(plugin_, (double **)data.input, data.output, data.numSamples);
     }
-    postProcess(sampleFrames);
+    postProcess(data.numSamples);
 }
 
 bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
@@ -413,7 +411,7 @@ void VST2Plugin::setBypass(bool bypass){
     dispatch(effSetBypass, 0, bypass);
 }
 
-void VST2Plugin::setNumSpeakers(int in, int out){
+void VST2Plugin::setNumSpeakers(int in, int out, int, int){
     in = std::max<int>(0, in);
     out = std::max<int>(0, out);
     // VstSpeakerArrangment already has 8 speakers

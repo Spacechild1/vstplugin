@@ -62,8 +62,8 @@ class VST2Plugin final : public IPlugin {
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-	void process(const float **inputs, float **outputs, int nsamples) override;
-    void processDouble(const double **inputs, double **outputs, int nsamples) override;
+    void process(ProcessData<float>& data) override;
+    void process(ProcessData<double>& data) override;
     bool hasPrecision(ProcessPrecision precision) const override;
     void suspend() override;
     void resume() override;
@@ -76,7 +76,7 @@ class VST2Plugin final : public IPlugin {
     int getTailSize() const override;
     bool hasBypass() const override;
     void setBypass(bool bypass) override;
-    void setNumSpeakers(int in, int out) override;
+    void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
 
     void setListener(IPluginListener::ptr listener) override {
         listener_ = std::move(listener);

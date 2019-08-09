@@ -1820,11 +1820,11 @@ static void vstplugin_doperform(t_vstplugin *x, int n, bool bypass){
             }
         }
             // process
-        if (std::is_same<TFloat, float>::value){
-            plugin->process((const float **)invec, (float **)outvec, n);
-        } else {
-            plugin->processDouble((const double **)invec, (double **)outvec, n);
-        }
+        IPlugin::ProcessData<TFloat> data;
+        data.input = (const TFloat **)invec;
+        data.output = (TFloat **)outvec;
+        data.numSamples = n;
+        plugin->process(data);
 
         if (!std::is_same<t_sample, TFloat>::value){
                 // copy output buffer to Pd outlets

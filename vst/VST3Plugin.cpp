@@ -2,6 +2,7 @@
 #include "Utility.h"
 
 #include <cstring>
+#include <algorithm>
 
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPlugView)
@@ -407,11 +408,11 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     processor_->setupProcessing(setup);
 }
 
-void VST3Plugin::process(const float **inputs, float **outputs, int sampleFrames){
+void VST3Plugin::process(ProcessData<float>& data){
 
 }
 
-void VST3Plugin::processDouble(const double **inputs, double **outputs, int sampleFrames){
+void VST3Plugin::process(ProcessData<double>& data){
 
 }
 
@@ -474,7 +475,7 @@ void VST3Plugin::setBypass(bool bypass){
 
 }
 
-void VST3Plugin::setNumSpeakers(int in, int out){
+void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
 
 }
 

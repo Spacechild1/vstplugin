@@ -75,8 +75,16 @@ class IPlugin {
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) = 0;
 
     virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
-    virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
-    virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;
+    template<typename T>
+    struct ProcessData {
+        const T **input = nullptr;
+        const T **auxInput = nullptr;
+        T **output = nullptr;
+        T **auxOutput = nullptr;
+        int numSamples = 0;
+    };
+    virtual void process(ProcessData<float>& data) = 0;
+    virtual void process(ProcessData<double>& data) = 0;
     virtual bool hasPrecision(ProcessPrecision precision) const = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
@@ -89,7 +97,7 @@ class IPlugin {
     virtual int getTailSize() const = 0;
     virtual bool hasBypass() const = 0;
     virtual void setBypass(bool bypass) = 0;
-    virtual void setNumSpeakers(int in, int out) = 0;
+    virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;
 

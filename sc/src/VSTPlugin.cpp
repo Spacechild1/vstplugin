@@ -823,9 +823,13 @@ void VSTPlugin::next(int inNumSamples) {
             }
         }
         // process
-        plugin->process((const float**)inBufVec_, outBufVec_, inNumSamples);
-        offset = plugin->getNumOutputs();
+        IPlugin::ProcessData<float> data;
+        data.input = inBufVec_;
+        data.output = outBufVec_;
+        data.numSamples = inNumSamples;
+        plugin->process(data);
 
+        offset = plugin->getNumOutputs();
 #if VSTTHREADS
         // send parameter automation notification posted from the GUI thread.
         // we assume this is only possible if we have a VST editor window.
