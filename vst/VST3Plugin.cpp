@@ -3,7 +3,7 @@
 
 #include <cstring>
 #include <algorithm>
-#include <map>
+#include <set>
 
 DEF_CLASS_IID (FUnknown)
 // DEF_CLASS_IID (IPlugFrame)
@@ -355,12 +355,17 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         flags |= hasMidiOutput() * PluginInfo::MidiOutput;
         info->flags_ = flags;
         // get parameters
-        std::map<Vst::ParamID, PluginInfo::Param> params;
+        std::set<Vst::ParamID> params;
         int numParameters = controller_->getParameterCount();
+        int index = 0;
         for (int i = 0; i < numParameters; ++i){
             PluginInfo::Param param;
             Vst::ParameterInfo pi;
             if (controller_->getParameterInfo(i, pi) == kResultTrue){
+                // some plugins have duplicate parameters... why?
+                if (params.count(pi.id)){
+                    continue;
+                }
                 param.name = fromString128(pi.title);
                 param.label = fromString128(pi.units);
                 param.id = pi.id;
@@ -369,27 +374,23 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 } else if (pi.flags & Vst::ParameterInfo::kIsBypass){
                     bypassID_ = pi.id;
                 }
+                // JUCE plugins add thousands of "MIDI CC" parameters which we don't want
+                // there must be a better way to handle this...
+                if (param.name.find("MIDI CC") == std::string::npos){
+                    params.insert(param.id);
+                    // inverse mapping
+                    info->paramMap_[param.name] = index;
+                    // index -> ID mapping
+                    info->indexToIdMap_[index] = param.id;
+                    // ID -> index mapping
+                    info->idToIndexMap_[param.id] = index;
+                    // add parameter
+                    info->parameters.push_back(std::move(param));
+                    index++;
+                }
             } else {
                 LOG_ERROR("couldn't get parameter info!");
             }
-            // JUCE plugins add thousands of "MIDI CC" parameters which we don't want
-            // there must be a better way to catch this
-            if (param.name.find("MIDI CC") == std::string::npos){
-                params[pi.id] = std::move(param);
-            }
-        }
-        int index = 0;
-        for (auto& it : params){
-            auto& param = it.second;
-            // inverse mapping
-            info->paramMap_[param.name] = index;
-            // index -> ID mapping
-            info->indexToIdMap_[index] = param.id;
-            // ID -> index mapping
-            info->idToIndexMap_[param.id] = index;
-            // add parameter
-            info->parameters.push_back(std::move(param));
-            index++;
         }
         // programs
         auto ui = FUnknownPtr<Vst::IUnitInfo>(controller);
