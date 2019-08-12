@@ -1560,7 +1560,7 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s){
         if (bank)
             x->x_plugin->writeBankFile(path);
         else
-            x->x_plugin->readProgramFile(path);
+            x->x_plugin->writeProgramFile(path);
 
     } catch (const Error& e){
         pd_error(x, "%s: couldn't write %s file '%s':\n%s",
