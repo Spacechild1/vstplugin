@@ -50,10 +50,26 @@ class VST3Factory : public IFactory {
     bool valid_ = false;
 };
 
-class VST3Plugin final : public IPlugin {
+class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
+
+    tresult PLUGIN_API queryInterface(const TUID _iid, void **obj) override {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, FUnknown);
+        QUERY_INTERFACE(_iid, obj, Vst::IComponentHandler::iid, Vst::IComponentHandler);
+        *obj = 0;
+        return kNoInterface;
+    }
+    // don't have to actually ref count because VST3Plugin will outlive all other objects
+    uint32 PLUGIN_API addRef() { return 1; }
+    uint32 PLUGIN_API release() { return 1; }
+    // IComponentHandler
+    tresult PLUGIN_API beginEdit(Vst::ParamID id) override;
+    tresult PLUGIN_API performEdit(Vst::ParamID id, Vst::ParamValue value) override;
+    tresult PLUGIN_API endEdit(Vst::ParamID id) override;
+    tresult PLUGIN_API restartComponent(int32 flags) override;
+
 
     const PluginInfo& info() const { return *info_; }
 

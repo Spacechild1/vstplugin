@@ -5,16 +5,18 @@
 #include <algorithm>
 #include <map>
 
-DEF_CLASS_IID (IPluginBase)
-DEF_CLASS_IID (IPlugView)
+DEF_CLASS_IID (FUnknown)
 // DEF_CLASS_IID (IPlugFrame)
 DEF_CLASS_IID (IPluginFactory)
 DEF_CLASS_IID (IPluginFactory2)
 DEF_CLASS_IID (IPluginFactory3)
 DEF_CLASS_IID (Vst::IComponent)
+DEF_CLASS_IID (Vst::IComponentHandler)
 DEF_CLASS_IID (Vst::IEditController)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
+DEF_CLASS_IID (IPluginBase)
+DEF_CLASS_IID (IPlugView)
 
 #ifndef HAVE_VST3_BASE
 #define HAVE_VST3_BASE 0
@@ -294,6 +296,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (controller_->initialize(gPluginContext) != kResultOk){
         throw Error("couldn't initialize VST3 controller");
     }
+    if (controller_->setComponentHandler(this) != kResultOk){
+        throw Error("couldn't set component handler");
+    }
     // check processor
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error("couldn't get VST3 processor");
@@ -404,6 +409,30 @@ VST3Plugin::~VST3Plugin(){
     controller_->terminate();
     controller_ = nullptr;
     component_->terminate();
+}
+
+// IComponentHandler
+tresult VST3Plugin::beginEdit(Vst::ParamID id){
+    LOG_DEBUG("begin edit");
+    return kResultOk;
+}
+
+tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
+    auto listener = listener_.lock();
+    if (listener){
+        listener->parameterAutomated(info().getParamIndex(id), value);
+    }
+    return kResultOk;
+}
+
+tresult VST3Plugin::endEdit(Vst::ParamID id){
+    LOG_DEBUG("end edit");
+    return kResultOk;
+}
+
+tresult VST3Plugin::restartComponent(int32 flags){
+    LOG_DEBUG("need to restart component");
+    return kResultOk;
 }
 
 int VST3Plugin::canDo(const char *what) const {
