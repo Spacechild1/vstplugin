@@ -297,24 +297,25 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error("couldn't get VST3 processor");
     }
+    // check
     // get IO channel count
-    auto getChannelCount = [this](auto media, auto dir, auto type) -> int {
+    auto getChannelCount = [this](auto media, auto dir, auto type) {
         auto count = component_->getBusCount(media, dir);
         for (int i = 0; i < count; ++i){
             Vst::BusInfo bus;
             if (component_->getBusInfo(media, dir, i, bus) == kResultTrue
                 && bus.busType == type){
-                return bus.channelCount;
+                return std::make_pair(bus.channelCount, i);
             }
         }
-        return 0;
+        return std::make_pair(0, -1);
     };
-    numInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
-    numAuxInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
-    numOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
-    numAuxOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
-    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
-    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
+    std::tie(numInputs_, inputIndex_) = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
+    std::tie(numAuxInputs_, auxInputIndex_) = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
+    std::tie(numOutputs_, outputIndex_) = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
+    std::tie(numAuxOutputs_, auxOutputIndex_) = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
+    std::tie(numMidiInChannels_, midiInIndex_) = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
+    std::tie(numMidiOutChannels_, midiOutIndex_) = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
     // finally get remaining info
     if (info){
         // vendor name (if still empty)
@@ -460,7 +461,7 @@ bool VST3Plugin::isSynth() const {
 }
 
 bool VST3Plugin::hasTail() const {
-    return false;
+    return getTailSize() != 0;
 }
 
 int VST3Plugin::getTailSize() const {
@@ -468,19 +469,41 @@ int VST3Plugin::getTailSize() const {
 }
 
 bool VST3Plugin::hasBypass() const {
-    return getTailSize() != 0;
+    return false;
 }
 
 void VST3Plugin::setBypass(bool bypass){
 
 }
 
-void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
+#define setbits(x, n) (x) |= ((1 << n) - 1)
 
+void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
+    Vst::SpeakerArrangement busIn[64] = { 0 };
+    Vst::SpeakerArrangement busOut[64] = { 0 };
+    int numIn = 0;
+    int numOut = 0;
+    // LATER get real bus indices
+    if (inputIndex_ >= 0){
+        setbits(busIn[inputIndex_], in);
+        numIn = inputIndex_ + 1;
+    }
+    if (auxInputIndex_ >= 0){
+        setbits(busIn[auxInputIndex_], auxIn);
+        numIn = auxInputIndex_ + 1;
+    }
+    if (outputIndex_ >= 0){
+        setbits(busOut[outputIndex_], out);
+        numOut = outputIndex_ + 1;
+    }
+    if (auxOutputIndex_ >= 0){
+        setbits(busOut[auxOutputIndex_], auxOut);
+        numOut = auxOutputIndex_ + 1;
+    }
+    processor_->setBusArrangements(busIn, numIn, busOut, numOut);
 }
 
 void VST3Plugin::setTempoBPM(double tempo){
-
 }
 
 void VST3Plugin::setTimeSignature(int numerator, int denominator){

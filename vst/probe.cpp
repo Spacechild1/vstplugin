@@ -69,6 +69,7 @@ int MAIN(int argc, const CHAR *argv[]) {
                 }
             }
             status = EXIT_SUCCESS;
+            LOG_DEBUG("probe succeeded");
         } catch (const std::exception& e){
             // catch any exception!
             LOG_DEBUG("probe failed: " << e.what());
