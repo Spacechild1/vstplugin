@@ -258,7 +258,7 @@ static bool addFactory(const std::string& path, IFactory::ptr factory){
                 for (int j = 0; j < num; ++j){
                     auto key = plugin->parameters[j].name;
                     bash_name(key);
-                    const_cast<PluginInfo&>(*plugin).paramMap[std::move(key)] = j;
+                    const_cast<PluginInfo&>(*plugin).addParamAlias(j, key);
                 }
                 // add plugin info
                 auto key = makeKey(*plugin);
@@ -1250,14 +1250,12 @@ static void vstplugin_transport_get(t_vstplugin *x){
 
 static bool findParamIndex(t_vstplugin *x, t_atom *a, int& index){
     if (a->a_type == A_SYMBOL){
-        auto& map = x->x_plugin->info().paramMap;
         auto name = a->a_w.w_symbol->s_name;
-        auto it = map.find(name);
-        if (it == map.end()){
+        index = x->x_plugin->info().findParam(name);
+        if (index < 0){
             pd_error(x, "%s: couldn't find parameter '%s'", classname(x), name);
             return false;
         }
-        index = it->second;
     } else {
         index = atom_getfloat(a);
     }
@@ -1960,6 +1958,11 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     // LOG_DEBUG("vstplugin~: got 'dsp' message");
 }
 
+static void my_terminate(){
+    LOG_DEBUG("terminate called!");
+    std::abort();
+}
+
 // setup function
 extern "C" {
 
@@ -2031,6 +2034,8 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<true>, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
+
+    std::set_terminate(my_terminate);
 
     // read cached plugin info
     readIniFile();

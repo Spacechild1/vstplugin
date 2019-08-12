@@ -1092,10 +1092,13 @@ void PluginInfo::deserialize(std::istream& file) {
                 }
                 parameters.push_back(std::move(param));
             }
-            // inverse mapping name -> index and index -> id (VST3 only)
+            // inverse mapping name -> index
             for (int i = 0; i < (int)parameters.size(); ++i){
-                paramMap[parameters[i].name] = i;
-                paramIDMap[i] = parameters[i].id;
+                auto& param = parameters[i];
+                paramMap_[param.name] = i;
+                // for VST3:
+                idToIndexMap_[param.id] = i;
+                indexToIdMap_[i] = param.id;
             }
         } else if (line == "[programs]"){
             programs.clear();

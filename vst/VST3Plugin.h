@@ -159,6 +159,9 @@ class VST3Plugin final : public IPlugin {
     int midiInIndex_ = -1;
     int numMidiOutChannels_ = 0;
     int midiOutIndex_ = -1;
+    // special parameters
+    int programChangeID_ = -1;
+    int bypassID_ = -1;
 };
 
 } // vst

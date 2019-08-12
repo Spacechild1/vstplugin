@@ -1730,11 +1730,8 @@ void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
 bool vst_param_index(VSTPlugin* unit, sc_msg_iter *args, int& index) {
     if (args->nextTag() == 's') {
         auto name = args->gets();
-        auto& map = unit->delegate().plugin()->info().paramMap;
-        auto result = map.find(name);
-        if (result != map.end()) {
-            index = result->second;
-        } else {
+        index = unit->delegate().plugin()->info().findParam(name);
+        if (index < 0) {
             LOG_ERROR("parameter '" << name << "' not found!");
             return false;
         }

@@ -212,10 +212,37 @@ struct PluginInfo {
         uint32_t id = 0; // VST3 only
     };
     std::vector<Param> parameters;
-    // param name to param index
-    std::unordered_map<std::string, int> paramMap;
-    // param index to ID (VST3 only)
-    std::unordered_map<int, uint32_t> paramIDMap;
+    void addParamAlias(int index, const std::string& key){
+        paramMap_[key] = index;
+    }
+    int findParam(const std::string&) const {
+        auto it = paramMap_.find(name);
+        if (it != paramMap_.end()){
+            return it->second;
+        } else {
+            return -1;
+        }
+    }
+    // get VST3 parameter ID from index
+    uint32_t getParamID(int index) const {
+        auto it = indexToIdMap_.find(index);
+        if (it != indexToIdMap_.end()){
+            return it->second;
+        }
+        else {
+            return 0; // throw?
+        }
+    }
+    // get index from VST3 parameter ID
+    int getParamIndex(uint32_t _id) const {
+        auto it = idToIndexMap_.find(_id);
+        if (it != idToIndexMap_.end()){
+            return it->second;
+        }
+        else {
+            return -1; // throw?
+        }
+    }
     // default programs
     std::vector<std::string> programs;
     int numParameters() const {
@@ -272,6 +299,12 @@ struct PluginInfo {
         int id;
     };
     std::vector<ShellPlugin> shellPlugins_;
+    // param name to param index
+    std::unordered_map<std::string, int> paramMap_;
+    // param index to ID (VST3 only)
+    std::unordered_map<int, uint32_t> indexToIdMap_;
+    // param ID to index (VST3 only)
+    std::unordered_map<uint32_t, int> idToIndexMap_;
 };
 
 class IModule {

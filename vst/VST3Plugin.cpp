@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <algorithm>
+#include <map>
 
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPlugView)
@@ -338,6 +339,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         flags |= hasMidiOutput() * PluginInfo::MidiOutput;
         info->flags_ = flags;
         // get parameters
+        std::map<Vst::ParamID, PluginInfo::Param> params;
         int numParameters = controller_->getParameterCount();
         for (int i = 0; i < numParameters; ++i){
             PluginInfo::Param param;
@@ -346,15 +348,28 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 param.name = fromString128(pi.title);
                 param.label = fromString128(pi.units);
                 param.id = pi.id;
+                if (pi.flags & Vst::ParameterInfo::kIsProgramChange){
+                    programChangeID_ = pi.id;
+                } else if (pi.flags & Vst::ParameterInfo::kIsBypass){
+                    bypassID_ = pi.id;
+                }
             } else {
                 LOG_ERROR("couldn't get parameter info!");
             }
+            params[pi.id] = std::move(param);
+        }
+        int index = 0;
+        for (auto& it : params){
+            auto& param = it.second;
             // inverse mapping
-            info->paramMap[param.name] = i;
+            info->paramMap_[param.name] = index;
             // index -> ID mapping
-            info->paramIDMap[i] = param.id;
+            info->indexToIdMap_[index] = param.id;
+            // ID -> index mapping
+            info->idToIndexMap_[param.id] = index;
             // add parameter
             info->parameters.push_back(std::move(param));
+            index++;
         }
         // programs
         auto ui = FUnknownPtr<Vst::IUnitInfo>(controller);
@@ -365,7 +380,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     LOG_DEBUG("more than 1 program list!");
                 }
                 Vst::ProgramListInfo pli;
-                // for now, just the program list for root unit (0)
                 if (ui->getProgramListInfo(0, pli) == kResultTrue){
                     for (int i = 0; i < pli.programCount; ++i){
                         Vst::String128 name;
@@ -571,45 +585,31 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 }
 
 void VST3Plugin::setParameter(int index, float value){
-    auto it = info_->paramIDMap.find(index);
-    if (it != info_->paramIDMap.end()){
-        controller_->setParamNormalized(it->second, value);
-    }
+    controller_->setParamNormalized(info().getParamID(index), value);
 }
 
 bool VST3Plugin::setParameter(int index, const std::string &str){
     Vst::ParamValue value;
     Vst::String128 string;
-    auto it = info_->paramIDMap.find(index);
-    if (it != info_->paramIDMap.end()){
-        auto id = it->second;
-        if (toString128(str, string)){
-            if (controller_->getParamValueByString(id, string, value) == kResultOk){
-                return controller_->setParamNormalized(id, value) == kResultOk;
-            }
+    auto id = info().getParamID(index);
+    if (toString128(str, string)){
+        if (controller_->getParamValueByString(id, string, value) == kResultOk){
+            return controller_->setParamNormalized(id, value) == kResultOk;
         }
     }
     return false;
 }
 
 float VST3Plugin::getParameter(int index) const {
-    auto it = info_->paramIDMap.find(index);
-    if (it != info_->paramIDMap.end()){
-        return controller_->getParamNormalized(it->second);
-    } else {
-        return -1;
-    }
+    return controller_->getParamNormalized(info().getParamID(index));
 }
 
 std::string VST3Plugin::getParameterString(int index) const {
     Vst::String128 display;
-    auto it = info_->paramIDMap.find(index);
-    if (it != info_->paramIDMap.end()){
-        auto id = it->second;
-        auto value = controller_->getParamNormalized(id);
-        if (controller_->getParamStringByValue(id, value, display) == kResultOk){
-            return fromString128(display);
-        }
+    auto id = info().getParamID(index);
+    auto value = controller_->getParamNormalized(id);
+    if (controller_->getParamStringByValue(id, value, display) == kResultOk){
+        return fromString128(display);
     }
     return std::string{};
 }
