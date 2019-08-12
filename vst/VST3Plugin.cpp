@@ -12,6 +12,7 @@ DEF_CLASS_IID (IPluginFactory2)
 DEF_CLASS_IID (IPluginFactory3)
 DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IComponentHandler)
+DEF_CLASS_IID (Vst::IConnectionPoint)
 DEF_CLASS_IID (Vst::IEditController)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
@@ -299,6 +300,16 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (controller_->setComponentHandler(this) != kResultOk){
         throw Error("couldn't set component handler");
     }
+    FUnknownPtr<Vst::IConnectionPoint> componentCP(component_);
+    FUnknownPtr<Vst::IConnectionPoint> controllerCP(controller_);
+    // connect component and controller
+    if (componentCP && controllerCP){
+        componentCP->connect(controllerCP);
+        controllerCP->connect(componentCP);
+        LOG_DEBUG("connected component and controller");
+    }
+    // synchronize states
+    // TODO
     // check processor
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error("couldn't get VST3 processor");
