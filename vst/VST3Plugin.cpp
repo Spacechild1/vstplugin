@@ -372,7 +372,11 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             } else {
                 LOG_ERROR("couldn't get parameter info!");
             }
-            params[pi.id] = std::move(param);
+            // JUCE plugins add thousands of "MIDI CC" parameters which we don't want
+            // there must be a better way to catch this
+            if (param.name.find("MIDI CC") == std::string::npos){
+                params[pi.id] = std::move(param);
+            }
         }
         int index = 0;
         for (auto& it : params){
