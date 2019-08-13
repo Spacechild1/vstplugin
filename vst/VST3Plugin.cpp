@@ -1162,13 +1162,13 @@ tresult PLUGIN_API HostApplication::createInstance (TUID cid, TUID _iid, void** 
     if (classID == Vst::IMessage::iid && interfaceID == Vst::IMessage::iid)
     {
         LOG_DEBUG("create HostMessage");
-        *obj = new HostMessage;
+        *obj = (Vst::IMessage *)new HostMessage;
         return kResultTrue;
     }
     else if (classID == Vst::IAttributeList::iid && interfaceID == Vst::IAttributeList::iid)
     {
         LOG_DEBUG("create HostAttributeList");
-        *obj = new HostAttributeList;
+        *obj = (Vst::IAttributeList *)new HostAttributeList;
         return kResultTrue;
     }
     *obj = nullptr;
