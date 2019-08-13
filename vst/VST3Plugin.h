@@ -12,6 +12,9 @@
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/base/ibstream.h"
 
+#include "public.sdk/source/vst/vstpresetfile.h"
+#include "public.sdk/source/vst/hosting/stringconvert.h"
+
 #include <unordered_map>
 
 using namespace Steinberg;
@@ -202,7 +205,19 @@ class BaseStream : public IBStream {
     virtual const char *data() const = 0;
     virtual size_t size() const = 0;
     void rewind();
+    bool writeInt32(int32 i);
+    bool writeInt64(int64 i);
+    bool writeChunkID(const Vst::ChunkID id);
+    bool writeTUID(const TUID tuid);
+    bool readInt32(int32& i);
+    bool readInt64(int64& i);
+    bool readChunkID(Vst::ChunkID id);
+    bool readTUID(TUID tuid);
  protected:
+    template<typename T>
+    bool doWrite(const T& t);
+    template<typename T>
+    bool doRead(T& t);
     int64_t cursor_ = 0;
 };
 
@@ -230,6 +245,5 @@ class WriteStream : public BaseStream {
 protected:
     std::string buffer_;
 };
-
 
 } // vst
