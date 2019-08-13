@@ -105,9 +105,9 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     void suspend() override;
     void resume() override;
     int getNumInputs() const override;
-    virtual int getNumAuxInputs() const;
-    virtual int getNumOutputs() const;
-    virtual int getNumAuxOutputs() const;
+    int getNumAuxInputs() const override;
+    int getNumOutputs() const override;
+    int getNumAuxOutputs() const override;
     bool isSynth() const override;
     bool hasTail() const override;
     int getTailSize() const override;
@@ -320,8 +320,7 @@ struct HostAttribute {
         v.b = new char[size];
         memcpy(v.s, data, n);
     }
-    // implement later if needed
-    HostAttribute(const HostAttribute& other) = delete;
+    HostAttribute(const HostAttribute& other) = delete; // LATER
     HostAttribute(HostAttribute&& other){
         if (size > 0){
             delete[] v.b;
@@ -332,14 +331,14 @@ struct HostAttribute {
         other.size = 0;
         other.v.b = nullptr;
     }
-    operator =(const HostAttribute& other) = delete;
-    operator =(HostAttribute&& other) = delete;
-
     ~HostAttribute(){
         if (size > 0){
             delete[] v.b;
         }
     }
+    HostAttribute& operator =(const HostAttribute& other) = delete; // LATER
+    HostAttribute& operator =(HostAttribute&& other) = delete; // LATER
+    // data
     union v
     {
       int64 i;
