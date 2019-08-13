@@ -4,6 +4,8 @@
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/vst/ivsthostapplication.h"
+#include "pluginterfaces/vst/ivstpluginterfacesupport.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
@@ -16,8 +18,28 @@
 #include "public.sdk/source/vst/hosting/stringconvert.h"
 
 #include <unordered_map>
+#include <atomic>
 
 using namespace Steinberg;
+
+#define MY_IMPLEMENT_QUERYINTERFACE(Interface)                            \
+tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override  \
+{                                                                         \
+    QUERY_INTERFACE (_iid, obj, FUnknown::iid, Interface)                 \
+    QUERY_INTERFACE (_iid, obj, Interface::iid, Interface)                \
+    *obj = nullptr;                                                       \
+    return kNoInterface;                                                  \
+}
+
+#define DUMMY_REFCOUNT_METHODS                     \
+uint32 PLUGIN_API addRef() override { return 1; }  \
+uint32 PLUGIN_API release() override { return 1; } \
+
+
+#define MY_REFCOUNT_METHODS(BaseClass) \
+uint32 PLUGIN_API addRef() override { return BaseClass::addRef (); } \
+uint32 PLUGIN_API release()override { return BaseClass::release (); }
+
 
 namespace vst {
 
@@ -61,15 +83,9 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
 
-    tresult PLUGIN_API queryInterface(const TUID _iid, void **obj) override {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, FUnknown);
-        QUERY_INTERFACE(_iid, obj, Vst::IComponentHandler::iid, Vst::IComponentHandler);
-        *obj = 0;
-        return kNoInterface;
-    }
-    // don't have to actually ref count because VST3Plugin will outlive all other objects
-    uint32 PLUGIN_API addRef() override { return 1; }
-    uint32 PLUGIN_API release() override { return 1; }
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IComponentHandler)
+    DUMMY_REFCOUNT_METHODS
+
     // IComponentHandler
     tresult PLUGIN_API beginEdit(Vst::ParamID id) override;
     tresult PLUGIN_API performEdit(Vst::ParamID id, Vst::ParamValue value) override;
@@ -189,15 +205,8 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
 
 class BaseStream : public IBStream {
  public:
-    tresult PLUGIN_API queryInterface(const TUID _iid, void **obj) override {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, FUnknown);
-        QUERY_INTERFACE(_iid, obj, IBStream::iid, IBStream);
-        *obj = 0;
-        return kNoInterface;
-    }
-    // don't have to actually ref count because VST3Plugin will outlive all other objects
-    uint32 PLUGIN_API addRef() override { return 1; }
-    uint32 PLUGIN_API release() override { return 1; }
+    MY_IMPLEMENT_QUERYINTERFACE(IBStream)
+    DUMMY_REFCOUNT_METHODS
     // IBStream
     tresult PLUGIN_API read  (void* buffer, int32 numBytes, int32* numBytesRead) override;
     tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
@@ -248,5 +257,154 @@ class WriteStream : public BaseStream {
 protected:
     std::string buffer_;
 };
+
+Vst::IHostApplication * getHostContext();
+
+struct FUID {
+    FUID(){
+        memset(uid, 0, sizeof(TUID));
+    }
+    FUID(const TUID _iid){
+        memcpy(uid, _iid, sizeof(TUID));
+    }
+    bool operator==(const TUID _iid) const {
+        return memcmp(uid, _iid, sizeof(TUID)) == 0;
+    }
+    bool operator!=(const TUID _iid) const {
+        return !(*this == _iid);
+    }
+    TUID uid;
+};
+
+class PlugInterfaceSupport : public Vst::IPlugInterfaceSupport {
+public:
+    PlugInterfaceSupport ();
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IPlugInterfaceSupport)
+    DUMMY_REFCOUNT_METHODS
+
+    //--- IPlugInterfaceSupport ---------
+    tresult PLUGIN_API isPlugInterfaceSupported (const TUID _iid) override;
+    void addInterface(const TUID _id);
+private:
+    std::vector<FUID> supportedInterfaces_;
+};
+
+class HostApplication : public Vst::IHostApplication {
+public:
+    HostApplication ();
+    virtual ~HostApplication ();
+    tresult PLUGIN_API queryInterface(const TUID _iid, void **obj) override;
+    DUMMY_REFCOUNT_METHODS
+
+    tresult PLUGIN_API getName (Vst::String128 name) override;
+    tresult PLUGIN_API createInstance (TUID cid, TUID _iid, void** obj) override;
+protected:
+    std::unique_ptr<PlugInterfaceSupport> interfaceSupport_;
+};
+
+struct HostAttribute {
+    enum Type
+    {
+        kInteger,
+        kFloat,
+        kString,
+        kBinary
+    };
+    HostAttribute(int64_t value) : type(kInteger) { v.i = value; }
+    HostAttribute(double value) : type(kFloat) { v.f = value; }
+    HostAttribute(const Vst::TChar* data, uint32 n) : size(n), type(kString){
+        v.s = new Vst::TChar[size];
+        memcpy(v.s, data, n * sizeof(Vst::TChar));
+    }
+    HostAttribute(const char * data, uint32 n) : size(n), type(kBinary){
+        v.b = new char[size];
+        memcpy(v.s, data, n);
+    }
+    // implement later if needed
+    HostAttribute(const HostAttribute& other) = delete;
+    HostAttribute(HostAttribute&& other){
+        if (size > 0){
+            delete[] v.b;
+        }
+        type = other.type;
+        size = other.size;
+        v = other.v;
+        other.size = 0;
+        other.v.b = nullptr;
+    }
+    operator =(const HostAttribute& other) = delete;
+    operator =(HostAttribute&& other) = delete;
+
+    ~HostAttribute(){
+        if (size > 0){
+            delete[] v.b;
+        }
+    }
+    union v
+    {
+      int64 i;
+      double f;
+      Vst::TChar* s;
+      char* b;
+    } v;
+    uint32 size = 0;
+    Type type;
+};
+
+class HostObject : public FUnknown {
+public:
+    virtual ~HostObject() {}
+
+    uint32 PLUGIN_API addRef() override {
+        return ++refcount_;
+    }
+    uint32 PLUGIN_API release() override {
+        auto res = --refcount_;
+        if (res == 0){
+            delete this;
+        }
+        return res;
+    }
+private:
+    std::atomic<int32_t> refcount_{1};
+};
+
+class HostAttributeList : public HostObject, public Vst::IAttributeList {
+public:
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IAttributeList)
+    MY_REFCOUNT_METHODS(HostObject)
+
+    tresult PLUGIN_API setInt (AttrID aid, int64 value) override;
+    tresult PLUGIN_API getInt (AttrID aid, int64& value) override;
+    tresult PLUGIN_API setFloat (AttrID aid, double value) override;
+    tresult PLUGIN_API getFloat (AttrID aid, double& value) override;
+    tresult PLUGIN_API setString (AttrID aid, const Vst::TChar* string) override;
+    tresult PLUGIN_API getString (AttrID aid, Vst::TChar* string, uint32 size) override;
+    tresult PLUGIN_API setBinary (AttrID aid, const void* data, uint32 size) override;
+    tresult PLUGIN_API getBinary (AttrID aid, const void*& data, uint32& size) override;
+protected:
+    HostAttribute* find(AttrID aid);
+    std::unordered_map<std::string, HostAttribute> list_;
+};
+
+class HostMessage : public HostObject, public Vst::IMessage {
+public:
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IMessage)
+    MY_REFCOUNT_METHODS(HostObject)
+
+    const char* PLUGIN_API getMessageID () override { return messageID_.c_str(); }
+    void PLUGIN_API setMessageID (const char* messageID) override { messageID_ = messageID; }
+    Vst::IAttributeList* PLUGIN_API getAttributes () override {
+        LOG_DEBUG("HostMessage::getAttributes");
+        if (!attributeList_){
+            attributeList_.reset(new HostAttributeList);
+        }
+        return attributeList_.get();
+    }
+protected:
+    std::string messageID_;
+    IPtr<HostAttributeList> attributeList_;
+};
+
 
 } // vst

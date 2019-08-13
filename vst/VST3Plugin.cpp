@@ -7,17 +7,24 @@
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
 // DEF_CLASS_IID (IPlugFrame)
+DEF_CLASS_IID (IPlugView)
+DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPluginFactory)
 DEF_CLASS_IID (IPluginFactory2)
 DEF_CLASS_IID (IPluginFactory3)
+DEF_CLASS_IID (Vst::IHostApplication)
+DEF_CLASS_IID (Vst::IPlugInterfaceSupport)
+DEF_CLASS_IID (Vst::IAttributeList)
+DEF_CLASS_IID (Vst::IMessage)
 DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IComponentHandler)
 DEF_CLASS_IID (Vst::IConnectionPoint)
 DEF_CLASS_IID (Vst::IEditController)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
-DEF_CLASS_IID (IPluginBase)
-DEF_CLASS_IID (IPlugView)
+DEF_CLASS_IID (Vst::IUnitData)
+DEF_CLASS_IID (Vst::IProgramListData)
+
 
 using namespace VST3;
 
@@ -197,8 +204,6 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
-static FUnknown *gPluginContext = nullptr;
-
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
     : factory_(std::move(f)), info_(std::move(desc))
 {
@@ -238,7 +243,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
     LOG_DEBUG("created VST3 component");
     // initialize component
-    if (component_->initialize(gPluginContext) != kResultOk){
+    if (component_->initialize(getHostContext()) != kResultOk){
         throw Error("couldn't initialize VST3 component");
     }
     // first try to create controller from the component part
@@ -257,7 +262,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     } else {
         throw Error("couldn't get VST3 controller!");
     }
-    if (controller_->initialize(gPluginContext) != kResultOk){
+    if (controller_->initialize(getHostContext()) != kResultOk){
         throw Error("couldn't initialize VST3 controller");
     }
     if (controller_->setComponentHandler(this) != kResultOk){
@@ -1063,6 +1068,192 @@ tresult WriteStream::write (void* buffer, int32 numBytes, int32* numBytesWritten
 void WriteStream::transfer(std::string &dest){
     dest = std::move(buffer_);
     cursor_ = 0;
+}
+
+// PlugInterfaceSupport
+
+PlugInterfaceSupport::PlugInterfaceSupport ()
+{
+    // add minimum set
+    //---VST 3.0.0--------------------------------
+    addInterface(Vst::IComponent::iid);
+    addInterface(Vst::IAudioProcessor::iid);
+    addInterface(Vst::IEditController::iid);
+    addInterface(Vst::IConnectionPoint::iid);
+
+    addInterface(Vst::IUnitInfo::iid);
+    addInterface(Vst::IUnitData::iid);
+    addInterface(Vst::IProgramListData::iid);
+
+    //---VST 3.0.1--------------------------------
+    // addInterface(Vst::IMidiMapping::iid);
+
+    //---VST 3.1----------------------------------
+    // addInterface(Vst::EditController2::iid);
+
+    //---VST 3.0.2--------------------------------
+    // addInterface(Vst::IParameterFinder::iid);
+
+    //---VST 3.1----------------------------------
+    // addInterface(Vst::IAudioPresentationLatency::iid);
+
+    //---VST 3.5----------------------------------
+    // addInterface(Vst::IKeyswitchController::iid);
+    // addInterface(Vst::IContextMenuTarget::iid);
+    // addInterface(Vst::IEditControllerHostEditing::iid);
+    // addInterface(Vst::IXmlRepresentationController::iid);
+    // addInterface(Vst::INoteExpressionController::iid);
+
+    //---VST 3.6.5--------------------------------
+    // addInterface(Vst::ChannelContext::IInfoListener::iid);
+    // addInterface(Vst::IPrefetchableSupport::iid);
+    // addInterface(Vst::IAutomationState::iid);
+
+    //---VST 3.6.11--------------------------------
+    // addInterface(Vst::INoteExpressionPhysicalUIMapping::iid);
+
+    //---VST 3.6.12--------------------------------
+    // addInterface(Vst::IMidiLearn::iid);
+}
+
+tresult PLUGIN_API PlugInterfaceSupport::isPlugInterfaceSupported (const TUID _iid)
+{
+    for (auto& uid : supportedInterfaces_){
+        if (uid == _iid){
+            LOG_DEBUG("interface supported!");
+            return kResultTrue;
+        }
+    }
+    LOG_DEBUG("interface not supported!");
+    return kResultFalse;
+}
+
+void PlugInterfaceSupport::addInterface(const TUID _id){
+    supportedInterfaces_.emplace_back(_id);
+}
+
+// HostApplication
+
+Vst::IHostApplication *getHostContext(){
+    static auto app = new HostApplication;
+    return app;
+}
+
+HostApplication::HostApplication()
+    : interfaceSupport_(std::make_unique<PlugInterfaceSupport>())
+{}
+
+HostApplication::~HostApplication() {}
+
+tresult PLUGIN_API HostApplication::getName (Vst::String128 name){
+    LOG_DEBUG("host: getName");
+#ifdef PD
+    StringConvert::convert("vstplugin~", name);
+#else
+    StringConvert::convert("VSTPlugin", name);
+#endif
+    return kResultTrue;
+}
+
+tresult PLUGIN_API HostApplication::createInstance (TUID cid, TUID _iid, void** obj){
+    FUID classID(cid);
+    FUID interfaceID(_iid);
+    LOG_DEBUG("host: createInstance");
+    if (classID == Vst::IMessage::iid && interfaceID == Vst::IMessage::iid)
+    {
+        LOG_DEBUG("create HostMessage");
+        *obj = new HostMessage;
+        return kResultTrue;
+    }
+    else if (classID == Vst::IAttributeList::iid && interfaceID == Vst::IAttributeList::iid)
+    {
+        LOG_DEBUG("create HostAttributeList");
+        *obj = new HostAttributeList;
+        return kResultTrue;
+    }
+    *obj = nullptr;
+    return kResultFalse;
+}
+
+tresult PLUGIN_API HostApplication::queryInterface (const char* _iid, void** obj){
+    LOG_DEBUG("host: query interface");
+    QUERY_INTERFACE (_iid, obj, FUnknown::iid, IHostApplication)
+    QUERY_INTERFACE (_iid, obj, IHostApplication::iid, IHostApplication)
+    if (interfaceSupport_ && interfaceSupport_->queryInterface (iid, obj) == kResultTrue)
+        return kResultOk;
+
+    *obj = nullptr;
+    return kResultFalse;
+}
+
+// HostAttributeList
+
+HostAttribute *HostAttributeList::find(AttrID aid) {
+    auto it = list_.find(aid);
+    if (it != list_.end()){
+        return &it->second;
+    } else {
+        return nullptr;
+    }
+}
+
+tresult PLUGIN_API HostAttributeList::setInt (AttrID aid, int64 value){
+    list_.emplace(aid, HostAttribute(value));
+    return kResultTrue;
+}
+
+tresult PLUGIN_API HostAttributeList::getInt (AttrID aid, int64& value){
+    auto attr = find(aid);
+    if (attr && attr->type == HostAttribute::kInteger){
+        value = attr->v.i;
+        return kResultTrue;
+    }
+    return kResultFalse;
+}
+
+tresult PLUGIN_API HostAttributeList::setFloat (AttrID aid, double value){
+    list_.emplace(aid, HostAttribute(value));
+    return kResultTrue;
+}
+
+tresult PLUGIN_API HostAttributeList::getFloat (AttrID aid, double& value){
+    auto attr = find(aid);
+    if (attr && attr->type == HostAttribute::kFloat){
+        value = attr->v.f;
+        return kResultTrue;
+    }
+    return kResultFalse;
+}
+
+tresult PLUGIN_API HostAttributeList::setString (AttrID aid, const Vst::TChar* string){
+    list_.emplace(aid, HostAttribute(string, wcslen((const wchar_t *)string)));
+    return kResultTrue;
+}
+
+tresult PLUGIN_API HostAttributeList::getString (AttrID aid, Vst::TChar* string, uint32 size){
+    auto attr = find(aid);
+    if (attr && attr->type == HostAttribute::kString){
+        size = std::min<uint32>(size-1, attr->size);
+        memcpy(string, attr->v.s, size * sizeof(Vst::TChar));
+        string[size] = 0; // null terminate!
+        return kResultTrue;
+    }
+    return kResultFalse;
+}
+
+tresult PLUGIN_API HostAttributeList::setBinary (AttrID aid, const void* data, uint32 size){
+    list_.emplace(aid, HostAttribute((const char*)data, size));
+    return kResultTrue;
+}
+
+tresult PLUGIN_API HostAttributeList::getBinary (AttrID aid, const void*& data, uint32& size){
+    auto attr = find(aid);
+    if (attr && attr->type == HostAttribute::kString){
+        data = attr->v.b;
+        size = attr->size;
+        return kResultTrue;
+    }
+    return kResultFalse;
 }
 
 } // vst
