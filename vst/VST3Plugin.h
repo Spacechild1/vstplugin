@@ -310,7 +310,7 @@ struct HostAttribute {
         kString,
         kBinary
     };
-    explicit HostAttribute(int64_t value) : type(kInteger) { v.i = value; }
+    explicit HostAttribute(int64 value) : type(kInteger) { v.i = value; }
     explicit HostAttribute(double value) : type(kFloat) { v.f = value; }
     explicit HostAttribute(const Vst::TChar* data, uint32 n) : size(n), type(kString){
         v.s = new Vst::TChar[size];
