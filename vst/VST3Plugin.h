@@ -10,6 +10,7 @@
 #include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 
+#include "public.sdk/source/vst/hosting/stringconvert.h"
 #include <unordered_map>
 
 using namespace Steinberg;

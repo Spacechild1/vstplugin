@@ -19,94 +19,12 @@ DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPlugView)
 
-#ifndef HAVE_VST3_BASE
-#define HAVE_VST3_BASE 0
-#endif
-#if HAVE_VST3_BASE
-#include "base/source/fstring.h"
-#else
-#include <codecvt>
-#include <locale>
-using t_string_converter = std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>;
-#endif
+using namespace VST3;
 
 namespace vst {
-#if HAVE_VST3_BASE
-std::string fromString128(const Vst::String128 s){
-    std::string result;
-    int bytes = ConstString::wideStringToMultiByte(0, s, 0);
-    if (bytes){
-        bytes += 1;
-        result.resize(bytes);
-        ConstString::wideStringToMultiByte(&result[0], s, bytes);
-    }
-    return result;
-}
 
-bool toString128(const std::string& s, Vst::String128 ws){
-    int bytes = ConstString::multiByteToWideString(0, s.data(), 0);
-    if (bytes){
-        bytes += sizeof(Vst::TChar);
-        if (ConstString::multiByteToWideString(ws, s.data(), s.size() + 1) > 0){
-            return true;
-        }
-    }
-    return false;
-}
-#else // HAVE_VST3_BASE
-#if 1
-t_string_converter& string_converter(){
-    static t_string_converter c;
-    return c;
-}
-
-std::string fromString128(const Vst::String128 s){
-    try {
-        return string_converter().to_bytes((const wchar_t *)s);
-    } catch (...){
-        return "";
-    }
-}
-// bash to wide characters (very bad)
-bool toString128(const std::string& s, Vst::String128 dest){
-    try {
-        auto ws = string_converter().from_bytes(s);
-        auto n = std::min<int>(ws.size(), 127);
-        memcpy(dest, ws.data(), n);
-        dest[n] = 0;
-        return true;
-    } catch (...){
-        return false;
-    }
-}
-#else
-// bash to ASCII (bad)
-std::string fromString128(const Vst::String128 s){
-    char buf[128];
-    auto from = s;
-    auto to = buf;
-    Vst::TChar c;
-    while ((c = *from++)){
-        if (c < 128){
-            *to++ = c;
-        } else {
-            *to++ = '?';
-        }
-    }
-    *to = 0; // null terminate!
-    return buf;
-}
-// bash to wide characters (very bad)
-bool toString128(const std::string& s, Vst::String128 ws){
-    int size = s.size();
-    for (int i = 0; i < size; ++i){
-        ws[i] = s[i];
-    }
-    ws[size] = 0;
-    return true;
 }
 #endif
-#endif // HAVE_VST3_BASE
 
 VST3Factory::VST3Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
@@ -366,8 +284,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 if (params.count(pi.id)){
                     continue;
                 }
-                param.name = fromString128(pi.title);
-                param.label = fromString128(pi.units);
+                param.name = StringConvert::convert(pi.title);
+                param.label = StringConvert::convert(pi.units);
                 param.id = pi.id;
                 if (pi.flags & Vst::ParameterInfo::kIsProgramChange){
                     programChangeID_ = pi.id;
@@ -405,7 +323,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     for (int i = 0; i < pli.programCount; ++i){
                         Vst::String128 name;
                         if (ui->getProgramName(pli.id, i, name) == kResultTrue){
-                            info->programs.push_back(fromString128(name));
+                            info->programs.push_back(StringConvert::convert(name));
                         } else {
                             LOG_ERROR("couldn't get program name!");
                             info->programs.push_back("");
@@ -637,7 +555,7 @@ bool VST3Plugin::setParameter(int index, const std::string &str){
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
-    if (toString128(str, string)){
+    if (StringConvert::convert(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
             return controller_->setParamNormalized(id, value) == kResultOk;
         }
@@ -654,7 +572,7 @@ std::string VST3Plugin::getParameterString(int index) const {
     auto id = info().getParamID(index);
     auto value = controller_->getParamNormalized(id);
     if (controller_->getParamStringByValue(id, value, display) == kResultOk){
-        return fromString128(display);
+        return StringConvert::convert(display);
     }
     return std::string{};
 }
