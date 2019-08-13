@@ -320,8 +320,8 @@ struct HostAttribute {
         v.b = new char[size];
         memcpy(v.s, data, n);
     }
-    HostAttribute(const HostAttribute& other) = delete; // LATER
-    HostAttribute(HostAttribute&& other){
+    explicit HostAttribute(const HostAttribute& other) = delete; // LATER
+    explicit HostAttribute(HostAttribute&& other){
         if (size > 0){
             delete[] v.b;
         }
