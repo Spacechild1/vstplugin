@@ -1,11 +1,11 @@
 #include "VST3Plugin.h"
-#include "Utility.h"
 
 #include <cstring>
 #include <algorithm>
 #include <set>
 
 DEF_CLASS_IID (FUnknown)
+DEF_CLASS_IID (IBStream)
 // DEF_CLASS_IID (IPlugFrame)
 DEF_CLASS_IID (IPluginFactory)
 DEF_CLASS_IID (IPluginFactory2)
@@ -23,8 +23,46 @@ using namespace VST3;
 
 namespace vst {
 
+/*////////////////////////////////////////////////////////////////////////*/
+
+// copied from public.sdk/vst/vstpresetfile.cpp
+
+//------------------------------------------------------------------------
+// Preset Chunk IDs
+//------------------------------------------------------------------------
+static const Vst::ChunkID commonChunks[Vst::kNumPresetChunks] = {
+    {'V', 'S', 'T', '3'},	// kHeader
+    {'C', 'o', 'm', 'p'},	// kComponentState
+    {'C', 'o', 'n', 't'},	// kControllerState
+    {'P', 'r', 'o', 'g'},	// kProgramData
+    {'I', 'n', 'f', 'o'},	// kMetaInfo
+    {'L', 'i', 's', 't'}	// kChunkList
+};
+
+//------------------------------------------------------------------------
+// Preset Header: header id + version + class id + list offset
+static const int32 kFormatVersion = 1;
+static const int32 kClassIDSize = 32; // ASCII-encoded FUID
+static const int32 kHeaderSize = sizeof (Vst::ChunkID) + sizeof (int32) + kClassIDSize + sizeof (TSize);
+static const int32 kListOffsetPos = kHeaderSize - sizeof (TSize);
+
+//------------------------------------------------------------------------
+const Vst::ChunkID& getChunkID (Vst::ChunkType type)
+{
+    return commonChunks[type];
 }
+
+#ifdef verify
+#undef verify
 #endif
+
+//------------------------------------------------------------------------
+inline bool verify (tresult result)
+{
+    return result == kResultOk || result == kNotImplemented;
+}
+
+/*///////////////////////////////////////////////////////////////////*/
 
 VST3Factory::VST3Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
@@ -226,8 +264,16 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         controllerCP->connect(componentCP);
         LOG_DEBUG("connected component and controller");
     }
-    // synchronize states
-    // TODO
+    // synchronize state
+    WriteStream stream;
+    if (component_->getState(&stream) == kResultTrue){
+        stream.rewind();
+        if (controller_->setComponentState(&stream) == kResultTrue){
+            LOG_DEBUG("synchronized state");
+        } else {
+            LOG_DEBUG("didn't synchronize state");
+        }
+    }
     // check processor
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error("couldn't get VST3 processor");
@@ -620,35 +666,63 @@ void VST3Plugin::getBankChunkData(void **data, size_t *size) const {
 }
 
 void VST3Plugin::readProgramFile(const std::string& path){
-
+    std::ifstream file(path, std::ios_base::binary);
+    if (!file.is_open()){
+        throw Error("couldn't open file " + path);
+    }
+    std::string buffer;
+    file.seekg(0, std::ios_base::end);
+    buffer.resize(file.tellg());
+    file.seekg(0, std::ios_base::beg);
+    file.read(&buffer[0], buffer.size());
+    readProgramData(buffer.data(), buffer.size());
 }
 
 void VST3Plugin::readProgramData(const char *data, size_t size){
-
+    // not good
+    ConstStream stream(data, size);
+    if (component_->setState(&stream) != kResultTrue){
+        throw Error("couldn't set component state");
+    }
+    if (controller_->setComponentState(&stream) != kResultTrue){
+        LOG_WARNING("couldn't set controller state");
+        // throw Error("couldn't set controller state");
+    }
 }
 
 void VST3Plugin::writeProgramFile(const std::string& path){
-
+    std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
+    if (!file.is_open()){
+        throw Error("couldn't create file " + path);
+    }
+    std::string buffer;
+    writeProgramData(buffer);
+    file.write(buffer.data(), buffer.size());
 }
 
 void VST3Plugin::writeProgramData(std::string& buffer){
-
+    WriteStream stream;
+    if (component_->getState(&stream) == kResultTrue){
+        stream.transfer(buffer);
+    } else {
+        throw Error("couldn't get component state");
+    }
 }
 
 void VST3Plugin::readBankFile(const std::string& path){
-
+    throw Error("not implemented");
 }
 
 void VST3Plugin::readBankData(const char *data, size_t size){
-
+    throw Error("not implemented");
 }
 
 void VST3Plugin::writeBankFile(const std::string& path){
-
+    throw Error("not implemented");
 }
 
 void VST3Plugin::writeBankData(std::string& buffer){
-
+    throw Error("not implemented");
 }
 
 bool VST3Plugin::hasEditor() const {
@@ -665,6 +739,173 @@ void VST3Plugin::closeEditor(){
 
 void VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
 
+}
+
+
+
+tresult BaseStream::read  (void* buffer, int32 numBytes, int32* numBytesRead){
+    int available = size() - cursor_;
+    if (available <= 0){
+        cursor_ = size();
+    }
+    if (numBytes > available){
+        numBytes = available;
+    }
+    if (numBytes > 0){
+        memcpy(buffer, data() + cursor_, numBytes);
+        cursor_ += numBytes;
+    }
+    if (numBytesRead){
+        *numBytesRead = numBytes;
+    }
+    LOG_DEBUG("BaseStream: read " << numBytes << " bytes");
+    return kResultOk;
+}
+
+tresult BaseStream::write (void* buffer, int32 numBytes, int32* numBytesWritten){
+    return kNotImplemented;
+}
+
+tresult BaseStream::seek  (int64 pos, int32 mode, int64* result){
+    if (pos < 0){
+        return kInvalidArgument;
+    }
+    switch (mode){
+    case kIBSeekSet:
+        cursor_ = pos;
+        break;
+    case kIBSeekCur:
+        cursor_ += pos;
+        break;
+    case kIBSeekEnd:
+        cursor_ = size() + pos;
+        break;
+    default:
+        return kInvalidArgument;
+    }
+    // don't have to resize here
+    if (result){
+        *result = cursor_;
+    }
+    LOG_DEBUG("BaseStream: set cursor to " << cursor_);
+    return kResultTrue;
+}
+
+tresult BaseStream::tell  (int64* pos){
+    if (pos){
+        *pos = cursor_;
+        LOG_DEBUG("BaseStream: told cursor pos");
+        return kResultTrue;
+    } else {
+        return kInvalidArgument;
+    }
+}
+
+void BaseStream::rewind(){
+    cursor_ = 0;
+}
+
+template<typename T>
+bool BaseStream::doWrite(const T& t){
+    int32 bytesWritten = 0;
+    write((void *)&t, sizeof(T), &bytesWritten);
+    return bytesWritten == sizeof(T);
+}
+
+template<typename T>
+bool BaseStream::doRead(T& t){
+    int32 bytesRead = 0;
+    read(&t, sizeof(T), &bytesRead);
+    return bytesRead == sizeof(T);
+}
+
+bool BaseStream::writeInt32(int32 i){
+#if BYTEORDER == kBigEndian
+    SWAP_32 (i)
+#endif
+    return doWrite(i);
+}
+
+bool BaseStream::writeInt64(int64 i){
+#if BYTEORDER == kBigEndian
+    SWAP_64 (i)
+#endif
+    return doWrite(i);
+}
+
+bool BaseStream::writeChunkID(const Vst::ChunkID id){
+    return doWrite(id);
+}
+
+bool BaseStream::writeTUID(const TUID tuid){
+    return doWrite(tuid);
+}
+
+bool BaseStream::readInt32(int32& i){
+    if (doRead(i)){
+    #if BYTEORDER == kBigEndian
+        SWAP_32 (i)
+    #endif
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool BaseStream::readInt64(int64& i){
+    if (doRead(i)){
+    #if BYTEORDER == kBigEndian
+        SWAP_64 (i)
+    #endif
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool BaseStream::readChunkID(Vst::ChunkID id){
+    return doRead(id);
+}
+
+bool BaseStream::readTUID(TUID tuid){
+    return doRead(tuid);
+}
+
+ConstStream::ConstStream(const char *data, size_t size){
+    assign(data, size);
+}
+
+void ConstStream::assign(const char *data, size_t size){
+    data_ = data;
+    size_ = size;
+    cursor_ = 0;
+}
+
+WriteStream::WriteStream(const char *data, size_t size){
+    buffer_.assign(data, size);
+}
+
+tresult WriteStream::write (void* buffer, int32 numBytes, int32* numBytesWritten){
+    int wantSize = cursor_ + numBytes;
+    if (wantSize > (int64_t)buffer_.size()){
+        buffer_.resize(wantSize);
+    }
+    if (cursor_ >= 0 && numBytes > 0){
+        memcpy(&buffer_[cursor_], buffer, numBytes);
+        cursor_ += numBytes;
+    } else {
+        numBytes = 0;
+    }
+    if (numBytesWritten){
+        *numBytesWritten = numBytes;
+    }
+    LOG_DEBUG("BaseStream: wrote " << numBytes << " bytes");
+    return kResultTrue;
+}
+
+void WriteStream::transfer(std::string &dest){
+    dest = std::move(buffer_);
+    cursor_ = 0;
 }
 
 } // vst

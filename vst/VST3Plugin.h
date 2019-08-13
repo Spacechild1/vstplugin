@@ -1,5 +1,6 @@
 #pragma once
 #include "Interface.h"
+#include "Utility.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
@@ -10,7 +11,9 @@
 #include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 
+#include "public.sdk/source/vst/vstpresetfile.h"
 #include "public.sdk/source/vst/hosting/stringconvert.h"
+
 #include <unordered_map>
 
 using namespace Steinberg;
@@ -64,8 +67,8 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
         return kNoInterface;
     }
     // don't have to actually ref count because VST3Plugin will outlive all other objects
-    uint32 PLUGIN_API addRef() { return 1; }
-    uint32 PLUGIN_API release() { return 1; }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
     // IComponentHandler
     tresult PLUGIN_API beginEdit(Vst::ParamID id) override;
     tresult PLUGIN_API performEdit(Vst::ParamID id, Vst::ParamValue value) override;
@@ -180,6 +183,66 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     // special parameters
     int programChangeID_ = -1;
     int bypassID_ = -1;
+};
+
+class BaseStream : public IBStream {
+ public:
+    tresult PLUGIN_API queryInterface(const TUID _iid, void **obj) override {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, FUnknown);
+        QUERY_INTERFACE(_iid, obj, IBStream::iid, IBStream);
+        *obj = 0;
+        return kNoInterface;
+    }
+    // don't have to actually ref count because VST3Plugin will outlive all other objects
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    // IBStream
+    tresult PLUGIN_API read  (void* buffer, int32 numBytes, int32* numBytesRead) override;
+    tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
+    tresult PLUGIN_API seek  (int64 pos, int32 mode, int64* result) override;
+    tresult PLUGIN_API tell  (int64* pos) override;
+    virtual const char *data() const = 0;
+    virtual size_t size() const = 0;
+    void rewind();
+    bool writeInt32(int32 i);
+    bool writeInt64(int64 i);
+    bool writeChunkID(const Vst::ChunkID id);
+    bool writeTUID(const TUID tuid);
+    bool readInt32(int32& i);
+    bool readInt64(int64& i);
+    bool readChunkID(Vst::ChunkID id);
+    bool readTUID(TUID tuid);
+ protected:
+    template<typename T>
+    bool doWrite(const T& t);
+    template<typename T>
+    bool doRead(T& t);
+    int64_t cursor_ = 0;
+};
+
+class ConstStream : public BaseStream {
+ public:
+    ConstStream() = default;
+    ConstStream(const char *data, size_t size);
+    void assign(const char *data, size_t size);
+    // IBStream
+    const char * data() const override { return data_; }
+    size_t size() const override { return size_; }
+ protected:
+    const char *data_ = nullptr;
+    int64_t size_ = 0;
+};
+
+class WriteStream : public BaseStream {
+ public:
+    WriteStream() = default;
+    WriteStream(const char *data, size_t size);
+    tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
+    const char * data() const override { return buffer_.data(); }
+    size_t size() const override { return buffer_.size(); }
+    void transfer(std::string& dest);
+protected:
+    std::string buffer_;
 };
 
 } // vst
