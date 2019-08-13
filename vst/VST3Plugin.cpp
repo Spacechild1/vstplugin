@@ -297,22 +297,31 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         for (int i = 0; i < count; ++i){
             Vst::BusInfo bus;
             if (component_->getBusInfo(media, dir, i, bus) == kResultTrue
-                && bus.busType == type){
-                return std::make_pair(bus.channelCount, i);
+                && bus.busType == type)
+            {
+                if ((type == Vst::kMain && i != 0) ||
+                    (type == Vst::kAux && i != 1))
+                {
+                    LOG_WARNING("unexpected bus index");
+                    return 0;
+                }
+                return bus.channelCount;
             }
         }
-        return std::make_pair(0, -1);
+        return 0;
     };
-    std::tie(numInputs_, inputIndex_) = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
-    std::tie(numAuxInputs_, auxInputIndex_) = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
-    std::tie(numOutputs_, outputIndex_) = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
-    std::tie(numAuxOutputs_, auxOutputIndex_) = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
-    std::tie(numMidiInChannels_, midiInIndex_) = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
-    std::tie(numMidiOutChannels_, midiOutIndex_) = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
-    LOG_DEBUG("in: " << numInputs_ << " (" << inputIndex_ << ")");
-    LOG_DEBUG("auxIn: " << numAuxInputs_ << " (" << auxInputIndex_ << ")");
-    LOG_DEBUG("out: " << numOutputs_ << " (" << outputIndex_ << ")");
-    LOG_DEBUG("auxOut: " << numAuxOutputs_ << " (" << auxOutputIndex_ << ")");
+    numInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
+    numAuxInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
+    numOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
+    numAuxOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
+    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
+    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
+    LOG_DEBUG("in: " << numInputs_);
+    LOG_DEBUG("auxIn: " << numAuxInputs_);
+    LOG_DEBUG("out: " << numOutputs_);
+    LOG_DEBUG("auxOut: " << numAuxOutputs_);
+    LOG_DEBUG("midiIn: " << numMidiInChannels_);
+    LOG_DEBUG("midiOut: " << numMidiOutChannels_);
     // finally get remaining info
     if (info){
         // vendor name (if still empty)
@@ -541,29 +550,34 @@ void VST3Plugin::setBypass(bool bypass){
 
 }
 
-#define setbits(x, n) (x) |= ((1 << n) - 1)
+#define makeChannels(n) ((1 << (n)) - 1)
 
 void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
+    // input busses
     Vst::SpeakerArrangement busIn[64] = { 0 };
+    auto numIn = component_->getBusCount(Vst::kAudio, Vst::kInput);
+    for (int i = 0; i < numIn; ++i){
+        Vst::BusInfo bus;
+        if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
+            if (bus.busType == Vst::kMain){
+                busIn[i] = makeChannels(in);
+            } else if (bus.busType == Vst::kAux){
+                busIn[i] = makeChannels(auxIn);
+            }
+        }
+    }
+    // output busses
     Vst::SpeakerArrangement busOut[64] = { 0 };
-    int numIn = 0;
-    int numOut = 0;
-    // LATER get real bus indices
-    if (inputIndex_ >= 0){
-        setbits(busIn[inputIndex_], in);
-        numIn = inputIndex_ + 1;
-    }
-    if (auxInputIndex_ >= 0){
-        setbits(busIn[auxInputIndex_], auxIn);
-        numIn = auxInputIndex_ + 1;
-    }
-    if (outputIndex_ >= 0){
-        setbits(busOut[outputIndex_], out);
-        numOut = outputIndex_ + 1;
-    }
-    if (auxOutputIndex_ >= 0){
-        setbits(busOut[auxOutputIndex_], auxOut);
-        numOut = auxOutputIndex_ + 1;
+    auto numOut = component_->getBusCount(Vst::kAudio, Vst::kOutput);
+    for (int i = 0; i < numOut; ++i){
+        Vst::BusInfo bus;
+        if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
+            if (bus.busType == Vst::kMain){
+                busOut[i] = makeChannels(out);
+            } else if (bus.busType == Vst::kAux){
+                busOut[i] = makeChannels(auxOut);
+            }
+        }
     }
     processor_->setBusArrangements(busIn, numIn, busOut, numOut);
 }

@@ -187,17 +187,11 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     std::weak_ptr<IPluginListener> listener_;
     // busses (channel count + index)
     int numInputs_ = 0;
-    int inputIndex_ = -1;
     int numAuxInputs_ = 0;
-    int auxInputIndex_ = -1;
     int numOutputs_ = 0;
-    int outputIndex_ = -1;
     int numAuxOutputs_ = 0;
-    int auxOutputIndex_ = -1;
     int numMidiInChannels_ = 0;
-    int midiInIndex_ = -1;
     int numMidiOutChannels_ = 0;
-    int midiOutIndex_ = -1;
     // special parameters
     int programChangeID_ = -1;
     int bypassID_ = -1;
