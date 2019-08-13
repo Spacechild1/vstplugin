@@ -310,13 +310,13 @@ struct HostAttribute {
         kString,
         kBinary
     };
-    HostAttribute(int64_t value) : type(kInteger) { v.i = value; }
-    HostAttribute(double value) : type(kFloat) { v.f = value; }
-    HostAttribute(const Vst::TChar* data, uint32 n) : size(n), type(kString){
+    explicit HostAttribute(int64_t value) : type(kInteger) { v.i = value; }
+    explicit HostAttribute(double value) : type(kFloat) { v.f = value; }
+    explicit HostAttribute(const Vst::TChar* data, uint32 n) : size(n), type(kString){
         v.s = new Vst::TChar[size];
         memcpy(v.s, data, n * sizeof(Vst::TChar));
     }
-    HostAttribute(const char * data, uint32 n) : size(n), type(kBinary){
+    explicit HostAttribute(const char * data, uint32 n) : size(n), type(kBinary){
         v.b = new char[size];
         memcpy(v.s, data, n);
     }
