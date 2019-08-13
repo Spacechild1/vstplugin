@@ -6,5 +6,6 @@ if [ "x$1" = "x" ]; then
 fi
 
 mkdir -p "${VST3DIR}/pluginterfaces/"
-rm -rf "${VST3DIR}/pluginterfaces/"
+rm -rf "${VST3DIR}/public.sdk/"
 git clone https://github.com/steinbergmedia/vst3_pluginterfaces "${VST3DIR}/pluginterfaces/"
+git clone https://github.com/steinbergmedia/vst3_public_sdk "${VST3DIR}/public.sdk/"
