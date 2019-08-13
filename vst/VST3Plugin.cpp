@@ -21,7 +21,8 @@ DEF_CLASS_IID (IPlugView)
 
 using namespace VST3;
 
-namespace vst {
+namespace Steinberg {
+namespace Vst {
 
 /*////////////////////////////////////////////////////////////////////////*/
 
@@ -62,7 +63,12 @@ inline bool verify (tresult result)
     return result == kResultOk || result == kNotImplemented;
 }
 
+} // Vst
+} // Steinberg
+
 /*///////////////////////////////////////////////////////////////////*/
+
+namespace vst {
 
 VST3Factory::VST3Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
@@ -198,7 +204,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 {
     // are we probing?
     auto info = !info_ ? std::make_shared<PluginInfo>(factory_) : nullptr;
-
     TUID uid;
     PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
@@ -225,6 +230,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             throw Error("couldn't get class info!");
         }
     }
+    // LATER safe this in PluginInfo
+    memcpy(uid_, uid, sizeof(TUID));
     // create component
     if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){
         throw Error("couldn't create VST3 component");
@@ -678,15 +685,78 @@ void VST3Plugin::readProgramFile(const std::string& path){
     readProgramData(buffer.data(), buffer.size());
 }
 
+struct ChunkListEntry {
+    Vst::ChunkID id;
+    int64 offset = 0;
+    int64 size = 0;
+};
+
 void VST3Plugin::readProgramData(const char *data, size_t size){
-    // not good
     ConstStream stream(data, size);
-    if (component_->setState(&stream) != kResultTrue){
-        throw Error("couldn't set component state");
+    std::vector<ChunkListEntry> entries;
+    auto isChunkType = [](Vst::ChunkID id, Vst::ChunkType type){
+        return memcmp(id, Vst::getChunkID(type), sizeof(Vst::ChunkID)) == 0;
+    };
+    auto checkChunkID = [&](Vst::ChunkType type){
+        Vst::ChunkID id;
+        stream.readChunkID(id);
+        if (!isChunkType(id, type)){
+            throw Error("bad chunk ID");
+        }
+    };
+    // read header
+    if (size < Vst::kHeaderSize){
+        throw Error("too little data");
     }
-    if (controller_->setComponentState(&stream) != kResultTrue){
-        LOG_WARNING("couldn't set controller state");
-        // throw Error("couldn't set controller state");
+    checkChunkID(Vst::kHeader);
+    int32 version;
+    stream.readInt32(version);
+    LOG_DEBUG("version: " << version);
+    TUID classID;
+    stream.readTUID(classID);
+    if (memcmp(classID, uid_, sizeof(TUID)) != 0){
+    #if LOGLEVEL > 2
+        char buf[17] = {0};
+        memcpy(buf, classID, sizeof(TUID));
+        LOG_DEBUG("a: " << buf);
+        memcpy(buf, uid_, sizeof(TUID));
+        LOG_DEBUG("b: " << buf);
+    #endif
+        throw Error("wrong class ID");
+    }
+    int64 offset;
+    stream.readInt64(offset);
+    // read chunk list
+    stream.setPos(offset);
+    checkChunkID(Vst::kChunkList);
+    int32 count;
+    stream.readInt32(count);
+    while (count--){
+        ChunkListEntry entry;
+        stream.readChunkID(entry.id);
+        stream.readInt64(entry.offset);
+        stream.readInt64(entry.size);
+        entries.push_back(entry);
+    }
+    // get chunk data
+    for (auto& entry : entries){
+        stream.setPos(entry.offset);
+        if (isChunkType(entry.id, Vst::kComponentState)){
+            if (component_->setState(&stream) == kResultOk){
+                // also update controller state!
+                stream.setPos(entry.offset); // rewind
+                controller_->setComponentState(&stream);
+                LOG_DEBUG("restored component state");
+            } else {
+                LOG_WARNING("couldn't restore component state");
+            }
+        } else if (isChunkType(entry.id, Vst::kControllerState)){
+            if (controller_->setState(&stream) == kResultOk){
+                LOG_DEBUG("restored controller set");
+            } else {
+                LOG_WARNING("couldn't restore controller state");
+            }
+        }
     }
 }
 
@@ -701,12 +771,43 @@ void VST3Plugin::writeProgramFile(const std::string& path){
 }
 
 void VST3Plugin::writeProgramData(std::string& buffer){
+    std::vector<ChunkListEntry> entries;
     WriteStream stream;
-    if (component_->getState(&stream) == kResultTrue){
-        stream.transfer(buffer);
-    } else {
-        throw Error("couldn't get component state");
+    stream.writeChunkID(Vst::getChunkID(Vst::kHeader)); // header
+    stream.writeInt32(Vst::kFormatVersion); // version
+    stream.writeTUID(uid_); // class ID
+    stream.writeInt64(0); // skip offset
+    // write data
+    auto writeData = [&](auto component, Vst::ChunkType type){
+        ChunkListEntry entry;
+        memcpy(entry.id, Vst::getChunkID(type), sizeof(Vst::ChunkID));
+        stream.tell(&entry.offset);
+        if (component->getState(&stream) == kResultTrue){
+            auto pos = stream.getPos();
+            entry.size = pos - entry.offset;
+            entries.push_back(entry);
+        } else {
+            LOG_DEBUG("couldn't get state");
+            // throw?
+        }
+    };
+    writeData(component_, Vst::kComponentState);
+    writeData(controller_, Vst::kControllerState);
+    // store list offset
+    auto listOffset = stream.getPos();
+    // write list
+    stream.writeChunkID(Vst::getChunkID(Vst::kChunkList));
+    stream.writeInt32(entries.size());
+    for (auto& entry : entries){
+        stream.writeChunkID(entry.id);
+        stream.writeInt64(entry.offset);
+        stream.writeInt64(entry.size);
     }
+    // write list offset
+    stream.setPos(Vst::kListOffsetPos);
+    stream.writeInt64(listOffset);
+    // done
+    stream.transfer(buffer);
 }
 
 void VST3Plugin::readBankFile(const std::string& path){
@@ -799,6 +900,18 @@ tresult BaseStream::tell  (int64* pos){
     }
 }
 
+void BaseStream::setPos(int64 pos){
+    if (pos >= 0){
+        cursor_ = pos;
+    } else {
+        cursor_ = 0;
+    }
+}
+
+int64 BaseStream::getPos() const {
+    return cursor_;
+}
+
 void BaseStream::rewind(){
     cursor_ = 0;
 }
@@ -832,11 +945,33 @@ bool BaseStream::writeInt64(int64 i){
 }
 
 bool BaseStream::writeChunkID(const Vst::ChunkID id){
-    return doWrite(id);
+    int bytesWritten = 0;
+    write((void *)id, sizeof(Vst::ChunkID), &bytesWritten);
+    return bytesWritten == sizeof(Vst::ChunkID);
 }
 
+struct GUIDStruct {
+    uint32_t data1;
+    uint16_t data2;
+    uint16_t data3;
+    uint8_t data4[8];
+};
+
 bool BaseStream::writeTUID(const TUID tuid){
-    return doWrite(tuid);
+    int bytesWritten = 0;
+    int i = 0;
+    char buf[Vst::kClassIDSize+1];
+#if COM_COMPATIBLE
+    GUIDStruct guid;
+    memcpy(&guid, tuid, sizeof(GUIDStruct));
+    sprintf(buf, "%08X%04X%04X", guid.data1, guid.data2, guid.data3);
+    i += 8;
+#endif
+    for (; i < (int)sizeof(TUID); ++i){
+        sprintf(buf + (i * 2), "%02X", tuid[i]);
+    }
+    write(buf, Vst::kClassIDSize, &bytesWritten);
+    return bytesWritten == Vst::kClassIDSize;
 }
 
 bool BaseStream::readInt32(int32& i){
@@ -862,11 +997,35 @@ bool BaseStream::readInt64(int64& i){
 }
 
 bool BaseStream::readChunkID(Vst::ChunkID id){
-    return doRead(id);
+    int bytesRead = 0;
+    read((void *)id, sizeof(Vst::ChunkID), &bytesRead);
+    return bytesRead == sizeof(Vst::ChunkID);
 }
 
 bool BaseStream::readTUID(TUID tuid){
-    return doRead(tuid);
+    int bytesRead = 0;
+    char buf[Vst::kClassIDSize+1];
+    read((void *)buf, Vst::kClassIDSize, &bytesRead);
+    if (bytesRead == Vst::kClassIDSize){
+        buf[Vst::kClassIDSize] = 0;
+        int i = 0;
+    #if COM_COMPATIBLE
+        GUIDStruct guid;
+        sscanf(buf, "%08x", &guid.data1);
+        sscanf(buf+8, "%04hx", &guid.data2);
+        sscanf(buf+12, "%04hx", &guid.data3);
+        memcpy(tuid, &guid, sizeof(TUID) / 2);
+        i += 16;
+    #endif
+        for (; i < Vst::kClassIDSize; i += 2){
+            uint32_t temp;
+            sscanf(buf + i, "%02X", &temp);
+            tuid[i / 2] = temp;
+        }
+        return true;
+    } else {
+        return false;
+    }
 }
 
 ConstStream::ConstStream(const char *data, size_t size){

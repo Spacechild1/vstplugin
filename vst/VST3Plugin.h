@@ -161,6 +161,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
         return window_.get();
     }
  private:
+    TUID uid_;
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
@@ -204,6 +205,8 @@ class BaseStream : public IBStream {
     tresult PLUGIN_API tell  (int64* pos) override;
     virtual const char *data() const = 0;
     virtual size_t size() const = 0;
+    void setPos(int64 pos);
+    int64 getPos() const;
     void rewind();
     bool writeInt32(int32 i);
     bool writeInt64(int64 i);

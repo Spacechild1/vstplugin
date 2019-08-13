@@ -293,12 +293,14 @@ struct PluginInfo {
         SysexOutput = 1 << 7
     };
     uint32_t flags_ = 0;
+#if USE_VST2
     // shell plugin
     struct ShellPlugin {
         std::string name;
         int id;
     };
     std::vector<ShellPlugin> shellPlugins_;
+#endif
     // param name to param index
     std::unordered_map<std::string, int> paramMap_;
     // param index to ID (VST3 only)
