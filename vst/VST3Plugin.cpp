@@ -309,6 +309,10 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     std::tie(numAuxOutputs_, auxOutputIndex_) = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
     std::tie(numMidiInChannels_, midiInIndex_) = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
     std::tie(numMidiOutChannels_, midiOutIndex_) = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
+    LOG_DEBUG("in: " << numInputs_ << " (" << inputIndex_ << ")");
+    LOG_DEBUG("auxIn: " << numAuxInputs_ << " (" << auxInputIndex_ << ")");
+    LOG_DEBUG("out: " << numOutputs_ << " (" << outputIndex_ << ")");
+    LOG_DEBUG("auxOut: " << numAuxOutputs_ << " (" << auxOutputIndex_ << ")");
     // finally get remaining info
     if (info){
         // vendor name (if still empty)
@@ -445,7 +449,31 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
 }
 
 void VST3Plugin::process(ProcessData<float>& data){
-
+    // buffers
+    Vst::AudioBusBuffers inBuffers[2];
+    Vst::AudioBusBuffers outBuffers[2];
+    inBuffers[0].silenceFlags = 0;
+    inBuffers[0].numChannels = numInputs_;
+    inBuffers[0].channelBuffers32 = (float **)data.input;
+    inBuffers[1].silenceFlags = 0;
+    inBuffers[1].numChannels = numAuxInputs_;
+    inBuffers[1].channelBuffers32 = (float **)data.auxInput;
+    outBuffers[0].silenceFlags = 0;
+    outBuffers[0].numChannels = numAuxOutputs_;
+    outBuffers[0].channelBuffers32 = data.output;
+    outBuffers[1].silenceFlags = 0;
+    outBuffers[1].numChannels = numAuxOutputs_;
+    outBuffers[1].channelBuffers32 = data.auxOutput;
+    // process data
+    Vst::ProcessData processData;
+    processData.symbolicSampleSize = Vst::kSample32;
+    processData.numSamples = data.numSamples;
+    processData.numInputs = data.auxInput ? 2 : 1;
+    processData.inputs = inBuffers;
+    processData.numOutputs = data.auxOutput ? 2 : 1;
+    processData.outputs = outBuffers;
+    // process
+    processor_->process(processData);
 }
 
 void VST3Plugin::process(ProcessData<double>& data){
@@ -465,9 +493,11 @@ bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
 
 void VST3Plugin::suspend(){
     processor_->setProcessing(false);
+    component_->setActive(false);
 }
 
 void VST3Plugin::resume(){
+    component_->setActive(true);
     processor_->setProcessing(true);
 }
 

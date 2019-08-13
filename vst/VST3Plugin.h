@@ -201,6 +201,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     // special parameters
     int programChangeID_ = -1;
     int bypassID_ = -1;
+    // process
 };
 
 class BaseStream : public IBStream {
