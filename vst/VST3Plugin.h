@@ -10,6 +10,7 @@
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/base/ibstream.h"
@@ -171,6 +172,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
         return window_.get();
     }
  private:
+    void doProcess(Vst::ProcessData& data);
     TUID uid_;
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
@@ -179,17 +181,20 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
-    // busses (channel count + index)
-    int numInputs_ = 0;
-    int numAuxInputs_ = 0;
-    int numOutputs_ = 0;
-    int numAuxOutputs_ = 0;
+    // audio
+    enum BusType {
+        Main = 0,
+        Aux = 1
+    };
+    Vst::AudioBusBuffers audioInput_[2]; // main + aux
+    Vst::AudioBusBuffers audioOutput_[2]; // main + aux
+    Vst::ProcessContext context_;
+    // midi
     int numMidiInChannels_ = 0;
     int numMidiOutChannels_ = 0;
     // special parameters
     int programChangeID_ = -1;
     int bypassID_ = -1;
-    // process
 };
 
 class BaseStream : public IBStream {

@@ -207,6 +207,18 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
     : factory_(std::move(f)), info_(std::move(desc))
 {
+    memset(audioInput_, 0, sizeof(audioInput_));
+    memset(audioOutput_, 0, sizeof(audioOutput_));
+    memset(&context_, 0, sizeof(context_));
+    context_.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kContTimeValid
+            | Vst::ProcessContext::kProjectTimeMusicValid | Vst::ProcessContext::kBarPositionValid
+            | Vst::ProcessContext::kCycleValid | Vst::ProcessContext::kTempoValid
+            | Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kClockValid;
+    context_.sampleRate = 1;
+    context_.tempo = 120;
+    context_.timeSigNumerator = 4;
+    context_.timeSigDenominator = 4;
+
     // are we probing?
     auto info = !info_ ? std::make_shared<PluginInfo>(factory_) : nullptr;
     TUID uid;
@@ -313,18 +325,12 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
         return 0;
     };
-    numInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
-    numAuxInputs_ = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
-    numOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
-    numAuxOutputs_ = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
+    audioInput_[Main].numChannels = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
+    audioInput_[Aux].numChannels = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
+    audioOutput_[Main].numChannels = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
+    audioOutput_[Aux].numChannels = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
     numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
     numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
-    LOG_DEBUG("in: " << numInputs_);
-    LOG_DEBUG("auxIn: " << numAuxInputs_);
-    LOG_DEBUG("out: " << numOutputs_);
-    LOG_DEBUG("auxOut: " << numAuxOutputs_);
-    LOG_DEBUG("midiIn: " << numMidiInChannels_);
-    LOG_DEBUG("midiOut: " << numMidiOutChannels_);
     // finally get remaining info
     if (info){
         // vendor name (if still empty)
@@ -471,37 +477,59 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     setup.sampleRate = sampleRate;
     setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     processor_->setupProcessing(setup);
+
+    context_.sampleRate = sampleRate;
+    // update project time in samples (assumes the tempo is valid for the whole project)
+    double time = context_.projectTimeMusic / context_.tempo * 60.f;
+    context_.projectTimeSamples = time * sampleRate;
 }
 
 void VST3Plugin::process(ProcessData<float>& data){
     // buffers
-    Vst::AudioBusBuffers inBuffers[2];
-    Vst::AudioBusBuffers outBuffers[2];
-    inBuffers[0].silenceFlags = 0;
-    inBuffers[0].numChannels = numInputs_;
-    inBuffers[0].channelBuffers32 = (float **)data.input;
-    inBuffers[1].silenceFlags = 0;
-    inBuffers[1].numChannels = numAuxInputs_;
-    inBuffers[1].channelBuffers32 = (float **)data.auxInput;
-    outBuffers[0].silenceFlags = 0;
-    outBuffers[0].numChannels = numAuxOutputs_;
-    outBuffers[0].channelBuffers32 = data.output;
-    outBuffers[1].silenceFlags = 0;
-    outBuffers[1].numChannels = numAuxOutputs_;
-    outBuffers[1].channelBuffers32 = data.auxOutput;
+    audioInput_[Main].channelBuffers32 = (float **)data.input;
+    audioInput_[Aux].channelBuffers32 = (float **)data.auxInput;
+    audioOutput_[Main].channelBuffers32 = data.output;
+    audioOutput_[Aux].channelBuffers32 = data.auxOutput;
     // process data
     Vst::ProcessData processData;
     processData.symbolicSampleSize = Vst::kSample32;
     processData.numSamples = data.numSamples;
     processData.numInputs = data.auxInput ? 2 : 1;
-    processData.inputs = inBuffers;
     processData.numOutputs = data.auxOutput ? 2 : 1;
-    processData.outputs = outBuffers;
-    // process
-    processor_->process(processData);
+    doProcess(processData);
 }
 
 void VST3Plugin::process(ProcessData<double>& data){
+    // buffers
+    audioInput_[Main].channelBuffers64 = (double **)data.input;
+    audioInput_[Aux].channelBuffers64 = (double **)data.auxInput;
+    audioOutput_[Main].channelBuffers64 = data.output;
+    audioOutput_[Aux].channelBuffers64 = data.auxOutput;
+    // process data
+    Vst::ProcessData processData;
+    processData.symbolicSampleSize = Vst::kSample64;
+    processData.numSamples = data.numSamples;
+    processData.numInputs = data.auxInput ? 2 : 1;
+    processData.numOutputs = data.auxOutput ? 2 : 1;
+    doProcess(processData);
+}
+
+void VST3Plugin::doProcess(Vst::ProcessData &data){
+    data.inputs = audioInput_;
+    data.outputs = audioOutput_;
+    data.processContext = &context_;
+    // process
+    processor_->process(data);
+
+    context_.continousTimeSamples += data.numSamples;
+    context_.projectTimeSamples += data.numSamples;
+    // advance project time in bars
+    float sec = data.numSamples / context_.sampleRate;
+    float numBeats = sec * context_.tempo / 60.f;
+    context_.projectTimeMusic += numBeats;
+    // bar start: simply round project time (in bars) down to bar length
+    float barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
+    context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
 
 }
 
@@ -527,19 +555,19 @@ void VST3Plugin::resume(){
 }
 
 int VST3Plugin::getNumInputs() const {
-    return numInputs_;
+    return audioInput_[Main].numChannels;
 }
 
 int VST3Plugin::getNumAuxInputs() const {
-    return numAuxInputs_;
+    return audioInput_[Aux].numChannels;
 }
 
 int VST3Plugin::getNumOutputs() const {
-    return numOutputs_;
+    return audioOutput_[Main].numChannels;
 }
 
 int VST3Plugin::getNumAuxOutputs() const {
-    return numAuxOutputs_;
+    return audioOutput_[Aux].numChannels;
 }
 
 bool VST3Plugin::isSynth() const {
@@ -599,18 +627,32 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
 }
 
 void VST3Plugin::setTempoBPM(double tempo){
+    if (tempo > 0){
+        context_.tempo = tempo;
+    } else {
+        LOG_ERROR("tempo must be greater than 0!");
+    }
 }
 
 void VST3Plugin::setTimeSignature(int numerator, int denominator){
-
+    context_.timeSigNumerator = numerator;
+    context_.timeSigDenominator = denominator;
 }
 
 void VST3Plugin::setTransportPlaying(bool play){
-
+    if (play){
+        context_.state |= Vst::ProcessContext::kPlaying; // set flag
+    } else {
+        context_.state &= ~Vst::ProcessContext::kPlaying; // clear flag
+    }
 }
 
 void VST3Plugin::setTransportRecording(bool record){
-
+    if (record){
+        context_.state |= Vst::ProcessContext::kRecording; // set flag
+    } else {
+        context_.state &= ~Vst::ProcessContext::kRecording; // clear flag
+    }
 }
 
 void VST3Plugin::setTransportAutomationWriting(bool writing){
@@ -622,23 +664,30 @@ void VST3Plugin::setTransportAutomationReading(bool reading){
 }
 
 void VST3Plugin::setTransportCycleActive(bool active){
-
+    if (active){
+        context_.state |= Vst::ProcessContext::kCycleActive; // set flag
+    } else {
+        context_.state &= ~Vst::ProcessContext::kCycleActive; // clear flag
+    }
 }
 
 void VST3Plugin::setTransportCycleStart(double beat){
-
+    context_.cycleStartMusic = beat;
 }
 
 void VST3Plugin::setTransportCycleEnd(double beat){
-
+    context_.cycleEndMusic = beat;
 }
 
 void VST3Plugin::setTransportPosition(double beat){
-
+    context_.projectTimeMusic = beat;
+    // update project time in samples (assuming the tempo is valid for the whole "project")
+    double time = beat / context_.tempo * 60.0;
+    context_.projectTimeSamples = time * context_.sampleRate;
 }
 
 double VST3Plugin::getTransportPosition() const {
-    return 0;
+    return context_.projectTimeMusic;
 }
 
 int VST3Plugin::getNumMidiInputChannels() const {
