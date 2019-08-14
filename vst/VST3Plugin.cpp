@@ -31,13 +31,9 @@ using namespace VST3;
 namespace Steinberg {
 namespace Vst {
 
-/*////////////////////////////////////////////////////////////////////////*/
-
+//------------------------------------------------------------------------
 // copied from public.sdk/vst/vstpresetfile.cpp
 
-//------------------------------------------------------------------------
-// Preset Chunk IDs
-//------------------------------------------------------------------------
 static const Vst::ChunkID commonChunks[Vst::kNumPresetChunks] = {
     {'V', 'S', 'T', '3'},	// kHeader
     {'C', 'o', 'm', 'p'},	// kComponentState
@@ -47,35 +43,26 @@ static const Vst::ChunkID commonChunks[Vst::kNumPresetChunks] = {
     {'L', 'i', 's', 't'}	// kChunkList
 };
 
-//------------------------------------------------------------------------
 // Preset Header: header id + version + class id + list offset
 static const int32 kFormatVersion = 1;
 static const int32 kClassIDSize = 32; // ASCII-encoded FUID
 static const int32 kHeaderSize = sizeof (Vst::ChunkID) + sizeof (int32) + kClassIDSize + sizeof (TSize);
 static const int32 kListOffsetPos = kHeaderSize - sizeof (TSize);
 
-//------------------------------------------------------------------------
 const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 {
     return commonChunks[type];
 }
 
-#ifdef verify
-#undef verify
-#endif
-
 //------------------------------------------------------------------------
-inline bool verify (tresult result)
-{
-    return result == kResultOk || result == kNotImplemented;
-}
 
 } // Vst
 } // Steinberg
 
-/*///////////////////////////////////////////////////////////////////*/
 
 namespace vst {
+
+/*/////////////////////// VST3Factory /////////////////////////*/
 
 VST3Factory::VST3Factory(const std::string& path)
     : path_(path), module_(IModule::load(path))
@@ -192,7 +179,7 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe
     return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], shared_from_this(), desc);
 }
 
-/*/////////////////////// VST3Plugin /////////////////////////////*/
+/*///////////////////// VST3Plugin /////////////////////*/
 
 template <typename T>
 inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
@@ -940,6 +927,8 @@ void VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 
 }
 
+/*///////////////////// BaseStream ///////////////////////*/
+
 tresult BaseStream::read  (void* buffer, int32 numBytes, int32* numBytesRead){
     int available = size() - cursor_;
     if (available <= 0){
@@ -1126,6 +1115,8 @@ bool BaseStream::readTUID(TUID tuid){
     }
 }
 
+/*///////////////////// ConstStream //////////////////////////*/
+
 ConstStream::ConstStream(const char *data, size_t size){
     assign(data, size);
 }
@@ -1135,6 +1126,8 @@ void ConstStream::assign(const char *data, size_t size){
     size_ = size;
     cursor_ = 0;
 }
+
+/*///////////////////// WriteStream //////////////////////////*/
 
 WriteStream::WriteStream(const char *data, size_t size){
     buffer_.assign(data, size);
@@ -1163,7 +1156,7 @@ void WriteStream::transfer(std::string &dest){
     cursor_ = 0;
 }
 
-// PlugInterfaceSupport
+/*///////////////////// PlugInterfaceSupport //////////////////////////*/
 
 PlugInterfaceSupport::PlugInterfaceSupport ()
 {
@@ -1225,7 +1218,7 @@ void PlugInterfaceSupport::addInterface(const TUID _id){
     supportedInterfaces_.emplace_back(_id);
 }
 
-// HostApplication
+/*///////////////////// HostApplication //////////////////////////*/
 
 Vst::IHostApplication *getHostContext(){
     static auto app = new HostApplication;
@@ -1279,7 +1272,7 @@ tresult PLUGIN_API HostApplication::queryInterface (const char* _iid, void** obj
     return kResultFalse;
 }
 
-// HostAttributeList
+/*///////////////////// HostAttributeList //////////////////////////*/
 
 HostAttribute *HostAttributeList::find(AttrID aid) {
     auto it = list_.find(aid);
@@ -1347,6 +1340,16 @@ tresult PLUGIN_API HostAttributeList::getBinary (AttrID aid, const void*& data, 
         return kResultTrue;
     }
     return kResultFalse;
+}
+
+/*///////////////////// HostMessage //////////////////////////*/
+
+Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
+    LOG_DEBUG("HostMessage::getAttributes");
+    if (!attributeList_){
+        attributeList_.reset(new HostAttributeList);
+    }
+    return attributeList_.get();
 }
 
 } // vst

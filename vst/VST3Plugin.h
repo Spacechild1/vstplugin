@@ -79,6 +79,8 @@ class VST3Factory : public IFactory {
     bool valid_ = false;
 };
 
+//--------------------------------------------------------------------------------------------------------
+
 class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
@@ -197,6 +199,26 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     int bypassID_ = -1;
 };
 
+//--------------------------------------------------------------------------------
+
+struct FUID {
+    FUID(){
+        memset(uid, 0, sizeof(TUID));
+    }
+    FUID(const TUID _iid){
+        memcpy(uid, _iid, sizeof(TUID));
+    }
+    bool operator==(const TUID _iid) const {
+        return memcmp(uid, _iid, sizeof(TUID)) == 0;
+    }
+    bool operator!=(const TUID _iid) const {
+        return !(*this == _iid);
+    }
+    TUID uid;
+};
+
+//--------------------------------------------------------------------------------
+
 class BaseStream : public IBStream {
  public:
     MY_IMPLEMENT_QUERYINTERFACE(IBStream)
@@ -227,6 +249,8 @@ class BaseStream : public IBStream {
     int64_t cursor_ = 0;
 };
 
+//-----------------------------------------------------------------------------
+
 class ConstStream : public BaseStream {
  public:
     ConstStream() = default;
@@ -240,6 +264,8 @@ class ConstStream : public BaseStream {
     int64_t size_ = 0;
 };
 
+//-----------------------------------------------------------------------------
+
 class WriteStream : public BaseStream {
  public:
     WriteStream() = default;
@@ -252,23 +278,9 @@ protected:
     std::string buffer_;
 };
 
-Vst::IHostApplication * getHostContext();
+//-----------------------------------------------------------------------------
 
-struct FUID {
-    FUID(){
-        memset(uid, 0, sizeof(TUID));
-    }
-    FUID(const TUID _iid){
-        memcpy(uid, _iid, sizeof(TUID));
-    }
-    bool operator==(const TUID _iid) const {
-        return memcmp(uid, _iid, sizeof(TUID)) == 0;
-    }
-    bool operator!=(const TUID _iid) const {
-        return !(*this == _iid);
-    }
-    TUID uid;
-};
+Vst::IHostApplication * getHostContext();
 
 class PlugInterfaceSupport : public Vst::IPlugInterfaceSupport {
 public:
@@ -283,6 +295,8 @@ private:
     std::vector<FUID> supportedInterfaces_;
 };
 
+//-----------------------------------------------------------------------------
+
 class HostApplication : public Vst::IHostApplication {
 public:
     HostApplication ();
@@ -295,6 +309,8 @@ public:
 protected:
     std::unique_ptr<PlugInterfaceSupport> interfaceSupport_;
 };
+
+//-----------------------------------------------------------------------------
 
 struct HostAttribute {
     enum Type
@@ -344,6 +360,8 @@ struct HostAttribute {
     Type type;
 };
 
+//-----------------------------------------------------------------------------
+
 class HostObject : public FUnknown {
 public:
     virtual ~HostObject() {}
@@ -361,6 +379,8 @@ public:
 private:
     std::atomic<int32_t> refcount_{1};
 };
+
+//-----------------------------------------------------------------------------
 
 class HostAttributeList : public HostObject, public Vst::IAttributeList {
 public:
@@ -380,6 +400,8 @@ protected:
     std::unordered_map<std::string, HostAttribute> list_;
 };
 
+//-----------------------------------------------------------------------------
+
 class HostMessage : public HostObject, public Vst::IMessage {
 public:
     MY_IMPLEMENT_QUERYINTERFACE(Vst::IMessage)
@@ -387,13 +409,7 @@ public:
 
     const char* PLUGIN_API getMessageID () override { return messageID_.c_str(); }
     void PLUGIN_API setMessageID (const char* messageID) override { messageID_ = messageID; }
-    Vst::IAttributeList* PLUGIN_API getAttributes () override {
-        LOG_DEBUG("HostMessage::getAttributes");
-        if (!attributeList_){
-            attributeList_.reset(new HostAttributeList);
-        }
-        return attributeList_.get();
-    }
+    Vst::IAttributeList* PLUGIN_API getAttributes () override;
 protected:
     std::string messageID_;
     IPtr<HostAttributeList> attributeList_;

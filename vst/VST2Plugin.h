@@ -47,6 +47,8 @@ class VST2Factory : public IFactory {
     bool valid_ = false;
 };
 
+//-----------------------------------------------------------------------------
+
 class VST2Plugin final : public IPlugin {
     friend class VST2Factory;
  public:
