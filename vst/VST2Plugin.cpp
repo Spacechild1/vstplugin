@@ -292,6 +292,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
             PluginInfo::Param p;
             p.name = getParameterName(i);
             p.label = getParameterLabel(i);
+            p.id = i;
             // inverse mapping
             info->paramMap_[p.name] = i;
             // add parameter

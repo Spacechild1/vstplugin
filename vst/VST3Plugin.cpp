@@ -235,6 +235,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             throw Error("couldn't get class info!");
         }
     }
+    if (info){
+        LOG_DEBUG("creating " << info->name);
+    }
     // LATER safe this in PluginInfo
     memcpy(uid_, uid, sizeof(TUID));
     // create component
@@ -246,24 +249,24 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (component_->initialize(getHostContext()) != kResultOk){
         throw Error("couldn't initialize VST3 component");
     }
-    // first try to create controller from the component part
+    // first try to get controller from the component part (simple plugins)
     auto controller = FUnknownPtr<Vst::IEditController>(component_);
     if (controller){
         controller_ = shared(controller.getInterface());
     } else {
-        // if this fails, try to instantiate controller class
+        // if this fails, try to instantiate controller class and initialize it
         TUID controllerCID;
         if (component_->getControllerClassId(controllerCID) == kResultTrue){
             controller_ = createInstance<Vst::IEditController>(factory, controllerCID);
+            if (controller_ && (controller_->initialize(getHostContext()) != kResultOk)){
+                throw Error("couldn't initialize VST3 controller");
+            }
         }
     }
     if (controller_){
         LOG_DEBUG("created VST3 controller");
     } else {
         throw Error("couldn't get VST3 controller!");
-    }
-    if (controller_->initialize(getHostContext()) != kResultOk){
-        throw Error("couldn't initialize VST3 controller");
     }
     if (controller_->setComponentHandler(this) != kResultOk){
         throw Error("couldn't set component handler");
@@ -436,7 +439,18 @@ tresult VST3Plugin::endEdit(Vst::ParamID id){
 }
 
 tresult VST3Plugin::restartComponent(int32 flags){
-    LOG_DEBUG("need to restart component");
+#define PRINT_FLAG(name) if (flags & name) LOG_DEBUG(#name)
+    PRINT_FLAG(Vst::kReloadComponent);
+    PRINT_FLAG(Vst::kIoChanged);
+    PRINT_FLAG(Vst::kParamValuesChanged); 										///< (as result of a program change for example)  [SDK 3.0.0]
+    PRINT_FLAG(Vst::kLatencyChanged);
+    PRINT_FLAG(Vst::kParamTitlesChanged);
+    PRINT_FLAG(Vst::kMidiCCAssignmentChanged);
+    PRINT_FLAG(Vst::kNoteExpressionChanged);
+    PRINT_FLAG(Vst::kIoTitlesChanged);
+    PRINT_FLAG(Vst::kPrefetchableSupportChanged);
+    PRINT_FLAG(Vst::kRoutingInfoChanged);
+#undef PRINT_FLAG
     return kResultOk;
 }
 
