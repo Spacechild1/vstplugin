@@ -972,7 +972,9 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "sdkversion=" << sdkVersion << "\n";
     file << "id=" << id << "\n";
     file << "inputs=" << numInputs << "\n";
+    file << "auxinputs=" << numAuxOutputs << "\n";
     file << "outputs=" << numOutputs << "\n";
+    file << "auxoutputs=" << numAuxOutputs << "\n";
     file << "flags=" << (uint32_t)flags_ << "\n";
     // parameters
     file << "[parameters]\n";
@@ -1069,6 +1071,15 @@ std::vector<std::string> splitString(const std::string& str, char sep){
     return result;
 }
 
+template<typename T>
+void parseArg(T& lh, const std::string& rh){
+    lh = std::stol(rh);
+}
+
+void parseArg(std::string& lh, const std::string& rh){
+    lh = rh;
+}
+
 void PluginInfo::deserialize(std::istream& file) {
     // first check for sections, then for keys!
     bool start = false;
@@ -1127,36 +1138,35 @@ void PluginInfo::deserialize(std::istream& file) {
             std::string key;
             std::string value;
             getKeyValuePair(line, key, value);
+            #define MATCH(name, field) else if (name == key) parseArg(field, value)
             try {
-                if (key == "path"){
-                    path = std::move(value);
-                } else if (key == "name"){
-                    name = std::move(value);
-                } else if (key == "vendor"){
-                    vendor = std::move(value);
-                } else if (key == "category"){
-                    category = std::move(value);
-                } else if (key == "version"){
-                    version = std::move(value);
-                } else if (key == "sdkversion"){
-                    sdkVersion = std::move(value);
-                } else if (key == "id"){
-                    id = std::stol(value);
-                } else if (key == "inputs"){
-                    numInputs = std::stol(value);
-                } else if (key == "outputs"){
-                    numOutputs = std::stol(value);
-                } else if (key == "flags"){
-                    flags_ = std::stol(value);
-                } else {
-                    throw Error("unknown key: " + key);
+                if (false) ;
+                MATCH("path", path);
+                MATCH("name", name);
+                MATCH("vendor", vendor);
+                MATCH("category", category);
+                MATCH("version", version);
+                MATCH("sdkversion", sdkVersion);
+                MATCH("id", id);
+                MATCH("inputs", numInputs);
+                MATCH("auxinputs", numAuxInputs);
+                MATCH("outputs", numOutputs);
+                MATCH("auxoutputs", numAuxOutputs);
+                MATCH("flags", flags_);
+                else {
+                    LOG_WARNING("unknown key: " << key);
+                    // throw Error("unknown key: " + key);
                 }
             }
+            #undef MATCH
             catch (const std::invalid_argument& e) {
                 throw Error("invalid argument for key '" + key + "': " + value);
             }
             catch (const std::out_of_range& e) {
                 throw Error("out of range argument for key '" + key + "': " + value);
+            }
+            catch (const std::exception& e){
+                throw Error("unknown error: " + std::string(e.what()));
             }
         } else {
             throw Error("bad data: " + line);

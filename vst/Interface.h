@@ -204,12 +204,14 @@ struct PluginInfo {
     std::string sdkVersion;
     int id = 0;
     int numInputs = 0;
+    int numAuxInputs = 0;
     int numOutputs = 0;
+    int numAuxOutputs = 0;
     // parameters
     struct Param {
         std::string name;
         std::string label;
-        uint32_t id = 0; // VST3 only
+        uint32_t id = 0;
     };
     std::vector<Param> parameters;
     void addParamAlias(int index, const std::string& key){
@@ -303,10 +305,12 @@ struct PluginInfo {
 #endif
     // param name to param index
     std::unordered_map<std::string, int> paramMap_;
+#if USE_VST3
     // param index to ID (VST3 only)
     std::unordered_map<int, uint32_t> indexToIdMap_;
     // param ID to index (VST3 only)
     std::unordered_map<uint32_t, int> idToIndexMap_;
+#endif
 };
 
 class IModule {
