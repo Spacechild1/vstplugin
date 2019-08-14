@@ -865,10 +865,6 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
-    if (pluginUseCount_ > 0) {
-        LOG_ERROR("BUG: pluginUseCount_ not 0 in destructor!");
-        return;
-    }
     close();
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
@@ -998,7 +994,9 @@ bool VSTPluginDelegate::check() {
 void VSTPluginDelegate::close() {
     if (plugin_) {
         LOG_DEBUG("about to close");
-        if (pluginUseCount_ > 0) {
+        // owner_ == 0 -> close() called as result of this being the last reference,
+        // otherwise we check if there is more than one reference.
+        if (owner_ && !owner_->delegate_.unique()) {
             LOG_WARNING("VSTPlugin: can't close plugin while commands are still running");
             return;
         }
@@ -1006,6 +1004,8 @@ void VSTPluginDelegate::close() {
         if (!cmdData) {
             return;
         }
+        // unset listener!
+        plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
         cmdData->value = editor_;
         // don't set owner!
@@ -1653,13 +1653,10 @@ void cmdRTfree(World *world, void * cmdData) {
 }
 
 // 'clean' version for non-POD data
-template<bool owner, typename T>
+template<typename T>
 void cmdRTfree(World *world, void * cmdData) {
     if (cmdData) {
         auto data = (T*)cmdData;
-        if (owner) {
-            data->owner->unref();
-        }
         data->~T(); // destruct members (e.g. release rt::shared_pointer in RT thread)
         RTFree(world, cmdData);
         LOG_DEBUG("cmdRTfree!");
@@ -1675,27 +1672,12 @@ void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
         if (owner) {
-            ref();
             cmdData->owner = shared_from_this();
         }
         DoAsynchronousCommand(world(),
-            0, 0, cmdData, stage2, stage3, stage4, cmdRTfree<owner, T>, 0, 0);
+            0, 0, cmdData, stage2, stage3, stage4, cmdRTfree<T>, 0, 0);
     }
 }
-
-void VSTPluginDelegate::ref() {
-    pluginUseCount_++;
-    LOG_DEBUG("ref");
-}
-
-void VSTPluginDelegate::unref() {
-    pluginUseCount_--;
-    if (pluginUseCount_ < 0) {
-        LOG_ERROR("BUG: VSTPluginDelegate::unref");
-    }
-    LOG_DEBUG("unref");
-}
-
 
 /*** unit command callbacks ***/
 

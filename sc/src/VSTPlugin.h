@@ -159,14 +159,11 @@ public:
     template<bool owner = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
-    void ref();
-    void unref();
 private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
     bool editor_ = false;
     bool isLoading_ = false;
-    int pluginUseCount_ = 0; // plugin currently used by asynchronuous commands?
     std::thread::id rtThreadID_;
     std::thread::id nrtThreadID_;
     World* world_;
