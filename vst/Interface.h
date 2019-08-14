@@ -133,12 +133,6 @@ class IPlugin {
     virtual std::string getProgramNameIndexed(int index) const = 0;
     virtual int getNumPrograms() const = 0;
 
-    virtual bool hasChunkData() const = 0;
-    virtual void setProgramChunkData(const void *data, size_t size) = 0;
-    virtual void getProgramChunkData(void **data, size_t *size) const = 0;
-    virtual void setBankChunkData(const void *data, size_t size) = 0;
-    virtual void getBankChunkData(void **data, size_t *size) const = 0;
-
     // the following methods throws an Error exception on failure!
     virtual void readProgramFile(const std::string& path) = 0;
     virtual void readProgramData(const char *data, size_t size) = 0;

@@ -721,22 +721,6 @@ int VST3Plugin::getNumPrograms() const {
     return 0;
 }
 
-bool VST3Plugin::hasChunkData() const {
-    return false;
-}
-
-void VST3Plugin::setProgramChunkData(const void *data, size_t size){
-}
-
-void VST3Plugin::getProgramChunkData(void **data, size_t *size) const {
-}
-
-void VST3Plugin::setBankChunkData(const void *data, size_t size){
-}
-
-void VST3Plugin::getBankChunkData(void **data, size_t *size) const {
-}
-
 void VST3Plugin::readProgramFile(const std::string& path){
     std::ifstream file(path, std::ios_base::binary);
     if (!file.is_open()){

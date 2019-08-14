@@ -116,12 +116,6 @@ class VST2Plugin final : public IPlugin {
     std::string getProgramNameIndexed(int index) const override;
     int getNumPrograms() const override;
 
-    bool hasChunkData() const override;
-    void setProgramChunkData(const void *data, size_t size) override;
-    void getProgramChunkData(void **data, size_t *size) const override;
-    void setBankChunkData(const void *data, size_t size) override;
-    void getBankChunkData(void **data, size_t *size) const override;
-
     void readProgramFile(const std::string& path) override;
     void readProgramData(const char *data, size_t size) override;
     void writeProgramFile(const std::string& path) override;
@@ -149,10 +143,17 @@ class VST2Plugin final : public IPlugin {
     std::string getSDKVersion() const;
     std::string getParameterName(int index) const;
     std::string getParameterLabel(int index) const;
+        // other helpers
     static bool canHostDo(const char *what);
     bool hasFlag(VstAEffectFlags flag) const;
     void parameterAutomated(int index, float value);
     VstTimeInfo * getTimeInfo(VstInt32 flags);
+    bool hasChunkData() const;
+    void setProgramChunkData(const void *data, size_t size);
+    void getProgramChunkData(void **data, size_t *size) const;
+    void setBankChunkData(const void *data, size_t size);
+    void getBankChunkData(void **data, size_t *size) const;
+        // processing
     void preProcess(int nsamples);
     void postProcess(int nsample);
         // process VST events from plugin

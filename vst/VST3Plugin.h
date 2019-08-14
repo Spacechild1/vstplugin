@@ -151,12 +151,6 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     std::string getProgramNameIndexed(int index) const override;
     int getNumPrograms() const override;
 
-    bool hasChunkData() const override;
-    void setProgramChunkData(const void *data, size_t size) override;
-    void getProgramChunkData(void **data, size_t *size) const override;
-    void setBankChunkData(const void *data, size_t size) override;
-    void getBankChunkData(void **data, size_t *size) const override;
-
     void readProgramFile(const std::string& path) override;
     void readProgramData(const char *data, size_t size) override;
     void writeProgramFile(const std::string& path) override;
