@@ -601,24 +601,9 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
     if (window_){
         // TODO
     } else {
-        FUnknownPtr<Vst::IConnectionPoint> p1(component_);
-        if (p1){
-            p1->notify(message);
-        }
-        FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
-        if (p2){
-            p2->notify(message);
-        }
+        sendMessage(message);
     }
     return kResultTrue;
-}
-
-int VST3Plugin::canDo(const char *what) const {
-    return 0;
-}
-
-intptr_t VST3Plugin::vendorSpecific(int index, intptr_t value, void *p, float opt){
-    return 0;
 }
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
@@ -1310,6 +1295,59 @@ void VST3Plugin::closeEditor(){
 
 void VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
 
+}
+
+// VST3 only
+void VST3Plugin::beginMessage() {
+    msg_.reset(new HostMessage);
+}
+
+void VST3Plugin::addInt(const char* id, int64_t value) {
+    if (msg_){
+        msg_->getAttributes()->setInt(id, value);
+    }
+}
+
+void VST3Plugin::addFloat(const char* id, double value) {
+    if (msg_){
+        msg_->getAttributes()->setFloat(id, value);
+    }
+}
+
+void VST3Plugin::addString(const char* id, const char *value) {
+    addString(id, std::string(value));
+}
+
+void VST3Plugin::addString(const char* id, const std::string& value) {
+    if (msg_){
+        Vst::String128 buf;
+        StringConvert::convert(value, buf);
+        msg_->getAttributes()->setString(id, buf);
+    }
+}
+
+void VST3Plugin::addBinary(const char* id, const char *data, size_t size) {
+    if (msg_){
+        msg_->getAttributes()->setBinary(id, data, size);
+    }
+}
+
+void VST3Plugin::endMessage() {
+    if (msg_){
+        sendMessage(msg_.get());
+        msg_ = nullptr;
+    }
+}
+
+void VST3Plugin::sendMessage(Vst::IMessage *msg){
+    FUnknownPtr<Vst::IConnectionPoint> p1(component_);
+    if (p1){
+        p1->notify(msg);
+    }
+    FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
+    if (p2){
+        p2->notify(msg);
+    }
 }
 
 /*///////////////////// BaseStream ///////////////////////*/

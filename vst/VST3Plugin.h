@@ -179,9 +179,6 @@ class VST3Plugin final :
 
     const PluginInfo& info() const { return *info_; }
 
-    virtual int canDo(const char *what) const override;
-    virtual intptr_t vendorSpecific(int index, intptr_t value, void *ptr, float opt) override;
-
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;
     void process(ProcessData<double>& data) override;
@@ -254,10 +251,20 @@ class VST3Plugin final :
     IWindow *getWindow() const override {
         return window_.get();
     }
+
+    // VST3 only
+    void beginMessage() override;
+    void addInt(const char* id, int64_t value) override;
+    void addFloat(const char* id, double value) override;
+    void addString(const char* id, const char *value) override;
+    void addString(const char* id, const std::string& value) override;
+    void addBinary(const char* id, const char *data, size_t size) override;
+    void endMessage() override;
  protected:
     void doProcess(Vst::ProcessData& data);
     void handleEvents();
     void updateAutomationState();
+    void sendMessage(Vst::IMessage* msg);
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
@@ -286,6 +293,8 @@ class VST3Plugin final :
     std::vector<Vst::ParamValue> paramCache_;
     // programs
     int program_ = 0;
+    // message from host to plugin
+    IPtr<Vst::IMessage> msg_;
 };
 
 //--------------------------------------------------------------------------------
