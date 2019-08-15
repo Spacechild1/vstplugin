@@ -86,13 +86,17 @@ class ParamValueQueue: public Vst::IParamValueQueue {
  public:
     static const int defaultNumPoints = 64;
 
-    ParamValueQueue(Vst::ParamID id) : id_(id) {
+    ParamValueQueue() {
         values_.reserve(defaultNumPoints);
     }
 
     MY_IMPLEMENT_QUERYINTERFACE(Vst::IParamValueQueue)
     DUMMY_REFCOUNT_METHODS
 
+    void setParameterId(Vst::ParamID id){
+        values_.clear();
+        id_ = id;
+    }
     Vst::ParamID PLUGIN_API getParameterId() override { return id_; }
     int32 PLUGIN_API getPointCount() override { return values_.size(); }
     tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) override {
@@ -121,7 +125,6 @@ class ParamValueQueue: public Vst::IParamValueQueue {
         values_.emplace_back(value, sampleOffset);
         return kResultOk;
     }
-    void clear(){ values_.clear(); }
  protected:
     struct Value {
         Value(Vst::ParamValue v, int32 offset) : value(v), sampleOffset(offset) {}
@@ -129,7 +132,7 @@ class ParamValueQueue: public Vst::IParamValueQueue {
         int32 sampleOffset;
     };
     std::vector<Value> values_;
-    Vst::ParamID id_;
+    Vst::ParamID id_ = Vst::kNoParamId;
 };
 
 //----------------------------------------------------------------------
@@ -139,33 +142,42 @@ class ParameterChanges: public Vst::IParameterChanges {
     DUMMY_REFCOUNT_METHODS
 
     void setMaxNumParameters(int n){
-        parameterChanges_.reserve(n);
+        parameterChanges_.resize(n);
     }
     int32 PLUGIN_API getParameterCount() override {
-        return parameterChanges_.size();
+        return useCount_;
     }
     Vst::IParamValueQueue* PLUGIN_API getParameterData(int32 index) override {
-        if (index >= 0 && index < (int32)parameterChanges_.size()){
+        if (index >= 0 && index < useCount_){
             return &parameterChanges_[index];
         } else {
             return nullptr;
         }
     }
     Vst::IParamValueQueue* PLUGIN_API addParameterData(const Vst::ParamID& id, int32& index) override {
-        for (int i = 0; i < (int)parameterChanges_.size(); ++i){
+        for (int i = 0; i < useCount_; ++i){
             auto& param = parameterChanges_[i];
             if (param.getParameterId() == id){
                 index = i;
                 return &param;
             }
         }
-        index = parameterChanges_.size();
-        parameterChanges_.emplace_back(id);
-        return &parameterChanges_.back();
+        if (useCount_ < (int)parameterChanges_.size()){
+            index = useCount_++;
+            parameterChanges_[index].setParameterId(id);
+            return &parameterChanges_[index];
+        } else {
+            LOG_ERROR("bug addParameterData");
+            index = 0;
+            return nullptr;
+        }
     }
-    void clear(){ parameterChanges_.clear(); }
+    void clear(){
+        useCount_ = 0;
+    }
  protected:
     std::vector<ParamValueQueue> parameterChanges_;
+    int useCount_ = 0;
 };
 
 //--------------------------------------------------------------------------------
