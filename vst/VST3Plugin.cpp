@@ -23,6 +23,7 @@ DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IComponentHandler)
 DEF_CLASS_IID (Vst::IConnectionPoint)
 DEF_CLASS_IID (Vst::IEditController)
+DEF_CLASS_IID (Vst::IMidiMapping)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (Vst::IUnitData)
@@ -815,11 +816,84 @@ bool VST3Plugin::hasMidiOutput() const {
 }
 
 void VST3Plugin::sendMidiEvent(const MidiEvent &event){
-
+    Vst::Event e;
+    e.busIndex = 0;
+    e.sampleOffset = 0;
+    e.ppqPosition = context_.projectTimeMusic;
+    e.flags = Vst::Event::kIsLive;
+    auto status = event.data[0] & 0xf0;
+    auto channel = event.data[0] & 0x0f;
+    auto data1 = event.data[1] & 127;
+    auto data2 = event.data[2] & 127;
+    auto value = (float)data2 / 127.f;
+    switch (status){
+    case 0x80: // note off
+        e.noteOff.channel = channel;
+        e.noteOff.noteId = -1;
+        e.noteOff.pitch = data1;
+        e.noteOff.velocity = value;
+        e.noteOff.tuning = 0;
+        break;
+    case 0x90: // note on
+        e.noteOn.channel = channel;
+        e.noteOn.noteId = -1;
+        e.noteOn.pitch = data1;
+        e.noteOn.velocity = value;
+        e.noteOn.tuning = 0;
+        e.noteOn.length = 0;
+        break;
+    case 0xa0: // polytouch
+        e.polyPressure.channel = channel;
+        e.polyPressure.pitch = data1;
+        e.polyPressure.pressure = value;
+        e.polyPressure.noteId = -1;
+        break;
+    case 0xb0: // CC
+        {
+            Vst::ParamID id = Vst::kNoParamId;
+            FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
+            if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, data1, id) == kResultOk){
+                doSetParameter(id, value);
+            } else {
+                LOG_WARNING("MIDI CC control number " << data1 << " not supported");
+            }
+            return;
+        }
+    case 0xc0: // program change
+        setProgram(event.data[1]);
+        return;
+    case 0xd0: // channel aftertouch
+        {
+            Vst::ParamID id = Vst::kNoParamId;
+            FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
+            if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, Vst::kAfterTouch, id) == kResultOk){
+                doSetParameter(id, (float)data2 / 127.f);
+            } else {
+                LOG_WARNING("MIDI channel aftertouch not supported");
+            }
+            return;
+        }
+    case 0xe0: // pitch bend
+        {
+            Vst::ParamID id = Vst::kNoParamId;
+            FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
+            if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, Vst::kPitchBend, id) == kResultOk){
+                uint32_t bend = data1 | (data2 << 7);
+                doSetParameter(id, (float)bend / 16383.f);
+            } else {
+                LOG_WARNING("MIDI pitch bend not supported");
+            }
+            return;
+        }
+    default:
+        LOG_WARNING("MIDI system messages not supported!");
+        return;
+    }
+    inputEvents_.addEvent(e);
 }
 
 void VST3Plugin::sendSysexEvent(const SysexEvent &event){
-
+    // have to figure out ownership
 }
 
 void VST3Plugin::setParameter(int index, float value){
