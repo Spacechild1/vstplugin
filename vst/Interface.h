@@ -34,7 +34,7 @@ struct MidiEvent {
 };
 
 struct SysexEvent {
-    SysexEvent(const char *_data, size_t _size, int _delta = 0)
+    SysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
         : data(_data), size(_size), delta(_delta){}
     const char *data;
     size_t size;

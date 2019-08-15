@@ -517,7 +517,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     // setup parameter queues/cache
     int numParams = info_->numParameters();
     inputParamChanges_.setMaxNumParameters(numParams);
-    outputParamChanges_.setMaxNumParameters(numParams);
+    // outputParamChanges_.setMaxNumParameters(numParams);
     paramCache_.resize(numParams);
     for (int i = 0; i < numParams; ++i){
         auto id = info_->getParamID(i);
@@ -629,15 +629,18 @@ void VST3Plugin::doProcess(Vst::ProcessData &data){
     data.inputEvents = &inputEvents_;
     data.outputEvents = &outputEvents_;
     data.inputParameterChanges = &inputParamChanges_;
-    data.outputParameterChanges = &outputParamChanges_;
+    // data.outputParameterChanges = &outputParamChanges_;
+
     // process
     processor_->process(data);
+
     // clear input queues
     inputEvents_.clear();
     inputParamChanges_.clear();
-    // flush and clear output queues
-    outputEvents_.clear();
-    outputParamChanges_.clear();
+
+    // handle outgoing events
+    handleEvents();
+
     // update time info
     context_.continousTimeSamples += data.numSamples;
     context_.projectTimeSamples += data.numSamples;
@@ -648,6 +651,78 @@ void VST3Plugin::doProcess(Vst::ProcessData &data){
     // bar start: simply round project time (in bars) down to bar length
     float barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
     context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
+}
+
+#define norm2midi(x) (static_cast<uint8_t>((x) * 127.f) & 127)
+
+void VST3Plugin::handleEvents(){
+    auto listener = listener_.lock();
+    if (listener){
+        for (int i = 0; i < outputEvents_.getEventCount(); ++i){
+            Vst::Event event;
+            outputEvents_.getEvent(i, event);
+            if (event.type != Vst::Event::kDataEvent){
+                MidiEvent e;
+                switch (event.type){
+                case Vst::Event::kNoteOffEvent:
+                    e.data[0] = 0x80 | event.noteOff.channel;
+                    e.data[1] = event.noteOff.pitch;
+                    e.data[2] = norm2midi(event.noteOff.velocity);
+                    break;
+                case Vst::Event::kNoteOnEvent:
+                    e.data[0] = 0x90 | event.noteOn.channel;
+                    e.data[1] = event.noteOn.pitch;
+                    e.data[2] = norm2midi(event.noteOn.velocity);
+                    break;
+                case Vst::Event::kPolyPressureEvent:
+                    e.data[0] = 0xa0 | event.polyPressure.channel;
+                    e.data[1] = event.polyPressure.pitch;
+                    e.data[2] = norm2midi(event.polyPressure.pressure);
+                    break;
+                case Vst::Event::kLegacyMIDICCOutEvent:
+                    switch (event.midiCCOut.controlNumber){
+                    case Vst::kCtrlPolyPressure:
+                        e.data[0] = 0x0a | event.midiCCOut.channel;
+                        e.data[1] = event.midiCCOut.value;
+                        e.data[2] = event.midiCCOut.value2;
+                        break;
+                    case Vst::kCtrlProgramChange:
+                        e.data[0] = 0x0c | event.midiCCOut.channel;
+                        e.data[1] = event.midiCCOut.value;
+                        e.data[2] = event.midiCCOut.value2;
+                        break;
+                    case Vst::kAfterTouch:
+                        e.data[0] = 0x0d | event.midiCCOut.channel;
+                        e.data[1] = event.midiCCOut.value;
+                        e.data[2] = event.midiCCOut.value2;
+                        break;
+                    case Vst::kPitchBend:
+                        e.data[0] = 0x0e | event.midiCCOut.channel;
+                        e.data[1] = event.midiCCOut.value;
+                        e.data[2] = event.midiCCOut.value2;
+                        break;
+                    default: // CC
+                        e.data[0] = 0xb0 | event.midiCCOut.channel;
+                        e.data[1] = event.midiCCOut.controlNumber;
+                        e.data[2] = event.midiCCOut.value;
+                    }
+                    break;
+                default:
+                    LOG_DEBUG("got unsupported event type: " << event.type);
+                    continue;
+                }
+                listener->midiEvent(e);
+            } else {
+                if (event.data.type == Vst::DataEvent::kMidiSysEx){
+                    SysexEvent e((const char *)event.data.bytes, event.data.size);
+                    listener->sysexEvent(e);
+                } else {
+                    LOG_DEBUG("got unsupported data event");
+                }
+            }
+        }
+        outputEvents_.clear();
+    }
 }
 
 bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {

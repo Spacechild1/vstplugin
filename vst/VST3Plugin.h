@@ -247,6 +247,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     }
  protected:
     void doProcess(Vst::ProcessData& data);
+    void handleEvents();
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
@@ -270,7 +271,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     int numMidiOutChannels_ = 0;
     // parameters
     ParameterChanges inputParamChanges_;
-    ParameterChanges outputParamChanges_;
+    // ParameterChanges outputParamChanges_;
     std::vector<Vst::ParamValue> paramCache_;
     // programs
     int program_ = 0;
