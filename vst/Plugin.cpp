@@ -972,7 +972,7 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "sdkversion=" << sdkVersion << "\n";
     file << "id=" << id << "\n";
     file << "inputs=" << numInputs << "\n";
-    file << "auxinputs=" << numAuxOutputs << "\n";
+    file << "auxinputs=" << numAuxInputs << "\n";
     file << "outputs=" << numOutputs << "\n";
     file << "auxoutputs=" << numAuxOutputs << "\n";
     file << "flags=" << (uint32_t)flags_ << "\n";

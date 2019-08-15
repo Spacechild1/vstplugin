@@ -330,7 +330,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             }
         }
         info->numInputs = getNumInputs();
+        info->numAuxInputs = getNumAuxInputs();
         info->numOutputs = getNumOutputs();
+        info->numAuxOutputs = getNumAuxOutputs();
         uint32_t flags = 0;
         flags |= hasEditor() * PluginInfo::HasEditor;
         flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
