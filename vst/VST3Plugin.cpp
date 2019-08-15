@@ -828,6 +828,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
     auto value = (float)data2 / 127.f;
     switch (status){
     case 0x80: // note off
+        e.type = Vst::Event::kNoteOffEvent;
         e.noteOff.channel = channel;
         e.noteOff.noteId = -1;
         e.noteOff.pitch = data1;
@@ -835,6 +836,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.noteOff.tuning = 0;
         break;
     case 0x90: // note on
+        e.type = Vst::Event::kNoteOnEvent;
         e.noteOn.channel = channel;
         e.noteOn.noteId = -1;
         e.noteOn.pitch = data1;
@@ -843,6 +845,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.noteOn.length = 0;
         break;
     case 0xa0: // polytouch
+        e.type = Vst::Event::kPolyPressureEvent;
         e.polyPressure.channel = channel;
         e.polyPressure.pitch = data1;
         e.polyPressure.pressure = value;
