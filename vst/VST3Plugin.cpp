@@ -297,7 +297,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
     // check
     // get IO channel count
-    auto getChannelCount = [this](auto media, auto dir, auto type) {
+    auto getChannelCount = [this](auto media, auto dir, auto type) -> int {
         auto count = component_->getBusCount(media, dir);
         for (int i = 0; i < count; ++i){
             Vst::BusInfo bus;
@@ -1068,7 +1068,7 @@ bool BaseStream::writeInt64(int64 i){
 }
 
 bool BaseStream::writeChunkID(const Vst::ChunkID id){
-    int bytesWritten = 0;
+    int32 bytesWritten = 0;
     write((void *)id, sizeof(Vst::ChunkID), &bytesWritten);
     return bytesWritten == sizeof(Vst::ChunkID);
 }
@@ -1081,7 +1081,7 @@ struct GUIDStruct {
 };
 
 bool BaseStream::writeTUID(const TUID tuid){
-    int bytesWritten = 0;
+    int32 bytesWritten = 0;
     int i = 0;
     char buf[Vst::kClassIDSize+1];
 #if COM_COMPATIBLE
@@ -1120,13 +1120,13 @@ bool BaseStream::readInt64(int64& i){
 }
 
 bool BaseStream::readChunkID(Vst::ChunkID id){
-    int bytesRead = 0;
+    int32 bytesRead = 0;
     read((void *)id, sizeof(Vst::ChunkID), &bytesRead);
     return bytesRead == sizeof(Vst::ChunkID);
 }
 
 bool BaseStream::readTUID(TUID tuid){
-    int bytesRead = 0;
+    int32 bytesRead = 0;
     char buf[Vst::kClassIDSize+1];
     read((void *)buf, Vst::kClassIDSize, &bytesRead);
     if (bytesRead == Vst::kClassIDSize){
