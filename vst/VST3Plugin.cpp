@@ -935,6 +935,14 @@ bool VST3Plugin::setParameter(int index, const std::string &str){
 void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset){
     int32 dummy;
     inputParamChanges_.addParameterData(id, dummy)->addPoint(sampleOffset, value, dummy);
+    if (window_){
+        // The VST3 guys say that you must only call IEditController methods on the GUI thread!
+        // This means we have to transfer parameter changes to a ring buffer and install a timer
+        // on the GUI thread which polls the ring buffer and calls the edit controller.
+        // Similarly, we have to have a ringbuffer for parameter changes coming from the GUI.
+    } else {
+        controller_->setParamNormalized(id, value);
+    }
 }
 
 float VST3Plugin::getParameter(int index) const {
