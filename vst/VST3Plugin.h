@@ -242,8 +242,9 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     IWindow *getWindow() const override {
         return window_.get();
     }
- private:
+ protected:
     void doProcess(Vst::ProcessData& data);
+    void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
@@ -268,6 +269,8 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;
     std::vector<Vst::ParamValue> paramCache_;
+    // programs
+    int program_ = 0;
 };
 
 //--------------------------------------------------------------------------------

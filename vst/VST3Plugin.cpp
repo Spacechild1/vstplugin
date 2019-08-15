@@ -690,11 +690,16 @@ int VST3Plugin::getTailSize() const {
 }
 
 bool VST3Plugin::hasBypass() const {
-    return false;
+    return info().bypass != PluginInfo::NoParamID;
 }
 
 void VST3Plugin::setBypass(bool bypass){
-
+    auto id = info().bypass;
+    if (id != PluginInfo::NoParamID){
+        doSetParameter(id, bypass);
+    } else {
+        LOG_DEBUG("no bypass parameter");
+    }
 }
 
 #define makeChannels(n) ((1 << (n)) - 1)
@@ -818,25 +823,28 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 }
 
 void VST3Plugin::setParameter(int index, float value){
-    int32 dummy;
     auto id = info().getParamID(index);
-    inputParamChanges_.addParameterData(id, dummy)->addPoint(0, value, dummy);
+    doSetParameter(id, value);
     paramCache_[index] = value;
 }
 
 bool VST3Plugin::setParameter(int index, const std::string &str){
-    int32 dummy;
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
     if (StringConvert::convert(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
-            inputParamChanges_.addParameterData(id, dummy)->addPoint(0, value, dummy);
+            doSetParameter(id, value);
             paramCache_[index] = value;
             return true;
         }
     }
     return false;
+}
+
+void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset){
+    int32 dummy;
+    inputParamChanges_.addParameterData(id, dummy)->addPoint(sampleOffset, value, dummy);
 }
 
 float VST3Plugin::getParameter(int index) const {
@@ -854,29 +862,46 @@ std::string VST3Plugin::getParameterString(int index) const {
 }
 
 int VST3Plugin::getNumParameters() const {
-    return paramCache_.size();
+    return info().numParameters();
 }
 
 void VST3Plugin::setProgram(int program){
+    auto id = info().programChange;
+    if (id != PluginInfo::NoParamID){
+        if (program >= 0 && program < getNumPrograms()){
+            auto value = controller_->plainParamToNormalized(id, program);
+            doSetParameter(id, value);
+            program_ = program;
+        } else {
+            LOG_WARNING("program number out of range!");
+        }
+    } else {
+        LOG_DEBUG("no program change parameter");
+    }
 }
 
 void VST3Plugin::setProgramName(const std::string& name){
+    // ?
 }
 
 int VST3Plugin::getProgram() const {
-    return 0;
+    return program_;
 }
 
 std::string VST3Plugin::getProgramName() const {
-    return std::string{};
+    return getProgramNameIndexed(getProgram());
 }
 
 std::string VST3Plugin::getProgramNameIndexed(int index) const {
-    return std::string{};
+    if (index >= 0 && index < info().numPrograms()){
+        return info().programs[index];
+    } else {
+        return "";
+    }
 }
 
 int VST3Plugin::getNumPrograms() const {
-    return 0;
+    return info().numPrograms();
 }
 
 void VST3Plugin::readProgramFile(const std::string& path){
