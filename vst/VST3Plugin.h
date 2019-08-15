@@ -4,6 +4,7 @@
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivsthostapplication.h"
 #include "pluginterfaces/vst/ivstpluginterfacesupport.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
@@ -14,9 +15,9 @@
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "pluginterfaces/vst/ivstautomationstate.h"
 #include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
-#include "pluginterfaces/base/ibstream.h"
 
 #include "public.sdk/source/vst/vstpresetfile.h"
 #include "public.sdk/source/vst/hosting/stringconvert.h"
@@ -248,6 +249,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
  protected:
     void doProcess(Vst::ProcessData& data);
     void handleEvents();
+    void updateAutomationState();
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
@@ -264,6 +266,7 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     Vst::AudioBusBuffers audioInput_[2]; // main + aux
     Vst::AudioBusBuffers audioOutput_[2]; // main + aux
     Vst::ProcessContext context_;
+    int32 automationState_ = 0;
     // midi
     EventList inputEvents_;
     EventList outputEvents_;

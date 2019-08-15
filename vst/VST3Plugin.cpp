@@ -23,6 +23,7 @@ DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IComponentHandler)
 DEF_CLASS_IID (Vst::IConnectionPoint)
 DEF_CLASS_IID (Vst::IEditController)
+DEF_CLASS_IID (Vst::IAutomationState)
 DEF_CLASS_IID (Vst::IMidiMapping)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
@@ -557,7 +558,7 @@ tresult VST3Plugin::restartComponent(int32 flags){
 #define PRINT_FLAG(name) if (flags & name) LOG_DEBUG(#name)
     PRINT_FLAG(Vst::kReloadComponent);
     PRINT_FLAG(Vst::kIoChanged);
-    PRINT_FLAG(Vst::kParamValuesChanged); 										///< (as result of a program change for example)  [SDK 3.0.0]
+    PRINT_FLAG(Vst::kParamValuesChanged);
     PRINT_FLAG(Vst::kLatencyChanged);
     PRINT_FLAG(Vst::kParamTitlesChanged);
     PRINT_FLAG(Vst::kMidiCCAssignmentChanged);
@@ -853,11 +854,32 @@ void VST3Plugin::setTransportRecording(bool record){
 }
 
 void VST3Plugin::setTransportAutomationWriting(bool writing){
-
+    if (writing){
+        automationState_ |= Vst::IAutomationState::kWriteState;
+    } else {
+        automationState_ &= ~Vst::IAutomationState::kWriteState;
+    }
+    updateAutomationState();
 }
 
 void VST3Plugin::setTransportAutomationReading(bool reading){
+    if (reading){
+        automationState_ |= Vst::IAutomationState::kReadState;
+    } else {
+        automationState_ &= ~Vst::IAutomationState::kReadState;
+    }
+    updateAutomationState();
+}
 
+void VST3Plugin::updateAutomationState(){
+    if (window_){
+        // TODO ?
+    } else {
+        FUnknownPtr<Vst::IAutomationState> automationState(controller_);
+        if (automationState){
+            automationState->setAutomationState(automationState_);
+        }
+    }
 }
 
 void VST3Plugin::setTransportCycleActive(bool active){
@@ -1492,7 +1514,7 @@ PlugInterfaceSupport::PlugInterfaceSupport ()
     addInterface(Vst::IProgramListData::iid);
 
     //---VST 3.0.1--------------------------------
-    // addInterface(Vst::IMidiMapping::iid);
+    addInterface(Vst::IMidiMapping::iid);
 
     //---VST 3.1----------------------------------
     // addInterface(Vst::EditController2::iid);
@@ -1513,7 +1535,7 @@ PlugInterfaceSupport::PlugInterfaceSupport ()
     //---VST 3.6.5--------------------------------
     // addInterface(Vst::ChannelContext::IInfoListener::iid);
     // addInterface(Vst::IPrefetchableSupport::iid);
-    // addInterface(Vst::IAutomationState::iid);
+    addInterface(Vst::IAutomationState::iid);
 
     //---VST 3.6.11--------------------------------
     // addInterface(Vst::INoteExpressionPhysicalUIMapping::iid);
