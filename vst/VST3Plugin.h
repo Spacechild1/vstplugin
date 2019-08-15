@@ -8,6 +8,8 @@
 #include "pluginterfaces/vst/ivstpluginterfacesupport.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivstmessage.h"
+#include "pluginterfaces/vst/ivstparameterchanges.h"
+#include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
@@ -77,6 +79,126 @@ class VST3Factory : public IFactory {
     std::vector<std::string> pluginList_;
     mutable std::unordered_map<std::string, int> pluginIndexMap_;
     bool valid_ = false;
+};
+
+//----------------------------------------------------------------------
+class ParamValueQueue: public Vst::IParamValueQueue {
+ public:
+    static const int defaultNumPoints = 64;
+
+    ParamValueQueue(Vst::ParamID id) : id_(id) {
+        values_.reserve(defaultNumPoints);
+    }
+
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IParamValueQueue)
+    DUMMY_REFCOUNT_METHODS
+
+    Vst::ParamID PLUGIN_API getParameterId() override { return id_; }
+    int32 PLUGIN_API getPointCount() override { return values_.size(); }
+    tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) override {
+        if (index >= 0 && index < (int32)values_.size()){
+            auto& v = values_[index];
+            value = v.value;
+            sampleOffset = v.sampleOffset;
+            return kResultTrue;
+        }
+        return kResultFalse;
+    }
+    tresult PLUGIN_API addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) override {
+        // start from the end because we likely add values in "chronological" order
+        for (auto it = values_.end(); it != values_.begin(); --it){
+            if (sampleOffset > it->sampleOffset){
+                break;
+            } else if (sampleOffset == it->sampleOffset){
+                index = it - values_.begin();
+                return kResultOk;
+            } else {
+                values_.emplace(it, value, sampleOffset);
+                return kResultOk;
+            }
+        }
+        index = values_.size();
+        values_.emplace_back(value, sampleOffset);
+        return kResultOk;
+    }
+    void clear(){ values_.clear(); }
+ protected:
+    struct Value {
+        Value(Vst::ParamValue v, int32 offset) : value(v), sampleOffset(offset) {}
+        Vst::ParamValue value;
+        int32 sampleOffset;
+    };
+    std::vector<Value> values_;
+    Vst::ParamID id_;
+};
+
+//----------------------------------------------------------------------
+class ParameterChanges: public Vst::IParameterChanges {
+ public:
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IParameterChanges)
+    DUMMY_REFCOUNT_METHODS
+
+    void setMaxNumParameters(int n){
+        parameterChanges_.reserve(n);
+    }
+    int32 PLUGIN_API getParameterCount() override {
+        return parameterChanges_.size();
+    }
+    Vst::IParamValueQueue* PLUGIN_API getParameterData(int32 index) override {
+        if (index >= 0 && index < (int32)parameterChanges_.size()){
+            return &parameterChanges_[index];
+        } else {
+            return nullptr;
+        }
+    }
+    Vst::IParamValueQueue* PLUGIN_API addParameterData(const Vst::ParamID& id, int32& index) override {
+        for (int i = 0; i < (int)parameterChanges_.size(); ++i){
+            auto& param = parameterChanges_[i];
+            if (param.getParameterId() == id){
+                index = i;
+                return &param;
+            }
+        }
+        index = parameterChanges_.size();
+        parameterChanges_.emplace_back(id);
+        return &parameterChanges_.back();
+    }
+    void clear(){ parameterChanges_.clear(); }
+ protected:
+    std::vector<ParamValueQueue> parameterChanges_;
+};
+
+//--------------------------------------------------------------------------------
+
+class EventList : public Vst::IEventList {
+ public:
+    static const int defaultNumEvents = 64;
+
+    EventList(){
+        events_.reserve(defaultNumEvents);
+    }
+
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IEventList)
+    DUMMY_REFCOUNT_METHODS
+
+    int32 PLUGIN_API getEventCount() override {
+        return events_.size();
+    }
+    tresult PLUGIN_API getEvent(int32 index, Vst::Event& e) override {
+        if (index >= 0 && index < (int32)events_.size()){
+            e = events_[index];
+            return kResultOk;
+        } else {
+            return kResultFalse;
+        }
+    }
+    tresult PLUGIN_API addEvent (Vst::Event& e) override {
+        events_.push_back(e);
+        return kResultOk;
+    }
+    void clear(){ events_.clear(); }
+ protected:
+    std::vector<Vst::Event> events_;
 };
 
 //--------------------------------------------------------------------------------------------------------
@@ -192,8 +314,14 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     Vst::AudioBusBuffers audioOutput_[2]; // main + aux
     Vst::ProcessContext context_;
     // midi
+    EventList inputEvents_;
+    EventList outputEvents_;
     int numMidiInChannels_ = 0;
     int numMidiOutChannels_ = 0;
+    // parameters
+    ParameterChanges inputParamChanges_;
+    ParameterChanges outputParamChanges_;
+    std::vector<Vst::ParamValue> paramCache_;
     // special parameters
     int programChangeID_ = -1;
     int bypassID_ = -1;

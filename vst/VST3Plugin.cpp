@@ -15,6 +15,9 @@ DEF_CLASS_IID (IPluginFactory3)
 DEF_CLASS_IID (Vst::IHostApplication)
 DEF_CLASS_IID (Vst::IPlugInterfaceSupport)
 DEF_CLASS_IID (Vst::IAttributeList)
+DEF_CLASS_IID (Vst::IEventList)
+DEF_CLASS_IID (Vst::IParameterChanges)
+DEF_CLASS_IID (Vst::IParamValueQueue)
 DEF_CLASS_IID (Vst::IMessage)
 DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IComponentHandler)
@@ -318,6 +321,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     audioOutput_[Aux].numChannels = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
     numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
     numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
+    LOG_DEBUG("in: " << getNumInputs() << ", auxin: " << getNumAuxInputs());
+    LOG_DEBUG("out: " << getNumOutputs() << ", auxout: " << getNumAuxOutputs());
     // finally get remaining info
     if (info){
         // vendor name (if still empty)
@@ -406,6 +411,15 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             }
         }
         info_ = info;
+    }
+    // setup parameter queues/cache
+    int numParams = info_->numParameters();
+    inputParamChanges_.setMaxNumParameters(numParams);
+    outputParamChanges_.setMaxNumParameters(numParams);
+    paramCache_.resize(numParams);
+    for (int i = 0; i < numParams; ++i){
+        auto id = info_->getParamID(i);
+        paramCache_[i] = controller_->getParamNormalized(id);
     }
 }
 
@@ -504,12 +518,23 @@ void VST3Plugin::process(ProcessData<double>& data){
 }
 
 void VST3Plugin::doProcess(Vst::ProcessData &data){
+    // setup process data
     data.inputs = audioInput_;
     data.outputs = audioOutput_;
     data.processContext = &context_;
+    data.inputEvents = &inputEvents_;
+    data.outputEvents = &outputEvents_;
+    data.inputParameterChanges = &inputParamChanges_;
+    data.outputParameterChanges = &outputParamChanges_;
     // process
     processor_->process(data);
-
+    // clear input queues
+    inputEvents_.clear();
+    inputParamChanges_.clear();
+    // flush and clear output queues
+    outputEvents_.clear();
+    outputParamChanges_.clear();
+    // update time info
     context_.continousTimeSamples += data.numSamples;
     context_.projectTimeSamples += data.numSamples;
     // advance project time in bars
@@ -519,7 +544,6 @@ void VST3Plugin::doProcess(Vst::ProcessData &data){
     // bar start: simply round project time (in bars) down to bar length
     float barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
     context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
-
 }
 
 bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
@@ -704,29 +728,35 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 }
 
 void VST3Plugin::setParameter(int index, float value){
-    controller_->setParamNormalized(info().getParamID(index), value);
+    int32 dummy;
+    auto id = info().getParamID(index);
+    inputParamChanges_.addParameterData(id, dummy)->addPoint(0, value, dummy);
+    paramCache_[index] = value;
 }
 
 bool VST3Plugin::setParameter(int index, const std::string &str){
+    int32 dummy;
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
     if (StringConvert::convert(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
-            return controller_->setParamNormalized(id, value) == kResultOk;
+            inputParamChanges_.addParameterData(id, dummy)->addPoint(0, value, dummy);
+            paramCache_[index] = value;
+            return true;
         }
     }
     return false;
 }
 
 float VST3Plugin::getParameter(int index) const {
-    return controller_->getParamNormalized(info().getParamID(index));
+    return paramCache_[index];
 }
 
 std::string VST3Plugin::getParameterString(int index) const {
     Vst::String128 display;
     auto id = info().getParamID(index);
-    auto value = controller_->getParamNormalized(id);
+    auto value = paramCache_[index];
     if (controller_->getParamStringByValue(id, value, display) == kResultOk){
         return StringConvert::convert(display);
     }
@@ -734,7 +764,7 @@ std::string VST3Plugin::getParameterString(int index) const {
 }
 
 int VST3Plugin::getNumParameters() const {
-    return controller_->getParameterCount();
+    return paramCache_.size();
 }
 
 void VST3Plugin::setProgram(int program){
