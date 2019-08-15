@@ -998,7 +998,7 @@ void PluginInfo::serialize(std::ostream& file) const {
     if (numAuxOutputs > 0){
         file << "auxoutputs=" << numAuxOutputs << "\n";
     }
-    file << "flags=" << (uint32_t)flags_ << "\n";
+    file << "flags=" << (uint32_t)flags << "\n";
 #if USE_VST3
     if (programChange != NoParamID){
         file << "pgmchange=" << toHex(programChange) << "\n";
@@ -1019,14 +1019,16 @@ void PluginInfo::serialize(std::ostream& file) const {
 	for (auto& pgm : programs) {
         file << pgm << "\n";
 	}
+#if USE_VST2
     // shell plugins (only used for probe.exe)
-    if (!shellPlugins_.empty()){
+    if (!shellPlugins.empty()){
         file << "[shell]\n";
-        file << "n=" << (int)shellPlugins_.size() << "\n";
-        for (auto& shell : shellPlugins_){
+        file << "n=" << (int)shellPlugins.size() << "\n";
+        for (auto& shell : shellPlugins){
             file << shell.name << "," << shell.id << "\n";
         }
     }
+#endif
 }
 
 static std::string ltrim(std::string str){
@@ -1158,8 +1160,9 @@ void PluginInfo::deserialize(std::istream& file) {
             if (category != "Shell"){
                 break; // done!
             }
+#if USE_VST2
         } else if (line == "[shell]"){
-            shellPlugins_.clear();
+            shellPlugins.clear();
             std::getline(file, line);
             int n = getCount(line);
             while (n-- && std::getline(file, line)){
@@ -1167,9 +1170,10 @@ void PluginInfo::deserialize(std::istream& file) {
                 ShellPlugin shell;
                 shell.name = rtrim(line.substr(0, pos));
                 shell.id = std::stol(line.substr(pos + 1));
-                shellPlugins_.push_back(std::move(shell));
+                shellPlugins.push_back(std::move(shell));
             }
             break; // done!
+#endif
         } else if (start){
             std::string key;
             std::string value;
@@ -1210,7 +1214,7 @@ void PluginInfo::deserialize(std::istream& file) {
                 MATCH("pgmchange", programChange);
                 MATCH("bypass", bypass);
             #endif
-                MATCH("flags", flags_);
+                MATCH("flags", flags);
                 else {
                     LOG_WARNING("unknown key: " << key);
                     // throw Error("unknown key: " + key);

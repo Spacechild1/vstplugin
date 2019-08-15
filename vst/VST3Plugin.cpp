@@ -344,11 +344,10 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
         flags |= hasMidiInput() * PluginInfo::MidiInput;
         flags |= hasMidiOutput() * PluginInfo::MidiOutput;
-        info->flags_ = flags;
+        info->flags = flags;
         // get parameters
         std::set<Vst::ParamID> params;
         int numParameters = controller_->getParameterCount();
-        int index = 0;
         for (int i = 0; i < numParameters; ++i){
             PluginInfo::Param param;
             Vst::ParameterInfo pi;
@@ -372,15 +371,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                             param.name.find("MIDI CC ") == std::string::npos)
                     {
                         params.insert(param.id);
-                        // inverse mapping
-                        info->paramMap_[param.name] = index;
-                        // index -> ID mapping
-                        info->indexToIdMap_[index] = param.id;
-                        // ID -> index mapping
-                        info->idToIndexMap_[param.id] = index;
-                        // add parameter
-                        info->parameters.push_back(std::move(param));
-                        index++;
+                        info->addParameter(std::move(param));
                     }
                 }
             } else {

@@ -222,6 +222,20 @@ struct PluginInfo {
         uint32_t id = 0;
     };
     std::vector<Param> parameters;
+    void addParameter(Param param){
+        auto index = parameters.size();
+        // inverse mapping
+        paramMap_[param.name] = index;
+    #if USE_VST3
+        // index -> ID mapping
+        indexToIdMap_[index] = param.id;
+        // ID -> index mapping
+        idToIndexMap_[param.id] = index;
+    #endif
+        // add parameter
+        parameters.push_back(std::move(param));
+    }
+
     void addParamAlias(int index, const std::string& key){
         paramMap_[key] = index;
     }
@@ -264,35 +278,29 @@ struct PluginInfo {
         return programs.size();
     }
     bool hasEditor() const {
-        return flags_ & HasEditor;
+        return flags & HasEditor;
     }
     bool isSynth() const {
-        return flags_ & IsSynth;
+        return flags & IsSynth;
     }
     bool singlePrecision() const {
-        return flags_ & SinglePrecision;
+        return flags & SinglePrecision;
     }
     bool doublePrecision() const {
-        return flags_ & DoublePrecision;
+        return flags & DoublePrecision;
     }
     bool midiInput() const {
-        return flags_ & MidiInput;
+        return flags & MidiInput;
     }
     bool midiOutput() const {
-        return flags_ & MidiOutput;
+        return flags & MidiOutput;
     }
     bool sysexInput() const {
-        return flags_ & SysexInput;
+        return flags & SysexInput;
     }
     bool sysexOutput() const {
-        return flags_ & SysexOutput;
+        return flags & SysexOutput;
     }
- private:
-    friend class VST2Plugin;
-    friend class VST2Factory;
-    friend class VST3Plugin;
-    friend class VST3Factory;
-    std::weak_ptr<const IFactory> factory_;
     // flags
     enum Flags {
         HasEditor = 1 << 0,
@@ -304,15 +312,17 @@ struct PluginInfo {
         SysexInput = 1 << 6,
         SysexOutput = 1 << 7
     };
-    uint32_t flags_ = 0;
+    uint32_t flags = 0;
 #if USE_VST2
     // shell plugin
     struct ShellPlugin {
         std::string name;
         int id;
     };
-    std::vector<ShellPlugin> shellPlugins_;
+    std::vector<ShellPlugin> shellPlugins;
 #endif
+ private:
+    std::weak_ptr<const IFactory> factory_;
     // param name to param index
     std::unordered_map<std::string, int> paramMap_;
 #if USE_VST3

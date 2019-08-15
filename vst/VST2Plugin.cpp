@@ -182,7 +182,7 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
         /// LOG_DEBUG("about to call probePlugin future");
         auto result = f();
         /// LOG_DEBUG("called probePlugin future");
-        if (result->shellPlugins_.empty()){
+        if (result->shellPlugins.empty()){
             plugins_ = { result };
             valid_ = result->valid();
             if (callback){
@@ -190,7 +190,7 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
             }
         } else {
             ProbeList pluginList;
-            for (auto& shell : result->shellPlugins_){
+            for (auto& shell : result->shellPlugins){
                 pluginList.emplace_back(shell.name, shell.id);
             }
             plugins_ = probePlugins(pluginList, callback, valid_);
@@ -285,7 +285,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
         flags |= hasMidiInput() * PluginInfo::MidiInput;
         flags |= hasMidiOutput() * PluginInfo::MidiOutput;
-        info->flags_ = flags;
+        info->flags = flags;
         // get parameters
         int numParameters = getNumParameters();
         for (int i = 0; i < numParameters; ++i){
@@ -293,10 +293,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
             p.name = getParameterName(i);
             p.label = getParameterLabel(i);
             p.id = i;
-            // inverse mapping
-            info->paramMap_[p.name] = i;
-            // add parameter
-            info->parameters.push_back(std::move(p));
+            info->addParameter(std::move(p));
         }
         // programs
         int numPrograms = getNumPrograms();
@@ -310,7 +307,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
             while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
                 PluginInfo::ShellPlugin shellPlugin { name, nextID };
-                info->shellPlugins_.push_back(std::move(shellPlugin));
+                info->shellPlugins.push_back(std::move(shellPlugin));
             }
         }
         info_ = info;
