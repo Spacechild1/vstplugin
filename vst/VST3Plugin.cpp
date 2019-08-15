@@ -386,8 +386,14 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     FUnknownPtr<Vst::IConnectionPoint> controllerCP(controller_);
     // connect component and controller
     if (componentCP && controllerCP){
+    #if 0
         componentCP->connect(controllerCP);
         controllerCP->connect(componentCP);
+    #else
+        // use *this* as a proxy
+        componentCP->connect(this);
+        controllerCP->connect(this);
+    #endif
         LOG_DEBUG("connected component and controller");
     }
     // synchronize state
@@ -568,6 +574,43 @@ tresult VST3Plugin::restartComponent(int32 flags){
     PRINT_FLAG(Vst::kRoutingInfoChanged);
 #undef PRINT_FLAG
     return kResultOk;
+}
+
+tresult VST3Plugin::connect(Vst::IConnectionPoint *other){
+    LOG_DEBUG("connected!");
+    return kResultTrue;
+}
+
+tresult VST3Plugin::disconnect(Vst::IConnectionPoint *other){
+    LOG_DEBUG("disconnected!");
+    return kResultTrue;
+}
+
+void printMessage(Vst::IMessage *message){
+    LOG_DEBUG("got message: " << message->getMessageID());
+    auto msg = dynamic_cast<HostMessage *>(message);
+    if (msg){
+        msg->print();
+    }
+}
+
+tresult VST3Plugin::notify(Vst::IMessage *message){
+#if LOGLEVEL > 2
+    printMessage(message);
+#endif
+    if (window_){
+        // TODO
+    } else {
+        FUnknownPtr<Vst::IConnectionPoint> p1(component_);
+        if (p1){
+            p1->notify(message);
+        }
+        FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
+        if (p2){
+            p2->notify(message);
+        }
+    }
+    return kResultTrue;
 }
 
 int VST3Plugin::canDo(const char *what) const {
@@ -1586,16 +1629,16 @@ tresult PLUGIN_API HostApplication::getName (Vst::String128 name){
 tresult PLUGIN_API HostApplication::createInstance (TUID cid, TUID _iid, void** obj){
     FUID classID(cid);
     FUID interfaceID(_iid);
-    LOG_DEBUG("host: createInstance");
+    // LOG_DEBUG("host: createInstance");
     if (classID == Vst::IMessage::iid && interfaceID == Vst::IMessage::iid)
     {
-        LOG_DEBUG("create HostMessage");
+        // LOG_DEBUG("create HostMessage");
         *obj = (Vst::IMessage *)new HostMessage;
         return kResultTrue;
     }
     else if (classID == Vst::IAttributeList::iid && interfaceID == Vst::IAttributeList::iid)
     {
-        LOG_DEBUG("create HostAttributeList");
+        // LOG_DEBUG("create HostAttributeList");
         *obj = (Vst::IAttributeList *)new HostAttributeList;
         return kResultTrue;
     }
@@ -1604,7 +1647,7 @@ tresult PLUGIN_API HostApplication::createInstance (TUID cid, TUID _iid, void** 
 }
 
 tresult PLUGIN_API HostApplication::queryInterface (const char* _iid, void** obj){
-    LOG_DEBUG("host: query interface");
+    // LOG_DEBUG("host: query interface");
     QUERY_INTERFACE (_iid, obj, FUnknown::iid, IHostApplication)
     QUERY_INTERFACE (_iid, obj, IHostApplication::iid, IHostApplication)
     if (interfaceSupport_ && interfaceSupport_->queryInterface (iid, obj) == kResultTrue)
@@ -1684,14 +1727,44 @@ tresult PLUGIN_API HostAttributeList::getBinary (AttrID aid, const void*& data, 
     return kResultFalse;
 }
 
+void HostAttributeList::print(){
+    for (auto& it : list_){
+        auto& id = it.first;
+        auto& attr = it.second;
+        switch (attr.type){
+        case HostAttribute::kInteger:
+            LOG_VERBOSE(id << ": " << attr.v.i);
+            break;
+        case HostAttribute::kFloat:
+            LOG_VERBOSE(id << ": " << attr.v.f);
+            break;
+        case HostAttribute::kString:
+            LOG_VERBOSE(id << ": " << StringConvert::convert(attr.v.s));
+            break;
+        case HostAttribute::kBinary:
+            LOG_VERBOSE(id << ": [binary]");
+            break;
+        default:
+            LOG_VERBOSE(id << ": ?");
+            break;
+        }
+    }
+}
+
 /*///////////////////// HostMessage //////////////////////////*/
 
 Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
-    LOG_DEBUG("HostMessage::getAttributes");
-    if (!attributeList_){
-        attributeList_.reset(new HostAttributeList);
+    // LOG_DEBUG("HostMessage::getAttributes");
+    if (!attributes_){
+        attributes_.reset(new HostAttributeList);
     }
-    return attributeList_.get();
+    return attributes_.get();
+}
+
+void HostMessage::print(){
+    if (attributes_){
+        attributes_->print();
+    }
 }
 
 } // vst

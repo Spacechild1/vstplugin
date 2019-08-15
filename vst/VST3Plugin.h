@@ -154,7 +154,11 @@ class EventList : public Vst::IEventList {
 
 //--------------------------------------------------------------------------------------------------------
 
-class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
+class VST3Plugin final :
+        public IPlugin,
+        public Vst::IComponentHandler,
+        public Vst::IConnectionPoint
+{
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
@@ -168,6 +172,10 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     tresult PLUGIN_API endEdit(Vst::ParamID id) override;
     tresult PLUGIN_API restartComponent(int32 flags) override;
 
+    // IConnectionPoint
+    tresult PLUGIN_API connect(Vst::IConnectionPoint* other) override;
+    tresult PLUGIN_API disconnect(Vst::IConnectionPoint* other) override;
+    tresult PLUGIN_API notify(Vst::IMessage* message) override;
 
     const PluginInfo& info() const { return *info_; }
 
@@ -476,6 +484,8 @@ public:
     tresult PLUGIN_API getString (AttrID aid, Vst::TChar* string, uint32 size) override;
     tresult PLUGIN_API setBinary (AttrID aid, const void* data, uint32 size) override;
     tresult PLUGIN_API getBinary (AttrID aid, const void*& data, uint32& size) override;
+
+    void print();
 protected:
     HostAttribute* find(AttrID aid);
     std::unordered_map<std::string, HostAttribute> list_;
@@ -491,9 +501,11 @@ public:
     const char* PLUGIN_API getMessageID () override { return messageID_.c_str(); }
     void PLUGIN_API setMessageID (const char* messageID) override { messageID_ = messageID; }
     Vst::IAttributeList* PLUGIN_API getAttributes () override;
+
+    void print();
 protected:
     std::string messageID_;
-    IPtr<HostAttributeList> attributeList_;
+    IPtr<HostAttributeList> attributes_;
 };
 
 
