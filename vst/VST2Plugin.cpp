@@ -217,7 +217,7 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
         }
         // only for shell plugins:
         // set (global) current plugin ID (used in hostCallback)
-        shellPluginID = desc->id;
+        shellPluginID = desc->getUniqueID();
     } else {
         // when probing, shell plugin ID is passed as string
         try {
@@ -269,12 +269,12 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     if (!info_){
         // create and fill plugin info
         auto info = std::make_shared<PluginInfo>(factory_);
+        info->setUniqueID(plugin_->uniqueID);
         info->name = getPluginName();
         info->vendor = getPluginVendor();
         info->category = getPluginCategory();
         info->version = getPluginVersion();
         info->sdkVersion = getSDKVersion();
-        info->id = plugin_->uniqueID;
         info->numInputs = plugin_->numInputs;
         info->numOutputs = plugin_->numOutputs;
         // flags

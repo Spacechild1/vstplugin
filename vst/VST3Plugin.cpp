@@ -240,8 +240,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (info){
         LOG_DEBUG("creating " << info->name);
     }
-    // LATER safe this in PluginInfo
-    memcpy(uid_, uid, sizeof(TUID));
     // create component
     if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){
         throw Error("couldn't create VST3 component");
@@ -323,8 +321,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
     LOG_DEBUG("in: " << getNumInputs() << ", auxin: " << getNumAuxInputs());
     LOG_DEBUG("out: " << getNumOutputs() << ", auxout: " << getNumAuxOutputs());
-    // finally get remaining info
+    // finally set remaining info
     if (info){
+        info->setUID(uid);
         // vendor name (if still empty)
         if (info->vendor.empty()){
             PFactoryInfo i;
@@ -835,12 +834,12 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     LOG_DEBUG("version: " << version);
     TUID classID;
     stream.readTUID(classID);
-    if (memcmp(classID, uid_, sizeof(TUID)) != 0){
+    if (memcmp(classID, info().getUID(), sizeof(TUID)) != 0){
     #if LOGLEVEL > 2
         char buf[17] = {0};
         memcpy(buf, classID, sizeof(TUID));
         LOG_DEBUG("a: " << buf);
-        memcpy(buf, uid_, sizeof(TUID));
+        memcpy(buf, info().getUID(), sizeof(TUID));
         LOG_DEBUG("b: " << buf);
     #endif
         throw Error("wrong class ID");
@@ -896,7 +895,7 @@ void VST3Plugin::writeProgramData(std::string& buffer){
     WriteStream stream;
     stream.writeChunkID(Vst::getChunkID(Vst::kHeader)); // header
     stream.writeInt32(Vst::kFormatVersion); // version
-    stream.writeTUID(uid_); // class ID
+    stream.writeTUID(info().getUID()); // class ID
     stream.writeInt64(0); // skip offset
     // write data
     auto writeData = [&](auto component, Vst::ChunkType type){

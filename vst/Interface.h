@@ -190,15 +190,23 @@ struct PluginInfo {
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
+    void setUniqueID(int _id);
+    int getUniqueID() const {
+        return id_.id;
+    }
+    void setUID(const char *uid);
+    const char* getUID() const {
+        return id_.uid;
+    }
     // info data
     ProbeResult probeResult = ProbeResult::none;
+    std::string uniqueID;
     std::string path;
     std::string name;
     std::string vendor;
     std::string category;
     std::string version;
     std::string sdkVersion;
-    int id = 0;
     int numInputs = 0;
     int numAuxInputs = 0;
     int numOutputs = 0;
@@ -313,6 +321,16 @@ struct PluginInfo {
     // param ID to index (VST3 only)
     std::unordered_map<uint32_t, int> idToIndexMap_;
 #endif
+    enum Type {
+        VST2,
+        VST3
+    };
+    Type type_;
+    union ID {
+        char uid[16];
+        int32_t id;
+    };
+    ID id_;
 };
 
 class IModule {

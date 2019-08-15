@@ -1056,7 +1056,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         sendInfo(x, "version", info->version);
         sendInfo(x, "inputs", info->numInputs);
         sendInfo(x, "outputs", info->numOutputs);
-        sendInfo(x, "id", toHex(info->id));
+        sendInfo(x, "id", ("0x"+info->uniqueID));
         sendInfo(x, "editor", info->hasEditor());
         sendInfo(x, "synth", info->isSynth());
         sendInfo(x, "single", info->singlePrecision());

@@ -661,7 +661,6 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     // put the information we already have (might be overriden)
     desc->name = name;
-    desc->id = shellPluginID;
     desc->path = path();
     // we pass the shell plugin ID instead of the name to probe.exe
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
@@ -920,6 +919,25 @@ IPlugin::ptr PluginInfo::create() const {
     return factory ? factory->create(name) : nullptr;
 }
 
+void PluginInfo::setUniqueID(int _id){
+    type_ = VST2;
+    char buf[9];
+    // LATER deal with endianess
+    snprintf(buf, sizeof(buf), "%08X", _id);
+    buf[8] = 0;
+    uniqueID = buf;
+}
+
+void PluginInfo::setUID(const char *uid){
+    type_ = VST3;
+    char buf[33];
+    for (int i = 0; i < 16; ++i){
+        snprintf(buf + (i * 2), sizeof(buf), "%02X", uid[i]);
+    }
+    buf[32] = 0;
+    uniqueID = buf;
+}
+
 /// .ini file structure for each plugin:
 ///
 /// [plugin]
@@ -965,13 +983,13 @@ static std::string bashString(std::string name){
 
 void PluginInfo::serialize(std::ostream& file) const {
     file << "[plugin]\n";
+    file << "id=" << uniqueID << "\n";
     file << "path=" << path << "\n";
     file << "name=" << name << "\n";
     file << "vendor=" << vendor << "\n";
     file << "category=" << category << "\n";
     file << "version=" << version << "\n";
     file << "sdkversion=" << sdkVersion << "\n";
-    file << "id=" << id << "\n";
     file << "inputs=" << numInputs << "\n";
     if (numAuxInputs > 0){
         file << "auxinputs=" << numAuxInputs << "\n";
@@ -1123,9 +1141,11 @@ void PluginInfo::deserialize(std::istream& file) {
             for (int i = 0; i < (int)parameters.size(); ++i){
                 auto& param = parameters[i];
                 paramMap_[param.name] = i;
+            #if USE_VST3
                 // for VST3:
                 idToIndexMap_[param.id] = i;
                 indexToIdMap_[i] = param.id;
+            #endif
             }
         } else if (line == "[programs]"){
             programs.clear();
@@ -1156,14 +1176,32 @@ void PluginInfo::deserialize(std::istream& file) {
             getKeyValuePair(line, key, value);
             #define MATCH(name, field) else if (name == key) parseArg(field, value)
             try {
-                if (false) ;
+                if (key == "id"){
+                    if (value.size() == 8){
+                        // LATER deal with endianess
+                        type_ == VST2;
+                        sscanf(&value[0], "%08X", &id_.id);
+                    } else if (value.size() == 32){
+                        type_ == VST3;
+                        const int n = value.size() / 2;
+                        for (int i = 0; i < n; ++i){
+                            char buf[3] = { 0 };
+                            memcpy(buf, &value[i * 2], 2);
+                            unsigned int temp;
+                            sscanf(buf, "%02x", &temp);
+                            id_.uid[i] = temp;
+                        }
+                    } else {
+                        throw Error("bad id!");
+                    }
+                    uniqueID = value;
+                }
                 MATCH("path", path);
                 MATCH("name", name);
                 MATCH("vendor", vendor);
                 MATCH("category", category);
                 MATCH("version", version);
                 MATCH("sdkversion", sdkVersion);
-                MATCH("id", id);
                 MATCH("inputs", numInputs);
                 MATCH("auxinputs", numAuxInputs);
                 MATCH("outputs", numOutputs);

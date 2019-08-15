@@ -297,7 +297,6 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     }
  private:
     void doProcess(Vst::ProcessData& data);
-    TUID uid_;
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
