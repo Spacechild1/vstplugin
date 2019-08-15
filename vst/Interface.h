@@ -416,6 +416,8 @@ const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
 
+const std::string& getBundleBinaryPath();
+
 class IWindow {
  public:
     using ptr = std::unique_ptr<IWindow>;

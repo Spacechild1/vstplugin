@@ -227,6 +227,28 @@ const std::vector<const char *>& getPluginExtensions() {
     return platformExtensions;
 }
 
+const std::string& getBundleBinaryPath(){
+    static std::string path =
+#if defined(_WIN32)
+#ifdef _WIN64
+        "Contents/x86_64-win";
+#else // WIN32
+        "Contents/x86-win";
+#endif
+#elif defined(__APPLE__)
+        "Contents/MacOS";
+#else // Linux
+#if defined(__i386__)
+        "Contents/i386-linux";
+#elif defined(__x86_64__)
+        "Contents/x86_64-linux"
+#else
+        ""; // figure out what to do with all the ARM versions...
+#endif
+#endif
+    return path;
+}
+
 #ifdef _WIN32
 #ifdef _WIN64 // 64 bit
 #define PROGRAMFILES "%ProgramFiles%\\"
