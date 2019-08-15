@@ -631,7 +631,7 @@ void t_vsteditor::tick(t_vsteditor *x){
         // sysex events:
     for (auto& sysex : sysexQueue){
         std::vector<t_atom> msg;
-        int n = sysex.data.size();
+        int n = sysex.size;
         msg.resize(n);
         for (int i = 0; i < n; ++i){
             SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
@@ -1409,7 +1409,7 @@ static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *
         data.push_back((unsigned char)atom_getfloat(argv+i));
     }
 
-    x->x_plugin->sendSysexEvent(SysexEvent(std::move(data)));
+    x->x_plugin->sendSysexEvent(SysexEvent(data.data(), data.size()));
 }
 
 /* --------------------------------- programs --------------------------------- */

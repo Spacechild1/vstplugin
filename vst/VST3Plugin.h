@@ -144,11 +144,11 @@ class EventList : public Vst::IEventList {
     int32 PLUGIN_API getEventCount() override;
     tresult PLUGIN_API getEvent(int32 index, Vst::Event& e) override;
     tresult PLUGIN_API addEvent (Vst::Event& e) override;
-    void addSysexEvent(const char *data, size_t size);
+    void addSysexEvent(const SysexEvent& event);
     void clear();
  protected:
     std::vector<Vst::Event> events_;
-    std::vector<std::string> sysexData_;
+    std::vector<std::string> sysexEvents_;
 };
 
 //--------------------------------------------------------------------------------------------------------

@@ -35,12 +35,9 @@ struct MidiEvent {
 
 struct SysexEvent {
     SysexEvent(const char *_data, size_t _size, int _delta = 0)
-        : data(_data, _size), delta(_delta){}
-    template <typename T>
-    SysexEvent(T&& _data, int _delta = 0)
-        : data(std::forward<T>(_data)), delta(_delta){}
-    SysexEvent() = default;
-    std::string data;
+        : data(_data), size(_size), delta(_delta){}
+    const char *data;
+    size_t size;
     int delta;
 };
 

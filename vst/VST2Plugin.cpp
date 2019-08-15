@@ -558,10 +558,10 @@ void VST2Plugin::sendSysexEvent(const SysexEvent &event){
     sysexevent.type = kVstSysExType;
     sysexevent.byteSize = sizeof(VstMidiSysexEvent);
     sysexevent.deltaFrames = event.delta;
-    sysexevent.dumpBytes = event.data.size();
+    sysexevent.dumpBytes = event.size;
     sysexevent.sysexDump = (char *)malloc(sysexevent.dumpBytes);
         // copy the sysex data (LATER figure out how to avoid this)
-    memcpy(sysexevent.sysexDump, event.data.data(), sysexevent.dumpBytes);
+    memcpy(sysexevent.sysexDump, event.data, sysexevent.dumpBytes);
 
     sysexQueue_.push_back(std::move(sysexevent));
 

@@ -967,19 +967,17 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
 #else
     {
 #endif
-        auto& data = sysex.data;
-        int size = data.size();
-        if ((size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
-            LOG_WARNING("sysex message (" << size << " bytes) too large for UDP packet - dropped!");
+        if ((sysex.size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
+            LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
         }
-        float* buf = (float*)RTAlloc(world(), size * sizeof(float));
+        float* buf = (float*)RTAlloc(world(), sysex.size * sizeof(float));
         if (buf) {
-            for (int i = 0; i < size; ++i) {
+            for (int i = 0; i < sysex.size; ++i) {
                 // no need to cast to unsigned because SC's Int8Array is signed anyway
-                buf[i] = data[i];
+                buf[i] = sysex.data[i];
             }
-            sendMsg("/vst_sysex", size, buf);
+            sendMsg("/vst_sysex", sysex.size, buf);
             RTFree(world(), buf);
         }
         else {
