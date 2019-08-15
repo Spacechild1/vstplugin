@@ -182,7 +182,103 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe
     return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], shared_from_this(), desc);
 }
 
-/*///////////////////// VST3Plugin /////////////////////*/
+/*///////////////////// ParamValueQeue /////////////////////*/
+
+ParamValueQueue::ParamValueQueue() {
+    values_.reserve(defaultNumPoints);
+}
+
+void ParamValueQueue::setParameterId(Vst::ParamID id){
+    values_.clear();
+    id_ = id;
+}
+
+tresult PLUGIN_API ParamValueQueue::getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) {
+    if (index >= 0 && index < (int32)values_.size()){
+        auto& v = values_[index];
+        value = v.value;
+        sampleOffset = v.sampleOffset;
+        return kResultTrue;
+    }
+    return kResultFalse;
+}
+tresult PLUGIN_API ParamValueQueue::addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) {
+    // start from the end because we likely add values in "chronological" order
+    for (auto it = values_.end(); it != values_.begin(); --it){
+        if (sampleOffset > it->sampleOffset){
+            break;
+        } else if (sampleOffset == it->sampleOffset){
+            index = it - values_.begin();
+            return kResultOk;
+        } else {
+            values_.emplace(it, value, sampleOffset);
+            return kResultOk;
+        }
+    }
+    index = values_.size();
+    values_.emplace_back(value, sampleOffset);
+    return kResultOk;
+}
+
+/*///////////////////// ParameterChanges /////////////////////*/
+
+Vst::IParamValueQueue* PLUGIN_API ParameterChanges::getParameterData(int32 index) {
+    if (index >= 0 && index < useCount_){
+        return &parameterChanges_[index];
+    } else {
+        return nullptr;
+    }
+}
+Vst::IParamValueQueue* PLUGIN_API ParameterChanges::addParameterData(const Vst::ParamID& id, int32& index) {
+    for (int i = 0; i < useCount_; ++i){
+        auto& param = parameterChanges_[i];
+        if (param.getParameterId() == id){
+            index = i;
+            return &param;
+        }
+    }
+    if (useCount_ < (int)parameterChanges_.size()){
+        index = useCount_++;
+        parameterChanges_[index].setParameterId(id);
+        return &parameterChanges_[index];
+    } else {
+        LOG_ERROR("bug addParameterData");
+        index = 0;
+        return nullptr;
+    }
+}
+
+/*///////////////////// EventList /////////////////////*/
+
+EventList::EventList(){
+    events_.reserve(defaultNumEvents);
+}
+
+EventList::~EventList() {}
+
+int32 PLUGIN_API EventList::getEventCount() {
+    return events_.size();
+}
+
+tresult PLUGIN_API EventList::getEvent(int32 index, Vst::Event& e) {
+    if (index >= 0 && index < (int32)events_.size()){
+        e = events_[index];
+        return kResultOk;
+    } else {
+        return kResultFalse;
+    }
+}
+
+tresult PLUGIN_API EventList::addEvent (Vst::Event& e) {
+    events_.push_back(e);
+    return kResultOk;
+}
+
+void EventList::clear(){
+    events_.clear();
+}
+
+/*/////////////////////// VST3Plugin ///////////////////////*/
 
 template <typename T>
 inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){

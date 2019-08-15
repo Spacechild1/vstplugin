@@ -86,45 +86,16 @@ class ParamValueQueue: public Vst::IParamValueQueue {
  public:
     static const int defaultNumPoints = 64;
 
-    ParamValueQueue() {
-        values_.reserve(defaultNumPoints);
-    }
+    ParamValueQueue();
 
     MY_IMPLEMENT_QUERYINTERFACE(Vst::IParamValueQueue)
     DUMMY_REFCOUNT_METHODS
 
-    void setParameterId(Vst::ParamID id){
-        values_.clear();
-        id_ = id;
-    }
+    void setParameterId(Vst::ParamID id);
     Vst::ParamID PLUGIN_API getParameterId() override { return id_; }
     int32 PLUGIN_API getPointCount() override { return values_.size(); }
-    tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) override {
-        if (index >= 0 && index < (int32)values_.size()){
-            auto& v = values_[index];
-            value = v.value;
-            sampleOffset = v.sampleOffset;
-            return kResultTrue;
-        }
-        return kResultFalse;
-    }
-    tresult PLUGIN_API addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) override {
-        // start from the end because we likely add values in "chronological" order
-        for (auto it = values_.end(); it != values_.begin(); --it){
-            if (sampleOffset > it->sampleOffset){
-                break;
-            } else if (sampleOffset == it->sampleOffset){
-                index = it - values_.begin();
-                return kResultOk;
-            } else {
-                values_.emplace(it, value, sampleOffset);
-                return kResultOk;
-            }
-        }
-        index = values_.size();
-        values_.emplace_back(value, sampleOffset);
-        return kResultOk;
-    }
+    tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) override;
+    tresult PLUGIN_API addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) override;
  protected:
     struct Value {
         Value(Vst::ParamValue v, int32 offset) : value(v), sampleOffset(offset) {}
@@ -147,31 +118,8 @@ class ParameterChanges: public Vst::IParameterChanges {
     int32 PLUGIN_API getParameterCount() override {
         return useCount_;
     }
-    Vst::IParamValueQueue* PLUGIN_API getParameterData(int32 index) override {
-        if (index >= 0 && index < useCount_){
-            return &parameterChanges_[index];
-        } else {
-            return nullptr;
-        }
-    }
-    Vst::IParamValueQueue* PLUGIN_API addParameterData(const Vst::ParamID& id, int32& index) override {
-        for (int i = 0; i < useCount_; ++i){
-            auto& param = parameterChanges_[i];
-            if (param.getParameterId() == id){
-                index = i;
-                return &param;
-            }
-        }
-        if (useCount_ < (int)parameterChanges_.size()){
-            index = useCount_++;
-            parameterChanges_[index].setParameterId(id);
-            return &parameterChanges_[index];
-        } else {
-            LOG_ERROR("bug addParameterData");
-            index = 0;
-            return nullptr;
-        }
-    }
+    Vst::IParamValueQueue* PLUGIN_API getParameterData(int32 index) override;
+    Vst::IParamValueQueue* PLUGIN_API addParameterData(const Vst::ParamID& id, int32& index) override;
     void clear(){
         useCount_ = 0;
     }
@@ -186,29 +134,16 @@ class EventList : public Vst::IEventList {
  public:
     static const int defaultNumEvents = 64;
 
-    EventList(){
-        events_.reserve(defaultNumEvents);
-    }
+    EventList();
+    ~EventList();
 
     MY_IMPLEMENT_QUERYINTERFACE(Vst::IEventList)
     DUMMY_REFCOUNT_METHODS
 
-    int32 PLUGIN_API getEventCount() override {
-        return events_.size();
-    }
-    tresult PLUGIN_API getEvent(int32 index, Vst::Event& e) override {
-        if (index >= 0 && index < (int32)events_.size()){
-            e = events_[index];
-            return kResultOk;
-        } else {
-            return kResultFalse;
-        }
-    }
-    tresult PLUGIN_API addEvent (Vst::Event& e) override {
-        events_.push_back(e);
-        return kResultOk;
-    }
-    void clear(){ events_.clear(); }
+    int32 PLUGIN_API getEventCount() override;
+    tresult PLUGIN_API getEvent(int32 index, Vst::Event& e) override;
+    tresult PLUGIN_API addEvent (Vst::Event& e) override;
+    void clear();
  protected:
     std::vector<Vst::Event> events_;
 };
