@@ -961,6 +961,7 @@ static std::string bashString(std::string name){
     return name;
 }
 
+#define toHex(x) std::hex << (x) << std::dec
 
 void PluginInfo::serialize(std::ostream& file) const {
     file << "[plugin]\n";
@@ -972,10 +973,22 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "sdkversion=" << sdkVersion << "\n";
     file << "id=" << id << "\n";
     file << "inputs=" << numInputs << "\n";
-    file << "auxinputs=" << numAuxInputs << "\n";
+    if (numAuxInputs > 0){
+        file << "auxinputs=" << numAuxInputs << "\n";
+    }
     file << "outputs=" << numOutputs << "\n";
-    file << "auxoutputs=" << numAuxOutputs << "\n";
+    if (numAuxOutputs > 0){
+        file << "auxoutputs=" << numAuxOutputs << "\n";
+    }
     file << "flags=" << (uint32_t)flags_ << "\n";
+#if USE_VST3
+    if (programChange != NoParamID){
+        file << "pgmchange=" << toHex(programChange) << "\n";
+    }
+    if (bypass != NoParamID){
+        file << "bypass=" << toHex(bypass) << "\n";
+    }
+#endif
     // parameters
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
@@ -1071,9 +1084,12 @@ std::vector<std::string> splitString(const std::string& str, char sep){
     return result;
 }
 
-template<typename T>
-void parseArg(T& lh, const std::string& rh){
-    lh = std::stol(rh);
+void parseArg(int32_t& lh, const std::string& rh){
+    lh = std::stol(rh); // decimal
+}
+
+void parseArg(uint32_t& lh, const std::string& rh){
+    lh = std::stol(rh, nullptr, 16); // hex
 }
 
 void parseArg(std::string& lh, const std::string& rh){
@@ -1152,6 +1168,10 @@ void PluginInfo::deserialize(std::istream& file) {
                 MATCH("auxinputs", numAuxInputs);
                 MATCH("outputs", numOutputs);
                 MATCH("auxoutputs", numAuxOutputs);
+            #if USE_VST3
+                MATCH("pgmchange", programChange);
+                MATCH("bypass", bypass);
+            #endif
                 MATCH("flags", flags_);
                 else {
                     LOG_WARNING("unknown key: " << key);

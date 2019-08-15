@@ -168,6 +168,8 @@ enum class ProbeResult {
 };
 
 struct PluginInfo {
+    static const uint32_t NoParamID = 0xffffffff;
+
     using ptr = std::shared_ptr<PluginInfo>;
     using const_ptr = std::shared_ptr<const PluginInfo>;
     using Future = std::function<PluginInfo::ptr()>;
@@ -201,6 +203,10 @@ struct PluginInfo {
     int numAuxInputs = 0;
     int numOutputs = 0;
     int numAuxOutputs = 0;
+#if USE_VST3
+    uint32_t programChange = NoParamID; // no param
+    uint32_t bypass = NoParamID; // no param
+#endif
     // parameters
     struct Param {
         std::string name;
@@ -219,6 +225,7 @@ struct PluginInfo {
             return -1;
         }
     }
+#if USE_VST3
     // get VST3 parameter ID from index
     uint32_t getParamID(int index) const {
         auto it = indexToIdMap_.find(index);
@@ -239,6 +246,7 @@ struct PluginInfo {
             return -1; // throw?
         }
     }
+#endif
     // default programs
     std::vector<std::string> programs;
     int numParameters() const {

@@ -362,25 +362,27 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 param.label = StringConvert::convert(pi.units);
                 param.id = pi.id;
                 if (pi.flags & Vst::ParameterInfo::kIsProgramChange){
-                    programChangeID_ = pi.id;
+                    info->programChange = pi.id;
                 } else if (pi.flags & Vst::ParameterInfo::kIsBypass){
-                    bypassID_ = pi.id;
-                }
-                // Only show automatable parameters. This should hide MIDI CC parameters.
-                // Some JUCE plugins add thousands of (automatable) MIDI CC parameters,
-                // e.g. "MIDI CC 0|0" etc., so we need the following hack:
-                if ((pi.flags & Vst::ParameterInfo::kCanAutomate) &&
-                        param.name.find("MIDI CC ") == std::string::npos){
-                    params.insert(param.id);
-                    // inverse mapping
-                    info->paramMap_[param.name] = index;
-                    // index -> ID mapping
-                    info->indexToIdMap_[index] = param.id;
-                    // ID -> index mapping
-                    info->idToIndexMap_[param.id] = index;
-                    // add parameter
-                    info->parameters.push_back(std::move(param));
-                    index++;
+                    info->bypass = pi.id;
+                } else {
+                    // Only show automatable parameters. This should hide MIDI CC parameters.
+                    // Some JUCE plugins add thousands of (automatable) MIDI CC parameters,
+                    // e.g. "MIDI CC 0|0" etc., so we need the following hack:
+                    if ((pi.flags & Vst::ParameterInfo::kCanAutomate) &&
+                            param.name.find("MIDI CC ") == std::string::npos)
+                    {
+                        params.insert(param.id);
+                        // inverse mapping
+                        info->paramMap_[param.name] = index;
+                        // index -> ID mapping
+                        info->indexToIdMap_[index] = param.id;
+                        // ID -> index mapping
+                        info->idToIndexMap_[param.id] = index;
+                        // add parameter
+                        info->parameters.push_back(std::move(param));
+                        index++;
+                    }
                 }
             } else {
                 LOG_ERROR("couldn't get parameter info!");
@@ -421,6 +423,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         auto id = info_->getParamID(i);
         paramCache_[i] = controller_->getParamNormalized(id);
     }
+    LOG_DEBUG("program change: " << info_->programChange);
+    LOG_DEBUG("bypass: " << info_->bypass);
 }
 
 VST3Plugin::~VST3Plugin(){

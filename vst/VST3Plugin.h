@@ -322,9 +322,6 @@ class VST3Plugin final : public IPlugin, public Vst::IComponentHandler {
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;
     std::vector<Vst::ParamValue> paramCache_;
-    // special parameters
-    int programChangeID_ = -1;
-    int bypassID_ = -1;
 };
 
 //--------------------------------------------------------------------------------
