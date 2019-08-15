@@ -275,8 +275,20 @@ tresult PLUGIN_API EventList::addEvent (Vst::Event& e) {
     return kResultOk;
 }
 
+void EventList::addSysexEvent(const char *data, size_t size){
+    sysexData_.emplace_back(data, size);
+    Vst::Event e;
+    memset(&e, 0, sizeof(Vst::Event));
+    e.type = Vst::Event::kDataEvent;
+    e.data.type = Vst::DataEvent::kMidiSysEx;
+    e.data.bytes = (const uint8 *)sysexData_.back().data();
+    e.data.size = sysexData_.back().size();
+    addEvent(e);
+}
+
 void EventList::clear(){
     events_.clear();
+    sysexData_.clear();
 }
 
 /*/////////////////////// VST3Plugin ///////////////////////*/
@@ -896,7 +908,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
 }
 
 void VST3Plugin::sendSysexEvent(const SysexEvent &event){
-    // have to figure out ownership
+    inputEvents_.addSysexEvent(event.data.data(), event.data.size());
 }
 
 void VST3Plugin::setParameter(int index, float value){
