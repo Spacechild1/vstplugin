@@ -162,6 +162,16 @@ bool pathExists(const std::string& path){
 #endif
 }
 
+bool isDirectory(const std::string& path){
+#ifdef _WIN32
+    std::error_code e;
+    return fs::is_directory(widen(path), e);
+#else
+    struct stat stbuf;
+    return (stat(path.c_str(), &stbuf) == 0) && IS_DIR(stbuf.st_mode);
+#endif
+}
+
 bool removeFile(const std::string& path){
 #ifdef _WIN32
     std::error_code e;
@@ -188,6 +198,19 @@ bool createDirectory(const std::string& dir){
     }
     return false;
 #endif
+}
+
+std::string fileName(const std::string& path){
+#ifdef _WIN32
+    auto pos = path.find_last_of("/\\");
+#else
+    auto pos = path.find_last_of('/');
+#endif
+    if (pos != std::string::npos){
+        return path.substr(pos+1);
+    } else {
+        return path;
+    }
 }
 
 std::string getTmpDirectory(){
@@ -352,13 +375,14 @@ std::string find(const std::string &dir, const std::string &path){
     }
 #ifdef _WIN32
     try {
-        auto fpath = fs::path(relpath);
-        auto file = fs::path(dir) / fpath;
+        auto wdir = widen(dir);
+        auto fpath = fs::path(widen(relpath));
+        auto file = fs::path(wdir) / fpath;
         if (fs::is_regular_file(file)){
             return file.u8string(); // success
         }
         // continue recursively
-        for (auto& entry : fs::recursive_directory_iterator(dir)) {
+        for (auto& entry : fs::recursive_directory_iterator(wdir)) {
             if (fs::is_directory(entry)){
                 file = entry.path() / fpath;
                 if (fs::is_regular_file(file)){
@@ -413,7 +437,7 @@ void search(const std::string &dir, std::function<void(const std::string&, const
     // search recursively
 #ifdef _WIN32
     try {
-        for (auto& entry : fs::recursive_directory_iterator(dir)) {
+        for (auto& entry : fs::recursive_directory_iterator(widen(dir))) {
             if (fs::is_regular_file(entry)) {
                 auto ext = entry.path().extension().u8string();
                 if (extensions.count(ext)) {
