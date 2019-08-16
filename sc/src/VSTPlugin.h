@@ -221,7 +221,6 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
-    bool bypass_ = false;
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
     static const int inChannelOnset_ = 2;

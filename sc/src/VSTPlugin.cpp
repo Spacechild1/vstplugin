@@ -789,14 +789,6 @@ void VSTPlugin::next(int inNumSamples) {
     bool bypass = in0(0);
     int offset = 0;
     auto plugin = delegate_->plugin();
-    // disable reset for realtime-safety reasons
-#if 0
-    // only reset plugin when bypass changed from true to false
-    if (plugin && !bypass && (bypass != bypass_)) {
-        reset();
-    }
-    bypass_ = bypass;
-#endif
 
     if (plugin && !bypass && plugin->hasPrecision(ProcessPrecision::Single)) {
         if (paramState_) {

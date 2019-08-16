@@ -55,7 +55,7 @@ class t_vstplugin {
     bool x_dp; // single/double precision
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
-        // contiguous input/outputs buffer
+        // contiguous input/output buffer
     std::vector<char> x_inbuf;
     std::vector<char> x_outbuf;
     std::vector<char> x_auxinbuf;
