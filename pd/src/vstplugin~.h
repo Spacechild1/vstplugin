@@ -44,6 +44,8 @@ class t_vstplugin {
     t_float x_sr = 44100;
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
+    std::vector<t_sample *> x_sigauxinlets;
+    std::vector<t_sample *> x_sigauxoutlets;
         // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
@@ -56,9 +58,13 @@ class t_vstplugin {
         // contiguous input/outputs buffer
     std::vector<char> x_inbuf;
     std::vector<char> x_outbuf;
+    std::vector<char> x_auxinbuf;
+    std::vector<char> x_auxoutbuf;
         // array of input/output pointers
     std::vector<void *> x_invec;
     std::vector<void *> x_outvec;
+    std::vector<void *> x_auxinvec;
+    std::vector<void *> x_auxoutvec;
         // thread for async operations (e.g. search)
     std::thread x_thread;
     t_clock *x_clock;
