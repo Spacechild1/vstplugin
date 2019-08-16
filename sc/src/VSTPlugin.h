@@ -242,7 +242,7 @@ private:
     int parameterControlOnset_ = 0;
 
     // threading
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     std::mutex mutex_;
     std::vector<std::pair<int, float>> paramQueue_;
 #endif

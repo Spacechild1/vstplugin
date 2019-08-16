@@ -834,7 +834,7 @@ void VSTPlugin::next(int inNumSamples) {
         plugin->process(data);
 
         offset = plugin->getNumOutputs();
-#if VSTTHREADS
+#if HAVE_UI_THREAD
         // send parameter automation notification posted from the GUI thread.
         // we assume this is only possible if we have a VST editor window.
         // try_lock() won't block the audio thread and we don't mind if notifications
@@ -944,7 +944,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         SendMsgToRT(world(), msg);
     }
 #endif
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     // from GUI thread (neither RT nor NRT thread) - push to queue
     else {
         // LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
@@ -955,7 +955,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
 #else
@@ -971,7 +971,7 @@ void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
 }
 
 void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
 #else

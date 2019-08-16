@@ -4,7 +4,7 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
-#if !VSTTHREADS // don't use VST GUI threads
+#if !HAVE_UI_THREAD // don't use VST GUI threads
 # define EVENT_LOOP_POLL_INT 20 // time between polls in ms
 static t_clock *eventLoopClock = nullptr;
 static void eventLoopTick(void *x){
@@ -514,7 +514,7 @@ static void vstparam_setup(){
 
 t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
     : e_owner(&owner){
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     e_mainthread = std::this_thread::get_id();
 #endif
     if (gui){
@@ -532,7 +532,7 @@ t_vsteditor::~t_vsteditor(){
     // post outgoing event (thread-safe if needed)
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     bool vstgui = window();
         // we only need to lock for GUI windows, but never for the generic Pd editor
     if (vstgui){
@@ -540,7 +540,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     }
 #endif
     queue.push_back(std::forward<U>(event));
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (vstgui){
         e_mutex.unlock();
     }
@@ -552,7 +552,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     }
 #endif
     clock_delay(e_clock, 0);
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (id != e_mainthread){
         sys_unlock();
         // LOG_DEBUG("unlocked");
@@ -576,7 +576,7 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     bool vstgui = x->vst_gui();
         // we only need to lock if we have a GUI thread
     if (vstgui){
@@ -595,7 +595,7 @@ void t_vsteditor::tick(t_vsteditor *x){
     std::vector<SysexEvent> sysexQueue;
     sysexQueue.swap(x->e_sysex);
 
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (vstgui){
         x->e_mutex.unlock();
     }
@@ -2054,7 +2054,7 @@ void vstplugin_tilde_setup(void)
     // read cached plugin info
     readIniFile();
 
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     eventLoopClock = clock_new(0, (t_method)eventLoopTick);
     clock_delay(eventLoopClock, 0);
 #endif

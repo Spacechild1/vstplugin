@@ -19,8 +19,8 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
-#ifndef VSTTHREADS
-#define VSTTHREADS 1
+#ifndef HAVE_UI_THREAD
+#define HAVE_UI_THREAD 1
 #endif
 
 #ifndef HAVE_NRT_THREAD

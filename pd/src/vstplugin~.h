@@ -131,7 +131,7 @@ class t_vsteditor : public IPluginListener {
     std::vector<t_vstparam> e_params;
         // outgoing messages:
     t_clock *e_clock;
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     std::mutex e_mutex;
     std::thread::id e_mainthread;
 #endif

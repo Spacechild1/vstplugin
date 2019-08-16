@@ -51,7 +51,7 @@ namespace Win32 {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll();
 #endif
 } // UIThread
@@ -61,7 +61,7 @@ namespace Cocoa {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll();
 #endif
 } // UIThread
@@ -71,7 +71,7 @@ namespace X11 {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll();
 #endif
 } // UIThread
@@ -510,7 +510,7 @@ namespace UIThread {
     #endif
     }
 
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll(){
     #ifdef _WIN32
         Win32::UIThread::poll();
