@@ -70,12 +70,15 @@ namespace vst {
 /*/////////////////////// VST3Factory /////////////////////////*/
 
 VST3Factory::VST3Factory(const std::string& path)
-    : path_(path), module_(IModule::load(path))
+    : path_(path)
 {
-    if (!module_){
-        // shouldn't happen...
-        throw Error("couldn't load module!");
+    std::string modulePath = path;
+#ifndef __APPLE__
+    if (isDirectory(modulePath)){
+        modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path);
     }
+#endif
+    module_ = IModule::load(modulePath); // throws on failure
     auto factoryProc = module_->getFnPtr<GetFactoryProc>("GetPluginFactory");
     if (!factoryProc){
         throw Error("couldn't find 'GetPluginFactory' function");
