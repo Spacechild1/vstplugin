@@ -222,8 +222,8 @@ class VST3Plugin final :
     void sendMidiEvent(const MidiEvent& event) override;
     void sendSysexEvent(const SysexEvent& event) override;
 
-    void setParameter(int index, float value) override;
-    bool setParameter(int index, const std::string& str) override;
+    void setParameter(int index, float value, int sampleOffset = 0) override;
+    bool setParameter(int index, const std::string& str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
     int getNumParameters() const override;

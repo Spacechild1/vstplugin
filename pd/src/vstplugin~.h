@@ -40,7 +40,7 @@ class t_vstplugin {
     t_sample x_f = 0;
     t_outlet *x_messout; // message outlet
     t_canvas *x_canvas; // parent canvas
-    int x_blocksize = 0; // see vstplugin_dsp
+    int x_blocksize = 64;
     t_float x_sr = 44100;
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
@@ -51,6 +51,7 @@ class t_vstplugin {
     bool x_keep = false;
     bool x_bypass = false;
     bool x_dp; // single/double precision
+    double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
         // contiguous input/outputs buffer
     std::vector<char> x_inbuf;
@@ -69,6 +70,7 @@ class t_vstplugin {
     bool check_plugin();
     void update_buffer();
     void update_precision();
+    int get_sample_offset();
 };
 
 // VST parameter responder (for Pd GUI)

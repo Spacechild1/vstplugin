@@ -568,11 +568,13 @@ void VST2Plugin::sendSysexEvent(const SysexEvent &event){
     vstEvents_->numEvents++;
 }
 
-void VST2Plugin::setParameter(int index, float value){
+void VST2Plugin::setParameter(int index, float value, int sampleOffset){
+    // VST2 can't do sample accurate automation
     plugin_->setParameter(plugin_, index, value);
 }
 
-bool VST2Plugin::setParameter(int index, const std::string &str){
+bool VST2Plugin::setParameter(int index, const std::string &str, int sampleOffset){
+    // VST2 can't do sample accurate automation
     return dispatch(effString2Parameter, index, 0, (void *)str.c_str());
 }
 

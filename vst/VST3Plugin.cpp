@@ -1063,19 +1063,19 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
     inputEvents_.addSysexEvent(event);
 }
 
-void VST3Plugin::setParameter(int index, float value){
+void VST3Plugin::setParameter(int index, float value, int sampleOffset){
     auto id = info().getParamID(index);
-    doSetParameter(id, value);
+    doSetParameter(id, value, sampleOffset);
     paramCache_[index] = value;
 }
 
-bool VST3Plugin::setParameter(int index, const std::string &str){
+bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffset){
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
     if (StringConvert::convert(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
-            doSetParameter(id, value);
+            doSetParameter(id, value, sampleOffset);
             paramCache_[index] = value;
             return true;
         }

@@ -1589,7 +1589,7 @@ static t_class *vstplugin_class;
 void t_vstplugin::set_param(int index, float value, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
-        x_plugin->setParameter(index, value);
+        x_plugin->setParameter(index, value, get_sample_offset());
         x_editor->param_changed(index, value, automated);
     } else {
         pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
@@ -1598,7 +1598,7 @@ void t_vstplugin::set_param(int index, float value, bool automated){
 
 void t_vstplugin::set_param(int index, const char *s, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
-        if (!x_plugin->setParameter(index, s)){
+        if (!x_plugin->setParameter(index, s, get_sample_offset())){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
         }
             // some plugins don't just ignore bad string input but reset the parameter to some value...
@@ -1665,6 +1665,11 @@ void t_vstplugin::update_precision(){
             // set the actual precision
         x_plugin->setupProcessing(x_sr, x_blocksize, dp ? ProcessPrecision::Double : ProcessPrecision::Single);
     }
+}
+
+int t_vstplugin::get_sample_offset(){
+    int offset = clock_gettimesincewithunits(x_lastdsptime, 1, true);
+    return offset % x_blocksize;
 }
 
 // constructor
@@ -1883,6 +1888,7 @@ static t_int *vstplugin_perform(t_int *w){
     auto plugin = x->x_plugin.get();
     bool dp = x->x_dp;
     bool bypass = plugin ? x->x_bypass : true;
+    x->x_lastdsptime = clock_getlogicaltime();
 
     if (plugin && !bypass) {
             // check processing precision (single or double)

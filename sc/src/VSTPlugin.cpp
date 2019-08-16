@@ -1250,7 +1250,7 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
             rtThreadID_ = std::this_thread::get_id();
 #endif
             bParamSet_ = true;
-            plugin_->setParameter(index, value);
+            plugin_->setParameter(index, value, owner_->mWorld->mSampleOffset);
             setParamDone(index);
             bParamSet_ = false;
         }
@@ -1268,7 +1268,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             rtThreadID_ = std::this_thread::get_id();
 #endif
             bParamSet_ = true;
-            if (plugin_->setParameter(index, display)) {
+            if (plugin_->setParameter(index, display, owner_->mWorld->mSampleOffset)) {
                 setParamDone(index);
             }
             bParamSet_ = false;

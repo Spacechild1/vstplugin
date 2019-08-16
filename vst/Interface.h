@@ -117,8 +117,8 @@ class IPlugin {
     virtual void sendMidiEvent(const MidiEvent& event) = 0;
     virtual void sendSysexEvent(const SysexEvent& event) = 0;
 
-    virtual void setParameter(int index, float value) = 0;
-    virtual bool setParameter(int index, const std::string& str) = 0;
+    virtual void setParameter(int index, float value, int sampleOffset = 0) = 0;
+    virtual bool setParameter(int index, const std::string& str, int sampleOffset = 0) = 0;
     virtual float getParameter(int index) const = 0;
     virtual std::string getParameterString(int index) const = 0;
     virtual int getNumParameters() const = 0;
