@@ -1169,6 +1169,7 @@ void VSTPluginDelegate::reset(bool async) {
     }
 }
 
+#if 0
 bool cmdSetParam(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
     auto index = data->index;
@@ -1228,6 +1229,32 @@ void VSTPluginDelegate::setParam(int32 index, const char *display) {
         }
     }
 }
+#else
+void VSTPluginDelegate::setParam(int32 index, float value) {
+    if (check()) {
+        if (index >= 0 && index < plugin_->getNumParameters()) {
+            plugin_->setParameter(index, value);
+            setParamDone(index);
+        }
+        else {
+            LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
+        }
+    }
+}
+
+void VSTPluginDelegate::setParam(int32 index, const char* display) {
+    if (check()) {
+        if (index >= 0 && index < plugin_->getNumParameters()) {
+            if (plugin_->setParameter(index, display)) {
+                setParamDone(index);
+            }
+        }
+        else {
+            LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
+        }
+    }
+}
+#endif
 
 void VSTPluginDelegate::setParamDone(int32 index) {
     owner_->paramState_[index] = plugin_->getParameter(index);
