@@ -860,8 +860,8 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
     std::string result;
         // resolve relative path
     if (!sys_isabsolutepath(s.c_str())){
+        bool vst3 = false;
         std::string path = s;
-        char buf[MAXPDSTRING+1];
     #ifdef _WIN32
         const char *ext = ".dll";
     #elif defined(__APPLE__)
@@ -869,28 +869,42 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
     #else // Linux/BSD/etc.
         const char *ext = ".so";
     #endif
-        if (path.find(".vst3") == std::string::npos && path.find(ext) == std::string::npos){
+        if (path.find(".vst3") != std::string::npos){
+            vst3 = true;
+        } else if (path.find(ext) == std::string::npos){
             path += ext;
         }
             // first try canvas search paths
+        char fullPath[MAXPDSTRING];
         char dirresult[MAXPDSTRING];
         char *name = nullptr;
     #ifdef __APPLE__
-        const char *bundleinfo = "/Contents/Info.plist";
-        // on MacOS VST plugins are bundles (directories) but canvas_open needs a real file
-        int fd = canvas_open(c, (path + bundleinfo).c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        const char *bundlePath = "Contents/Info.plist";
+        // on MacOS VST plugins are always bundles (directories) but canvas_open needs a real file
+        snprintf(fullPath, MAXPDSTRING, "%s/%s", path.c_str(), bundlePath);
+        int fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
     #else
+        const char *bundlePath = nullptr;
         int fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        if (fd < 0 && vst3){
+            // VST3 plugins might be bundles
+            bundlePath = getBundleBinaryPath().c_str();
+            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
+                     path.c_str(), bundlePath, fileName(path).c_str());
+            fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+        }
     #endif
         if (fd >= 0){
             sys_close(fd);
+            char buf[MAXPDSTRING+1];
             snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
-    #ifdef __APPLE__
-            char *find = strstr(buf, bundleinfo);
-            if (find){
-                *find = 0; // restore the bundle path
+            if (bundlePath){
+                // restore original path
+                char *pos = strstr(buf, bundlePath);
+                if (pos){
+                    pos[-1] = 0;
+                }
             }
-    #endif
             result = buf; // success
         } else {
                 // otherwise try default VST paths
