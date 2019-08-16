@@ -1738,6 +1738,40 @@ tresult PLUGIN_API HostApplication::queryInterface (const char* _iid, void** obj
     return kResultFalse;
 }
 
+/*///////////////////// HostAttribute //////////////////////////*/
+
+HostAttribute::HostAttribute(const Vst::TChar* s) : type(kString){
+    size = wcslen((const wchar_t *)s);
+    LOG_DEBUG("string size: " << size);
+    if (size > 0){
+        v.s = new Vst::TChar[size + 1]; // extra character
+        memcpy(v.s, s, size * sizeof(Vst::TChar));
+        v.s[size] = 0; // null terminate!
+    }
+}
+
+HostAttribute::HostAttribute(const char * data, uint32 n) : size(n), type(kBinary){
+    v.b = new char[size];
+    memcpy(v.s, data, n);
+}
+
+HostAttribute::HostAttribute(HostAttribute&& other){
+    if (size > 0){
+        delete[] v.b;
+    }
+    type = other.type;
+    size = other.size;
+    v = other.v;
+    other.size = 0;
+    other.v.b = nullptr;
+}
+
+HostAttribute::~HostAttribute(){
+    if (size > 0){
+        delete[] v.b;
+    }
+}
+
 /*///////////////////// HostAttributeList //////////////////////////*/
 
 HostAttribute *HostAttributeList::find(AttrID aid) {
@@ -1778,14 +1812,14 @@ tresult PLUGIN_API HostAttributeList::getFloat (AttrID aid, double& value){
 }
 
 tresult PLUGIN_API HostAttributeList::setString (AttrID aid, const Vst::TChar* string){
-    list_.emplace(aid, HostAttribute(string, wcslen((const wchar_t *)string)));
+    list_.emplace(aid, HostAttribute(string));
     return kResultTrue;
 }
 
 tresult PLUGIN_API HostAttributeList::getString (AttrID aid, Vst::TChar* string, uint32 size){
     auto attr = find(aid);
     if (attr && attr->type == HostAttribute::kString){
-        size = std::min<uint32>(size-1, attr->size);
+        size = std::min<uint32>(size-1, attr->size); // make room for the null terminator
         memcpy(string, attr->v.s, size * sizeof(Vst::TChar));
         string[size] = 0; // null terminate!
         return kResultTrue;

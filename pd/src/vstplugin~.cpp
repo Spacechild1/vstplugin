@@ -1669,6 +1669,7 @@ void t_vstplugin::update_precision(){
 
 int t_vstplugin::get_sample_offset(){
     int offset = clock_gettimesincewithunits(x_lastdsptime, 1, true);
+    // LOG_DEBUG("sample offset: " << offset);
     return offset % x_blocksize;
 }
 

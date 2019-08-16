@@ -426,30 +426,11 @@ struct HostAttribute {
     };
     explicit HostAttribute(int64 value) : type(kInteger) { v.i = value; }
     explicit HostAttribute(double value) : type(kFloat) { v.f = value; }
-    explicit HostAttribute(const Vst::TChar* data, uint32 n) : size(n), type(kString){
-        v.s = new Vst::TChar[size];
-        memcpy(v.s, data, n * sizeof(Vst::TChar));
-    }
-    explicit HostAttribute(const char * data, uint32 n) : size(n), type(kBinary){
-        v.b = new char[size];
-        memcpy(v.s, data, n);
-    }
+    explicit HostAttribute(const Vst::TChar* s);
+    explicit HostAttribute(const char * data, uint32 n);
     HostAttribute(const HostAttribute& other) = delete; // LATER
-    HostAttribute(HostAttribute&& other){
-        if (size > 0){
-            delete[] v.b;
-        }
-        type = other.type;
-        size = other.size;
-        v = other.v;
-        other.size = 0;
-        other.v.b = nullptr;
-    }
-    ~HostAttribute(){
-        if (size > 0){
-            delete[] v.b;
-        }
-    }
+    HostAttribute(HostAttribute&& other);
+    ~HostAttribute();
     HostAttribute& operator =(const HostAttribute& other) = delete; // LATER
     HostAttribute& operator =(HostAttribute&& other) = delete; // LATER
     // data
