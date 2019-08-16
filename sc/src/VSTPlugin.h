@@ -21,6 +21,10 @@ const size_t MAX_OSC_PACKET_SIZE = 1600;
 class VSTPlugin;
 class VSTPluginDelegate;
 
+// do we set parameters in the NRT thread?
+// seemed to work with VST2 but pointless with VST3...
+#define NRT_PARAM_SET 0
+
 struct CmdData {
     template<typename T>
     static T* create(World * world, int size = 0);
@@ -167,15 +171,19 @@ private:
     bool editor_ = false;
     bool isLoading_ = false;
     int pluginUseCount_ = 0; // plugin currently used by asynchronuous commands?
-    std::thread::id rtThreadID_;
-    std::thread::id nrtThreadID_;
-    World* world_;
+    World* world_ = nullptr;
     // cache (for cmdOpen)
-    double sampleRate_;
-    int bufferSize_;
-    int numInChannels_;
-    int numOutChannels_;
-
+    double sampleRate_ = 1;
+    int bufferSize_ = 0;
+    int numInChannels_ = 0;
+    int numOutChannels_ = 0;
+    // thread safety
+    std::thread::id rtThreadID_;
+#if NRT_PARAM_SET
+    std::thread::id nrtThreadID_;
+#else
+    bool bParamSet_ = false; // did we just set a parameter manually?
+#endif
 };
 
 class VSTPlugin : public SCUnit {

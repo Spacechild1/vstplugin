@@ -775,6 +775,10 @@ void VSTPlugin::unmap(int32 index) {
 
 // perform routine
 void VSTPlugin::next(int inNumSamples) {
+#ifdef SUPERNOVA
+    // for Supernova the "next" routine might be called in a different thread - each time!
+    delegate_->rtThreadID_ = std::this_thread::get_id();
+#endif
     if (!(inBufVec_ || outBufVec_)) {
         // only if RT memory methods failed in resizeBuffer()
         (*ft->fClearUnitOutputs)(this, inNumSamples);
@@ -904,15 +908,20 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
     // RT thread
     if (std::this_thread::get_id() == rtThreadID_) {
-        LOG_DEBUG("parameterAutomated (RT): " << index << ", " << value);
-#if 0
-        // linked parameters automated by control busses or Ugens
-        sendParameterAutomated(index, value);
+        // LOG_DEBUG("parameterAutomated (RT): " << index << ", " << value);
+#if NRT_PARAM_SET
+        // automation by control bus or Ugen input - do nothing!
+#else
+        // might have been caused by "/set"
+        if (bParamSet_) {
+            sendParameterAutomated(index, value);
+        }
 #endif
     }
+#if NRT_PARAM_SET
     // NRT thread
     else if (std::this_thread::get_id() == nrtThreadID_) {
-        LOG_DEBUG("parameterAutomated (NRT): " << index << ", " << value);
+        // LOG_DEBUG("parameterAutomated (NRT): " << index << ", " << value);
         FifoMsg msg;
         auto data = new ParamCmdData;
         data->owner = shared_from_this();
@@ -934,10 +943,11 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 
         SendMsgToRT(world(), msg);
     }
+#endif
 #if VSTTHREADS
-    // GUI thread (neither RT nor NRT thread) - push to queue
+    // from GUI thread (neither RT nor NRT thread) - push to queue
     else {
-        LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
+        // LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
         std::lock_guard<std::mutex> guard(owner_->mutex_);
         owner_->paramQueue_.emplace_back(index, value);
     }
@@ -1105,11 +1115,13 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
     isLoading_ = false;
     // move the plugin even if alive() returns false (so it will be properly released in close())
     plugin_ = std::move(cmd.plugin);
+#if NRT_PARAM_SET
     nrtThreadID_ = cmd.threadID;
+    // LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
+#endif
     if (!alive()) {
         LOG_WARNING("VSTPlugin: freed during background task");
     }
-    // LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
     if (plugin_){
         LOG_DEBUG("opened " << cmd.buf);
         // receive events from plugin
@@ -1169,7 +1181,7 @@ void VSTPluginDelegate::reset(bool async) {
     }
 }
 
-#if 0
+#if NRT_PARAM_SET
 bool cmdSetParam(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
     auto index = data->index;
@@ -1233,8 +1245,14 @@ void VSTPluginDelegate::setParam(int32 index, const char *display) {
 void VSTPluginDelegate::setParam(int32 index, float value) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
+#ifdef SUPERNOVA
+            // set the RT thread back to the main audio thread (see "next")
+            rtThreadID_ = std::this_thread::get_id();
+#endif
+            bParamSet_ = true;
             plugin_->setParameter(index, value);
             setParamDone(index);
+            bParamSet_ = false;
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
@@ -1245,9 +1263,15 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
 void VSTPluginDelegate::setParam(int32 index, const char* display) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
+#ifdef SUPERNOVA
+            // set the RT thread back to the main audio thread (see "next")
+            rtThreadID_ = std::this_thread::get_id();
+#endif
+            bParamSet_ = true;
             if (plugin_->setParameter(index, display)) {
                 setParamDone(index);
             }
+            bParamSet_ = false;
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
