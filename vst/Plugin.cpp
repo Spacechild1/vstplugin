@@ -168,7 +168,7 @@ bool isDirectory(const std::string& path){
     return fs::is_directory(widen(path), e);
 #else
     struct stat stbuf;
-    return (stat(path.c_str(), &stbuf) == 0) && IS_DIR(stbuf.st_mode);
+    return (stat(path.c_str(), &stbuf) == 0) && S_ISDIR(stbuf.st_mode);
 #endif
 }
 
