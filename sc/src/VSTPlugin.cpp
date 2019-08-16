@@ -510,20 +510,29 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 // -------------------- VSTPlugin ------------------------ //
 
 VSTPlugin::VSTPlugin(){
-    // UGen inputs: bypass, nin, inputs..., nparam, params...
-    assert(numInputs() > 1);
-    numInChannels_ = in0(1);
-    int onset = inChannelOnset_ + numInChannels_;
-    assert(numInputs() > onset);
-    numParameterControls_ = in0(onset);
-    parameterControlOnset_ = onset + 1;
-    assert(numInputs() > (onset + numParameterControls_ * 2));
-    // LOG_DEBUG("num in: " << numInChannels() << ", num out: " << numOutChannels() << ", num controls: " << numParameterControls_);
+    // UGen inputs: bypass, nout, nin, inputs..., nauxin, auxinputs..., nparam, params...
+    assert(numInputs() >= 5);
+    int nout = numOutChannels();
+    assert(!(nout < 0 || nout > numOutputs()));
+    auto nin = numInChannels();
+    assert(nin >= 0);
+    // aux in
+    auxInChannelOnset_ = inChannelOnset_ + nin + 1;
+    assert(auxInChannelOnset_ > inChannelOnset_ && auxInChannelOnset_ < numInputs());
+    auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
+    assert(nauxin >= 0);
+    // parameter controls
+    parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
+    assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ < numInputs());
+    auto numParams = numParameterControls(); // computed from parameterControlsOnset_
+    assert(numParams >= 0);
+    assert((parameterControlOnset_ + numParams * 2) <= numInputs());
+    // LOG_DEBUG("in: " << numInChannels() << ", out: " << numOutChannels() << ", aux in: " << numAuxInChannels()
+    //        << ", aux out: " << numAuxOutChannels() << ", params: " << numParameterControls());
  
     // create delegate after member initialization!
     delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
 
-    resizeBuffer();
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
 
     // run queued unit commands
@@ -590,87 +599,91 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
 }
 
 void VSTPlugin::resizeBuffer(){
-    bool fail = false;
+    auto plugin = delegate_->plugin();
+    if (!plugin) {
+        return;
+    }
+    auto onFail = [this]() {
+        LOG_ERROR("RTRealloc failed!");
+        RTFree(mWorld, buf_);
+        RTFree(mWorld, inBufVec_);
+        RTFree(mWorld, outBufVec_);
+        RTFree(mWorld, auxInBufVec_);
+        RTFree(mWorld, auxOutBufVec_);
+        buf_ = nullptr;
+        inBufVec_ = nullptr; outBufVec_ = nullptr;
+        auxInBufVec_ = nullptr; auxOutBufVec_ = nullptr;
+    };
+
     int blockSize = bufferSize();
     int nin = numInChannels();
     int nout = numOutChannels();
-    int bufin = 0;
-    int bufout = 0;
-    auto plugin = delegate_->plugin();
-    if (plugin){
-        nin = std::max<int>(nin, plugin->getNumInputs());
-        nout = std::max<int>(nout, plugin->getNumOutputs());
-        // buffer extra inputs/outputs for safety
-        bufin = std::max<int>(0, plugin->getNumInputs() - numInChannels());
-        bufout = std::max<int>(0, plugin->getNumOutputs() - numOutChannels());
-        LOG_DEBUG("bufin: " << bufin << ", bufout: " << bufout);
-    }
+    int nauxin = numAuxInChannels();
+    int nauxout = numAuxOutChannels();
+    int bufin = std::max<int>(0, plugin->getNumInputs() - nin);
+    int bufout = std::max<int>(0, plugin->getNumOutputs() - nout);
+    int bufauxin = std::max<int>(0, plugin->getNumAuxInputs() - nauxin);
+    int bufauxout = std::max<int>(0, plugin->getNumAuxOutputs() - nauxout);
+    LOG_DEBUG("bufin: " << bufin << ", bufout: " << bufout);
+    LOG_DEBUG("bufauxin: " << bufauxin << ", bufauxout: " << bufauxout);
     // safety buffer
     {
-        int bufSize = (bufin + bufout) * blockSize * sizeof(float);
+        int bufSize = (bufin + bufout + bufauxin + bufauxout) * blockSize * sizeof(float);
         if (bufSize > 0) {
             auto result = (float*)RTRealloc(mWorld, buf_, bufSize);
             if (result) {
                 buf_ = result;
-                memset(buf_, 0, bufSize);
+                memset(buf_, 0, bufSize); // zero!
             }
-            else goto fail;
+            else {
+                onFail();
+                return;
+            }
         }
         else {
             RTFree(mWorld, buf_);
             buf_ = nullptr;
         }
     }
-    // input buffer array
-    {
-        if (nin > 0) {
-            auto result = (const float**)RTRealloc(mWorld, inBufVec_, nin * sizeof(float*));
+    auto setBuffer = [&](auto& vec, auto channels, int numChannels, auto buf, int bufSize) {
+        int total = numChannels + bufSize;
+        if (total > 0) {
+            auto result = (std::remove_reference_t<decltype(vec)>) RTRealloc(mWorld, vec, total * sizeof(float*));
             if (result) {
-                inBufVec_ = result;
-                for (int i = 0; i < numInChannels(); ++i) {
-                    inBufVec_[i] = in(i + inChannelOnset_);
+                // point to channel
+                for (int i = 0; i < numChannels; ++i) {
+                    result[i] = channels[i];
                 }
-                // for safety:
-                for (int i = 0; i < bufin; ++i) {
-                    inBufVec_[numInChannels() + i] = &buf_[i * blockSize];
+                // point to safety buffer
+                for (int i = 0; i < bufSize; ++i) {
+                    result[numChannels + i] = buf + (i * blockSize);
                 }
+                vec = result;
             }
-            else goto fail;
+            else return false;
         }
         else {
-            RTFree(mWorld, inBufVec_);
-            inBufVec_ = nullptr;
+            RTFree(mWorld, vec);
+            vec = nullptr;
         }
+        return true;
+    };
+    auto bufptr = buf_;
+    if (!setBuffer(inBufVec_, mInBuf + inChannelOnset_, nin, bufptr, bufin)) {
+        onFail(); return;
     }
-    // output buffer array
-    {
-        if (nout > 0) {
-            auto result = (float**)RTRealloc(mWorld, outBufVec_, nout * sizeof(float*));
-            if (result) {
-                outBufVec_ = result;
-                for (int i = 0; i < numOutChannels(); ++i) {
-                    outBufVec_[i] = out(i);
-                }
-                // for safety:
-                for (int i = 0; i < bufout; ++i) {
-                    outBufVec_[numOutChannels() + i] = &buf_[(i + bufin) * blockSize];
-                }
-            }
-            else goto fail;
-        }
-        else {
-            RTFree(mWorld, outBufVec_);
-            outBufVec_ = nullptr;
-        }
+    bufptr += bufin * blockSize;
+    if (!setBuffer(auxInBufVec_, mInBuf + auxInChannelOnset_, nauxin, bufptr, bufauxin)) {
+        onFail(); return;
     }
-    LOG_DEBUG("resized buffer");
-    return;
-fail:
-    LOG_ERROR("RTRealloc failed!");
-    RTFree(mWorld, buf_);
-    RTFree(mWorld, inBufVec_);
-    RTFree(mWorld, outBufVec_);
-    buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
+    bufptr += bufauxin * blockSize;
+    if (!setBuffer(outBufVec_, mOutBuf, nout, bufptr, bufout)) {
+        onFail(); return;
+    }
+    bufptr += bufout * blockSize;
+    if (!setBuffer(auxOutBufVec_, mOutBuf + numOutChannels(), nauxout, bufptr, bufauxout)) {
+        onFail(); return;
+    }
 }
 
 void VSTPlugin::clearMapping() {
@@ -784,13 +797,9 @@ void VSTPlugin::next(int inNumSamples) {
         (*ft->fClearUnitOutputs)(this, inNumSamples);
         return;
     }
-    int nin = numInChannels();
-    int nout = numOutChannels();
-    bool bypass = in0(0);
-    int offset = 0;
     auto plugin = delegate_->plugin();
 
-    if (plugin && !bypass && plugin->hasPrecision(ProcessPrecision::Single)) {
+    if (plugin && !bypass() && plugin->hasPrecision(ProcessPrecision::Single)) {
         if (paramState_) {
             int nparam = plugin->getNumParameters();
             // update parameters from mapped control busses
@@ -805,7 +814,8 @@ void VSTPlugin::next(int inNumSamples) {
                 }
             }
             // update parameters from UGen inputs
-            for (int i = 0; i < numParameterControls_; ++i) {
+            int nparams = numParameterControls();
+            for (int i = 0; i < nparams; ++i) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
                 float value = in0(k + 1);
@@ -822,10 +832,24 @@ void VSTPlugin::next(int inNumSamples) {
         IPlugin::ProcessData<float> data;
         data.input = inBufVec_;
         data.output = outBufVec_;
+        data.auxInput = auxInBufVec_;
+        data.auxOutput = auxOutBufVec_;
         data.numSamples = inNumSamples;
         plugin->process(data);
 
-        offset = plugin->getNumOutputs();
+        // clear unused output channels
+        auto clearOutput = [](auto output, int nout, int offset, int n) {
+            int rem = nout - offset;
+            if (rem > 0) {
+                for (int i = 0; i < rem; ++i) {
+                    auto dst = output[i + offset];
+                    std::fill(dst, dst + n, 0);
+                }
+            }
+        };
+        clearOutput(mOutBuf, numOutChannels(), plugin->getNumOutputs(), inNumSamples); // out
+        clearOutput(mOutBuf + numOutChannels(), numAuxOutChannels(), plugin->getNumAuxOutputs(), inNumSamples); // aux out
+
 #if HAVE_UI_THREAD
         // send parameter automation notification posted from the GUI thread.
         // we assume this is only possible if we have a VST editor window.
@@ -842,16 +866,23 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
     }
     else {
-        // bypass (copy input to output)
-        int n = std::min(nin, nout);
-        for (int i = 0; i < n; ++i) {
-            Copy(inNumSamples, outBufVec_[i], (float*)inBufVec_[i]);
-        }
-        offset = n;
-    }
-    // zero remaining outlets
-    for (int i = offset; i < nout; ++i) {
-        Fill(inNumSamples, outBufVec_[i], 0.f);
+        // bypass (copy input to output and zero remaining output channels)
+        auto doBypass = [](auto input, int nin, auto output, int nout, int n) {
+            for (int i = 0; i < nout; ++i) {
+                auto dst = output[i];
+                if (i < nin) {
+                    auto src = input[i];
+                    std::copy(src, src + n, dst);
+                }
+                else {
+                    std::fill(dst, dst + n, 0); // zero
+                }
+            }
+        };
+        // input -> output
+        doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(), inNumSamples);
+        // aux input -> aux output
+        doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(), numAuxOutChannels(), inNumSamples);
     }
 }
 
@@ -889,6 +920,8 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
         bufferSize_ = owner->bufferSize();
         numInChannels_ = owner->numInChannels();
         numOutChannels_ = owner->numOutChannels();
+        numAuxInChannels_ = owner->numAuxInChannels();
+        numAuxOutChannels_ = owner->numAuxOutChannels();
     }
     owner_ = owner;
 }

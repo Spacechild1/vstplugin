@@ -177,6 +177,8 @@ private:
     int bufferSize_ = 0;
     int numInChannels_ = 0;
     int numOutChannels_ = 0;
+    int numAuxInChannels_ = 0;
+    int numAuxOutChannels_ = 0;
     // thread safety
     std::thread::id rtThreadID_;
 #if NRT_PARAM_SET
@@ -200,9 +202,15 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int numInChannels() const { return numInChannels_; }
-    int numOutChannels() const { return numOutputs(); }
+    int bypass() const { return (int)out0(0); }
+    int numInChannels() const { return (int)out0(2); }
+    int numAuxInChannels() const {
+        return (int)out0(auxInChannelOnset_ - 1);
+    }
+    int numOutChannels() const { return (int)out0(1); }
+    int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
 
+    int numParameterControls() const { return (int)out0(parameterControlOnset_ - 1); }
     void update();
     void map(int32 index, int32 bus);
     void unmap(int32 index);
@@ -223,11 +231,16 @@ private:
 
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
-    static const int inChannelOnset_ = 2;
-    int numInChannels_ = 0;
+    static const int inChannelOnset_ = 3;
+    int auxInChannelOnset_ = 0;
+    int parameterControlOnset_ = 0;
+
     float *buf_ = nullptr;
     const float **inBufVec_ = nullptr;
     float **outBufVec_ = nullptr;
+    const float** auxInBufVec_ = nullptr;
+    float** auxOutBufVec_ = nullptr;
+
     struct Mapping {
         int32 index;
         int32 bus;
@@ -237,8 +250,6 @@ private:
     Mapping* paramMappingList_ = nullptr;
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
-    int numParameterControls_ = 0;
-    int parameterControlOnset_ = 0;
 
     // threading
 #if HAVE_UI_THREAD
