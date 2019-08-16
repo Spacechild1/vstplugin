@@ -298,6 +298,24 @@ void EventList::clear(){
 
 /*/////////////////////// VST3Plugin ///////////////////////*/
 
+#if HAVE_NRT_THREAD
+#define LOCK_GUARD std::lock_guard<std::mutex> LOCK_GUARD##_lock(mutex_);
+#else
+#define LOCK_GUARD
+#endif
+
+#if HAVE_NRT_THREAD
+#define LOCK mutex_.lock();
+#else
+#define LOCK
+#endif
+
+#if HAVE_NRT_THREAD
+#define UNLOCK mutex_.unlock();
+#else
+#define UNLOCK
+#endif
+
 template <typename T>
 inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     T* obj = nullptr;
@@ -664,7 +682,9 @@ void VST3Plugin::doProcess(Vst::ProcessData &data){
     // data.outputParameterChanges = &outputParamChanges_;
 
     // process
+    LOCK
     processor_->process(data);
+    UNLOCK
 
     // clear input queues
     inputEvents_.clear();
@@ -769,11 +789,13 @@ bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
 }
 
 void VST3Plugin::suspend(){
+    LOCK_GUARD
     processor_->setProcessing(false);
     component_->setActive(false);
 }
 
 void VST3Plugin::resume(){
+    LOCK_GUARD
     component_->setActive(true);
     processor_->setProcessing(true);
 }
@@ -852,6 +874,7 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
             }
         }
     }
+    LOCK_GUARD
     processor_->setBusArrangements(busIn, numIn, busOut, numOut);
 }
 
@@ -1199,20 +1222,29 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     // get chunk data
     for (auto& entry : entries){
         stream.setPos(entry.offset);
+        LOCK_GUARD
         if (isChunkType(entry.id, Vst::kComponentState)){
             if (component_->setState(&stream) == kResultOk){
                 // also update controller state!
                 stream.setPos(entry.offset); // rewind
-                controller_->setComponentState(&stream);
+                if (window_){
+                    // TODO ?
+                } else {
+                    controller_->setComponentState(&stream);
+                }
                 LOG_DEBUG("restored component state");
             } else {
                 LOG_WARNING("couldn't restore component state");
             }
         } else if (isChunkType(entry.id, Vst::kControllerState)){
-            if (controller_->setState(&stream) == kResultOk){
-                LOG_DEBUG("restored controller set");
+            if (window_){
+                // TODO ?
             } else {
-                LOG_WARNING("couldn't restore controller state");
+                if (controller_->setState(&stream) == kResultOk){
+                    LOG_DEBUG("restored controller set");
+                } else {
+                    LOG_WARNING("couldn't restore controller state");
+                }
             }
         }
     }
@@ -1240,6 +1272,8 @@ void VST3Plugin::writeProgramData(std::string& buffer){
         ChunkListEntry entry;
         memcpy(entry.id, Vst::getChunkID(type), sizeof(Vst::ChunkID));
         stream.tell(&entry.offset);
+        LOCK_GUARD
+        // TODO what do for a GUI editor?
         if (component->getState(&stream) == kResultTrue){
             auto pos = stream.getPos();
             entry.size = pos - entry.offset;
@@ -1345,11 +1379,17 @@ void VST3Plugin::endMessage() {
 void VST3Plugin::sendMessage(Vst::IMessage *msg){
     FUnknownPtr<Vst::IConnectionPoint> p1(component_);
     if (p1){
+        LOCK_GUARD
         p1->notify(msg);
     }
     FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
     if (p2){
-        p2->notify(msg);
+        if (window_){
+            // TODO ?
+        } else {
+            LOCK_GUARD
+            p2->notify(msg);
+        }
     }
 }
 

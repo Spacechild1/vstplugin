@@ -153,6 +153,10 @@ endif()
 add_library(${PROJECT} MODULE src/${FILENAME}) # the UGen
 add_executable(${PROBE} ${VST}/probe.cpp ${VST_SRC}) # probe exe
 
+# thread safety
+add_definitions(-DHAVE_NRT_THREAD=1)
+
+# logging
 add_definitions(-DLOGLEVEL=${LOGLEVEL})
 target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog) # only for VSTPluginUGen!
 

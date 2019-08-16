@@ -23,6 +23,10 @@ typedef unsigned int uint32_t;
 #define VSTTHREADS 1
 #endif
 
+#ifndef HAVE_NRT_THREAD
+#define HAVE_NRT_THREAD 0
+#endif
+
 namespace vst {
 
 struct MidiEvent {
