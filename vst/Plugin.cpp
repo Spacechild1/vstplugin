@@ -264,7 +264,7 @@ const std::string& getBundleBinaryPath(){
 #if defined(__i386__)
         "Contents/i386-linux";
 #elif defined(__x86_64__)
-        "Contents/x86_64-linux"
+        "Contents/x86_64-linux";
 #else
         ""; // figure out what to do with all the ARM versions...
 #endif
