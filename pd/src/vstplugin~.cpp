@@ -1957,24 +1957,25 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
     t_float sr = sp[0]->s_sr;
     dsp_add(vstplugin_perform, 2, x, blocksize);
-    if (blocksize != x->x_blocksize){
-        x->x_blocksize = blocksize;
-        x->update_buffer();
-    }
-    x->x_sr = sr;
-    if (x->x_plugin){
+        // only reset plugin if blocksize or samplerate has changed
+    if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->x_plugin->suspend();
-        x->x_plugin->setupProcessing(x->x_sr, x->x_blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
+        x->x_plugin->setupProcessing(sr, blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
         x->x_plugin->resume();
     }
+        // update signal vectors
     int nin = x->x_siginlets.size();
-    int nout = x->x_sigoutlets.size();
     for (int i = 0; i < nin; ++i){
         x->x_siginlets[i] = sp[i]->s_vec;
     }
+    int nout = x->x_sigoutlets.size();
     for (int i = 0; i < nout; ++i){
         x->x_sigoutlets[i] = sp[nin + i]->s_vec;
     }
+    x->x_blocksize = blocksize;
+    x->x_sr = sr;
+        // always update buffers!
+    x->update_buffer();
     // LOG_DEBUG("vstplugin~: got 'dsp' message");
 }
 
