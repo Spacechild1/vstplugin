@@ -564,17 +564,17 @@ tresult VST3Plugin::endEdit(Vst::ParamID id){
 }
 
 tresult VST3Plugin::restartComponent(int32 flags){
-#define PRINT_FLAG(name) if (flags & name) LOG_DEBUG(#name)
-    PRINT_FLAG(Vst::kReloadComponent);
-    PRINT_FLAG(Vst::kIoChanged);
-    PRINT_FLAG(Vst::kParamValuesChanged);
-    PRINT_FLAG(Vst::kLatencyChanged);
-    PRINT_FLAG(Vst::kParamTitlesChanged);
-    PRINT_FLAG(Vst::kMidiCCAssignmentChanged);
-    PRINT_FLAG(Vst::kNoteExpressionChanged);
-    PRINT_FLAG(Vst::kIoTitlesChanged);
-    PRINT_FLAG(Vst::kPrefetchableSupportChanged);
-    PRINT_FLAG(Vst::kRoutingInfoChanged);
+#define PRINT_FLAG(name) if (flags & name) { LOG_DEBUG(#name); }
+    PRINT_FLAG(Vst::kReloadComponent)
+    PRINT_FLAG(Vst::kIoChanged)
+    PRINT_FLAG(Vst::kParamValuesChanged)
+    PRINT_FLAG(Vst::kLatencyChanged)
+    PRINT_FLAG(Vst::kParamTitlesChanged)
+    PRINT_FLAG(Vst::kMidiCCAssignmentChanged)
+    PRINT_FLAG(Vst::kNoteExpressionChanged)
+    PRINT_FLAG(Vst::kIoTitlesChanged)
+    PRINT_FLAG(Vst::kPrefetchableSupportChanged)
+    PRINT_FLAG(Vst::kRoutingInfoChanged)
 #undef PRINT_FLAG
     return kResultOk;
 }
