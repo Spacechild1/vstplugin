@@ -2,6 +2,7 @@
 
 #ifdef SUPERNOVA
 #include <nova-tt/spin_lock.hpp>
+#include <nova-tt/rw_spinlock.hpp>
 #endif
 
 static InterfaceTable *ft;
@@ -821,7 +822,7 @@ void VSTPlugin::next(int inNumSamples) {
                 #define unit this
                     float last = paramState_[index];
                     float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
-                    ACQUIRE_BUS_AUDIO_SHARED(num)
+                    ACQUIRE_BUS_AUDIO_SHARED(num);
                     for (int i = 0; i < inNumSamples; ++i) {
                         float value = bus[i];
                         if (value != last) {
