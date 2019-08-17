@@ -1597,7 +1597,8 @@ static t_class *vstplugin_class;
 void t_vstplugin::set_param(int index, float value, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
-        x_plugin->setParameter(index, value, get_sample_offset());
+        int offset = x_plugin->getType() == IPlugin::VST3 ? get_sample_offset() : 0;
+        x_plugin->setParameter(index, value, offset);
         x_editor->param_changed(index, value, automated);
     } else {
         pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
@@ -1606,7 +1607,8 @@ void t_vstplugin::set_param(int index, float value, bool automated){
 
 void t_vstplugin::set_param(int index, const char *s, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
-        if (!x_plugin->setParameter(index, s, get_sample_offset())){
+        int offset = x_plugin->getType() == IPlugin::VST3 ? get_sample_offset() : 0;
+        if (!x_plugin->setParameter(index, s, offset)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
         }
             // some plugins don't just ignore bad string input but reset the parameter to some value...

@@ -807,6 +807,7 @@ void VSTPlugin::next(int inNumSamples) {
     auto plugin = delegate_->plugin();
 
     if (plugin && !bypass() && plugin->hasPrecision(ProcessPrecision::Single)) {
+        auto vst3 = plugin->getType() == IPlugin::VST3;
         if (paramState_) {
             int nparam = plugin->getNumParameters();
             // update parameters from mapped control busses
@@ -829,10 +830,21 @@ void VSTPlugin::next(int inNumSamples) {
                     float last = paramState_[index];
                     float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
                     ACQUIRE_BUS_AUDIO_SHARED(num);
-                    for (int i = 0; i < inNumSamples; ++i) {
-                        float value = bus[i];
+                    // VST3: sample accurate
+                    if (vst3) {
+                        for (int i = 0; i < inNumSamples; ++i) {
+                            float value = bus[i];
+                            if (value != last) {
+                                plugin->setParameter(index, value, i); // sample offset!
+                                last = value;
+                            }
+                        }
+                    }
+                    // VST2: pick the first sample
+                    else {
+                        float value = *bus;
                         if (value != last) {
-                            plugin->setParameter(index, value, i); // sample offset!
+                            plugin->setParameter(index, value);
                             last = value;
                         }
                     }
@@ -853,10 +865,21 @@ void VSTPlugin::next(int inNumSamples) {
                     if (calcRate == calc_FullRate) {
                         float last = paramState_[index];
                         auto buf = in(k + 1);
-                        for (int i = 0; i < inNumSamples; ++i) {
-                            float value = buf[i];
+                        // VST3: sample accurate
+                        if (vst3) {
+                            for (int i = 0; i < inNumSamples; ++i) {
+                                float value = buf[i];
+                                if (value != last) {
+                                    plugin->setParameter(index, value, i); // sample offset!
+                                    last = value;
+                                }
+                            }
+                        }
+                        // VST2: pick the first sample
+                        else {
+                            float value = *buf;
                             if (value != last) {
-                                plugin->setParameter(index, value, i); // sample offset!
+                                plugin->setParameter(index, value);
                                 last = value;
                             }
                         }

@@ -180,6 +180,8 @@ class VST3Plugin final :
     tresult PLUGIN_API disconnect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API notify(Vst::IMessage* message) override;
 
+    Type getType() const override { return VST3; }
+
     const PluginInfo& info() const { return *info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;

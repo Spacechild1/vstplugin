@@ -67,11 +67,17 @@ class IPlugin {
     using ptr = std::unique_ptr<IPlugin>;
     using const_ptr = std::unique_ptr<const IPlugin>;
 
+    enum Type {
+        VST2,
+        VST3
+    };
+
+    virtual Type getType() const = 0;
+
     virtual ~IPlugin(){}
 
     virtual const PluginInfo& info() const = 0;
 
-    virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
     template<typename T>
     struct ProcessData {
         const T **input = nullptr;
@@ -80,6 +86,7 @@ class IPlugin {
         T **auxOutput = nullptr;
         int numSamples = 0;
     };
+    virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
     virtual void process(ProcessData<float>& data) = 0;
     virtual void process(ProcessData<double>& data) = 0;
     virtual bool hasPrecision(ProcessPrecision precision) const = 0;
@@ -199,14 +206,15 @@ struct PluginInfo {
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
-    void setUniqueID(int _id);
+    void setUniqueID(int _id); // VST2
     int getUniqueID() const {
         return id_.id;
     }
-    void setUID(const char *uid);
+    void setUID(const char *uid); // VST3
     const char* getUID() const {
         return id_.uid;
     }
+    IPlugin::Type type() const { return type_; }
     // info data
     ProbeResult probeResult = ProbeResult::none;
     std::string uniqueID;
@@ -340,11 +348,7 @@ struct PluginInfo {
     // param ID to index (VST3 only)
     std::unordered_map<uint32_t, int> idToIndexMap_;
 #endif
-    enum Type {
-        VST2,
-        VST3
-    };
-    Type type_;
+    IPlugin::Type type_;
     union ID {
         char uid[16];
         int32_t id;
