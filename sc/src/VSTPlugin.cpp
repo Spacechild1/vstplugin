@@ -839,13 +839,30 @@ void VSTPlugin::next(int inNumSamples) {
             for (int i = 0; i < nparams; ++i) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
-                float value = in0(k + 1);
                 // only if index is not out of range and the parameter is not mapped to a bus
-                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr
-                    && paramState_[index] != value)
-                {
-                    plugin->setParameter(index, value);
-                    paramState_[index] = value;
+                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr){
+                    auto calcRate = mInput[k + 1]->mCalcRate;
+                    // audio rate
+                    if (calcRate == calc_FullRate) {
+                        float last = paramState_[index];
+                        auto buf = in(k + 1);
+                        for (int i = 0; i < inNumSamples; ++i) {
+                            float value = buf[i];
+                            if (value != last) {
+                                plugin->setParameter(index, value, i); // sample offset!
+                                last = value;
+                            }
+                        }
+                        paramState_[index] = last;
+                    }
+                    // control rate
+                    else {
+                        float value = in0(k + 1);
+                        if (value != paramState_[index]) {
+                            plugin->setParameter(index, value);
+                            paramState_[index] = value;
+                        }
+                    }
                 }
             }
         }
