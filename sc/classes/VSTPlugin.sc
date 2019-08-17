@@ -63,14 +63,16 @@ VSTPlugin : MultiOutUGen {
 			);
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id, info;
+	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0;
+		var flags = 0; // not used (yet)
 		input = input.asArray;
+		auxInput = auxInput.asArray;
 		params = params.asArray;
 		params.size.odd.if {
 			^Error("'params': expecting pairs of param index/name + value").throw;
 		};
-		^this.multiNewList([\audio, id, info, numOut, bypass, input.size]
-			++ input ++ params.size.div(2) ++ params);
+		^this.multiNewList([\audio, id, info, numOut, numAuxOut, flags, bypass, input.size]
+			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
@@ -464,16 +466,25 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg theID, theInfo, numOut, bypass, numInputs ... args;
-		var inputArray, numParams, paramArray, sym;
+	init { arg theID, theInfo, numOut, numAuxOut, flags, bypass ... args;
+		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, sym, offset=0;
 		// store id and info (both optional)
 		id = theID;
 		info = theInfo;
-		// seperate audio inputs from parameter controls
-		inputArray = args[..(numInputs-1)];
-		numParams = args[numInputs];
-		paramArray = args[(numInputs+1)..(numInputs+(numParams*2))];
-		// "param array size: %".format(paramArray.size).postln;
+		// main inputs
+		numInputs = args[offset];
+		inputArray = args[(offset+1)..(offset+numInputs)];
+		(inputArray.size != numInputs).if { Error("bug: input array size mismatch!").throw };
+		offset = offset + 1 + numInputs;
+		// parameter controls
+		numParams = args[offset];
+		paramArray = args[(offset+1)..(offset+(numParams*2))];
+		(paramArray.size != (numParams*2)).if { Error("bug: param array size mismatch!").throw };
+		offset = offset + 1 + numParams;
+		// aux inputs
+		numAuxInputs = args[offset];
+		auxInputArray = args[(offset+1)..(offset+numAuxInputs)];
+		(auxInputArray.size != numAuxInputs).if { Error("bug: aux input array size mismatch!").throw };
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
 			param.isNumber.not.if {
@@ -485,7 +496,8 @@ VSTPlugin : MultiOutUGen {
 			};
 		};
 		// reassemble UGen inputs
-		inputs = [bypass, numInputs] ++ inputArray ++ numParams ++ paramArray;
-		^this.initOutputs(numOut, rate)
+		inputs = [numOut, flags, bypass, numInputs] ++ inputArray
+		    ++ numParams ++ paramArray ++ numAuxInputs ++ auxInputArray;
+		^this.initOutputs(numOut + numAuxOut, rate)
 	}
 }
