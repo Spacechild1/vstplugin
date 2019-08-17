@@ -124,7 +124,7 @@ public:
     void queryParams(int32 index, int32 count);
     void getParam(int32 index);
     void getParams(int32 index, int32 count);
-    void mapParam(int32 index, int32 bus);
+    void mapParam(int32 index, int32 bus, bool audio = false);
     void unmapParam(int32 index);
     // program/bank
     void setProgram(int32 index);
@@ -212,12 +212,12 @@ public:
 
     int numParameterControls() const { return (int)out0(parameterControlOnset_ - 1); }
     void update();
-    void map(int32 index, int32 bus);
+    void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
 private:
     void resizeBuffer();
     void clearMapping();
-    float readControlBus(int32 num);
+    float readControlBus(uint32 num);
     // data members
     volatile uint32 initialized_ = MagicInitialized; // set by constructor
     volatile uint32 queued_; // set to MagicQueued when queuing unit commands
@@ -242,10 +242,25 @@ private:
     float** auxOutBufVec_ = nullptr;
 
     struct Mapping {
-        int32 index;
-        int32 bus;
+        enum BusType {
+            Control,
+            Audio
+        };
+        void setBus(uint32 num, BusType type) {
+            // use last bit in bus to encode the type
+            bus_ = num | (type << 31);
+        }
+        BusType type() const {
+            return (BusType)(bus_ & 0x80000000);
+        }
+        uint32 bus() const {
+            return bus_ & 0x7FFFFFFF;
+        }
         Mapping* prev;
         Mapping* next;
+        uint32 index;
+    private:
+        uint32 bus_;
     };
     Mapping* paramMappingList_ = nullptr;
     float* paramState_ = nullptr;

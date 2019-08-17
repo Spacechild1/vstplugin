@@ -696,8 +696,8 @@ void VSTPlugin::clearMapping() {
     paramMapping_ = nullptr;
 }
 
-float VSTPlugin::readControlBus(int32 num) {
-    if (num >= 0 && num < mWorld->mNumControlBusChannels) {
+float VSTPlugin::readControlBus(uint32 num) {
+    if (num < mWorld->mNumControlBusChannels) {
 #define unit this
         ACQUIRE_BUS_CONTROL(num);
         float value = mWorld->mControlBus[num];
@@ -747,13 +747,13 @@ void VSTPlugin::update() {
     }
 }
 
-void VSTPlugin::map(int32 index, int32 bus) {
+void VSTPlugin::map(int32 index, int32 bus, bool audio) {
     if (paramMapping_[index] == nullptr) {
         auto mapping = (Mapping*)RTAlloc(mWorld, sizeof(Mapping));
         if (mapping) {
             // add to head of linked list
             mapping->index = index;
-            mapping->bus = bus;
+            mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
             mapping->prev = nullptr;
             mapping->next = paramMappingList_;
             if (paramMappingList_) {
@@ -804,13 +804,34 @@ void VSTPlugin::next(int inNumSamples) {
             int nparam = plugin->getNumParameters();
             // update parameters from mapped control busses
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
-                int index = m->index;
-                int bus = m->bus;
-                float value = readControlBus(bus);
-                assert(index >= 0 && index < nparam);
-                if (value != paramState_[index]) {
-                    plugin->setParameter(index, value);
-                    paramState_[index] = value;
+                uint32 index = m->index;
+                auto type = m->type();
+                uint32 num = m->bus();
+                assert(index < nparam);
+                // Control Bus mapping
+                if (type == Mapping::Control) {
+                    float value = readControlBus(num);
+                    if (value != paramState_[index]) {
+                        plugin->setParameter(index, value);
+                        paramState_[index] = value;
+                    }
+                }
+                // Audio Bus mapping
+                else if (num < mWorld->mNumAudioBusChannels){
+                #define unit this
+                    float last = paramState_[index];
+                    float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
+                    ACQUIRE_BUS_AUDIO_SHARED(bus)
+                    for (int i = 0; i < inNumSamples; ++i) {
+                        float value = bus[i];
+                        if (value != last) {
+                            plugin->setParameter(index, value, i); // sample offset!
+                            last = value;
+                        }
+                    }
+                    RELEASE_BUS_AUDIO_SHARED(bus);
+                    paramState_[index] = last;
+                #undef unit
                 }
             }
             // update parameters from UGen inputs
@@ -1364,10 +1385,10 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
     }
 }
 
-void VSTPluginDelegate::mapParam(int32 index, int32 bus) {
+void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
-            owner_->map(index, bus);
+            owner_->map(index, bus, audio);
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
@@ -1891,23 +1912,34 @@ void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
     }
 }
 
+void vst_domap(VSTPlugin* unit, sc_msg_iter* args, bool audio) {
+    while (args->remain() > 0) {
+        int32 index = -1;
+        if (vst_param_index(unit, args, index)) {
+            int32 bus = args->geti(-1);
+            int32 numChannels = args->geti();
+            for (int i = 0; i < numChannels; ++i) {
+                unit->delegate().mapParam(index + i, bus + i, audio);
+            }
+        }
+        else {
+            args->geti(); // swallow bus
+            args->geti(); // swallow numChannels
+        }
+    }
+}
+
 // map parameters to control busses
 void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
     if (unit->delegate().check()) {
-        while (args->remain() > 0) {
-            int32 index = -1;
-            if (vst_param_index(unit, args, index)) {
-                int32 bus = args->geti(-1);
-                int32 numChannels = args->geti();
-                for (int i = 0; i < numChannels; ++i) {
-                    unit->delegate().mapParam(index + i, bus + i);
-                }
-            }
-            else {
-                args->geti(); // swallow bus
-                args->geti(); // swallow numChannels
-            }
-        }
+        vst_domap(unit, args, false);
+    }
+}
+
+// map parameters to audio busses
+void vst_mapa(VSTPlugin* unit, sc_msg_iter* args) {
+    if (unit->delegate().check()) {
+        vst_domap(unit, args, true);
     }
 }
 
@@ -2375,6 +2407,7 @@ PluginLoad(VSTPlugin) {
     UnitCmd(get);
     UnitCmd(getn);
     UnitCmd(map);
+    UnitCmd(mapa);
     UnitCmd(unmap);
     UnitCmd(program_set);
     UnitCmd(program_query);
