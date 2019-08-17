@@ -407,7 +407,7 @@ VSTPlugin : MultiOutUGen {
 						\auxoutputs, { info.numAuxOutputs = value.asInteger },
 						\flags,
 						{
-							f = value.asInteger;
+							f = value.asHexIfPossible;
 							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 							info.putPairs([
 								hasEditor: flags[0],

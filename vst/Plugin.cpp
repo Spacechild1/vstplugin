@@ -1044,7 +1044,7 @@ void PluginInfo::serialize(std::ostream& file) const {
     if (numAuxOutputs > 0){
         file << "auxoutputs=" << numAuxOutputs << "\n";
     }
-    file << "flags=" << (uint32_t)flags << "\n";
+    file << "flags=" << toHex(flags) << "\n";
 #if USE_VST3
     if (programChange != NoParamID){
         file << "pgmchange=" << toHex(programChange) << "\n";

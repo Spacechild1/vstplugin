@@ -780,9 +780,9 @@ void VST3Plugin::handleEvents(){
 bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
     switch (precision){
     case ProcessPrecision::Single:
-        return processor_->canProcessSampleSize(Vst::kSample32) == kResultOk;
+        return processor_->canProcessSampleSize(Vst::kSample32) == kResultTrue;
     case ProcessPrecision::Double:
-        return processor_->canProcessSampleSize(Vst::kSample64) == kResultOk;
+        return processor_->canProcessSampleSize(Vst::kSample64) == kResultTrue;
     default:
         return false;
     }
@@ -1410,7 +1410,7 @@ tresult BaseStream::read  (void* buffer, int32 numBytes, int32* numBytesRead){
     if (numBytesRead){
         *numBytesRead = numBytes;
     }
-    LOG_DEBUG("BaseStream: read " << numBytes << " bytes");
+    // LOG_DEBUG("BaseStream: read " << numBytes << " bytes");
     return kResultOk;
 }
 
@@ -1439,14 +1439,14 @@ tresult BaseStream::seek  (int64 pos, int32 mode, int64* result){
     if (result){
         *result = cursor_;
     }
-    LOG_DEBUG("BaseStream: set cursor to " << cursor_);
+    // LOG_DEBUG("BaseStream: set cursor to " << cursor_);
     return kResultTrue;
 }
 
 tresult BaseStream::tell  (int64* pos){
     if (pos){
         *pos = cursor_;
-        LOG_DEBUG("BaseStream: told cursor pos");
+        // LOG_DEBUG("BaseStream: told cursor pos");
         return kResultTrue;
     } else {
         return kInvalidArgument;
@@ -1613,7 +1613,7 @@ tresult WriteStream::write (void* buffer, int32 numBytes, int32* numBytesWritten
     if (numBytesWritten){
         *numBytesWritten = numBytes;
     }
-    LOG_DEBUG("BaseStream: wrote " << numBytes << " bytes");
+    // LOG_DEBUG("BaseStream: wrote " << numBytes << " bytes");
     return kResultTrue;
 }
 
