@@ -299,7 +299,7 @@ void EventList::clear(){
 /*/////////////////////// VST3Plugin ///////////////////////*/
 
 #if HAVE_NRT_THREAD
-#define LOCK_GUARD std::lock_guard<std::mutex> LOCK_GUARD##_lock(mutex_);
+#define LOCK_GUARD std::lock_guard<std::mutex> _lock(mutex_);
 #else
 #define LOCK_GUARD
 #endif
@@ -1380,6 +1380,7 @@ void VST3Plugin::addBinary(const char* id, const char *data, size_t size) {
 
 void VST3Plugin::endMessage() {
     if (msg_){
+        LOCK_GUARD
         sendMessage(msg_.get());
         msg_ = nullptr;
     }
@@ -1388,7 +1389,6 @@ void VST3Plugin::endMessage() {
 void VST3Plugin::sendMessage(Vst::IMessage *msg){
     FUnknownPtr<Vst::IConnectionPoint> p1(component_);
     if (p1){
-        LOCK_GUARD
         p1->notify(msg);
     }
     FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
@@ -1396,7 +1396,6 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
         if (window_){
             // TODO ?
         } else {
-            LOCK_GUARD
             p2->notify(msg);
         }
     }
@@ -1571,6 +1570,7 @@ bool BaseStream::readTUID(TUID tuid){
     if (bytesRead == Vst::kClassIDSize){
         buf[Vst::kClassIDSize] = 0;
         int i = 0;
+        LOG_DEBUG("start read tuid");
     #if COM_COMPATIBLE
         GUIDStruct guid;
         sscanf(buf, "%08x", &guid.data1);
@@ -1584,6 +1584,7 @@ bool BaseStream::readTUID(TUID tuid){
             sscanf(buf + i, "%02X", &temp);
             tuid[i / 2] = temp;
         }
+        LOG_DEBUG("end read tuid");
         return true;
     } else {
         return false;

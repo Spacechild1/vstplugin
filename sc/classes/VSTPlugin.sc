@@ -517,7 +517,6 @@ VSTPlugin : MultiOutUGen {
 		// reassemble UGen inputs (in correct order)
 		inputs = [numOut, flags, bypass, numInputs] ++ inputArray
 		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
-		inputs.postln;
 		^this.initOutputs(numOut + numAuxOut, rate)
 	}
 }

@@ -248,8 +248,8 @@ struct PluginInfo {
     void addParamAlias(int index, const std::string& key){
         paramMap_[key] = index;
     }
-    int findParam(const std::string&) const {
-        auto it = paramMap_.find(name);
+    int findParam(const std::string& key) const {
+        auto it = paramMap_.find(key);
         if (it != paramMap_.end()){
             return it->second;
         } else {

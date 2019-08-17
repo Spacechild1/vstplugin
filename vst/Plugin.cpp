@@ -978,7 +978,7 @@ void PluginInfo::setUID(const char *uid){
     type_ = VST3;
     char buf[33];
     for (int i = 0; i < 16; ++i){
-        snprintf(buf + (i * 2), sizeof(buf), "%02X", uid[i]);
+        snprintf(buf + (i * 2), 3, "%02X", uid[i]);
     }
     buf[32] = 0;
     uniqueID = buf;

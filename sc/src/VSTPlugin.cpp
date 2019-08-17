@@ -527,7 +527,7 @@ VSTPlugin::VSTPlugin(){
     assert(nauxin >= 0);
     // parameter controls
     parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
-    assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ < numInputs());
+    assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ <= numInputs());
     auto numParams = numParameterControls(); // computed from parameterControlsOnset_
     LOG_DEBUG("parameters: " << numParams);
     assert(numParams >= 0);
