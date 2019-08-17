@@ -854,10 +854,12 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
     for (int i = 0; i < numIn; ++i){
         Vst::BusInfo bus;
         if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
-            if (bus.busType == Vst::kMain){
+            if (bus.busType == Vst::kMain && i == 0){
                 busIn[i] = makeChannels(in);
-            } else if (bus.busType == Vst::kAux){
+                LOG_DEBUG("main input index: " << i);
+            } else if (bus.busType == Vst::kAux && i == 1){
                 busIn[i] = makeChannels(auxIn);
+                LOG_DEBUG("aux input index: " << i);
             }
         }
     }
@@ -867,15 +869,22 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
     for (int i = 0; i < numOut; ++i){
         Vst::BusInfo bus;
         if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
-            if (bus.busType == Vst::kMain){
+            if (bus.busType == Vst::kMain && i == 0){
                 busOut[i] = makeChannels(out);
-            } else if (bus.busType == Vst::kAux){
+                LOG_DEBUG("main output index: " << i);
+            } else if (bus.busType == Vst::kAux && i == 1){
                 busOut[i] = makeChannels(auxOut);
+                LOG_DEBUG("aux output index: " << i);
             }
         }
     }
     LOCK_GUARD
     processor_->setBusArrangements(busIn, numIn, busOut, numOut);
+    // we have to activate busses *after* setting the bus arrangement
+    component_->activateBus(Vst::kAudio, Vst::kInput, 0, in > 0); // main
+    component_->activateBus(Vst::kAudio, Vst::kInput, 1, auxIn > 0); // aux
+    component_->activateBus(Vst::kAudio, Vst::kOutput, 0, out > 0); // main
+    component_->activateBus(Vst::kAudio, Vst::kOutput, 1, auxOut > 0); // aux
 }
 
 void VST3Plugin::setTempoBPM(double tempo){
@@ -1742,7 +1751,6 @@ tresult PLUGIN_API HostApplication::queryInterface (const char* _iid, void** obj
 
 HostAttribute::HostAttribute(const Vst::TChar* s) : type(kString){
     size = wcslen((const wchar_t *)s);
-    LOG_DEBUG("string size: " << size);
     if (size > 0){
         v.s = new Vst::TChar[size + 1]; // extra character
         memcpy(v.s, s, size * sizeof(Vst::TChar));
