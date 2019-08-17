@@ -15,6 +15,8 @@ VSTPlugin : MultiOutUGen {
 			pluginDict = IdentityDictionary.new;
 			pluginDict[Server.default] = IdentityDictionary.new;
 			parentInfo = (
+				numParameters: #{ arg self; self.parameters.size },
+				numPrograms: #{ arg self; self.programs.size },
 				findParamIndex: #{ arg self, name; self.prParamIndexMap[name.asSymbol] },
 				print: #{ arg self, long = false;
 					"---".postln;
@@ -50,15 +52,15 @@ VSTPlugin : MultiOutUGen {
 					++ "double precision: %".format(self.doublePrecision);
 				},
 				printParameters: #{ arg self;
-					self.numParameters.do { arg i;
-						var label, param = self.parameters[i];
+					self.parameters.do { arg param, i;
+						var label;
 						label = (param.label.size > 0).if { "(%)".format(param.label) };
 						"[%] % %".format(i, param.name, label ?? "").postln;
 					};
 				},
 				printPrograms: #{ arg self;
-					self.program.do { arg item, i;
-						"[%] %".format(i, item.name).postln;
+					self.program.do { arg pgm, i;
+						"[%] %".format(i, pgm.name).postln;
 					};
 				},
 				// deprecated (removed) methods from v0.1
@@ -353,7 +355,6 @@ VSTPlugin : MultiOutUGen {
 							// more info later
 						);
 					};
-					info.numParameters = n;
 					info.parameters = parameters;
 					parameters.do { arg param, index;
 						indexMap[param.name.asSymbol] = index;
@@ -369,7 +370,6 @@ VSTPlugin : MultiOutUGen {
 						var name = this.prGetLine(stream);
 						programs[i] = (name: name); // more info later
 					};
-					info.numPrograms = n;
 					info.programs = programs;
 				},
 				"[keys]",
