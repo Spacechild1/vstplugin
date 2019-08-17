@@ -511,25 +511,27 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 // -------------------- VSTPlugin ------------------------ //
 
 VSTPlugin::VSTPlugin(){
-    // UGen inputs: bypass, nout, nin, inputs..., nauxin, auxinputs..., nparam, params...
+    // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
     assert(numInputs() >= 5);
     int nout = numOutChannels();
+    LOG_DEBUG("out: " << nout);
     assert(!(nout < 0 || nout > numOutputs()));
     auto nin = numInChannels();
+    LOG_DEBUG("in: " << nin);
     assert(nin >= 0);
     // aux in
     auxInChannelOnset_ = inChannelOnset_ + nin + 1;
     assert(auxInChannelOnset_ > inChannelOnset_ && auxInChannelOnset_ < numInputs());
     auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
+    LOG_DEBUG("aux in: " << nauxin);
     assert(nauxin >= 0);
     // parameter controls
     parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
     assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ < numInputs());
     auto numParams = numParameterControls(); // computed from parameterControlsOnset_
+    LOG_DEBUG("parameters: " << numParams);
     assert(numParams >= 0);
     assert((parameterControlOnset_ + numParams * 2) <= numInputs());
-    // LOG_DEBUG("in: " << numInChannels() << ", out: " << numOutChannels() << ", aux in: " << numAuxInChannels()
-    //        << ", aux out: " << numAuxOutChannels() << ", params: " << numParameterControls());
  
     // create delegate after member initialization!
     delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);

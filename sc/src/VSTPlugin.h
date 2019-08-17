@@ -202,16 +202,16 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int flags() const { return (int)out0(1); } // not used (yet)
-    int bypass() const { return (int)out0(2); }
-    int numInChannels() const { return (int)out0(3); }
+    int flags() const { return (int)in0(1); } // not used (yet)
+    int bypass() const { return (int)in0(2); }
+    int numInChannels() const { return (int)in0(3); }
     int numAuxInChannels() const {
-        return (int)out0(auxInChannelOnset_ - 1);
+        return (int)in0(auxInChannelOnset_ - 1);
     }
-    int numOutChannels() const { return (int)out0(0); }
+    int numOutChannels() const { return (int)in0(0); }
     int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
 
-    int numParameterControls() const { return (int)out0(parameterControlOnset_ - 1); }
+    int numParameterControls() const { return (int)in0(parameterControlOnset_ - 1); }
     void update();
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
