@@ -104,6 +104,8 @@ public:
     int32 bufferSize() const { return bufferSize_; }
     int32 numInChannels() const { return numInChannels_; }
     int32 numOutChannels() const { return numOutChannels_; }
+    int32 numAuxInChannels() const { return numAuxInChannels_; }
+    int32 numAuxOutChannels() const { return numAuxOutChannels_; }
 
     void parameterAutomated(int index, float value) override;
     void midiEvent(const MidiEvent& midi) override;

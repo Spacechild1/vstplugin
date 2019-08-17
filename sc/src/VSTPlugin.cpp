@@ -651,7 +651,7 @@ void VSTPlugin::resizeBuffer(){
     auto setBuffer = [&](auto& vec, auto channels, int numChannels, auto buf, int bufSize) {
         int total = numChannels + bufSize;
         if (total > 0) {
-            auto result = (std::remove_reference_t<decltype(vec)>) RTRealloc(mWorld, vec, total * sizeof(float*));
+            auto result = static_cast<std::remove_reference_t<decltype(vec)>>(RTRealloc(mWorld, vec, total * sizeof(float*)));
             if (result) {
                 // point to channel
                 for (int i = 0; i < numChannels; ++i) {
@@ -1125,8 +1125,7 @@ bool cmdOpen(World *world, void* cmdData) {
             }
             auto owner = data->owner;
             plugin->suspend();
-            // we only access immutable members of owner
-            // LOG_DEBUG("sr: " << owner->sampleRate() << ", bs: " << owner->bufferSize());
+            // we only access immutable members of owner!
             if (plugin->hasPrecision(ProcessPrecision::Single)) {
                 plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
             }
@@ -1135,8 +1134,10 @@ bool cmdOpen(World *world, void* cmdData) {
             }
             int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
             int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
-            plugin->setNumSpeakers(nin, nout);
-            // LOG_DEBUG("nin: " << nin << ", nout: " << nout);
+            int nauxin = std::min<int>(plugin->getNumAuxInputs(), owner->numAuxInChannels());
+            int nauxout = std::min<int>(plugin->getNumAuxOutputs(), owner->numAuxOutChannels());
+            plugin->setNumSpeakers(nin, nout, nauxin, nauxout);
+            // LOG_DEBUG("nin: " << nin << ", nout: " << nout << ", nauxin: " << nauxin << ", nauxout: " << nauxout);
             plugin->resume();
             data->plugin = std::move(plugin);
         }
