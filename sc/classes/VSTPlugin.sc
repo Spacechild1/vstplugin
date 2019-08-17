@@ -32,14 +32,16 @@ VSTPlugin : MultiOutUGen {
 					"".postln;
 				},
 				toString: #{ arg self, sep = $\n;
-					var s;
+					var s, auxin = (self.numAuxInputs > 0), auxout = (self.numAuxOutputs > 0);
 					s = "name: %".format(self.name) ++ sep
 					++ "path: %".format(self.path) ++ sep
 					++ "vendor: %".format(self.vendor) ++ sep
 					++ "category: %".format(self.category) ++ sep
 					++ "version: %".format(self.version) ++ sep
 					++ "input channels: %".format(self.numInputs) ++ sep
+					++ (auxin.if { "aux input channels: %".format(self.numAuxInputs) ++ sep } {""})
 					++ "output channels: %".format(self.numOutputs) ++ sep
+					++ (auxout.if { "aux output channels: %".format(self.numAuxOutputs) ++ sep } {""})
 					++ "parameters: %".format(self.numParameters) ++ sep
 					++ "programs: %".format(self.numPrograms) ++ sep
 					++ "MIDI input: %".format(self.midiInput) ++ sep
