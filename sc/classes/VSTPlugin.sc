@@ -323,6 +323,9 @@ VSTPlugin : MultiOutUGen {
 		var info = IdentityDictionary.new(parent: parentInfo, know: true);
 		var paramNames, paramLabels, paramIndex, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
+		// default values:
+		info.numAuxInputs = 0;
+		info.numAuxOutputs = 0;
 		{
 			line = this.prGetLine(stream, true);
 			line ?? { ^Error("EOF reached").throw };
@@ -388,9 +391,11 @@ VSTPlugin : MultiOutUGen {
 						\category, { info[key] = value },
 						\version, { info[key] = value },
 						\sdkVersion, { info[key] = value },
-						\id, { info[key] = value.asInteger },
+						\id, { info[key] = value },
 						\inputs, { info.numInputs = value.asInteger },
 						\outputs, { info.numOutputs = value.asInteger },
+						\auxinputs, { info.numAuxInputs = value.asInteger },
+						\auxoutputs, { info.numAuxOutputs = value.asInteger },
 						\flags,
 						{
 							f = value.asInteger;
@@ -405,8 +410,7 @@ VSTPlugin : MultiOutUGen {
 								sysexInput: flags[6],
 								sysexOutput: flags[7]
 							]);
-						},
-						{ ^Error("plugin info: unknown key '%'".format(key)).throw }
+						}
 					);
 				},
 			);
