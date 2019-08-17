@@ -651,8 +651,9 @@ void VST3Plugin::process(ProcessData<float>& data){
     Vst::ProcessData processData;
     processData.symbolicSampleSize = Vst::kSample32;
     processData.numSamples = data.numSamples;
-    processData.numInputs = data.auxInput ? 2 : 1;
-    processData.numOutputs = data.auxOutput ? 2 : 1;
+    // some buggy plugins don't do proper bound checking, so we better make sure we don't exceed the maxium bus count
+    processData.numInputs = std::min<int>(data.auxInput ? 2 : 1, component_->getBusCount(Vst::kAudio, Vst::kInput));
+    processData.numOutputs = std::min<int>(data.auxOutput ? 2 : 1, component_->getBusCount(Vst::kAudio, Vst::kOutput));
     doProcess(processData);
 }
 
@@ -666,8 +667,9 @@ void VST3Plugin::process(ProcessData<double>& data){
     Vst::ProcessData processData;
     processData.symbolicSampleSize = Vst::kSample64;
     processData.numSamples = data.numSamples;
-    processData.numInputs = data.auxInput ? 2 : 1;
-    processData.numOutputs = data.auxOutput ? 2 : 1;
+    // some buggy plugins don't do proper bound checking, so we better make sure we don't exceed the maxium bus count
+    processData.numInputs = std::min<int>(data.auxInput ? 2 : 1, component_->getBusCount(Vst::kAudio, Vst::kInput));
+    processData.numOutputs = std::min<int>(data.auxOutput ? 2 : 1, component_->getBusCount(Vst::kAudio, Vst::kOutput));
     doProcess(processData);
 }
 

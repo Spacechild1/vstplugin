@@ -619,17 +619,20 @@ void VSTPlugin::resizeBuffer(){
     };
 
     int blockSize = bufferSize();
-    int nin = numInChannels();
-    int nout = numOutChannels();
-    int nauxin = numAuxInChannels();
-    int nauxout = numAuxOutChannels();
-    int bufin = std::max<int>(0, plugin->getNumInputs() - nin);
-    int bufout = std::max<int>(0, plugin->getNumOutputs() - nout);
-    int bufauxin = std::max<int>(0, plugin->getNumAuxInputs() - nauxin);
-    int bufauxout = std::max<int>(0, plugin->getNumAuxOutputs() - nauxout);
+    // get the *smaller* number of channels
+    int nin = std::min<int>(numInChannels(), plugin->getNumInputs());
+    int nout = std::min<int>(numOutChannels(), plugin->getNumOutputs());
+    int nauxin = std::min<int>(numAuxInChannels(), plugin->getNumAuxInputs());
+    int nauxout = std::min<int>(numAuxOutChannels(), plugin->getNumAuxOutputs());
+    // number of safety buffers (if UGen channels smaller than plugin channels).
+    // actually, we tell the plugin how many channels it should process, but let's play it safe.
+    int bufin = plugin->getNumInputs() - nin;
+    int bufout = plugin->getNumOutputs() - nout;
+    int bufauxin = plugin->getNumAuxInputs() - nauxin;
+    int bufauxout = plugin->getNumAuxOutputs() - nauxout;
     LOG_DEBUG("bufin: " << bufin << ", bufout: " << bufout);
     LOG_DEBUG("bufauxin: " << bufauxin << ", bufauxout: " << bufauxout);
-    // safety buffer
+    // create safety buffer
     {
         int bufSize = (bufin + bufout + bufauxin + bufauxout) * blockSize * sizeof(float);
         if (bufSize > 0) {
@@ -648,6 +651,7 @@ void VSTPlugin::resizeBuffer(){
             buf_ = nullptr;
         }
     }
+    // set buffer pointer arrays
     auto setBuffer = [&](auto& vec, auto channels, int numChannels, auto buf, int bufSize) {
         int total = numChannels + bufSize;
         if (total > 0) {
