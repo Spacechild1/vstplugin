@@ -821,7 +821,7 @@ void VSTPlugin::next(int inNumSamples) {
                 #define unit this
                     float last = paramState_[index];
                     float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
-                    ACQUIRE_BUS_AUDIO_SHARED(bus)
+                    ACQUIRE_BUS_AUDIO_SHARED(num)
                     for (int i = 0; i < inNumSamples; ++i) {
                         float value = bus[i];
                         if (value != last) {
@@ -829,7 +829,7 @@ void VSTPlugin::next(int inNumSamples) {
                             last = value;
                         }
                     }
-                    RELEASE_BUS_AUDIO_SHARED(bus);
+                    RELEASE_BUS_AUDIO_SHARED(num);
                     paramState_[index] = last;
                 #undef unit
                 }
