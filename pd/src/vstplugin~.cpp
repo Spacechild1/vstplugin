@@ -1070,6 +1070,8 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         sendInfo(x, "version", info->version);
         sendInfo(x, "inputs", info->numInputs);
         sendInfo(x, "outputs", info->numOutputs);
+        sendInfo(x, "auxinputs", info->numAuxInputs);
+        sendInfo(x, "auxoutputs", info->numAuxOutputs);
         sendInfo(x, "id", ("0x"+info->uniqueID));
         sendInfo(x, "editor", info->hasEditor());
         sendInfo(x, "synth", info->isSynth());
@@ -1147,6 +1149,12 @@ static void vstplugin_print(t_vstplugin *x){
     post("version: %s", info.version.c_str());
     post("input channels: %d", info.numInputs);
     post("output channels: %d", info.numOutputs);
+    if (info.numAuxInputs > 0){
+        post("aux input channels: %d", info.numAuxInputs);
+    }
+    if (info.numAuxOutputs > 0){
+        post("aux output channels: %d", info.numAuxOutputs);
+    }
     post("single precision: %s", info.singlePrecision() ? "yes" : "no");
     post("double precision: %s", info.doublePrecision() ? "yes" : "no");
     post("editor: %s", info.hasEditor() ? "yes" : "no");
