@@ -216,20 +216,34 @@ VSTPluginController {
 		}, '/vst_setn').oneShot;
 		this.sendMsg('/getn', index, count);
 	}
-	map { arg ...args;
-		synth.server.listSendMsg(this.mapMsg(*args));
+	map { arg ... args;
+		synth.server.listSendBundle(nil, this.mapMsg(*args));
 	}
-	mapMsg { arg ...args;
-		var nargs = List.new;
-		args.pairsDo { arg index, bus;
+	mapMsg { arg ... args;
+		var krVals, arVals, result;
+		krVals = List.new;
+		arVals = List.new;
+		result = Array.new(2);
+		args.pairsDo({ arg index, bus;
 			bus = bus.asBus;
-			(bus.rate == \control).if {
-				nargs.addAll([index, bus.index, bus.numChannels]);
-			} {
-				^"bus must be control rate!".throw;
+			switch(bus.rate)
+			{ \control } {
+				krVals.addAll([index, bus.index, bus.numChannels])
 			}
-		};
-		^this.makeMsg('/map', *nargs);
+			{ \audio } {
+				arVals.addAll([index, bus.index, bus.numChannels])
+			};
+			// no default case, ignore others
+		});
+		(krVals.size > 0).if { result = result.add(this.makeMsg('/map', *krVals)) };
+		(arVals.size > 0).if { result = result.add(this.makeMsg('/mapa', *arVals)) };
+		^result;
+	}
+	mapnMsg { arg ...args;
+		^this.makeMsg('/map', *args);
+	}
+	mapanMsg { arg ...args;
+		^this.makeMsg('/mapa', *args);
 	}
 	unmap { arg ...args;
 		this.sendMsg('/unmap', *args);
