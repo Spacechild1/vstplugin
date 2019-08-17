@@ -15,6 +15,7 @@ VSTPlugin : MultiOutUGen {
 			pluginDict = IdentityDictionary.new;
 			pluginDict[Server.default] = IdentityDictionary.new;
 			parentInfo = (
+				findParamIndex: #{ arg self, name; self.prParamIndexMap[name.asSymbol] },
 				print: #{ arg self, long = false;
 					"---".postln;
 					self.toString.postln;
@@ -325,7 +326,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseInfo { arg stream;
 		var info = IdentityDictionary.new(parent: parentInfo, know: true);
-		var parameters, paramIndex, programs, keys;
+		var parameters, indexMap, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
 		// default values:
 		info.numAuxInputs = 0;
@@ -341,7 +342,7 @@ VSTPlugin : MultiOutUGen {
 					line = this.prGetLine(stream);
 					n = this.prParseCount(line);
 					parameters = Array.newClear(n);
-					paramIndex = IdentityDictionary.new;
+					indexMap = IdentityDictionary.new;
 					n.do { arg i;
 						var name, label;
 						line = this.prGetLine(stream);
@@ -355,9 +356,9 @@ VSTPlugin : MultiOutUGen {
 					info.numParameters = n;
 					info.parameters = parameters;
 					parameters.do { arg param, index;
-						paramIndex[param.name.asSymbol] = index;
+						indexMap[param.name.asSymbol] = index;
 					};
-					info.parameterIndex = paramIndex;
+					info.prParamIndexMap = indexMap;
 				},
 				"[programs]",
 				{
@@ -500,7 +501,7 @@ VSTPlugin : MultiOutUGen {
 			param.isNumber.not.if {
 				info ?? { ^Error("can't resolve parameter '%' without info".format(param)).throw; };
 				sym = param.asSymbol;
-				param = info.parameterIndex[sym];
+				param = info.findParamIndex(sym);
 				param ?? { ^Error("Bad parameter '%' for plugin '%'".format(sym, info.name)).throw; };
 				paramArray[i] = param;
 			};
