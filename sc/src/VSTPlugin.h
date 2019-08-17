@@ -202,12 +202,13 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int bypass() const { return (int)out0(0); }
-    int numInChannels() const { return (int)out0(2); }
+    int flags() const { return (int)out0(1); } // not used (yet)
+    int bypass() const { return (int)out0(2); }
+    int numInChannels() const { return (int)out0(3); }
     int numAuxInChannels() const {
         return (int)out0(auxInChannelOnset_ - 1);
     }
-    int numOutChannels() const { return (int)out0(1); }
+    int numOutChannels() const { return (int)out0(0); }
     int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
 
     int numParameterControls() const { return (int)out0(parameterControlOnset_ - 1); }
@@ -231,7 +232,7 @@ private:
 
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
-    static const int inChannelOnset_ = 3;
+    static const int inChannelOnset_ = 4;
     int auxInChannelOnset_ = 0;
     int parameterControlOnset_ = 0;
 
