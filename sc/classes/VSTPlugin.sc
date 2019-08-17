@@ -50,16 +50,20 @@ VSTPlugin : MultiOutUGen {
 				},
 				printParameters: #{ arg self;
 					self.numParameters.do { arg i;
-						var label;
-						label = (self.parameterLabels[i].size > 0).if { "(%)".format(self.parameterLabels[i]) };
-						"[%] % %".format(i, self.parameterNames[i], label ?? "").postln;
+						var label, param = self.parameters[i];
+						label = (param.label.size > 0).if { "(%)".format(param.label) };
+						"[%] % %".format(i, param.name, label ?? "").postln;
 					};
 				},
 				printPrograms: #{ arg self;
-					self.programNames.do { arg item, i;
-						"[%] %".format(i, item).postln;
+					self.program.do { arg item, i;
+						"[%] %".format(i, item.name).postln;
 					};
-				}
+				},
+				// deprecated (removed) methods from v0.1
+				parameterNames: #{ arg self; Error("parameterNames is deprecated, use parameters[index].name").throw; },
+				parameterLabels: #{ arg self; Error("parameterLabels is deprecated, use parameters[index].label").throw; },
+				programNames: #{ arg self; Error("programNames is deprecated, use programs[index].name").throw; }
 			);
 		}
 	}
@@ -321,7 +325,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseInfo { arg stream;
 		var info = IdentityDictionary.new(parent: parentInfo, know: true);
-		var paramNames, paramLabels, paramIndex, programs, keys;
+		var parameters, paramIndex, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
 		// default values:
 		info.numAuxInputs = 0;
@@ -336,21 +340,22 @@ VSTPlugin : MultiOutUGen {
 				{
 					line = this.prGetLine(stream);
 					n = this.prParseCount(line);
-					paramNames = Array.newClear(n);
-					paramLabels = Array.newClear(n);
+					parameters = Array.newClear(n);
 					paramIndex = IdentityDictionary.new;
 					n.do { arg i;
 						var name, label;
 						line = this.prGetLine(stream);
 						#name, label = line.split($,);
-						paramNames[i] = this.prTrim(name);
-						paramLabels[i] = this.prTrim(label);
+						parameters[i] = (
+							name: this.prTrim(name),
+							label: this.prTrim(label)
+							// more info later
+						);
 					};
 					info.numParameters = n;
-					info.parameterNames = paramNames;
-					info.parameterLabels = paramLabels;
-					paramNames.do { arg param, index;
-						paramIndex[param.asSymbol] = index;
+					info.parameters = parameters;
+					parameters.do { arg param, index;
+						paramIndex[param.name.asSymbol] = index;
 					};
 					info.parameterIndex = paramIndex;
 				},
@@ -360,10 +365,11 @@ VSTPlugin : MultiOutUGen {
 					n = this.prParseCount(line);
 					programs = Array.newClear(n);
 					n.do { arg i;
-						programs[i] = line = this.prGetLine(stream);
+						var name = this.prGetLine(stream);
+						programs[i] = (name: name); // more info later
 					};
 					info.numPrograms = n;
-					info.programNames = programs;
+					info.programs = programs;
 				},
 				"[keys]",
 				{

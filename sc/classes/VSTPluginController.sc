@@ -133,7 +133,7 @@ VSTPluginController {
 							paramCache = Array.fill(theInfo.numParameters, [0, nil]);
 							program = 0;
 							// copy default program names (might change later when loading banks)
-							programNames = Array.newFrom(theInfo.programNames);
+							programNames = theInfo.programs.collect(_.name);
 							this.prQueryParams;
 							// post info if wanted
 							info.if { theInfo.print };
