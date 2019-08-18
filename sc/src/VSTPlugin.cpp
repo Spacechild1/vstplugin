@@ -1217,6 +1217,15 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         LOG_WARNING("VSTPlugin: freed during background task");
     }
     if (plugin_){
+        if (editor_) {
+        #if defined(__APPLE__)
+            Print("Warning: can't use the VST editor on macOS (yet)\n");
+        #elif 1
+            if (plugin_->getType() == IPlugin::VST3) {
+                Print("Warning: can't use the VST3 editor (yet)\n");
+            }
+        #endif
+        }
         LOG_DEBUG("opened " << cmd.buf);
         // receive events from plugin
         plugin_->setListener(shared_from_this());

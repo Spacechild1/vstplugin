@@ -1011,9 +1011,15 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         } else {
             plugin = info->create();
         }
+    #if 1
+        if (editor && plugin->getType() == IPlugin::VST3){
+            post("%s: can't use VST3 editor (yet)", classname(x));
+        }
+    #endif
         x->x_uithread = editor;
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
-        post("opened VST plugin '%s'", info->name.c_str());
+        verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
+            // setup
         plugin->suspend();
         plugin->setupProcessing(x->x_sr, x->x_blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
         int nin = std::min<int>(plugin->getNumInputs(), x->x_siginlets.size());
@@ -1025,6 +1031,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         x->x_plugin = std::move(plugin);
             // receive events from plugin
         x->x_plugin->setListener(x->x_editor);
+            // update
         x->update_precision();
         x->update_buffer();
         x->x_editor->setup();
