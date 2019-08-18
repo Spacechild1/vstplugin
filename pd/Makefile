@@ -41,7 +41,8 @@ endif
 
 # VST3 (default: off)
 ifeq ($(VST3), 1)
-VST_SRC += ../vst/VST3Plugin.cpp
+VST_SRC += ../vst/VST3Plugin.cpp \
+    $(VST3DIR)/public.sdk/source/vst/hosting/stringconvert.cpp
 VST_CFLAGS += \
         -DUSE_VST3=1 \
         -I"$(VST3DIR)" \
@@ -62,6 +63,7 @@ cflags = \
 	-std=c++14 \
 	-I../vst \
 	$(VST_CFLAGS) \
+	-DHAVE_NRT_THREAD=0 \
 	-DLOGLEVEL=$(LOGLEVEL) \
 	$(empty)
 
@@ -75,7 +77,7 @@ define forWindows
   # common
   VST_SRC += ../vst/WindowWin32.cpp
   VST_LIBS += -lstdc++fs
-  cflags += -DVSTTHREADS=1
+  cflags += -DHAVE_UI_THREAD=1
   # vstplugin~
   vstplugin~.class.sources += $$(VST_SRC)
   ldlibs += $$(VST_LIBS)
@@ -88,7 +90,7 @@ define forLinux
   # common
   VST_SRC += ../vst/WindowX11.cpp
   VST_LIBS += -L/usr/X11R6/lib -lX11 -ldl
-  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DVSTTHREADS=1 -pthread
+  cflags += -DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DHAVE_UI_THREAD=1 -pthread
   # vstplugin~
   vstplugin~.class.sources += $$(VST_SRC)
   ldlibs += $$(VST_LIBS)
@@ -100,7 +102,7 @@ define forDarwin
   # common
   VST_SRC += ../vst/WindowCocoa.mm
   VST_LIBS += -framework Cocoa
-  cflags += -fno-objc-arc -DVSTTHREADS=0
+  cflags += -fno-objc-arc -DHAVE_UI_THREAD=0
   # vstplugin~
   vstplugin~.class.sources += $$(VST_SRC)
   ldlibs += $$(VST_LIBS) 

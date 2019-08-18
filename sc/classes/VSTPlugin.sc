@@ -15,6 +15,9 @@ VSTPlugin : MultiOutUGen {
 			pluginDict = IdentityDictionary.new;
 			pluginDict[Server.default] = IdentityDictionary.new;
 			parentInfo = (
+				numParameters: #{ arg self; self.parameters.size },
+				numPrograms: #{ arg self; self.programs.size },
+				findParamIndex: #{ arg self, name; self.prParamIndexMap[name.asSymbol] },
 				print: #{ arg self, long = false;
 					"---".postln;
 					self.toString.postln;
@@ -29,14 +32,16 @@ VSTPlugin : MultiOutUGen {
 					"".postln;
 				},
 				toString: #{ arg self, sep = $\n;
-					var s;
+					var s, auxin = (self.numAuxInputs > 0), auxout = (self.numAuxOutputs > 0);
 					s = "name: %".format(self.name) ++ sep
 					++ "path: %".format(self.path) ++ sep
 					++ "vendor: %".format(self.vendor) ++ sep
 					++ "category: %".format(self.category) ++ sep
 					++ "version: %".format(self.version) ++ sep
 					++ "input channels: %".format(self.numInputs) ++ sep
+					++ (auxin.if { "aux input channels: %".format(self.numAuxInputs) ++ sep } {""})
 					++ "output channels: %".format(self.numOutputs) ++ sep
+					++ (auxout.if { "aux output channels: %".format(self.numAuxOutputs) ++ sep } {""})
 					++ "parameters: %".format(self.numParameters) ++ sep
 					++ "programs: %".format(self.numPrograms) ++ sep
 					++ "MIDI input: %".format(self.midiInput) ++ sep
@@ -49,28 +54,34 @@ VSTPlugin : MultiOutUGen {
 					++ "double precision: %".format(self.doublePrecision);
 				},
 				printParameters: #{ arg self;
-					self.numParameters.do { arg i;
+					self.parameters.do { arg param, i;
 						var label;
-						label = (self.parameterLabels[i].size > 0).if { "(%)".format(self.parameterLabels[i]) };
-						"[%] % %".format(i, self.parameterNames[i], label ?? "").postln;
+						label = (param.label.size > 0).if { "(%)".format(param.label) };
+						"[%] % %".format(i, param.name, label ?? "").postln;
 					};
 				},
 				printPrograms: #{ arg self;
-					self.programNames.do { arg item, i;
-						"[%] %".format(i, item).postln;
+					self.program.do { arg pgm, i;
+						"[%] %".format(i, pgm.name).postln;
 					};
-				}
+				},
+				// deprecated (removed) methods from v0.1
+				parameterNames: #{ arg self; Error("parameterNames is deprecated, use parameters[index].name").throw; },
+				parameterLabels: #{ arg self; Error("parameterLabels is deprecated, use parameters[index].label").throw; },
+				programNames: #{ arg self; Error("programNames is deprecated, use programs[index].name").throw; }
 			);
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id, info;
+	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0;
+		var flags = 0; // not used (yet)
 		input = input.asArray;
+		auxInput = auxInput.asArray;
 		params = params.asArray;
 		params.size.odd.if {
 			^Error("'params': expecting pairs of param index/name + value").throw;
 		};
-		^this.multiNewList([\audio, id, info, numOut, bypass, input.size]
-			++ input ++ params.size.div(2) ++ params);
+		^this.multiNewList([\audio, id, info, numOut, numAuxOut, flags, bypass, input.size]
+			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
@@ -319,8 +330,11 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseInfo { arg stream;
 		var info = IdentityDictionary.new(parent: parentInfo, know: true);
-		var paramNames, paramLabels, paramIndex, programs, keys;
+		var parameters, indexMap, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
+		// default values:
+		info.numAuxInputs = 0;
+		info.numAuxOutputs = 0;
 		{
 			line = this.prGetLine(stream, true);
 			line ?? { ^Error("EOF reached").throw };
@@ -331,23 +345,23 @@ VSTPlugin : MultiOutUGen {
 				{
 					line = this.prGetLine(stream);
 					n = this.prParseCount(line);
-					paramNames = Array.newClear(n);
-					paramLabels = Array.newClear(n);
-					paramIndex = IdentityDictionary.new;
+					parameters = Array.newClear(n);
+					indexMap = IdentityDictionary.new;
 					n.do { arg i;
 						var name, label;
 						line = this.prGetLine(stream);
 						#name, label = line.split($,);
-						paramNames[i] = this.prTrim(name);
-						paramLabels[i] = this.prTrim(label);
+						parameters[i] = (
+							name: this.prTrim(name),
+							label: this.prTrim(label)
+							// more info later
+						);
 					};
-					info.numParameters = n;
-					info.parameterNames = paramNames;
-					info.parameterLabels = paramLabels;
-					paramNames.do { arg param, index;
-						paramIndex[param.asSymbol] = index;
+					info.parameters = parameters;
+					parameters.do { arg param, index;
+						indexMap[param.name.asSymbol] = index;
 					};
-					info.parameterIndex = paramIndex;
+					info.prParamIndexMap = indexMap;
 				},
 				"[programs]",
 				{
@@ -355,10 +369,10 @@ VSTPlugin : MultiOutUGen {
 					n = this.prParseCount(line);
 					programs = Array.newClear(n);
 					n.do { arg i;
-						programs[i] = line = this.prGetLine(stream);
+						var name = this.prGetLine(stream);
+						programs[i] = (name: name); // more info later
 					};
-					info.numPrograms = n;
-					info.programNames = programs;
+					info.programs = programs;
 				},
 				"[keys]",
 				{
@@ -385,12 +399,15 @@ VSTPlugin : MultiOutUGen {
 						\vendor, { info[key] = value },
 						\category, { info[key] = value },
 						\version, { info[key] = value },
-						\id, { info[key] = value.asInteger },
+						\sdkVersion, { info[key] = value },
+						\id, { info[key] = value },
 						\inputs, { info.numInputs = value.asInteger },
 						\outputs, { info.numOutputs = value.asInteger },
+						\auxinputs, { info.numAuxInputs = value.asInteger },
+						\auxoutputs, { info.numAuxOutputs = value.asInteger },
 						\flags,
 						{
-							f = value.asInteger;
+							f = value.asHexIfPossible;
 							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 							info.putPairs([
 								hasEditor: flags[0],
@@ -402,8 +419,7 @@ VSTPlugin : MultiOutUGen {
 								sysexInput: flags[6],
 								sysexOutput: flags[7]
 							]);
-						},
-						{ ^Error("plugin info: unknown key '%'".format(key)).throw }
+						}
 					);
 				},
 			);
@@ -463,28 +479,44 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg theID, theInfo, numOut, bypass, numInputs ... args;
-		var inputArray, numParams, paramArray, sym;
+	init { arg theID, theInfo, numOut, numAuxOut, flags, bypass ... args;
+		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, sym, offset=0;
 		// store id and info (both optional)
 		id = theID;
 		info = theInfo;
-		// seperate audio inputs from parameter controls
-		inputArray = args[..(numInputs-1)];
-		numParams = args[numInputs];
-		paramArray = args[(numInputs+1)..(numInputs+(numParams*2))];
-		// "param array size: %".format(paramArray.size).postln;
+		// main inputs
+		numInputs = args[offset];
+		(numInputs > 0).if {
+			inputArray = args[(offset+1)..(offset+numInputs)];
+			(inputArray.size != numInputs).if { Error("bug: input array size mismatch!").throw };
+		};
+		offset = offset + 1 + numInputs;
+		// parameter controls
+		numParams = args[offset];
+		(numParams > 0).if {
+			paramArray = args[(offset+1)..(offset+(numParams*2))];
+			(paramArray.size != (numParams*2)).if { Error("bug: param array size mismatch!").throw };
+		};
+		offset = offset + 1 + (numParams*2);
+		// aux inputs
+		numAuxInputs = args[offset];
+		(numAuxInputs > 0).if {
+			auxInputArray = args[(offset+1)..(offset+numAuxInputs)];
+			(auxInputArray.size != numAuxInputs).if { Error("bug: aux input array size mismatch!").throw };
+		};
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
 			param.isNumber.not.if {
 				info ?? { ^Error("can't resolve parameter '%' without info".format(param)).throw; };
 				sym = param.asSymbol;
-				param = info.parameterIndex[sym];
+				param = info.findParamIndex(sym);
 				param ?? { ^Error("Bad parameter '%' for plugin '%'".format(sym, info.name)).throw; };
 				paramArray[i] = param;
 			};
 		};
-		// reassemble UGen inputs
-		inputs = [bypass, numInputs] ++ inputArray ++ numParams ++ paramArray;
-		^this.initOutputs(numOut, rate)
+		// reassemble UGen inputs (in correct order)
+		inputs = [numOut, flags, bypass, numInputs] ++ inputArray
+		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
+		^this.initOutputs(numOut + numAuxOut, rate)
 	}
 }

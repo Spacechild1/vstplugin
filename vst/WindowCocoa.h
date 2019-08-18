@@ -29,7 +29,7 @@ class EventLoop {
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     bool postMessage();
  private:
     bool haveNSApp_ = false;

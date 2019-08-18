@@ -8,8 +8,8 @@ namespace X11 {
 
 namespace UIThread {
 
-#if !VSTTHREADS
-#error "VSTTHREADS must be defined for X11!"
+#if !HAVE_UI_THREAD
+#error "HAVE_UI_THREAD must be defined for X11!"
 // void poll(){}
 #endif
 

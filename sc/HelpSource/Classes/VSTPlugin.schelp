@@ -4,7 +4,6 @@ related:: Classes/VSTPluginController, Classes/VSTPluginGui
 categories:: UGens>FX
 
 DESCRIPTION::
-note::VST3 plugins are not supported (yet)!::
 
 This UGen represents a single VST plugin instance on the link::Classes/Server::. See the helpfile of link::Classes/VSTPluginController:: for how to control it from the SuperCollider language.
 
@@ -40,13 +39,13 @@ SynthDef(\test, { arg in, p1, p2, idx;
 });
 ::
 You can set the index to a negative value to "unmap" the parameter.
+
 note::emphasis::params:: overrides any automation of the same parameters by link::Classes/VSTPluginController#-set:: or
 link::Classes/VSTPluginController#-map::.
 ::
-warning::To ensure deterministic results, emphasis::params:: works synchronously (in the realtime thread). 
-You are adviced to use it only on parameters which are realtime safe (i.e. don't do any heavy calculations, memory allocations, etc.),
-otherwise consider using link::Classes/VSTPluginController#-set::, which works on the non-realtime thread.
-::
+
+You can automate parameters with either control and audio rate UGens, but the latter is more CPU expensive and only makes sense
+if the plugin actually supports sample accurate automation (some, but not all VST3 plugins).
 
 ARGUMENT:: id
 An optional number or symbol which uniquely identifies the UGen within a SynthDef so it can be found by link::Classes/VSTPluginController::.
@@ -90,6 +89,15 @@ code::
 ~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'
 ::
 
+ARGUMENT:: auxInput
+An Array of channels or a single auxiliary input for the plugin to process. You cannot change the size of this once a SynthDef has been built.
+This is only useful for certain VST3 plugins (e.g. for side chaining).
+
+ARGUMENT:: numAuxOut
+The number of auxiliary output channels. This must be a fixed number greater or equal 0. 
+Like code::auxInput::, this is only useful for certain VST3 plugins.
+
+
 SUBSECTION:: Plugin Management
 
 All VST plugin information is cached on the Client. This is done mainly for performance reasons but it can be also handy for end users
@@ -103,10 +111,12 @@ table::
 ## vendor || the plugin vendor
 ## category || the plugin category name
 ## version || the plugin version string
-## id || the unique plugin ID (Integer)
+## id || the unique plugin ID
 ## hasEditor || if the plugin has an editor
 ## numInputs || the number of input channels
 ## numOutputs || the number of output channels
+## numAuxInputs || the number of auxiliary input channels (VST3 only)
+## numAuxOutputs || the number of auxiliary output channels (VST3 only)
 ## singlePrecision || single precision processing supported
 ## doublePrecision || double precision processing supported
 ## midiInput || if the plugin receives MIDI messages
@@ -115,10 +125,9 @@ table::
 ## sysexOutput || if the plugin sends SysEx messages
 ## isSynth || if the plugin is a VST instrument
 ## numParameters || the number of parameters
-## parameterNames || the parameter names as a String Array
-## parameterLabels || the parameter labels (e.g. "dB") as a String Array
+## parameters || Array of parameter info Events (e.g. 'name', 'label')
 ## numPrograms || the number of programs
-## programNames || the default program names as a String Array
+## programs || Array of program info Events (e.g. 'name')
 ::
 It also defines the following convenience methods:
 table::

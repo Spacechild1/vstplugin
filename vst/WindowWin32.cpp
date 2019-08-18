@@ -14,8 +14,8 @@ namespace Win32 {
     
 namespace UIThread {
 
-#if !VSTTHREADS
-#error "VSTTHREADS must be defined for Windows!"
+#if !HAVE_UI_THREAD
+#error "HAVE_UI_THREAD must be defined for Windows!"
 // void poll(){}
 #endif
 

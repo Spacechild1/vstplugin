@@ -3,7 +3,6 @@
 #include "Interface.h"
 #include "Utility.h"
 
-#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <fstream>
@@ -175,20 +174,33 @@ void PluginManager::doWrite(const std::string& path){
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
     }
-    // inverse mapping (plugin -> keys), alphabetically sorted
-    auto comp = [](const auto& lhs, const auto& rhs){
-        std::string s1 = lhs->name;
-        std::string s2 = rhs->name;
-        for (auto& c : s1) { c = std::tolower(c); }
-        for (auto& c : s2) { c = std::tolower(c); }
-        return s1 < s2;
-    };
-    std::map<PluginInfo::const_ptr, std::vector<std::string>, decltype(comp)> pluginMap(comp);
+    // inverse mapping (plugin -> keys)
+    std::unordered_map<PluginInfo::const_ptr, std::vector<std::string>> pluginMap;
     for (auto& it : plugins_){
         if (it.second->valid()){
             pluginMap[it.second].push_back(it.first);
         }
     }
+#if 0
+    // actually, I'd like to sort alphabetically.
+    // I've tried to do it  with a std::map, but VST2/VST3 plugins
+    // of the same name either got lost or "merged"...
+    // Something is wrong with this sort function.
+    auto comp = [](const auto& lhs, const auto& rhs){
+        std::string s1 = lhs.first->name;
+        std::string s2 = rhs.first->name;
+        for (auto& c : s1) { c = std::tolower(c); }
+        for (auto& c : s2) { c = std::tolower(c); }
+        if (s1 != s2){
+            return s1 < s2;
+        }
+        if (lhs.first->type() != rhs.first->type()){
+            return lhs.first->type() == IPlugin::VST3;
+        }
+        return false;
+    };
+#endif
+
     // serialize plugins
     file << "[plugins]\n";
     file << "n=" << pluginMap.size() << "\n";

@@ -21,6 +21,10 @@ const size_t MAX_OSC_PACKET_SIZE = 1600;
 class VSTPlugin;
 class VSTPluginDelegate;
 
+// do we set parameters in the NRT thread?
+// seemed to work with VST2 but pointless with VST3...
+#define NRT_PARAM_SET 0
+
 struct CmdData {
     template<typename T>
     static T* create(World * world, int size = 0);
@@ -100,6 +104,8 @@ public:
     int32 bufferSize() const { return bufferSize_; }
     int32 numInChannels() const { return numInChannels_; }
     int32 numOutChannels() const { return numOutChannels_; }
+    int32 numAuxInChannels() const { return numAuxInChannels_; }
+    int32 numAuxOutChannels() const { return numAuxOutChannels_; }
 
     void parameterAutomated(int index, float value) override;
     void midiEvent(const MidiEvent& midi) override;
@@ -120,7 +126,7 @@ public:
     void queryParams(int32 index, int32 count);
     void getParam(int32 index);
     void getParams(int32 index, int32 count);
-    void mapParam(int32 index, int32 bus);
+    void mapParam(int32 index, int32 bus, bool audio = false);
     void unmapParam(int32 index);
     // program/bank
     void setProgram(int32 index);
@@ -164,15 +170,21 @@ private:
     IPlugin::ptr plugin_;
     bool editor_ = false;
     bool isLoading_ = false;
-    std::thread::id rtThreadID_;
-    std::thread::id nrtThreadID_;
-    World* world_;
+    World* world_ = nullptr;
     // cache (for cmdOpen)
-    double sampleRate_;
-    int bufferSize_;
-    int numInChannels_;
-    int numOutChannels_;
-
+    double sampleRate_ = 1;
+    int bufferSize_ = 0;
+    int numInChannels_ = 0;
+    int numOutChannels_ = 0;
+    int numAuxInChannels_ = 0;
+    int numAuxOutChannels_ = 0;
+    // thread safety
+    std::thread::id rtThreadID_;
+#if NRT_PARAM_SET
+    std::thread::id nrtThreadID_;
+#else
+    bool bParamSet_ = false; // did we just set a parameter manually?
+#endif
 };
 
 class VSTPlugin : public SCUnit {
@@ -189,16 +201,23 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int numInChannels() const { return numInChannels_; }
-    int numOutChannels() const { return numOutputs(); }
+    int flags() const { return (int)in0(1); } // not used (yet)
+    int bypass() const { return (int)in0(2); }
+    int numInChannels() const { return (int)in0(3); }
+    int numAuxInChannels() const {
+        return (int)in0(auxInChannelOnset_ - 1);
+    }
+    int numOutChannels() const { return (int)in0(0); }
+    int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
 
+    int numParameterControls() const { return (int)in0(parameterControlOnset_ - 1); }
     void update();
-    void map(int32 index, int32 bus);
+    void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
 private:
     void resizeBuffer();
     void clearMapping();
-    float readControlBus(int32 num);
+    float readControlBus(uint32 num);
     // data members
     volatile uint32 initialized_ = MagicInitialized; // set by constructor
     volatile uint32 queued_; // set to MagicQueued when queuing unit commands
@@ -210,28 +229,45 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
-    bool bypass_ = false;
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
-    static const int inChannelOnset_ = 2;
-    int numInChannels_ = 0;
+    static const int inChannelOnset_ = 4;
+    int auxInChannelOnset_ = 0;
+    int parameterControlOnset_ = 0;
+
     float *buf_ = nullptr;
     const float **inBufVec_ = nullptr;
     float **outBufVec_ = nullptr;
+    const float** auxInBufVec_ = nullptr;
+    float** auxOutBufVec_ = nullptr;
+
     struct Mapping {
-        int32 index;
-        int32 bus;
+        enum BusType {
+            Control,
+            Audio
+        };
+        void setBus(uint32 num, BusType type) {
+            // use last bit in bus to encode the type
+            bus_ = num | (type << 31);
+        }
+        BusType type() const {
+            return (BusType)(bus_ & 0x80000000);
+        }
+        uint32 bus() const {
+            return bus_ & 0x7FFFFFFF;
+        }
         Mapping* prev;
         Mapping* next;
+        uint32 index;
+    private:
+        uint32 bus_;
     };
     Mapping* paramMappingList_ = nullptr;
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
-    int numParameterControls_ = 0;
-    int parameterControlOnset_ = 0;
 
     // threading
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     std::mutex mutex_;
     std::vector<std::pair<int, float>> paramQueue_;
 #endif

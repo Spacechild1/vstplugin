@@ -4,7 +4,7 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
-#if !VSTTHREADS // don't use VST GUI threads
+#if !HAVE_UI_THREAD // don't use VST GUI threads
 # define EVENT_LOOP_POLL_INT 20 // time between polls in ms
 static t_clock *eventLoopClock = nullptr;
 static void eventLoopTick(void *x){
@@ -258,7 +258,7 @@ static bool addFactory(const std::string& path, IFactory::ptr factory){
                 for (int j = 0; j < num; ++j){
                     auto key = plugin->parameters[j].name;
                     bash_name(key);
-                    const_cast<PluginInfo&>(*plugin).paramMap[std::move(key)] = j;
+                    const_cast<PluginInfo&>(*plugin).addParamAlias(j, key);
                 }
                 // add plugin info
                 auto key = makeKey(*plugin);
@@ -499,7 +499,7 @@ static void vstparam_set(t_vstparam *x, t_floatarg f){
     IPlugin &plugin = *x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s", plugin.getParameterDisplay(index).c_str());
+    snprintf(buf, sizeof(buf), "%s", plugin.getParameterString(index).c_str());
     pd_vmess(x->p_display_rcv->s_thing, gensym("set"), (char *)"s", gensym(buf));
 }
 
@@ -514,7 +514,7 @@ static void vstparam_setup(){
 
 t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
     : e_owner(&owner){
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     e_mainthread = std::this_thread::get_id();
 #endif
     if (gui){
@@ -532,7 +532,7 @@ t_vsteditor::~t_vsteditor(){
     // post outgoing event (thread-safe if needed)
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     bool vstgui = window();
         // we only need to lock for GUI windows, but never for the generic Pd editor
     if (vstgui){
@@ -540,7 +540,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     }
 #endif
     queue.push_back(std::forward<U>(event));
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (vstgui){
         e_mutex.unlock();
     }
@@ -552,7 +552,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     }
 #endif
     clock_delay(e_clock, 0);
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (id != e_mainthread){
         sys_unlock();
         // LOG_DEBUG("unlocked");
@@ -576,7 +576,7 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     bool vstgui = x->vst_gui();
         // we only need to lock if we have a GUI thread
     if (vstgui){
@@ -595,7 +595,7 @@ void t_vsteditor::tick(t_vsteditor *x){
     std::vector<SysexEvent> sysexQueue;
     sysexQueue.swap(x->e_sysex);
 
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (vstgui){
         x->e_mutex.unlock();
     }
@@ -631,7 +631,7 @@ void t_vsteditor::tick(t_vsteditor *x){
         // sysex events:
     for (auto& sysex : sysexQueue){
         std::vector<t_atom> msg;
-        int n = sysex.data.size();
+        int n = sysex.size;
         msg.resize(n);
         for (int i = 0; i < n; ++i){
             SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
@@ -650,11 +650,12 @@ void t_vsteditor::setup(){
     if (!pd_gui()){
         return;
     }
+    auto& info = e_owner->x_plugin->info();
 
-    send_vmess(gensym("rename"), (char *)"s", gensym(e_owner->x_plugin->getPluginName().c_str()));
+    send_vmess(gensym("rename"), (char *)"s", gensym(info.name.c_str()));
     send_mess(gensym("clear"));
 
-    int nparams = e_owner->x_plugin->getNumParameters();
+    int nparams = info.numParameters();
     e_params.clear();
     // reserve to avoid a reallocation (which will call destructors)
     e_params.reserve(nparams);
@@ -687,14 +688,14 @@ void t_vsteditor::setup(){
         SETSYMBOL(slider+9, e_params[i].p_slider);
         SETSYMBOL(slider+10, e_params[i].p_slider);
         char buf[64];
-        snprintf(buf, sizeof(buf), "%d: %s", i, e_owner->x_plugin->getParameterName(i).c_str());
+        snprintf(buf, sizeof(buf), "%d: %s", i, info.parameters[i].name.c_str());
         substitute_whitespace(buf);
         SETSYMBOL(slider+11, gensym(buf));
         send_mess(gensym("obj"), 21, slider);
             // create display
         SETFLOAT(display, xpos + 128 + 10); // slider + space
         SETFLOAT(display+1, ypos);
-        SETSYMBOL(display+6, gensym(e_owner->x_plugin->getParameterLabel(i).c_str()));
+        SETSYMBOL(display+6, gensym(info.parameters[i].label.c_str()));
         SETSYMBOL(display+7, e_params[i].p_display_rcv);
         SETSYMBOL(display+8, e_params[i].p_display_snd);
         send_mess(gensym("symbolatom"), 9, display);
@@ -859,8 +860,8 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
     std::string result;
         // resolve relative path
     if (!sys_isabsolutepath(s.c_str())){
+        bool vst3 = false;
         std::string path = s;
-        char buf[MAXPDSTRING+1];
     #ifdef _WIN32
         const char *ext = ".dll";
     #elif defined(__APPLE__)
@@ -868,28 +869,42 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
     #else // Linux/BSD/etc.
         const char *ext = ".so";
     #endif
-        if (path.find(".vst3") == std::string::npos && path.find(ext) == std::string::npos){
+        if (path.find(".vst3") != std::string::npos){
+            vst3 = true;
+        } else if (path.find(ext) == std::string::npos){
             path += ext;
         }
             // first try canvas search paths
+        char fullPath[MAXPDSTRING];
         char dirresult[MAXPDSTRING];
         char *name = nullptr;
     #ifdef __APPLE__
-        const char *bundleinfo = "/Contents/Info.plist";
-        // on MacOS VST plugins are bundles (directories) but canvas_open needs a real file
-        int fd = canvas_open(c, (path + bundleinfo).c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        const char *bundlePath = "Contents/Info.plist";
+        // on MacOS VST plugins are always bundles (directories) but canvas_open needs a real file
+        snprintf(fullPath, MAXPDSTRING, "%s/%s", path.c_str(), bundlePath);
+        int fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
     #else
+        const char *bundlePath = nullptr;
         int fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        if (fd < 0 && vst3){
+            // VST3 plugins might be bundles
+            bundlePath = getBundleBinaryPath().c_str();
+            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
+                     path.c_str(), bundlePath, fileName(path).c_str());
+            fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+        }
     #endif
         if (fd >= 0){
             sys_close(fd);
+            char buf[MAXPDSTRING+1];
             snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
-    #ifdef __APPLE__
-            char *find = strstr(buf, bundleinfo);
-            if (find){
-                *find = 0; // restore the bundle path
+            if (bundlePath){
+                // restore original path
+                char *pos = strstr(buf, bundlePath);
+                if (pos){
+                    pos[-1] = 0;
+                }
             }
-    #endif
             result = buf; // success
         } else {
                 // otherwise try default VST paths
@@ -996,21 +1011,27 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         } else {
             plugin = info->create();
         }
+    #if 1
+        if (editor && plugin->getType() == IPlugin::VST3){
+            post("%s: can't use VST3 editor (yet)", classname(x));
+        }
+    #endif
         x->x_uithread = editor;
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
-        post("opened VST plugin '%s'", plugin->getPluginName().c_str());
+        verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
+            // setup
         plugin->suspend();
-            // initially, blocksize is 0 (before the 'dsp' message is sent).
-            // some plugins might not like 0, so we send some sane default size.
-        plugin->setBlockSize(x->x_blocksize > 0 ? x->x_blocksize : 64);
-        plugin->setSampleRate(x->x_sr);
+        plugin->setupProcessing(x->x_sr, x->x_blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
         int nin = std::min<int>(plugin->getNumInputs(), x->x_siginlets.size());
         int nout = std::min<int>(plugin->getNumOutputs(), x->x_sigoutlets.size());
-        plugin->setNumSpeakers(nin, nout);
+        int nauxin = std::min<int>(plugin->getNumAuxInputs(), x->x_sigauxinlets.size());
+        int nauxout = std::min<int>(plugin->getNumAuxOutputs(), x->x_sigauxoutlets.size());
+        plugin->setNumSpeakers(nin, nout, nauxin, nauxout);
         plugin->resume();
         x->x_plugin = std::move(plugin);
             // receive events from plugin
         x->x_plugin->setListener(x->x_editor);
+            // update
         x->update_precision();
         x->update_buffer();
         x->x_editor->setup();
@@ -1056,7 +1077,9 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         sendInfo(x, "version", info->version);
         sendInfo(x, "inputs", info->numInputs);
         sendInfo(x, "outputs", info->numOutputs);
-        sendInfo(x, "id", toHex(info->id));
+        sendInfo(x, "auxinputs", info->numAuxInputs);
+        sendInfo(x, "auxoutputs", info->numAuxOutputs);
+        sendInfo(x, "id", ("0x"+info->uniqueID));
         sendInfo(x, "editor", info->hasEditor());
         sendInfo(x, "synth", info->isSynth());
         sendInfo(x, "single", info->singlePrecision());
@@ -1133,14 +1156,20 @@ static void vstplugin_print(t_vstplugin *x){
     post("version: %s", info.version.c_str());
     post("input channels: %d", info.numInputs);
     post("output channels: %d", info.numOutputs);
-    post("single precision: %s", x->x_plugin->hasPrecision(ProcessPrecision::Single) ? "yes" : "no");
-    post("double precision: %s", x->x_plugin->hasPrecision(ProcessPrecision::Double) ? "yes" : "no");
-    post("editor: %s", x->x_plugin->hasEditor() ? "yes" : "no");
-    post("number of parameters: %d", x->x_plugin->getNumParameters());
-    post("number of programs: %d", x->x_plugin->getNumPrograms());
-    post("synth: %s", x->x_plugin->isSynth() ? "yes" : "no");
-    post("midi input: %s", x->x_plugin->hasMidiInput() ? "yes" : "no");
-    post("midi output: %s", x->x_plugin->hasMidiOutput() ? "yes" : "no");
+    if (info.numAuxInputs > 0){
+        post("aux input channels: %d", info.numAuxInputs);
+    }
+    if (info.numAuxOutputs > 0){
+        post("aux output channels: %d", info.numAuxOutputs);
+    }
+    post("single precision: %s", info.singlePrecision() ? "yes" : "no");
+    post("double precision: %s", info.doublePrecision() ? "yes" : "no");
+    post("editor: %s", info.hasEditor() ? "yes" : "no");
+    post("number of parameters: %d", info.numParameters());
+    post("number of programs: %d", info.numPrograms());
+    post("synth: %s", info.isSynth() ? "yes" : "no");
+    post("midi input: %s", info.midiInput() ? "yes" : "no");
+    post("midi output: %s", info.midiOutput() ? "yes" : "no");
     post("");
 }
 
@@ -1250,14 +1279,12 @@ static void vstplugin_transport_get(t_vstplugin *x){
 
 static bool findParamIndex(t_vstplugin *x, t_atom *a, int& index){
     if (a->a_type == A_SYMBOL){
-        auto& map = x->x_plugin->info().paramMap;
         auto name = a->a_w.w_symbol->s_name;
-        auto it = map.find(name);
-        if (it == map.end()){
+        index = x->x_plugin->info().findParam(name);
+        if (index < 0){
             pd_error(x, "%s: couldn't find parameter '%s'", classname(x), name);
             return false;
         }
-        index = it->second;
     } else {
         index = atom_getfloat(a);
     }
@@ -1292,7 +1319,7 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
         t_atom msg[3];
 		SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
-        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterDisplay(index).c_str()));
+        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterString(index).c_str()));
         outlet_anything(x->x_messout, gensym("param_state"), 3, msg);
 	} else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
@@ -1303,11 +1330,12 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
 static void vstplugin_param_info(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
-    if (index >= 0 && index < x->x_plugin->getNumParameters()){
+    auto& info = x->x_plugin->info();
+    if (index >= 0 && index < info.numParameters()){
         t_atom msg[3];
 		SETFLOAT(&msg[0], index);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getParameterName(index).c_str()));
-        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterLabel(index).c_str()));
+        SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
+        SETSYMBOL(&msg[2], gensym(info.parameters[index].label.c_str()));
         // LATER add more info
         outlet_anything(x->x_messout, gensym("param_info"), 3, msg);
 	} else {
@@ -1410,7 +1438,7 @@ static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *
         data.push_back((unsigned char)atom_getfloat(argv+i));
     }
 
-    x->x_plugin->sendSysexEvent(SysexEvent(std::move(data)));
+    x->x_plugin->sendSysexEvent(SysexEvent(data.data(), data.size()));
 }
 
 /* --------------------------------- programs --------------------------------- */
@@ -1576,7 +1604,8 @@ static t_class *vstplugin_class;
 void t_vstplugin::set_param(int index, float value, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
         value = std::max(0.f, std::min(1.f, value));
-        x_plugin->setParameter(index, value);
+        int offset = x_plugin->getType() == IPlugin::VST3 ? get_sample_offset() : 0;
+        x_plugin->setParameter(index, value, offset);
         x_editor->param_changed(index, value, automated);
     } else {
         pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
@@ -1585,7 +1614,8 @@ void t_vstplugin::set_param(int index, float value, bool automated){
 
 void t_vstplugin::set_param(int index, const char *s, bool automated){
     if (index >= 0 && index < x_plugin->getNumParameters()){
-        if (!x_plugin->setParameter(index, s)){
+        int offset = x_plugin->getType() == IPlugin::VST3 ? get_sample_offset() : 0;
+        if (!x_plugin->setParameter(index, s, offset)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
         }
             // some plugins don't just ignore bad string input but reset the parameter to some value...
@@ -1606,26 +1636,36 @@ bool t_vstplugin::check_plugin(){
 
 void t_vstplugin::update_buffer(){
         // this routine is called in the "dsp" method and when a plugin is loaded.
-    int nin = x_siginlets.size();
-    int nout = x_sigoutlets.size();
-    int pin = 0;
-    int pout = 0;
+    int nin = 0;
+    int nauxin = 0;
+    int nout = 0;
+    int nauxout = 0;
     if (x_plugin){
-        pin = x_plugin->getNumInputs();
-        pout = x_plugin->getNumOutputs();
+        nin = x_plugin->getNumInputs();
+        nout = x_plugin->getNumOutputs();
+        nauxin = x_plugin->getNumAuxInputs();
+        nauxout = x_plugin->getNumAuxOutputs();
     }
         // the input/output buffers must be large enough to fit both
         // the number of Pd inlets/outlets and plugin inputs/outputs
-    int ninvec = std::max(pin, nin);
-    int noutvec = std::max(pout, nout);
+    nin = std::max<int>(nin, x_siginlets.size());
+    nout = std::max<int>(nout, x_sigoutlets.size());
+    nauxin = std::max<int>(nauxin, x_sigauxinlets.size());
+    nauxout = std::max<int>(nauxout, x_sigauxoutlets.size());
         // first clear() so that resize() will zero all values
     x_inbuf.clear();
     x_outbuf.clear();
+    x_auxinbuf.clear();
+    x_auxoutbuf.clear();
         // make it large enough for double precision
-    x_inbuf.resize(ninvec * sizeof(double) * x_blocksize);
-    x_outbuf.resize(noutvec * sizeof(double) * x_blocksize);
-    x_invec.resize(ninvec);
-    x_outvec.resize(noutvec);
+    x_inbuf.resize(nin * sizeof(double) * x_blocksize);
+    x_outbuf.resize(nout * sizeof(double) * x_blocksize);
+    x_auxinbuf.resize(nauxin * sizeof(double) * x_blocksize);
+    x_auxoutbuf.resize(nauxout * sizeof(double) * x_blocksize);
+    x_invec.resize(nin);
+    x_outvec.resize(nout);
+    x_auxinvec.resize(nauxin);
+    x_auxoutvec.resize(nauxout);
     LOG_DEBUG("vstplugin~: updated buffer");
 }
 
@@ -1636,22 +1676,28 @@ void t_vstplugin::update_precision(){
     if (x_plugin){
         if (!x_plugin->hasPrecision(ProcessPrecision::Single) && !x_plugin->hasPrecision(ProcessPrecision::Double)) {
             post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(this), x_plugin->getPluginName().c_str());
+                classname(this), x_plugin->info().name.c_str());
             return;
         }
         if (x_dp && !x_plugin->hasPrecision(ProcessPrecision::Double)){
             post("%s: '%s' doesn't support double precision, using single precision instead",
-                 classname(this), x_plugin->getPluginName().c_str());
+                 classname(this), x_plugin->info().name.c_str());
             dp = 0;
         }
         else if (!x_dp && !x_plugin->hasPrecision(ProcessPrecision::Single)){ // very unlikely...
             post("%s: '%s' doesn't support single precision, using double precision instead",
-                 classname(this), x_plugin->getPluginName().c_str());
+                 classname(this), x_plugin->info().name.c_str());
             dp = 1;
         }
             // set the actual precision
-        x_plugin->setPrecision(dp ? ProcessPrecision::Double : ProcessPrecision::Single);
+        x_plugin->setupProcessing(x_sr, x_blocksize, dp ? ProcessPrecision::Double : ProcessPrecision::Single);
     }
+}
+
+int t_vstplugin::get_sample_offset(){
+    int offset = clock_gettimesincewithunits(x_lastdsptime, 1, true);
+    // LOG_DEBUG("sample offset: " << offset);
+    return offset % x_blocksize;
 }
 
 // constructor
@@ -1689,17 +1735,20 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             break;
         }
     }
-        // signal inlets (default: 2)
+        // inputs (default: 2)
     int in = 2;
     if (argc > 0){
             // min. 1 because of CLASS_MAINSIGNALIN
         in = std::max<int>(1, atom_getfloat(argv));
     }
-        // signal outlets (default: 2)
+        // outputs (default: 2)
     int out = 2;
     if (argc > 1){
         out = std::max<int>(0, atom_getfloat(argv + 1));
     }
+        // optional aux inputs/outputs
+    int auxin = atom_getfloatarg(2, argc, argv);
+    int auxout = atom_getfloatarg(3, argc, argv);
 
     x_keep = keep;
     x_dp = dp;
@@ -1707,29 +1756,35 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
     x_clock = clock_new(this, (t_method)vstplugin_search_done);
 
-        // inlets (skip first):
-    for (int i = 1; i < in; ++i){
+        // inlets (we already have a main inlet!)
+    int totalin = in + auxin - 1;
+    while (totalin--){
         inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
 	}
     x_siginlets.resize(in);
+    x_sigauxinlets.resize(auxin);
+
         // outlets:
-	for (int i = 0; i < out; ++i){
+    int totalout = out + auxout;
+    while (totalout--){
         outlet_new(&x_obj, &s_signal);
     }
-    x_messout = outlet_new(&x_obj, 0); // additional message outlet
     x_sigoutlets.resize(out);
+    x_sigauxoutlets.resize(auxout);
+    x_messout = outlet_new(&x_obj, 0); // additional message outlet
 
+        // search
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
             searchPlugins<false>(path, true); // synchronous and parallel
         }
-        // shall we write cache file?
     #if 1
-        writeIniFile();
+        writeIniFile(); // shall we write cache file?
     #endif
         gDidSearch = true;
     }
 
+        // open plugin
     if (file){
         t_atom msg[2];
         if (editor){
@@ -1740,6 +1795,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         }
         vstplugin_open(this, 0, (int)editor + 1, msg);
     }
+
+        // restore state
     t_symbol *asym = gensym("#A");
         // bashily unbind #A
     asym->s_thing = 0;
@@ -1774,93 +1831,98 @@ static void vstplugin_free(t_vstplugin *x){
 // this templated method makes some optimization based on whether T and U are equal
 template<typename TFloat>
 static void vstplugin_doperform(t_vstplugin *x, int n, bool bypass){
-    int nin = x->x_siginlets.size();
-    t_sample ** sigin = x->x_siginlets.data();
-    int nout = x->x_sigoutlets.size();
-    t_sample ** sigout = x->x_sigoutlets.data();
-    char *inbuf = x->x_inbuf.data();
-    int ninvec = x->x_invec.size();
-    void ** invec = x->x_invec.data();
-    char *outbuf = x->x_outbuf.data();
-    int noutvec = x->x_outvec.size();
-    void ** outvec = x->x_outvec.data();
-    int out_offset = 0;
     auto plugin = x->x_plugin.get();
+    auto inbuf = x->x_inbuf.data();
+    auto outbuf = x->x_outbuf.data();
+    auto auxinbuf = x->x_auxinbuf.data();
+    auto auxoutbuf = x->x_auxoutbuf.data();
 
     if (!bypass){  // process audio
-        int pout = plugin->getNumOutputs();
-        out_offset = pout;
-            // prepare input buffer + pointers
-        for (int i = 0; i < ninvec; ++i){
-            TFloat *buf = (TFloat *)inbuf + i * n;
-            invec[i] = buf;
-            if (i < nin){  // copy from Pd inlets
-                t_sample *in = sigin[i];
-                for (int j = 0; j < n; ++j){
-                    buf[j] = in[j];
-                }
-            } else if (std::is_same<t_sample, double>::value
-                       && std::is_same<TFloat, float>::value){
-                    // we only have to zero for this special case: 'bypass' could
-                    // have written doubles into the input buffer, leaving garbage in
-                    // subsequent channels when the buffer is reinterpreted as floats.
-                for (int j = 0; j < n; ++j){
-                    buf[j] = 0;
+            // prepare input buffer
+        auto prepareInput = [](auto& vec, auto& inlets, auto buf, int k){
+            for (int i = 0; i < (int)vec.size(); ++i){
+                TFloat *dst = (TFloat *)buf + i * k;
+                vec[i] = dst;
+                if (i < (int)inlets.size()){  // copy from Pd inlets
+                    t_sample *src = inlets[i];
+                    for (int j = 0; j < k; ++j){
+                        dst[j] = src[j]; // might convert from t_sample to TFloat
+                    }
+                } else { // zero (not really necessary, except for some edge cases)
+                    std::fill(dst, dst + k, 0);
                 }
             }
-        }
-            // set output buffer pointers
-        for (int i = 0; i < pout; ++i){
-                // if t_sample and TFloat are the same, we can directly write to the outlets.
-            if (std::is_same<t_sample, TFloat>::value && i < nout){
-                outvec[i] = sigout[i];
-            } else {
-                outvec[i] = (TFloat *)outbuf + i * n;
+        };
+        prepareInput(x->x_invec, x->x_siginlets, inbuf, n);
+        prepareInput( x->x_auxinvec, x->x_sigauxinlets, auxinbuf, n);
+
+            // prepare output buffer
+        auto prepareOutput = [](auto& vec, auto& outlets, auto buf, int k){
+            for (int i = 0; i < (int)vec.size(); ++i){
+                    // if t_sample and TFloat are the same, we can directly point to the outlet.
+                if (std::is_same<t_sample, TFloat>::value && i < (int)outlets.size()){
+                    vec[i] = outlets[i];
+                } else { // otherwise point to buffer
+                    vec[i] = (TFloat *)buf + i * k;
+                }
             }
-        }
+        };
+        prepareOutput(x->x_outvec, x->x_sigoutlets, outbuf, n);
+        prepareOutput(x->x_auxoutvec, x->x_sigauxoutlets, auxoutbuf, n);
+
             // process
-        if (std::is_same<TFloat, float>::value){
-            plugin->process((const float **)invec, (float **)outvec, n);
-        } else {
-            plugin->processDouble((const double **)invec, (double **)outvec, n);
-        }
+        IPlugin::ProcessData<TFloat> data;
+        data.input = (const TFloat **)x->x_invec.data();
+        data.auxInput = (const TFloat **)x->x_auxinvec.data();
+        data.output = (TFloat **)x->x_outvec.data();
+        data.auxOutput = (TFloat **)x->x_auxoutvec.data();
+        data.numSamples = n;
+        plugin->process(data);
 
         if (!std::is_same<t_sample, TFloat>::value){
                 // copy output buffer to Pd outlets
-            for (int i = 0; i < nout && i < pout; ++i){
-                t_sample *out = sigout[i];
-                double *buf = (double *)outvec[i];
-                for (int j = 0; j < n; ++j){
-                    out[j] = buf[j];
+            auto copyBuffer = [](auto& vec, auto& outlets, int max, int k){
+                for (int i = 0; i < (int)outlets.size(); ++i){
+                    TFloat *src = (TFloat *)vec[i];
+                    t_sample *dst = outlets[i];
+                    if (i < max){
+                        for (int j = 0; j < k; ++j){
+                            dst[j] = src[j]; // converts from TFloat to t_sample
+                        }
+                    } else {
+                        std::fill(dst, dst + k, 0); // zero
+                    }
                 }
-            }
+            };
+                // copy output buffer to Pd outlets
+            copyBuffer(x->x_outvec, x->x_sigoutlets, plugin->getNumOutputs(), n);
+            copyBuffer(x->x_auxoutvec, x->x_sigauxoutlets, plugin->getNumAuxOutputs(), n);
         }
     } else {  // just pass it through
-        t_sample *buf = (t_sample *)inbuf;
-        out_offset = nin;
             // copy input
-        for (int i = 0; i < nin && i < nout; ++i){
-            t_sample *in = sigin[i];
-            t_sample *bufptr = buf + i * n;
-            for (int j = 0; j < n; ++j){
-                bufptr[j] = in[j];
+        auto copyInput = [](auto& inlets, auto buf, int max, int k){
+            for (int i = 0; i < (int)inlets.size() && i < max; ++i){
+                t_sample *src = inlets[i];
+                t_sample *dst = (t_sample *)buf + i * k;
+                std::copy(src, src + k, dst);
             }
-        }
+        };
+        copyInput(x->x_siginlets, outbuf, x->x_sigoutlets.size(), n);
+        copyInput(x->x_sigauxinlets, auxoutbuf, x->x_sigauxoutlets.size(), n);
             // write output
-        for (int i = 0; i < nin && i < nout; ++i){
-            t_sample *out = sigout[i];
-            t_sample *bufptr = buf + i * n;
-            for (int j = 0; j < n; ++j){
-                out[j] = bufptr[j];
+        auto writeOutput = [](auto& outlets, auto buf, int max, int k){
+            for (int i = 0; i < (int)outlets.size(); ++i){
+                t_sample *dst = outlets[i];
+                if (i < max){
+                    t_sample *src = (t_sample *)buf + i * k;
+                    std::copy(src, src + k, dst);
+                } else {
+                    std::fill(dst, dst + k, 0); // zero
+                }
             }
-        }
-    }
-        // zero remaining outlets
-    for (int i = out_offset; i < nout; ++i){
-        t_sample *out = sigout[i];
-        for (int j = 0; j < n; ++j){
-            out[j] = 0;
-        }
+        };
+        writeOutput(x->x_sigoutlets, outbuf, x->x_siginlets.size(), n);
+        writeOutput(x->x_sigauxoutlets, auxoutbuf, x->x_sigauxinlets.size(), n);
     }
 }
 
@@ -1870,6 +1932,7 @@ static t_int *vstplugin_perform(t_int *w){
     auto plugin = x->x_plugin.get();
     bool dp = x->x_dp;
     bool bypass = plugin ? x->x_bypass : true;
+    x->x_lastdsptime = clock_getlogicaltime();
 
     if (plugin && !bypass) {
             // check processing precision (single or double)
@@ -1938,26 +2001,35 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
     t_float sr = sp[0]->s_sr;
     dsp_add(vstplugin_perform, 2, x, blocksize);
-    if (blocksize != x->x_blocksize){
-        x->x_blocksize = blocksize;
-        x->update_buffer();
-    }
-    x->x_sr = sr;
-    if (x->x_plugin){
+        // only reset plugin if blocksize or samplerate has changed
+    if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->x_plugin->suspend();
-        x->x_plugin->setBlockSize(blocksize);
-        x->x_plugin->setSampleRate(sr);
+        x->x_plugin->setupProcessing(sr, blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
         x->x_plugin->resume();
     }
-    int nin = x->x_siginlets.size();
-    int nout = x->x_sigoutlets.size();
-    for (int i = 0; i < nin; ++i){
-        x->x_siginlets[i] = sp[i]->s_vec;
+    int k = 0;
+        // update signal vectors
+    for (auto it = x->x_siginlets.begin(); it != x->x_siginlets.end(); ++it){
+        *it = sp[k++]->s_vec;
     }
-    for (int i = 0; i < nout; ++i){
-        x->x_sigoutlets[i] = sp[nin + i]->s_vec;
+    for (auto it = x->x_sigauxinlets.begin(); it != x->x_sigauxinlets.end(); ++it){
+        *it = sp[k++]->s_vec;
     }
-    // LOG_DEBUG("vstplugin~: got 'dsp' message");
+    for (auto it = x->x_sigoutlets.begin(); it != x->x_sigoutlets.end(); ++it){
+        *it = sp[k++]->s_vec;
+    }
+    for (auto it = x->x_sigauxoutlets.begin(); it != x->x_sigauxoutlets.end(); ++it){
+        *it = sp[k++]->s_vec;
+    }
+    x->x_blocksize = blocksize;
+    x->x_sr = sr;
+        // always update buffers!
+    x->update_buffer();
+}
+
+static void my_terminate(){
+    LOG_DEBUG("terminate called!");
+    std::abort();
 }
 
 // setup function
@@ -2032,12 +2104,20 @@ void vstplugin_tilde_setup(void)
 
     vstparam_setup();
 
+    std::set_terminate(my_terminate);
+
     // read cached plugin info
     readIniFile();
 
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     eventLoopClock = clock_new(0, (t_method)eventLoopTick);
     clock_delay(eventLoopClock, 0);
+#endif
+
+    post("[vstplugin~] v%i.%i.%i%s", VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX,
+         VERSION_BETA ? " (beta)" : "");
+#ifdef __APPLE__
+    post("NOTE: on macOS, the VST editor GUI must run on the audio thread. Use with care!");
 #endif
 }
 

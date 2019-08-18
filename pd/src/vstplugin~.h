@@ -40,10 +40,12 @@ class t_vstplugin {
     t_sample x_f = 0;
     t_outlet *x_messout; // message outlet
     t_canvas *x_canvas; // parent canvas
-    int x_blocksize = 0; // see vstplugin_dsp
+    int x_blocksize = 64;
     t_float x_sr = 44100;
     std::vector<t_sample *> x_siginlets;
     std::vector<t_sample *> x_sigoutlets;
+    std::vector<t_sample *> x_sigauxinlets;
+    std::vector<t_sample *> x_sigauxoutlets;
         // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
@@ -51,13 +53,18 @@ class t_vstplugin {
     bool x_keep = false;
     bool x_bypass = false;
     bool x_dp; // single/double precision
+    double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
-        // contiguous input/outputs buffer
+        // contiguous input/output buffer
     std::vector<char> x_inbuf;
     std::vector<char> x_outbuf;
+    std::vector<char> x_auxinbuf;
+    std::vector<char> x_auxoutbuf;
         // array of input/output pointers
     std::vector<void *> x_invec;
     std::vector<void *> x_outvec;
+    std::vector<void *> x_auxinvec;
+    std::vector<void *> x_auxoutvec;
         // thread for async operations (e.g. search)
     std::thread x_thread;
     t_clock *x_clock;
@@ -69,6 +76,7 @@ class t_vstplugin {
     bool check_plugin();
     void update_buffer();
     void update_precision();
+    int get_sample_offset();
 };
 
 // VST parameter responder (for Pd GUI)
@@ -131,7 +139,7 @@ class t_vsteditor : public IPluginListener {
     std::vector<t_vstparam> e_params;
         // outgoing messages:
     t_clock *e_clock;
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     std::mutex e_mutex;
     std::thread::id e_mainthread;
 #endif

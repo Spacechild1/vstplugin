@@ -5,7 +5,7 @@
 
 using namespace vst;
 
-#define NO_STDOUT 1
+#define NO_STDOUT 0
 #define NO_STDERR 0
 
 #ifdef _WIN32
@@ -56,6 +56,7 @@ int MAIN(int argc, const CHAR *argv[]) {
 		const CHAR *pluginPath = argv[1];
 		const CHAR *pluginName = argv[2];
 		const CHAR *filePath = argc > 3 ? argv[3] : nullptr;
+        LOG_DEBUG("probe.exe: " << shorten(pluginPath) << ", " << shorten(pluginName));
         try {
             auto factory = vst::IFactory::load(shorten(pluginPath));
             auto plugin = factory->create(shorten(pluginName), true);
@@ -68,7 +69,9 @@ int MAIN(int argc, const CHAR *argv[]) {
                 }
             }
             status = EXIT_SUCCESS;
-        } catch (const Error& e){
+            LOG_DEBUG("probe succeeded");
+        } catch (const std::exception& e){
+            // catch any exception!
             LOG_DEBUG("probe failed: " << e.what());
         }
 	}

@@ -13,6 +13,10 @@
 #include <cstring>
 #include <sstream>
 #include <fstream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
 
 #ifdef _WIN32
 # include <Windows.h>
@@ -47,7 +51,7 @@ namespace Win32 {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll();
 #endif
 } // UIThread
@@ -57,7 +61,7 @@ namespace Cocoa {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll();
 #endif
 } // UIThread
@@ -67,7 +71,7 @@ namespace X11 {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll();
 #endif
 } // UIThread
@@ -158,6 +162,16 @@ bool pathExists(const std::string& path){
 #endif
 }
 
+bool isDirectory(const std::string& path){
+#ifdef _WIN32
+    std::error_code e;
+    return fs::is_directory(widen(path), e);
+#else
+    struct stat stbuf;
+    return (stat(path.c_str(), &stbuf) == 0) && S_ISDIR(stbuf.st_mode);
+#endif
+}
+
 bool removeFile(const std::string& path){
 #ifdef _WIN32
     std::error_code e;
@@ -184,6 +198,19 @@ bool createDirectory(const std::string& dir){
     }
     return false;
 #endif
+}
+
+std::string fileName(const std::string& path){
+#ifdef _WIN32
+    auto pos = path.find_last_of("/\\");
+#else
+    auto pos = path.find_last_of('/');
+#endif
+    if (pos != std::string::npos){
+        return path.substr(pos+1);
+    } else {
+        return path;
+    }
 }
 
 std::string getTmpDirectory(){
@@ -223,27 +250,76 @@ const std::vector<const char *>& getPluginExtensions() {
     return platformExtensions;
 }
 
-static std::vector<const char *> defaultSearchPaths = {
-	// macOS
-#ifdef __APPLE__
-	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
+const std::string& getBundleBinaryPath(){
+    static std::string path =
+#if defined(_WIN32)
+#ifdef _WIN64
+        "Contents/x86_64-win";
+#else // WIN32
+        "Contents/x86-win";
 #endif
-	// Windows
+#elif defined(__APPLE__)
+        "Contents/MacOS";
+#else // Linux
+#if defined(__i386__)
+        "Contents/i386-linux";
+#elif defined(__x86_64__)
+        "Contents/x86_64-linux";
+#else
+        ""; // figure out what to do with all the ARM versions...
+#endif
+#endif
+    return path;
+}
+
 #ifdef _WIN32
 #ifdef _WIN64 // 64 bit
 #define PROGRAMFILES "%ProgramFiles%\\"
 #else // 32 bit
 #define PROGRAMFILES "%ProgramFiles(x86)%\\"
 #endif
+#endif // WIN32
+
+static std::vector<const char *> defaultSearchPaths = {
+    /*////// VST2 ////*/
+#if USE_VST2
+    // macOS
+#ifdef __APPLE__
+	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
+#endif
+    // Windows
+#ifdef _WIN32
     PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins",
     PROGRAMFILES "Common Files\\VST2", PROGRAMFILES "Common Files\\Steinberg\\VST2"
+#endif
+    // Linux
+#ifdef __linux__
+    "~/.vst", "/usr/local/lib/vst", "/usr/lib/vst"
+#endif
+#endif // VST2
+#if USE_VST2 && USE_VST3
+    ,
+#endif
+    /*////// VST3 ////*/
+#if USE_VST3
+    // macOS
+#ifdef __APPLE__
+    "~/Library/Audio/Plug-Ins/VST3", "/Library/Audio/Plug-Ins/VST3"
+#endif
+    // Windows
+#ifdef _WIN32
+    PROGRAMFILES "Common Files\\VST3"
+#endif
+    // Linux
+#ifdef __linux__
+    "~/.vst3", "/usr/local/lib/vst3", "/usr/lib/vst3"
+#endif
+#endif // VST3
+};
+
+#ifdef PROGRAMFILES
 #undef PROGRAMFILES
 #endif
-	// Linux
-#ifdef __linux__
-    "/usr/local/lib/vst", "/usr/lib/vst"
-#endif
-};
 
 // get "real" default search paths
 const std::vector<std::string>& getDefaultSearchPaths() {
@@ -299,13 +375,14 @@ std::string find(const std::string &dir, const std::string &path){
     }
 #ifdef _WIN32
     try {
-        auto fpath = fs::path(relpath);
-        auto file = fs::path(dir) / fpath;
+        auto wdir = widen(dir);
+        auto fpath = fs::path(widen(relpath));
+        auto file = fs::path(wdir) / fpath;
         if (fs::is_regular_file(file)){
             return file.u8string(); // success
         }
         // continue recursively
-        for (auto& entry : fs::recursive_directory_iterator(dir)) {
+        for (auto& entry : fs::recursive_directory_iterator(wdir)) {
             if (fs::is_directory(entry)){
                 file = entry.path() / fpath;
                 if (fs::is_regular_file(file)){
@@ -360,7 +437,7 @@ void search(const std::string &dir, std::function<void(const std::string&, const
     // search recursively
 #ifdef _WIN32
     try {
-        for (auto& entry : fs::recursive_directory_iterator(dir)) {
+        for (auto& entry : fs::recursive_directory_iterator(widen(dir))) {
             if (fs::is_regular_file(entry)) {
                 auto ext = entry.path().extension().u8string();
                 if (extensions.count(ext)) {
@@ -433,7 +510,7 @@ namespace UIThread {
     #endif
     }
 
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
     void poll(){
     #ifdef _WIN32
         Win32::UIThread::poll();
@@ -455,6 +532,10 @@ namespace UIThread {
 #define PLUGIN_API
 #endif
 
+#ifndef UNLOAD_MODULES
+#define UNLOAD_MODULES 1
+#endif
+
 #ifdef _WIN32
 class ModuleWin32 : public IModule {
  public:
@@ -471,7 +552,9 @@ class ModuleWin32 : public IModule {
         // LOG_DEBUG("loaded Win32 library " << path);
     }
     ~ModuleWin32(){
+    #if UNLOAD_MODULES
         FreeLibrary(handle_);
+    #endif
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("InitDll");
@@ -511,7 +594,9 @@ class ModuleApple : public IModule {
         // LOG_DEBUG("loaded macOS bundle " << path);
     }
     ~ModuleApple(){
+    #if UNLOAD_MODULES
         CFRelease(bundle_);
+    #endif
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("bundleEntry");
@@ -548,7 +633,9 @@ class ModuleSO : public IModule {
         // LOG_DEBUG("loaded dynamic library " << path);
     }
     ~ModuleSO(){
+    #if UNLOAD_MODULES
         dlclose(handle_);
+    #endif
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("ModuleEntry");
@@ -630,7 +717,6 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     // put the information we already have (might be overriden)
     desc->name = name;
-    desc->id = shellPluginID;
     desc->path = path();
     // we pass the shell plugin ID instead of the name to probe.exe
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
@@ -657,7 +743,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     ZeroMemory(&pi, sizeof(pi));
 
     if (!CreateProcessW(probePath.c_str(), &cmdLine[0],
-                        NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)){
+                        NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)){
         throw Error("probePlugin: couldn't spawn process!");
     }
     auto wait = [pi](){
@@ -730,6 +816,151 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     };
 }
 
+// for testing we don't want to load hundreds of sub plugins
+#define PLUGIN_LIMIT 50
+// probe subplugins asynchronously with futures or worker threads
+#define PROBE_FUTURES 8 // number of futures to wait for
+#define PROBE_THREADS 8 // number of worker threads (0: use futures instead of threads)
+
+std::vector<PluginInfo::ptr> IFactory::probePlugins(
+        const ProbeList& pluginList, ProbeCallback callback, bool& valid){
+    // shell plugin!
+    int numPlugins = pluginList.size();
+    std::vector<PluginInfo::ptr> results;
+#ifdef PLUGIN_LIMIT
+    numPlugins = std::min<int>(numPlugins, PLUGIN_LIMIT);
+#endif
+#if !PROBE_THREADS
+    /// LOG_DEBUG("numPlugins: " << numPlugins);
+    std::vector<std::tuple<int, std::string, PluginInfo::Future>> futures;
+    int i = 0;
+    while (i < numPlugins){
+        futures.clear();
+        // probe the next n plugins
+        int n = std::min<int>(numPlugins - i, PROBE_FUTURES);
+        for (int j = 0; j < n; ++j, ++i){
+            auto& pair = pluginList[i];
+            auto& name = pair.first;
+            auto& id = pair.second;
+            try {
+                /// LOG_DEBUG("probing '" << pair.first << "'");
+                futures.emplace_back(i, name, probePlugin(name, id));
+            } catch (const Error& e){
+                // should we rather propagate the error and break from the loop?
+                LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+            }
+        }
+        // collect results
+        for (auto& tup : futures){
+            int index;
+            std::string name;
+            PluginInfo::Future future;
+            std::tie(index, name, future) = tup;
+            try {
+                auto plugin = future(); // wait for process
+                results.push_back(plugin);
+                // factory is valid if contains at least 1 valid plugin
+                if (plugin->valid()){
+                    valid = true;
+                }
+                if (callback){
+                    callback(*plugin, index, numPlugins);
+                }
+            } catch (const Error& e){
+                // should we rather propagate the error and break from the loop?
+                LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+            }
+        }
+    }
+}
+#else
+    /// LOG_DEBUG("numPlugins: " << numPlugins);
+    auto next = pluginList.begin();
+    auto end = next + numPlugins;
+    int count = 0;
+    std::deque<std::tuple<int, std::string, PluginInfo::ptr, Error>> resultQueue;
+
+    std::mutex mutex;
+    std::condition_variable cond;
+    int numThreads = std::min<int>(numPlugins, PROBE_THREADS);
+    std::vector<std::thread> threads;
+    // thread function
+    auto threadFun = [&](int i){
+        std::unique_lock<std::mutex> lock(mutex);
+        while (next != end){
+            auto it = next++;
+            auto& name = it->first;
+            auto& id = it->second;
+            lock.unlock();
+            try {
+                /// LOG_DEBUG("probing '" << name << "'");
+                auto plugin = probePlugin(name, id)();
+                lock.lock();
+                resultQueue.emplace_back(count++, name, plugin, Error{});
+                /// LOG_DEBUG("thread " << i << ": probed " << name);
+            } catch (const Error& e){
+                lock.lock();
+                resultQueue.emplace_back(count++, name, nullptr, e);
+            }
+            cond.notify_one();
+        }
+        /// LOG_DEBUG("worker thread " << i << " finished");
+    };
+    // spawn worker threads
+    for (int j = 0; j < numThreads; ++j){
+        threads.push_back(std::thread(threadFun, j));
+    }
+    // collect results
+    std::unique_lock<std::mutex> lock(mutex);
+    while (true) {
+        // process available data
+        while (resultQueue.size() > 0){
+            int index;
+            std::string name;
+            PluginInfo::ptr plugin;
+            Error e;
+            std::tie(index, name, plugin, e) = resultQueue.front();
+            resultQueue.pop_front();
+            lock.unlock();
+
+            if (plugin){
+                results.push_back(plugin);
+                ///LOG_DEBUG("got plugin " << plugin->name);
+                // factory is valid if contains at least 1 valid plugin
+                if (plugin->valid()){
+                    valid = true;
+                }
+                if (callback){
+                    callback(*plugin, index, numPlugins);
+                }
+            } else {
+                // should we rather propagate the error and break from the loop?
+                LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+            }
+            lock.lock();
+        }
+        if (count < numPlugins) {
+            /// LOG_DEBUG("wait...");
+            cond.wait(lock); // wait for more
+        }
+        else {
+            break; // done
+        }
+    }
+
+    lock.unlock(); // !
+    /// LOG_DEBUG("exit loop");
+    // join worker threads
+    for (auto& thread : threads){
+        if (thread.joinable()){
+            thread.join();
+        }
+    }
+    /// LOG_DEBUG("all worker threads joined");
+#endif
+    return results;
+}
+
 void IFactory::probe(ProbeCallback callback){
     probeAsync()(std::move(callback));
 }
@@ -739,61 +970,28 @@ void IFactory::probe(ProbeCallback callback){
 PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
     : path(factory->path()), factory_(factory) {}
 
-PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPlugin& plugin)
-    : PluginInfo(factory)
-{
-    name = plugin.getPluginName();
-    if (name.empty()){
-        auto sep = path.find_last_of("\\/");
-        auto dot = path.find_last_of('.');
-        if (sep == std::string::npos){
-            sep = -1;
-        }
-        if (dot == std::string::npos){
-            dot = path.size();
-        }
-        name = path.substr(sep + 1, dot - sep - 1);
-    }
-    vendor = plugin.getPluginVendor();
-    category = plugin.getPluginCategory();
-    version = plugin.getPluginVersion();
-	id = plugin.getPluginUniqueID();
-	numInputs = plugin.getNumInputs();
-	numOutputs = plugin.getNumOutputs();
-	int numParameters = plugin.getNumParameters();
-	parameters.clear();
-	for (int i = 0; i < numParameters; ++i) {
-        Param param{plugin.getParameterName(i), plugin.getParameterLabel(i)};
-        parameters.push_back(std::move(param));
-	}
-    // inverse mapping from name to index
-    for (int i = 0; i < numParameters; ++i){
-        paramMap[parameters[i].name] = i;
-    }
-	int numPrograms = plugin.getNumPrograms();
-	programs.clear();
-	for (int i = 0; i < numPrograms; ++i) {
-		auto pgm = plugin.getProgramNameIndexed(i);
-#if 0
-		if (pgm.empty()) {
-			plugin.setProgram(i);
-			pgm = plugin.getProgramName();
-		}
-#endif
-		programs.push_back(pgm);
-	}
-    flags_ = 0;
-    flags_ |= plugin.hasEditor() * HasEditor;
-    flags_ |= plugin.isSynth() * IsSynth;
-    flags_ |= plugin.hasPrecision(ProcessPrecision::Single) * SinglePrecision;
-    flags_ |= plugin.hasPrecision(ProcessPrecision::Double) * DoublePrecision;
-    flags_ |= plugin.hasMidiInput() * MidiInput;
-    flags_ |= plugin.hasMidiOutput() * MidiOutput;
-}
-
 IPlugin::ptr PluginInfo::create() const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     return factory ? factory->create(name) : nullptr;
+}
+
+void PluginInfo::setUniqueID(int _id){
+    type_ = IPlugin::VST2;
+    char buf[9];
+    // should we write in little endian?
+    snprintf(buf, sizeof(buf), "%08X", _id);
+    buf[8] = 0;
+    uniqueID = buf;
+}
+
+void PluginInfo::setUID(const char *uid){
+    type_ = IPlugin::VST3;
+    char buf[33];
+    for (int i = 0; i < 16; ++i){
+        snprintf(buf + (i * 2), 3, "%02X", uid[i]);
+    }
+    buf[32] = 0;
+    uniqueID = buf;
 }
 
 /// .ini file structure for each plugin:
@@ -804,6 +1002,7 @@ IPlugin::ptr PluginInfo::create() const {
 /// vendor=<string>
 /// category=<string>
 /// version=<string>
+/// sdkversion=<string>
 /// id=<int>
 /// inputs=<int>
 /// outputs=<int>
@@ -836,23 +1035,39 @@ static std::string bashString(std::string name){
     return name;
 }
 
+#define toHex(x) std::hex << (x) << std::dec
 
 void PluginInfo::serialize(std::ostream& file) const {
     file << "[plugin]\n";
+    file << "id=" << uniqueID << "\n";
     file << "path=" << path << "\n";
     file << "name=" << name << "\n";
     file << "vendor=" << vendor << "\n";
     file << "category=" << category << "\n";
     file << "version=" << version << "\n";
-    file << "id=" << id << "\n";
+    file << "sdkversion=" << sdkVersion << "\n";
     file << "inputs=" << numInputs << "\n";
+    if (numAuxInputs > 0){
+        file << "auxinputs=" << numAuxInputs << "\n";
+    }
     file << "outputs=" << numOutputs << "\n";
-    file << "flags=" << (uint32_t)flags_ << "\n";
+    if (numAuxOutputs > 0){
+        file << "auxoutputs=" << numAuxOutputs << "\n";
+    }
+    file << "flags=" << toHex(flags) << "\n";
+#if USE_VST3
+    if (programChange != NoParamID){
+        file << "pgmchange=" << toHex(programChange) << "\n";
+    }
+    if (bypass != NoParamID){
+        file << "bypass=" << toHex(bypass) << "\n";
+    }
+#endif
     // parameters
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
-        file << bashString(param.name) << "," << param.label << "\n";
+        file << bashString(param.name) << "," << param.label << "," << param.id << "\n";
 	}
     // programs
     file << "[programs]\n";
@@ -860,14 +1075,16 @@ void PluginInfo::serialize(std::ostream& file) const {
 	for (auto& pgm : programs) {
         file << pgm << "\n";
 	}
+#if USE_VST2
     // shell plugins (only used for probe.exe)
-    if (!shellPlugins_.empty()){
+    if (!shellPlugins.empty()){
         file << "[shell]\n";
-        file << "n=" << (int)shellPlugins_.size() << "\n";
-        for (auto& shell : shellPlugins_){
+        file << "n=" << (int)shellPlugins.size() << "\n";
+        for (auto& shell : shellPlugins){
             file << shell.name << "," << shell.id << "\n";
         }
     }
+#endif
 }
 
 static std::string ltrim(std::string str){
@@ -926,6 +1143,35 @@ static void getKeyValuePair(const std::string& line, std::string& key, std::stri
     value = ltrim(line.substr(pos + 1));
 }
 
+std::vector<std::string> splitString(const std::string& str, char sep){
+    std::vector<std::string> result;
+    auto pos = 0;
+    while (true){
+        auto newpos = str.find(sep, pos);
+        if (newpos != std::string::npos){
+            int len = newpos - pos;
+            result.push_back(str.substr(pos, len));
+            pos = newpos + 1;
+        } else {
+            result.push_back(str.substr(pos)); // remaining string
+            break;
+        }
+    }
+    return result;
+}
+
+void parseArg(int32_t& lh, const std::string& rh){
+    lh = std::stol(rh); // decimal
+}
+
+void parseArg(uint32_t& lh, const std::string& rh){
+    lh = std::stol(rh, nullptr, 16); // hex
+}
+
+void parseArg(std::string& lh, const std::string& rh){
+    lh = rh;
+}
+
 void PluginInfo::deserialize(std::istream& file) {
     // first check for sections, then for keys!
     bool start = false;
@@ -938,15 +1184,26 @@ void PluginInfo::deserialize(std::istream& file) {
             std::getline(file, line);
             int n = getCount(line);
             while (n-- && std::getline(file, line)){
-                auto pos = line.find(',');
+                auto args = splitString(line, ',');
                 Param param;
-                param.name = rtrim(line.substr(0, pos));
-                param.label = ltrim(line.substr(pos + 1));
+                if (args.size() >= 2){
+                    param.name = rtrim(args[0]);
+                    param.label = ltrim(args[1]);
+                }
+                if (args.size() >= 3){
+                    param.id = std::stol(args[2]);
+                }
                 parameters.push_back(std::move(param));
             }
-            // inverse mapping from name to index
+            // inverse mapping name -> index
             for (int i = 0; i < (int)parameters.size(); ++i){
-                paramMap[parameters[i].name] = i;
+                auto& param = parameters[i];
+                paramMap_[param.name] = i;
+            #if USE_VST3
+                // for VST3:
+                idToIndexMap_[param.id] = i;
+                indexToIdMap_[i] = param.id;
+            #endif
             }
         } else if (line == "[programs]"){
             programs.clear();
@@ -959,8 +1216,9 @@ void PluginInfo::deserialize(std::istream& file) {
             if (category != "Shell"){
                 break; // done!
             }
+#if USE_VST2
         } else if (line == "[shell]"){
-            shellPlugins_.clear();
+            shellPlugins.clear();
             std::getline(file, line);
             int n = getCount(line);
             while (n-- && std::getline(file, line)){
@@ -968,41 +1226,65 @@ void PluginInfo::deserialize(std::istream& file) {
                 ShellPlugin shell;
                 shell.name = rtrim(line.substr(0, pos));
                 shell.id = std::stol(line.substr(pos + 1));
-                shellPlugins_.push_back(std::move(shell));
+                shellPlugins.push_back(std::move(shell));
             }
             break; // done!
+#endif
         } else if (start){
             std::string key;
             std::string value;
             getKeyValuePair(line, key, value);
+            #define MATCH(name, field) else if (name == key) parseArg(field, value)
             try {
-                if (key == "path"){
-                    path = std::move(value);
-                } else if (key == "name"){
-                    name = std::move(value);
-                } else if (key == "vendor"){
-                    vendor = std::move(value);
-                } else if (key == "category"){
-                    category = std::move(value);
-                } else if (key == "version"){
-                    version = std::move(value);
-                } else if (key == "id"){
-                    id = std::stol(value);
-                } else if (key == "inputs"){
-                    numInputs = std::stol(value);
-                } else if (key == "outputs"){
-                    numOutputs = std::stol(value);
-                } else if (key == "flags"){
-                    flags_ = std::stol(value);
-                } else {
-                    throw Error("unknown key: " + key);
+                if (key == "id"){
+                    if (value.size() == 8){
+                        // LATER deal with endianess
+                        type_ == IPlugin::VST2;
+                        sscanf(&value[0], "%08X", &id_.id);
+                    } else if (value.size() == 32){
+                        type_ == IPlugin::VST3;
+                        const int n = value.size() / 2;
+                        for (int i = 0; i < n; ++i){
+                            char buf[3] = { 0 };
+                            memcpy(buf, &value[i * 2], 2);
+                            unsigned int temp;
+                            sscanf(buf, "%02x", &temp);
+                            id_.uid[i] = temp;
+                        }
+                    } else {
+                        throw Error("bad id!");
+                    }
+                    uniqueID = value;
+                }
+                MATCH("path", path);
+                MATCH("name", name);
+                MATCH("vendor", vendor);
+                MATCH("category", category);
+                MATCH("version", version);
+                MATCH("sdkversion", sdkVersion);
+                MATCH("inputs", numInputs);
+                MATCH("auxinputs", numAuxInputs);
+                MATCH("outputs", numOutputs);
+                MATCH("auxoutputs", numAuxOutputs);
+            #if USE_VST3
+                MATCH("pgmchange", programChange);
+                MATCH("bypass", bypass);
+            #endif
+                MATCH("flags", flags);
+                else {
+                    LOG_WARNING("unknown key: " << key);
+                    // throw Error("unknown key: " + key);
                 }
             }
+            #undef MATCH
             catch (const std::invalid_argument& e) {
                 throw Error("invalid argument for key '" + key + "': " + value);
             }
             catch (const std::out_of_range& e) {
                 throw Error("out of range argument for key '" + key + "': " + value);
+            }
+            catch (const std::exception& e){
+                throw Error("unknown error: " + std::string(e.what()));
             }
         } else {
             throw Error("bad data: " + line);

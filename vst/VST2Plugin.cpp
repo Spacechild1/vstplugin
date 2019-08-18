@@ -6,10 +6,6 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <deque>
 
 /*------------------ endianess -------------------*/
     // endianess check taken from Pure Data (d_osc.c)
@@ -152,7 +148,7 @@ VST2Factory::VST2Factory(const std::string& path)
 }
 
 VST2Factory::~VST2Factory(){
-    LOG_DEBUG("freed VST2 module " << path_);
+    // LOG_DEBUG("freed VST2 module " << path_);
 }
 
 void VST2Factory::addPlugin(PluginInfo::ptr desc){
@@ -174,156 +170,30 @@ int VST2Factory::numPlugins() const {
     return plugins_.size();
 }
 
-// for testing we don't want to load hundreds of shell plugins
-#define SHELL_PLUGIN_LIMIT 1000
-// probe subplugins asynchronously with futures or worker threads
-#define PROBE_FUTURES 8 // number of futures to wait for
-#define PROBE_THREADS 8 // number of worker threads (0: use futures instead of threads)
+
 
 IFactory::ProbeFuture VST2Factory::probeAsync() {
     plugins_.clear();
+    pluginMap_.clear();
     auto f = probePlugin(""); // don't need a name
     /// LOG_DEBUG("got probePlugin future");
-    return [this, f=std::move(f)](ProbeCallback callback){
+    auto self = shared_from_this();
+    return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
         /// LOG_DEBUG("about to call probePlugin future");
         auto result = f();
         /// LOG_DEBUG("called probePlugin future");
-        if (result->shellPlugins_.empty()){
+        if (result->shellPlugins.empty()){
             plugins_ = { result };
             valid_ = result->valid();
             if (callback){
                 callback(*result, 0, 1);
             }
         } else {
-            // shell plugin!
-            int numPlugins = result->shellPlugins_.size();
-        #ifdef SHELL_PLUGIN_LIMIT
-            numPlugins = std::min<int>(numPlugins, SHELL_PLUGIN_LIMIT);
-        #endif
-#if !PROBE_THREADS
-            /// LOG_DEBUG("numPlugins: " << numPlugins);
-            std::vector<std::tuple<int, std::string, PluginInfo::Future>> futures;
-            int i = 0;
-            while (i < numPlugins){
-                futures.clear();
-                // probe the next n plugins
-                int n = std::min<int>(numPlugins - i, PROBE_FUTURES);
-                for (int j = 0; j < n; ++j, ++i){
-                    auto& shell = result->shellPlugins_[i];
-                    try {
-                        /// LOG_DEBUG("probing '" << shell.name << "'");
-                        futures.emplace_back(i, shell.name, probePlugin(shell.name, shell.id));
-                    } catch (const Error& e){
-                        // should we rather propagate the error and break from the loop?
-                        LOG_ERROR("couldn't probe '" << shell.name << "': " << e.what());
-                    }
-                }
-                // collect results
-                for (auto& tup : futures){
-                    int index;
-                    std::string name;
-                    PluginInfo::Future future;
-                    std::tie(index, name, future) = tup;
-                    try {
-                        auto plugin = future(); // wait for process
-                        plugins_.push_back(plugin);
-                        // factory is valid if contains at least 1 valid plugin
-                        if (plugin->valid()){
-                            valid_ = true;
-                        }
-                        if (callback){
-                            callback(*plugin, index, numPlugins);
-                        }
-                    } catch (const Error& e){
-                        // should we rather propagate the error and break from the loop?
-                        LOG_ERROR("couldn't probe '" << name << "': " << e.what());
-                    }
-                }
+            ProbeList pluginList;
+            for (auto& shell : result->shellPlugins){
+                pluginList.emplace_back(shell.name, shell.id);
             }
-        }
-#else
-            /// LOG_DEBUG("numPlugins: " << numPlugins);
-            auto& shellPlugins = result->shellPlugins_;
-            auto next = shellPlugins.begin();
-            auto end = next + numPlugins;
-            int count = 0;
-            std::deque<std::tuple<int, std::string, PluginInfo::ptr, Error>> results;
-
-            std::mutex mutex;
-            std::condition_variable cond;
-            int numThreads = std::min<int>(numPlugins, PROBE_THREADS);
-            std::vector<std::thread> threads;
-            // thread function
-            auto threadFun = [&](int i){
-                std::unique_lock<std::mutex> lock(mutex);
-                while (next != end){
-                    auto shell = next++;
-                    lock.unlock();
-                    try {
-                        /// LOG_DEBUG("probing '" << shell.name << "'");
-                        auto plugin = probePlugin(shell->name, shell->id)();
-                        lock.lock();
-                        results.emplace_back(count++, shell->name, plugin, Error{});
-                        /// LOG_DEBUG("thread " << i << ": probed " << shell->name);
-                    } catch (const Error& e){
-                        lock.lock();
-                        results.emplace_back(count++, shell->name, nullptr, e);
-                    }
-                    cond.notify_one();
-                }
-                /// LOG_DEBUG("worker thread " << i << " finished");
-            };
-            // spawn worker threads
-            for (int j = 0; j < numThreads; ++j){
-                threads.push_back(std::thread(threadFun, j));
-            }
-            // collect results
-            std::unique_lock<std::mutex> lock(mutex);
-            while (true) {
-                // process available data
-                while (results.size() > 0){
-                    int index;
-                    std::string name;
-                    PluginInfo::ptr plugin;
-                    Error e;
-                    std::tie(index, name, plugin, e) = results.front();
-                    results.pop_front();
-                    lock.unlock();
-
-                    if (plugin){
-                        plugins_.push_back(plugin);
-                        // factory is valid if contains at least 1 valid plugin
-                        if (plugin->valid()){
-                            valid_ = true;
-                        }
-                        if (callback){
-                            callback(*plugin, index, numPlugins);
-                        }
-                    } else {
-                        // should we rather propagate the error and break from the loop?
-                        LOG_ERROR("couldn't probe '" << name << "': " << e.what());
-                    }
-                    lock.lock();
-                }
-                if (count < numPlugins) {
-                    /// LOG_DEBUG("wait...");
-                    cond.wait(lock); // wait for more
-                }
-                else {
-                    break; // done
-                }
-            }
-
-            lock.unlock(); // !
-            /// LOG_DEBUG("exit loop");
-            // join worker threads
-            for (auto& thread : threads){
-                if (thread.joinable()){
-                    thread.join();
-                }
-            }
-            /// LOG_DEBUG("all worker threads joined");
-#endif
+            plugins_ = probePlugins(pluginList, callback, valid_);
         }
         for (auto& desc : plugins_){
             pluginMap_[desc->name] = desc;
@@ -347,7 +217,7 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
         }
         // only for shell plugins:
         // set (global) current plugin ID (used in hostCallback)
-        shellPluginID = desc->id;
+        shellPluginID = desc->getUniqueID();
     } else {
         // when probing, shell plugin ID is passed as string
         try {
@@ -376,7 +246,7 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
 VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc)
-    : plugin_(plugin), factory_(std::move(f)), desc_(std::move(desc))
+    : plugin_(plugin), factory_(std::move(f)), info_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
     timeInfo_.sampleRate = 44100;
@@ -396,20 +266,51 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     dispatch(effOpen);
     dispatch(effMainsChanged, 0, 1);
     // are we probing?
-    if (!desc_){
-        // later we might directly initialize PluginInfo here and get rid of many IPlugin methods
-        // (we implicitly call virtual methods within our constructor, which works in our case but is a bit edgy)
-        PluginInfo newDesc(factory_, *this);
+    if (!info_){
+        // create and fill plugin info
+        auto info = std::make_shared<PluginInfo>(factory_);
+        info->setUniqueID(plugin_->uniqueID);
+        info->name = getPluginName();
+        info->vendor = getPluginVendor();
+        info->category = getPluginCategory();
+        info->version = getPluginVersion();
+        info->sdkVersion = getSDKVersion();
+        info->numInputs = plugin_->numInputs;
+        info->numOutputs = plugin_->numOutputs;
+        // flags
+        uint32_t flags = 0;
+        flags |= hasEditor() * PluginInfo::HasEditor;
+        flags |= isSynth() * PluginInfo::IsSynth;
+        flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
+        flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
+        flags |= hasMidiInput() * PluginInfo::MidiInput;
+        flags |= hasMidiOutput() * PluginInfo::MidiOutput;
+        info->flags = flags;
+        // get parameters
+        int numParameters = getNumParameters();
+        for (int i = 0; i < numParameters; ++i){
+            PluginInfo::Param p;
+            p.name = getParameterName(i);
+            p.label = getParameterLabel(i);
+            p.id = i;
+            info->addParameter(std::move(p));
+        }
+        // programs
+        int numPrograms = getNumPrograms();
+        for (int i = 0; i < numPrograms; ++i){
+            info->programs.push_back(getProgramNameIndexed(i));
+        }
+        // VST2 shell plugins only: get sub plugins
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
             VstInt32 nextID = 0;
             char name[64] = { 0 };
             while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
                 PluginInfo::ShellPlugin shellPlugin { name, nextID };
-                newDesc.shellPlugins_.push_back(std::move(shellPlugin));
+                info->shellPlugins.push_back(std::move(shellPlugin));
             }
         }
-        desc_ = std::make_shared<PluginInfo>(std::move(newDesc));
+        info_ = info;
     }
 }
 
@@ -424,77 +325,6 @@ VST2Plugin::~VST2Plugin(){
     LOG_DEBUG("destroyed VST2 plugin");
 }
 
-std::string VST2Plugin::getPluginName() const {
-    if (desc_) return desc_->name;
-    char buf[256] = { 0 };
-    dispatch(effGetEffectName, 0, 0, buf);
-    return buf;
-}
-
-std::string VST2Plugin::getPluginVendor() const {
-    char buf[256] = { 0 };
-    dispatch(effGetVendorString, 0, 0, buf);
-    return buf;
-}
-
-std::string VST2Plugin::getPluginCategory() const {
-    switch (dispatch(effGetPlugCategory)){
-    case kPlugCategEffect:
-        return "Effect";
-    case kPlugCategSynth:
-        return "Synth";
-    case kPlugCategAnalysis:
-        return "Analysis";
-    case kPlugCategMastering:
-        return "Mastering";
-    case kPlugCategSpacializer:
-        return "Spacializer";
-    case kPlugCategRoomFx:
-        return "RoomFx";
-    case kPlugSurroundFx:
-        return "SurroundFx";
-    case kPlugCategRestoration:
-        return "Restoration";
-    case kPlugCategOfflineProcess:
-        return "OfflineProcess";
-    case kPlugCategShell:
-        return "Shell";
-    case kPlugCategGenerator:
-        return "Generator";
-    default:
-        return "Undefined";
-    }
-}
-
-std::string VST2Plugin::getPluginVersion() const {
-    char buf[64] = { 0 };
-    auto n = snprintf(buf, 64, "%d", plugin_->version);
-    if (n > 0 && n < 64){
-        return buf;
-    } else {
-        return "";
-    }
-}
-
-std::string VST2Plugin::getSDKVersion() const {
-    switch (dispatch(effGetVstVersion)){
-    case 2400:
-        return "VST 2.4";
-    case 2300:
-        return "VST 2.3";
-    case 2200:
-        return "VST 2.2";
-    case 2100:
-        return "VST 2.1";
-    default:
-        return "VST 2";
-    }
-}
-
-int VST2Plugin::getPluginUniqueID() const {
-    return plugin_->uniqueID;
-}
-
 int VST2Plugin::canDo(const char *what) const {
     // 1: yes, 0: no, -1: don't know
     return dispatch(effCanDo, 0, 0, (char *)what);
@@ -504,22 +334,35 @@ intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *p, float op
     return dispatch(effVendorSpecific, index, value, p, opt);
 }
 
-void VST2Plugin::process(const float **inputs,
-    float **outputs, VstInt32 sampleFrames){
-    preProcess(sampleFrames);
-    if (plugin_->processReplacing){
-        (plugin_->processReplacing)(plugin_, (float **)inputs, outputs, sampleFrames);
+void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+    if (sampleRate > 0){
+        dispatch(effSetSampleRate, 0, 0, NULL, sampleRate);
+        if (sampleRate != timeInfo_.sampleRate){
+            timeInfo_.sampleRate = sampleRate;
+            setTransportPosition(0);
+        }
+    } else {
+        LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
     }
-    postProcess(sampleFrames);
+    dispatch(effSetBlockSize, 0, maxBlockSize);
+    dispatch(effSetProcessPrecision, 0,
+             precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
 }
 
-void VST2Plugin::processDouble(const double **inputs,
-    double **outputs, VstInt32 sampleFrames){
-    preProcess(sampleFrames);
-    if (plugin_->processDoubleReplacing){
-        (plugin_->processDoubleReplacing)(plugin_, (double **)inputs, outputs, sampleFrames);
+void VST2Plugin::process(ProcessData<float>& data){
+    preProcess(data.numSamples);
+    if (plugin_->processReplacing){
+        (plugin_->processReplacing)(plugin_, (float **)data.input, data.output, data.numSamples);
     }
-    postProcess(sampleFrames);
+    postProcess(data.numSamples);
+}
+
+void VST2Plugin::process(ProcessData<double>& data){
+    preProcess(data.numSamples);
+    if (plugin_->processDoubleReplacing){
+        (plugin_->processDoubleReplacing)(plugin_, (double **)data.input, data.output, data.numSamples);
+    }
+    postProcess(data.numSamples);
 }
 
 bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
@@ -530,33 +373,12 @@ bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
     }
 }
 
-void VST2Plugin::setPrecision(ProcessPrecision precision){
-    dispatch(effSetProcessPrecision, 0,
-             precision == ProcessPrecision::Single ?  kVstProcessPrecision32 : kVstProcessPrecision64);
-}
-
 void VST2Plugin::suspend(){
     dispatch(effMainsChanged, 0, 0);
 }
 
 void VST2Plugin::resume(){
     dispatch(effMainsChanged, 0, 1);
-}
-
-void VST2Plugin::setSampleRate(float sr){
-    if (sr > 0){
-        dispatch(effSetSampleRate, 0, 0, NULL, sr);
-        if (sr != timeInfo_.sampleRate){
-            timeInfo_.sampleRate = sr;
-            setTransportPosition(0);
-        }
-    } else {
-        LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
-    }
-}
-
-void VST2Plugin::setBlockSize(int n){
-    dispatch(effSetBlockSize, 0, n);
 }
 
 int VST2Plugin::getNumInputs() const {
@@ -587,7 +409,7 @@ void VST2Plugin::setBypass(bool bypass){
     dispatch(effSetBypass, 0, bypass);
 }
 
-void VST2Plugin::setNumSpeakers(int in, int out){
+void VST2Plugin::setNumSpeakers(int in, int out, int, int){
     in = std::max<int>(0, in);
     out = std::max<int>(0, out);
     // VstSpeakerArrangment already has 8 speakers
@@ -736,21 +558,23 @@ void VST2Plugin::sendSysexEvent(const SysexEvent &event){
     sysexevent.type = kVstSysExType;
     sysexevent.byteSize = sizeof(VstMidiSysexEvent);
     sysexevent.deltaFrames = event.delta;
-    sysexevent.dumpBytes = event.data.size();
+    sysexevent.dumpBytes = event.size;
     sysexevent.sysexDump = (char *)malloc(sysexevent.dumpBytes);
         // copy the sysex data (LATER figure out how to avoid this)
-    memcpy(sysexevent.sysexDump, event.data.data(), sysexevent.dumpBytes);
+    memcpy(sysexevent.sysexDump, event.data, sysexevent.dumpBytes);
 
     sysexQueue_.push_back(std::move(sysexevent));
 
     vstEvents_->numEvents++;
 }
 
-void VST2Plugin::setParameter(int index, float value){
+void VST2Plugin::setParameter(int index, float value, int sampleOffset){
+    // VST2 can't do sample accurate automation
     plugin_->setParameter(plugin_, index, value);
 }
 
-bool VST2Plugin::setParameter(int index, const std::string &str){
+bool VST2Plugin::setParameter(int index, const std::string &str, int sampleOffset){
+    // VST2 can't do sample accurate automation
     return dispatch(effString2Parameter, index, 0, (void *)str.c_str());
 }
 
@@ -758,19 +582,7 @@ float VST2Plugin::getParameter(int index) const {
     return (plugin_->getParameter)(plugin_, index);
 }
 
-std::string VST2Plugin::getParameterName(int index) const {
-    char buf[256] = {0};
-    dispatch(effGetParamName, index, 0, buf);
-    return std::string(buf);
-}
-
-std::string VST2Plugin::getParameterLabel(int index) const {
-    char buf[256] = {0};
-    dispatch(effGetParamLabel, index, 0, buf);
-    return std::string(buf);
-}
-
-std::string VST2Plugin::getParameterDisplay(int index) const {
+std::string VST2Plugin::getParameterString(int index) const {
     char buf[256] = {0};
     dispatch(effGetParamDisplay, index, 0, buf);
     return std::string(buf);
@@ -911,7 +723,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     VstInt32 header[7];
     header[0] = cMagic;
     header[3] = 1; // format version (always 1)
-    header[4] = getPluginUniqueID();
+    header[4] = plugin_->uniqueID;
     header[5] = plugin_->version;
     header[6] = getNumParameters();
 
@@ -1047,7 +859,7 @@ void VST2Plugin::writeBankData(std::string& buffer){
     VstInt32 header[8];
     header[0] = cMagic;
     header[3] = 1; // format version (always 1)
-    header[4] = getPluginUniqueID();
+    header[4] = plugin_->uniqueID;
     header[5] = plugin_->version;
     header[6] = getNumPrograms();
     header[7] = getProgram();
@@ -1135,6 +947,98 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 }
 
 // private
+
+std::string VST2Plugin::getPluginName() const {
+    char buf[256] = { 0 };
+    dispatch(effGetEffectName, 0, 0, buf);
+    if (buf[0] != 0){
+        return buf;
+    } else {
+        // get from file path
+        auto path = factory_->path();
+        auto sep = path.find_last_of("\\/");
+        auto dot = path.find_last_of('.');
+        if (sep == std::string::npos){
+            sep = -1;
+        }
+        if (dot == std::string::npos){
+            dot = path.size();
+        }
+        return path.substr(sep + 1, dot - sep - 1);
+    }
+}
+
+std::string VST2Plugin::getPluginVendor() const {
+    char buf[256] = { 0 };
+    dispatch(effGetVendorString, 0, 0, buf);
+    return buf;
+}
+
+std::string VST2Plugin::getPluginCategory() const {
+    switch (dispatch(effGetPlugCategory)){
+    case kPlugCategEffect:
+        return "Effect";
+    case kPlugCategSynth:
+        return "Synth";
+    case kPlugCategAnalysis:
+        return "Analysis";
+    case kPlugCategMastering:
+        return "Mastering";
+    case kPlugCategSpacializer:
+        return "Spacializer";
+    case kPlugCategRoomFx:
+        return "RoomFx";
+    case kPlugSurroundFx:
+        return "SurroundFx";
+    case kPlugCategRestoration:
+        return "Restoration";
+    case kPlugCategOfflineProcess:
+        return "OfflineProcess";
+    case kPlugCategShell:
+        return "Shell";
+    case kPlugCategGenerator:
+        return "Generator";
+    default:
+        return "Undefined";
+    }
+}
+
+std::string VST2Plugin::getPluginVersion() const {
+    char buf[64] = { 0 };
+    auto n = snprintf(buf, 64, "%d", plugin_->version);
+    if (n > 0 && n < 64){
+        return buf;
+    } else {
+        return "";
+    }
+}
+
+std::string VST2Plugin::getSDKVersion() const {
+    switch (dispatch(effGetVstVersion)){
+    case 2400:
+        return "VST 2.4";
+    case 2300:
+        return "VST 2.3";
+    case 2200:
+        return "VST 2.2";
+    case 2100:
+        return "VST 2.1";
+    default:
+        return "VST 2";
+    }
+}
+
+std::string VST2Plugin::getParameterName(int index) const {
+    char buf[256] = {0};
+    dispatch(effGetParamName, index, 0, buf);
+    return std::string(buf);
+}
+
+std::string VST2Plugin::getParameterLabel(int index) const {
+    char buf[256] = {0};
+    dispatch(effGetParamLabel, index, 0, buf);
+    return std::string(buf);
+}
 
 bool VST2Plugin::hasFlag(VstAEffectFlags flag) const {
     return plugin_->flags & flag;

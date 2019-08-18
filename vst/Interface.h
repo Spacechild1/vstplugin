@@ -19,11 +19,20 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
-#ifndef VSTTHREADS
-#define VSTTHREADS 1
+#ifndef HAVE_UI_THREAD
+#define HAVE_UI_THREAD 1
+#endif
+
+#ifndef HAVE_NRT_THREAD
+#define HAVE_NRT_THREAD 0
 #endif
 
 namespace vst {
+
+const int VERSION_MAJOR = 0;
+const int VERSION_MINOR = 2;
+const int VERSION_BUGFIX = 0;
+const bool VERSION_BETA = true;
 
 struct MidiEvent {
     MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
@@ -34,13 +43,10 @@ struct MidiEvent {
 };
 
 struct SysexEvent {
-    SysexEvent(const char *_data, size_t _size, int _delta = 0)
-        : data(_data, _size), delta(_delta){}
-    template <typename T>
-    SysexEvent(T&& _data, int _delta = 0)
-        : data(std::forward<T>(_data)), delta(_delta){}
-    SysexEvent() = default;
-    std::string data;
+    SysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
+        : data(_data), size(_size), delta(_delta){}
+    const char *data;
+    size_t size;
     int delta;
 };
 
@@ -66,34 +72,41 @@ class IPlugin {
     using ptr = std::unique_ptr<IPlugin>;
     using const_ptr = std::unique_ptr<const IPlugin>;
 
+    enum Type {
+        VST2,
+        VST3
+    };
+
+    virtual Type getType() const = 0;
+
     virtual ~IPlugin(){}
 
     virtual const PluginInfo& info() const = 0;
-    virtual std::string getPluginName() const = 0;
-    virtual std::string getPluginVendor() const = 0;
-    virtual std::string getPluginCategory() const = 0;
-    virtual std::string getPluginVersion() const = 0;
-    virtual std::string getSDKVersion() const = 0;
-    virtual int getPluginUniqueID() const = 0;
-    virtual int canDo(const char *what) const = 0;
-    virtual intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) = 0;
 
-    virtual void process(const float **inputs, float **outputs, int nsamples) = 0;
-    virtual void processDouble(const double **inputs, double **outputs, int nsamples) = 0;
+    template<typename T>
+    struct ProcessData {
+        const T **input = nullptr;
+        const T **auxInput = nullptr;
+        T **output = nullptr;
+        T **auxOutput = nullptr;
+        int numSamples = 0;
+    };
+    virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
+    virtual void process(ProcessData<float>& data) = 0;
+    virtual void process(ProcessData<double>& data) = 0;
     virtual bool hasPrecision(ProcessPrecision precision) const = 0;
-    virtual void setPrecision(ProcessPrecision precision) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
-    virtual void setSampleRate(float sr) = 0;
-    virtual void setBlockSize(int n) = 0;
     virtual int getNumInputs() const = 0;
+    virtual int getNumAuxInputs() const = 0;
     virtual int getNumOutputs() const = 0;
+    virtual int getNumAuxOutputs() const = 0;
     virtual bool isSynth() const = 0;
     virtual bool hasTail() const = 0;
     virtual int getTailSize() const = 0;
     virtual bool hasBypass() const = 0;
     virtual void setBypass(bool bypass) = 0;
-    virtual void setNumSpeakers(int in, int out) = 0;
+    virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;
 
@@ -116,12 +129,10 @@ class IPlugin {
     virtual void sendMidiEvent(const MidiEvent& event) = 0;
     virtual void sendSysexEvent(const SysexEvent& event) = 0;
 
-    virtual void setParameter(int index, float value) = 0;
-    virtual bool setParameter(int index, const std::string& str) = 0;
+    virtual void setParameter(int index, float value, int sampleOffset = 0) = 0;
+    virtual bool setParameter(int index, const std::string& str, int sampleOffset = 0) = 0;
     virtual float getParameter(int index) const = 0;
-    virtual std::string getParameterName(int index) const = 0;
-    virtual std::string getParameterLabel(int index) const = 0;
-    virtual std::string getParameterDisplay(int index) const = 0;
+    virtual std::string getParameterString(int index) const = 0;
     virtual int getNumParameters() const = 0;
 
     virtual void setProgram(int index) = 0;
@@ -130,12 +141,6 @@ class IPlugin {
     virtual std::string getProgramName() const = 0;
     virtual std::string getProgramNameIndexed(int index) const = 0;
     virtual int getNumPrograms() const = 0;
-
-    virtual bool hasChunkData() const = 0;
-    virtual void setProgramChunkData(const void *data, size_t size) = 0;
-    virtual void getProgramChunkData(void **data, size_t *size) const = 0;
-    virtual void setBankChunkData(const void *data, size_t size) = 0;
-    virtual void getBankChunkData(void **data, size_t *size) const = 0;
 
     // the following methods throws an Error exception on failure!
     virtual void readProgramFile(const std::string& path) = 0;
@@ -160,6 +165,18 @@ class IPlugin {
 
     virtual void setWindow(std::unique_ptr<IWindow> window) = 0;
     virtual IWindow* getWindow() const = 0;
+
+    // VST2 only
+    virtual int canDo(const char *what) const { return 0; }
+    virtual intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) { return 0; }
+    // VST3 only
+    virtual void beginMessage() {}
+    virtual void addInt(const char* id, int64_t value) {}
+    virtual void addFloat(const char* id, double value) {}
+    virtual void addString(const char* id, const char *value) {}
+    virtual void addString(const char* id, const std::string& value) {}
+    virtual void addBinary(const char* id, const char *data, size_t size) {}
+    virtual void endMessage() {}
 };
 
 class IFactory;
@@ -172,16 +189,19 @@ enum class ProbeResult {
 };
 
 struct PluginInfo {
+    static const uint32_t NoParamID = 0xffffffff;
+
     using ptr = std::shared_ptr<PluginInfo>;
     using const_ptr = std::shared_ptr<const PluginInfo>;
     using Future = std::function<PluginInfo::ptr()>;
 
     PluginInfo() = default;
     PluginInfo(const std::shared_ptr<const IFactory>& factory);
-    PluginInfo(const std::shared_ptr<const IFactory>& factory, const IPlugin& plugin);
     void setFactory(const std::shared_ptr<const IFactory>& factory){
         factory_ = factory;
     }
+    PluginInfo(const PluginInfo&) = delete;
+    void operator =(const PluginInfo&) = delete;
     // create new instances
     // throws an Error exception on failure!
     IPlugin::ptr create() const;
@@ -191,56 +211,118 @@ struct PluginInfo {
     bool valid() const {
         return probeResult == ProbeResult::success;
     }
+    void setUniqueID(int _id); // VST2
+    int getUniqueID() const {
+        return id_.id;
+    }
+    void setUID(const char *uid); // VST3
+    const char* getUID() const {
+        return id_.uid;
+    }
+    IPlugin::Type type() const { return type_; }
     // info data
     ProbeResult probeResult = ProbeResult::none;
+    std::string uniqueID;
     std::string path;
     std::string name;
     std::string vendor;
     std::string category;
     std::string version;
-    int id = 0;
+    std::string sdkVersion;
     int numInputs = 0;
+    int numAuxInputs = 0;
     int numOutputs = 0;
+    int numAuxOutputs = 0;
+#if USE_VST3
+    uint32_t programChange = NoParamID; // no param
+    uint32_t bypass = NoParamID; // no param
+#endif
     // parameters
     struct Param {
         std::string name;
         std::string label;
+        uint32_t id = 0;
     };
     std::vector<Param> parameters;
-    // param name to param index
-    std::unordered_map<std::string, int> paramMap;
+    void addParameter(Param param){
+        auto index = parameters.size();
+        // inverse mapping
+        paramMap_[param.name] = index;
+    #if USE_VST3
+        // index -> ID mapping
+        indexToIdMap_[index] = param.id;
+        // ID -> index mapping
+        idToIndexMap_[param.id] = index;
+    #endif
+        // add parameter
+        parameters.push_back(std::move(param));
+    }
+
+    void addParamAlias(int index, const std::string& key){
+        paramMap_[key] = index;
+    }
+    int findParam(const std::string& key) const {
+        auto it = paramMap_.find(key);
+        if (it != paramMap_.end()){
+            return it->second;
+        } else {
+            return -1;
+        }
+    }
+#if USE_VST3
+    // get VST3 parameter ID from index
+    uint32_t getParamID(int index) const {
+        auto it = indexToIdMap_.find(index);
+        if (it != indexToIdMap_.end()){
+            return it->second;
+        }
+        else {
+            return 0; // throw?
+        }
+    }
+    // get index from VST3 parameter ID
+    int getParamIndex(uint32_t _id) const {
+        auto it = idToIndexMap_.find(_id);
+        if (it != idToIndexMap_.end()){
+            return it->second;
+        }
+        else {
+            return -1; // throw?
+        }
+    }
+#endif
     // default programs
     std::vector<std::string> programs;
+    int numParameters() const {
+        return parameters.size();
+    }
+    int numPrograms() const {
+        return programs.size();
+    }
     bool hasEditor() const {
-        return flags_ & HasEditor;
+        return flags & HasEditor;
     }
     bool isSynth() const {
-        return flags_ & IsSynth;
+        return flags & IsSynth;
     }
     bool singlePrecision() const {
-        return flags_ & SinglePrecision;
+        return flags & SinglePrecision;
     }
     bool doublePrecision() const {
-        return flags_ & DoublePrecision;
+        return flags & DoublePrecision;
     }
     bool midiInput() const {
-        return flags_ & MidiInput;
+        return flags & MidiInput;
     }
     bool midiOutput() const {
-        return flags_ & MidiOutput;
+        return flags & MidiOutput;
     }
     bool sysexInput() const {
-        return flags_ & SysexInput;
+        return flags & SysexInput;
     }
     bool sysexOutput() const {
-        return flags_ & SysexOutput;
+        return flags & SysexOutput;
     }
- private:
-    friend class VST2Plugin;
-    friend class VST2Factory;
-    friend class VST3Plugin;
-    friend class VST3Factory;
-    std::weak_ptr<const IFactory> factory_;
     // flags
     enum Flags {
         HasEditor = 1 << 0,
@@ -252,13 +334,31 @@ struct PluginInfo {
         SysexInput = 1 << 6,
         SysexOutput = 1 << 7
     };
-    uint32_t flags_ = 0;
+    uint32_t flags = 0;
+#if USE_VST2
     // shell plugin
     struct ShellPlugin {
         std::string name;
         int id;
     };
-    std::vector<ShellPlugin> shellPlugins_;
+    std::vector<ShellPlugin> shellPlugins;
+#endif
+ private:
+    std::weak_ptr<const IFactory> factory_;
+    // param name to param index
+    std::unordered_map<std::string, int> paramMap_;
+#if USE_VST3
+    // param index to ID (VST3 only)
+    std::unordered_map<int, uint32_t> indexToIdMap_;
+    // param ID to index (VST3 only)
+    std::unordered_map<uint32_t, int> idToIndexMap_;
+#endif
+    IPlugin::Type type_;
+    union ID {
+        char uid[16];
+        int32_t id;
+    };
+    ID id_;
 };
 
 class IModule {
@@ -302,6 +402,9 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
  protected:
     PluginInfo::Future probePlugin(const std::string& name, int shellPluginID = 0);
+    using ProbeList = std::vector<std::pair<std::string, int>>;
+    std::vector<PluginInfo::ptr> probePlugins(const ProbeList& pluginList,
+            ProbeCallback callback, bool& valid);
 };
 
 class Error : public std::exception {
@@ -325,6 +428,8 @@ std::string find(const std::string& dir, const std::string& path);
 const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
+
+const std::string& getBundleBinaryPath();
 
 class IWindow {
  public:

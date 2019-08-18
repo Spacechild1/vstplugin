@@ -173,8 +173,8 @@ VSTPluginGui : ObjectGui {
 			// build program menu
 			programMenu = PopUpMenu.new;
 			programMenu.action = { model.program_(programMenu.value) };
-			programMenu.items_(model.programNames.collect { arg item, index;
-				"%: %".format(index, item);
+			programMenu.items_(model.programs.collect { arg item, index;
+				"%: %".format(index, item.name);
 			});
 			programMenu.value_(model.program);
 			grid.add(HLayout.new(programMenu, open), row, col);
@@ -199,9 +199,9 @@ VSTPluginGui : ObjectGui {
 			row = i % nrows;
 			// param name
 			name = StaticText.new
-			.string_("%: %".format(i, model.info.parameterNames[i]));
+			.string_("%: %".format(i, model.info.parameters[i].name));
 			// param label
-			label = StaticText.new.string_(model.info.parameterLabels[i] ?? "");
+			label = StaticText.new.string_(model.info.parameters[i].label ?? "");
 			// param display
 			display = TextField.new
 			.fixedWidth_(displayWidth).font_(displayFont).string_(param[1]);

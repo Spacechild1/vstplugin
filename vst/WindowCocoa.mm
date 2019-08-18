@@ -36,7 +36,7 @@ namespace Cocoa {
 
 namespace UIThread {
 
-#if !VSTTHREADS
+#if !HAVE_UI_THREAD
 void poll(){
     NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
     while (true) {
@@ -74,7 +74,7 @@ EventLoop::EventLoop(){
     // transform process into foreground application
     ProcessSerialNumber psn = {0, kCurrentProcess};
     TransformProcessType(&psn, kProcessTransformToForegroundApplication);
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     // we must access NSApp only once in the beginning
     haveNSApp_ = (NSApp != nullptr);
     LOG_DEBUG("init cocoa event loop");
@@ -101,7 +101,7 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
         }
         return plugin;
     };
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (haveNSApp_){
         auto queue = dispatch_get_main_queue();
         __block IPlugin* plugin;
@@ -129,7 +129,7 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
 }
 
 void EventLoop::destroy(IPlugin::ptr plugin){
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     if (haveNSApp_){
         auto queue = dispatch_get_main_queue();
         __block IPlugin* p = plugin.release();
@@ -221,7 +221,7 @@ void Window::setGeometry(int left, int top, int right, int bottom){
 
 void Window::show(){
     LOG_DEBUG("show window");
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     dispatch_async(dispatch_get_main_queue(), ^{
         doOpen();
     });
@@ -232,7 +232,7 @@ void Window::show(){
 
 void Window::hide(){
     LOG_DEBUG("hide window");
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     dispatch_async(dispatch_get_main_queue(), ^{
         [window_ performClose:nil];
     });

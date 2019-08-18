@@ -2,6 +2,7 @@
 
 #ifdef SUPERNOVA
 #include <nova-tt/spin_lock.hpp>
+#include <nova-tt/rw_spinlock.hpp>
 #endif
 
 static InterfaceTable *ft;
@@ -510,20 +511,31 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 // -------------------- VSTPlugin ------------------------ //
 
 VSTPlugin::VSTPlugin(){
-    // UGen inputs: bypass, nin, inputs..., nparam, params...
-    assert(numInputs() > 1);
-    numInChannels_ = in0(1);
-    int onset = inChannelOnset_ + numInChannels_;
-    assert(numInputs() > onset);
-    numParameterControls_ = in0(onset);
-    parameterControlOnset_ = onset + 1;
-    assert(numInputs() > (onset + numParameterControls_ * 2));
-    // LOG_DEBUG("num in: " << numInChannels() << ", num out: " << numOutChannels() << ", num controls: " << numParameterControls_);
+    // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
+    assert(numInputs() >= 5);
+    int nout = numOutChannels();
+    LOG_DEBUG("out: " << nout);
+    assert(!(nout < 0 || nout > numOutputs()));
+    auto nin = numInChannels();
+    LOG_DEBUG("in: " << nin);
+    assert(nin >= 0);
+    // aux in
+    auxInChannelOnset_ = inChannelOnset_ + nin + 1;
+    assert(auxInChannelOnset_ > inChannelOnset_ && auxInChannelOnset_ < numInputs());
+    auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
+    LOG_DEBUG("aux in: " << nauxin);
+    assert(nauxin >= 0);
+    // parameter controls
+    parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
+    assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ <= numInputs());
+    auto numParams = numParameterControls(); // computed from parameterControlsOnset_
+    LOG_DEBUG("parameters: " << numParams);
+    assert(numParams >= 0);
+    assert((parameterControlOnset_ + numParams * 2) <= numInputs());
  
     // create delegate after member initialization!
     delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
 
-    resizeBuffer();
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
 
     // run queued unit commands
@@ -590,87 +602,95 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
 }
 
 void VSTPlugin::resizeBuffer(){
-    bool fail = false;
-    int blockSize = bufferSize();
-    int nin = numInChannels();
-    int nout = numOutChannels();
-    int bufin = 0;
-    int bufout = 0;
     auto plugin = delegate_->plugin();
-    if (plugin){
-        nin = std::max<int>(nin, plugin->getNumInputs());
-        nout = std::max<int>(nout, plugin->getNumOutputs());
-        // buffer extra inputs/outputs for safety
-        bufin = std::max<int>(0, plugin->getNumInputs() - numInChannels());
-        bufout = std::max<int>(0, plugin->getNumOutputs() - numOutChannels());
-        LOG_DEBUG("bufin: " << bufin << ", bufout: " << bufout);
+    if (!plugin) {
+        return;
     }
-    // safety buffer
+    auto onFail = [this]() {
+        LOG_ERROR("RTRealloc failed!");
+        RTFree(mWorld, buf_);
+        RTFree(mWorld, inBufVec_);
+        RTFree(mWorld, outBufVec_);
+        RTFree(mWorld, auxInBufVec_);
+        RTFree(mWorld, auxOutBufVec_);
+        buf_ = nullptr;
+        inBufVec_ = nullptr; outBufVec_ = nullptr;
+        auxInBufVec_ = nullptr; auxOutBufVec_ = nullptr;
+    };
+
+    int blockSize = bufferSize();
+    // get the *smaller* number of channels
+    int nin = std::min<int>(numInChannels(), plugin->getNumInputs());
+    int nout = std::min<int>(numOutChannels(), plugin->getNumOutputs());
+    int nauxin = std::min<int>(numAuxInChannels(), plugin->getNumAuxInputs());
+    int nauxout = std::min<int>(numAuxOutChannels(), plugin->getNumAuxOutputs());
+    // number of safety buffers (if UGen channels smaller than plugin channels).
+    // actually, we tell the plugin how many channels it should process, but let's play it safe.
+    int bufin = plugin->getNumInputs() - nin;
+    int bufout = plugin->getNumOutputs() - nout;
+    int bufauxin = plugin->getNumAuxInputs() - nauxin;
+    int bufauxout = plugin->getNumAuxOutputs() - nauxout;
+    LOG_DEBUG("bufin: " << bufin << ", bufout: " << bufout);
+    LOG_DEBUG("bufauxin: " << bufauxin << ", bufauxout: " << bufauxout);
+    // create safety buffer
     {
-        int bufSize = (bufin + bufout) * blockSize * sizeof(float);
+        int bufSize = (bufin + bufout + bufauxin + bufauxout) * blockSize * sizeof(float);
         if (bufSize > 0) {
             auto result = (float*)RTRealloc(mWorld, buf_, bufSize);
             if (result) {
                 buf_ = result;
-                memset(buf_, 0, bufSize);
+                memset(buf_, 0, bufSize); // zero!
             }
-            else goto fail;
+            else {
+                onFail();
+                return;
+            }
         }
         else {
             RTFree(mWorld, buf_);
             buf_ = nullptr;
         }
     }
-    // input buffer array
-    {
-        if (nin > 0) {
-            auto result = (const float**)RTRealloc(mWorld, inBufVec_, nin * sizeof(float*));
+    // set buffer pointer arrays
+    auto setBuffer = [&](auto& vec, auto channels, int numChannels, auto buf, int bufSize) {
+        int total = numChannels + bufSize;
+        if (total > 0) {
+            auto result = static_cast<std::remove_reference_t<decltype(vec)>>(RTRealloc(mWorld, vec, total * sizeof(float*)));
             if (result) {
-                inBufVec_ = result;
-                for (int i = 0; i < numInChannels(); ++i) {
-                    inBufVec_[i] = in(i + inChannelOnset_);
+                // point to channel
+                for (int i = 0; i < numChannels; ++i) {
+                    result[i] = channels[i];
                 }
-                // for safety:
-                for (int i = 0; i < bufin; ++i) {
-                    inBufVec_[numInChannels() + i] = &buf_[i * blockSize];
+                // point to safety buffer
+                for (int i = 0; i < bufSize; ++i) {
+                    result[numChannels + i] = buf + (i * blockSize);
                 }
+                vec = result;
             }
-            else goto fail;
+            else return false;
         }
         else {
-            RTFree(mWorld, inBufVec_);
-            inBufVec_ = nullptr;
+            RTFree(mWorld, vec);
+            vec = nullptr;
         }
+        return true;
+    };
+    auto bufptr = buf_;
+    if (!setBuffer(inBufVec_, mInBuf + inChannelOnset_, nin, bufptr, bufin)) {
+        onFail(); return;
     }
-    // output buffer array
-    {
-        if (nout > 0) {
-            auto result = (float**)RTRealloc(mWorld, outBufVec_, nout * sizeof(float*));
-            if (result) {
-                outBufVec_ = result;
-                for (int i = 0; i < numOutChannels(); ++i) {
-                    outBufVec_[i] = out(i);
-                }
-                // for safety:
-                for (int i = 0; i < bufout; ++i) {
-                    outBufVec_[numOutChannels() + i] = &buf_[(i + bufin) * blockSize];
-                }
-            }
-            else goto fail;
-        }
-        else {
-            RTFree(mWorld, outBufVec_);
-            outBufVec_ = nullptr;
-        }
+    bufptr += bufin * blockSize;
+    if (!setBuffer(auxInBufVec_, mInBuf + auxInChannelOnset_, nauxin, bufptr, bufauxin)) {
+        onFail(); return;
     }
-    LOG_DEBUG("resized buffer");
-    return;
-fail:
-    LOG_ERROR("RTRealloc failed!");
-    RTFree(mWorld, buf_);
-    RTFree(mWorld, inBufVec_);
-    RTFree(mWorld, outBufVec_);
-    buf_ = nullptr; inBufVec_ = nullptr; outBufVec_ = nullptr;
+    bufptr += bufauxin * blockSize;
+    if (!setBuffer(outBufVec_, mOutBuf, nout, bufptr, bufout)) {
+        onFail(); return;
+    }
+    bufptr += bufout * blockSize;
+    if (!setBuffer(auxOutBufVec_, mOutBuf + numOutChannels(), nauxout, bufptr, bufauxout)) {
+        onFail(); return;
+    }
 }
 
 void VSTPlugin::clearMapping() {
@@ -683,8 +703,8 @@ void VSTPlugin::clearMapping() {
     paramMapping_ = nullptr;
 }
 
-float VSTPlugin::readControlBus(int32 num) {
-    if (num >= 0 && num < mWorld->mNumControlBusChannels) {
+float VSTPlugin::readControlBus(uint32 num) {
+    if (num < mWorld->mNumControlBusChannels) {
 #define unit this
         ACQUIRE_BUS_CONTROL(num);
         float value = mWorld->mControlBus[num];
@@ -734,13 +754,13 @@ void VSTPlugin::update() {
     }
 }
 
-void VSTPlugin::map(int32 index, int32 bus) {
+void VSTPlugin::map(int32 index, int32 bus, bool audio) {
     if (paramMapping_[index] == nullptr) {
         auto mapping = (Mapping*)RTAlloc(mWorld, sizeof(Mapping));
         if (mapping) {
             // add to head of linked list
             mapping->index = index;
-            mapping->bus = bus;
+            mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
             mapping->prev = nullptr;
             mapping->next = paramMappingList_;
             if (paramMappingList_) {
@@ -775,58 +795,130 @@ void VSTPlugin::unmap(int32 index) {
 
 // perform routine
 void VSTPlugin::next(int inNumSamples) {
+#ifdef SUPERNOVA
+    // for Supernova the "next" routine might be called in a different thread - each time!
+    delegate_->rtThreadID_ = std::this_thread::get_id();
+#endif
     if (!(inBufVec_ || outBufVec_)) {
         // only if RT memory methods failed in resizeBuffer()
         (*ft->fClearUnitOutputs)(this, inNumSamples);
         return;
     }
-    int nin = numInChannels();
-    int nout = numOutChannels();
-    bool bypass = in0(0);
-    int offset = 0;
     auto plugin = delegate_->plugin();
-    // disable reset for realtime-safety reasons
-#if 0
-    // only reset plugin when bypass changed from true to false
-    if (plugin && !bypass && (bypass != bypass_)) {
-        reset();
-    }
-    bypass_ = bypass;
-#endif
 
-    if (plugin && !bypass && plugin->hasPrecision(ProcessPrecision::Single)) {
+    if (plugin && !bypass() && plugin->hasPrecision(ProcessPrecision::Single)) {
+        auto vst3 = plugin->getType() == IPlugin::VST3;
         if (paramState_) {
             int nparam = plugin->getNumParameters();
             // update parameters from mapped control busses
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
-                int index = m->index;
-                int bus = m->bus;
-                float value = readControlBus(bus);
-                assert(index >= 0 && index < nparam);
-                if (value != paramState_[index]) {
-                    plugin->setParameter(index, value);
-                    paramState_[index] = value;
+                uint32 index = m->index;
+                auto type = m->type();
+                uint32 num = m->bus();
+                assert(index < nparam);
+                // Control Bus mapping
+                if (type == Mapping::Control) {
+                    float value = readControlBus(num);
+                    if (value != paramState_[index]) {
+                        plugin->setParameter(index, value);
+                        paramState_[index] = value;
+                    }
+                }
+                // Audio Bus mapping
+                else if (num < mWorld->mNumAudioBusChannels){
+                #define unit this
+                    float last = paramState_[index];
+                    float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
+                    ACQUIRE_BUS_AUDIO_SHARED(num);
+                    // VST3: sample accurate
+                    if (vst3) {
+                        for (int i = 0; i < inNumSamples; ++i) {
+                            float value = bus[i];
+                            if (value != last) {
+                                plugin->setParameter(index, value, i); // sample offset!
+                                last = value;
+                            }
+                        }
+                    }
+                    // VST2: pick the first sample
+                    else {
+                        float value = *bus;
+                        if (value != last) {
+                            plugin->setParameter(index, value);
+                            last = value;
+                        }
+                    }
+                    RELEASE_BUS_AUDIO_SHARED(num);
+                    paramState_[index] = last;
+                #undef unit
                 }
             }
             // update parameters from UGen inputs
-            for (int i = 0; i < numParameterControls_; ++i) {
+            int nparams = numParameterControls();
+            for (int i = 0; i < nparams; ++i) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
-                float value = in0(k + 1);
                 // only if index is not out of range and the parameter is not mapped to a bus
-                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr
-                    && paramState_[index] != value)
-                {
-                    plugin->setParameter(index, value);
-                    paramState_[index] = value;
+                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr){
+                    auto calcRate = mInput[k + 1]->mCalcRate;
+                    // audio rate
+                    if (calcRate == calc_FullRate) {
+                        float last = paramState_[index];
+                        auto buf = in(k + 1);
+                        // VST3: sample accurate
+                        if (vst3) {
+                            for (int i = 0; i < inNumSamples; ++i) {
+                                float value = buf[i];
+                                if (value != last) {
+                                    plugin->setParameter(index, value, i); // sample offset!
+                                    last = value;
+                                }
+                            }
+                        }
+                        // VST2: pick the first sample
+                        else {
+                            float value = *buf;
+                            if (value != last) {
+                                plugin->setParameter(index, value);
+                                last = value;
+                            }
+                        }
+                        paramState_[index] = last;
+                    }
+                    // control rate
+                    else {
+                        float value = in0(k + 1);
+                        if (value != paramState_[index]) {
+                            plugin->setParameter(index, value);
+                            paramState_[index] = value;
+                        }
+                    }
                 }
             }
         }
         // process
-        plugin->process((const float**)inBufVec_, outBufVec_, inNumSamples);
-        offset = plugin->getNumOutputs();
+        IPlugin::ProcessData<float> data;
+        data.input = inBufVec_;
+        data.output = outBufVec_;
+        data.auxInput = auxInBufVec_;
+        data.auxOutput = auxOutBufVec_;
+        data.numSamples = inNumSamples;
+        plugin->process(data);
 
-#if VSTTHREADS
+        // clear unused output channels
+        auto clearOutput = [](auto output, int nout, int offset, int n) {
+            int rem = nout - offset;
+            if (rem > 0) {
+                for (int i = 0; i < rem; ++i) {
+                    auto dst = output[i + offset];
+                    std::fill(dst, dst + n, 0);
+                }
+            }
+        };
+        clearOutput(mOutBuf, numOutChannels(), plugin->getNumOutputs(), inNumSamples); // out
+        clearOutput(mOutBuf + numOutChannels(), numAuxOutChannels(), plugin->getNumAuxOutputs(), inNumSamples); // aux out
+
+#if HAVE_UI_THREAD
         // send parameter automation notification posted from the GUI thread.
         // we assume this is only possible if we have a VST editor window.
         // try_lock() won't block the audio thread and we don't mind if notifications
@@ -842,16 +934,23 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
     }
     else {
-        // bypass (copy input to output)
-        int n = std::min(nin, nout);
-        for (int i = 0; i < n; ++i) {
-            Copy(inNumSamples, outBufVec_[i], (float*)inBufVec_[i]);
-        }
-        offset = n;
-    }
-    // zero remaining outlets
-    for (int i = offset; i < nout; ++i) {
-        Fill(inNumSamples, outBufVec_[i], 0.f);
+        // bypass (copy input to output and zero remaining output channels)
+        auto doBypass = [](auto input, int nin, auto output, int nout, int n) {
+            for (int i = 0; i < nout; ++i) {
+                auto dst = output[i];
+                if (i < nin) {
+                    auto src = input[i];
+                    std::copy(src, src + n, dst);
+                }
+                else {
+                    std::fill(dst, dst + n, 0); // zero
+                }
+            }
+        };
+        // input -> output
+        doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(), inNumSamples);
+        // aux input -> aux output
+        doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(), numAuxOutChannels(), inNumSamples);
     }
 }
 
@@ -885,6 +984,8 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
         bufferSize_ = owner->bufferSize();
         numInChannels_ = owner->numInChannels();
         numOutChannels_ = owner->numOutChannels();
+        numAuxInChannels_ = owner->numAuxInChannels();
+        numAuxOutChannels_ = owner->numAuxOutChannels();
     }
     owner_ = owner;
 }
@@ -896,15 +997,20 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
     // RT thread
     if (std::this_thread::get_id() == rtThreadID_) {
-        LOG_DEBUG("parameterAutomated (RT): " << index << ", " << value);
-#if 0
-        // linked parameters automated by control busses or Ugens
-        sendParameterAutomated(index, value);
+        // LOG_DEBUG("parameterAutomated (RT): " << index << ", " << value);
+#if NRT_PARAM_SET
+        // automation by control bus or Ugen input - do nothing!
+#else
+        // might have been caused by "/set"
+        if (bParamSet_) {
+            sendParameterAutomated(index, value);
+        }
 #endif
     }
+#if NRT_PARAM_SET
     // NRT thread
     else if (std::this_thread::get_id() == nrtThreadID_) {
-        LOG_DEBUG("parameterAutomated (NRT): " << index << ", " << value);
+        // LOG_DEBUG("parameterAutomated (NRT): " << index << ", " << value);
         FifoMsg msg;
         auto data = new ParamCmdData;
         data->owner = shared_from_this();
@@ -926,10 +1032,11 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 
         SendMsgToRT(world(), msg);
     }
-#if VSTTHREADS
-    // GUI thread (neither RT nor NRT thread) - push to queue
+#endif
+#if HAVE_UI_THREAD
+    // from GUI thread (neither RT nor NRT thread) - push to queue
     else {
-        LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
+        // LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
         std::lock_guard<std::mutex> guard(owner_->mutex_);
         owner_->paramQueue_.emplace_back(index, value);
     }
@@ -937,7 +1044,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
 #else
@@ -953,25 +1060,23 @@ void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
 }
 
 void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
-#if VSTTHREADS
+#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
 #else
     {
 #endif
-        auto& data = sysex.data;
-        int size = data.size();
-        if ((size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
-            LOG_WARNING("sysex message (" << size << " bytes) too large for UDP packet - dropped!");
+        if ((sysex.size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
+            LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
         }
-        float* buf = (float*)RTAlloc(world(), size * sizeof(float));
+        float* buf = (float*)RTAlloc(world(), sysex.size * sizeof(float));
         if (buf) {
-            for (int i = 0; i < size; ++i) {
+            for (int i = 0; i < sysex.size; ++i) {
                 // no need to cast to unsigned because SC's Int8Array is signed anyway
-                buf[i] = data[i];
+                buf[i] = sysex.data[i];
             }
-            sendMsg("/vst_sysex", size, buf);
+            sendMsg("/vst_sysex", sysex.size, buf);
             RTFree(world(), buf);
         }
         else {
@@ -1047,20 +1152,19 @@ bool cmdOpen(World *world, void* cmdData) {
             }
             auto owner = data->owner;
             plugin->suspend();
-            // we only access immutable members of owner
-            plugin->setSampleRate(owner->sampleRate());
-            plugin->setBlockSize(owner->bufferSize());
-            // LOG_DEBUG("sr: " << owner->sampleRate() << ", bs: " << owner->bufferSize());
+            // we only access immutable members of owner!
             if (plugin->hasPrecision(ProcessPrecision::Single)) {
-                plugin->setPrecision(ProcessPrecision::Single);
+                plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
             }
             else {
-                LOG_WARNING("VSTPlugin: plugin '" << plugin->getPluginName() << "' doesn't support single precision processing - bypassing!");
+                LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
             }
             int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
             int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
-            plugin->setNumSpeakers(nin, nout);
-            // LOG_DEBUG("nin: " << nin << ", nout: " << nout);
+            int nauxin = std::min<int>(plugin->getNumAuxInputs(), owner->numAuxInChannels());
+            int nauxout = std::min<int>(plugin->getNumAuxOutputs(), owner->numAuxOutChannels());
+            plugin->setNumSpeakers(nin, nout, nauxin, nauxout);
+            // LOG_DEBUG("nin: " << nin << ", nout: " << nout << ", nauxin: " << nauxin << ", nauxout: " << nauxout);
             plugin->resume();
             data->plugin = std::move(plugin);
         }
@@ -1105,12 +1209,23 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
     isLoading_ = false;
     // move the plugin even if alive() returns false (so it will be properly released in close())
     plugin_ = std::move(cmd.plugin);
+#if NRT_PARAM_SET
     nrtThreadID_ = cmd.threadID;
+    // LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
+#endif
     if (!alive()) {
         LOG_WARNING("VSTPlugin: freed during background task");
     }
-    // LOG_DEBUG("NRT thread ID: " << nrtThreadID_);
     if (plugin_){
+        if (editor_) {
+        #if defined(__APPLE__)
+            Print("Warning: can't use the VST editor on macOS (yet)\n");
+        #elif 1
+            if (plugin_->getType() == IPlugin::VST3) {
+                Print("Warning: can't use the VST3 editor (yet)\n");
+            }
+        #endif
+        }
         LOG_DEBUG("opened " << cmd.buf);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
@@ -1169,6 +1284,7 @@ void VSTPluginDelegate::reset(bool async) {
     }
 }
 
+#if NRT_PARAM_SET
 bool cmdSetParam(World *world, void *cmdData) {
     auto data = (ParamCmdData *)cmdData;
     auto index = data->index;
@@ -1228,6 +1344,44 @@ void VSTPluginDelegate::setParam(int32 index, const char *display) {
         }
     }
 }
+#else
+void VSTPluginDelegate::setParam(int32 index, float value) {
+    if (check()) {
+        if (index >= 0 && index < plugin_->getNumParameters()) {
+#ifdef SUPERNOVA
+            // set the RT thread back to the main audio thread (see "next")
+            rtThreadID_ = std::this_thread::get_id();
+#endif
+            bParamSet_ = true;
+            plugin_->setParameter(index, value, owner_->mWorld->mSampleOffset);
+            setParamDone(index);
+            bParamSet_ = false;
+        }
+        else {
+            LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
+        }
+    }
+}
+
+void VSTPluginDelegate::setParam(int32 index, const char* display) {
+    if (check()) {
+        if (index >= 0 && index < plugin_->getNumParameters()) {
+#ifdef SUPERNOVA
+            // set the RT thread back to the main audio thread (see "next")
+            rtThreadID_ = std::this_thread::get_id();
+#endif
+            bParamSet_ = true;
+            if (plugin_->setParameter(index, display, owner_->mWorld->mSampleOffset)) {
+                setParamDone(index);
+            }
+            bParamSet_ = false;
+        }
+        else {
+            LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
+        }
+    }
+}
+#endif
 
 void VSTPluginDelegate::setParamDone(int32 index) {
     owner_->paramState_[index] = plugin_->getParameter(index);
@@ -1288,10 +1442,10 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
     }
 }
 
-void VSTPluginDelegate::mapParam(int32 index, int32 bus) {
+void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
-            owner_->map(index, bus);
+            owner_->map(index, bus, audio);
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
@@ -1619,7 +1773,7 @@ void VSTPluginDelegate::sendParameter(int32 index) {
     // msg format: index, value, display length, display chars...
     buf[0] = index;
     buf[1] = plugin_->getParameter(index);
-    int size = string2floatArray(plugin_->getParameterDisplay(index), buf + 2, maxSize - 2);
+    int size = string2floatArray(plugin_->getParameterString(index), buf + 2, maxSize - 2);
     sendMsg("/vst_param", size + 2, buf);
 }
 
@@ -1710,11 +1864,8 @@ void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
 bool vst_param_index(VSTPlugin* unit, sc_msg_iter *args, int& index) {
     if (args->nextTag() == 's') {
         auto name = args->gets();
-        auto& map = unit->delegate().plugin()->info().paramMap;
-        auto result = map.find(name);
-        if (result != map.end()) {
-            index = result->second;
-        } else {
+        index = unit->delegate().plugin()->info().findParam(name);
+        if (index < 0) {
             LOG_ERROR("parameter '" << name << "' not found!");
             return false;
         }
@@ -1800,23 +1951,34 @@ void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
     }
 }
 
+void vst_domap(VSTPlugin* unit, sc_msg_iter* args, bool audio) {
+    while (args->remain() > 0) {
+        int32 index = -1;
+        if (vst_param_index(unit, args, index)) {
+            int32 bus = args->geti(-1);
+            int32 numChannels = args->geti();
+            for (int i = 0; i < numChannels; ++i) {
+                unit->delegate().mapParam(index + i, bus + i, audio);
+            }
+        }
+        else {
+            args->geti(); // swallow bus
+            args->geti(); // swallow numChannels
+        }
+    }
+}
+
 // map parameters to control busses
 void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
     if (unit->delegate().check()) {
-        while (args->remain() > 0) {
-            int32 index = -1;
-            if (vst_param_index(unit, args, index)) {
-                int32 bus = args->geti(-1);
-                int32 numChannels = args->geti();
-                for (int i = 0; i < numChannels; ++i) {
-                    unit->delegate().mapParam(index + i, bus + i);
-                }
-            }
-            else {
-                args->geti(); // swallow bus
-                args->geti(); // swallow numChannels
-            }
-        }
+        vst_domap(unit, args, false);
+    }
+}
+
+// map parameters to audio busses
+void vst_mapa(VSTPlugin* unit, sc_msg_iter* args) {
+    if (unit->delegate().check()) {
+        vst_domap(unit, args, true);
     }
 }
 
@@ -2284,6 +2446,7 @@ PluginLoad(VSTPlugin) {
     UnitCmd(get);
     UnitCmd(getn);
     UnitCmd(map);
+    UnitCmd(mapa);
     UnitCmd(unmap);
     UnitCmd(program_set);
     UnitCmd(program_query);
