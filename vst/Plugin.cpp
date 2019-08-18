@@ -532,6 +532,10 @@ namespace UIThread {
 #define PLUGIN_API
 #endif
 
+#ifndef UNLOAD_MODULES
+#define UNLOAD_MODULES 1
+#endif
+
 #ifdef _WIN32
 class ModuleWin32 : public IModule {
  public:
@@ -548,7 +552,9 @@ class ModuleWin32 : public IModule {
         // LOG_DEBUG("loaded Win32 library " << path);
     }
     ~ModuleWin32(){
+    #if UNLOAD_MODULES
         FreeLibrary(handle_);
+    #endif
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("InitDll");
@@ -588,7 +594,9 @@ class ModuleApple : public IModule {
         // LOG_DEBUG("loaded macOS bundle " << path);
     }
     ~ModuleApple(){
+    #if UNLOAD_MODULES
         CFRelease(bundle_);
+    #endif
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("bundleEntry");
@@ -625,7 +633,9 @@ class ModuleSO : public IModule {
         // LOG_DEBUG("loaded dynamic library " << path);
     }
     ~ModuleSO(){
+    #if UNLOAD_MODULES
         dlclose(handle_);
+    #endif
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("ModuleEntry");
@@ -968,7 +978,7 @@ IPlugin::ptr PluginInfo::create() const {
 void PluginInfo::setUniqueID(int _id){
     type_ = IPlugin::VST2;
     char buf[9];
-    // LATER deal with endianess
+    // should we write in little endian?
     snprintf(buf, sizeof(buf), "%08X", _id);
     buf[8] = 0;
     uniqueID = buf;
