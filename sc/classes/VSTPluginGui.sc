@@ -173,7 +173,7 @@ VSTPluginGui : ObjectGui {
 			// build program menu
 			programMenu = PopUpMenu.new;
 			programMenu.action = { model.program_(programMenu.value) };
-			programMenu.items_(model.programs.collect { arg item, index;
+			programMenu.items_(model.programNames.collect { arg item, index;
 				"%: %".format(index, item.name);
 			});
 			programMenu.value_(model.program);
