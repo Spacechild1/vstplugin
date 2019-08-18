@@ -15,8 +15,9 @@ We will then manipulate and modulate the vst plugins using SuperCollider lfos.
 
 subsection:: Dependencies
 
-LIST:: 
+LIST::
 ## IEM Plugins: https://plugins.iem.at/
+## iemPluginOSC: https://git.iem.at/ressi/iempluginosc/-/releases
 ::
 
 section:: Code
@@ -25,8 +26,14 @@ code::
 (
     // Settings
     ~order = 3;
-    ~speakerConfiguration="path/to/decoder/file.json"; // You can make these in various ways, the easiest is using the IEM AllRadDecoder plugin in a DAW
     ~monitorOutput = 'speakers'; // 'headphones' or 'speakers'
+    // You can make speaker configuration in various ways, the easiest is using the IEM AllRadDecoder plugin in a DAW.
+    // Note that you need the 'iemPluginOSC' extension to actually load the configuration files programmatically.
+    ~speakerConfiguration="path/to/decoder/file.json"; // set to nil if not used
+    // Alternatively, you can setup SimpleDecoder in a DAW and save the state as a preset which we can load in SuperCollider.
+    ~simpleDecoderPreset="path/to/decoder/preset.fxp"; // set to nil if not used
+    // Set this to true if you want to use the VST editor. This is not possible on macOS (yet).
+    ~useEditor = false;
 
     // Calculations
     ~numcomponents = (~order + 1).pow(2).asInteger;
@@ -35,12 +42,9 @@ code::
     // Synths that will hold the vst plugins
     (1..64).do{|numchans|
         SynthDef(\insert ++ numchans, { arg bus=0;
-            ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, numchans), numchans));  
+            ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, numchans), numchans));
         }).add;
     };
-
-    // Search system for vsts
-    VSTPlugin.search();
 
     // This event will hold all the groups/synths
     g = ();
@@ -51,8 +55,7 @@ code::
     // This function will create all the necessities for a single source that
     // we want to encode in ambisonics.  Putting it at the tail of a group
     // makes it easy for us to put any sound into the head of it and then pan
-    // it around in ambisonicsat the tail of a group makes it easy for us to
-    // put any sound into the head of it and then pan it around in ambisonics.
+    // it around in ambisonics.
     ~makeSourceGroup = {|srcname='src1', pluginname="StereoEncoder"|
 
         srcname = srcname.asSymbol;
@@ -66,19 +69,9 @@ code::
         // Synth
         g[srcname].s = Synth.tail(g[srcname].g, "insert"++~numcomponents);
 
-        // Controller
-        g[srcname].c = VSTPluginController(g[srcname].s);
-
-        // Open the plugin (when the server is ready)
-        fork{
-            s.sync;
-            g[srcname].c.open(pluginname);
-
-            // Set the order
-            s.sync;
-            g[srcname].c.set(0, ~normalizedorder);
-        };
-
+        // create Controller, open plugin and set order
+        g[srcname].c = VSTPluginController(g[srcname].s)
+            .open(pluginname, editor: ~useEditor, action: { |self| self.set(0, ~normalizedorder) });
     };
 
     ~addFxGroup = {|fxname='verb', pluginname="FdnReverb"|
@@ -93,23 +86,13 @@ code::
         // Synth
         g[fxname].s = Synth.tail(g[fxname].g, "insert"++~numcomponents);
 
-        // Controller
-        g[fxname].c = VSTPluginController(g[fxname].s);
-
-        fork{
-            s.sync;
-            g[fxname].c.open(pluginname);
-
-            // Set the order
-            s.sync;
-            g[fxname].c.set(0, ~normalizedorder);
-        };
+        // create Controller, open plugin and set order
+        g[fxname].c = VSTPluginController(g[fxname].s)
+            .open(pluginname, editor: ~useEditor, action: { |self| self.set(0, ~normalizedorder) });
     };
 
-    // Let's make a function to create the stuff we need in the decoder 
+    // Let's make a function to create the stuff we need in the decoder
     ~makeDecoderGroup = {|outType|
-        var oscInstalled = VSTPluginController.methods.select{|m| m.name=='iemPluginOSC'}.size>0;
-
         // Make a sub event if it doesn't already exist
         g[\decoder] = g[\decoder] ?? ();
 
@@ -126,32 +109,34 @@ code::
         // Controller
         g[\decoder].c = VSTPluginController(g[\decoder].s);
 
-        // Open the plugin (when the server is ready)
-        fork{
-            s.sync;
-
-            // Choose decoder type
-            case
-            {outType=='headphones'}{ 
-                g[\decoder].c.open("BinauralDecoder");
-            }
-            {outType=='speakers'}{
-                g[\decoder].c.open("SimpleDecoder");
-
+        // Open the plugin
+        // Choose decoder type
+        case
+        {outType=='headphones'}{
+            g[\decoder].c.open("BinauralDecoder", editor: ~useEditor, action: { |self|
+                // set the order
+                self.set(0, ~normalizedorder);
+            });
+        }
+        {outType=='speakers'}{
+            g[\decoder].c.open("SimpleDecoder", editor: ~useEditor, action: { |self|
+                // set the order
+                self.set(0, ~normalizedorder);
                 // Load speaker configuration
-                oscInstalled.if({
-                    s.sync;
-                    g[\decoder].c.iemPluginOSC("/SimpleDecoder/loadFile", ~speakerConfiguration.asAbsolutePath);
-                })
-            };
-
-            // Set the order
-            s.sync;
-            g[\decoder].c.set(0, ~normalizedorder);
+                ~speakerConfiguration.notNil.if {
+                    // load .json configuration file via the OSC interface
+                    self.iemPluginOSC("/SimpleDecoder/loadFile", ~speakerConfiguration.asAbsolutePath);
+                } {
+                    // load VST preset file
+                    self.readProgram(~simpleDecoderPreset.asAbsolutePath);
+                };
+            });
         };
     };
 
-    fork{
+    {
+        // Search system for vsts
+        VSTPlugin.search();
 
         s.sync;
 
@@ -171,21 +156,22 @@ code::
 
         s.sync;
 
-        "--------\n Done setting up".postln; };
+        "--------\n Done setting up".postln;
+    }.fork;
 )
 
-// See the guis of all of the source encoders (aka panners)
+// See the generic Qt guis of all of the source encoders (aka panners)
 g.src1.c.gui; g.src2.c.gui; g.src3.c.gui; g.src4.c.gui;
 
-// And the gui for our decoder
-g.decoder.c.gui;
+// And the VST editor for our decoder (if available)
+g.decoder.c.editor;
 
 // Let's make some sound.  The sound will come from a synth playing in
 // Ndef/NodeProxies which allows us to live code.  We will then route them
 // through the encoder groups we created above
-( 
+(
     // A sound function (a karplus strong algorithm)
-    f = {|freq=0, coef=0| 
+    f = {|freq=0, coef=0|
         var f = freq.linexp(0.0,1.0,40,551).reciprocal;
         Pluck.ar(WhiteNoise.ar(0.1), Impulse.kr(freq*10), f, f, 1,
         coef.linlin(0.0,1.0,-1.0,1.0));
@@ -197,7 +183,7 @@ g.decoder.c.gui;
         var name = ("src" ++ i).asSymbol;
         var randval = rrand(0.0,1.0);
 
-        // Add sound function 
+        // Add sound function
         Ndef(name).source = f;
 
         // Set random parameters
@@ -226,20 +212,21 @@ g.decoder.c.gui;
         Ndef(name).set(\f, rrand(-0.03,0.03));
 
         // Param 6 is azimuth and 7 is elevation
-        g[("src" ++ i).asSymbol].c.map(6, Ndef(name), 7, Ndef(name)); 
+        g[("src" ++ i).asSymbol].c.map(6, Ndef(name), 7, Ndef(name));
     };
 )
 // Modulate source sound function
-( 
-    (1..4).do{|i| 
-        var name = ("src" ++ i).asSymbol; 
-        var lfoname = ("lfo" ++ i).asSymbol; 
+(
+    (1..4).do{|i|
+        var name = ("src" ++ i).asSymbol;
+        var lfoname = ("lfo" ++ i).asSymbol;
         Ndef(name).map(\freq, Ndef(lfoname), \coef, Ndef(lfoname));
     };
 
 )
 // Try changing the reverb a bit either in the gui or manually
-g.verb.c.gui;
+g.verb.c.gui; // generic Qt GUI
+g.verb.c.editor; // VST editor (if available)
 
 g.verb.c.set(0, 1.0); // Room size
 g.verb.c.set(1, 0.9); // Verb time
@@ -250,7 +237,8 @@ g.verb.c.map(8, Ndef(\lfo2));
 
 // Let's add a another fx!
 ~addFxGroup.value("comp", "OmniCompressor");
-g.comp.c.gui; // Open the gui 
+g.comp.c.gui; // generic Qt GUI
+g.comp.c.editor; // VST editor (if available)
 
 // Recording
 (

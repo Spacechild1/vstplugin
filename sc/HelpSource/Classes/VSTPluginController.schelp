@@ -657,7 +657,7 @@ get the current transport position (in quarter notes).
 ARGUMENT:: action
 will be called with current transport position.
 
-subsection:: Advanced
+subsection:: VST2 only
 
 METHOD:: canDo
 
