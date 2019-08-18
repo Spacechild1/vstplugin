@@ -2106,6 +2106,12 @@ void vstplugin_tilde_setup(void)
     eventLoopClock = clock_new(0, (t_method)eventLoopTick);
     clock_delay(eventLoopClock, 0);
 #endif
+
+    post("[vstplugin~] v%i.%i.%i%s", VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX,
+         VERSION_BETA ? " (beta)" : "");
+#ifdef __APPLE__
+    post("NOTE: on macOS, the VST editor GUI must run on the audio thread. Use with care!");
+#endif
 }
 
 } // extern "C"

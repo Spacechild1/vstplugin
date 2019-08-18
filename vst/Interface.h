@@ -29,6 +29,11 @@ typedef unsigned int uint32_t;
 
 namespace vst {
 
+const int VERSION_MAJOR = 0;
+const int VERSION_MINOR = 2;
+const int VERSION_BUGFIX = 0;
+const bool VERSION_BETA = true;
+
 struct MidiEvent {
     MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
         data[0] = status; data[1] = data1; data[2] = data2; delta = _delta;
