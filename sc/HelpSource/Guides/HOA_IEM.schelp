@@ -71,7 +71,8 @@ code::
 
         // create Controller, open plugin and set order
         g[srcname].c = VSTPluginController(g[srcname].s)
-            .open(pluginname, editor: ~useEditor, action: { |self| self.set(0, ~normalizedorder) });
+            .open(pluginname, editor: ~useEditor, action: {
+				|self| self.set(0, ~normalizedorder) });
     };
 
     ~addFxGroup = {|fxname='verb', pluginname="FdnReverb"|
@@ -88,7 +89,8 @@ code::
 
         // create Controller, open plugin and set order
         g[fxname].c = VSTPluginController(g[fxname].s)
-            .open(pluginname, editor: ~useEditor, action: { |self| self.set(0, ~normalizedorder) });
+            .open(pluginname, editor: ~useEditor, action: { |self|
+				self.set(0, ~normalizedorder) });
     };
 
     // Let's make a function to create the stuff we need in the decoder
