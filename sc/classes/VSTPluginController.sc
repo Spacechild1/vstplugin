@@ -239,8 +239,14 @@ VSTPluginController {
 		(arVals.size > 0).if { result = result.add(this.makeMsg('/mapa', *arVals)) };
 		^result;
 	}
+	mapn { arg ... args;
+		this.sendMsg('/map', *args);
+	}
 	mapnMsg { arg ...args;
 		^this.makeMsg('/map', *args);
+	}
+	mapan { arg ... args;
+		this.sendMsg('/mapa', *args);
 	}
 	mapanMsg { arg ...args;
 		^this.makeMsg('/mapa', *args);

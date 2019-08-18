@@ -55,8 +55,8 @@ SynthDef(\insert2, { arg bus;
 ~synth = Synth(\insert2, [\bus, 0]);
 (
 // get handles to the VSTPlugins:
-~eq = VSTPluginController(~synth, \eq);
-~chorus = VSTPluginController(~synth, \chorus);
+~eq = VSTPluginController(~synth, \eq).open("myEQ");
+~chorus = VSTPluginController(~synth, \chorus).open("myChorus");
 )
 // etc.
 ::
@@ -70,7 +70,7 @@ code::
 // set parameter 1 to 0.5
 ~fx.set(1, 0.5);
 ::
-## map them to control busses with link::#-map::
+## map them to control or audio busses with link::#-map::
 code::
 // map parameter 2 to a control bus
 ~c = Bus.control;
@@ -89,20 +89,10 @@ SynthDef(\insert, { arg bus, f;
 }).add;
 )
 // create a VSTPlugin instance with parameter 0 set to 0.5
-~fx = VSTPluginController(Synth(\insert, [\bus, 0, \f, 0.5]));
+~fx = VSTPluginController(Synth(\insert, [\bus, 0, \f, 0.5])).open("someFX");
 // now set it to 0.7
 ~fx.synth.set(\f, 0.7);
 ::
-::
-
-note:: 
-link::#-set:: and link::#-setn:: work asynchronously (in the non-realtime thread),
-so they are well-suited for parameters which are not realtime-safe 
-(e.g. triggering a heavy calculation, allocating memory, etc.). 
-Usually, such parameters are not supposed to be automated continuously anway.
-
-On the other hand, parameters mapped to control busses or UGen inputs are updated synchronously (in the realtime thread) 
-to ensure a deterministic result. This might only be a problem if the parameter itself is not realtime-safe.
 ::
 
 Use link::#-get:: and link::#-getn:: to obtain current parameter values:
@@ -129,7 +119,7 @@ code::
 ~fx.program_(4);
 ::
 
-You can read/write preset files in the standard .fxp and .fxb format (recognized by most DAWs and VST hosts):
+You can read/write preset files in the standard code::.fxp/.fxp:: (VST2) or code::.vstpreset:: (VST3) format, recognized by most DAWs and VST hosts:
 code::
 // write current plugin state to a preset file.
 ~fx.writeProgram("/preset/file/path/test.fxp");
@@ -153,7 +143,7 @@ code::
 ~fx.setProgramData(d);
 ::
 
-The data is in the same non-human-readable binary format as emphasis::.fxp:: and emphasis::.fxb:: files. Use these methods to build your own preset management!
+The data is in the same binary format as the preset files. Use these methods to build your own preset management!
 
 note::Some plugins have additional state beyond their parameter values, 
 so you emphasis::have:: to use the program and bank methods above to fully save/restore them.
@@ -228,6 +218,7 @@ the plugin key or file path.
 - Opening plugins by strong::key:: requires that the plugin has already been probed (e.g. as a result of link::Classes/VSTPlugin#*search::).
 code::
 ~fx.open("GChorus"); // assuming 'GChorus' is in the Server's plugin dictionary.
+~fx.open("mda Delay.vst3"); // VST3 plugins always need a '.vst3' extensions
 ::
 - Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (if saved)
 or to the standard VST directories (see link::Classes/VSTPlugin#*search::). The latter are tried recursively, which means you don't necessarily have to specify any subfolders.
@@ -244,7 +235,7 @@ code::
 ~fx.open("myplugins/GChorus");
 ::
 
-note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and most VST 3 plugins).::
+note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).::
 
 - If the VSTPlugin UGen holds a plugin info Event (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor ommitted.
 code::
@@ -260,7 +251,7 @@ SynthDef(\chorus, { arg bus=0;
 
 ARGUMENT:: editor
 request the VST plugin editor.
-note::This is not supported (yet) on macOS!::
+note::This is not supported (yet) on macOS and for VST3 plugins!::
 
 ARGUMENT:: info
 post the plugin info to the console (if loaded successfully).
@@ -366,7 +357,7 @@ Set plugin parameters.
 
 discussion::
 This method expects pairs of parameter index/name and value. Each value should be either a number between 0.0 and 1.0
-or a string/symbol. This method works asynchronously and is emphasis::realtime-safe::.
+or a string/symbol. 
 
 note::
 Some plugins don't support setting parameters by strings, others only allow it for certain parameters.
@@ -387,13 +378,14 @@ note::
 The parameter(s) will be automatically unmapped from any control bus, see link::#-map::.
 ::
 
+With code::setMsg:: you can schedule emphasis::sample accurate:: parameter changes for plugins which support this (some, but not all VST3 plugins).
+
 METHOD:: setn
 METHOD:: setnMsg
 set sequential ranges of parameters.
 
 discussion::
 This method expects pairs of parameter index and Array of values (numbers or strings/symbols), see link::#-set::.
-This method works asynchronously and is emphasis::realtime-safe::.
 
 code::
 // this will set parameters 3, 4, 8, 9 and 10.
@@ -401,26 +393,41 @@ code::
 ::
 
 METHOD:: map
-METHOD:: mapMsg
-map parameters to control busses.
+map parameters to control or audio busses.
 
 discussion::
 This methods expects pairs of parameter index/name and bus.
-In case of multi-channel control busses the channels are mapped to a sequential range of parameters starting at the given index/name.
+In case of multi-channel busses the channels are mapped to a sequential range of parameters starting at the given index/name.
+
+The bus argument can be simply an integer referring to a emphasis::control:: bus. If you want to map an audio bus, you have to explicitly pass an audio Bus object.
+
+Parameters are updated whenever the data in the bus changes. Note::Only map to an audio bus if you need sample accurate automation and the plugin
+actually supports it (some, but not all VST3 plugins).::
 code::
 ~bus1 = Bus.control;
 ~bus2 = Bus.control(numChannels: 2);
 ~fx.map(\Mix, ~bus1, 5, ~bus2);
 ~bus1.set(0.5); // set parameter 'Mix'
 ~bus2.set(0.75, 0.9); // set parameters 5 and 6 (because of 2-channel control bus)
+
+~bus3 = Bus.audio;
+~fx.map(\Delay, ~bus3); // audio rate automation (assuming the 'Delay' parameter supports this)
 ::
 Each parameter can only be mapped to one control bus channel at the time. 
 
 note::setting a parameter with link::#-set:: or link::#-setn:: will automatically unmap it from any control bus.::
 
-Mapped parameters are updated synchronously
-(in the realtime thread). This might only be a problem if the parameter itself is not realtime-safe (e.g. because it
-triggers CPU heavy computations, does memory allocations, etc.). In that case, consider using link::#-set:: / link::#-setn:: instead.
+
+METHOD:: mapMsg
+returns a emphasis::bundle:: containing control and/or audio bus mapping messages. Takes the same arguments as code::map::.
+
+METHOD:: mapn
+METHOD:: mapnMsg
+map parameters to control busses. The arguments are triples of parameter index/name, control bus index and number of channels. See link::#map::.
+
+METHOD:: mapan
+METHOD:: mapanMsg
+map parameters to audio busses. The arguments are triples of parameter index/name, audio bus index and number of channels. See link::#map::.
 
 METHOD:: unmap
 METHOD:: unmapMsg
