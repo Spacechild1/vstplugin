@@ -1127,6 +1127,10 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
             }
         #endif
         }
+        if (!plugin_->hasPrecision(ProcessPrecision::Single)) {
+            Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 
+                plugin_->info().name.c_str());
+        }
         LOG_DEBUG("opened " << cmd.buf);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
