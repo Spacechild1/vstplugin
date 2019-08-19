@@ -159,6 +159,8 @@ class VST2Plugin final : public IPlugin {
     void getBankChunkData(void **data, size_t *size) const;
         // processing
     void preProcess(int nsamples);
+    template<typename T, typename TProc>
+    void doProcess(ProcessData<T>& data, TProc processRoutine);
     void postProcess(int nsample);
         // process VST events from plugin
     void processEvents(VstEvents *events);
@@ -173,7 +175,9 @@ class VST2Plugin final : public IPlugin {
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
+        // processing
     VstTimeInfo timeInfo_;
+    int maxBlockSize_ = 0;
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;
     std::vector<VstMidiSysexEvent> sysexQueue_;

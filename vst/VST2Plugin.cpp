@@ -344,25 +344,66 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     } else {
         LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
     }
+    maxBlockSize_ = maxBlockSize;
     dispatch(effSetBlockSize, 0, maxBlockSize);
     dispatch(effSetProcessPrecision, 0,
              precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
 }
 
-void VST2Plugin::process(ProcessData<float>& data){
+template<typename T, typename TProc>
+void VST2Plugin::doProcess(ProcessData<T>& data, TProc processRoutine){
+    // prolog
     preProcess(data.numSamples);
-    if (plugin_->processReplacing){
-        (plugin_->processReplacing)(plugin_, (float **)data.input, data.output, data.numSamples);
+    // LATER try to get actual channel count from bus arrangement
+    // We only need this so we can zero output channels which are not touched by the plugin
+    // prepare input
+    int nin = getNumInputs();
+    auto input = (T **)alloca(sizeof(T *) * getNumInputs()); // array of buffers
+    auto inbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
+    std::fill(inbuf, inbuf + data.numSamples, 0); // zero!
+    for (int i = 0; i < nin; ++i){
+        if (i < data.numInputs){
+            input[i] = (T *)data.input[i];
+        } else {
+            input[i] = inbuf;
+        }
     }
+    // prepare output
+    int nout = getNumOutputs();
+    auto output = (T **)alloca(sizeof(T *) * getNumOutputs());
+    auto outbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy output buffer (don't have to zero)
+    for (int i = 0; i < nout; ++i){
+        if (i < data.numOutputs){
+            output[i] = data.output[i];
+        } else {
+            output[i] = outbuf;
+        }
+    }
+    // process
+    if (processRoutine){
+        processRoutine(plugin_, input, output, data.numSamples);
+    }
+    // clear remaining main outputs
+    int remOut = data.numOutputs - nout;
+    for (int i = 0; i < remOut; ++i){
+        auto out = data.output[nout + i];
+        std::fill(out, out + data.numSamples, 0);
+    }
+    // clear aux outputs
+    for (int i = 0; i < data.numAuxOutputs; ++i){
+        auto out = data.auxOutput[i];
+        std::fill(out, out + data.numSamples, 0);
+    }
+    // epilog
     postProcess(data.numSamples);
 }
 
+void VST2Plugin::process(ProcessData<float>& data){
+    doProcess(data, plugin_->processReplacing);
+}
+
 void VST2Plugin::process(ProcessData<double>& data){
-    preProcess(data.numSamples);
-    if (plugin_->processDoubleReplacing){
-        (plugin_->processDoubleReplacing)(plugin_, (double **)data.input, data.output, data.numSamples);
-    }
-    postProcess(data.numSamples);
+    doProcess(data, plugin_->processDoubleReplacing);
 }
 
 bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
@@ -409,16 +450,16 @@ void VST2Plugin::setBypass(bool bypass){
     dispatch(effSetBypass, 0, bypass);
 }
 
-void VST2Plugin::setNumSpeakers(int in, int out, int, int){
-    in = std::max<int>(0, in);
-    out = std::max<int>(0, out);
+void VST2Plugin::setNumSpeakers(int in, int out, int auxin, int auxout){
+    int numInSpeakers = std::min<int>(in, getNumInputs());
+    int numOutSpeakers = std::min<int>(out, getNumOutputs());
     // VstSpeakerArrangment already has 8 speakers
-    int ain = std::max<int>(0, in - 8);
-    int aout = std::max<int>(0, out - 8);
-    auto input = (VstSpeakerArrangement *)calloc(sizeof(VstSpeakerArrangement) + sizeof(VstSpeakerProperties) * ain, 1);
-    auto output = (VstSpeakerArrangement *)calloc(sizeof(VstSpeakerArrangement) + sizeof(VstSpeakerProperties) * aout, 1);
-    input->numChannels = in;
-    output->numChannels = out;
+    int addIn = std::max<int>(0, numInSpeakers - 8);
+    int addOut = std::max<int>(0, numOutSpeakers - 8);
+    auto input = (VstSpeakerArrangement *)calloc(sizeof(VstSpeakerArrangement) + sizeof(VstSpeakerProperties) * addIn, 1);
+    auto output = (VstSpeakerArrangement *)calloc(sizeof(VstSpeakerArrangement) + sizeof(VstSpeakerProperties) * addOut, 1);
+    input->numChannels = numInSpeakers;
+    output->numChannels = numOutSpeakers;
     auto setSpeakerArr = [](VstSpeakerArrangement& arr, int num){
         switch (num){
         case 0:
@@ -441,8 +482,8 @@ void VST2Plugin::setNumSpeakers(int in, int out, int, int){
             break;
         }
     };
-    setSpeakerArr(*input, in);
-    setSpeakerArr(*output, out);
+    setSpeakerArr(*input, numInSpeakers);
+    setSpeakerArr(*output, numOutSpeakers);
     dispatch(effSetSpeakerArrangement, 0, reinterpret_cast<VstIntPtr>(input), output);
     free(input);
     free(output);

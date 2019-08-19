@@ -266,7 +266,8 @@ class VST3Plugin final :
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  protected:
-    void doProcess(Vst::ProcessData& data);
+    template<typename T>
+    void doProcess(ProcessData<T>& inData);
     void handleEvents();
     void updateAutomationState();
     void sendMessage(Vst::IMessage* msg);
@@ -286,8 +287,8 @@ class VST3Plugin final :
         Main = 0,
         Aux = 1
     };
-    Vst::AudioBusBuffers audioInput_[2]; // main + aux
-    Vst::AudioBusBuffers audioOutput_[2]; // main + aux
+    int numInputs_[2]; // main + aux
+    int numOutputs_[2]; // main + aux
     Vst::ProcessContext context_;
     int32 automationState_ = 0;
     // midi

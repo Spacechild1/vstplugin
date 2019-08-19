@@ -89,6 +89,10 @@ class IPlugin {
         const T **auxInput = nullptr;
         T **output = nullptr;
         T **auxOutput = nullptr;
+        int numInputs = 0;
+        int numOutputs = 0;
+        int numAuxInputs = 0;
+        int numAuxOutputs = 0;
         int numSamples = 0;
     };
     virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;

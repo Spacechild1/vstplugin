@@ -46,6 +46,10 @@ class t_vstplugin {
     std::vector<t_sample *> x_sigoutlets;
     std::vector<t_sample *> x_sigauxinlets;
     std::vector<t_sample *> x_sigauxoutlets;
+    std::vector<char> x_inbuf;
+    std::vector<char> x_auxinbuf;
+    std::vector<char> x_outbuf;
+    std::vector<char> x_auxoutbuf;
         // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
@@ -55,16 +59,6 @@ class t_vstplugin {
     bool x_dp; // single/double precision
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
-        // contiguous input/output buffer
-    std::vector<char> x_inbuf;
-    std::vector<char> x_outbuf;
-    std::vector<char> x_auxinbuf;
-    std::vector<char> x_auxoutbuf;
-        // array of input/output pointers
-    std::vector<void *> x_invec;
-    std::vector<void *> x_outvec;
-    std::vector<void *> x_auxinvec;
-    std::vector<void *> x_auxoutvec;
         // thread for async operations (e.g. search)
     std::thread x_thread;
     t_clock *x_clock;
@@ -74,8 +68,7 @@ class t_vstplugin {
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
-    void update_buffer();
-    void update_precision();
+    void check_precision();
     int get_sample_offset();
 };
 

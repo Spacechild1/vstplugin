@@ -215,7 +215,6 @@ public:
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
 private:
-    void resizeBuffer();
     void clearMapping();
     float readControlBus(uint32 num);
     // data members
@@ -234,12 +233,6 @@ private:
     static const int inChannelOnset_ = 4;
     int auxInChannelOnset_ = 0;
     int parameterControlOnset_ = 0;
-
-    float *buf_ = nullptr;
-    const float **inBufVec_ = nullptr;
-    float **outBufVec_ = nullptr;
-    const float** auxInBufVec_ = nullptr;
-    float** auxOutBufVec_ = nullptr;
 
     struct Mapping {
         enum BusType {

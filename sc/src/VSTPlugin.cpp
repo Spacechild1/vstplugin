@@ -556,9 +556,6 @@ VSTPlugin::VSTPlugin(){
 }
 
 VSTPlugin::~VSTPlugin(){
-    if (buf_) RTFree(mWorld, buf_);
-    if (inBufVec_) RTFree(mWorld, inBufVec_);
-    if (outBufVec_) RTFree(mWorld, outBufVec_);
     if (paramState_) RTFree(mWorld, paramState_);
     if (paramMapping_) RTFree(mWorld, paramMapping_);
     clearMapping();
@@ -601,98 +598,6 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
     }
 }
 
-void VSTPlugin::resizeBuffer(){
-    auto plugin = delegate_->plugin();
-    if (!plugin) {
-        return;
-    }
-    auto onFail = [this]() {
-        LOG_ERROR("RTRealloc failed!");
-        RTFree(mWorld, buf_);
-        RTFree(mWorld, inBufVec_);
-        RTFree(mWorld, outBufVec_);
-        RTFree(mWorld, auxInBufVec_);
-        RTFree(mWorld, auxOutBufVec_);
-        buf_ = nullptr;
-        inBufVec_ = nullptr; outBufVec_ = nullptr;
-        auxInBufVec_ = nullptr; auxOutBufVec_ = nullptr;
-    };
-
-    int blockSize = bufferSize();
-    // get the *smaller* number of channels
-    int nin = std::min<int>(numInChannels(), plugin->getNumInputs());
-    int nout = std::min<int>(numOutChannels(), plugin->getNumOutputs());
-    int nauxin = std::min<int>(numAuxInChannels(), plugin->getNumAuxInputs());
-    int nauxout = std::min<int>(numAuxOutChannels(), plugin->getNumAuxOutputs());
-    // number of safety buffers (if UGen channels smaller than plugin channels).
-    // actually, we tell the plugin how many channels it should process, but let's play it safe.
-    int bufin = plugin->getNumInputs() - nin;
-    int bufout = plugin->getNumOutputs() - nout;
-    int bufauxin = plugin->getNumAuxInputs() - nauxin;
-    int bufauxout = plugin->getNumAuxOutputs() - nauxout;
-    LOG_DEBUG("bufin: " << bufin << ", bufout: " << bufout);
-    LOG_DEBUG("bufauxin: " << bufauxin << ", bufauxout: " << bufauxout);
-    // create safety buffer
-    {
-        int bufSize = (bufin + bufout + bufauxin + bufauxout) * blockSize * sizeof(float);
-        if (bufSize > 0) {
-            auto result = (float*)RTRealloc(mWorld, buf_, bufSize);
-            if (result) {
-                buf_ = result;
-                memset(buf_, 0, bufSize); // zero!
-            }
-            else {
-                onFail();
-                return;
-            }
-        }
-        else {
-            RTFree(mWorld, buf_);
-            buf_ = nullptr;
-        }
-    }
-    // set buffer pointer arrays
-    auto setBuffer = [&](auto& vec, auto channels, int numChannels, auto buf, int bufSize) {
-        int total = numChannels + bufSize;
-        if (total > 0) {
-            auto result = static_cast<std::remove_reference_t<decltype(vec)>>(RTRealloc(mWorld, vec, total * sizeof(float*)));
-            if (result) {
-                // point to channel
-                for (int i = 0; i < numChannels; ++i) {
-                    result[i] = channels[i];
-                }
-                // point to safety buffer
-                for (int i = 0; i < bufSize; ++i) {
-                    result[numChannels + i] = buf + (i * blockSize);
-                }
-                vec = result;
-            }
-            else return false;
-        }
-        else {
-            RTFree(mWorld, vec);
-            vec = nullptr;
-        }
-        return true;
-    };
-    auto bufptr = buf_;
-    if (!setBuffer(inBufVec_, mInBuf + inChannelOnset_, nin, bufptr, bufin)) {
-        onFail(); return;
-    }
-    bufptr += bufin * blockSize;
-    if (!setBuffer(auxInBufVec_, mInBuf + auxInChannelOnset_, nauxin, bufptr, bufauxin)) {
-        onFail(); return;
-    }
-    bufptr += bufauxin * blockSize;
-    if (!setBuffer(outBufVec_, mOutBuf, nout, bufptr, bufout)) {
-        onFail(); return;
-    }
-    bufptr += bufout * blockSize;
-    if (!setBuffer(auxOutBufVec_, mOutBuf + numOutChannels(), nauxout, bufptr, bufauxout)) {
-        onFail(); return;
-    }
-}
-
 void VSTPlugin::clearMapping() {
     auto m = paramMappingList_;
     while (m != nullptr) {
@@ -719,7 +624,6 @@ float VSTPlugin::readControlBus(uint32 num) {
 
 // update data (after loading a new plugin)
 void VSTPlugin::update() {
-    resizeBuffer();
     clearMapping();
     int n = delegate().plugin()->getNumParameters();
     // parameter states
@@ -799,11 +703,6 @@ void VSTPlugin::next(int inNumSamples) {
     // for Supernova the "next" routine might be called in a different thread - each time!
     delegate_->rtThreadID_ = std::this_thread::get_id();
 #endif
-    if (!(inBufVec_ || outBufVec_)) {
-        // only if RT memory methods failed in resizeBuffer()
-        (*ft->fClearUnitOutputs)(this, inNumSamples);
-        return;
-    }
     auto plugin = delegate_->plugin();
 
     if (plugin && !bypass() && plugin->hasPrecision(ProcessPrecision::Single)) {
@@ -898,25 +797,16 @@ void VSTPlugin::next(int inNumSamples) {
         }
         // process
         IPlugin::ProcessData<float> data;
-        data.input = inBufVec_;
-        data.output = outBufVec_;
-        data.auxInput = auxInBufVec_;
-        data.auxOutput = auxOutBufVec_;
+        data.numInputs = numInChannels();
+        data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
+        data.numOutputs = numOutChannels();
+        data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
+        data.numAuxInputs = numAuxInChannels();
+        data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
+        data.numAuxOutputs = numAuxOutChannels();
+        data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
         data.numSamples = inNumSamples;
         plugin->process(data);
-
-        // clear unused output channels
-        auto clearOutput = [](auto output, int nout, int offset, int n) {
-            int rem = nout - offset;
-            if (rem > 0) {
-                for (int i = 0; i < rem; ++i) {
-                    auto dst = output[i + offset];
-                    std::fill(dst, dst + n, 0);
-                }
-            }
-        };
-        clearOutput(mOutBuf, numOutChannels(), plugin->getNumOutputs(), inNumSamples); // out
-        clearOutput(mOutBuf + numOutChannels(), numAuxOutChannels(), plugin->getNumAuxOutputs(), inNumSamples); // aux out
 
 #if HAVE_UI_THREAD
         // send parameter automation notification posted from the GUI thread.
