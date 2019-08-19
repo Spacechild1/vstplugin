@@ -299,21 +299,9 @@ void EventList::clear(){
 /*/////////////////////// VST3Plugin ///////////////////////*/
 
 #if HAVE_NRT_THREAD
-#define LOCK_GUARD std::lock_guard<std::mutex> _lock(mutex_);
+#define LOCK_GUARD std::lock_guard<std::mutex> LOCK_GUARD_lock(mutex_);
 #else
 #define LOCK_GUARD
-#endif
-
-#if HAVE_NRT_THREAD
-#define LOCK mutex_.lock();
-#else
-#define LOCK
-#endif
-
-#if HAVE_NRT_THREAD
-#define UNLOCK mutex_.unlock();
-#else
-#define UNLOCK
 #endif
 
 template <typename T>
@@ -684,9 +672,23 @@ void VST3Plugin::doProcess(Vst::ProcessData &data){
     // data.outputParameterChanges = &outputParamChanges_;
 
     // process
-    LOCK
-    processor_->process(data);
-    UNLOCK
+#if HAVE_NRT_THREAD
+    // We don't want to put the audio thread to sleep.
+    // this means we might loose a buffer if we happen
+    // to manipulate the plugin from the NRT thread at the same time.
+    // Only few operations require the mutex:
+    // 1) preset loading/saving, 2) resetting, 3) message sending
+    // The user can mute the plugin while doing such tasks
+    // and the rest of his program will not suffer.
+    if (mutex_.try_lock()){
+#endif
+        processor_->process(data);
+#if HAVE_NRT_THREAD
+        mutex_.unlock();
+    } else {
+        LOG_DEBUG("VST3Plugin: skip processing");
+    }
+#endif
 
     // clear input queues
     inputEvents_.clear();
