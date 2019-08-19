@@ -56,7 +56,7 @@ class t_vstplugin {
     bool x_uithread = false;
     bool x_keep = false;
     bool x_bypass = false;
-    bool x_dp; // single/double precision
+    ProcessPrecision x_precision; // single/double precision
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
         // thread for async operations (e.g. search)
@@ -68,7 +68,7 @@ class t_vstplugin {
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
-    void check_precision();
+    void setup_plugin();
     int get_sample_offset();
 };
 

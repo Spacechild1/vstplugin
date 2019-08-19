@@ -1020,13 +1020,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
         verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
             // setup plugin
-        plugin->suspend();
-        plugin->setupProcessing(x->x_sr, x->x_blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
-        plugin->setNumSpeakers(x->x_siginlets.size(), x->x_sigauxoutlets.size(),
-                               x->x_sigauxinlets.size(), x->x_sigauxoutlets.size());
-        plugin->resume();
-        x->check_precision();
         x->x_plugin = std::move(plugin);
+        x->setup_plugin();
             // receive events from plugin
         x->x_plugin->setListener(x->x_editor);
             // update Pd editor
@@ -1196,21 +1191,6 @@ static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
 
 static void vstplugin_click(t_vstplugin *x){
     vstplugin_vis(x, 1);
-}
-
-// set processing precision (single or double)
-static void vstplugin_precision(t_vstplugin *x, t_symbol *s){
-    bool dp;
-    if (s == gensym("single")){
-        dp = 0;
-    } else if (s == gensym("double")){
-        dp = 1;
-    } else {
-        pd_error(x, "%s: bad argument to 'precision' message - must be 'single' or 'double'", classname(x));
-        return;
-    }
-    x->x_dp = dp;
-    x->check_precision();
 }
 
 /*------------------------ transport----------------------------------*/
@@ -1630,24 +1610,28 @@ bool t_vstplugin::check_plugin(){
     }
 }
 
-void t_vstplugin::check_precision(){
-        // check precision
-    if (x_plugin){
-        if (!x_plugin->hasPrecision(ProcessPrecision::Single)
-                && !x_plugin->hasPrecision(ProcessPrecision::Double)) {
-            post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(this), x_plugin->info().name.c_str());
-            return;
-        }
-        if (x_dp && !x_plugin->hasPrecision(ProcessPrecision::Double)){
+void t_vstplugin::setup_plugin(){
+    x_plugin->suspend();
+    // check if precision is actually supported
+    auto precision = x_precision;
+    if (!x_plugin->hasPrecision(precision)){
+        if (x_plugin->hasPrecision(ProcessPrecision::Single)){
             post("%s: '%s' doesn't support double precision, using single precision instead",
                  classname(this), x_plugin->info().name.c_str());
-        }
-        else if (!x_dp && !x_plugin->hasPrecision(ProcessPrecision::Single)){ // very unlikely...
+            precision = ProcessPrecision::Single;
+        } else if (x_plugin->hasPrecision(ProcessPrecision::Double)){
             post("%s: '%s' doesn't support single precision, using double precision instead",
                  classname(this), x_plugin->info().name.c_str());
+            precision = ProcessPrecision::Double;
+        } else {
+            post("%s: '%s' doesn't support single or double precision, bypassing",
+                classname(this), x_plugin->info().name.c_str());
         }
     }
+    x_plugin->setupProcessing(x_sr, x_blocksize, precision);
+    x_plugin->setNumSpeakers(x_siginlets.size(), x_sigauxoutlets.size(),
+                           x_sigauxinlets.size(), x_sigauxoutlets.size());
+    x_plugin->resume();
 }
 
 int t_vstplugin::get_sample_offset(){
@@ -1662,7 +1646,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool keep = false; // remember plugin + state?
-    bool dp = (PD_FLOATSIZE == 64); // use double precision? default to precision of Pd
+    // precision (defaults to Pd's precision)
+    ProcessPrecision precision = (PD_FLOATSIZE == 64) ?
+                ProcessPrecision::Double : ProcessPrecision::Single;
     t_symbol *file = nullptr; // plugin to open (optional)
     bool editor = false; // open plugin with VST editor?
 
@@ -1676,9 +1662,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             } else if (!strcmp(flag, "-e")){
                 editor = true;
             } else if (!strcmp(flag, "-sp")){
-                dp = false;
+                precision = ProcessPrecision::Single;
             } else if (!strcmp(flag, "-dp")){
-                dp = true;
+                precision = ProcessPrecision::Double;
             } else if (!strcmp(flag, "-s")){
                 search = true;
             } else {
@@ -1707,7 +1693,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int auxout = atom_getfloatarg(3, argc, argv);
 
     x_keep = keep;
-    x_dp = dp;
+    x_precision = precision;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
     x_clock = clock_new(this, (t_method)vstplugin_search_done);
@@ -1859,23 +1845,24 @@ static t_int *vstplugin_perform(t_int *w){
     t_vstplugin *x = (t_vstplugin *)(w[1]);
     int n = (int)(w[2]);
     auto plugin = x->x_plugin.get();
-    bool dp = x->x_dp;
+    auto precision = x->x_precision;
     bool bypass = plugin ? x->x_bypass : true;
     x->x_lastdsptime = clock_getlogicaltime();
 
     if (plugin && !bypass) {
             // check processing precision (single or double)
-        if (!plugin->hasPrecision(ProcessPrecision::Single)
-                && !plugin->hasPrecision(ProcessPrecision::Double)) { // very unlikely...
-            bypass = true;
-        } else if (dp && !plugin->hasPrecision(ProcessPrecision::Double)){ // possible
-            dp = false;
-        } else if (!dp && !plugin->hasPrecision(ProcessPrecision::Single)){ // pretty unlikely...
-            dp = true;
+        if (!plugin->hasPrecision(precision)){
+            if (plugin->hasPrecision(ProcessPrecision::Single)){
+                precision = ProcessPrecision::Single;
+            } else if (plugin->hasPrecision(ProcessPrecision::Double)){
+                precision = ProcessPrecision::Double;
+            } else {
+                bypass = true;
+            }
         }
     }
     if (!bypass){
-        if (dp){ // double precision
+        if (precision == ProcessPrecision::Double){
             vstplugin_doperform<double>(x, n);
         } else { // single precision
             vstplugin_doperform<float>(x, n);
@@ -1914,20 +1901,17 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addbinbuf(bb, x->x_obj.ob_binbuf);
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
-            // 1) precision
-        binbuf_addv(bb, "sss", gensym("#A"), gensym("precision"), gensym(x->x_dp ? "double" : "single"));
-        binbuf_addsemi(bb);
-            // 2) plugin
+            // 1) plugin
         if (x->x_editor->vst_gui()){
             binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
         } else {
             binbuf_addv(bb, "sss", gensym("#A"), gensym("open"), x->x_path);
         }
         binbuf_addsemi(bb);
-            // 3) program number
+            // 2) program number
         binbuf_addv(bb, "ssi", gensym("#A"), gensym("program_set"), x->x_plugin->getProgram());
         binbuf_addsemi(bb);
-            // 4) program data
+            // 3) program data
         std::string buffer;
         x->x_plugin->writeProgramData(buffer);
         int n = buffer.size();
@@ -1955,9 +1939,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     dsp_add(vstplugin_perform, 2, x, blocksize);
         // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
-        x->x_plugin->suspend();
-        x->x_plugin->setupProcessing(sr, blocksize, x->x_dp ? ProcessPrecision::Double : ProcessPrecision::Single);
-        x->x_plugin->resume();
+        x->setup_plugin();
     }
     x->x_blocksize = blocksize;
     x->x_sr = sr;
@@ -2009,7 +1991,6 @@ void vstplugin_tilde_setup(void)
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_precision, gensym("precision"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);

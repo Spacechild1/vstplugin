@@ -316,45 +316,36 @@ and 2 input and 4 output channels., f 49;
 #X text 38 516 open the VST3 version of "GChorus" with the Pd editor
 and 2 input and 2 output channels., f 49;
 #X restore 23 74 pd creation arguments;
-#N canvas 387 235 555 506 advanced 0;
-#X msg 28 59 precision \$1;
-#X msg 28 13 symbol single;
-#X msg 36 36 symbol double;
-#X obj 28 401 s \$0-msg;
-#X text 129 31 on single precision Pd \, the default is 'single';
-#X text 128 51 on double precision Pd \, the default is 'double' if
-available \, otherwise it is 'single'., f 48;
-#X text 129 10 change preferred processing precision;
-#X msg 42 112 can_do \$1;
-#X symbolatom 42 91 24 0 0 0 - - -;
-#X text 195 87 query the plugin for special capabilites. you have to
+#N canvas 387 235 555 431 advanced 0;
+#X obj 23 358 s \$0-msg;
+#X msg 37 69 can_do \$1;
+#X symbolatom 37 48 24 0 0 0 - - -;
+#X text 190 44 query the plugin for special capabilites. you have to
 know the query string: some are documented in the VST SDK \, some are
 not..., f 44;
-#X text 62 208 access special functionality of a plugin which is not
+#X text 57 165 access special functionality of a plugin which is not
 available via the standard parameter interface., f 54;
-#X text 193 126 you will get a message "can_do" with the query string
+#X text 188 83 you will get a message "can_do" with the query string
 + the result as an integer:, f 42;
-#X text 192 156 1: yes \, -1: no \, 0: don't know;
-#X msg 48 188 vendor_method <index> <value> <opt> <ptr>;
-#X text 64 268 arguments:;
-#X text 62 306 <value>: pointer sized integer;
-#X text 62 289 <index>: 32bit integer;
-#X text 62 322 <opt>: float;
-#X text 64 341 <ptr>: raw data as list of bytes;
-#X text 271 283 <index> and <value> can be provided as floats or symbols
+#X text 187 113 1: yes \, -1: no \, 0: don't know;
+#X msg 43 145 vendor_method <index> <value> <opt> <ptr>;
+#X text 59 225 arguments:;
+#X text 57 263 <value>: pointer sized integer;
+#X text 57 246 <index>: 32bit integer;
+#X text 57 279 <opt>: float;
+#X text 59 298 <ptr>: raw data as list of bytes;
+#X text 266 240 <index> and <value> can be provided as floats or symbols
 (in hex representation \, e.g. "0x10FD7F04"), f 39;
-#X text 62 237 generally \, you have to know what you're doing \, check
+#X text 57 194 generally \, you have to know what you're doing \, check
 the documentation of the plugin to see what data it expects.;
-#X text 64 361 the return value is sent in a "vendor_method <f> <s>"
+#X text 59 318 the return value is sent in a "vendor_method <f> <s>"
 message in both float and symbol (hex) representation., f 55;
-#X text 87 393 the purpose of sending/receiving hex symbols is to circumvent
+#X text 82 350 the purpose of sending/receiving hex symbols is to circumvent
 the limited precision of decimal numbers in Pd., f 63;
-#X connect 0 0 3 0;
+#X text 21 24 VST2 only:;
 #X connect 1 0 0 0;
-#X connect 2 0 0 0;
-#X connect 7 0 3 0;
-#X connect 8 0 7 0;
-#X connect 13 0 3 0;
+#X connect 2 0 1 0;
+#X connect 7 0 0 0;
 #X restore 394 493 pd advanced;
 #X f 14;
 #X text 391 474 advanced stuff;
