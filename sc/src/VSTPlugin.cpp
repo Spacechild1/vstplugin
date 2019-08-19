@@ -716,11 +716,28 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
     auto plugin = delegate_->plugin();
 
-    if (plugin && !bypass() && plugin->hasPrecision(ProcessPrecision::Single)) {
+    if (plugin && plugin->hasPrecision(ProcessPrecision::Single)) {
         auto vst3 = plugin->getType() == PluginType::VST3;
+
+        // check bypass state
+        Bypass bypass = Bypass::Off;
+        int inBypass = getBypass();
+        if (inBypass > 0) {
+            if (inBypass == 1) {
+                bypass = Bypass::Hard;
+            }
+            else {
+                bypass = Bypass::Soft;
+            }
+        }
+        if (bypass != bypass_) {
+            plugin->setBypass(bypass);
+        }
+
+        // parameter automation
         if (paramState_) {
             int nparam = plugin->getNumParameters();
-            // update parameters from mapped control busses
+            // automate parameters with mapped control busses
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
                 uint32 index = m->index;
                 auto type = m->type();
@@ -763,7 +780,7 @@ void VSTPlugin::next(int inNumSamples) {
                 #undef unit
                 }
             }
-            // update parameters from UGen inputs
+            // automate parameters with UGen inputs
             int nparams = numParameterControls();
             for (int i = 0; i < nparams; ++i) {
                 int k = 2 * i + parameterControlOnset_;

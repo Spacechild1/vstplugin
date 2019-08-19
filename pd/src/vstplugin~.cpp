@@ -1166,14 +1166,26 @@ static void vstplugin_print(t_vstplugin *x){
 
 // bypass the plugin
 static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
-    x->x_bypass = (f != 0);
-    if (x->x_plugin){
-        if (x->x_bypass){
-            x->x_plugin->suspend();
-        } else {
-            x->x_plugin->resume();
-        }
+    int arg = f;
+    Bypass bypass;
+    switch (arg){
+    case 0:
+        bypass = Bypass::Off;
+        break;
+    case 1:
+        bypass = Bypass::Hard;
+        break;
+    case 2:
+        bypass = Bypass::Soft;
+        break;
+    default:
+        pd_error(x, "%s: bad argument for 'bypass'' message (%d)", classname(x), arg);
+        return;
     }
+    if (x->x_plugin && (bypass != x->x_bypass)){
+        x->x_plugin->setBypass(bypass);
+    }
+    x->x_bypass = bypass;
 }
 
 // reset the plugin
@@ -1632,6 +1644,9 @@ void t_vstplugin::setup_plugin(){
     x_plugin->setNumSpeakers(x_siginlets.size(), x_sigauxoutlets.size(),
                            x_sigauxinlets.size(), x_sigauxoutlets.size());
     x_plugin->resume();
+    if (x_bypass != Bypass::Off){
+        x_plugin->setBypass(x_bypass);
+    }
 }
 
 int t_vstplugin::get_sample_offset(){
@@ -1846,10 +1861,10 @@ static t_int *vstplugin_perform(t_int *w){
     int n = (int)(w[2]);
     auto plugin = x->x_plugin.get();
     auto precision = x->x_precision;
-    bool bypass = plugin ? x->x_bypass : true;
+    bool doit = plugin != nullptr;
     x->x_lastdsptime = clock_getlogicaltime();
 
-    if (plugin && !bypass) {
+    if (doit){
             // check processing precision (single or double)
         if (!plugin->hasPrecision(precision)){
             if (plugin->hasPrecision(ProcessPrecision::Single)){
@@ -1857,11 +1872,11 @@ static t_int *vstplugin_perform(t_int *w){
             } else if (plugin->hasPrecision(ProcessPrecision::Double)){
                 precision = ProcessPrecision::Double;
             } else {
-                bypass = true;
+                doit = false; // maybe some VST2 MIDI plugins
             }
         }
     }
-    if (!bypass){
+    if (doit){
         if (precision == ProcessPrecision::Double){
             vstplugin_doperform<double>(x, n);
         } else { // single precision

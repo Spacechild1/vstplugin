@@ -312,6 +312,10 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         }
         info_ = info;
     }
+    haveBypass_ = hasBypass(); // cache for performance
+    if (haveBypass_){
+        LOG_DEBUG("plugin can bypass");
+    }
 }
 
 VST2Plugin::~VST2Plugin(){
@@ -344,33 +348,71 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     } else {
         LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
     }
-    maxBlockSize_ = maxBlockSize;
     dispatch(effSetBlockSize, 0, maxBlockSize);
     dispatch(effSetProcessPrecision, 0,
              precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
 }
 
+template<typename T>
+void doBypassProcessing(const T** input, int nin, T** output, int nout, int numSamples){
+    for (int i = 0; i < nout; ++i){
+        auto out = output[i];
+        if (i < nin){
+            // copy input to output
+            auto in = input[i];
+            std::copy(in, in + numSamples, out);
+        } else {
+            std::fill(out, out + numSamples, 0); // zero
+        }
+    }
+}
+
 template<typename T, typename TProc>
-void VST2Plugin::doProcess(ProcessData<T>& data, TProc processRoutine){
-    // prolog
-    preProcess(data.numSamples);
+void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
+    if (!processRoutine){
+        LOG_ERROR("VST2Plugin::process: no process routine!");
+        return; // should never happen!
+    }
+    // soft bypass: we pass an empty input to the plugin until the output is silent
+    // and mix it with the original input. This means that a reverb tail will decay
+    // instead of being cut off!
+    bool tail = (bypass_ == Bypass::Soft) && (!bypassSilent_ || bypassRamp_);
     // LATER try to get actual channel count from bus arrangement
     // We only need this so we can zero output channels which are not touched by the plugin
     // prepare input
     int nin = getNumInputs();
-    auto input = (T **)alloca(sizeof(T *) * getNumInputs()); // array of buffers
+    auto input = (T **)alloca(sizeof(T *) * nin); // array of buffers
     auto inbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
     std::fill(inbuf, inbuf + data.numSamples, 0); // zero!
     for (int i = 0; i < nin; ++i){
         if (i < data.numInputs){
-            input[i] = (T *)data.input[i];
+            if (tail){
+                // special treatment for tail processing at bypass state changes to avoid clicks
+                if (bypassRamp_ && (i < data.numOutputs)){
+                    // write fade in/fade out to *output buffer* and use it as an input.
+                    // this works because VST plugins actually work in "replacing" mode.
+                    auto src = data.input[i];
+                    auto dst = input[i] = data.output[i];
+                    float mix = bypassRamp_ > 0;
+                    float ramp = (1.f / data.numSamples) * -bypassRamp_;
+                    for (int j = 0; j < data.numSamples; ++j, mix += ramp){
+                        dst[j] = src[j] * mix;
+                    }
+                } else {
+                    input[i] = inbuf; // silence
+                }
+            } else {
+                // point to input
+                input[i] = (T *)data.input[i];
+            }
         } else {
+            // point to silence
             input[i] = inbuf;
         }
     }
     // prepare output
     int nout = getNumOutputs();
-    auto output = (T **)alloca(sizeof(T *) * getNumOutputs());
+    auto output = (T **)alloca(sizeof(T *) * nout);
     auto outbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy output buffer (don't have to zero)
     for (int i = 0; i < nout; ++i){
         if (i < data.numOutputs){
@@ -380,8 +422,76 @@ void VST2Plugin::doProcess(ProcessData<T>& data, TProc processRoutine){
         }
     }
     // process
-    if (processRoutine){
+    if (bypass_ == Bypass::Off){
         processRoutine(plugin_, input, output, data.numSamples);
+    } else if (bypass_ == Bypass::Hard) {
+        // need to cross fade?
+        if (bypassRamp_){
+            // actually, we shouldn't need to do this for plugins which support effSetBypass
+            // but not all of them actually do a cross fade...
+            processRoutine(plugin_, input, output, data.numSamples);
+            for (int i = 0; i < nout; ++i){
+                float mix = bypassRamp_ > 0;
+                float ramp = (1.f / data.numSamples) * -bypassRamp_;
+                auto out = output[i];
+                if (i < nin){
+                    // cross fade between plugin output and unprocessed input
+                    auto in = input[i];
+                    for (int j = 0; j < data.numSamples; ++j, mix += ramp){
+                        out[j] = out[j] * mix + in[j] * (1.f - mix);
+                    }
+                } else {
+                    // just fade out
+                    for (int j = 0; j < data.numSamples; ++j, mix += ramp){
+                        out[j] *= mix;
+                    }
+                }
+            }
+            bypassRamp_ = 0;
+        } else if (haveBypass_){
+            // the plugin might do some additional stuff (e.g. gradually clear buffers)
+            processRoutine(plugin_, input, output, data.numSamples);
+        } else {
+            // simple bypass
+            doBypassProcessing(data.input, data.numInputs, output, nout, data.numSamples);
+        }
+    } else {
+        // soft bypass: continue to process with empty input till the output is silent
+        if (bypassRamp_ || !bypassSilent_){
+            processRoutine(plugin_, input, output, data.numSamples);
+            // check for silence
+            if (!bypassRamp_){
+                const int threshold = 0.001; // -60 dB
+                bool silent = true;
+                for (int i = 0; i < nout; ++i){
+                    auto out = output[i];
+                    for (int j = 0; j < data.numSamples; ++j){
+                        if (std::fabs(out[j]) > threshold){
+                            silent = false;
+                            goto doneSilentCheck;
+                        }
+                    }
+                }
+                if (silent){
+                    LOG_DEBUG("plugin output became silent!");
+                }
+            doneSilentCheck:
+                bypassSilent_ = silent;
+            }
+            // mix with unprocessed input
+            for (int i = 0; i < nout; ++i){
+                auto out = output[i];
+                if (i < data.numInputs){
+                    auto in = data.input[i];
+                    for (int j = 0; j < data.numSamples; ++j){
+                        out[j] += in[j];
+                    }
+                }
+            }
+            bypassRamp_ = 0;
+        } else {
+            doBypassProcessing(data.input, data.numInputs, output, nout, data.numSamples);
+        }
     }
     // clear remaining main outputs
     int remOut = data.numOutputs - nout;
@@ -394,16 +504,18 @@ void VST2Plugin::doProcess(ProcessData<T>& data, TProc processRoutine){
         auto out = data.auxOutput[i];
         std::fill(out, out + data.numSamples, 0);
     }
-    // epilog
-    postProcess(data.numSamples);
 }
 
 void VST2Plugin::process(ProcessData<float>& data){
-    doProcess(data, plugin_->processReplacing);
+    preProcess(data.numSamples);
+    doProcessing(data, plugin_->processReplacing);
+    postProcess(data.numSamples);
 }
 
 void VST2Plugin::process(ProcessData<double>& data){
-    doProcess(data, plugin_->processDoubleReplacing);
+    preProcess(data.numSamples);
+    doProcessing(data, plugin_->processDoubleReplacing);
+    postProcess(data.numSamples);
 }
 
 bool VST2Plugin::hasPrecision(ProcessPrecision precision) const {
@@ -446,8 +558,27 @@ bool VST2Plugin::hasBypass() const {
     return canDo("bypass") > 0;
 }
 
-void VST2Plugin::setBypass(bool bypass){
-    dispatch(effSetBypass, 0, bypass);
+void VST2Plugin::setBypass(Bypass state){
+    if (state != bypass_){
+        if (state == Bypass::Off){
+            if (haveBypass_ && (bypass_ == Bypass::Hard)){
+                dispatch(effSetBypass, 0, 0);
+            }
+            // soft bypass is handled by us
+            bypassRamp_ = -1;
+        } else if (bypass_ == Bypass::Off){
+            if (haveBypass_ && (state == Bypass::Hard)){
+                dispatch(effSetBypass, 0, 1);
+            }
+            // soft bypass is handled by us
+            bypassRamp_ = 1;
+        } else {
+            // ignore attempts at Bypass::Hard <-> Bypass::Soft!
+            return;
+        }
+        bypass_ = state;
+        bypassSilent_ = false;
+    }
 }
 
 void VST2Plugin::setNumSpeakers(int in, int out, int auxin, int auxout){

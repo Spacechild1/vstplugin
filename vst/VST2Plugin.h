@@ -79,7 +79,7 @@ class VST2Plugin final : public IPlugin {
     bool hasTail() const override;
     int getTailSize() const override;
     bool hasBypass() const override;
-    void setBypass(bool bypass) override;
+    void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
 
     void setListener(IPluginListener::ptr listener) override {
@@ -160,7 +160,7 @@ class VST2Plugin final : public IPlugin {
         // processing
     void preProcess(int nsamples);
     template<typename T, typename TProc>
-    void doProcess(ProcessData<T>& data, TProc processRoutine);
+    void doProcessing(ProcessData<T>& data, TProc processRoutine);
     void postProcess(int nsample);
         // process VST events from plugin
     void processEvents(VstEvents *events);
@@ -177,7 +177,10 @@ class VST2Plugin final : public IPlugin {
     std::weak_ptr<IPluginListener> listener_;
         // processing
     VstTimeInfo timeInfo_;
-    int maxBlockSize_ = 0;
+    Bypass bypass_ = Bypass::Off;
+    short bypassRamp_ = 0; // 1: to bypass, -1: from bypass
+    bool haveBypass_ = false;
+    bool bypassSilent_ = false; // check if we can stop processing
         // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;
     std::vector<VstMidiSysexEvent> sysexQueue_;

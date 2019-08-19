@@ -201,8 +201,8 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int flags() const { return (int)in0(1); } // not used (yet)
-    int bypass() const { return (int)in0(2); }
+    int getFlags() const { return (int)in0(1); } // not used (yet)
+    int getBypass() const { return (int)in0(2); }
     int numInChannels() const { return (int)in0(3); }
     int numAuxInChannels() const {
         return (int)in0(auxInChannelOnset_ - 1);
@@ -258,6 +258,7 @@ private:
     Mapping* paramMappingList_ = nullptr;
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
+    Bypass bypass_ = Bypass::Off;
 
     // threading
 #if HAVE_UI_THREAD

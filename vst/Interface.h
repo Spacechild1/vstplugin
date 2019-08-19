@@ -115,7 +115,7 @@ class IPlugin {
     virtual bool hasTail() const = 0;
     virtual int getTailSize() const = 0;
     virtual bool hasBypass() const = 0;
-    virtual void setBypass(bool bypass) = 0;
+    virtual void setBypass(Bypass state) = 0;
     virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;

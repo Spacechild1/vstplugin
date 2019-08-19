@@ -55,7 +55,7 @@ class t_vstplugin {
     t_symbol *x_path = nullptr;
     bool x_uithread = false;
     bool x_keep = false;
-    bool x_bypass = false;
+    Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;

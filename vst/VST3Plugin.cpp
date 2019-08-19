@@ -901,13 +901,19 @@ bool VST3Plugin::hasBypass() const {
     return info().bypass != PluginInfo::NoParamID;
 }
 
-void VST3Plugin::setBypass(bool bypass){
+void VST3Plugin::setBypass(Bypass state){
     auto id = info().bypass;
     if (id != PluginInfo::NoParamID){
-        doSetParameter(id, bypass);
-    } else {
-        LOG_DEBUG("no bypass parameter");
+        if (state != bypass_){
+            if (state == Bypass::Off){
+                doSetParameter(id, 0);
+            } else if (state == Bypass::Hard){
+                doSetParameter(id, 1);
+            }
+            // soft bypass is handled differently
+        }
     }
+    bypass_ = state;
 }
 
 #define makeChannels(n) ((1 << (n)) - 1)
