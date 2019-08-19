@@ -976,7 +976,7 @@ IPlugin::ptr PluginInfo::create() const {
 }
 
 void PluginInfo::setUniqueID(int _id){
-    type_ = IPlugin::VST2;
+    type_ = PluginType::VST2;
     char buf[9];
     // should we write in little endian?
     snprintf(buf, sizeof(buf), "%08X", _id);
@@ -985,7 +985,7 @@ void PluginInfo::setUniqueID(int _id){
 }
 
 void PluginInfo::setUID(const char *uid){
-    type_ = IPlugin::VST3;
+    type_ = PluginType::VST3;
     char buf[33];
     for (int i = 0; i < 16; ++i){
         snprintf(buf + (i * 2), 3, "%02X", uid[i]);
@@ -1239,10 +1239,10 @@ void PluginInfo::deserialize(std::istream& file) {
                 if (key == "id"){
                     if (value.size() == 8){
                         // LATER deal with endianess
-                        type_ == IPlugin::VST2;
+                        type_ == PluginType::VST2;
                         sscanf(&value[0], "%08X", &id_.id);
                     } else if (value.size() == 32){
-                        type_ == IPlugin::VST3;
+                        type_ == PluginType::VST3;
                         const int n = value.size() / 2;
                         for (int i = 0; i < n; ++i){
                             char buf[3] = { 0 };

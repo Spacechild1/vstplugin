@@ -64,6 +64,17 @@ enum class ProcessPrecision {
     Double
 };
 
+enum class Bypass {
+    Off,
+    Hard, // simply bypass (with cross-fade)
+    Soft // let tails ring out
+};
+
+enum class PluginType {
+    VST2,
+    VST3
+};
+
 struct PluginInfo;
 class IWindow;
 
@@ -72,12 +83,7 @@ class IPlugin {
     using ptr = std::unique_ptr<IPlugin>;
     using const_ptr = std::unique_ptr<const IPlugin>;
 
-    enum Type {
-        VST2,
-        VST3
-    };
-
-    virtual Type getType() const = 0;
+    virtual PluginType getType() const = 0;
 
     virtual ~IPlugin(){}
 
@@ -223,7 +229,7 @@ struct PluginInfo {
     const char* getUID() const {
         return id_.uid;
     }
-    IPlugin::Type type() const { return type_; }
+    PluginType type() const { return type_; }
     // info data
     ProbeResult probeResult = ProbeResult::none;
     std::string uniqueID;
@@ -357,7 +363,7 @@ struct PluginInfo {
     // param ID to index (VST3 only)
     std::unordered_map<uint32_t, int> idToIndexMap_;
 #endif
-    IPlugin::Type type_;
+    PluginType type_;
     union ID {
         char uid[16];
         int32_t id;

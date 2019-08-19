@@ -706,7 +706,7 @@ void VSTPlugin::next(int inNumSamples) {
     auto plugin = delegate_->plugin();
 
     if (plugin && !bypass() && plugin->hasPrecision(ProcessPrecision::Single)) {
-        auto vst3 = plugin->getType() == IPlugin::VST3;
+        auto vst3 = plugin->getType() == PluginType::VST3;
         if (paramState_) {
             int nparam = plugin->getNumParameters();
             // update parameters from mapped control busses
@@ -1111,7 +1111,7 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         #if defined(__APPLE__)
             Print("Warning: can't use the VST editor on macOS (yet)\n");
         #elif 1
-            if (plugin_->getType() == IPlugin::VST3) {
+            if (plugin_->getType() == PluginType::VST3) {
                 Print("Warning: can't use the VST3 editor (yet)\n");
             }
         #endif
