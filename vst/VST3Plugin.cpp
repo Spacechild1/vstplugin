@@ -190,7 +190,7 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe
 /*///////////////////// ParamValueQeue /////////////////////*/
 
 ParamValueQueue::ParamValueQueue() {
-    values_.reserve(defaultNumPoints);
+    values_.reserve(maxNumPoints);
 }
 
 void ParamValueQueue::setParameterId(Vst::ParamID id){
@@ -208,20 +208,36 @@ tresult PLUGIN_API ParamValueQueue::getPoint(int32 index, int32& sampleOffset, V
     return kResultFalse;
 }
 tresult PLUGIN_API ParamValueQueue::addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) {
-    // start from the end because we likely add values in "chronological" order
-    for (auto it = values_.end(); it != values_.begin(); --it){
+    // iterate in reverse because we likely add values in "chronological" order
+    for (auto it = values_.end(); it-- != values_.begin(); ){
         if (sampleOffset > it->sampleOffset){
-            break;
-        } else if (sampleOffset == it->sampleOffset){
-            index = it - values_.begin();
+            // higher sample offset -> insert *after* this point (might actually append)
+            if (values_.size() < maxNumPoints){
+                // insert
+                it = values_.emplace(it + 1, value, sampleOffset);
+                index = it - values_.begin();
+            } else {
+                // replace
+                values_.back() = Value(value, sampleOffset);
+                index = values_.size() - 1;
+            }
             return kResultOk;
-        } else {
-            values_.emplace(it, value, sampleOffset);
+        } else if (sampleOffset == it->sampleOffset){
+            // equal sample offset -> replace point
+            it->value = value;
+            index = it - values_.begin();
             return kResultOk;
         }
     }
-    index = values_.size();
-    values_.emplace_back(value, sampleOffset);
+    // empty queue or smallest sample offset:
+    if (values_.size() < maxNumPoints){
+        // prepend point
+        values_.emplace(values_.begin(), value, sampleOffset);
+    } else {
+        // replace first point
+        values_.front() = Value(value, sampleOffset);
+    }
+    index = 0;
     return kResultOk;
 }
 
@@ -256,7 +272,7 @@ Vst::IParamValueQueue* PLUGIN_API ParameterChanges::addParameterData(const Vst::
 /*///////////////////// EventList /////////////////////*/
 
 EventList::EventList(){
-    events_.reserve(defaultNumEvents);
+    events_.reserve(maxNumEvents);
 }
 
 EventList::~EventList() {}
@@ -275,11 +291,14 @@ tresult PLUGIN_API EventList::getEvent(int32 index, Vst::Event& e) {
 }
 
 tresult PLUGIN_API EventList::addEvent (Vst::Event& e) {
+    // let's grow the queue beyond the limit...
+    // LATER use a realtime allocator
     events_.push_back(e);
     return kResultOk;
 }
 
 void EventList::addSysexEvent(const SysexEvent& event){
+    // this will allocate memory anyway...
     sysexEvents_.emplace_back(event.data, event.size);
     auto& last = sysexEvents_.back();
     Vst::Event e;

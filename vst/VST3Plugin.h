@@ -89,7 +89,7 @@ class VST3Factory : public IFactory {
 //----------------------------------------------------------------------
 class ParamValueQueue: public Vst::IParamValueQueue {
  public:
-    static const int defaultNumPoints = 64;
+    static const int maxNumPoints = 64;
 
     ParamValueQueue();
 
@@ -137,7 +137,7 @@ class ParameterChanges: public Vst::IParameterChanges {
 
 class EventList : public Vst::IEventList {
  public:
-    static const int defaultNumEvents = 64;
+    static const int maxNumEvents = 64;
 
     EventList();
     ~EventList();
