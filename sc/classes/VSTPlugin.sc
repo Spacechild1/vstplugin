@@ -489,6 +489,11 @@ VSTPlugin : MultiOutUGen {
 		(numInputs > 0).if {
 			inputArray = args[(offset+1)..(offset+numInputs)];
 			(inputArray.size != numInputs).if { Error("bug: input array size mismatch!").throw };
+			inputArray.do { arg item, i;
+				(item.rate != \audio).if {
+					Error("input % (%) is not audio rate".format(i, item)).throw;
+				};
+			};
 		};
 		offset = offset + 1 + numInputs;
 		// parameter controls
@@ -503,6 +508,11 @@ VSTPlugin : MultiOutUGen {
 		(numAuxInputs > 0).if {
 			auxInputArray = args[(offset+1)..(offset+numAuxInputs)];
 			(auxInputArray.size != numAuxInputs).if { Error("bug: aux input array size mismatch!").throw };
+			auxInputArray.do { arg item, i;
+				(item.rate != \audio).if {
+					Error("aux input % (%) is not audio rate".format(i, item)).throw;
+				};
+			};
 		};
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
