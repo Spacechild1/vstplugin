@@ -628,7 +628,14 @@ void VSTPlugin::update() {
     int n = delegate().plugin()->getNumParameters();
     // parameter states
     {
-        auto result = (float*)RTRealloc(mWorld, paramState_, n * sizeof(float));
+        float* result = nullptr;
+        if (n > 0) {
+            // Scsynth's RTRealloc doesn't return nullptr for size == 0
+            result = (float*)RTRealloc(mWorld, paramState_, n * sizeof(float));
+            if (!result) {
+                LOG_ERROR("RTRealloc failed!");
+            }
+        }
         if (result) {
             for (int i = 0; i < n; ++i) {
                 result[i] = std::numeric_limits<float>::quiet_NaN();
@@ -638,12 +645,17 @@ void VSTPlugin::update() {
         else {
             RTFree(mWorld, paramState_);
             paramState_ = nullptr;
-            LOG_ERROR("RTRealloc failed!");
         }
     }
     // parameter mapping
     {
-        auto result = (Mapping**)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping *));
+        Mapping** result = nullptr;
+        if (n > 0) {
+            result = (Mapping * *)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping*));
+            if (!result) {
+                LOG_ERROR("RTRealloc failed!");
+            }
+        }
         if (result) {
             for (int i = 0; i < n; ++i) {
                 result[i] = nullptr;
@@ -653,7 +665,6 @@ void VSTPlugin::update() {
         else {
             RTFree(mWorld, paramMapping_);
             paramMapping_ = nullptr;
-            LOG_ERROR("RTRealloc failed!");
         }
     }
 }
@@ -1204,9 +1215,6 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
                 data->display[0] = 0;
                 doCmd(data, cmdSetParam, cmdSetParamDone);
             }
-            else {
-                LOG_ERROR("RTAlloc failed!");
-            }
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
@@ -1224,9 +1232,6 @@ void VSTPluginDelegate::setParam(int32 index, const char *display) {
                 data->value = 0;
                 memcpy(data->display, display, len);
                 doCmd(data, cmdSetParam, cmdSetParamDone);
-            }
-            else {
-                LOG_ERROR("RTAlloc failed!");
             }
         }
         else {
@@ -1375,9 +1380,6 @@ void VSTPluginDelegate::setProgram(int32 index) {
             if (data) {
                 data->value = index;
                 doCmd(data, cmdSetProgram, cmdSetProgramDone);
-            }
-            else {
-                LOG_ERROR("RTAlloc failed!");
             }
         }
         else {
@@ -1614,9 +1616,6 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
                 cmdData->size = size;
                 memcpy(cmdData->data, data, size);
                 doCmd(cmdData, cmdVendorSpecific, cmdVendorSpecificDone);
-            }
-            else {
-                LOG_ERROR("RTAlloc failed!");
             }
         }
         else {
