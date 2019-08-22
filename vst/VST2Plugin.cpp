@@ -354,15 +354,15 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
 }
 
 template<typename T>
-void doBypassProcessing(const T** input, int nin, T** output, int nout, int numSamples){
-    for (int i = 0; i < nout; ++i){
+void doBypassProcessing(IPlugin::ProcessData<T>& data, T** output, int numOut){
+    for (int i = 0; i < numOut; ++i){
         auto out = output[i];
-        if (i < nin){
+        if (i < data.numInputs){
             // copy input to output
-            auto in = input[i];
-            std::copy(in, in + numSamples, out);
+            auto in = data.input[i];
+            std::copy(in, in + data.numSamples, out);
         } else {
-            std::fill(out, out + numSamples, 0); // zero
+            std::fill(out, out + data.numSamples, 0); // zero
         }
     }
 }
@@ -377,7 +377,7 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
     auto bypassState = bypass_; // do we have to care about bypass?
     bool bypassRamp = (bypass_ != lastBypass_);
     int rampDir = 0;
-    float rampAdvance = 0;
+    T rampAdvance = 0;
     if (bypassRamp){
         if ((bypass_ == Bypass::Hard || lastBypass_ == Bypass::Hard)){
             // hard bypass: just crossfade to inprocessed input - but keep processing
@@ -417,7 +417,7 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
                     // this works because VST plugins actually work in "replacing" mode.
                     auto src = data.input[i];
                     auto dst = input[i] = data.output[i];
-                    float mix = rampDir;
+                    T mix = rampDir;
                     for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
                         dst[j] = src[j] * mix;
                     }
@@ -465,7 +465,7 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
         if (bypassState == Bypass::Soft){
             // soft bypass
             for (int i = 0; i < nout; ++i){
-                float mix = rampDir;
+                T mix = rampDir;
                 auto out = output[i];
                 if (i < data.numInputs){
                     // fade in/out unprocessed input
@@ -488,7 +488,7 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
         } else {
             // hard bypass
             for (int i = 0; i < nout; ++i){
-               float mix = rampDir;
+               T mix = rampDir;
                auto out = output[i];
                if (i < data.numInputs){
                    // cross fade between plugin output and unprocessed input
@@ -514,10 +514,10 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
         processRoutine(plugin_, input, output, data.numSamples);
         // check for silence (RMS < ca. -80dB)
         auto isSilent = [](auto buf, auto n){
-            const float threshold = 0.0001;
-            float sum = 0;
+            const T threshold = 0.0001;
+            T sum = 0;
             for (int i = 0; i < n; ++i){
-                float f = buf[i];
+                T f = buf[i];
                 sum += f * f;
             }
             return (sum / n) < (threshold * threshold); // sqrt(sum/n) < threshold
@@ -546,11 +546,11 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
             }
         } else {
             // overwrite output
-            doBypassProcessing(data.input, data.numInputs, output, nout, data.numSamples);
+            doBypassProcessing(data, output, nout);
         }
     } else {
         // simple bypass
-        doBypassProcessing(data.input, data.numInputs, output, nout, data.numSamples);
+        doBypassProcessing(data, output, nout);
     }
     // clear remaining main outputs
     int remOut = data.numOutputs - nout;
