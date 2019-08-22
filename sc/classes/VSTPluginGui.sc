@@ -173,8 +173,8 @@ VSTPluginGui : ObjectGui {
 			// build program menu
 			programMenu = PopUpMenu.new;
 			programMenu.action = { model.program_(programMenu.value) };
-			programMenu.items_(model.programNames.collect { arg item, index;
-				"%: %".format(index, item.name);
+			programMenu.items_(model.programNames.collect { arg name, index;
+				"%: %".format(index, name);
 			});
 			programMenu.value_(model.program);
 			grid.add(HLayout.new(programMenu, open), row, col);
