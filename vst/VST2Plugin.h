@@ -178,7 +178,7 @@ class VST2Plugin final : public IPlugin {
         // processing
     VstTimeInfo timeInfo_;
     Bypass bypass_ = Bypass::Off;
-    short bypassRamp_ = 0; // 1: to bypass, -1: from bypass
+    Bypass lastBypass_ = Bypass::Off;
     bool haveBypass_ = false;
     bool bypassSilent_ = false; // check if we can stop processing
         // buffers for incoming MIDI and SysEx events
