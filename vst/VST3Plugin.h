@@ -292,7 +292,8 @@ class VST3Plugin final :
     Vst::ProcessContext context_;
     int32 automationState_ = 0;
     Bypass bypass_ = Bypass::Off;
-    int bypassRamp_ = 0; // 1: to bypass, -1: from bypass
+    Bypass lastBypass_ = Bypass::Off;
+    bool bypassSilent_ = false; // check if we can stop processing
     // midi
     EventList inputEvents_;
     EventList outputEvents_;

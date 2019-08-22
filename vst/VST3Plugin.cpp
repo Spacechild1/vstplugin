@@ -654,36 +654,61 @@ void VST3Plugin::process(ProcessData<double>& data){
     doProcess(data);
 }
 
-void setAudioBusBuffers(Vst::AudioBusBuffers& bus, float ** vec, int numChannels,
-                        float** data, int n, float* buf){
-    bus.silenceFlags = 0;
-    bus.numChannels = numChannels;
+void setAudioBusBuffers(Vst::AudioBusBuffers& bus, float ** vec){
     bus.channelBuffers32 = vec;
-    for (int i = 0; i < numChannels; ++i){
-        if (i < n){
-            bus.channelBuffers32[i] = data[i];
-        } else {
-            bus.channelBuffers32[i] = buf; // point to dummy buffer
-        }
-    }
 }
 
-void setAudioBusBuffers(Vst::AudioBusBuffers& bus, double **vec, int numChannels,
-                        double** data, int n, double* buf){
-    bus.silenceFlags = 0;
-    bus.numChannels = numChannels;
+void setAudioBusBuffers(Vst::AudioBusBuffers& bus, double ** vec){
     bus.channelBuffers64 = vec;
-    for (int i = 0; i < numChannels; ++i){
-        if (i < n){
-            bus.channelBuffers64[i] = data[i];
+}
+
+template<typename T>
+void doBypassProcessing(IPlugin::ProcessData<T>& data, T** output, int numOut, T** auxoutput, int numAuxOut){
+    for (int i = 0; i < numOut; ++i){
+        auto out = output[i];
+        if (i < data.numInputs){
+            // copy input to output
+            auto in = data.input[i];
+            std::copy(in, in + data.numSamples, out);
         } else {
-            bus.channelBuffers64[i] = buf; // point to dummy buffer
+            std::fill(out, out + data.numSamples, 0); // zero
+        }
+    }
+    for (int i = 0; i < numAuxOut; ++i){
+        auto out = auxoutput[i];
+        if (i < data.numAuxInputs){
+            // copy input to output
+            auto in = data.auxInput[i];
+            std::copy(in, in + data.numSamples, out);
+        } else {
+            std::fill(out, out + data.numSamples, 0); // zero
         }
     }
 }
 
 template<typename T>
 void VST3Plugin::doProcess(ProcessData<T>& inData){
+    auto callProcess = [this](auto& data){
+        // process
+    #if HAVE_NRT_THREAD
+        // We don't want to put the audio thread to sleep.
+        // this means we might loose a buffer if we happen
+        // to manipulate the plugin from the NRT thread at the same time.
+        // Only few operations require the mutex:
+        // 1) preset loading/saving, 2) resetting, 3) message sending
+        // The user can mute the plugin while doing such tasks
+        // and the rest of his program will not suffer.
+        if (mutex_.try_lock()){
+    #endif
+            processor_->process(data);
+    #if HAVE_NRT_THREAD
+            mutex_.unlock();
+        } else {
+            LOG_DEBUG("VST3Plugin: skip processing");
+        }
+    #endif
+    };
+
     // process data
     Vst::ProcessData data;
     Vst::AudioBusBuffers input[2];
@@ -701,6 +726,32 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     data.inputParameterChanges = &inputParamChanges_;
     // data.outputParameterChanges = &outputParamChanges_;
 
+    auto bypassState = bypass_; // do we have to care about bypass?
+    bool bypassRamp = (bypass_ != lastBypass_);
+    int rampDir = 0;
+    T rampAdvance = 0;
+    if (bypassRamp){
+        if ((bypass_ == Bypass::Hard || lastBypass_ == Bypass::Hard)){
+            // hard bypass: just crossfade to inprocessed input - but keep processing
+            // till the *plugin output* is silent (this will clear delay lines, for example).
+            bypassState = Bypass::Hard;
+        } else if (bypass_ == Bypass::Soft || lastBypass_ == Bypass::Soft){
+            // soft bypass: we pass an empty input to the plugin until the output is silent
+            // and mix it with the original input. This means that a reverb tail will decay
+            // instead of being cut off!
+            bypassState = Bypass::Soft;
+        }
+        rampDir = bypass_ != Bypass::Off;
+        rampAdvance = (1.f / data.numSamples) * (1 - 2 * rampDir);
+    }
+    if ((bypassState == Bypass::Hard) && hasBypass()){
+        // if we request a hard bypass from a plugin which has its own bypass method,
+        // we use that instead (by just calling the processing method)
+        bypassState = Bypass::Off;
+        bypassRamp = false;
+    }
+    lastBypass_ = bypass_;
+
     // create dummy buffers
     auto inbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
     std::fill(inbuf, inbuf + data.numSamples, 0); // zero!
@@ -708,37 +759,189 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
 
     // LATER try to get actual channel count from bus arrangement
     // We only need this so we can zero output channels which are not touched by the plugin
+    auto setAudioInputBuffers = [&](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
+                            auto** inputs, int numIn, auto** outputs, int numOut, auto* buf){
+        bus.silenceFlags = 0;
+        bus.numChannels = numChannels;
+        for (int i = 0; i < numChannels; ++i){
+            if (i < numIn){
+                switch (bypassState){
+                case Bypass::Soft:
+                    // fade input to produce a smooth tail with no click
+                    if (bypassRamp && i < numOut){
+                        // write fade in/fade out to *output buffer* and use it as the plugin input.
+                        // this works because VST plugins actually work in "replacing" mode.
+                        auto src = inputs[i];
+                        auto dst = vec[i] = outputs[i];
+                        T mix = rampDir;
+                        for (int j = 0; j < inData.numSamples; ++j, mix += rampAdvance){
+                            dst[j] = src[j] * mix;
+                        }
+                    } else {
+                        vec[i] = buf; // silence
+                    }
+                    break;
+                case Bypass::Hard:
+                    if (bypassRamp){
+                        // point to input (for creating the ramp)
+                        vec[i] = inputs[i];
+                    } else {
+                        vec[i] = buf; // silence (for flushing the effect)
+                    }
+                    break;
+                default:
+                    // point to input
+                    vec[i] = inputs[i];
+                    break;
+                }
+            } else {
+                vec[i] = buf; // point to dummy buffer
+            }
+        }
+        setAudioBusBuffers(bus, vec);
+    };
+    auto setAudioOutputBuffers = [](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
+                            auto** outputs, int numOut, auto* buf){
+        bus.silenceFlags = 0;
+        bus.numChannels = numChannels;
+        for (int i = 0; i < numChannels; ++i){
+            if (i < numOut){
+                vec[i] = outputs[i];
+            } else {
+                vec[i] = buf; // point to dummy buffer
+            }
+        }
+        setAudioBusBuffers(bus, vec);
+    };
     // input:
     auto invec = (T **)alloca(sizeof(T*) * getNumInputs());
-    setAudioBusBuffers(input[Vst::kMain], invec, getNumInputs(), (T **)inData.input, inData.numInputs, inbuf);
+    setAudioInputBuffers(input[Vst::kMain], invec, getNumInputs(),
+            (T **)inData.input, inData.numInputs, inData.output, inData.numOutputs, inbuf);
     // aux input:
     auto auxinvec = (T **)alloca(sizeof(T*) * getNumAuxInputs());
-    setAudioBusBuffers(input[Vst::kAux], auxinvec, getNumAuxInputs(), (T **)inData.auxInput, inData.numAuxInputs, inbuf);
+    setAudioInputBuffers(input[Vst::kAux], auxinvec, getNumAuxInputs(),
+            (T **)inData.auxInput, inData.numAuxInputs, inData.auxOutput, inData.numAuxOutputs, inbuf);
     // output:
     auto outvec = (T **)alloca(sizeof(T*) * getNumOutputs());
-    setAudioBusBuffers(output[Vst::kMain], outvec, getNumOutputs(), (T **)inData.output, inData.numOutputs, outbuf);
+    setAudioOutputBuffers(output[Vst::kMain], outvec, getNumOutputs(), (T **)inData.output, inData.numOutputs, outbuf);
     // aux output:
     auto auxoutvec = (T **)alloca(sizeof(T*) * getNumAuxOutputs());
-    setAudioBusBuffers(output[Vst::kAux], auxoutvec, getNumAuxOutputs(), (T **)inData.auxOutput, inData.numAuxOutputs, outbuf);
+    setAudioOutputBuffers(output[Vst::kAux], auxoutvec, getNumAuxOutputs(), (T **)inData.auxOutput, inData.numAuxOutputs, outbuf);
 
     // process
-#if HAVE_NRT_THREAD
-    // We don't want to put the audio thread to sleep.
-    // this means we might loose a buffer if we happen
-    // to manipulate the plugin from the NRT thread at the same time.
-    // Only few operations require the mutex:
-    // 1) preset loading/saving, 2) resetting, 3) message sending
-    // The user can mute the plugin while doing such tasks
-    // and the rest of his program will not suffer.
-    if (mutex_.try_lock()){
-#endif
-        processor_->process(data);
-#if HAVE_NRT_THREAD
-        mutex_.unlock();
+    if (bypassState == Bypass::Off){
+        // ordinary processing
+        callProcess(data);
+    } else if (bypassRamp) {
+        // process <-> bypass transition
+        callProcess(data);
+
+        if (bypassState == Bypass::Soft){
+            // soft bypass
+            auto softRamp = [&](auto inputs, auto numIn, auto outputs, auto numOut){
+                for (int i = 0; i < numOut; ++i){
+                    T mix = rampDir;
+                    auto out = outputs[i];
+                    if (i < numIn){
+                        // fade in/out unprocessed input
+                        auto in = inputs[i];
+                        for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
+                            out[j] += in[j] * (1.f - mix);
+                        }
+                    } else {
+                        // just fade in/out
+                        for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
+                            out[j] *= mix;
+                        }
+                    }
+                }
+            };
+            softRamp(inData.input, inData.numInputs, outvec, getNumOutputs());
+            softRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, getNumAuxOutputs());
+            if (rampDir){
+                LOG_DEBUG("process -> soft bypass");
+            } else {
+                LOG_DEBUG("soft bypass -> process");
+            }
+        } else {
+            // hard bypass
+            auto hardRamp = [&](auto inputs, auto numIn, auto outputs, auto numOut){
+                for (int i = 0; i < numOut; ++i){
+                   T mix = rampDir;
+                   auto out = outputs[i];
+                   if (i < numIn){
+                       // cross fade between plugin output and unprocessed input
+                       auto in = inputs[i];
+                       for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
+                           out[j] = out[j] * mix + in[j] * (1.f - mix);
+                       }
+                   } else {
+                       // just fade out
+                       for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
+                           out[j] *= mix;
+                       }
+                   }
+                }
+            };
+            hardRamp(inData.input, inData.numInputs, outvec, getNumOutputs());
+            hardRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, getNumAuxOutputs());
+            if (rampDir){
+                LOG_DEBUG("process -> hard bypass");
+            } else {
+                LOG_DEBUG("hard bypass -> process");
+            }
+        }
+    } else if (!bypassSilent_){
+        // continue to process with empty input till the output is silent
+        callProcess(data);
+        // check for silence (RMS < ca. -80dB)
+        auto isChannelSilent = [](auto buf, auto n){
+            const T threshold = 0.0001;
+            T sum = 0;
+            for (int i = 0; i < n; ++i){
+                T f = buf[i];
+                sum += f * f;
+            }
+            return (sum / n) < (threshold * threshold); // sqrt(sum/n) < threshold
+        };
+        bool silent = true;
+        auto checkBusSilent = [&](auto bus, auto count, auto n){
+            for (int i = 0; i < count; ++i){
+                if (!isChannelSilent(bus[i], n)){
+                    silent = false;
+                    break;
+                }
+            }
+        };
+        checkBusSilent(outvec, getNumOutputs(), data.numSamples);
+        checkBusSilent(auxoutvec, getNumAuxOutputs(), data.numSamples);
+        if (silent){
+            LOG_DEBUG("plugin output became silent!");
+        }
+        bypassSilent_ = silent;
+        if (bypassState == Bypass::Soft){
+            auto mix = [](auto** inputs, auto numIn, auto** outputs, auto numOut, auto n){
+                // mix output with unprocessed input
+                for (int i = 0; i < numOut; ++i){
+                    auto out = outputs[i];
+                    if (i < numIn){
+                        auto in = inputs[i];
+                        for (int j = 0; j < n; ++j){
+                            out[j] += in[j];
+                        }
+                    }
+                }
+            };
+            mix(inData.input, inData.numInputs, outvec, getNumOutputs(), inData.numSamples);
+            mix(inData.auxInput, inData.numAuxInputs, auxoutvec, getNumAuxOutputs(), inData.numSamples);
+        } else {
+            // overwrite output
+            doBypassProcessing(inData, outvec, getNumOutputs(), auxoutvec, getNumAuxOutputs());
+        }
     } else {
-        LOG_DEBUG("VST3Plugin: skip processing");
+        // simple bypass
+        doBypassProcessing(inData, outvec, getNumOutputs(), auxoutvec, getNumAuxOutputs());
     }
-#endif
     // clear remaining outputs
     auto clearOutputs = [](auto _outputs, int numOutputs, int numChannels, int n){
         int rem = numOutputs - numChannels;
@@ -762,11 +965,11 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     context_.continousTimeSamples += data.numSamples;
     context_.projectTimeSamples += data.numSamples;
     // advance project time in bars
-    float sec = data.numSamples / context_.sampleRate;
-    float numBeats = sec * context_.tempo / 60.f;
+    double sec = data.numSamples / context_.sampleRate;
+    double numBeats = sec * context_.tempo / 60.0;
     context_.projectTimeMusic += numBeats;
     // bar start: simply round project time (in bars) down to bar length
-    float barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
+    double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
     context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
 }
 
@@ -902,18 +1105,27 @@ bool VST3Plugin::hasBypass() const {
 }
 
 void VST3Plugin::setBypass(Bypass state){
-    auto id = info().bypass;
-    if (id != PluginInfo::NoParamID){
-        if (state != bypass_){
-            if (state == Bypass::Off){
-                doSetParameter(id, 0);
-            } else if (state == Bypass::Hard){
-                doSetParameter(id, 1);
+    auto bypassID = info().bypass;
+    bool haveBypass = bypassID != PluginInfo::NoParamID;
+    if (state != bypass_){
+        if (state == Bypass::Off){
+            if (haveBypass && (bypass_ == Bypass::Hard)){
+                doSetParameter(bypassID, 0);
             }
-            // soft bypass is handled differently
+            // soft bypass is handled by us
+        } else if (bypass_ == Bypass::Off){
+            if (haveBypass && (state == Bypass::Hard)){
+                doSetParameter(bypassID, 1);
+            }
+            // soft bypass is handled by us
+        } else {
+            // ignore attempts at Bypass::Hard <-> Bypass::Soft!
+            return;
         }
+        lastBypass_ = bypass_;
+        bypass_ = state;
+        bypassSilent_ = false;
     }
-    bypass_ = state;
 }
 
 #define makeChannels(n) ((1 << (n)) - 1)
