@@ -732,6 +732,7 @@ void VSTPlugin::next(int inNumSamples) {
         }
         if (bypass != bypass_) {
             plugin->setBypass(bypass);
+            bypass_ = bypass;
         }
 
         // parameter automation
