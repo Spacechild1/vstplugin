@@ -12,7 +12,8 @@ install: all
 	$(INSTALL_DIR) -v "$(installpath)"
 	$(INSTALL) $(stripflags) -p -m 755 '$(PROBE)' "$(installpath)"
 
-install-strip: stripflags := --strip-program=$(STRIP) -s
+# the install program on our macOS build machine doesn't support the "--strip-program" option...
+install-strip: stripflags := -s
 install-strip: install
 
 %.o: %.cpp $(PROBE_DEPS)
