@@ -80,9 +80,9 @@ variables:
     - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
     - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
-    - make -C pd install-strip DESTDIR=$(pwd) pkglibdir=/
+    - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
-    - make -C sc/build install/strip VERBOSE=1
+    - make -C sc/build install VERBOSE=1
 
 .build:w32: &build_w32
   stage: build
