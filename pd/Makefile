@@ -58,7 +58,6 @@ PROBE_DEPS =
 PROBE_LDLIBS =
 
 cflags = \
-	-g \
 	-std=c++14 \
 	-I../vst \
 	$(VST_CFLAGS) \
