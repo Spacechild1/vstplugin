@@ -332,6 +332,15 @@ VSTPlugin : MultiOutUGen {
 		var info = IdentityDictionary.new(parent: parentInfo, know: true);
 		var parameters, indexMap, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
+		var hex2int = #{ arg str;
+			str.toUpper.ascii.reverse.sum { arg c, i;
+				(c >= 65).if {
+					(c - 55) << (i * 4);
+				} {
+					(c - 48) << (i * 4);
+				}
+			}
+		};
 		// default values:
 		info.numAuxInputs = 0;
 		info.numAuxOutputs = 0;
@@ -407,7 +416,7 @@ VSTPlugin : MultiOutUGen {
 						\auxoutputs, { info.numAuxOutputs = value.asInteger },
 						\flags,
 						{
-							f = value.asHexIfPossible;
+							f = hex2int.(value);
 							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
 							info.putPairs([
 								hasEditor: flags[0],
