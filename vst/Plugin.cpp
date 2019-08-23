@@ -1067,7 +1067,7 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
-        file << bashString(param.name) << "," << param.label << "," << param.id << "\n";
+        file << bashString(param.name) << "," << param.label << "," << toHex(param.id) << "\n";
 	}
     // programs
     file << "[programs]\n";
@@ -1191,7 +1191,7 @@ void PluginInfo::deserialize(std::istream& file) {
                     param.label = ltrim(args[1]);
                 }
                 if (args.size() >= 3){
-                    param.id = std::stol(args[2]);
+                    param.id = std::stol(args[2], nullptr, 16); // hex
                 }
                 parameters.push_back(std::move(param));
             }
@@ -1238,7 +1238,6 @@ void PluginInfo::deserialize(std::istream& file) {
             try {
                 if (key == "id"){
                     if (value.size() == 8){
-                        // LATER deal with endianess
                         type_ == PluginType::VST2;
                         sscanf(&value[0], "%08X", &id_.id);
                     } else if (value.size() == 32){
@@ -1270,7 +1269,7 @@ void PluginInfo::deserialize(std::istream& file) {
                 MATCH("pgmchange", programChange);
                 MATCH("bypass", bypass);
             #endif
-                MATCH("flags", flags);
+                MATCH("flags", flags); // hex
                 else {
                     LOG_WARNING("unknown key: " << key);
                     // throw Error("unknown key: " + key);
