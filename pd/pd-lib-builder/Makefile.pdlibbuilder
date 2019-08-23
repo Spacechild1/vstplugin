@@ -1099,7 +1099,9 @@ install-datadirs: all
 STRIP ?= strip
 
 # install everything while stripping symbols of executables
-install-strip: stripflags := --strip-program=$(STRIP) -s
+# the install program on our macOS build machine doesn't support the "--strip-program" option...
+# install-strip: stripflags := --strip-program=$(STRIP) -s
+install-strip: stripflags := -s
 install-strip: install
 
 
