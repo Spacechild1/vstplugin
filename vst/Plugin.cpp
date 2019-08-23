@@ -817,7 +817,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
 }
 
 // for testing we don't want to load hundreds of sub plugins
-#define PLUGIN_LIMIT 50
+// #define PLUGIN_LIMIT 50
 // probe subplugins asynchronously with futures or worker threads
 #define PROBE_FUTURES 8 // number of futures to wait for
 #define PROBE_THREADS 8 // number of worker threads (0: use futures instead of threads)
