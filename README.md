@@ -27,18 +27,21 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
-On Windows and Linux, the native GUI window runs in its own thread, which means
+* On Windows and Linux, the native GUI window runs in its own thread, which means
 that GUI updates shouldn't have a noticable effect on audio performance.
-
 On MacOS, however, because of technical limitations the GUI must run on
 the main thread[^1] - which happens to be the audio thread in Pd...
 Until we've found a better solution, macOS users are adviced to keep native GUI
 windows closed in low-latency realtime situations to avoid audio hick-ups.
 
-On SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
+* On SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
 to open a plugin with "editor: true".
 
-For VST3 plugins, the GUI is not available (yet).
+* For VST3 plugins, the GUI is not available (yet).
+
+* If you compile a 32bit version of 'VSTPlugin' with MinGW and the host has also been compiled with MinGW, but was linked statically against libstdc++ and libgcc, 
+you have to run cmake with '-DSTATIC_LIBS=ON', otherwise the exception handling might be broken (due to a bug in MinGW's DW2 exception handling).
+If you compile 'VSTPlugin' with `-DSTATIC_LIBS=OFF` (default), make sure that the plugin will find the DLLs (e.g. by putting them in the same folder).
 
 [^1]: to make the GUI work for Pd on macOS we have to 'transform' Pd into a Cocoa app
 and install an event polling routine, which is a bit adventurous to say the least.
@@ -105,6 +108,9 @@ On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio
 	You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build.
 	`CMAKE_INSTALL_PREFIX` would typically be your SuperCollider Extensions folder.
 	`SC_PATH` must point to the folder containing the SuperCollider source code (with the subfolders common/ and include/).
+	
+	Set 'SUPERNOVA' to 'ON' if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
+	However, this might be fixed in the next minor SC release.
 
 5) 	*macOS/Linux:* type `make`
 
