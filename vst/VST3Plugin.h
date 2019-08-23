@@ -19,14 +19,32 @@
 #include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 
-#include "public.sdk/source/vst/vstpresetfile.h"
-#include "public.sdk/source/vst/hosting/stringconvert.h"
-
 #include <unordered_map>
 #include <atomic>
 #if HAVE_NRT_THREAD
 #include <mutex>
 #endif
+
+namespace Steinberg {
+namespace Vst {
+// copied from public.sdk/vst/vstpresetfile.h
+using ChunkID = char[4];
+
+enum ChunkType
+{
+    kHeader,
+    kComponentState,
+    kControllerState,
+    kProgramData,
+    kMetaInfo,
+    kChunkList,
+    kNumPresetChunks
+};
+
+const ChunkID& getChunkID (ChunkType type);
+
+} // Vst
+} // Steinberg
 
 using namespace Steinberg;
 

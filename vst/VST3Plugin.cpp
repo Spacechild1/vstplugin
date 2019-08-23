@@ -3,6 +3,8 @@
 #include <cstring>
 #include <algorithm>
 #include <set>
+#include <codecvt>
+#include <locale>
 
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
@@ -30,9 +32,6 @@ DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (Vst::IUnitData)
 DEF_CLASS_IID (Vst::IProgramListData)
 
-
-using namespace VST3;
-
 namespace Steinberg {
 namespace Vst {
 
@@ -59,13 +58,36 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
     return commonChunks[type];
 }
 
-//------------------------------------------------------------------------
-
 } // Vst
 } // Steinberg
 
 
 namespace vst {
+
+using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>;
+
+static StringCoverter& stringConverter(){
+    thread_local StringCoverter conv;
+    return conv;
+}
+
+std::string convertString (const Vst::String128 str){
+    return stringConverter().to_bytes(reinterpret_cast<const wchar_t*>(str));
+}
+
+bool convertString (const std::string& src, Steinberg::Vst::String128 dst)
+{
+    if (src.size() < 128){
+        auto wstr = stringConverter().from_bytes(src);
+        for (int i = 0; i < (int)wstr.size(); ++i){
+            dst[i] = wstr[i];
+        }
+        dst[src.size()] = 0;
+        return true;
+    } else {
+        return false;
+    }
+}
 
 /*/////////////////////// VST3Factory /////////////////////////*/
 
@@ -499,8 +521,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 if (params.count(pi.id)){
                     continue;
                 }
-                param.name = StringConvert::convert(pi.title);
-                param.label = StringConvert::convert(pi.units);
+                param.name = convertString(pi.title);
+                param.label = convertString(pi.units);
                 param.id = pi.id;
                 if (pi.flags & Vst::ParameterInfo::kIsProgramChange){
                     info->programChange = pi.id;
@@ -534,7 +556,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     for (int i = 0; i < pli.programCount; ++i){
                         Vst::String128 name;
                         if (ui->getProgramName(pli.id, i, name) == kResultTrue){
-                            info->programs.push_back(StringConvert::convert(name));
+                            info->programs.push_back(convertString(name));
                         } else {
                             LOG_ERROR("couldn't get program name!");
                             info->programs.push_back("");
@@ -1358,7 +1380,7 @@ bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffse
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
-    if (StringConvert::convert(str, string)){
+    if (convertString(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
             doSetParameter(id, value, sampleOffset);
             paramCache_[index] = value;
@@ -1390,7 +1412,7 @@ std::string VST3Plugin::getParameterString(int index) const {
     auto id = info().getParamID(index);
     auto value = paramCache_[index];
     if (controller_->getParamStringByValue(id, value, display) == kResultOk){
-        return StringConvert::convert(display);
+        return convertString(display);
     }
     return std::string{};
 }
@@ -1652,7 +1674,7 @@ void VST3Plugin::addString(const char* id, const char *value) {
 void VST3Plugin::addString(const char* id, const std::string& value) {
     if (msg_){
         Vst::String128 buf;
-        StringConvert::convert(value, buf);
+        convertString(value, buf);
         msg_->getAttributes()->setString(id, buf);
     }
 }
@@ -1995,9 +2017,9 @@ HostApplication::~HostApplication() {}
 tresult PLUGIN_API HostApplication::getName (Vst::String128 name){
     LOG_DEBUG("host: getName");
 #ifdef PD
-    StringConvert::convert("vstplugin~", name);
+    convertString("vstplugin~", name);
 #else
-    StringConvert::convert("VSTPlugin", name);
+    convertString("VSTPlugin", name);
 #endif
     return kResultTrue;
 }
@@ -2148,7 +2170,7 @@ void HostAttributeList::print(){
             LOG_VERBOSE(id << ": " << attr.v.f);
             break;
         case HostAttribute::kString:
-            LOG_VERBOSE(id << ": " << StringConvert::convert(attr.v.s));
+            LOG_VERBOSE(id << ": " << convertString(attr.v.s));
             break;
         case HostAttribute::kBinary:
             LOG_VERBOSE(id << ": [binary]");

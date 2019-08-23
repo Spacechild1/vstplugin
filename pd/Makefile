@@ -41,8 +41,7 @@ endif
 
 # VST3 (default: on)
 ifneq ($(VST3), 0)
-VST_SRC += ../vst/VST3Plugin.cpp \
-    $(VST3DIR)/public.sdk/source/vst/hosting/stringconvert.cpp
+VST_SRC += ../vst/VST3Plugin.cpp
 VST_CFLAGS += \
         -DUSE_VST3=1 \
         -I"$(VST3DIR)" \
