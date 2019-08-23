@@ -39,8 +39,8 @@ VST_CFLAGS += -I"$(VST2DIR)/pluginterfaces/vst2.x/"
 endif
 endif
 
-# VST3 (default: off)
-ifeq ($(VST3), 1)
+# VST3 (default: on)
+ifneq ($(VST3), 0)
 VST_SRC += ../vst/VST3Plugin.cpp \
     $(VST3DIR)/public.sdk/source/vst/hosting/stringconvert.cpp
 VST_CFLAGS += \

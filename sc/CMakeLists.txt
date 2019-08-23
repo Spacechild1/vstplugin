@@ -54,7 +54,7 @@ if (VST2)
 endif()
 
 # VST3 SDK
-option(VST3 "Enable VST3 plug-ins" OFF)
+option(VST3 "Enable VST3 plug-ins" ON)
 if (VST3)
     set(VST3DIR "${VST}/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
     add_definitions(-DUSE_VST3=1)

@@ -48,15 +48,15 @@ variables:
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends make cmake puredata-dev puredata
     - export PD=/usr/bin/pd
-    - .git-ci/get_vst.sh "${VST2DIR}"
+    - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3=ON -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
-    - make -C pd VST2DIR="${VST2DIR}" VST3=1 VST3DIR="${VST3DIR}"
+    - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
     - make -C sc/build install VERBOSE=1
@@ -71,15 +71,15 @@ variables:
     - tar xvf Pd.tgz -C /Applications/
     - rm -f Pd.tgz
     - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
-    - .git-ci/get_vst.sh "${VST2DIR}"
+    - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3=ON -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
-    - make -C pd VST2DIR="${VST2DIR}" VST3=1 VST3DIR="${VST3DIR}"
+    - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
     - make -C sc/build install VERBOSE=1
@@ -97,15 +97,15 @@ variables:
     - unzip -q Pd.zip -d "${PROGRAMFILESX86}/pd"
     - mv -v "${PROGRAMFILESX86}/pd"/*/* "${PROGRAMFILESX86}/pd"
     - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
-    - .git-ci/get_vst.sh "${VST2DIR}"
+    - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3=ON -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
-    - make -C pd VST2DIR="${VST2DIR}" VST3=1 VST3DIR="${VST3DIR}"
+    - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
     - make -C pd install DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
     - make -C sc/build install VERBOSE=1
@@ -123,15 +123,15 @@ variables:
     - unzip -q Pd.zip -d "${PROGRAMFILES}/pd"
     - mv -v "${PROGRAMFILES}/pd"/*/* "${PROGRAMFILES}/pd"
     - export PD="${PROGRAMFILES}/pd/bin/pd.com"
-    - .git-ci/get_vst.sh "${VST2DIR}"
+    - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3=ON -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
   script:
-    - make -C pd extension=m_amd64 VST2DIR="${VST2DIR}" VST3=1 VST3DIR="${VST3DIR}"
+    - make -C pd extension=m_amd64 VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
     - make -C pd install extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
     - make -C sc/build VERBOSE=1
     - make -C sc/build install VERBOSE=1
