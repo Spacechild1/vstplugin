@@ -552,10 +552,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     inputParamChanges_.setMaxNumParameters(numParams);
     // outputParamChanges_.setMaxNumParameters(numParams);
     paramCache_.resize(numParams);
-    for (int i = 0; i < numParams; ++i){
-        auto id = info_->getParamID(i);
-        paramCache_[i] = controller_->getParamNormalized(id);
-    }
+    updateParamCache();
     LOG_DEBUG("program change: " << info_->programChange);
     LOG_DEBUG("bypass: " << info_->bypass);
 }
@@ -1402,6 +1399,13 @@ int VST3Plugin::getNumParameters() const {
     return info().numParameters();
 }
 
+void VST3Plugin::updateParamCache(){
+    for (int i = 0; i < (int)paramCache_.size(); ++i){
+        auto id = info().getParamID(i);
+        paramCache_[i] = controller_->getParamNormalized(id);
+    }
+}
+
 void VST3Plugin::setProgram(int program){
     auto id = info().programChange;
     if (id != PluginInfo::NoParamID){
@@ -1409,6 +1413,7 @@ void VST3Plugin::setProgram(int program){
             auto value = controller_->plainParamToNormalized(id, program);
             doSetParameter(id, value);
             program_ = program;
+            updateParamCache();
         } else {
             LOG_WARNING("program number out of range!");
         }
@@ -1519,6 +1524,7 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
                     // TODO ?
                 } else {
                     controller_->setComponentState(&stream);
+                    updateParamCache();
                 }
                 LOG_DEBUG("restored component state");
             } else {
