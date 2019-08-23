@@ -14,7 +14,7 @@ endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 if(MINGW)
-option(STATIC_LIBS "link with static libraries (libstdc++, libgcc and phread)" OFF)
+option(STATIC_LIBS "link with static libraries (libstdc++, libgcc and phread)" ON)
 endif()
 
 message(STATUS "Installation path: ${CMAKE_INSTALL_PREFIX}")
