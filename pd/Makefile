@@ -74,7 +74,7 @@ makefiles = $(PROBE).make
 define forWindows
   # common
   VST_SRC += ../vst/WindowWin32.cpp
-  VST_LIBS += -lstdc++fs
+  VST_LIBS += -lstdc++fs -static -lpthread
   cflags += -DHAVE_UI_THREAD=1
   # vstplugin~
   vstplugin~.class.sources += $$(VST_SRC)
@@ -82,7 +82,7 @@ define forWindows
   # probe.exe
   PROBE_SRC += $$(VST_SRC)
   # -municode for wmain, -mwindows to hide console
-  PROBE_LDLIBS += $$(VST_LIBS) -static-libgcc -static-libstdc++ -municode -mwindows -static -lpthread
+  PROBE_LDLIBS += $$(VST_LIBS) -static-libgcc -static-libstdc++ -municode -mwindows
 endef
 define forLinux
   # common
