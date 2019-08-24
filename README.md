@@ -57,12 +57,16 @@ The source code for Pd external and Supercollider UGen is permissively licensed,
 
 ### Build instructions:
 
-[vstplugin~] and VSTPlugin are both built with CMake. Supported compilers are GCC, Clang and MSVC. 
+This project is built with CMake, supported compilers are GCC, Clang and MSVC.
 On Windows, you can also compile with MinGW; it is recommended to use Msys2: https://www.msys2.org/)
 
-By default, both projects are built in release mode. You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build, for example.
+By default, the project is built in release mode. You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build, for example.
+
+If you only want to build either the Pd or Supercollider version, simply set the 'PD' or 'SC' variable to 'OFF'.
 
 #### Prerequisites:
+
+##### VST SDK:
 
 For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
 You should have a folder vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x with the header files aeffect.h, affectx.h and vstfxstore.
@@ -73,58 +77,39 @@ Actually, you only need vst/VST_SDK/VST3_SDK/pluginterfaces/
 (If you have git installed, run .git-ci/get_vst3.sh)
 
 The default setting is to build with both VST2 and VST3 support.
-If you only want to support a specific version, you can set the 'VST2' and 'VST3' variables in the CMake projects.
+If you only want to support a specific version, you can set the 'VST2' and 'VST3' variables in the CMake project.
 E.g. if  you want to compile without VST2 support, run cmake with `-DVST2=OFF`.
 
 In case you already have the VST SDK(s) installed somewhere else on your system,
 you can provide the path to CMake by setting the 'VST2DIR' and 'VST3DIR' variables.
 
-#### Pd:
+##### Pd:
 
-1)  make sure you have Pd installed somewhere
-2) 	cd into pd/ and create a build directory (e.g. build/)
-3) 	cd into the build directory and do
+Make sure you have Pd installed somewhere. If Pd is not found automatically, you can set the paths manually with `-DPD_INCLUDEDIR="/path/to/Pd/src"`.
+On Windows you would also need `-DPD_BINDIR="/path/to/Pd/bin"`.
 
-	`cmake ..` *or* run "Configure" + "Generate" in cmake-gui
+By default, [vstplugin~] is installed in the standard externals directory, but you can override it with `-DPD_INSTALLDIR="/path/to/my/externals"`.
 
-	If Pd is not found automatically, you can set the paths manually with `-DPDINCLUDEDIR="/path/to/Pd/src"`.
-	On Windows you would also need `-DPDBINDIR="/path/to/Pd/bin"`
+##### SuperCollider:
 
-	By default, [vstplugin~] is installed in the standard externals directory, but you can override it with `-DPDLIBDIR="/my/externals/dir"`
+Get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider).
+`SC_INCLUDEDIR` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
 
-4) 	type `make`
-
-	*MSVC:* open VSTPlugin.sln with Visual Studio and build the solution.
-
-5)	type `make install` to install
-
-	*MSVC:* build the project `INSTALL` to install
-
-
-
-#### SuperCollider:
-
-In order to use the VSTPlugin.sc and VSTPluginController.sc classes, you need to first build the VSTPlugin UGen.
-On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
-
-1) 	get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider)
-2) 	cd into sc/ and create a build directory (e.g. build/)
-3) 	cd into the build directory and do
-
-	`cmake -DSC_PATH=/path/to/supercollider ..` *or* run "Configure" + "Generate" in cmake-gui
-
-	`SC_PATH` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
-
-	With `-DCMAKE_INSTALL_PREFIX=` you can choose the installation directory, which would typically be your SuperCollider Extensions folder.
+With `-DSC_INSTALLDIR="/path/to/my/extensions"` you can choose the installation directory, which would typically be your SuperCollider extensions folder.
 	
-	Set 'SUPERNOVA' to 'ON' if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
-	However, this might be fixed in the next minor SC release.
+Set 'SUPERNOVA' to 'ON' if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
+However, this might be fixed in the next minor SC release.
 
-4) 	type `make`;
+#### Build:
+
+1)	create a build directory, e.g. *build/*.
+2)  cd into the build directory and run `cmake ..` + the necessary variables
+	*or* set the variables in the cmake-gui and click "Configure" + "Generate"
+3)	in the build directory type `make`
 
 	*MSVC:* open VSTPlugin.sln with Visual Studio and build the solution.
 
-5)	type `make install` to install
+4)	type `make install` to install
 
 	*MSVC:* build the project `INSTALL` to install
 
