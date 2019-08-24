@@ -140,7 +140,12 @@ static bool gSearching = false;
 static PluginManager gPluginManager;
 
 #define SETTINGS_DIR ".VSTPlugin"
+// so that 64-bit and 32-bit installations can co-exist!
+#if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
+#define SETTINGS_FILE "plugins_32.ini"
+#else
 #define SETTINGS_FILE "plugins.ini"
+#endif
 
 static std::string getSettingsDir(){
 #ifdef _WIN32
