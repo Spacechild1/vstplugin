@@ -5,8 +5,8 @@
 
 using namespace vst;
 
-#define NO_STDOUT 0
-#define NO_STDERR 0
+#define NO_STDOUT 1
+#define NO_STDERR 1
 
 #ifdef _WIN32
  #define MAIN wmain
