@@ -39,10 +39,11 @@ to open a plugin with "editor: true".
 
 * For VST3 plugins, the GUI is not available (yet).
 
-* If you build a 32-bit(!) version 'VSTPlugin' with MinGW and Supercollider/Supernova has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
-This only seems to happen if either the plugin *or* the host link statically against libstdc++ and libgcc. By default, 'VSTPlugin' links statically, so we don't have to ship
-additional DLLs and this generally works fine - unless you use a Supercollider version which was also built with MinGW but *dynamically* linked. In this case you should run cmake with
-`-DSTATIC_LIBS=OFF` so that 'VSTPlugin' also links dynamically. To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles. Yes, it's ridiculous!
+* If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
+This only seems to happen if either the plugin *or* the host link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship
+additional DLLs. This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider with MinGW.
+In this special case you should run cmake with `-DSTATIC_LIBS=OFF` so that 'VSTPlugin' also links dynamically.
+To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles. Yes, it's ridiculous!
 
 [^1]: to make the GUI work for Pd on macOS we have to 'transform' Pd into a Cocoa app
 and install an event polling routine, which is a bit adventurous to say the least.
