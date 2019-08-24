@@ -240,16 +240,21 @@ std::string getTmpDirectory(){
 /*////////////////////// search ///////////////////////*/
 
 static std::vector<const char *> platformExtensions = {
+#if USE_VST2
 #ifdef __APPLE__
-    ".vst",
+    ".vst"
+#elif defined(_WIN32)
+    ".dll"
+#else
+    ".so"
 #endif
-#ifdef _WIN32
-    ".dll",
+#endif // VST2
+#if USE_VST2 && USE_VST3
+    ,
 #endif
-#ifdef __linux__
-    ".so",
-#endif
+#if USE_VST3
     ".vst3"
+#endif // VST3
 };
 
 const std::vector<const char *>& getPluginExtensions() {
@@ -391,7 +396,7 @@ std::string find(const std::string &dir, const std::string &path){
         for (auto& entry : fs::recursive_directory_iterator(wdir)) {
             if (fs::is_directory(entry)){
                 file = entry.path() / fpath;
-                if (fs::is_regular_file(file)){
+                if (fs::exists(file)){
                     return file.u8string(); // success
                 }
             }
@@ -442,18 +447,27 @@ void search(const std::string &dir, std::function<void(const std::string&, const
     }
     // search recursively
 #ifdef _WIN32
-    try {
-        for (auto& entry : fs::recursive_directory_iterator(widen(dir))) {
-            if (fs::is_regular_file(entry)) {
+    std::function<void(const std::wstring&)> searchDir = [&](const std::wstring& dirname){
+        try {
+            // LOG_DEBUG("searching in " << shorten(dirname));
+            for (auto& entry : fs::directory_iterator(dirname)) {
+                // check the extension
                 auto ext = entry.path().extension().u8string();
                 if (extensions.count(ext)) {
+                    // found a VST2 plugin (file or bundle)
                     auto abspath = entry.path().u8string();
                     auto basename = entry.path().filename().u8string();
                     fn(abspath, basename);
+                } else if (fs::is_directory(entry.path())){
+                    // otherwise search it if it's a directory
+                    searchDir(entry.path());
                 }
             }
-        }
-    } catch (const fs::filesystem_error& e) {};
+        } catch (const fs::filesystem_error& e) {
+            LOG_ERROR(e.what());
+        };
+    };
+    searchDir(widen(dir));
 #else // Unix
     // force no trailing slash
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
@@ -469,13 +483,14 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                 auto entry = dirlist[i];
                 std::string name(entry->d_name);
                 std::string absPath = dirname + "/" + name;
-                // *first* check the extensions because VST plugins can be files (Linux) or directories (macOS)
+                // check the extension
                 std::string ext;
                 auto extPos = name.find_last_of('.');
                 if (extPos != std::string::npos) {
                     ext = name.substr(extPos);
                 }
                 if (extensions.count(ext)) {
+                    // found a VST2 plugin (file or bundle)
                     fn(absPath, name);
                 }
                 // otherwise search it if it's a directory
@@ -728,7 +743,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
     // create temp file path
     std::stringstream ss;
-    ss << "/vst_" << desc.get(); // desc address should be unique as long other PluginInfos are retained.
+    ss << "/vst_" << desc.get(); // desc address should be unique as long as PluginInfos are retained.
     std::string tmpPath = getTmpDirectory() + ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
 #ifdef _WIN32
