@@ -2,9 +2,8 @@ cmake_minimum_required (VERSION 2.8)
 
 set(PROJECT "vstplugin~")
 message(STATUS "---\n*** ${PROJECT} ***")
-project (${PROJECT})
 
-set(FILENAME "vstplugin~.cpp")
+set(FILENAME "${PROJECT}.cpp")
 
 include_directories(src)
 

@@ -2,10 +2,8 @@ cmake_minimum_required (VERSION 2.8)
 
 set(PROJECT "VSTPlugin")
 message(STATUS "---\n*** ${PROJECT} ***")
-project (${PROJECT})
 
-set(FILENAME "VSTPlugin.cpp")
-set(PROBE "probe")
+set(FILENAME "${PROJECT}.cpp")
 
 include_directories(src)
 
