@@ -839,9 +839,19 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
 
 // for testing we don't want to load hundreds of sub plugins
 // #define PLUGIN_LIMIT 50
-// probe subplugins asynchronously with futures or worker threads
+
+// We probe sub-plugins asynchronously with "futures" or worker threads.
+// The latter are just wrappers around futures, but we can gather results as soon as they are available.
+// Both methods are about equally fast, the worker threads just look more responsive.
 #define PROBE_FUTURES 8 // number of futures to wait for
 #define PROBE_THREADS 8 // number of worker threads (0: use futures instead of threads)
+
+#if 0
+static std::mutex gLogMutex;
+#define DEBUG_THREAD(x) do { gLogMutex.lock(); LOG_DEBUG(x); gLogMutex.unlock(); } while (false)
+#else
+#define DEBUG_THREAD(x)
+#endif
 
 std::vector<PluginInfo::ptr> IFactory::probePlugins(
         const ProbeList& pluginList, ProbeCallback callback, bool& valid){
@@ -893,9 +903,8 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
             }
         }
     }
-}
 #else
-    /// LOG_DEBUG("numPlugins: " << numPlugins);
+    DEBUG_THREAD("numPlugins: " << numPlugins);
     auto next = pluginList.begin();
     auto end = next + numPlugins;
     int count = 0;
@@ -914,18 +923,18 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
             auto& id = it->second;
             lock.unlock();
             try {
-                /// LOG_DEBUG("probing '" << name << "'");
+                DEBUG_THREAD("probing '" << name << "'");
                 auto plugin = probePlugin(name, id)();
                 lock.lock();
                 resultQueue.emplace_back(count++, name, plugin, Error{});
-                /// LOG_DEBUG("thread " << i << ": probed " << name);
+                DEBUG_THREAD("thread " << i << ": probed " << name);
             } catch (const Error& e){
                 lock.lock();
                 resultQueue.emplace_back(count++, name, nullptr, e);
             }
             cond.notify_one();
         }
-        /// LOG_DEBUG("worker thread " << i << " finished");
+        DEBUG_THREAD("worker thread " << i << " finished");
     };
     // spawn worker threads
     for (int j = 0; j < numThreads; ++j){
@@ -946,7 +955,7 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
 
             if (plugin){
                 results.push_back(plugin);
-                ///LOG_DEBUG("got plugin " << plugin->name);
+                DEBUG_THREAD("got plugin " << plugin->name << " (" << (index + 1) << " of " << numPlugins << ")");
                 // factory is valid if contains at least 1 valid plugin
                 if (plugin->valid()){
                     valid = true;
@@ -956,12 +965,12 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
                 }
             } else {
                 // should we rather propagate the error and break from the loop?
-                LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+                DEBUG_THREAD("couldn't probe '" << name << "': " << e.what());
             }
             lock.lock();
         }
         if (count < numPlugins) {
-            /// LOG_DEBUG("wait...");
+            DEBUG_THREAD("wait...");
             cond.wait(lock); // wait for more
         }
         else {
@@ -970,14 +979,14 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
     }
 
     lock.unlock(); // !
-    /// LOG_DEBUG("exit loop");
+    DEBUG_THREAD("exit loop");
     // join worker threads
     for (auto& thread : threads){
         if (thread.joinable()){
             thread.join();
         }
     }
-    /// LOG_DEBUG("all worker threads joined");
+    DEBUG_THREAD("all worker threads joined");
 #endif
     return results;
 }
