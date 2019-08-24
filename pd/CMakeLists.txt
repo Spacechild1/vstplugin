@@ -1,11 +1,11 @@
 cmake_minimum_required (VERSION 2.8)
 
-set(PROJECT "VSTPlugin")
+set(PROJECT "vstplugin~")
 message(STATUS "Project name: ${PROJECT}")
 project (${PROJECT})
 
 if(UNIX AND NOT APPLE AND NOT MINGW)
-set(LINUX TRUE)
+	set(LINUX TRUE)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -14,24 +14,21 @@ endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 if(MINGW)
-option(STATIC_LIBS "link with static libraries (libstdc++, libgcc and phread)" ON)
+	option(STATIC_LIBS "link with static libraries (libstdc++, libgcc and phread)" ON)
 endif()
 
 message(STATUS "Installation path: ${CMAKE_INSTALL_PREFIX}")
 
-set(FILENAME "VSTPlugin.cpp")
+set(FILENAME "vstplugin~.cpp")
 set(PROBE "probe")
 set(TOP "${CMAKE_SOURCE_DIR}/..")
-set(SC "${CMAKE_SOURCE_DIR}/sc")
+set(PD "${CMAKE_SOURCE_DIR}/pd")
 set(VST "${TOP}/vst")
 
-# SuperCollider API:
-set(SC_PATH "" CACHE PATH "SuperCollider source directory")
-message(STATUS "SC_PATH: ${SC_PATH}")
-include_directories(${SC_PATH}/include/plugin_interface)
-include_directories(${SC_PATH}/include/common)
-include_directories(${SC_PATH}/plugin_interface)
-include_directories(${SC_PATH}/common)
+# Pd API:
+set(PD_PATH "" CACHE PATH "Pd installation directory")
+message(STATUS "PD_PATH: ${PD_PATH}")
+include_directories(${PD_PATH}/src)
 
 # VST
 set(VST_SRC "${VST}/Plugin.cpp")
@@ -77,30 +74,20 @@ include_directories(${VST})
 set(LOGLEVEL 2 CACHE STRING "LOGLEVEL")
 message(STATUS "LOGLEVEL: ${LOGLEVEL}")
 
-set(CMAKE_SHARED_MODULE_PREFIX "")
-if(APPLE OR MINGW OR WIN32)
-set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
+if (WIN32 OR MINGW)
+    set(CMAKE_SHARED_MODULE_SUFFIX ".dll")
+elseif(APPLE)
+    set(CMAKE_SHARED_MODULE_SUFFIX ".pd_darwin")
+elseif(LINUX)
+    set(CMAKE_SHARED_MODULE_SUFFIX ".pd_linux")
 endif()
 
 if (MINGW)
-set(CMAKE_EXECUTABLE_SUFFIX ".exe")
+    set(CMAKE_EXECUTABLE_SUFFIX ".exe")
 endif()
-
-option(SUPERNOVA "Build plugins for supernova" OFF)
-if (SUPERNOVA)
-	# for <nova-tt/spin_lock.h>
-    include_directories(${SC_PATH}/external_libraries/nova-tt)
-    # for <boost/atomic.hpp>
-    include_directories(${SC_PATH}/external_libraries/boost)
-endif()
-message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_COMPILER_IS_CLANG 1)
-endif()
-
-if(CMAKE_COMPILER_IS_GNUCXX)
-add_definitions(-Wl,--no-undefined)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
@@ -143,27 +130,18 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
         add_definitions(-march=native)
     endif()
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -ffast-math -funroll-loops -fomit-frame-pointer")
+
     if(CMAKE_COMPILER_IS_CLANG)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     endif()
 endif()
-if(MINGW)
-    set(CMAKE_C_COMPILER gcc)
-    set(CMAKE_CXX_COMPILER g++)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mstackrealign")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
-endif()
 
-add_library(${PROJECT} MODULE src/${FILENAME}) # the UGen
+add_library(${PROJECT} MODULE src/${FILENAME}) # the Pd external
 add_executable(${PROBE} "${VST}/${PROBE}.cpp") # probe exe
-
-# thread safety
-add_definitions(-DHAVE_NRT_THREAD=1)
 
 # logging
 add_definitions(-DLOGLEVEL=${LOGLEVEL})
-target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog) # only for VSTPluginUGen!
 
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1 -DHAVE_UI_THREAD=1)
@@ -193,19 +171,11 @@ endif()
 target_sources(${PROJECT} PUBLIC ${VST_SRC})
 target_sources(${PROBE} PUBLIC ${VST_SRC})
 target_link_libraries(${PROJECT} ${VST_LIBS})
+if (WIN32 OR MINGW)
+    target_link_libraries(${PROJECT} "${PD_PATH}/bin/pd.lib")
+endif()
 target_link_libraries(${PROBE} ${VST_LIBS})
 
-install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT}/plugins)
-install(DIRECTORY classes DESTINATION ${PROJECT})
-install(DIRECTORY HelpSource DESTINATION ${PROJECT})
-install(FILES "${TOP}/README.md" "${TOP}/LICENSE.txt" DESTINATION ${PROJECT})
-
-if(SUPERNOVA)
-    add_library(${PROJECT}_supernova MODULE src/${FILENAME} ${VST_SRC})
-
-    target_compile_definitions(${PROJECT}_supernova PUBLIC -DSUPERNOVA=1 -DLOGFUNCTION=SCLog)
-    target_sources(${PROJECT}_supernova PUBLIC ${VST_SRC})
-    target_link_libraries(${PROJECT}_supernova ${VST_LIBS})
-
-    install(TARGETS ${PROJECT}_supernova DESTINATION ${PROJECT}/plugins)
-endif()
+install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT})
+install(FILES "${PROJECT}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
+    "${TOP}/README.md" "${TOP}/LICENSE.txt" DESTINATION ${PROJECT})
