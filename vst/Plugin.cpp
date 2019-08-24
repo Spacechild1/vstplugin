@@ -464,7 +464,7 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                 }
             }
         } catch (const fs::filesystem_error& e) {
-            LOG_ERROR(e.what());
+            LOG_DEBUG(e.what());
         };
     };
     searchDir(widen(dir));
