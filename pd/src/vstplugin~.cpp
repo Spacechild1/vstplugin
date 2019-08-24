@@ -408,6 +408,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
     };
 
     vst::search(path, [&](const std::string& absPath, const std::string&){
+        LOG_DEBUG("found " << absPath);
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
         // check if module has already been loaded
@@ -774,6 +775,7 @@ static void vstplugin_search_done(t_vstplugin *x){
 
 static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths,
                                        bool parallel, bool update){
+    LOG_DEBUG("thread function started: " << x->x_thread.get_id());
     for (auto& path : searchPaths){
         searchPlugins<true>(path, parallel, x); // async
     }
@@ -783,6 +785,7 @@ static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> 
     sys_lock();
     clock_delay(x->x_clock, 0); // schedules vstplugin_search_done
     sys_unlock();
+    LOG_DEBUG("thread function terminated");
 }
 
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
@@ -1988,10 +1991,13 @@ static void my_terminate(){
 }
 
 // setup function
-extern "C" {
+#ifdef _WIN32
+#define EXPORT extern "C" __declspec(dllexport)
+#else
+#define EXPORT extern "C"
+#endif
 
-void vstplugin_tilde_setup(void)
-{
+EXPORT void vstplugin_tilde_setup(void){
     vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)(void *)vstplugin_new,
         (t_method)vstplugin_free, sizeof(t_vstplugin), 0, A_GIMME, A_NULL);
     CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
@@ -2074,5 +2080,3 @@ void vstplugin_tilde_setup(void)
     post("NOTE: on macOS, the VST editor GUI must run on the audio thread. Use with care!");
 #endif
 }
-
-} // extern "C"
