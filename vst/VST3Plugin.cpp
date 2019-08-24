@@ -164,7 +164,6 @@ IFactory::ProbeFuture VST3Factory::probeAsync() {
     plugins_.clear();
     pluginMap_.clear();
     auto self(shared_from_this());
-    /// LOG_DEBUG("got probePlugin future");
     if (pluginList_.size() > 1){
         return [this, self=std::move(self)](ProbeCallback callback){
             ProbeList pluginList;

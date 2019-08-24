@@ -175,7 +175,13 @@ bool isDirectory(const std::string& path){
 bool removeFile(const std::string& path){
 #ifdef _WIN32
     std::error_code e;
-    return fs::remove(widen(path), e);
+    fs::remove(widen(path), e);
+    if (e){
+        LOG_ERROR(e.message());
+        return false;
+    } else {
+        return true;
+    }
 #else
     return remove(path.c_str()) == 0;
 #endif
