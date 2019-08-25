@@ -3,7 +3,7 @@ cmake_minimum_required (VERSION 2.8)
 set(PROJECT "VSTPlugin")
 message(STATUS "---\n*** ${PROJECT} ***")
 
-set(FILENAME "${PROJECT}.cpp")
+set(SRC "src/${PROJECT}.h" "src/${PROJECT}.cpp")
 
 include_directories(src)
 
@@ -38,13 +38,13 @@ endif()
 message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 # the UGen
-add_library(${PROJECT} MODULE src/${FILENAME} ${VST_SRC})
+add_library(${PROJECT} MODULE ${SRC} ${VST_SRC})
 target_compile_definitions(${PROJECT} PUBLIC
     -DLOGFUNCTION=SCLog -DHAVE_NRT_THREAD=1 -DHAVE_UI_THREAD=1)
 target_link_libraries(${PROJECT} ${VST_LIBS})
 
 if(SUPERNOVA)
-    add_library(${PROJECT}_supernova MODULE src/${FILENAME} ${VST_SRC})
+    add_library(${PROJECT}_supernova MODULE ${SRC} ${VST_SRC})
     target_compile_definitions(${PROJECT}_supernova PUBLIC
         -DSUPERNOVA=1 -DHAVE_NRT_THREAD=1 -DHAVE_UI_THREAD=1)
     target_link_libraries(${PROJECT}_supernova ${VST_LIBS})
