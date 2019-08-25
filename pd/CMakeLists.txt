@@ -70,7 +70,6 @@ endif()
 # the Pd external
 add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
-add_dependencies(${PROJECT} ${PROBE})
 target_link_libraries(${PROJECT} ${VST_LIBS})
 
 # platform specific definitions and options
@@ -93,6 +92,8 @@ else()
 endif()
 
 # installation
-install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${FILENAME})
-install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
+add_dependencies(${PROJECT} ${PROBE})
+
+install(TARGETS ${PROJECT} DESTINATION ${FILENAME})
+install(FILES "${PROBE_PATH}" "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
     "../README.md" "../LICENSE.txt" DESTINATION ${FILENAME})

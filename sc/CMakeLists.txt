@@ -39,7 +39,6 @@ message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 # the UGen
 add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
-add_dependencies(${PROJECT} ${PROBE})
 target_compile_definitions(${PROJECT} PUBLIC
     -DLOGFUNCTION=SCLog -DHAVE_NRT_THREAD=1 -DHAVE_UI_THREAD=1)
 target_link_libraries(${PROJECT} ${VST_LIBS})
@@ -52,10 +51,13 @@ if(SUPERNOVA)
 endif()
 
 # installation
-install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT}/plugins)
+add_dependencies(${PROJECT} ${PROBE})
+
+install(TARGETS ${PROJECT} DESTINATION "${PROJECT}/plugins")
 if (SUPERNOVA)
-    install(TARGETS ${PROJECT}_supernova DESTINATION ${PROJECT}/plugins)
+    install(TARGETS ${PROJECT}_supernova DESTINATION "${PROJECT}/plugins")
 endif()
+install(FILES "${PROBE_PATH}" DESTINATION "${PROJECT}/plugins")
 install(DIRECTORY classes DESTINATION ${PROJECT})
 install(DIRECTORY HelpSource DESTINATION ${PROJECT})
 install(FILES "../README.md" "../LICENSE.txt" DESTINATION ${PROJECT})
