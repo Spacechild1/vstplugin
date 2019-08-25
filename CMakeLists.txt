@@ -173,6 +173,9 @@ if (MINGW)
     # -municode for wmain and -mwindows to hide console window
     target_link_libraries(${PROBE} -municode -mwindows)
 endif()
+if (MSVC)
+    set_target_properties(${PROBE} PROPERTIES LINK_FLAGS /SUBSYSTEM:WINDOWS)
+endif()
 
 # vstplugin~
 option(PD "build [vstplugin~]" ON)
