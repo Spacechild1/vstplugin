@@ -38,7 +38,8 @@ endif()
 message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 # the UGen
-add_library(${PROJECT} MODULE ${SRC} ${VST_SRC})
+add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
+add_dependencies(${PROJECT} ${PROBE})
 target_compile_definitions(${PROJECT} PUBLIC
     -DLOGFUNCTION=SCLog -DHAVE_NRT_THREAD=1 -DHAVE_UI_THREAD=1)
 target_link_libraries(${PROJECT} ${VST_LIBS})

@@ -68,8 +68,9 @@ if (MINGW)
 endif()
 
 # the Pd external
-add_library(${PROJECT} MODULE ${SRC} ${VST_SRC})
+add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
+add_dependencies(${PROJECT} ${PROBE})
 target_link_libraries(${PROJECT} ${VST_LIBS})
 
 # platform specific definitions and options
