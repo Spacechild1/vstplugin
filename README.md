@@ -87,7 +87,7 @@ you can provide the path to CMake by setting the 'VST2DIR' and 'VST3DIR' variabl
 ##### Pd:
 
 Make sure you have Pd installed somewhere. If Pd is not found automatically, you can set the paths manually with `-DPD_INCLUDEDIR="/path/to/Pd/src"`.
-On Windows you would also need `-DPD_BINDIR="/path/to/Pd/bin"`.
+On Windows you would also need `-DPD_BINDIR="/path/to/Pd/bin"`; you can set both variables at the same time with `-DPD_DIR="/path/to/Pd"`.
 
 By default, [vstplugin~] is installed in the standard externals directory, but you can override it with `-DPD_INSTALLDIR="/path/to/my/externals"`.
 
