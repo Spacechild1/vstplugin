@@ -1,9 +1,10 @@
 cmake_minimum_required (VERSION 2.8)
 
-set(PROJECT "vstplugin~")
-message(STATUS "---\n*** ${PROJECT} ***")
+set(PROJECT "vstplugin_tilde")
+set(FILENAME "vstplugin~")
+message(STATUS "---\n*** ${FILENAME} ***")
 
-set(FILENAME "${PROJECT}.cpp")
+set(SRC "src/${FILENAME}.h" "src/${FILENAME}.cpp")
 
 include_directories(src)
 
@@ -58,7 +59,8 @@ if (MINGW)
 endif()
 
 # the Pd external
-add_library(${PROJECT} MODULE src/${FILENAME} ${VST_SRC})
+add_library(${PROJECT} MODULE ${SRC} ${VST_SRC})
+set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
 target_link_libraries(${PROJECT} ${VST_LIBS})
 
 # platform specific definitions and options
@@ -81,6 +83,6 @@ else()
 endif()
 
 # installation
-install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${PROJECT})
-install(FILES "${PROJECT}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
-    "../README.md" "../LICENSE.txt" DESTINATION ${PROJECT})
+install(TARGETS ${PROJECT} ${PROBE} DESTINATION ${FILENAME})
+install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
+    "../README.md" "../LICENSE.txt" DESTINATION ${FILENAME})
