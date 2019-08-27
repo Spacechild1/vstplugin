@@ -348,21 +348,18 @@ VSTPluginController {
 		} { "'%' only works with a local Server".format(thisMethod.name).warn; ^nil };
 	}
 	prSetData { arg data, action, bank;
-		var path, cb;
-		path = VSTPlugin.prMakeTmpPath;
-		cb = { arg self, success;
-			success.if {
+		try {
+			var path = VSTPlugin.prMakeTmpPath;
+			var cb = { arg self, success;
+				// 3) call action and delete file
+				action.value(self, success);
 				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
 			};
-			action.value(self, success);
-		};
-		protect {
+			// 1) write data to file
 			File.use(path, "wb", { arg file; file.write(data) });
-		} { arg error;
-			error.isNil.if {
-				bank.if { this.readBank(path, cb) } { this.readProgram(path, cb) };
-			} { "Failed to write data".warn };
-		};
+			// 2) ask plugin to read data file
+			bank.if { this.readBank(path, cb) } { this.readProgram(path, cb) };
+		} { "Failed to write data".warn };
 	}
 	sendProgramData { arg data, wait, action;
 		wait = wait ?? this.wait;
@@ -403,22 +400,23 @@ VSTPluginController {
 		this.prGetData(action, true);
 	}
 	prGetData { arg action, bank;
-		var path, cb, data;
-		path = VSTPlugin.prMakeTmpPath;
-		cb = { arg self, success;
+		var path = VSTPlugin.prMakeTmpPath;
+		var cb = { arg self, success;
+			// 2) when done, try to read data file, pass data to action and delete file
+			var data;
 			success.if {
-				protect {
+				try {
 					File.use(path, "rb", { arg file;
 						data = Int8Array.newClear(file.length);
 						file.read(data);
 					});
-				} { arg error;
-					error.notNil.if { "Failed to read data".warn };
-					File.delete(path).not.if { ("Could not delete data file:" + path).warn };
-				};
+				} { "Failed to read data".warn };
+				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
 			} { "Could not get data".warn };
+			// done (on fail, data is nil)
 			action.value(data);
 		};
+		// 1) ask plugin to write data file
 		bank.if { this.writeBank(path, cb) } { this.writeProgram(path, cb) };
 	}
 	receiveProgramData { arg wait, timeout=3, action;

@@ -154,7 +154,7 @@ VSTPlugin : MultiOutUGen {
 			// wait for cmd to finish
 			server.sync;
 			// read file
-			protect {
+			try {
 				File.use(tmpPath, "rb", { arg file;
 					var stream = CollStream.new(file.readAllString);
 					this.prParseIni(stream).do { arg info;
@@ -162,12 +162,10 @@ VSTPlugin : MultiOutUGen {
 						dict[info.key] = info;
 					}
 				});
-			} { arg error;
-				error.notNil.if { "Failed to read tmp file!".warn };
-				// done - free temp file
-				File.delete(tmpPath).not.if { ("Could not delete data file:" + tmpPath).warn };
 				action.value;
-			};
+				// done - free temp file
+				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
+			} { "Failed to read tmp file!".warn };
 		}.forkIfNeeded;
 	}
 	*prSearchRemote { arg server, dir, useDefault, verbose, save, parallel, wait, action;
@@ -218,7 +216,7 @@ VSTPlugin : MultiOutUGen {
 			server.sync;
 			// read file (only written if the plugin could be probed)
 			File.exists(tmpPath).if {
-				protect {
+				try {
 					File.use(tmpPath, "rb", { arg file;
 						var stream = CollStream.new(file.readAllString);
 						info = this.prParseInfo(stream);
@@ -228,12 +226,10 @@ VSTPlugin : MultiOutUGen {
 						dict[path.asSymbol] = info;
 						key !? { dict[key.asSymbol] = info };
 					});
-				} { arg error;
-					error !? { "Failed to read tmp file!".warn };
-					File.delete(tmpPath).not.if { ("Could not delete temp file:" + tmpPath).warn };
-				}
+				} { "Failed to read tmp file!".warn };
+				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
 			};
-			// done (on fail, 'info' is nil)
+			// done (on fail, info is nil)
 			action.value(info);
 		}.forkIfNeeded;
 	}
