@@ -3,13 +3,10 @@
 
 #include "Interface.h"
 
-#ifdef USE_FST
-# define FST2VST
-# include "fst/fst.h"
+#if USE_FST
+#include "fst.h"
 #else
-//#include "aeffect.h"
-# include "aeffectx.h"
-// #include "vstfxstore.h"
+#include "aeffectx.h"
 #endif
 
 namespace vst {

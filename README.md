@@ -52,7 +52,7 @@ and install an event polling routine, which is a bit adventurous to say the leas
 
 ### Licensing:
 
-The source code for Pd external and Supercollider UGen is permissively licensed, but note that you also have to comply with the licensing terms of the VST SDK you're using.
+The source code for the Pd external and Supercollider UGen is permissively licensed, but note that you also have to comply with the licensing terms of the VST SDK(s) you're using!
 
 ---
 
@@ -70,8 +70,11 @@ If you only want to build either the Pd or Supercollider version, simply set the
 ##### VST SDK:
 
 For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
-You should have a folder vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x with the header files aeffect.h, affectx.h and vstfxstore.
-(The VST2 SDK has been officially discontinued by Steinberg and is not easy to find. Try .git-ci/get_vst2.sh)
+You should have a folder vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x with the header files aeffect.h and affectx.h.
+
+The VST2 SDK has been officially discontinued by Steinberg. If you have a VST2 license but lost the files, you can get them with .git-ci/get_vst2.sh.
+Otherwise you can try free alternatives like FST (https://git.iem.at/zmoelnig/FST.git - copy "fst.h" into vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x and set the 'FST' option to 'ON').
+Use at your own risk!
 
 For VST3 support, get the Steinberg VST3 SDK and copy it into /vst.
 Actually, you only need vst/VST_SDK/VST3_SDK/pluginterfaces/
@@ -104,7 +107,7 @@ However, this might be fixed in the next minor SC release.
 #### Build:
 
 1)	create a build directory, e.g. *build/*.
-2)  cd into the build directory and run `cmake ..` + the necessary variables
+2)	cd into the build directory and run `cmake ..` + the necessary variables
 	*or* set the variables in the cmake-gui and click "Configure" + "Generate"
 3)	in the build directory type `make`
 
