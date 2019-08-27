@@ -7,253 +7,143 @@ DESCRIPTION::
 In this example we will test out an high order ambisonic workflow using plugins and SuperCollider.
 
 The workflow usually in ambisonics is like this:
-Sound source -> Encoder (panning/conversion to ambisonic domain) -> Decoding (to arbitrary speaker setups)
+Sound source -> [Fx] -> Encoder (panning/conversion to ambisonic domain) -> [Fx] -> [Master FX] -> Decoding (to arbitrary speaker setups)
 
 We will make functions that will allocate encoder "voices" as groups in SuperCollider and put our sound sources into those, then route it all through an fx group and finally through a decoder for listening.
 
-We will then manipulate and modulate the vst plugins using SuperCollider lfos.
+We will then manipulate and modulate the VST plugins using SuperCollider LFOs.
 
 subsection:: Dependencies
 
 LIST::
 ## IEM Plugins: https://plugins.iem.at/
-## iemPluginOSC: https://git.iem.at/ressi/iempluginosc/-/releases
 ::
 
 section:: Code
 
 code::
+// SynthDefs
 (
-    // Settings
-    ~order = 3;
-    ~monitorOutput = 'speakers'; // 'headphones' or 'speakers'
-    // You can make speaker configuration in various ways, the easiest is using the IEM AllRadDecoder plugin in a DAW.
-    // Note that you need the 'iemPluginOSC' extension to actually load the configuration files programmatically.
-    ~speakerConfiguration="path/to/decoder/file.json"; // set to nil if not used
-    // Alternatively, you can setup SimpleDecoder in a DAW and save the state as a preset which we can load in SuperCollider.
-    ~simpleDecoderPreset="path/to/decoder/preset.fxp"; // set to nil if not used
-    // Set this to true if you want to use the VST editor. This is not possible on macOS (yet).
-    ~useEditor = false;
+~order = 3; // set this to the order you want
+~numChannels = ((~order + 1)**2).asInteger;
+// binaural decoder (~numChannels -> 2) - reads from 'bus' and sums into 'out'
+SynthDef.new(\binauralDecoder, {arg bus, out = 0;
+	Out.ar(out, VSTPlugin.ar(In.ar(bus, ~numChannels), 2));
+}).add;
 
-    // Calculations
-    ~numcomponents = (~order + 1).pow(2).asInteger;
-    ~normalizedorder = (~order+1)/8;
+// stereo encoder (2 -> ~numChannels) - replaces stereo signal with ambisonics signal
+SynthDef.new(\stereoEncoder, {arg bus = 0;
+	ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), ~numChannels));
+}).add;
 
-    // Synths that will hold the vst plugins
-    (1..64).do{|numchans|
-        SynthDef(\insert ++ numchans, { arg bus=0;
-            ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, numchans), numchans));
-        }).add;
-    };
+// ambisonics insert FX (replaces input with output)
+SynthDef.new(\ambiFX, {arg bus = 0, bypass;
+	ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), ~numChannels, bypass));
+}).add;
 
-    // This event will hold all the groups/synths
-    g = ();
+// helper Synth (throws audio from ambi bus to ambi master bus)
+SynthDef.new(\ambiThrow, {arg from, to;
+	Out.ar(to, In.ar(from, ~numChannels));
+}).add;
 
-    g.sourceGroup = Group.new;
-    g.fxGroup = Group.new(g.sourceGroup, \addAfter);
+// load sound file (replace with your test sound file)
+~buf = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
 
-    // This function will create all the necessities for a single source that
-    // we want to encode in ambisonics.  Putting it at the tail of a group
-    // makes it easy for us to put any sound into the head of it and then pan
-    // it around in ambisonics.
-    ~makeSourceGroup = {|srcname='src1', pluginname="StereoEncoder"|
+// play a sound file (in different rates)
+SynthDef(\test, { arg out = 0, vol = 1.0;
+    Out.ar(out,
+		PlayBuf.ar(2, ~buf, BufRateScale.kr(~buf), rate: Rand(0.5, 2), loop: 1) * vol;
+    )
+}).add;
 
-        srcname = srcname.asSymbol;
-
-        // Make a sub event if it doesn't already exist
-        g[srcname] = g[srcname] ?? ();
-
-        // Group
-        g[srcname].g = Group.new(g.sourceGroup);
-
-        // Synth
-        g[srcname].s = Synth.tail(g[srcname].g, "insert"++~numcomponents);
-
-        // create Controller, open plugin and set order
-        g[srcname].c = VSTPluginController(g[srcname].s)
-            .open(pluginname, editor: ~useEditor, action: {
-				|self| self.set(0, ~normalizedorder) });
-    };
-
-    ~addFxGroup = {|fxname='verb', pluginname="FdnReverb"|
-        fxname = fxname.asSymbol;
-
-        // Make a sub event if it doesn't already exist
-        g[fxname] = g[fxname] ?? ();
-
-        // Group
-        g[fxname].g = Group.new(g.fxGroup);
-
-        // Synth
-        g[fxname].s = Synth.tail(g[fxname].g, "insert"++~numcomponents);
-
-        // create Controller, open plugin and set order
-        g[fxname].c = VSTPluginController(g[fxname].s)
-            .open(pluginname, editor: ~useEditor, action: { |self|
-				self.set(0, ~normalizedorder) });
-    };
-
-    // Let's make a function to create the stuff we need in the decoder
-    ~makeDecoderGroup = {|outType|
-        // Make a sub event if it doesn't already exist
-        g[\decoder] = g[\decoder] ?? ();
-
-        // If there's already a group there, replace it (we only need one decoder).
-        g[\decoder].g.isNil.not.if({
-            g[\decoder].g = Group.replace(g[\decoder].g);
-        },{
-            g[\decoder].g = Group.after(1);
-        });
-
-        // Synth
-        g[\decoder].s = Synth.tail(g[\decoder].g, "insert"++~numcomponents);
-
-        // Controller
-        g[\decoder].c = VSTPluginController(g[\decoder].s);
-
-        // Open the plugin
-        // Choose decoder type
-        case
-        {outType=='headphones'}{
-            g[\decoder].c.open("BinauralDecoder", editor: ~useEditor, action: { |self|
-                // set the order
-                self.set(0, ~normalizedorder);
-            });
-        }
-        {outType=='speakers'}{
-            g[\decoder].c.open("SimpleDecoder", editor: ~useEditor, action: { |self|
-                // set the order
-                self.set(0, ~normalizedorder);
-                // Load speaker configuration
-                ~speakerConfiguration.notNil.if {
-                    // load .json configuration file via the OSC interface
-                    self.iemPluginOSC("/SimpleDecoder/loadFile", ~speakerConfiguration.asAbsolutePath);
-                } {
-                    // load VST preset file
-                    self.readProgram(~simpleDecoderPreset.asAbsolutePath);
-                };
-            });
-        };
-    };
-
-    {
-        // Search system for vsts
-        VSTPlugin.search();
-
-        s.sync;
-
-        // Make 4 source groups
-        (1..4).do{|sourcenum|
-            ~makeSourceGroup.value("src" ++ sourcenum, "StereoEncoder");
-        };
-
-        s.sync;
-
-        ~addFxGroup.value("verb", "FdnReverb");
-
-        s.sync;
-
-        // Set up decoder
-        ~makeDecoderGroup.value(~monitorOutput);
-
-        s.sync;
-
-        "--------\n Done setting up".postln;
-    }.fork;
+// search for plugins
+VSTPlugin.search(verbose: false);
 )
 
-// See the generic Qt guis of all of the source encoders (aka panners)
-g.src1.c.gui; g.src2.c.gui; g.src3.c.gui; g.src4.c.gui;
-
-// And the VST editor for our decoder (if available)
-g.decoder.c.editor;
-
-// Let's make some sound.  The sound will come from a synth playing in
-// Ndef/NodeProxies which allows us to live code.  We will then route them
-// through the encoder groups we created above
+// create ambisonic master section
 (
-    // A sound function (a karplus strong algorithm)
-    f = {|freq=0, coef=0|
-        var f = freq.linexp(0.0,1.0,40,551).reciprocal;
-        Pluck.ar(WhiteNoise.ar(0.1), Impulse.kr(freq*10), f, f, 1,
-        coef.linlin(0.0,1.0,-1.0,1.0));
-
-    };
-
-    // Create 4 Ndefs containing the above function
-    (1..4).do{|i|
-        var name = ("src" ++ i).asSymbol;
-        var randval = rrand(0.0,1.0);
-
-        // Add sound function
-        Ndef(name).source = f;
-
-        // Set random parameters
-        Ndef(name).set(\freq, randval, \coef, randval);
-
-        // Play through the stereo encoders above
-        Ndef(name).play(group: g[name.asSymbol].g, addAction: \addToHead);
-
-        // Randomize azimuth and elevation of the encoder
-        g[name.asSymbol].c.set(6, randval, 7, randval);
-
-    };
+{
+	// bus + group
+	~ambiMasterBus = Bus.audio(s, ~numChannels);
+	~ambiMasterGroup = Group.new;
+	s.sync;
+	// binaural decoder (writes to master output)
+	~decoder = VSTPluginController(Synth(\binauralDecoder, [\bus, ~ambiMasterBus, \out, 0],
+		target: ~ambiMasterGroup, addAction: \addToTail)).open("BinauralDecoder");
+	s.sync;
+	// a group for ambisonic master effects
+	~ambiMasterFXGroup = Group.before(~decoder.synth);
+}.fork;
 )
-// Modulate source position
+
+// create ambisonic busses
 (
-    // These will control the azimuth and elevation of the sound sources
-    Ndef(\lfo1, {|f=1|LFSaw.kr(f).linlin(-1.0,1.0,1.0,0.0)});
-    Ndef(\lfo2, {|f=0.1|LFPar.kr(f).linlin(-1.0,1.0,0.0,1.0)});
-    Ndef(\lfo3, {|f=0.01|LFTri.kr(f).linlin(-1.0,1.0,1.0,0.0)});
-    Ndef(\lfo4, {|f=0.001|LFSaw.kr(f).linlin(-1.0,1.0,0.0,1.0)});
+// N ambisonic busses (3rd order) with stereo encoder. add ambi groups *before* master group!
+~numBus = 4; // change this if you want
+~ambiBus = Array.newClear(~numBus);
+~ambiGroup = Array.newClear(~numBus);
+~encoder = Array.newClear(~numBus);
+~numBus.do { arg i;
+	{
+		~ambiBus[i] = Bus.audio(s, ~numChannels);
+		~ambiGroup[i] = Group.before(~ambiMasterGroup);
+		s.sync;
+		// sound source (head)
+		Synth.new(\test, [\out, ~ambiBus[i], \vol, 1.0 / ~numBus], ~ambiGroup[i], addAction: \addToHead);
 
-    (1..4).do{|i|
-        var name = ("lfo" ++ i).asSymbol;
+		// encoder (after sound source)
+		~encoder[i] = VSTPluginController(Synth(\stereoEncoder, [\bus, ~ambiBus[i], \out, ~ambiMasterBus],
+			target: ~ambiGroup[i], addAction: \addToTail));
+		// open plugin and randomize azimuth
+		~encoder[i].open("StereoEncoder", action: { arg self; self.set(6, rand(1.0)) }); // 6 -> azimuth
 
-        // Set random lfo freq
-        Ndef(name).set(\f, rrand(-0.03,0.03));
+		// throw to master section (after encoder)
+		Synth(\ambiThrow, [\from, ~ambiBus[i], \to, ~ambiMasterBus], target: ~ambiGroup[i], addAction: \addToTail);
 
-        // Param 6 is azimuth and 7 is elevation
-        g[("src" ++ i).asSymbol].c.map(6, Ndef(name), 7, Ndef(name));
-    };
+		// you can add more sound sources to the head of the group, stereo FX *before* the encoder and ambi FX *after* the encoder:
+		// sound source, [sound source] ..., [stereo FX], [stereo FX], ..., ENCODER, [ambi FX], [ambi FX], ..., THROW
+	}.fork;
+}
 )
-// Modulate source sound function
+s.queryAllNodes;
+
+// randomize source positions
+~encoder.do(_.set(6, rand(1.0))) // 6 -> azimuth
+
+// move around manually with the GUI:
+~encoder.do(_.gui);
+
+// modulate azimuth values with random LFOs:
 (
-    (1..4).do{|i|
-        var name = ("src" ++ i).asSymbol;
-        var lfoname = ("lfo" ++ i).asSymbol;
-        Ndef(name).map(\freq, Ndef(lfoname), \coef, Ndef(lfoname));
-    };
-
+~lfoGroup = Group.new;
+~lfoBus = { Bus.control } ! ~numBus;
+~lfo = { arg i; { arg rate = 0.5; LFNoise1.kr(rate, 0.5, 0.5) }.play(~lfoGroup, ~lfoBus[i]) } ! ~numBus;
+~encoder.do { arg enc, i; enc.map(6, ~lfoBus[i]) }; // map azimuth parameter (nr. 6) to control bus
 )
-// Try changing the reverb a bit either in the gui or manually
-g.verb.c.gui; // generic Qt GUI
-g.verb.c.editor; // VST editor (if available)
 
-g.verb.c.set(0, 1.0); // Room size
-g.verb.c.set(1, 0.9); // Verb time
-g.verb.c.set(9, 0.1); // Verb fade in
+~lfoGroup.set(\rate, exprand(0.1, 4.0));  // change LFO rates
+~encoder.do(_.unmap(6)); // unmap
 
-// Try modulating the dry/wet input with one of the lfo's used before
-g.verb.c.map(8, Ndef(\lfo2));
-
-// Let's add a another fx!
-~addFxGroup.value("comp", "OmniCompressor");
-g.comp.c.gui; // generic Qt GUI
-g.comp.c.editor; // VST editor (if available)
+// add an ambisonic master FX
+(
+~ambiReverb = VSTPluginController(Synth(\ambiFX, [\bus, ~ambiMasterBus, \out, 0],
+	target: ~ambiMasterFXGroup)).open("FdnReverb");
+)
+~ambiReverb.set(0, rand(1.0)); // vary room size
+~ambiReverb.set(1, rand(1.0)); // vary reverb time
+// bypass it:
+~ambiReverb.synth.set(\bypass, 1); // bypass
+~ambiReverb.synth.set(\bypass, 0); // process
 
 // Recording
 (
-    // When recording ambisonics, we usually don't want the decoded output.
-    // Instead, we want the signal while it's still in the ambisonic domain (so
-    // that we can use it with any kind of decoder in the future), ie just
-    // before the decoder.
-
-    var path = "~/Desktop/ambisonic-piece-%_o%_%chan.wav".format(Date.getDate.stamp, ~order, ~numcomponents).asAbsolutePath;
-
-    r = Recorder(s);
-
-    // Put the recorder right after the fx output
-    r.record(path, 0, ~numcomponents, g.fxGroup);
+// When recording ambisonics, we usually don't want the decoded output.
+// Instead, we want the signal while it's still in the ambisonic domain
+// (so that we can use it with any kind of decoder in the future), i.e. just before the decoder.
+var path = "~/Music/ambisonic-piece-%_o%_%chan.wav".format(Date.getDate.stamp, ~order, ~numChannels).standardizePath;
+r = Recorder(s);
+// Put the recorder after the master FX group (before the decoder)
+r.record(path, ~ambiMasterBus, ~numChannels, ~ambiMasterFXGroup);
 )
+r.stopRecording;
 ::
