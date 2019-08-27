@@ -182,7 +182,7 @@ endif()
 if (MSVC)
     set_target_properties(${PROBE} PROPERTIES LINK_FLAGS /SUBSYSTEM:WINDOWS)
 endif()
-# up to CMake 3.13 we can't install targets from another directory,
+# up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.
 set(PROBE_PATH $<TARGET_FILE:${PROBE}>)
 
