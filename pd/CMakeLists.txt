@@ -95,5 +95,6 @@ endif()
 add_dependencies(${PROJECT} ${PROBE})
 
 install(TARGETS ${PROJECT} DESTINATION ${FILENAME})
-install(FILES "${PROBE_PATH}" "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
+install(PROGRAMS "${PROBE_PATH}" DESTINATION ${FILENAME})
+install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
     "../README.md" "../LICENSE.txt" DESTINATION ${FILENAME})
