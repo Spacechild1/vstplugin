@@ -1959,7 +1959,7 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
 static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
     t_float sr = sp[0]->s_sr;
-    dsp_add(vstplugin_perform, 2, x, blocksize);
+    dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)blocksize);
         // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->setup_plugin();
@@ -1998,6 +1998,8 @@ static void my_terminate(){
 // setup function
 #ifdef _WIN32
 #define EXPORT extern "C" __declspec(dllexport)
+#elif __GNUC__ >= 4
+#define EXPORT extern "C" __attribute__((visibility("default")))
 #else
 #define EXPORT extern "C"
 #endif

@@ -54,12 +54,10 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
-    - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
-    - make -C pd install-strip DESTDIR=$(pwd) pkglibdir=/
-    - make -C sc/build VERBOSE=1
-    - make -C sc/build install/strip VERBOSE=1
+    - make -C build VERBOSE=1
+    - make -C build install/strip VERBOSE=1
 
 .build:macos: &build_macos
   tags:
@@ -77,12 +75,10 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
-    - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
-    - make -C pd install DESTDIR=$(pwd) pkglibdir=/
-    - make -C sc/build VERBOSE=1
-    - make -C sc/build install VERBOSE=1
+    - make -C build VERBOSE=1
+    - make -C build install/strip VERBOSE=1
 
 .build:w32: &build_w32
   stage: build
@@ -103,12 +99,10 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
-    - make -C pd VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
-    - make -C pd install-strip DESTDIR=$(pwd) pkglibdir=/
-    - make -C sc/build VERBOSE=1
-    - make -C sc/build install/strip VERBOSE=1
+    - make -C build VERBOSE=1
+    - make -C build install/strip VERBOSE=1
 
 .build:w64: &build_w64
   stage: build
@@ -129,12 +123,10 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -Hsc -Bsc/build -DSC_PATH="${SC_PATH}" -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSUPERNOVA=ON -DCMAKE_INSTALL_PREFIX=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_EXTENSION="m_amd64" -DPD_INSTALLDIR=$(pwd)
   script:
-    - make -C pd extension=m_amd64 VST2DIR="${VST2DIR}" VST3DIR="${VST3DIR}"
-    - make -C pd install-strip extension=m_amd64 DESTDIR=$(pwd) pkglibdir=/
-    - make -C sc/build VERBOSE=1
-    - make -C sc/build install/strip VERBOSE=1
+    - make -C build VERBOSE=1
+    - make -C build install/strip VERBOSE=1
 
 #######################################################################
 ### the actual jobs: (linux,macos,windows)*(release,snapshot)

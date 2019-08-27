@@ -6,11 +6,11 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 
 ### Features:
 
-* use any VST plugin (audio effect, MIDI effect, soft synth etc.)
+* supports all VST2 and VST3 plugins (audio effect, MIDI effect, instruments, etc.)
 * search and probe plugins in the standard VST directories or in user defined paths
-* automate plugin parameters programmatically
+* automate plugin parameters programmatically (sample accurate for VST3 plugins)
+* arbitrary number of inputs/outputs + VST3 side chain inputs/outputs
 * use either the native VST GUI (WIN32, Cocoa, X11) or a generic editor
-  (NOTE: the VST GUI doesn't work [yet] for SuperCollider on macOS)
 * preset management: read/write standard .fxp and .fxb files or
   set/get the plugin state as raw data to build your own preset management
 * MIDI input/output
@@ -39,10 +39,11 @@ to open a plugin with "editor: true".
 
 * For VST3 plugins, the GUI is not available (yet).
 
-* If you build a 32-bit(!) version 'VSTPlugin' with MinGW and Supercollider/Supernova has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
-This only seems to happen if either the plugin *or* the host link statically against libstdc++ and libgcc. By default, 'VSTPlugin' links statically, so we don't have to ship
-additional DLLs and this generally works fine - unless you use a Supercollider version which was also built with MinGW but *dynamically* linked. In this case you should run cmake with
-`-DSTATIC_LIBS=OFF` so that 'VSTPlugin' also links dynamically. To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles. Yes, it's ridiculous!
+* If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
+This only seems to happen if either the plugin *or* the host link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship
+additional DLLs. This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider with MinGW.
+In this special case you should run cmake with `-DSTATIC_LIBS=OFF` so that 'VSTPlugin' also links dynamically.
+To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles. Yes, it's ridiculous!
 
 [^1]: to make the GUI work for Pd on macOS we have to 'transform' Pd into a Cocoa app
 and install an event polling routine, which is a bit adventurous to say the least.
@@ -57,7 +58,16 @@ The source code for Pd external and Supercollider UGen is permissively licensed,
 
 ### Build instructions:
 
+This project is built with CMake, supported compilers are GCC, Clang and MSVC.
+On Windows, you can also compile with MinGW; it is recommended to use Msys2: https://www.msys2.org/)
+
+By default, the project is built in release mode. You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build, for example.
+
+If you only want to build either the Pd or Supercollider version, simply set the 'PD' or 'SC' variable to 'OFF'.
+
 #### Prerequisites:
+
+##### VST SDK:
 
 For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
 You should have a folder vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x with the header files aeffect.h, affectx.h and vstfxstore.
@@ -67,59 +77,42 @@ For VST3 support, get the Steinberg VST3 SDK and copy it into /vst.
 Actually, you only need vst/VST_SDK/VST3_SDK/pluginterfaces/
 (If you have git installed, run .git-ci/get_vst3.sh)
 
-In case you already have the VST SDK(s) installed somewhere else on your system, you can set the path in the build system.
+The default setting is to build with both VST2 and VST3 support.
+If you only want to support a specific version, you can set the 'VST2' and 'VST3' variables in the CMake project.
+E.g. if  you want to compile without VST2 support, run cmake with `-DVST2=OFF`.
 
-#### Pd:
+In case you already have the VST SDK(s) installed somewhere else on your system,
+you can provide the path to CMake by setting the 'VST2DIR' and 'VST3DIR' variables.
 
-vstplugin~ uses a *modified* version of pd-lib-builder (https://github.com/pure-data/pd-lib-builder)
-(to compile on Windows you need MinGW; it is recommended to use Msys2: https://www.msys2.org/)
+##### Pd:
 
-cd into pd/ and type 'make'. In case the Makefile doesn't automatically find your Pd installation, you can provide the path to Pd explicitly with `PDDIR`:
-`$ make PDDIR=/path/to/pd`
+Make sure you have Pd installed somewhere. If Pd is not found automatically, you can set the paths manually with `-DPD_INCLUDEDIR="/path/to/Pd/src"`.
+On Windows you would also need `-DPD_BINDIR="/path/to/Pd/bin"`; you can set both variables at the same time with `-DPD_DIR="/path/to/Pd"`.
 
-Type 'make install' if you want to install the library. You can choose the installation directory with `PDLIBIDR`:
-`$ make install PDLIBDIR=...`
+By default, [vstplugin~] is installed in the standard externals directory, but you can override it with `-DPD_INSTALLDIR="/path/to/my/externals"`.
 
-The default setting is to build with both VST2 and VST3 support. If you only want to support a specific VST version, you can set the 'VST2' or 'VST3' variable in the make command. 
-E.g. if you want to compile with only VST3 support, do this:
-`$ make PDDIR=/path/to/pd VST2=0`
+##### SuperCollider:
 
-In case you have the SDK installed somewhere else, you can specify the location with the 'VST2DIR' and 'VST3DIR' variables.
+Get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider).
+`SC_INCLUDEDIR` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
 
-#### SuperCollider:
-
-In order to use the VSTPlugin.sc and VSTPluginController.sc classes, you need to first build the VSTPlugin UGen.
-On macOS/Linux you can use GCC or Clang, on Windows you have to use VisualStudio because MinGW builds don't seem to work for some reason.
-
-1) 	make sure you have CMake installed
-2) 	get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider)
-3) 	cd into sc/ and create a build directory (e.g. build/)
-4) 	*macOS/Linux:* cd into the build directory and do
-
-	`cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=/install/path -DSC_PATH=/path/to/supercollider ..`
-
-	*Windows:* you have to tell CMake to generate a VisualStudio project (e.g. "Visual Studio 15 2017 Win64" for a 64 bit build) instead of a standard Unix makefile.
-	It is recommended to use the cmake-gui GUI application to set the variables mentioned above and below.
+With `-DSC_INSTALLDIR="/path/to/my/extensions"` you can choose the installation directory, which would typically be your SuperCollider extensions folder.
 	
-	The default setting is to build with both VST2 and VST3 support. If you only want to support a specific version, you can set the 'VST2' and 'VST3' variables.
-	E.g. if  you want to compile without VST2 support, run cmake with `-DVST2=OFF`.
-	
-	In case you have the SDK installed somewhere else, you can specify the location with the 'VST2DIR' and 'VST3DIR' variables.
-	
-	You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build.
-	`CMAKE_INSTALL_PREFIX` would typically be your SuperCollider Extensions folder.
-	`SC_PATH` must point to the folder containing the SuperCollider source code (with the subfolders common/ and include/).
-	
-	Set 'SUPERNOVA' to 'ON' if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
-	However, this might be fixed in the next minor SC release.
+Set 'SUPERNOVA' to 'ON' if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
+However, this might be fixed in the next minor SC release.
 
-5) 	*macOS/Linux:* type `make`
+#### Build:
 
-	*Windows:* open VSTPlugin.sln with Visual Studio and build the solution.
+1)	create a build directory, e.g. *build/*.
+2)  cd into the build directory and run `cmake ..` + the necessary variables
+	*or* set the variables in the cmake-gui and click "Configure" + "Generate"
+3)	in the build directory type `make`
 
-6)	*macOS/Linux:* type `make install` if you want to install
+	*MSVC:* open VSTPlugin.sln with Visual Studio and build the solution.
 
-	Windows: build the project `INSTALL` if you want to install
+4)	type `make install` to install
+
+	*MSVC:* build the project `INSTALL` to install
 
 ---
 

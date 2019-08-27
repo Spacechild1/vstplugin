@@ -200,7 +200,7 @@ class VST3Plugin final :
 
     PluginType getType() const override { return PluginType::VST3; }
 
-    const PluginInfo& info() const { return *info_; }
+    const PluginInfo& info() const override { return *info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;

@@ -5,12 +5,14 @@
 
 using namespace vst;
 
+#ifdef _MSC_VER
+#include <windows.h>
+#endif
+
 #define NO_STDOUT 1
 #define NO_STDERR 1
 
 #ifdef _WIN32
- #define MAIN wmain
- #define CHAR wchar_t
  #if NO_STDOUT || NO_STDERR
   #include <stdio.h>
   #include <io.h>
@@ -23,10 +25,9 @@ using namespace vst;
    #define fileno _fileno
   #endif
  #endif
+ #define MAIN wmain
+ #define CHAR wchar_t
 #else
- #define MAIN main
- #define CHAR char
- #define shorten(x) x
  #if NO_STDOUT || NO_STDERR
   #include <stdio.h>
   #include <unistd.h>
@@ -34,11 +35,20 @@ using namespace vst;
   #define DUP2(fd, newfd) dup2(fd, newfd)
   const char *nullFileName = "/dev/null";
  #endif
+ #define MAIN main
+ #define CHAR char
+ #define shorten(x) x
 #endif
 
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
+#ifdef _MSC_VER
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd){
+    int argc;
+    auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+#else
 int MAIN(int argc, const CHAR *argv[]) {
+#endif
     int status = EXIT_FAILURE;
     // surpress stdout and/or stderr
 #if NO_STDOUT || NO_STDERR
@@ -79,6 +89,9 @@ int MAIN(int argc, const CHAR *argv[]) {
     if (nullOut){
         fclose(nullOut);
     }
+#endif
+#ifdef _MSC_VER
+    LocalFree(argv); // let's be nice
 #endif
     return status;
 }
