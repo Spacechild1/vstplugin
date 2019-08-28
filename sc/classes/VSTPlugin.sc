@@ -121,7 +121,7 @@ VSTPlugin : MultiOutUGen {
 		server.listSendMsg(this.clearMsg(remove));
 	}
 	*clearMsg { arg remove=true;
-		^['/cmd', '/vst_clear', remove.asInt];
+		^['/cmd', '/vst_clear', remove.asInteger];
 	}
 	*reset { arg server;
 		this.deprecated(thisMethod, this.class.findMethod(\clear));
