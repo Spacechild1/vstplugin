@@ -71,7 +71,7 @@ DWORD EventLoop::run(void *user){
                 if (plugin->info().hasEditor()){
                     auto window = std::make_unique<Window>(*plugin);
                     window->setTitle(plugin->info().name);
-                    int left, top, right, bottom;
+                    int left = 0, top = 0, right = 300, bottom = 300;
                     plugin->getEditorRect(left, top, right, bottom);
                     window->setGeometry(left, top, right, bottom);
                     plugin->openEditor(window->getHandle());

@@ -1650,8 +1650,8 @@ void VST3Plugin::closeEditor(){
 
 }
 
-void VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
-
+bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+    return false;
 }
 
 // VST3 only

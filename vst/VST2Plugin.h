@@ -129,7 +129,7 @@ class VST2Plugin final : public IPlugin {
     bool hasEditor() const override;
     void openEditor(void *window) override;
     void closeEditor() override;
-    void getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
     void setWindow(IWindow::ptr window) override {
         window_ = std::move(window);
     }

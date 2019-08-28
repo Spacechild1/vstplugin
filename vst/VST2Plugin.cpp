@@ -1163,7 +1163,7 @@ void VST2Plugin::closeEditor(){
     dispatch(effEditClose);
 }
 
-void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+bool VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
     ERect* erc = nullptr;
     dispatch(effEditGetRect, 0, 0, &erc);
     if (erc){
@@ -1171,9 +1171,11 @@ void VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
         top = erc->top;
         right = erc->right;
         bottom = erc->bottom;
-    } else {
-        LOG_ERROR("VST2Plugin::getEditorRect: bug!");
+        if ((right - left) > 0 && (bottom - top) > 0){
+            return true;
+        }
     }
+    return false;
 }
 
 // private
@@ -1443,80 +1445,78 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
 }
 
 #define DEBUG_HOSTCODE_IMPLEMENTATION 1
+#if DEBUG_HOSTCODE_IMPLEMENTATION
+#define DEBUG_HOSTCODE(x) LOG_DEBUG(x)
+#else
+#define DEBUG_HOSTCODE(x)
+#endif
 VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *p, float opt){
     switch(opcode) {
     case audioMasterAutomate:
-        // LOG_DEBUG("opcode: audioMasterAutomate");
         parameterAutomated(index, opt);
         break;
     case audioMasterIdle:
-        LOG_DEBUG("opcode: audioMasterIdle");
+        DEBUG_HOSTCODE("opcode: audioMasterIdle");
         dispatch(effEditIdle);
         break;
     case audioMasterGetTime:
-        // LOG_DEBUG("opcode: audioMasterGetTime");
         return (VstIntPtr)getTimeInfo(value);
     case audioMasterProcessEvents:
-        // LOG_DEBUG("opcode: audioMasterProcessEvents");
         processEvents((VstEvents *)p);
         break;
-#if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterIOChanged:
-        LOG_DEBUG("opcode: audioMasterIOChanged");
+        DEBUG_HOSTCODE("opcode: audioMasterIOChanged");
         break;
     case audioMasterSizeWindow:
-        LOG_DEBUG("opcode: audioMasterSizeWindow");
-        break;
+        DEBUG_HOSTCODE("opcode: audioMasterSizeWindow");
+        return 1;
     case audioMasterGetSampleRate:
-        LOG_DEBUG("opcode: audioMasterGetSampleRate");
-        break;
+        DEBUG_HOSTCODE("opcode: audioMasterGetSampleRate");
+        return (long)timeInfo_.sampleRate;
     case audioMasterGetBlockSize:
-        LOG_DEBUG("opcode: audioMasterGetBlockSize");
-        break;
+        DEBUG_HOSTCODE("opcode: audioMasterGetBlockSize");
+        return 64; // we override this later anyway
     case audioMasterGetInputLatency:
-        LOG_DEBUG("opcode: audioMasterGetInputLatency");
+        DEBUG_HOSTCODE("opcode: audioMasterGetInputLatency");
         break;
     case audioMasterGetOutputLatency:
-        LOG_DEBUG("opcode: audioMasterGetOutputLatency");
+        DEBUG_HOSTCODE("opcode: audioMasterGetOutputLatency");
         break;
     case audioMasterGetCurrentProcessLevel:
-        LOG_DEBUG("opcode: audioMasterGetCurrentProcessLevel");
-        break;
+        DEBUG_HOSTCODE("opcode: audioMasterGetCurrentProcessLevel");
+        return kVstProcessLevelUnknown;
     case audioMasterGetAutomationState:
-        LOG_DEBUG("opcode: audioMasterGetAutomationState");
+        DEBUG_HOSTCODE("opcode: audioMasterGetAutomationState");
         break;
-#endif
     case audioMasterGetVendorString:
     case audioMasterGetProductString:
     case audioMasterGetVendorVersion:
     case audioMasterVendorSpecific:
-        LOG_DEBUG("opcode: vendor info");
+        DEBUG_HOSTCODE("opcode: vendor info");
         break;
-#if DEBUG_HOSTCODE_IMPLEMENTATION
     case audioMasterGetLanguage:
-        LOG_DEBUG("opcode: audioMasterGetLanguage");
+        DEBUG_HOSTCODE("opcode: audioMasterGetLanguage");
         break;
     case audioMasterGetDirectory:
-        LOG_DEBUG("opcode: audioMasterGetDirectory");
+        DEBUG_HOSTCODE("opcode: audioMasterGetDirectory");
         break;
     case audioMasterUpdateDisplay:
-        LOG_DEBUG("opcode: audioMasterUpdateDisplay");
+        DEBUG_HOSTCODE("opcode: audioMasterUpdateDisplay");
         break;
     case audioMasterBeginEdit:
-        LOG_DEBUG("opcode: audioMasterBeginEdit");
+        DEBUG_HOSTCODE("opcode: audioMasterBeginEdit");
         break;
     case audioMasterEndEdit:
-        LOG_DEBUG("opcode: audioMasterEndEdit");
+        DEBUG_HOSTCODE("opcode: audioMasterEndEdit");
         break;
     case audioMasterOpenFileSelector:
-        LOG_DEBUG("opcode: audioMasterOpenFileSelector");
+        DEBUG_HOSTCODE("opcode: audioMasterOpenFileSelector");
         break;
     case audioMasterCloseFileSelector:
-        LOG_DEBUG("opcode: audioMasterCloseFileSelector");
+        DEBUG_HOSTCODE("opcode: audioMasterCloseFileSelector");
         break;
-#endif
     default:
-        LOG_DEBUG("plugin requested unknown/deprecated opcode " << opcode);
+        DEBUG_HOSTCODE("plugin requested unknown/deprecated opcode " << opcode);
         return 0;
     }
     return 0; // ?
