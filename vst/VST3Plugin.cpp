@@ -3,15 +3,8 @@
 #include <cstring>
 #include <algorithm>
 #include <set>
-#ifdef _WIN32
- #include <windows.h>
-#elif defined(__APPLE__)
- #include <CoreFoundation/CFString.h>
- #include <CoreFoundation/CFStringEncodingExt.h>
-#else
- #include <codecvt>
- #include <locale>
-#endif
+#include <codecvt>
+#include <locale>
 
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
@@ -72,74 +65,12 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 namespace vst {
 
 #ifdef _WIN32
-
-std::string convertString (const Vst::String128 str){
-    int size = wcslen((const wchar_t *)str);
-    std::string buf;
-    if (size > 0){
-        int n = WideCharToMultiByte(CP_UTF8, 0, (const wchar_t *)str, size, NULL, 0, NULL, NULL);
-        buf.resize(n);
-        WideCharToMultiByte(CP_UTF8, 0, (const wchar_t *)str, size, &buf[0], n, NULL, NULL);
-    }
-    return buf;
-}
-
-bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
-    if (src.empty()){
-        dst[0] = 0;
-    } else {
-        int n = MultiByteToWideChar(CP_UTF8, 0, src.data(), src.size(), NULL, 0);
-        n = std::max<int>(n, 128);
-        if (MultiByteToWideChar(CP_UTF8, 0, src.data(), src.size(), (wchar_t*)dst, n) == 0){
-            dst[0] = 0;
-            return false;
-        }
-    }
-    return true;
-}
-
-#elif defined(__APPLE__)
-
-std::string convertString (const Vst::String128 src){
-    int size = wcslen((const wchar_t *)src);
-    std::string buf;
-    CFStringRef str = CFStringCreateWithCharactersNoCopy(kCFAllocatorDefault,
-                                                         (const UniChar*)wideString, size, kCFAllocatorNull);
-    if (str){
-        auto len = (int)(CFStringGetLength(str) * 2) + 1;
-        buf.resize(len);
-        CFStringGetCString(str, &data[0], len, kCFStringEncodingUnicode);
-        CFRelease(str);
-    }
-    return buf;
-}
-
-bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
-    if (src.empty()){
-        dst[0] = 0;
-        return true;
-    } else {
-        auto str = CFStringCreateWithCString(kCFAllocatorDefault, src.c_str(), kCFStringEncodingUTF8);
-        if (str){
-            CFRange range = {0, CFStringGetLength(str)};
-            CFIndex bytes = 0;
-            if (CFStringGetBytes(str, range, kCFStringEncodingUnicode, ' ', false,
-                                  (UInt8*)dst, src.size() * 2, &bytes) > 0)
-            {
-                dst[bytes / 2] = 0;
-                CFRelease(str);
-                return true;
-            }
-            CFRelease(str);
-        }
-    }
-    dst[0] = 0;
-    return false;
-}
-
+using unichar = wchar_t;
 #else
+using unichar = char16_t;
+#endif
 
-using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>;
+using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
 
 static StringCoverter& stringConverter(){
     thread_local StringCoverter conv;
@@ -147,7 +78,7 @@ static StringCoverter& stringConverter(){
 }
 
 std::string convertString (const Vst::String128 str){
-    return stringConverter().to_bytes(reinterpret_cast<const wchar_t*>(str));
+    return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
 }
 
 bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
@@ -162,8 +93,6 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
         return false;
     }
 }
-
-#endif
 
 /*/////////////////////// VST3Factory /////////////////////////*/
 
