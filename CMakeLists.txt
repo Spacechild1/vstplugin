@@ -18,6 +18,8 @@ if(MINGW)
 	set(CMAKE_EXECUTABLE_SUFFIX ".exe")
 endif()
 
+set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install directories")
+
 # Windows paths
 if (WIN32 OR MINGW)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
@@ -28,11 +30,13 @@ if (WIN32 OR MINGW)
         set(PROGRAMFILES $ENV{PROGRAMFILES})
     endif()
     set(APPDATA $ENV{APPDATA})
+    set(LOCALAPPDATA $ENV{LOCALAPPDATA})
     if (MINGW)
         # For MinGW, CMake thinks that "C:/" is a relative path, so we have to bash it to "/c/"...
         # For simplicity, I just assume that program files are on the C drive. A CMake guru should fix this!
         string(REPLACE "C:\\" "/c/" PROGRAMFILES ${PROGRAMFILES})
         string(REPLACE "C:\\" "/c/" APPDATA ${APPDATA})
+        string(REPLACE "C:\\" "/c/" APPDATA ${LOCALAPPDATA})
     endif()
 endif()
 

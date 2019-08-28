@@ -45,9 +45,6 @@ else()
 endif()
 message(STATUS "PD_INSTALLDIR: ${PD_INSTALLDIR}")
 
-SET(CMAKE_INSTALL_PREFIX "${PD_INSTALLDIR}" CACHE INTERNAL
-    "Prefix prepended to install directories" FORCE)
-
 # plugin extension
 set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
 if (NOT PD_EXTENSION)
@@ -94,7 +91,7 @@ endif()
 # installation
 add_dependencies(${PROJECT} ${PROBE})
 
-install(TARGETS ${PROJECT} DESTINATION ${FILENAME})
-install(PROGRAMS "${PROBE_PATH}" DESTINATION ${FILENAME})
+install(TARGETS ${PROJECT} DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+install(PROGRAMS "${PROBE_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
-    "../README.md" "../LICENSE.txt" DESTINATION ${FILENAME})
+    "../README.md" "../LICENSE.txt" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")

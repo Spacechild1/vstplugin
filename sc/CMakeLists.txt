@@ -15,12 +15,16 @@ include_directories(${SC_INCLUDEDIR}/include/common)
 include_directories(${SC_INCLUDEDIR}/plugin_interface)
 include_directories(${SC_INCLUDEDIR}/common)
 
-# Installation path (LATER use platform specific defaults)
-set(SC_INSTALLDIR "" CACHE PATH "Installation path")
+# Installation path
+# install directory:
+if (WIN32 OR MINGW)
+    set(SC_INSTALLDIR "${LOCALAPPDATA}/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
+elseif(APPLE)
+    set(SC_INSTALLDIR "~/Library/Application Support/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
+else()
+    set(SC_INSTALLDIR "~/.local/share/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
+endif()
 message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
-
-SET(CMAKE_INSTALL_PREFIX "${SC_INSTALLDIR}" CACHE INTERNAL
-	"Prefix prepended to install directories" FORCE)
 
 # plugin extension
 set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
@@ -53,11 +57,11 @@ endif()
 # installation
 add_dependencies(${PROJECT} ${PROBE})
 
-install(TARGETS ${PROJECT} DESTINATION "${PROJECT}/plugins")
+install(TARGETS ${PROJECT} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 if (SUPERNOVA)
-    install(TARGETS ${PROJECT}_supernova DESTINATION "${PROJECT}/plugins")
+    install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
-install(PROGRAMS "${PROBE_PATH}" DESTINATION "${PROJECT}/plugins")
-install(DIRECTORY classes DESTINATION ${PROJECT})
-install(DIRECTORY HelpSource DESTINATION ${PROJECT})
-install(FILES "../README.md" "../LICENSE.txt" DESTINATION ${PROJECT})
+install(PROGRAMS "${PROBE_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+install(DIRECTORY classes DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
+install(DIRECTORY HelpSource DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
+install(FILES "../README.md" "../LICENSE.txt" DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
