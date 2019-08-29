@@ -6,6 +6,7 @@
 #if USE_FST
 #include "fst.h"
 #else
+#define VST_FORCE_DEPRECATED 0
 #include "aeffectx.h"
 #endif
 

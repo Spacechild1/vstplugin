@@ -1291,7 +1291,9 @@ bool VST2Plugin::canHostDo(const char *what) {
         || matches("sendVstTimeInfo") || matches("receiveVstTimeInfo")
         || matches("sendVstMidiEventFlagIsRealtime")
         || matches("reportConnectionChanges")
-        || matches("shellCategory");
+        || matches("shellCategory")
+        || matches("supplyIdle")
+        || matches("sizeWindow");
 }
 
 void VST2Plugin::parameterAutomated(int index, float value){
@@ -1465,6 +1467,13 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         DEBUG_HOSTCODE("opcode: audioMasterIdle");
         updateEditor();
         break;
+    case audioMasterNeedIdle:
+        DEBUG_HOSTCODE("opcode: audioMasterNeedIdle");
+        dispatch(effIdle);
+        break;
+    case audioMasterWantMidi:
+        DEBUG_HOSTCODE("opcode: audioMasterWantMidi");
+        return 1;
     case audioMasterGetTime:
         return (VstIntPtr)getTimeInfo(value);
     case audioMasterProcessEvents:
