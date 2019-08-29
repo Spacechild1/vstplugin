@@ -185,7 +185,7 @@ void Window::doOpen(){
         window_ = window;
         
         setTitle(plugin_->info().name);
-        int left = 0, top = 0, right = 300, bottom = 300;
+        int left = 100, top = 100, right = 400, bottom = 400;
         plugin_->getEditorRect(left, top, right, bottom);
         setGeometry(left, top, right, bottom);
         

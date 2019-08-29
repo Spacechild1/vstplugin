@@ -319,6 +319,8 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
 }
 
 VST2Plugin::~VST2Plugin(){
+    window_ = nullptr;
+
     dispatch(effClose);
 
         // clear sysex events

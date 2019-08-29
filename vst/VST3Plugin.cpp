@@ -584,6 +584,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 }
 
 VST3Plugin::~VST3Plugin(){
+    window_ = nullptr;
     processor_ = nullptr;
     controller_->terminate();
     controller_ = nullptr;

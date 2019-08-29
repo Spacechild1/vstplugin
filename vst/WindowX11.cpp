@@ -102,13 +102,7 @@ void EventLoop::run(){
                 try {
                     auto plugin = info_->create();
                     if (plugin->info().hasEditor()){
-                        auto window = std::make_unique<Window>(*display_, *plugin);
-                        window->setTitle(plugin->info().name);
-                        int left = 0, top = 0, right = 300, bottom = 300;
-                        plugin->getEditorRect(left, top, right, bottom);
-                        window->setGeometry(left, top, right, bottom);
-                        plugin->openEditor(window->getHandle());
-                        plugin->setWindow(std::move(window));
+                        plugin->setWindow(std::make_unique<Window>(*display_, *plugin));
                     }
                     plugin_ = std::move(plugin);
                 } catch (const Error& e){
@@ -122,7 +116,6 @@ void EventLoop::run(){
                 LOG_DEBUG("WM_DESTROY_PLUGIN");
                 std::unique_lock<std::mutex> lock(mutex_);
                 auto plugin = std::move(plugin_);
-                plugin->closeEditor();
                 // goes out of scope
                 lock.unlock();
                 cond_.notify_one();
@@ -213,9 +206,15 @@ Window::Window(Display& display, IPlugin& plugin)
 		XFree(ch);
 	}
     LOG_DEBUG("X11: created Window");
+    setTitle(plugin_->info().name);
+    int left = 100, top = 100, right = 400, bottom = 400;
+    plugin_->getEditorRect(left, top, right, bottom);
+    setGeometry(left, top, right, bottom);
+    plugin_->openEditor(getHandle());
 }
 
 Window::~Window(){
+    plugin_->closeEditor();
     XDestroyWindow(display_, window_);
     LOG_DEBUG("X11: destroyed Window");
 }

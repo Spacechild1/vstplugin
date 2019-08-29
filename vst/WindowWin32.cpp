@@ -73,13 +73,7 @@ DWORD EventLoop::run(void *user){
             try {
                 auto plugin = obj->info_->create();
                 if (plugin->info().hasEditor()){
-                    auto window = std::make_unique<Window>(*plugin);
-                    window->setTitle(plugin->info().name);
-                    int left = 0, top = 0, right = 300, bottom = 300;
-                    plugin->getEditorRect(left, top, right, bottom);
-                    window->setGeometry(left, top, right, bottom);
-                    plugin->openEditor(window->getHandle());
-                    plugin->setWindow(std::move(window));
+                    plugin->setWindow(std::make_unique<Window>(*plugin));
                 }
                 obj->plugin_ = std::move(plugin);
             } catch (const Error& e){
@@ -95,8 +89,7 @@ DWORD EventLoop::run(void *user){
         {
             LOG_DEBUG("WM_DESTROY_PLUGIN");
             std::unique_lock<std::mutex> lock(obj->mutex_);
-            auto plugin = std::move(obj->plugin_);
-            plugin->closeEditor(); // goes out of scope
+            obj->plugin_ = nullptr;
             lock.unlock();
             obj->cond_.notify_one();
             break;
@@ -204,9 +197,15 @@ Window::Window(IPlugin& plugin)
           NULL, NULL, NULL, NULL
     );
     LOG_DEBUG("created Window");
+    setTitle(plugin_->info().name);
+    int left = 100, top = 100, right = 400, bottom = 400;
+    plugin_->getEditorRect(left, top, right, bottom);
+    setGeometry(left, top, right, bottom);
+    plugin_->openEditor(getHandle());
 }
 
 Window::~Window(){
+    plugin_->closeEditor();
     DestroyWindow(hwnd_);
     LOG_DEBUG("destroyed Window");
 }
