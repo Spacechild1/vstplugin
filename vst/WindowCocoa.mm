@@ -65,6 +65,12 @@ void destroy(IPlugin::ptr plugin){
     EventLoop::instance().destroy(std::move(plugin));
 }
 
+#if HAVE_UI_THREAD
+bool check(){
+    return [NSThread isMainThread];
+}
+#endif
+
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
     return thread;

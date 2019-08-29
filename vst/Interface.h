@@ -464,7 +464,9 @@ class IWindow {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !VSTTTHREADS
+#if HAVE_UI_THREAD
+    bool check();
+#else
     void poll();
 #endif
 }

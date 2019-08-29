@@ -28,6 +28,7 @@ class EventLoop {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
     bool postClientEvent(Atom atom);
+    std::thread::id threadID(){ return thread_.get_id(); }
  private:
     void run();
     Display *display_ = nullptr;

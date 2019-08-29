@@ -27,6 +27,10 @@ void destroy(IPlugin::ptr plugin){
     EventLoop::instance().destroy(std::move(plugin));
 }
 
+bool check(){
+    return GetCurrentThreadId() == GetThreadId(EventLoop::instance().threadHandle());
+}
+
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
     return thread;

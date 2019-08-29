@@ -43,7 +43,7 @@ namespace fs = std::experimental::filesystem;
 #endif
 
 namespace vst {
-    
+
 // forward declarations to avoid including the header files 
 // (creates troubles with Cocoa)
 #ifdef _WIN32
@@ -51,7 +51,9 @@ namespace Win32 {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !HAVE_UI_THREAD
+#if HAVE_UI_THREAD
+    bool check();
+#else
     void poll();
 #endif
 } // UIThread
@@ -61,7 +63,9 @@ namespace Cocoa {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !HAVE_UI_THREAD
+#if HAVE_UI_THREAD
+    bool check();
+#else
     void poll();
 #endif
 } // UIThread
@@ -71,7 +75,9 @@ namespace X11 {
 namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-#if !HAVE_UI_THREAD
+#if HAVE_UI_THREAD
+    bool check();
+#else
     void poll();
 #endif
 } // UIThread
@@ -531,7 +537,17 @@ namespace UIThread {
     #endif
     }
 
-#if !HAVE_UI_THREAD
+#if HAVE_UI_THREAD
+    bool check(){
+    #ifdef _WIN32
+        return Win32::UIThread::check();
+    #elif defined(__APPLE__)
+        return Cocoa::UIThread::check();
+    #elif defined(USE_X11)
+        return X11::UIThread::check();
+    #endif
+    }
+#else
     void poll(){
     #ifdef _WIN32
         Win32::UIThread::poll();
