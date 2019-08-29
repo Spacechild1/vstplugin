@@ -202,12 +202,24 @@ Window::Window(IPlugin& plugin)
     plugin_->getEditorRect(left, top, right, bottom);
     setGeometry(left, top, right, bottom);
     plugin_->openEditor(getHandle());
+    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
+    SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
 }
 
 Window::~Window(){
+    KillTimer(hwnd_, timerID);
     plugin_->closeEditor();
     DestroyWindow(hwnd_);
     LOG_DEBUG("destroyed Window");
+}
+
+void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time){
+    auto window = (Window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    if (window){
+        window->plugin_->updateEditor();
+    } else {
+        LOG_ERROR("bug GetWindowLongPtr");
+    }
 }
 
 void Window::setTitle(const std::string& title){

@@ -12,6 +12,7 @@
 - (void)windowDidMiniaturize:(NSNotification *)notification;
 - (void)windowDidDeminiaturize:(NSNotification *)notification;
 - (void)windowDidMove:(NSNotification *)notification;
+- (void)updateEditor;
 
 @end
 
@@ -19,6 +20,8 @@ namespace vst {
 namespace Cocoa {
     
 namespace UIThread {
+
+const int updateInterval = 30;
 
 class EventLoop {
  public:
@@ -56,10 +59,12 @@ class Window : public IWindow {
     
     void doOpen();
     void onClose();
+    void updateEditor();
  private:
     CocoaEditorWindow * window_ = nullptr;
     IPlugin * plugin_;
     NSPoint origin_;
+    NSTimer *timer_;
 };
 
 } // Cocoa

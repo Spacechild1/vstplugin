@@ -172,6 +172,7 @@ class IPlugin {
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
     virtual bool getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
+    virtual void updateEditor() = 0;
 
     virtual void setWindow(std::unique_ptr<IWindow> window) = 0;
     virtual IWindow* getWindow() const = 0;

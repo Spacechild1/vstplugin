@@ -7,19 +7,18 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
+#include <list>
 
 namespace vst {
 namespace X11 {
 
 namespace UIThread {
 
+const int updateInterval = 30;
+
 class EventLoop {
  public:
-    static Atom wmProtocols;
-    static Atom wmDelete;
-    static Atom wmQuit;
-    static Atom wmCreatePlugin;
-    static Atom wmDestroyPlugin;
     static EventLoop& instance();
 
     EventLoop();
@@ -27,10 +26,11 @@ class EventLoop {
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-    bool postClientEvent(Atom atom);
+    bool postClientEvent(Atom atom, long data = 0);
     std::thread::id threadID(){ return thread_.get_id(); }
  private:
     void run();
+    void updatePlugins();
     Display *display_ = nullptr;
     ::Window root_;
     std::thread thread_;
@@ -40,6 +40,9 @@ class EventLoop {
     IPlugin::ptr plugin_;
     Error err_;
     bool ready_ = false;
+    std::list<IPlugin *> pluginList_;
+    std::thread timerThread_;
+    std::atomic<bool> timerThreadRunning_{true};
 };
 
 } // UIThread
@@ -65,8 +68,6 @@ class Window : public IWindow {
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;
-    Atom wmProtocols_;
-    Atom wmDelete_;
 };
 
 } // X11

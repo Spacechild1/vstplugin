@@ -23,10 +23,14 @@
     LOG_DEBUG("window miniaturized");
 }
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
-    LOG_DEBUG("window deminiaturized");    
+    LOG_DEBUG("window deminiaturized");
 }
 - (void)windowDidMove:(NSNotification *)notification {
-    LOG_DEBUG("window did move");    
+    LOG_DEBUG("window did move");
+}
+- (void)updateEditor {
+    vst::IWindow *owner = [self owner];
+    static_cast<vst::Cocoa::Window *>(owner)->updateEditor();
 }
 
 @end
@@ -192,7 +196,13 @@ void Window::doOpen(){
         [window_ setFrameOrigin:origin_];
         
         plugin_->openEditor(getHandle());
-        
+
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:5
+                    target:window
+                    selector:@selector(updateEditor)
+                    userInfo:nil
+                    repeats:YES];
+
         [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
     }
@@ -200,9 +210,14 @@ void Window::doOpen(){
 
 // to be called on the main thread
 void Window::onClose(){
+    [timer_ invalidate];
     plugin_->closeEditor();
     origin_ = [window_ frame].origin;
     window_ = nullptr;
+}
+
+void Window::updateEditor(){
+    plugin_->updateEditor();
 }
 
 void * Window::getHandle(){

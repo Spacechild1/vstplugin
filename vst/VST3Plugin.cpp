@@ -1655,6 +1655,10 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
     return false;
 }
 
+void VST3Plugin::updateEditor(){
+
+}
+
 // VST3 only
 void VST3Plugin::beginMessage() {
     msg_.reset(new HostMessage);

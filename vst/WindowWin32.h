@@ -14,6 +14,8 @@ namespace UIThread {
 const UINT WM_CREATE_PLUGIN = WM_USER + 100;
 const UINT WM_DESTROY_PLUGIN = WM_USER + 101;
 
+const int updateInterval = 30;
+
 class EventLoop {
  public:
     static EventLoop& instance();
@@ -58,8 +60,10 @@ class Window : public IWindow {
     void minimize() override;
     void restore() override;
     void bringToTop() override;
-    void update() override;
+    void update();
  private:
+    static const UINT_PTR timerID = 0x375067f6;
+    static void CALLBACK updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time);
     HWND hwnd_ = nullptr;
     IPlugin* plugin_ = nullptr;
 };

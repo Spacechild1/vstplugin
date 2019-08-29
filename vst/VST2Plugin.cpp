@@ -1180,6 +1180,10 @@ bool VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
     return false;
 }
 
+void VST2Plugin::updateEditor(){
+    dispatch(effEditIdle);
+}
+
 // private
 
 std::string VST2Plugin::getPluginName() const {
@@ -1459,7 +1463,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterIdle:
         DEBUG_HOSTCODE("opcode: audioMasterIdle");
-        dispatch(effEditIdle);
+        updateEditor();
         break;
     case audioMasterGetTime:
         return (VstIntPtr)getTimeInfo(value);
