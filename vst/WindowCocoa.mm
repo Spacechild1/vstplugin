@@ -40,7 +40,11 @@ namespace Cocoa {
 
 namespace UIThread {
 
-#if !HAVE_UI_THREAD
+#if HAVE_UI_THREAD
+bool checkThread(){
+    return [NSThread isMainThread];
+}
+#else
 void poll(){
     NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
     while (true) {
@@ -68,12 +72,6 @@ IPlugin::ptr create(const PluginInfo& info){
 void destroy(IPlugin::ptr plugin){
     EventLoop::instance().destroy(std::move(plugin));
 }
-
-#if HAVE_UI_THREAD
-bool check(){
-    return [NSThread isMainThread];
-}
-#endif
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -164,6 +162,8 @@ Window::Window(IPlugin& plugin)
 // the destructor must be called on the main thread!
 Window::~Window(){
     if (window_){
+        plugin_->closeEditor();
+        [timer_ invalidate];
         [window_ close];
     }
     LOG_DEBUG("destroyed Window");

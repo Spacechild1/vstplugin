@@ -466,7 +466,7 @@ namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
 #if HAVE_UI_THREAD
-    bool check();
+    bool checkThread();
 #else
     void poll();
 #endif
