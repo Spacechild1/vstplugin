@@ -36,17 +36,6 @@ EventLoop& EventLoop::instance(){
     return thread;
 }
 
-static LRESULT WINAPI PluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
-    if (Msg == WM_CLOSE){
-        ShowWindow(hWnd, SW_HIDE); // don't destroy Window when closed
-        return true;
-    }
-    if (Msg == WM_DESTROY){
-        LOG_DEBUG("WM_DESTROY");
-    }
-    return DefWindowProcW(hWnd, Msg, wParam, lParam);
-}
-
 DWORD EventLoop::run(void *user){
     auto obj = (EventLoop *)user;
     MSG msg;
@@ -96,19 +85,12 @@ DWORD EventLoop::run(void *user){
     return 0;
 }
 
-void EventLoop::notify(){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = true;
-    lock.unlock();
-    cond_.notify_one();
-}
-
 EventLoop::EventLoop(){
     // setup window class
     WNDCLASSEXW wcex;
     memset(&wcex, 0, sizeof(WNDCLASSEXW));
     wcex.cbSize = sizeof(WNDCLASSEXW);
-    wcex.lpfnWndProc = PluginEditorProc;
+    wcex.lpfnWndProc = Window::procedure;
     wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
     wchar_t exeFileName[MAX_PATH];
     GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
@@ -148,13 +130,21 @@ bool EventLoop::postMessage(UINT msg, void *data){
 bool EventLoop::sendMessage(UINT msg, void *data){
     std::unique_lock<std::mutex> lock(mutex_);
     ready_ = false;
-    if (!postMessage(msg, data)){
+    if (postMessage(msg, data)){
+        LOG_DEBUG("waiting...");
+        cond_.wait(lock, [&]{return ready_; });
+        LOG_DEBUG("done");
+        return true;
+    } else {
         return false;
     }
-    LOG_DEBUG("waiting...");
-    cond_.wait(lock, [&]{return ready_; });
-    LOG_DEBUG("done");
-    return true;
+}
+
+void EventLoop::notify(){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = true;
+    lock.unlock();
+    cond_.notify_one();
 }
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
@@ -205,7 +195,7 @@ Window::Window(IPlugin& plugin)
     int left = 100, top = 100, right = 400, bottom = 400;
     plugin_->getEditorRect(left, top, right, bottom);
     setGeometry(left, top, right, bottom);
-    plugin_->openEditor(getHandle());
+    LOG_DEBUG("size: " << (right - left) << ", " << (bottom - top));
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
     SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
 }
@@ -215,6 +205,53 @@ Window::~Window(){
     plugin_->closeEditor();
     DestroyWindow(hwnd_);
     LOG_DEBUG("destroyed Window");
+}
+
+LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
+    auto window = (Window *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+
+    switch (Msg){
+    case WM_CLOSE: // intercept close event!
+    case WM_CLOSE_EDITOR:
+    {
+        if (window){
+            window->plugin_->closeEditor();
+        } else {
+            LOG_ERROR("bug GetWindowLongPtr");
+        }
+        ShowWindow(hWnd, SW_HIDE);
+        return true;
+    }
+    case WM_OPEN_EDITOR:
+    {
+        ShowWindow(hWnd, SW_RESTORE);
+        BringWindowToTop(hWnd);
+        if (window){
+            window->plugin_->openEditor(window->getHandle());
+        } else {
+            LOG_ERROR("bug GetWindowLongPtr");
+        }
+        return true;
+    }
+    case WM_EDITOR_POS:
+    {
+        RECT rc;
+        if (GetWindowRect(hWnd, &rc)){
+            MoveWindow(hWnd, wParam, lParam, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+        }
+        return true;
+    }
+    case WM_EDITOR_SIZE:
+    {
+        RECT rc;
+        if (GetWindowRect(hWnd, &rc)){
+            window->setGeometry(rc.left, rc.top, wParam + rc.left, lParam + rc.top);
+        }
+        return true;
+    }
+    default:
+        return DefWindowProcW(hWnd, Msg, wParam, lParam);
+    }
 }
 
 void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time){
@@ -240,32 +277,24 @@ void Window::setGeometry(int left, int top, int right, int bottom){
     const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
     const BOOL fMenu = GetMenu(hwnd_) != nullptr;
     AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-    MoveWindow(hwnd_, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
 }
 
-void Window::show(){
-    ShowWindow(hwnd_, SW_SHOW);
-    UpdateWindow(hwnd_);
+void Window::open(){
+    PostMessage(hwnd_, WM_OPEN_EDITOR, 0, 0);
 }
 
-void Window::hide(){
-    ShowWindow(hwnd_, SW_HIDE);
-    UpdateWindow(hwnd_);
+void Window::close(){
+    PostMessage(hwnd_, WM_CLOSE_EDITOR, 0, 0);
 }
 
-void Window::minimize(){
-    ShowWindow(hwnd_, SW_MINIMIZE);
-    UpdateWindow(hwnd_);
+void Window::setPos(int x, int y){
+    PostMessage(hwnd_, WM_EDITOR_POS, x, y);
 }
 
-void Window::restore(){
-    ShowWindow(hwnd_, SW_RESTORE);
-    BringWindowToTop(hwnd_);
-}
-
-void Window::bringToTop(){
-    minimize();
-    restore();
+void Window::setSize(int w, int h){
+    LOG_DEBUG("new size: " << w << ", " << h);
+    PostMessage(hwnd_, WM_EDITOR_SIZE, w, h);
 }
 
 void Window::update(){

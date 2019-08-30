@@ -452,13 +452,11 @@ class IWindow {
     virtual void* getHandle() = 0; // get system-specific handle to the window
 
     virtual void setTitle(const std::string& title) = 0;
-    virtual void setGeometry(int left, int top, int right, int bottom) = 0;
 
-    virtual void show() = 0;
-    virtual void hide() = 0;
-    virtual void minimize() = 0;
-    virtual void restore() = 0; // un-minimize
-    virtual void bringToTop() = 0;
+    virtual void open() = 0;
+    virtual void close() = 0;
+    virtual void setPos(int x, int y);
+    virtual void setSize(int w, int h);
     virtual void update() {}
 };
 

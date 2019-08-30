@@ -13,13 +13,6 @@ namespace UIThread {
 // void poll(){}
 #endif
 
-Atom wmProtocols;
-Atom wmDelete;
-Atom wmQuit;
-Atom wmCreatePlugin;
-Atom wmDestroyPlugin;
-Atom wmUpdateEditor;
-
 IPlugin::ptr create(const PluginInfo& info){
     return EventLoop::instance().create(info);
 }
@@ -59,7 +52,11 @@ EventLoop::EventLoop() {
     wmQuit = XInternAtom(display_, "WM_QUIT", 0);
     wmCreatePlugin = XInternAtom(display_, "WM_CREATE_PLUGIN", 0);
     wmDestroyPlugin = XInternAtom(display_, "WM_DESTROY_PLUGIN", 0);
+    wmOpenEditor = XInternAtom(display_, "WM_OPEN_EDITOR", 0);
+    wmCloseEditor = XInternAtom(display_, "WM_CLOSE_EDITOR", 0);
     wmUpdateEditor = XInternAtom(display_, "WM_UPDATE_EDITOR", 0);
+    wmSetEditorPos = XInternAtom(display_, "WM_SET_EDITOR_POS", 0);
+    wmSetEditorSize = XInternAtom(display_, "WM_SET_EDITOR_SIZE", 0);
     // run thread
     thread_ = std::thread(&EventLoop::run, this);
     // run timer thread
@@ -71,7 +68,7 @@ EventLoop::~EventLoop(){
     if (thread_.joinable()){
         // post quit message
         // https://stackoverflow.com/questions/10792361/how-do-i-gracefully-exit-an-x11-event-loop
-        postClientEvent(wmQuit);
+        postClientEvent(root_, wmQuit);
         // wait for thread to finish
         thread_.join();
         LOG_VERBOSE("X11: terminated UI thread");
@@ -101,38 +98,60 @@ void EventLoop::run(){
             if (type == wmProtocols){
                 if ((Atom)msg.data.l[0] == wmDelete){
                     // only hide window
-                    XUnmapWindow(display_, msg.window);
+                    auto it = pluginMap_.find(msg.window);
+                    if (it != pluginMap_.end()){
+                        it->second->closeEditor();
+                        XUnmapWindow(display_, msg.window);
+                    } else {
+                        LOG_ERROR("bug wmDelete");
+                    }
                 }
             } else if (type == wmCreatePlugin){
                 LOG_DEBUG("wmCreatePlugin");
-                std::unique_lock<std::mutex> lock(mutex_);
+                auto data = (PluginData *)msg.data.l[0];
                 try {
-                    auto plugin = info_->create();
+                    auto plugin = data->info->create();
                     if (plugin->info().hasEditor()){
                         plugin->setWindow(std::make_unique<Window>(*display_, *plugin));
                     }
-                    pluginList_.push_back(plugin.get());
-                    plugin_ = std::move(plugin);
+                    pluginMap_[msg.window] = plugin.get();
+                    data->plugin = std::move(plugin);
                 } catch (const Error& e){
-                    err_ = e;
-                    plugin_ = nullptr;
+                    data->err = e;
                 }
-                info_ = nullptr; // done
-                lock.unlock();
-                cond_.notify_one();
+                notify();
             } else if (type == wmDestroyPlugin){
                 LOG_DEBUG("WM_DESTROY_PLUGIN");
-                std::unique_lock<std::mutex> lock(mutex_);
-                pluginList_.remove(plugin_.get());
-                plugin_ = nullptr;
-                lock.unlock();
-                cond_.notify_one();
+                auto data = (PluginData *)msg.data.l[0];
+                pluginMap_.erase(msg.window);
+                data->plugin = nullptr;
+                notify();
+            } else if (type == wmOpenEditor){
+                XMapWindow(display_, msg.window);
+                XFlush(display_);
+                auto plugin = (IPlugin *)msg.data.l[0];
+                plugin->openEditor((void *)msg.window);
+            } else if (type == wmCloseEditor){
+                auto plugin = (IPlugin *)msg.data.l[0];
+                plugin->closeEditor();
+                XUnmapWindow(display_, msg.window);
+                XFlush(display_);
             } else if (type == wmUpdateEditor){
                 auto plugin = (IPlugin *)msg.data.l[0];
                 plugin->updateEditor();
+            } else if (type == wmSetEditorPos){
+                auto x = msg.data.l[0];
+                auto y = msg.data.l[1];
+                XMoveWindow(display_, msg.window, x, y);
+                XFlush(display_);
+            } else if (type == wmSetEditorSize){
+                auto w = msg.data.l[0];
+                auto h = msg.data.l[1];
+                XResizeWindow(display_, msg.window, w, h);
+                XFlush(display_);
             } else if (type == wmQuit){
                 LOG_DEBUG("X11: quit event loop");
-                break;
+                break; // quit event loop
 			} else {
                 LOG_DEBUG("X11: unknown client message");
 			}
@@ -144,23 +163,24 @@ void EventLoop::updatePlugins(){
     // this seems to be the easiest way to do it...
     while (timerThreadRunning_){
         auto start = std::chrono::high_resolution_clock::now();
-        for (auto& plugin : pluginList_){
-            postClientEvent(wmUpdateEditor, (long)plugin);
+        for (auto& it : pluginMap_){
+            postClientEvent(root_, wmUpdateEditor, (long)it.second);
         }
         auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> elapsed = end - start;
-        std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(updateInterval) - elapsed);
+        std::chrono::duration<double> elapsed = end - start;
+        std::this_thread::sleep_for(std::chrono::duration<double>(updateInterval) - elapsed);
     }
 }
 
-bool EventLoop::postClientEvent(Atom atom, long data){
+bool EventLoop::postClientEvent(::Window window, Atom atom, long data1, long data2){
     XClientMessageEvent event;
     memset(&event, 0, sizeof(XClientMessageEvent));
     event.type = ClientMessage;
     event.message_type = atom;
     event.format = 32;
-    event.data.l[0] = data;
-    if (XSendEvent(display_, root_, 0, 0, (XEvent*)&event) != 0){
+    event.data.l[0] = data1;
+    event.data.l[1] = data2;
+    if (XSendEvent(display_, window, 0, 0, (XEvent*)&event) != 0){
         if (XFlush(display_) != 0){
             return true;
         }
@@ -168,21 +188,38 @@ bool EventLoop::postClientEvent(Atom atom, long data){
     return false;
 }
 
+bool EventLoop::sendClientEvent(::Window window, Atom atom, long data1, long data2){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = false;
+    if (postClientEvent(window, atom, data1, data2)){
+        LOG_DEBUG("waiting...");
+        cond_.wait(lock, [&]{return ready_; });
+        LOG_DEBUG("done");
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void EventLoop::notify(){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = true;
+    lock.unlock();
+    cond_.notify_one();
+}
+
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_.joinable()){
         LOG_DEBUG("create plugin in UI thread");
-        std::unique_lock<std::mutex> lock(mutex_);
-        info_ = &info;
+        PluginData data;
+        data.info = &info;
         // notify thread
-        if (postClientEvent(wmCreatePlugin)){
-            // wait till done
-            LOG_DEBUG("waiting...");
-            cond_.wait(lock, [&]{return info_ == nullptr; });
-            if (plugin_){
+        if (sendClientEvent(root_, wmCreatePlugin, (long)&info)){
+            if (data.plugin){
                 LOG_DEBUG("done");
-                return std::move(plugin_);
+                return std::move(data.plugin);
             } else {
-                throw err_;
+                throw data.err;
             }
         } else {
             throw Error("X11: couldn't post to thread!");
@@ -194,13 +231,10 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
 
 void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_.joinable()){
-        std::unique_lock<std::mutex> lock(mutex_);
-        plugin_ = std::move(plugin);
+        PluginData data;
+        data.plugin = std::move(plugin);
         // notify thread
-        if (postClientEvent(wmDestroyPlugin)){
-            // wait till done
-            cond_.wait(lock, [&]{return plugin_ == nullptr;});
-        } else {
+        if (!sendClientEvent(root_, wmDestroyPlugin, (long)&data)){
             throw Error("X11: couldn't post to thread!");
         }
     } else {
@@ -221,7 +255,7 @@ Window::Window(Display& display, IPlugin& plugin)
     XSelectInput(display_, window_, 0xffff);
 #endif
 		// intercept request to delete window when being closed
-    XSetWMProtocols(display_, window_, &UIThread::wmDelete, 1);
+    XSetWMProtocols(display_, window_, &wmDelete, 1);
 
     XClassHint *ch = XAllocClassHint();
     if (ch){
@@ -235,7 +269,6 @@ Window::Window(Display& display, IPlugin& plugin)
     int left = 100, top = 100, right = 400, bottom = 400;
     plugin_->getEditorRect(left, top, right, bottom);
     setGeometry(left, top, right, bottom);
-    plugin_->openEditor(getHandle());
 }
 
 Window::~Window(){
@@ -258,35 +291,20 @@ void Window::setGeometry(int left, int top, int right, int bottom){
         << right << " " << bottom);
 }
 
-void Window::show(){
-	XMapWindow(display_, window_);
-	XFlush(display_);
+void Window::open(){
+    UIThread::EventLoop::instance().postClientEvent(window_, wmOpenEditor, (long)plugin_);
 }
 
-void Window::hide(){
-	XUnmapWindow(display_, window_);
-	XFlush(display_);
+void Window::close(){
+    UIThread::EventLoop::instance().postClientEvent(window_, wmCloseEditor, (long)plugin_);
 }
 
-void Window::minimize(){
-#if 0
-	XIconifyWindow(display_, window_, DefaultScreen(display_));
-#else
-	XUnmapWindow(display_, window_);
-#endif
-	XFlush(display_);
+void Window::setPos(int x, int y){
+    UIThread::EventLoop::instance().postClientEvent(window_, x, y);
 }
 
-void Window::restore(){
-		// LATER find out how to really restore
-	XMapWindow(display_, window_);
-	XFlush(display_);
-}
-
-void Window::bringToTop(){
-	minimize();
-	restore();
-    LOG_DEBUG("Window::bringToTop");
+void Window::setSize(int w, int h){
+    UIThread::EventLoop::instance().postClientEvent(window_, w, h);
 }
 
 } // X11

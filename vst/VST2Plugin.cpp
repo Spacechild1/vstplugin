@@ -1484,6 +1484,9 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterSizeWindow:
         DEBUG_HOSTCODE("opcode: audioMasterSizeWindow");
+        if (window_){
+            window_->setSize(index, value);
+        }
         return 1;
     case audioMasterGetSampleRate:
         DEBUG_HOSTCODE("opcode: audioMasterGetSampleRate");

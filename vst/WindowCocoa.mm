@@ -240,7 +240,7 @@ void Window::setGeometry(int left, int top, int right, int bottom){
     }
 }
 
-void Window::show(){
+void Window::open(){
     LOG_DEBUG("show window");
 #if HAVE_UI_THREAD
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -251,7 +251,7 @@ void Window::show(){
 #endif
 }
 
-void Window::hide(){
+void Window::close(){
     LOG_DEBUG("hide window");
 #if HAVE_UI_THREAD
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -262,16 +262,12 @@ void Window::hide(){
 #endif
 }
 
-void Window::minimize(){
-    hide();
+void Window::setPos(int x, int y){
+    // TODO
 }
 
-void Window::restore(){
-    show();
-}
-
-void Window::bringToTop(){
-    restore();
+void Window::setSize(int w, int h){
+    // TODO
 }
 
 } // Cocoa
