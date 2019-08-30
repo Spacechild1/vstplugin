@@ -25,19 +25,23 @@ class EventLoop {
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-    bool postMessage(UINT msg, WPARAM wparam = 0, LPARAM lparam = 0);
+    bool postMessage(UINT msg, void *data = nullptr); // non-blocking
+    bool sendMessage(UINT msg, void *data = nullptr); // blocking
     HANDLE threadHandle() { return thread_; }
  private:
+    struct PluginData {
+        const PluginInfo* info;
+        IPlugin::ptr plugin;
+        Error err;
+    };
     static DWORD WINAPI run(void *user);
     LRESULT WINAPI proc(HWND hWnd, UINT Msg,
                         WPARAM wParam, LPARAM lParam);
+    void notify();
     HANDLE thread_;
     DWORD threadID_;
     std::mutex mutex_;
     std::condition_variable cond_;
-    const PluginInfo* info_ = nullptr;
-    IPlugin::ptr plugin_;
-    Error err_;
     bool ready_ = false;
 };
 

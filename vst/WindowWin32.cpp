@@ -53,11 +53,7 @@ DWORD EventLoop::run(void *user){
     int ret;
     // force message queue creation
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
-    {
-        std::lock_guard<std::mutex> lock(obj->mutex_);
-        obj->ready_ = true;
-        obj->cond_.notify_one();
-    }
+    obj->notify();
     LOG_DEBUG("start message loop");
     while((ret = GetMessage(&msg, NULL, 0, 0))){
         if (ret < 0){
@@ -69,29 +65,25 @@ DWORD EventLoop::run(void *user){
         case WM_CREATE_PLUGIN:
         {
             LOG_DEBUG("WM_CREATE_PLUGIN");
-            std::unique_lock<std::mutex> lock(obj->mutex_);
+            auto data = (PluginData *)msg.wParam;
             try {
-                auto plugin = obj->info_->create();
+                auto plugin = data->info->create();
                 if (plugin->info().hasEditor()){
                     plugin->setWindow(std::make_unique<Window>(*plugin));
                 }
-                obj->plugin_ = std::move(plugin);
+                data->plugin = std::move(plugin);
             } catch (const Error& e){
-                obj->err_ = e;
-                obj->plugin_ = nullptr;
+                data->err = e;
             }
-            obj->info_ = nullptr; // done
-            lock.unlock();
-            obj->cond_.notify_one();
+            obj->notify();
             break;
         }
         case WM_DESTROY_PLUGIN:
         {
             LOG_DEBUG("WM_DESTROY_PLUGIN");
-            std::unique_lock<std::mutex> lock(obj->mutex_);
-            obj->plugin_ = nullptr;
-            lock.unlock();
-            obj->cond_.notify_one();
+            auto data = (PluginData *)msg.wParam;
+            data->plugin = nullptr;
+            obj->notify();
             break;
         }
         default:
@@ -102,6 +94,13 @@ DWORD EventLoop::run(void *user){
     }
     LOG_DEBUG("quit message loop");
     return 0;
+}
+
+void EventLoop::notify(){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = true;
+    lock.unlock();
+    cond_.notify_one();
 }
 
 EventLoop::EventLoop(){
@@ -142,25 +141,33 @@ EventLoop::~EventLoop(){
     }
 }
 
-bool EventLoop::postMessage(UINT msg, WPARAM wparam, LPARAM lparam){
-    return PostThreadMessage(threadID_, msg, wparam, lparam);
+bool EventLoop::postMessage(UINT msg, void *data){
+    return PostThreadMessage(threadID_, msg, (WPARAM)data, 0);
+}
+
+bool EventLoop::sendMessage(UINT msg, void *data){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = false;
+    if (!postMessage(msg, data)){
+        return false;
+    }
+    LOG_DEBUG("waiting...");
+    cond_.wait(lock, [&]{return ready_; });
+    LOG_DEBUG("done");
+    return true;
 }
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_){
         LOG_DEBUG("create plugin in UI thread");
-        std::unique_lock<std::mutex> lock(mutex_);
-        info_ = &info;
+        PluginData data;
+        data.info = &info;
         // notify thread
-        if (postMessage(WM_CREATE_PLUGIN)){
-            // wait till done
-            LOG_DEBUG("waiting...");
-            cond_.wait(lock, [&]{return info_ == nullptr; });
-            if (plugin_){
-                LOG_DEBUG("done");
-                return std::move(plugin_);
+        if (sendMessage(WM_CREATE_PLUGIN, &data)){
+            if (data.plugin){
+                return std::move(data.plugin);
             } else {
-                throw err_;
+                throw data.err;
             }
         } else {
             throw Error("couldn't post to thread!");
@@ -172,13 +179,10 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
 
 void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_){
-        std::unique_lock<std::mutex> lock(mutex_);
-        plugin_ = std::move(plugin);
+        PluginData data;
+        data.plugin = std::move(plugin);
         // notify thread
-        if (postMessage(WM_DESTROY_PLUGIN)){
-            // wait till done
-            cond_.wait(lock, [&]{return plugin_ == nullptr;});
-        } else {
+        if (!sendMessage(WM_DESTROY_PLUGIN, &data)){
             throw Error("couldn't post to thread!");
         }
     } else {
