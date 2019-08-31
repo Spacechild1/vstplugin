@@ -827,9 +827,9 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
         // disable stdout and stderr
         auto nullOut = fopen("/dev/null", "w");
         fflush(stdout);
-        dup2(fileno(nullOut), STDOUT_FILENO)
+        dup2(fileno(nullOut), STDOUT_FILENO);
         fflush(stderr);
-        dup2(fileno(nullOut), STDERR_FILENO)
+        dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         if (execl(probePath.c_str(), "probe", path().c_str(), pluginName.c_str(), tmpPath.c_str(), nullptr) < 0) {
             LOG_ERROR("probePlugin: exec failed!");
