@@ -587,10 +587,10 @@ class ModuleWin32 : public IModule {
             buf[0] = 0;
             auto size = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error,
                                             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), NULL);
-            if (size > 0){
-                buf[size-1] = 0; // omit newline
+            if (size >= 2){
+                buf[size-2] = 0; // omit newline
             }
-            ss << "LoadLibrary failed (" << error << ") - " << buf;
+            ss << buf << " (" << error << ")";
             throw Error(ss.str());
         }
         // LOG_DEBUG("loaded Win32 library " << path);
@@ -633,7 +633,7 @@ class ModuleApple : public IModule {
         if (pluginPath) CFRelease(pluginPath);
         if (bundleUrl) CFRelease(bundleUrl);
         if (!bundle_){
-            throw Error("couldn't create bundle reference");
+            throw Error("CFBundleCreate failed"); // LATER replace with better more detailed error message
         }
         // LOG_DEBUG("loaded macOS bundle " << path);
     }
@@ -671,7 +671,7 @@ class ModuleSO : public IModule {
         auto error = dlerror();
         if (!handle_) {
             std::stringstream ss;
-            ss << "dlopen failed (" << error << ") - " << strerror(error);
+            ss << (error ? error : "dlopen failed");
             throw Error(ss.str());
         }
         // LOG_DEBUG("loaded dynamic library " << path);
