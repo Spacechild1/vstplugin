@@ -583,7 +583,14 @@ class ModuleWin32 : public IModule {
         if (!handle_){
             auto error = GetLastError();
             std::stringstream ss;
-            ss << "LoadLibrary failed with error code " << error;
+            char buf[1000];
+            buf[0] = 0;
+            auto size = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error,
+                                            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), NULL);
+            if (size > 0){
+                buf[size-1] = 0; // omit newline
+            }
+            ss << "LoadLibrary failed (" << error << ") - " << buf;
             throw Error(ss.str());
         }
         // LOG_DEBUG("loaded Win32 library " << path);
@@ -664,7 +671,7 @@ class ModuleSO : public IModule {
         auto error = dlerror();
         if (!handle_) {
             std::stringstream ss;
-            ss << "dlopen failed with error code " << (error ? error : "?");
+            ss << "dlopen failed (" << error << ") - " << strerror(error);
             throw Error(ss.str());
         }
         // LOG_DEBUG("loaded dynamic library " << path);
