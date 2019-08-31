@@ -749,6 +749,9 @@ public:
     }
 };
 
+// should probe.exe inherit file handles and print to stdout/stderr?
+#define PROBE_LOG 0
+
 // probe a plugin in a seperate process and return the info in a file
 PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPluginID) {
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
@@ -780,7 +783,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     ZeroMemory(&pi, sizeof(pi));
 
     if (!CreateProcessW(probePath.c_str(), &cmdLine[0],
-                        NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)){
+                        NULL, NULL, PROBE_LOG, 0, NULL, NULL, &si, &pi)){
         throw Error("probePlugin: couldn't spawn process!");
     }
     auto wait = [pi](){
@@ -813,6 +816,14 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
         // we must not quote arguments to exec!
+    #if !PROBE_LOG
+        // disable stdout and stderr
+        auto nullOut = fopen("/dev/null", "w");
+        fflush(stdout);
+        dup2(fileno(nullOut), STDOUT_FILENO)
+        fflush(stderr);
+        dup2(fileno(nullOut), STDERR_FILENO)
+    #endif
         if (execl(probePath.c_str(), "probe", path().c_str(), pluginName.c_str(), tmpPath.c_str(), nullptr) < 0) {
             LOG_ERROR("probePlugin: exec failed!");
         }
