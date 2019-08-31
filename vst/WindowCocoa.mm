@@ -66,7 +66,7 @@ void destroy(IPlugin::ptr plugin){
 }
 
 #if HAVE_UI_THREAD
-bool check(){
+bool checkThread(){
     return [NSThread isMainThread];
 }
 #endif

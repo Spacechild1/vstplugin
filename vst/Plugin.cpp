@@ -64,7 +64,7 @@ namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
 #if HAVE_UI_THREAD
-    bool check();
+    bool checkThread();
 #else
     void poll();
 #endif
@@ -542,7 +542,7 @@ namespace UIThread {
     #ifdef _WIN32
         return Win32::UIThread::check();
     #elif defined(__APPLE__)
-        return Cocoa::UIThread::check();
+        return Cocoa::UIThread::checkThread();
     #elif defined(USE_X11)
         return X11::UIThread::check();
     #endif

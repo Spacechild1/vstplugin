@@ -52,6 +52,8 @@ endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_definitions(-fvisibility=hidden)
+    # disable some warnings
+    add_definitions(-Wno-unknown-pragmas)
 
     include (CheckCCompilerFlag)
     include (CheckCXXCompilerFlag)
