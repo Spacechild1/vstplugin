@@ -110,9 +110,7 @@ void EventLoop::run(){
                     // only hide window
                     auto it = pluginMap_.find(msg.window);
                     if (it != pluginMap_.end()){
-                        it->second->closeEditor();
-                        XUnmapWindow(display_, msg.window);
-                        LOG_DEBUG("window closed");
+                        static_cast<Window *>(it->second->getWindow())->doClose();
                     } else {
                         LOG_ERROR("bug wmDelete " << msg.window);
                     }
@@ -143,7 +141,7 @@ void EventLoop::run(){
                 LOG_DEBUG("wmOpenEditor");
                 auto it = pluginMap_.find(msg.window);
                 if (it != pluginMap_.end()){
-                    it->second->openEditor((void *)msg.window);
+                    static_cast<Window *>(it->second->getWindow())->doOpen();
                 } else {
                     LOG_ERROR("bug wmOpenEditor: " << msg.window);   
                 }
@@ -151,7 +149,7 @@ void EventLoop::run(){
                 LOG_DEBUG("wmCloseEditor");
                 auto it = pluginMap_.find(msg.window);
                 if (it != pluginMap_.end()){
-                    it->second->closeEditor();
+                    static_cast<Window *>(it->second->getWindow())->doClose();
                 } else {
                     LOG_ERROR("bug wmCloseEditor: " << msg.window);   
                 }
@@ -304,13 +302,32 @@ void Window::setGeometry(int left, int top, int right, int bottom){
 }
 
 void Window::open(){
-    XMapWindow(display_, window_);
     UIThread::EventLoop::instance().postClientEvent(window_, wmOpenEditor);
+}
+
+void Window::doOpen(){
+    if (!mapped_){
+        XMapRaised(display_, window_);
+        plugin_->openEditor((void *)window_);
+        // restore position
+        XMoveWindow(display_, window_, x_, y_);
+        mapped_ = true;
+    }
 }
 
 void Window::close(){
     UIThread::EventLoop::instance().postClientEvent(window_, wmCloseEditor);
-    XUnmapWindow(display_, window_);
+}
+
+void Window::doClose(){
+    if (mapped_){
+        plugin_->closeEditor();
+        ::Window child;
+        XTranslateCoordinates(display_, window_, DefaultRootWindow(display_), 0, 0, &x_, &y_, &child);
+        LOG_DEBUG("stored position: " << x_ << ", " << y_);
+        XUnmapWindow(display_, window_);
+        mapped_ = false;
+    }
 }
 
 void Window::setPos(int x, int y){

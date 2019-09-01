@@ -67,11 +67,16 @@ class Window : public IWindow {
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
+    void doOpen();
+    void doClose();
  private:
     void setGeometry(int left, int top, int right, int bottom);
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;
+    bool mapped_ = false;
+    int x_ = 100;
+    int y_ = 100;
 };
 
 } // X11
