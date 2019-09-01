@@ -791,15 +791,15 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
 
     if (!CreateProcessW(probePath.c_str(), &cmdLine[0],
                         NULL, NULL, PROBE_LOG, 0, NULL, NULL, &si, &pi)){
-        throw Error("probePlugin: couldn't spawn process!");
+        throw Error("probe: couldn't spawn process!");
     }
     auto wait = [pi](){
         if (WaitForSingleObject(pi.hProcess, INFINITE) != 0){
-            throw Error("probePlugin: couldn't wait for process!");
+            throw Error("probe: couldn't wait for process!");
         }
         DWORD code = -1;
         if (!GetExitCodeProcess(pi.hProcess, &code)){
-            throw Error("probePlugin: couldn't retrieve exit code!");
+            throw Error("probe: couldn't retrieve exit code!");
         }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -810,7 +810,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     // get full path to probe exe
     // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
-        throw Error("probePlugin: couldn't get module path!");
+        throw Error("probe: couldn't get module path!");
     }
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');
@@ -818,7 +818,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     // fork
     pid_t pid = fork();
     if (pid == -1) {
-        throw Error("probePlugin: fork failed!");
+        throw Error("probe: fork failed!");
     }
     else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
@@ -832,7 +832,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         if (execl(probePath.c_str(), "probe", path().c_str(), pluginName.c_str(), tmpPath.c_str(), nullptr) < 0) {
-            LOG_ERROR("probePlugin: exec failed!");
+            LOG_ERROR("probe: exec failed!");
         }
         std::exit(EXIT_FAILURE);
     }
@@ -858,7 +858,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
                 desc->probeResult = ProbeResult::success;
             }
             else {
-                throw Error("probePlugin: couldn't read temp file!");
+                throw Error("probe: couldn't read temp file!");
             }
         }
         else if (result == EXIT_FAILURE) {
