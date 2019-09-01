@@ -455,8 +455,8 @@ class IWindow {
 
     virtual void open() = 0;
     virtual void close() = 0;
-    virtual void setPos(int x, int y);
-    virtual void setSize(int w, int h);
+    virtual void setPos(int x, int y) = 0;
+    virtual void setSize(int w, int h) = 0;
     virtual void update() {}
 };
 

@@ -13,17 +13,6 @@
 namespace vst {
 namespace X11 {
 
-Atom wmProtocols;
-Atom wmDelete;
-Atom wmQuit;
-Atom wmCreatePlugin;
-Atom wmDestroyPlugin;
-Atom wmOpenEditor;
-Atom wmCloseEditor;
-Atom wmUpdateEditor;
-Atom wmSetEditorPos;
-Atom wmSetEditorSize;
-
 namespace UIThread {
 
 const int updateInterval = 30;
@@ -55,6 +44,7 @@ class EventLoop {
     std::mutex mutex_;
     std::condition_variable cond_;
     bool ready_ = false;
+    PluginData data_; // we can't send 64bit pointers with X11 client messages...
     std::unordered_map<::Window, IPlugin *> pluginMap_;
     std::thread timerThread_;
     std::atomic<bool> timerThreadRunning_{true};
