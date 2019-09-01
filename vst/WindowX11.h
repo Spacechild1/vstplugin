@@ -70,7 +70,6 @@ class Window : public IWindow {
     void doOpen();
     void doClose();
  private:
-    void setGeometry(int left, int top, int right, int bottom);
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;

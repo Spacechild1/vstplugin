@@ -257,9 +257,11 @@ void EventLoop::destroy(IPlugin::ptr plugin){
 Window::Window(Display& display, IPlugin& plugin)
     : display_(&display), plugin_(&plugin)
 {
-	int s = DefaultScreen(display_);
+    int left = 100, top = 100, right = 400, bottom = 400;
+    plugin_->getEditorRect(left, top, right, bottom);
+    int s = DefaultScreen(display_);
 	window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
-				10, 10, 100, 100,
+				x_, y_, right-left, bottom-top,
 				1, BlackPixel(display_, s), WhitePixel(display_, s));
 #if 0
     XSelectInput(display_, window_, 0xffff);
@@ -276,9 +278,6 @@ Window::Window(Display& display, IPlugin& plugin)
 	}
     LOG_DEBUG("X11: created Window " << window_);
     setTitle(plugin_->info().name);
-    int left = 100, top = 100, right = 400, bottom = 400;
-    plugin_->getEditorRect(left, top, right, bottom);
-    setGeometry(left, top, right, bottom);
 }
 
 Window::~Window(){
@@ -292,13 +291,6 @@ void Window::setTitle(const std::string& title){
 	XSetIconName(display_, window_, title.c_str());
 	XFlush(display_);
     LOG_DEBUG("Window::setTitle: " << title);
-}
-
-void Window::setGeometry(int left, int top, int right, int bottom){
-	XMoveResizeWindow(display_, window_, left, top, right-left, bottom-top);
-	XFlush(display_);
-    LOG_DEBUG("Window::setGeometry: " << left << " " << top << " "
-        << right << " " << bottom);
 }
 
 void Window::open(){
