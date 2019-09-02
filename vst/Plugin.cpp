@@ -1302,10 +1302,10 @@ void PluginInfo::deserialize(std::istream& file) {
             try {
                 if (key == "id"){
                     if (value.size() == 8){
-                        type_ == PluginType::VST2;
+                        type_ = PluginType::VST2;
                         sscanf(&value[0], "%08X", &id_.id);
                     } else if (value.size() == 32){
-                        type_ == PluginType::VST3;
+                        type_ = PluginType::VST3;
                         const int n = value.size() / 2;
                         for (int i = 0; i < n; ++i){
                             char buf[3] = { 0 };
