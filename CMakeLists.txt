@@ -178,10 +178,7 @@ target_compile_definitions(${PROBE} PUBLIC -DHAVE_UI_THREAD=1)
 target_link_libraries(${PROBE} ${VST_LIBS})
 if (MINGW)
     # -municode for wmain and -mwindows to hide console window
-    target_link_libraries(${PROBE} -municode -mwindows)
-endif()
-if (MSVC)
-    set_target_properties(${PROBE} PROPERTIES LINK_FLAGS /SUBSYSTEM:WINDOWS)
+    target_link_libraries(${PROBE} -municode)
 endif()
 # up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.

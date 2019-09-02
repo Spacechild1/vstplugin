@@ -1,13 +1,8 @@
 #include "Interface.h"
 #include "Utility.h"
 #include <stdlib.h>
-#include <fstream>
 
 using namespace vst;
-
-#ifdef _MSC_VER
-#include <windows.h>
-#endif
 
 #ifndef _WIN32
  #define shorten(x) x
@@ -16,14 +11,8 @@ using namespace vst;
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 #ifdef _WIN32
-#ifdef _MSC_VER // MSVC
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd){
-    int argc;
-    auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-#else // MingW
 int wmain(int argc, const wchar_t *argv[]){
-#endif
-#else // Win32
+#else
 int main(int argc, const char *argv[]) {
 #endif
     int status = EXIT_FAILURE;
@@ -50,8 +39,5 @@ int main(int argc, const char *argv[]) {
             LOG_ERROR("probe failed: " << e.what());
         }
     }
-#ifdef _MSC_VER
-    LocalFree(argv); // let's be nice
-#endif
     return status;
 }
