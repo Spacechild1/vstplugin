@@ -73,8 +73,14 @@ using unichar = char16_t;
 using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
 
 static StringCoverter& stringConverter(){
+#if defined(_WIN32) && !defined(_WIN64) && defined(__MINGW32__)
+    // because of a mingw32 bug, destructors of thread_local STL objects segfault...
+    thread_local auto conv = new StringCoverter;
+    return *conv;
+#else
     thread_local StringCoverter conv;
     return conv;
+#endif
 }
 
 std::string convertString (const Vst::String128 str){
