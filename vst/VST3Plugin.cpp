@@ -1314,7 +1314,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.noteOff.noteId = -1;
         e.noteOff.pitch = data1;
         e.noteOff.velocity = value;
-        e.noteOff.tuning = 0;
+        e.noteOff.tuning = event.detune;
         break;
     case 0x90: // note on
         e.type = Vst::Event::kNoteOnEvent;
@@ -1322,8 +1322,8 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.noteOn.noteId = -1;
         e.noteOn.pitch = data1;
         e.noteOn.velocity = value;
-        e.noteOn.tuning = 0;
         e.noteOn.length = 0;
+        e.noteOn.tuning = event.detune;
         break;
     case 0xa0: // polytouch
         e.type = Vst::Event::kPolyPressureEvent;

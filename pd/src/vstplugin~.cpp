@@ -1377,19 +1377,16 @@ static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *ar
     for (int i = 0; i < 3 && i < argc; ++i){
         event.data[i] = atom_getfloat(argv + i);
     }
+    event.delta = x->get_sample_offset();
     x->x_plugin->sendMidiEvent(event);
 }
 
 // helper function
-static void vstplugin_midi_mess(t_vstplugin *x, int onset, int channel, int v1, int v2 = 0){
-    t_atom atoms[3];
+static void vstplugin_midi_mess(t_vstplugin *x, int onset, int channel, int d1, int d2 = 0, float detune = 0){
     channel = std::max(1, std::min(16, (int)channel)) - 1;
-    v1 = std::max(0, std::min(127, v1));
-    v2 = std::max(0, std::min(127, v2));
-    SETFLOAT(&atoms[0], channel + onset);
-    SETFLOAT(&atoms[1], v1);
-    SETFLOAT(&atoms[2], v2);
-    vstplugin_midi_raw(x, 0, 3, atoms);
+    d1 = std::max(0, std::min(127, d1));
+    d2 = std::max(0, std::min(127, d2));
+    x->x_plugin->sendMidiEvent(MidiEvent(onset + channel, d1, d2, x->get_sample_offset(), detune));
 }
 
 // send MIDI messages (convenience methods)
@@ -1397,8 +1394,8 @@ static void vstplugin_midi_noteoff(t_vstplugin *x, t_floatarg channel, t_floatar
     vstplugin_midi_mess(x, 128, channel, pitch, velocity);
 }
 
-static void vstplugin_midi_note(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
-    vstplugin_midi_mess(x, 144, channel, pitch, velocity);
+static void vstplugin_midi_note(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity, t_floatarg detune){
+    vstplugin_midi_mess(x, 144, channel, pitch, velocity, detune);
 }
 
 static void vstplugin_midi_polytouch(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg pressure){
@@ -2043,7 +2040,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_dump, gensym("param_dump"), A_NULL);
         // midi
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);

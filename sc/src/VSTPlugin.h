@@ -141,7 +141,7 @@ public:
     template<bool bank>
     void writePreset(int32 buf);
     // midi
-    void sendMidiMsg(int32 status, int32 data1, int32 data2);
+    void sendMidiMsg(int32 status, int32 data1, int32 data2, float detune = 0.f);
     void sendSysexMsg(const char* data, int32 n);
     // transport
     void setTempo(float bpm);

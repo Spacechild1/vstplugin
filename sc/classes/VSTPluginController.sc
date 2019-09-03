@@ -456,11 +456,12 @@ VSTPluginController {
 		}.forkIfNeeded;
 	}
 	// MIDI / Sysex
-	sendMidi { arg status, data1=0, data2=0;
-		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2));
+	sendMidi { arg status, data1=0, data2=0, detune;
+		// LATER we might actually omit detune if nil
+		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2), detune ?? 0.0);
 	}
-	sendMidiMsg { arg status, data1=0, data2=0;
-		^this.makeMsg('/midi_msg', Int8Array.with(status, data1, data2));
+	sendMidiMsg { arg status, data1=0, data2=0, detune;
+		^this.makeMsg('/midi_msg', Int8Array.with(status, data1, data2), detune ?? 0.0);
 	}
 	sendSysex { arg msg;
 		synth.server.listSendMsg(this.sendSysexMsg(msg));
@@ -571,17 +572,17 @@ VSTPluginMIDIProxy {
 	*new { arg theOwner;
 		^super.new.owner_(theOwner);
 	}
-	write { arg len, hiStatus, loStatus, a=0, b=0;
-		owner.sendMidi(hiStatus bitOr: loStatus, a, b);
+	write { arg len, hiStatus, loStatus, a=0, b=0, detune;
+		owner.sendMidi(hiStatus bitOr: loStatus, a, b, detune);
 	}
-	writeMsg { arg len, hiStatus, loStatus, a=0, b=0;
-		^owner.sendMidiMsg(hiStatus bitOr: loStatus, a, b);
+	writeMsg { arg len, hiStatus, loStatus, a=0, b=0, detune;
+		^owner.sendMidiMsg(hiStatus bitOr: loStatus, a, b, detune);
 	}
-	noteOn { arg chan, note=60, veloc=64;
-		this.write(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger);
+	noteOn { arg chan, note=60, veloc=64, detune;
+		this.write(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, detune);
 	}
-	noteOnMsg { arg chan, note=60, veloc=64;
-		^this.writeMsg(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger);
+	noteOnMsg { arg chan, note=60, veloc=64, detune;
+		^this.writeMsg(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, detune);
 	}
 	noteOff { arg chan, note=60, veloc=64;
 		this.write(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger);

@@ -774,8 +774,9 @@ void VST2Plugin::sendMidiEvent(const MidiEvent &event){
     memset(&midievent, 0, sizeof(VstMidiEvent));
     midievent.type = kVstMidiType;
     midievent.byteSize = sizeof(VstMidiEvent);
-    midievent.deltaFrames = event.delta;
     memcpy(&midievent.midiData, &event.data, sizeof(event.data));
+    midievent.deltaFrames = event.delta;
+    midievent.detune = event.detune;
 
     midiQueue_.push_back(midievent);
 

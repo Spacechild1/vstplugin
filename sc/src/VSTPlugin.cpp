@@ -1571,9 +1571,9 @@ void VSTPluginDelegate::writePreset(int32 buf) {
 }
 
 // midi
-void VSTPluginDelegate::sendMidiMsg(int32 status, int32 data1, int32 data2) {
+void VSTPluginDelegate::sendMidiMsg(int32 status, int32 data1, int32 data2, float detune) {
     if (check()) {
-        plugin_->sendMidiEvent(MidiEvent(status, data1, data2));
+        plugin_->sendMidiEvent(MidiEvent(status, data1, data2, world_->mSampleOffset, detune));
     }
 }
 void VSTPluginDelegate::sendSysexMsg(const char *data, int32 n) {
@@ -1985,7 +1985,8 @@ void vst_midi_msg(VSTPlugin* unit, sc_msg_iter *args) {
         LOG_WARNING("vst_midi_msg: midi message too long (" << len << " bytes)");
     }
     args->getb(data, len);
-    unit->delegate().sendMidiMsg(data[0], data[1], data[2]);
+    auto detune = args->getf();
+    unit->delegate().sendMidiMsg(data[0], data[1], data[2], detune);
 }
 
 void vst_midi_sysex(VSTPlugin* unit, sc_msg_iter *args) {

@@ -35,11 +35,12 @@ const int VERSION_BUGFIX = 0;
 const bool VERSION_BETA = true;
 
 struct MidiEvent {
-    MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0){
-        data[0] = status; data[1] = data1; data[2] = data2; delta = _delta;
+    MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0, float _detune = 0){
+        data[0] = status; data[1] = data1; data[2] = data2; delta = _delta; detune = _detune;
     }
     char data[3];
     int delta;
+    float detune;
 };
 
 struct SysexEvent {

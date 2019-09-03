@@ -15,7 +15,7 @@ Here's a quick example showing a simple insert effect on a 2-channel audio bus:
 code::
 (
 SynthDef(\insert, { arg bus;
-    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2));  
+    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), 2));
 }).add;
 )
 
@@ -29,7 +29,7 @@ VSTPlugin.search;
 
 // open a plugin by name/key (might require VSTPlugin.search!)
 ~fx.open("myplugin", info: true);
-// alternatively, you can open a plugin by its file path 
+// alternatively, you can open a plugin by its file path
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
 ~fx.open("/path/to/plugin", info: true);
 
@@ -48,7 +48,7 @@ SynthDef(\insert2, { arg bus;
 	sig = In.ar(bus, 2);
     sig = VSTPlugin.ar(sig, 2, id: \eq);
     sig = VSTPlugin.ar(sig, 2, id: \chorus);
-    ReplaceOut.ar(bus, );  
+    ReplaceOut.ar(bus, sig);
 }).add;
 )
 // create the synth:
@@ -145,7 +145,7 @@ code::
 
 The data is in the same binary format as the preset files. Use these methods to build your own preset management!
 
-note::Some plugins have additional state beyond their parameter values, 
+note::Some plugins have additional state beyond their parameter values,
 so you emphasis::have:: to use the program and bank methods above to fully save/restore them.
 ::
 
@@ -190,7 +190,7 @@ the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to c
 ARGUMENT:: id
 a symbol or number which uniquely identifies the link::Classes/VSTPlugin:: within the link::Classes/SynthDef::.
 
-If this is code::nil::, VSTPluginController will take the first instance it can find. 
+If this is code::nil::, VSTPluginController will take the first instance it can find.
 This implies that you don't need an emphasis::id:: if there's only a single VSTPlugin in the SynthDef.
 
 ARGUMENT:: synthDef
@@ -224,9 +224,9 @@ code::
 or to the standard VST directories (see link::Classes/VSTPlugin#*search::). The latter are tried recursively, which means you don't necessarily have to specify any subfolders.
 code::
 // absolute file path:
-~fx.open("C:/Program Files/VSTPlugins/GVST/GChorus"); 
+~fx.open("C:/Program Files/VSTPlugins/GVST/GChorus");
 
-// since C:/Program Files/VSTPlugins/ is one of the standard VST directories, 
+// since C:/Program Files/VSTPlugins/ is one of the standard VST directories,
 // the plugin can also be opened like this:
 ~fx.open("GVST/GChorus");
 ~fx.open("GChorus"); // even without subfolder
@@ -317,7 +317,7 @@ ARGUMENT:: async
 reset asynchronously.
 
 DISCUSSION::
-Generally, emphasis::reset:: might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line. 
+Generally, emphasis::reset:: might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line.
 
 If this is a problem you can try to reset it asynchronously (in the non-realtime thread).
 
@@ -341,7 +341,7 @@ DISCUSSION::
 
 Some methods may require lots of OSC messages (e.g. when changing programs, the UGen has to send the new
 state of all parameters). VSTPluginController waits for the given time after a certain number of bytes
-to avoid messages getting dropped. This is mostly relevant for UDP connections, 
+to avoid messages getting dropped. This is mostly relevant for UDP connections,
 especially for remote Servers, high network traffic and plugins with a large number of parameters.
 
 The wait time can be changed anytime.
@@ -357,7 +357,7 @@ Set plugin parameters.
 
 discussion::
 This method expects pairs of parameter index/name and value. Each value should be either a number between 0.0 and 1.0
-or a string/symbol. 
+or a string/symbol.
 
 note::
 Some plugins don't support setting parameters by strings, others only allow it for certain parameters.
@@ -413,7 +413,7 @@ code::
 ~bus3 = Bus.audio;
 ~fx.map(\Delay, ~bus3); // audio rate automation (assuming the 'Delay' parameter supports this)
 ::
-Each parameter can only be mapped to one control bus channel at the time. 
+Each parameter can only be mapped to one control bus channel at the time.
 
 note::setting a parameter with link::#-set:: or link::#-setn:: will automatically unmap it from any control bus.::
 
@@ -458,7 +458,7 @@ code::
 ::
 
 METHOD:: getn
-get a sequential range of parameter values. 
+get a sequential range of parameter values.
 
 ARGUMENT:: index
 the starting index/name.
@@ -523,7 +523,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 discussion::
-The program and bank files are in a standard format which is recogized by every decent DAW or VST host. 
+The program and bank files are in a standard format which is recogized by every decent DAW or VST host.
 This means you can freely exchange presets between different applications!
 
 METHOD:: readProgramMsg
@@ -532,12 +532,12 @@ METHOD:: writeProgramMsg
 METHOD:: writeBankMsg
 
 ARGUMENT:: dest
-a) String: path for a preset file to be read or written. Relative paths are resolved to the currently executing file (if saved), 
+a) String: path for a preset file to be read or written. Relative paths are resolved to the currently executing file (if saved),
 so for remote Servers you have to specify an absolute file path.
 
 b) link::Classes/Buffer:: or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
 
-code::read*Msg::: the Buffer should contain the preset data with each float representing a single byte; 
+code::read*Msg::: the Buffer should contain the preset data with each float representing a single byte;
 it has to be allocated and freed by the Client.
 
 code::write*Msg::: the Buffer should be initially empty. The UGen will fill the Buffer
@@ -594,7 +594,7 @@ ARGUMENT:: action
 an action to pass the data.
 
 discussion::
-Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above 
+Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above
 also work with remote Servers because the data is streamed via OSC messages. This means
 it is not 100% reliable (at least not with UDP).
 
@@ -606,13 +606,16 @@ send MIDI messages to the plugin via a proxy class.
 RETURNS:: an instance of link::Classes/VSTPluginMIDIProxy::.
 
 DISCUSSION::
-link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably.
+link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably. This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
 
-This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
+The code::noteOn:: and code::noteOff:: methods accept an additional detune argument in cent (not supported by all VST instruments!)
+
+All methods have a corresponding code::*Msg:: version which returns raw OSC messages; they can be scheduled sample accurately when sent as bundles!
+
 
 METHOD:: sendMidi
 METHOD:: sendMidiMsg
-send a raw MIDI message with 2-3 bytes (status, data1, data2).
+send a raw MIDI message with 2-3 bytes (status, data1, data2) and an optional detune argument in cent (not supported by all VST instruments!). MIDI messages can be scheduled sample accurately when sent as bundles!
 
 METHOD:: sendSysex
 METHOD:: sendSysexMsg
@@ -786,7 +789,7 @@ This is how you would create a simple master FX section:
 code::
 // Cmd + .
 // add a group *after* the default group
-~fxGroup = Group.after(1); 
+~fxGroup = Group.after(1);
 // add two stereo insert effects to the FX group (in series)
 ~fx1 = VSTPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
 ~fx2 = VSTPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
