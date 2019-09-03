@@ -125,27 +125,7 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 VstInt32 VST2Factory::shellPluginID = 0;
 
 VST2Factory::VST2Factory(const std::string& path)
-    : path_(path), module_(IModule::load(path))
-{
-    if (!module_){
-        // shouldn't happen...
-        throw Error("VST2Factory bug!");
-    }
-    entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
-    if (!entry_){
-    #ifdef __APPLE__
-        // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
-        // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
-        entry_ = module_->getFnPtr<EntryPoint>("main_macho");
-    #else
-        entry_ = module_->getFnPtr<EntryPoint>("main");
-    #endif
-    }
-    if (!entry_){
-        throw Error("couldn't find entry point (no VST plugin?)");
-    }
-    // LOG_DEBUG("VST2Factory: loaded " << path);
-}
+    : path_(path) {}
 
 VST2Factory::~VST2Factory(){
     // LOG_DEBUG("freed VST2 module " << path_);
@@ -169,8 +149,6 @@ PluginInfo::const_ptr VST2Factory::getPlugin(int index) const {
 int VST2Factory::numPlugins() const {
     return plugins_.size();
 }
-
-
 
 IFactory::ProbeFuture VST2Factory::probeAsync() {
     plugins_.clear();
@@ -201,7 +179,30 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
     };
 }
 
+void VST2Factory::doLoad(){
+    if (!module_){
+        auto module = IModule::load(path_);
+        entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
+        if (!entry_){
+        #ifdef __APPLE__
+            // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
+            // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
+            entry_ = module_->getFnPtr<EntryPoint>("main_macho");
+        #else
+            entry_ = module_->getFnPtr<EntryPoint>("main");
+        #endif
+        }
+        if (!entry_){
+            throw Error("couldn't find entry point (no VST plugin?)");
+        }
+        /// LOG_DEBUG("VST2Factory: loaded " << path_);
+        module_ = std::move(module);
+    }
+}
+
 IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
+    const_cast<VST2Factory *>(this)->doLoad(); // lazy loading
+
     PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
     if (!probe){
         if (plugins_.empty()){

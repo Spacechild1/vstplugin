@@ -103,43 +103,7 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 /*/////////////////////// VST3Factory /////////////////////////*/
 
 VST3Factory::VST3Factory(const std::string& path)
-    : path_(path)
-{
-    std::string modulePath = path;
-#ifndef __APPLE__
-    if (isDirectory(modulePath)){
-        modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path);
-    }
-#endif
-    module_ = IModule::load(modulePath); // throws on failure
-    auto factoryProc = module_->getFnPtr<GetFactoryProc>("GetPluginFactory");
-    if (!factoryProc){
-        throw Error("couldn't find 'GetPluginFactory' function");
-    }
-    if (!module_->init()){
-        throw Error("couldn't init module");
-    }
-    factory_ = IPtr<IPluginFactory>(factoryProc());
-    if (!factory_){
-        throw Error("couldn't get VST3 plug-in factory");
-    }
-    /// LOG_DEBUG("VST3Factory: loaded " << path);
-    // map plugin names to indices
-    auto numPlugins = factory_->countClasses();
-    /// LOG_DEBUG("module contains " << numPlugins << " classes");
-    for (int i = 0; i < numPlugins; ++i){
-        PClassInfo ci;
-        if (factory_->getClassInfo(i, &ci) == kResultTrue){
-            /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
-            if (!strcmp(ci.category, kVstAudioEffectClass)){
-                pluginList_.push_back(ci.name);
-                pluginIndexMap_[ci.name] = i;
-            }
-        } else {
-            throw Error("couldn't get class info!");
-        }
-    }
-}
+    : path_(path) {}
 
 VST3Factory::~VST3Factory(){
     if (!module_->exit()){
@@ -169,6 +133,8 @@ int VST3Factory::numPlugins() const {
 }
 
 IFactory::ProbeFuture VST3Factory::probeAsync() {
+    doLoad(); // lazy loading
+
     if (pluginList_.empty()){
         throw Error("factory doesn't have any plugin(s)");
     }
@@ -201,7 +167,52 @@ IFactory::ProbeFuture VST3Factory::probeAsync() {
     }
 }
 
+void VST3Factory::doLoad(){
+    if (!module_){
+        std::string modulePath = path_;
+    #ifndef __APPLE__
+        if (isDirectory(modulePath)){
+            modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path_);
+        }
+    #endif
+        auto module = IModule::load(modulePath); // throws on failure
+        auto factoryProc = module->getFnPtr<GetFactoryProc>("GetPluginFactory");
+        if (!factoryProc){
+            throw Error("couldn't find 'GetPluginFactory' function");
+        }
+        if (!module->init()){
+            throw Error("couldn't init module");
+        }
+        factory_ = IPtr<IPluginFactory>(factoryProc());
+        if (!factory_){
+            throw Error("couldn't get VST3 plug-in factory");
+        }
+        /// LOG_DEBUG("VST3Factory: loaded " << path_);
+        // map plugin names to indices
+        auto numPlugins = factory_->countClasses();
+        /// LOG_DEBUG("module contains " << numPlugins << " classes");
+        pluginList_.clear();
+        pluginIndexMap_.clear();
+        for (int i = 0; i < numPlugins; ++i){
+            PClassInfo ci;
+            if (factory_->getClassInfo(i, &ci) == kResultTrue){
+                /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
+                if (!strcmp(ci.category, kVstAudioEffectClass)){
+                    pluginList_.push_back(ci.name);
+                    pluginIndexMap_[ci.name] = i;
+                }
+            } else {
+                throw Error("couldn't get class info!");
+            }
+        }
+        // done
+        module_ = std::move(module);
+    }
+}
+
 std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe) const {
+    const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
+
     PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
     if (!probe){
         if (plugins_.empty()){

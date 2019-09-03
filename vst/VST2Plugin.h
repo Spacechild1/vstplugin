@@ -35,6 +35,7 @@ class VST2Factory : public IFactory {
     // create a new plugin instance
     IPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
+    void doLoad();
     using EntryPoint = AEffect *(*)(audioMasterCallback);
     std::string path_;
     std::unique_ptr<IModule> module_;

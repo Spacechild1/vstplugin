@@ -91,6 +91,7 @@ class VST3Factory : public IFactory {
     // create a new plugin instance
     IPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
+    void doLoad();
     std::string path_;
     std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
