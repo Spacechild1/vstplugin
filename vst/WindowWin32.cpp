@@ -197,7 +197,6 @@ Window::Window(IPlugin& plugin)
     setGeometry(left, top, right, bottom);
     LOG_DEBUG("size: " << (right - left) << ", " << (bottom - top));
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
-    SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
 }
 
 Window::~Window(){
@@ -215,19 +214,16 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
     case WM_CLOSE_EDITOR:
     {
         if (window){
-            window->plugin_->closeEditor();
+            window->doClose();
         } else {
             LOG_ERROR("bug GetWindowLongPtr");
         }
-        ShowWindow(hWnd, SW_HIDE);
         return true;
     }
     case WM_OPEN_EDITOR:
     {
-        ShowWindow(hWnd, SW_RESTORE);
-        BringWindowToTop(hWnd);
         if (window){
-            window->plugin_->openEditor(window->getHandle());
+            window->doOpen();
         } else {
             LOG_ERROR("bug GetWindowLongPtr");
         }
@@ -284,8 +280,21 @@ void Window::open(){
     PostMessage(hwnd_, WM_OPEN_EDITOR, 0, 0);
 }
 
+void Window::doOpen(){
+    ShowWindow(hwnd_, SW_RESTORE);
+    BringWindowToTop(hwnd_);
+    plugin_->openEditor(getHandle());
+    SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
+}
+
 void Window::close(){
     PostMessage(hwnd_, WM_CLOSE_EDITOR, 0, 0);
+}
+
+void Window::doClose(){
+    KillTimer(hwnd_, timerID);
+    plugin_->closeEditor();
+    ShowWindow(hwnd_, SW_HIDE);
 }
 
 void Window::setPos(int x, int y){
