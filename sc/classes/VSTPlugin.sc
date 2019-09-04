@@ -147,7 +147,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prSearchLocal { arg server, dir, useDefault, verbose, save, parallel, action;
 		{
-			var dict = pluginDict[server];
+			var stream, dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask VSTPlugin to store the search results in a temp file
 			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, tmpPath));
@@ -156,16 +156,16 @@ VSTPlugin : MultiOutUGen {
 			// read file
 			try {
 				File.use(tmpPath, "rb", { arg file;
-					var stream = CollStream.new(file.readAllString);
-					this.prParseIni(stream).do { arg info;
-						// store under key
-						dict[info.key] = info;
-					}
+					stream = CollStream.new(file.readAllString);
 				});
-				action.value;
 				// done - free temp file
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
-			} { "Failed to read tmp file!".warn };
+			} { "Failed to read tmp file!".error; ^this };
+			this.prParseIni(stream).do { arg info;
+				// store under key
+				dict[info.key] = info;
+			};
+			action.value;
 		}.forkIfNeeded;
 	}
 	*prSearchRemote { arg server, dir, useDefault, verbose, save, parallel, wait, action;
@@ -208,7 +208,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prProbeLocal { arg server, path, key, action;
 		{
-			var info, dict = pluginDict[server];
+			var stream, info, dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask server to write plugin info to tmp file
 			server.listSendMsg(this.probeMsg(path, tmpPath));
@@ -218,16 +218,18 @@ VSTPlugin : MultiOutUGen {
 			File.exists(tmpPath).if {
 				try {
 					File.use(tmpPath, "rb", { arg file;
-						var stream = CollStream.new(file.readAllString);
-						info = this.prParseInfo(stream);
-						// store under key
-						dict[info.key] = info;
-						// also store under resolved path and custom key
-						dict[path.asSymbol] = info;
-						key !? { dict[key.asSymbol] = info };
+						stream = CollStream.new(file.readAllString);
 					});
-				} { "Failed to read tmp file!".warn };
+				} { "Failed to read tmp file!".error };
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
+				stream.notNil.if {
+					info = this.prParseInfo(stream);
+					// store under key
+					dict[info.key] = info;
+					// also store under resolved path and custom key
+					dict[path.asSymbol] = info;
+					key !? { dict[key.asSymbol] = info };
+				};
 			};
 			// done (on fail, info is nil)
 			action.value(info);

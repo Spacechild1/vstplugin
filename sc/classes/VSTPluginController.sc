@@ -410,7 +410,7 @@ VSTPluginController {
 						data = Int8Array.newClear(file.length);
 						file.read(data);
 					});
-				} { "Failed to read data".warn };
+				} { "Failed to read data".error };
 				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
 			} { "Could not get data".warn };
 			// done (on fail, data is nil)
