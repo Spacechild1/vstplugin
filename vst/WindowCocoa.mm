@@ -169,6 +169,17 @@ Window::~Window(){
     LOG_DEBUG("destroyed Window");
 }
 
+void Window::open(){
+    LOG_DEBUG("show window");
+#if HAVE_UI_THREAD
+    dispatch_async(dispatch_get_main_queue(), ^{
+        doOpen();
+    });
+#else
+    doOpen();
+#endif
+}
+
 // to be called on the main thread
 void Window::doOpen(){
     if (window_){
@@ -208,12 +219,25 @@ void Window::doOpen(){
     }
 }
 
+void Window::close(){
+    LOG_DEBUG("hide window");
+#if HAVE_UI_THREAD
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [window_ performClose:nil];
+    });
+#else
+    [window_ performClose:nil];
+#endif
+}
+
 // to be called on the main thread
 void Window::onClose(){
-    [timer_ invalidate];
-    plugin_->closeEditor();
-    origin_ = [window_ frame].origin;
-    window_ = nullptr;
+    if (window_){
+        [timer_ invalidate];
+        plugin_->closeEditor();
+        origin_ = [window_ frame].origin;
+        window_ = nullptr;
+    }
 }
 
 void Window::updateEditor(){
@@ -238,28 +262,6 @@ void Window::setGeometry(int left, int top, int right, int bottom){
         NSRect frame = [window_  frameRectForContentRect:content];
         [window_ setFrame:frame display:YES];
     }
-}
-
-void Window::open(){
-    LOG_DEBUG("show window");
-#if HAVE_UI_THREAD
-    dispatch_async(dispatch_get_main_queue(), ^{
-        doOpen();
-    });
-#else
-    doOpen();
-#endif
-}
-
-void Window::close(){
-    LOG_DEBUG("hide window");
-#if HAVE_UI_THREAD
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [window_ performClose:nil];
-    });
-#else
-    [window_ performClose:nil];
-#endif
 }
 
 void Window::setPos(int x, int y){
