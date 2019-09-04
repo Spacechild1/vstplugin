@@ -320,6 +320,8 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
 }
 
 VST2Plugin::~VST2Plugin(){
+    window_ = nullptr;
+
     dispatch(effClose);
 
         // clear sysex events
@@ -1180,6 +1182,10 @@ bool VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
     return false;
 }
 
+void VST2Plugin::updateEditor(){
+    dispatch(effEditIdle);
+}
+
 // private
 
 std::string VST2Plugin::getPluginName() const {
@@ -1287,7 +1293,9 @@ bool VST2Plugin::canHostDo(const char *what) {
         || matches("sendVstTimeInfo") || matches("receiveVstTimeInfo")
         || matches("sendVstMidiEventFlagIsRealtime")
         || matches("reportConnectionChanges")
-        || matches("shellCategory");
+        || matches("shellCategory")
+        || matches("supplyIdle")
+        || matches("sizeWindow");
 }
 
 void VST2Plugin::parameterAutomated(int index, float value){
@@ -1459,8 +1467,15 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterIdle:
         DEBUG_HOSTCODE("opcode: audioMasterIdle");
-        dispatch(effEditIdle);
+        updateEditor();
         break;
+    case audioMasterNeedIdle:
+        DEBUG_HOSTCODE("opcode: audioMasterNeedIdle");
+        dispatch(effIdle);
+        break;
+    case audioMasterWantMidi:
+        DEBUG_HOSTCODE("opcode: audioMasterWantMidi");
+        return 1;
     case audioMasterGetTime:
         return (VstIntPtr)getTimeInfo(value);
     case audioMasterProcessEvents:
@@ -1471,6 +1486,9 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterSizeWindow:
         DEBUG_HOSTCODE("opcode: audioMasterSizeWindow");
+        if (window_){
+            window_->setSize(index, value);
+        }
         return 1;
     case audioMasterGetSampleRate:
         DEBUG_HOSTCODE("opcode: audioMasterGetSampleRate");
@@ -1487,7 +1505,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterGetCurrentProcessLevel:
         DEBUG_HOSTCODE("opcode: audioMasterGetCurrentProcessLevel");
     #if HAVE_UI_THREAD
-        if (UIThread::check()){
+        if (UIThread::checkThread()){
             return kVstProcessLevelUser;
         } else
     #endif

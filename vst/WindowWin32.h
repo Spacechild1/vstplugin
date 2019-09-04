@@ -9,10 +9,18 @@
 namespace vst {
 namespace Win32 {
 
+enum Message {
+    WM_CREATE_PLUGIN = WM_USER + 100,
+    WM_DESTROY_PLUGIN,
+    WM_OPEN_EDITOR,
+    WM_CLOSE_EDITOR,
+    WM_EDITOR_POS,
+    WM_EDITOR_SIZE
+};
+
 namespace UIThread {
 
-const UINT WM_CREATE_PLUGIN = WM_USER + 100;
-const UINT WM_DESTROY_PLUGIN = WM_USER + 101;
+const int updateInterval = 30;
 
 class EventLoop {
  public:
@@ -23,19 +31,23 @@ class EventLoop {
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-    bool postMessage(UINT msg, WPARAM wparam = 0, LPARAM lparam = 0);
+    bool postMessage(UINT msg, void *data = nullptr); // non-blocking
+    bool sendMessage(UINT msg, void *data = nullptr); // blocking
     HANDLE threadHandle() { return thread_; }
  private:
+    struct PluginData {
+        const PluginInfo* info;
+        IPlugin::ptr plugin;
+        Error err;
+    };
     static DWORD WINAPI run(void *user);
-    LRESULT WINAPI proc(HWND hWnd, UINT Msg,
+    LRESULT WINAPI procedure(HWND hWnd, UINT Msg,
                         WPARAM wParam, LPARAM lParam);
+    void notify();
     HANDLE thread_;
     DWORD threadID_;
     std::mutex mutex_;
     std::condition_variable cond_;
-    const PluginInfo* info_ = nullptr;
-    IPlugin::ptr plugin_;
-    Error err_;
     bool ready_ = false;
 };
 
@@ -43,6 +55,8 @@ class EventLoop {
 
 class Window : public IWindow {
  public:
+    static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+
     Window(IPlugin& plugin);
     ~Window();
 
@@ -51,15 +65,17 @@ class Window : public IWindow {
     }
 
     void setTitle(const std::string& title) override;
-    void setGeometry(int left, int top, int right, int bottom) override;
 
-    void show() override;
-    void hide() override;
-    void minimize() override;
-    void restore() override;
-    void bringToTop() override;
-    void update() override;
+    void open() override;
+    void close() override;
+    void setPos(int x, int y) override;
+    void setSize(int w, int h) override;
+    void update();
+    IPlugin* plugin() { return plugin_; }
  private:
+    static const UINT_PTR timerID = 0x375067f6;
+    static void CALLBACK updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time);
+    void setGeometry(int left, int top, int right, int bottom);
     HWND hwnd_ = nullptr;
     IPlugin* plugin_ = nullptr;
 };

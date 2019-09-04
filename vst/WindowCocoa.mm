@@ -23,10 +23,14 @@
     LOG_DEBUG("window miniaturized");
 }
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
-    LOG_DEBUG("window deminiaturized");    
+    LOG_DEBUG("window deminiaturized");
 }
 - (void)windowDidMove:(NSNotification *)notification {
-    LOG_DEBUG("window did move");    
+    LOG_DEBUG("window did move");
+}
+- (void)updateEditor {
+    vst::IWindow *owner = [self owner];
+    static_cast<vst::Cocoa::Window *>(owner)->updateEditor();
 }
 
 @end
@@ -36,7 +40,11 @@ namespace Cocoa {
 
 namespace UIThread {
 
-#if !HAVE_UI_THREAD
+#if HAVE_UI_THREAD
+bool checkThread(){
+    return [NSThread isMainThread];
+}
+#else
 void poll(){
     NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
     while (true) {
@@ -64,12 +72,6 @@ IPlugin::ptr create(const PluginInfo& info){
 void destroy(IPlugin::ptr plugin){
     EventLoop::instance().destroy(std::move(plugin));
 }
-
-#if HAVE_UI_THREAD
-bool checkThread(){
-    return [NSThread isMainThread];
-}
-#endif
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -160,6 +162,8 @@ Window::Window(IPlugin& plugin)
 // the destructor must be called on the main thread!
 Window::~Window(){
     if (window_){
+        plugin_->closeEditor();
+        [timer_ invalidate];
         [window_ close];
     }
     LOG_DEBUG("destroyed Window");
@@ -185,14 +189,20 @@ void Window::doOpen(){
         window_ = window;
         
         setTitle(plugin_->info().name);
-        int left = 0, top = 0, right = 300, bottom = 300;
+        int left = 100, top = 100, right = 400, bottom = 400;
         plugin_->getEditorRect(left, top, right, bottom);
         setGeometry(left, top, right, bottom);
         
         [window_ setFrameOrigin:origin_];
         
         plugin_->openEditor(getHandle());
-        
+
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:5
+                    target:window
+                    selector:@selector(updateEditor)
+                    userInfo:nil
+                    repeats:YES];
+
         [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
     }
@@ -200,9 +210,14 @@ void Window::doOpen(){
 
 // to be called on the main thread
 void Window::onClose(){
+    [timer_ invalidate];
     plugin_->closeEditor();
     origin_ = [window_ frame].origin;
     window_ = nullptr;
+}
+
+void Window::updateEditor(){
+    plugin_->updateEditor();
 }
 
 void * Window::getHandle(){
@@ -225,7 +240,7 @@ void Window::setGeometry(int left, int top, int right, int bottom){
     }
 }
 
-void Window::show(){
+void Window::open(){
     LOG_DEBUG("show window");
 #if HAVE_UI_THREAD
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -236,7 +251,7 @@ void Window::show(){
 #endif
 }
 
-void Window::hide(){
+void Window::close(){
     LOG_DEBUG("hide window");
 #if HAVE_UI_THREAD
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -247,16 +262,12 @@ void Window::hide(){
 #endif
 }
 
-void Window::minimize(){
-    hide();
+void Window::setPos(int x, int y){
+    // TODO
 }
 
-void Window::restore(){
-    show();
-}
-
-void Window::bringToTop(){
-    restore();
+void Window::setSize(int w, int h){
+    // TODO
 }
 
 } // Cocoa

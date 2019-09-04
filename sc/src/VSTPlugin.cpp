@@ -1177,10 +1177,10 @@ void VSTPluginDelegate::showEditor(bool show) {
                 auto data = (PluginCmdData*)inData;
                 auto window = data->owner->plugin()->getWindow();
                 if (data->value) {
-                    window->bringToTop();
+                    window->open();
                 }
                 else {
-                    window->hide();
+                    window->close();
                 }
                 return false; // done
             });

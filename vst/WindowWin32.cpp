@@ -27,7 +27,7 @@ void destroy(IPlugin::ptr plugin){
     EventLoop::instance().destroy(std::move(plugin));
 }
 
-bool check(){
+bool checkThread(){
     return GetCurrentThreadId() == GetThreadId(EventLoop::instance().threadHandle());
 }
 
@@ -36,28 +36,13 @@ EventLoop& EventLoop::instance(){
     return thread;
 }
 
-static LRESULT WINAPI PluginEditorProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
-    if (Msg == WM_CLOSE){
-        ShowWindow(hWnd, SW_HIDE); // don't destroy Window when closed
-        return true;
-    }
-    if (Msg == WM_DESTROY){
-        LOG_DEBUG("WM_DESTROY");
-    }
-    return DefWindowProcW(hWnd, Msg, wParam, lParam);
-}
-
 DWORD EventLoop::run(void *user){
     auto obj = (EventLoop *)user;
     MSG msg;
     int ret;
     // force message queue creation
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
-    {
-        std::lock_guard<std::mutex> lock(obj->mutex_);
-        obj->ready_ = true;
-        obj->cond_.notify_one();
-    }
+    obj->notify();
     LOG_DEBUG("start message loop");
     while((ret = GetMessage(&msg, NULL, 0, 0))){
         if (ret < 0){
@@ -69,36 +54,25 @@ DWORD EventLoop::run(void *user){
         case WM_CREATE_PLUGIN:
         {
             LOG_DEBUG("WM_CREATE_PLUGIN");
-            std::unique_lock<std::mutex> lock(obj->mutex_);
+            auto data = (PluginData *)msg.wParam;
             try {
-                auto plugin = obj->info_->create();
+                auto plugin = data->info->create();
                 if (plugin->info().hasEditor()){
-                    auto window = std::make_unique<Window>(*plugin);
-                    window->setTitle(plugin->info().name);
-                    int left = 0, top = 0, right = 300, bottom = 300;
-                    plugin->getEditorRect(left, top, right, bottom);
-                    window->setGeometry(left, top, right, bottom);
-                    plugin->openEditor(window->getHandle());
-                    plugin->setWindow(std::move(window));
+                    plugin->setWindow(std::make_unique<Window>(*plugin));
                 }
-                obj->plugin_ = std::move(plugin);
+                data->plugin = std::move(plugin);
             } catch (const Error& e){
-                obj->err_ = e;
-                obj->plugin_ = nullptr;
+                data->err = e;
             }
-            obj->info_ = nullptr; // done
-            lock.unlock();
-            obj->cond_.notify_one();
+            obj->notify();
             break;
         }
         case WM_DESTROY_PLUGIN:
         {
             LOG_DEBUG("WM_DESTROY_PLUGIN");
-            std::unique_lock<std::mutex> lock(obj->mutex_);
-            auto plugin = std::move(obj->plugin_);
-            plugin->closeEditor(); // goes out of scope
-            lock.unlock();
-            obj->cond_.notify_one();
+            auto data = (PluginData *)msg.wParam;
+            data->plugin = nullptr;
+            obj->notify();
             break;
         }
         default:
@@ -116,7 +90,7 @@ EventLoop::EventLoop(){
     WNDCLASSEXW wcex;
     memset(&wcex, 0, sizeof(WNDCLASSEXW));
     wcex.cbSize = sizeof(WNDCLASSEXW);
-    wcex.lpfnWndProc = PluginEditorProc;
+    wcex.lpfnWndProc = Window::procedure;
     wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
     wchar_t exeFileName[MAX_PATH];
     GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
@@ -149,25 +123,41 @@ EventLoop::~EventLoop(){
     }
 }
 
-bool EventLoop::postMessage(UINT msg, WPARAM wparam, LPARAM lparam){
-    return PostThreadMessage(threadID_, msg, wparam, lparam);
+bool EventLoop::postMessage(UINT msg, void *data){
+    return PostThreadMessage(threadID_, msg, (WPARAM)data, 0);
+}
+
+bool EventLoop::sendMessage(UINT msg, void *data){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = false;
+    if (postMessage(msg, data)){
+        LOG_DEBUG("waiting...");
+        cond_.wait(lock, [&]{return ready_; });
+        LOG_DEBUG("done");
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void EventLoop::notify(){
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_ = true;
+    lock.unlock();
+    cond_.notify_one();
 }
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_){
         LOG_DEBUG("create plugin in UI thread");
-        std::unique_lock<std::mutex> lock(mutex_);
-        info_ = &info;
+        PluginData data;
+        data.info = &info;
         // notify thread
-        if (postMessage(WM_CREATE_PLUGIN)){
-            // wait till done
-            LOG_DEBUG("waiting...");
-            cond_.wait(lock, [&]{return info_ == nullptr; });
-            if (plugin_){
-                LOG_DEBUG("done");
-                return std::move(plugin_);
+        if (sendMessage(WM_CREATE_PLUGIN, &data)){
+            if (data.plugin){
+                return std::move(data.plugin);
             } else {
-                throw err_;
+                throw data.err;
             }
         } else {
             throw Error("couldn't post to thread!");
@@ -179,13 +169,10 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
 
 void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_){
-        std::unique_lock<std::mutex> lock(mutex_);
-        plugin_ = std::move(plugin);
+        PluginData data;
+        data.plugin = std::move(plugin);
         // notify thread
-        if (postMessage(WM_DESTROY_PLUGIN)){
-            // wait till done
-            cond_.wait(lock, [&]{return plugin_ == nullptr;});
-        } else {
+        if (!sendMessage(WM_DESTROY_PLUGIN, &data)){
             throw Error("couldn't post to thread!");
         }
     } else {
@@ -204,11 +191,76 @@ Window::Window(IPlugin& plugin)
           NULL, NULL, NULL, NULL
     );
     LOG_DEBUG("created Window");
+    setTitle(plugin_->info().name);
+    int left = 100, top = 100, right = 400, bottom = 400;
+    plugin_->getEditorRect(left, top, right, bottom);
+    setGeometry(left, top, right, bottom);
+    LOG_DEBUG("size: " << (right - left) << ", " << (bottom - top));
+    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
+    SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
 }
 
 Window::~Window(){
+    KillTimer(hwnd_, timerID);
+    plugin_->closeEditor();
     DestroyWindow(hwnd_);
     LOG_DEBUG("destroyed Window");
+}
+
+LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
+    auto window = (Window *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+
+    switch (Msg){
+    case WM_CLOSE: // intercept close event!
+    case WM_CLOSE_EDITOR:
+    {
+        if (window){
+            window->plugin_->closeEditor();
+        } else {
+            LOG_ERROR("bug GetWindowLongPtr");
+        }
+        ShowWindow(hWnd, SW_HIDE);
+        return true;
+    }
+    case WM_OPEN_EDITOR:
+    {
+        ShowWindow(hWnd, SW_RESTORE);
+        BringWindowToTop(hWnd);
+        if (window){
+            window->plugin_->openEditor(window->getHandle());
+        } else {
+            LOG_ERROR("bug GetWindowLongPtr");
+        }
+        return true;
+    }
+    case WM_EDITOR_POS:
+    {
+        RECT rc;
+        if (GetWindowRect(hWnd, &rc)){
+            MoveWindow(hWnd, wParam, lParam, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+        }
+        return true;
+    }
+    case WM_EDITOR_SIZE:
+    {
+        RECT rc;
+        if (GetWindowRect(hWnd, &rc)){
+            window->setGeometry(rc.left, rc.top, wParam + rc.left, lParam + rc.top);
+        }
+        return true;
+    }
+    default:
+        return DefWindowProcW(hWnd, Msg, wParam, lParam);
+    }
+}
+
+void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time){
+    auto window = (Window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    if (window){
+        window->plugin_->updateEditor();
+    } else {
+        LOG_ERROR("bug GetWindowLongPtr");
+    }
 }
 
 void Window::setTitle(const std::string& title){
@@ -225,32 +277,24 @@ void Window::setGeometry(int left, int top, int right, int bottom){
     const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
     const BOOL fMenu = GetMenu(hwnd_) != nullptr;
     AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-    MoveWindow(hwnd_, 0, 0, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
 }
 
-void Window::show(){
-    ShowWindow(hwnd_, SW_SHOW);
-    UpdateWindow(hwnd_);
+void Window::open(){
+    PostMessage(hwnd_, WM_OPEN_EDITOR, 0, 0);
 }
 
-void Window::hide(){
-    ShowWindow(hwnd_, SW_HIDE);
-    UpdateWindow(hwnd_);
+void Window::close(){
+    PostMessage(hwnd_, WM_CLOSE_EDITOR, 0, 0);
 }
 
-void Window::minimize(){
-    ShowWindow(hwnd_, SW_MINIMIZE);
-    UpdateWindow(hwnd_);
+void Window::setPos(int x, int y){
+    PostMessage(hwnd_, WM_EDITOR_POS, x, y);
 }
 
-void Window::restore(){
-    ShowWindow(hwnd_, SW_RESTORE);
-    BringWindowToTop(hwnd_);
-}
-
-void Window::bringToTop(){
-    minimize();
-    restore();
+void Window::setSize(int w, int h){
+    LOG_DEBUG("new size: " << w << ", " << h);
+    PostMessage(hwnd_, WM_EDITOR_SIZE, w, h);
 }
 
 void Window::update(){

@@ -744,9 +744,9 @@ void t_vsteditor::vis(bool v){
     auto win = window();
     if (win){
         if (v){
-            win->bringToTop();
+            win->open();
         } else {
-            win->hide();
+            win->close();
         }
     } else if (e_canvas) {
         send_vmess(gensym("vis"), "i", (int)v);

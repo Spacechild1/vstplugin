@@ -12,6 +12,7 @@
 - (void)windowDidMiniaturize:(NSNotification *)notification;
 - (void)windowDidDeminiaturize:(NSNotification *)notification;
 - (void)windowDidMove:(NSNotification *)notification;
+- (void)updateEditor;
 
 @end
 
@@ -19,6 +20,8 @@ namespace vst {
 namespace Cocoa {
     
 namespace UIThread {
+
+const int updateInterval = 30;
 
 class EventLoop {
  public:
@@ -46,20 +49,21 @@ class Window : public IWindow {
     void* getHandle() override;
 
     void setTitle(const std::string& title) override;
-    void setGeometry(int left, int top, int right, int bottom) override;
 
-    void show() override;
-    void hide() override;
-    void minimize() override;
-    void restore() override;
-    void bringToTop() override;
+    void open() override;
+    void close() override;
+    void setPos(int x, int y) override;
+    void setSize(int w, int h) override;
     
     void doOpen();
     void onClose();
+    void updateEditor();
  private:
+    void setGeometry(int left, int top, int right, int bottom);
     CocoaEditorWindow * window_ = nullptr;
     IPlugin * plugin_;
     NSPoint origin_;
+    NSTimer *timer_;
 };
 
 } // Cocoa

@@ -601,6 +601,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 }
 
 VST3Plugin::~VST3Plugin(){
+    window_ = nullptr;
     processor_ = nullptr;
     controller_->terminate();
     controller_ = nullptr;
@@ -1669,6 +1670,10 @@ void VST3Plugin::closeEditor(){
 
 bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
     return false;
+}
+
+void VST3Plugin::updateEditor(){
+
 }
 
 // VST3 only

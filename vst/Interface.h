@@ -173,6 +173,7 @@ class IPlugin {
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
     virtual bool getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
+    virtual void updateEditor() = 0;
 
     virtual void setWindow(std::unique_ptr<IWindow> window) = 0;
     virtual IWindow* getWindow() const = 0;
@@ -452,13 +453,11 @@ class IWindow {
     virtual void* getHandle() = 0; // get system-specific handle to the window
 
     virtual void setTitle(const std::string& title) = 0;
-    virtual void setGeometry(int left, int top, int right, int bottom) = 0;
 
-    virtual void show() = 0;
-    virtual void hide() = 0;
-    virtual void minimize() = 0;
-    virtual void restore() = 0; // un-minimize
-    virtual void bringToTop() = 0;
+    virtual void open() = 0;
+    virtual void close() = 0;
+    virtual void setPos(int x, int y) = 0;
+    virtual void setSize(int w, int h) = 0;
     virtual void update() {}
 };
 
@@ -466,7 +465,7 @@ namespace UIThread {
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
 #if HAVE_UI_THREAD
-    bool check();
+    bool checkThread();
 #else
     void poll();
 #endif
