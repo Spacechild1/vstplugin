@@ -160,10 +160,12 @@ VSTPlugin : MultiOutUGen {
 				});
 				// done - free temp file
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
-			} { "Failed to read tmp file!".error; ^this };
-			this.prParseIni(stream).do { arg info;
-				// store under key
-				dict[info.key] = info;
+			} { "Failed to read tmp file!".error };
+			stream.notNil.if {
+				this.prParseIni(stream).do { arg info;
+					// store under key
+					dict[info.key] = info;
+				};
 			};
 			action.value;
 		}.forkIfNeeded;
