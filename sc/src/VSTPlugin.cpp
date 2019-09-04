@@ -1387,27 +1387,11 @@ void VSTPluginDelegate::unmapParam(int32 index) {
 }
 
 // program/bank
-bool cmdSetProgram(World *world, void *cmdData) {
-    auto data = (PluginCmdData *)cmdData;
-    data->owner->plugin()->setProgram(data->value);
-    return true;
-}
-
-bool cmdSetProgramDone(World *world, void *cmdData) {
-    auto data = (PluginCmdData *)cmdData;
-    if (!data->alive()) return false;
-    data->owner->sendMsg("/vst_program_index", data->owner->plugin()->getProgram());
-    return false; // done
-}
-
 void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumPrograms()) {
-            auto data = PluginCmdData::create(world());
-            if (data) {
-                data->value = index;
-                doCmd(data, cmdSetProgram, cmdSetProgramDone);
-            }
+            plugin_->setProgram(index);
+            sendMsg("/vst_program_index", plugin_->getProgram());
         }
         else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
