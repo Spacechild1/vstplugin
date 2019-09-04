@@ -2209,12 +2209,13 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
         if (data) {
             data->flags = args->geti(); // 1 = remove cache file
             DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
-                gPluginManager.clear();
+                // unloading plugins might crash, so we make sure we *first* delete the cache file
                 int flags = static_cast<InfoCmdData*>(data)->flags;
                 if (flags & 1) {
                     // remove cache file
                     removeFile(getSettingsDir() + "/" SETTINGS_FILE);
                 }
+                gPluginManager.clear();
                 return false;
             }, 0, 0, cmdRTfree, 0, 0);
         }

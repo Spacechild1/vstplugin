@@ -855,11 +855,12 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
 }
 
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
-        // clear the plugin description dictionary
-    gPluginManager.clear();
+        // unloading plugins might crash, so we we first delete the cache file
     if (f != 0){
         removeFile(getSettingsDir() + "/" SETTINGS_FILE);
     }
+        // clear the plugin description dictionary
+    gPluginManager.clear();
 }
 
 // resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
