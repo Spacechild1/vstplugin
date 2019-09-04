@@ -157,7 +157,7 @@ void EventLoop::run(){
                 for (auto& it : pluginMap_){
                     auto plugin = it.second;
                     if (plugin){
-                        plugin->updateEditor();
+                        static_cast<Window *>(plugin->getWindow())->doUpdate();
                     } else {
                         LOG_ERROR("bug wmUpdatePlugins: " << it.first);
                     }
@@ -330,6 +330,12 @@ void Window::setPos(int x, int y){
 void Window::setSize(int w, int h){
     XResizeWindow(display_, window_, w, h);
     XFlush(display_);
+}
+
+void Window::doUpdate(){
+    if (mapped_){
+        plugin_->updateEditor();
+    }
 }
 
 } // X11

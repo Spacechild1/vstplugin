@@ -69,6 +69,7 @@ class Window : public IWindow {
     void setSize(int w, int h) override;
     void doOpen();
     void doClose();
+    void doUpdate();
  private:
     Display *display_;
     IPlugin *plugin_;
