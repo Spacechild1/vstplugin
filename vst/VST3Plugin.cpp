@@ -106,7 +106,7 @@ VST3Factory::VST3Factory(const std::string& path)
     : path_(path) {}
 
 VST3Factory::~VST3Factory(){
-    if (!module_->exit()){
+    if (module_ && !module_->exit()){
         // don't throw!
         LOG_ERROR("couldn't exit module");
     }

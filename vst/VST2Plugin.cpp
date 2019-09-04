@@ -181,15 +181,15 @@ IFactory::ProbeFuture VST2Factory::probeAsync() {
 
 void VST2Factory::doLoad(){
     if (!module_){
-        auto module = IModule::load(path_);
-        entry_ = module_->getFnPtr<EntryPoint>("VSTPluginMain");
+        auto module = IModule::load(path_); // throws on failure
+        entry_ = module->getFnPtr<EntryPoint>("VSTPluginMain");
         if (!entry_){
         #ifdef __APPLE__
             // VST plugins previous to the 2.4 SDK used main_macho for the entry point name
             // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
-            entry_ = module_->getFnPtr<EntryPoint>("main_macho");
+            entry_ = module->getFnPtr<EntryPoint>("main_macho");
         #else
-            entry_ = module_->getFnPtr<EntryPoint>("main");
+            entry_ = module->getFnPtr<EntryPoint>("main");
         #endif
         }
         if (!entry_){
