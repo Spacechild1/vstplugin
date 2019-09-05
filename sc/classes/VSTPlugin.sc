@@ -265,16 +265,16 @@ VSTPlugin : MultiOutUGen {
 			});
 		}.forkIfNeeded;
 	}
-	*prGetLine { arg stream, skipEmpty=false;
+	*prGetLine { arg stream, skip=false;
 		var pos, line;
 		{
 			pos = stream.pos;
 			line = stream.readUpTo($\n);
 			stream.pos_(pos + line.size + 1);
 			line ?? { ^nil }; // EOF
-			((skipEmpty.not || (line.size > 0)) // skip empty lines
-				&& (line[0] != $#) // skip comments
-				&& (line[0] != $;)).if { ^line };
+			// skip empty lines or comments if desired
+			(skip && ((line.size == 0) || (line[0] == $#) || (line[0] == $;))).if { ^nil };
+			^line;
 		}.loop;
 	}
 	*prParseCount { arg line;
@@ -404,7 +404,7 @@ VSTPlugin : MultiOutUGen {
 					#key, value = this.prParseKeyValuePair(line);
 					switch(key,
 						\path, { info[key] = value },
-						\name, { info[key] = value },
+						\name, { info[key] = value; },
 						\vendor, { info[key] = value },
 						\category, { info[key] = value },
 						\version, { info[key] = value },
