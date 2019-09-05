@@ -263,12 +263,8 @@ VSTPluginController {
 	}
 	program_ { arg number;
 		((number >= 0) && (number < this.numPrograms)).if {
-			{
-				this.sendMsg('/program_set', number);
-				// wait one roundtrip for async command to finish
-				synth.server.sync;
-				this.prQueryParams;
-			}.forkIfNeeded;
+			this.sendMsg('/program_set', number);
+			this.prQueryParams;
 		} {
 			^"program number % out of range".format(number).throw;
 		};
