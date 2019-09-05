@@ -59,9 +59,11 @@ VSTPluginController {
 				display = this.class.msg2string(msg, 5);
 			};
 			// cache parameter value
-			paramCache[index] = [value, display];
-			// notify dependants
-			this.changed('/param', index, value, display);
+			(index < paramCache.size).if {
+				paramCache[index] = [value, display];
+				// notify dependants
+				this.changed('/param', index, value, display);
+			} { ^"parameter index % out of range!".format(index).warn };
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -74,9 +76,11 @@ VSTPluginController {
 			var index, name;
 			index = msg[3].asInteger;
 			name = this.class.msg2string(msg, 4);
-			programNames[index] = name;
-			// notify dependants
-			this.changed('/program', index, name);
+			(index < programNames.size).if {
+				programNames[index] = name;
+				// notify dependants
+				this.changed('/program', index, name);
+			} { "program number % out of range!".format(index).warn };
 		}, '/vst_program'));
 		// parameter automated:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
