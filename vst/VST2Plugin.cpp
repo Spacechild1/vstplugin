@@ -264,6 +264,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     vstEventBufferSize_ = DEFAULT_EVENT_QUEUE_SIZE;
 
     plugin_->user = this;
+    LOG_DEBUG("opening plugin");
     dispatch(effOpen);
     // are we probing?
     if (!info_){
@@ -302,9 +303,10 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         }
         // VST2 shell plugins only: get sub plugins
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
+            LOG_DEBUG("shell plugin");
             VstInt32 nextID = 0;
             char name[64] = { 0 };
-            while ((nextID = (plugin_->dispatcher)(plugin_, effShellGetNextPlugin, 0, 0, name, 0))){
+            while ((nextID = dispatch(effShellGetNextPlugin, 0, 0, name))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
                 PluginInfo::ShellPlugin shellPlugin { name, nextID };
                 info->shellPlugins.push_back(std::move(shellPlugin));
@@ -313,9 +315,6 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         info_ = info;
     }
     haveBypass_ = hasBypass(); // cache for performance
-    if (haveBypass_){
-        LOG_DEBUG("plugin can bypass");
-    }
 }
 
 VST2Plugin::~VST2Plugin(){
