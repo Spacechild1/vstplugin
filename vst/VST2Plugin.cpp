@@ -265,7 +265,6 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
 
     plugin_->user = this;
     dispatch(effOpen);
-    dispatch(effMainsChanged, 0, 1);
     // are we probing?
     if (!info_){
         // create and fill plugin info
