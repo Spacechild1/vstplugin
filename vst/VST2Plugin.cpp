@@ -1432,6 +1432,15 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 }
 
 // Main host callback
+#ifndef DEBUG_HOSTCODE_IMPLEMENTATION
+#define DEBUG_HOSTCODE_IMPLEMENTATION 1
+#endif
+
+#if DEBUG_HOSTCODE_IMPLEMENTATION
+#define DEBUG_HOSTCODE(x) LOG_DEBUG("master opcode: " x)
+#else
+#define DEBUG_HOSTCODE(x)
+#endif
 
 VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     VstInt32 index, VstIntPtr value, void *ptr, float opt){
@@ -1439,42 +1448,51 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
     case audioMasterCanDo:
         return canHostDo((const char *)ptr);
     case audioMasterVersion:
-        // LOG_DEBUG("opcode: audioMasterVersion");
+        DEBUG_HOSTCODE("audioMasterVersion");
         return 2400;
+    case audioMasterGetVendorString:
+        DEBUG_HOSTCODE("audioMasterGetVendorString");
+        strcpy((char *)ptr, "IEM");
+        return 1;
+    case audioMasterGetProductString:
+        DEBUG_HOSTCODE("audioMasterGetProductString");
+        strcpy((char *)ptr, "vstplugin");
+        return 1;
+    case audioMasterGetVendorVersion:
+        DEBUG_HOSTCODE("audioMasterGetVendorVersion");
+        return 1;
+    case audioMasterGetLanguage:
+        DEBUG_HOSTCODE("audioMasterGetLanguage");
+        return 1;
     case audioMasterCurrentId:
-        // LOG_DEBUG("opcode: audioMasterCurrentId");
-        // VST2Factory::probeShellPlugins(plugin);
+        DEBUG_HOSTCODE("audioMasterCurrentId");
         return VST2Factory::shellPluginID;
     default:
         if (plugin && plugin->user){
             return ((VST2Plugin *)(plugin->user))->callback(opcode, index, value, ptr, opt);
         } else {
+        #if DEBUG_HOSTCODE_IMPLEMENTATION
+            LOG_DEBUG("requested opcode " << opcode << " before instantiating plugin");
+        #endif
             return 0;
         }
     }
 }
-
-#define DEBUG_HOSTCODE_IMPLEMENTATION 1
-#if DEBUG_HOSTCODE_IMPLEMENTATION
-#define DEBUG_HOSTCODE(x) LOG_DEBUG(x)
-#else
-#define DEBUG_HOSTCODE(x)
-#endif
 VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *p, float opt){
     switch(opcode) {
     case audioMasterAutomate:
         parameterAutomated(index, opt);
         break;
     case audioMasterIdle:
-        DEBUG_HOSTCODE("opcode: audioMasterIdle");
+        DEBUG_HOSTCODE("audioMasterIdle");
         updateEditor();
         break;
     case audioMasterNeedIdle:
-        DEBUG_HOSTCODE("opcode: audioMasterNeedIdle");
+        DEBUG_HOSTCODE("audioMasterNeedIdle");
         dispatch(effIdle);
         break;
     case audioMasterWantMidi:
-        DEBUG_HOSTCODE("opcode: audioMasterWantMidi");
+        DEBUG_HOSTCODE("audioMasterWantMidi");
         return 1;
     case audioMasterGetTime:
         return (VstIntPtr)getTimeInfo(value);
@@ -1482,28 +1500,28 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         processEvents((VstEvents *)p);
         break;
     case audioMasterIOChanged:
-        DEBUG_HOSTCODE("opcode: audioMasterIOChanged");
+        DEBUG_HOSTCODE("audioMasterIOChanged");
         break;
     case audioMasterSizeWindow:
-        DEBUG_HOSTCODE("opcode: audioMasterSizeWindow");
+        DEBUG_HOSTCODE("audioMasterSizeWindow");
         if (window_){
             window_->setSize(index, value);
         }
         return 1;
     case audioMasterGetSampleRate:
-        DEBUG_HOSTCODE("opcode: audioMasterGetSampleRate");
+        DEBUG_HOSTCODE("audioMasterGetSampleRate");
         return (long)timeInfo_.sampleRate;
     case audioMasterGetBlockSize:
-        DEBUG_HOSTCODE("opcode: audioMasterGetBlockSize");
+        DEBUG_HOSTCODE("audioMasterGetBlockSize");
         return 64; // we override this later anyway
     case audioMasterGetInputLatency:
-        DEBUG_HOSTCODE("opcode: audioMasterGetInputLatency");
+        DEBUG_HOSTCODE("audioMasterGetInputLatency");
         break;
     case audioMasterGetOutputLatency:
-        DEBUG_HOSTCODE("opcode: audioMasterGetOutputLatency");
+        DEBUG_HOSTCODE("audioMasterGetOutputLatency");
         break;
     case audioMasterGetCurrentProcessLevel:
-        DEBUG_HOSTCODE("opcode: audioMasterGetCurrentProcessLevel");
+        DEBUG_HOSTCODE("audioMasterGetCurrentProcessLevel");
     #if HAVE_UI_THREAD
         if (UIThread::checkThread()){
             return kVstProcessLevelUser;
@@ -1511,37 +1529,33 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     #endif
             return kVstProcessLevelRealtime;
     case audioMasterGetAutomationState:
-        DEBUG_HOSTCODE("opcode: audioMasterGetAutomationState");
+        DEBUG_HOSTCODE("audioMasterGetAutomationState");
         break;
-    case audioMasterGetVendorString:
-    case audioMasterGetProductString:
-    case audioMasterGetVendorVersion:
     case audioMasterVendorSpecific:
-        DEBUG_HOSTCODE("opcode: vendor info");
-        break;
-    case audioMasterGetLanguage:
-        DEBUG_HOSTCODE("opcode: audioMasterGetLanguage");
+        DEBUG_HOSTCODE("vendor specific");
         break;
     case audioMasterGetDirectory:
-        DEBUG_HOSTCODE("opcode: audioMasterGetDirectory");
+        DEBUG_HOSTCODE("audioMasterGetDirectory");
         break;
     case audioMasterUpdateDisplay:
-        DEBUG_HOSTCODE("opcode: audioMasterUpdateDisplay");
+        DEBUG_HOSTCODE("audioMasterUpdateDisplay");
         break;
     case audioMasterBeginEdit:
-        DEBUG_HOSTCODE("opcode: audioMasterBeginEdit");
+        DEBUG_HOSTCODE("audioMasterBeginEdit");
         break;
     case audioMasterEndEdit:
-        DEBUG_HOSTCODE("opcode: audioMasterEndEdit");
+        DEBUG_HOSTCODE("audioMasterEndEdit");
         break;
     case audioMasterOpenFileSelector:
-        DEBUG_HOSTCODE("opcode: audioMasterOpenFileSelector");
+        DEBUG_HOSTCODE("audioMasterOpenFileSelector");
         break;
     case audioMasterCloseFileSelector:
-        DEBUG_HOSTCODE("opcode: audioMasterCloseFileSelector");
+        DEBUG_HOSTCODE("audioMasterCloseFileSelector");
         break;
     default:
-        DEBUG_HOSTCODE("plugin requested unknown/deprecated opcode " << opcode);
+    #if DEBUG_HOSTCODE_IMPLEMENTATION
+        LOG_DEBUG("plugin requested unknown/deprecated opcode " << opcode);
+    #endif
         return 0;
     }
     return 0; // ?
