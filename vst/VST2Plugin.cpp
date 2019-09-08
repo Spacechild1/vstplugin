@@ -305,7 +305,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
             LOG_DEBUG("shell plugin");
             VstInt32 nextID = 0;
-            char name[64] = { 0 };
+            char name[256] = { 0 };
             while ((nextID = dispatch(effShellGetNextPlugin, 0, 0, name))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
                 PluginInfo::ShellPlugin shellPlugin { name, nextID };
