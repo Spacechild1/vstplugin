@@ -643,7 +643,12 @@ void VSTPlugin::update() {
         }
         if (result) {
             for (int i = 0; i < n; ++i) {
+            #if 0
+                // breaks floating point comparison on GCC with -ffast-math
                 result[i] = std::numeric_limits<float>::quiet_NaN();
+            #else
+                result[i] = std::numeric_limits<float>::max();
+            #endif
             }
             paramState_ = result;
         }
