@@ -2087,7 +2087,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
     int32 size = args->getbsize();
     char *data = nullptr;
     if (size > 0) {
-        if (len > 65536){
+        if (size > 65536){
             // arbitrary limit (can only be reached with TCP)
             LOG_WARNING("vst_vendor_method: message exceeding internal limit of 64 kB");
             return;
