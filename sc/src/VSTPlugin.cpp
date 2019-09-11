@@ -1350,11 +1350,13 @@ void VSTPluginDelegate::getParam(int32 index) {
         if (index >= 0 && index < plugin_->getNumParameters()) {
             float value = plugin_->getParameter(index);
             sendMsg("/vst_set", value);
+            return;
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
+    sendMsg("/vst_set", -1);
 }
 
 void VSTPluginDelegate::getParams(int32 index, int32 count) {
@@ -1372,6 +1374,7 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
                 }
                 sendMsg("/vst_setn", bufsize, buf);
                 RTFree(world(), buf);
+                return;
             }
             else {
                 LOG_ERROR("RTAlloc failed!");
@@ -1381,6 +1384,7 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
+    sendMsg("/vst_setn", 0); // send count 0
 }
 
 void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
@@ -1417,11 +1421,13 @@ void VSTPluginDelegate::setProgram(int32 index) {
         if (index >= 0 && index < plugin_->getNumPrograms()) {
             plugin_->setProgram(index);
             sendMsg("/vst_program_index", plugin_->getProgram());
+            return;
         }
         else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
     }
+    sendMsg("/vst_program_index", -1);
 }
 void VSTPluginDelegate::setProgramName(const char *name) {
     if (check()) {
@@ -1511,6 +1517,13 @@ void VSTPluginDelegate::readPreset(const char *path){
     if (check()){
         doCmd(InfoCmdData::create(world(), path),
             cmdReadPreset<bank>, cmdReadPresetDone<bank>);
+    } else {
+        if (bank) {
+            sendMsg("/vst_bank_read", 0);
+        }
+        else {
+            sendMsg("/vst_program_read", 0);
+        }
     }
 }
 
@@ -1519,6 +1532,13 @@ void VSTPluginDelegate::readPreset(int32 buf) {
     if (check()) {
         doCmd(InfoCmdData::create(world(), buf),
             cmdReadPreset<bank>, cmdReadPresetDone<bank>);
+    } else {
+        if (bank) {
+            sendMsg("/vst_bank_read", 0);
+        }
+        else {
+            sendMsg("/vst_program_read", 0);
+        }
     }
 }
 
@@ -1568,6 +1588,13 @@ void VSTPluginDelegate::writePreset(const char *path) {
     if (check()) {
         doCmd(InfoCmdData::create(world(), path),
             cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
+    } else {
+        if (bank) {
+            sendMsg("/vst_bank_write", 0);
+        }
+        else {
+            sendMsg("/vst_program_write", 0);
+        }
     }
 }
 
@@ -1576,6 +1603,13 @@ void VSTPluginDelegate::writePreset(int32 buf) {
     if (check()) {
         doCmd(InfoCmdData::create(world(), buf),
             cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
+    } else {
+        if (bank) {
+            sendMsg("/vst_bank_write", 0);
+        }
+        else {
+            sendMsg("/vst_program_write", 0);
+        }
     }
 }
 
@@ -1615,6 +1649,8 @@ void VSTPluginDelegate::getTransportPos() {
     if (check()) {
         float f = plugin_->getTransportPosition();
         sendMsg("/vst_transport", f);
+    } else {
+        sendMsg("/vst_transport", -1);
     }
 }
 
@@ -1624,6 +1660,8 @@ void VSTPluginDelegate::canDo(const char *what) {
     if (check()) {
         auto result = plugin_->canDo(what);
         sendMsg("/vst_can_do", (float)result);
+    } else {
+        sendMsg("/vst_can_do", 0);
     }
 }
 
@@ -1658,6 +1696,8 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
             auto result = plugin_->vendorSpecific(index, value, (void *)data, opt);
             sendMsg("/vst_vendor_method", (float)result);
         }
+    } else {
+        sendMsg("/vst_vendor_method", 0);
     }
 }
 
@@ -1710,12 +1750,15 @@ void VSTPluginDelegate::sendParameterAutomated(int32 index, float value) {
 }
 
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
-    // LOG_DEBUG("sending msg: " << cmd);
-    SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
+    if (owner_){
+        SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
+    }
+    else {
+        LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
+    }
 }
 
 void VSTPluginDelegate::sendMsg(const char *cmd, int n, const float *data) {
-    // LOG_DEBUG("sending msg: " << cmd);
     if (owner_) {
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, n, data);
     }
@@ -1785,13 +1828,19 @@ void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
     unit->delegate().showEditor(show);
 }
 
-// helper function (only call after unit->delegate().check()!)
+// helper function
 bool vst_param_index(VSTPlugin* unit, sc_msg_iter *args, int& index) {
     if (args->nextTag() == 's') {
         auto name = args->gets();
-        index = unit->delegate().plugin()->info().findParam(name);
-        if (index < 0) {
-            LOG_ERROR("parameter '" << name << "' not found!");
+        auto plugin = unit->delegate().plugin();
+        if (plugin){
+            index = plugin->info().findParam(name);
+            if (index < 0) {
+                LOG_ERROR("parameter '" << name << "' not found!");
+                return false;
+            }
+        } else {
+            LOG_WARNING("no plugin loaded!");
             return false;
         }
     } else {
@@ -1877,34 +1926,32 @@ void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
 }
 
 void vst_domap(VSTPlugin* unit, sc_msg_iter* args, bool audio) {
-    while (args->remain() > 0) {
-        int32 index = -1;
-        if (vst_param_index(unit, args, index)) {
-            int32 bus = args->geti(-1);
-            int32 numChannels = args->geti();
-            for (int i = 0; i < numChannels; ++i) {
-                unit->delegate().mapParam(index + i, bus + i, audio);
+    if (unit->delegate().check()) {
+        while (args->remain() > 0) {
+            int32 index = -1;
+            if (vst_param_index(unit, args, index)) {
+                int32 bus = args->geti(-1);
+                int32 numChannels = args->geti();
+                for (int i = 0; i < numChannels; ++i) {
+                    unit->delegate().mapParam(index + i, bus + i, audio);
+                }
             }
-        }
-        else {
-            args->geti(); // swallow bus
-            args->geti(); // swallow numChannels
+            else {
+                args->geti(); // swallow bus
+                args->geti(); // swallow numChannels
+            }
         }
     }
 }
 
 // map parameters to control busses
 void vst_map(VSTPlugin* unit, sc_msg_iter *args) {
-    if (unit->delegate().check()) {
-        vst_domap(unit, args, false);
-    }
+    vst_domap(unit, args, false);
 }
 
 // map parameters to audio busses
 void vst_mapa(VSTPlugin* unit, sc_msg_iter* args) {
-    if (unit->delegate().check()) {
-        vst_domap(unit, args, true);
-    }
+    vst_domap(unit, args, true);
 }
 
 // unmap parameters from control busses
