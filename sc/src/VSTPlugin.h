@@ -128,6 +128,7 @@ public:
     void getParams(int32 index, int32 count);
     void mapParam(int32 index, int32 bus, bool audio = false);
     void unmapParam(int32 index);
+    void unmapAll();
     // program/bank
     void setProgram(int32 index);
     void setProgramName(const char* name);
@@ -214,8 +215,8 @@ public:
     void update();
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
-private:
     void clearMapping();
+private:
     float readControlBus(uint32 num);
     // data members
     volatile uint32 initialized_ = MagicInitialized; // set by constructor
@@ -236,15 +237,15 @@ private:
 
     struct Mapping {
         enum BusType {
-            Control,
+            Control = 0,
             Audio
         };
         void setBus(uint32 num, BusType type) {
             // use last bit in bus to encode the type
-            bus_ = num | (type << 31);
+            bus_ = num | (static_cast<uint32>(type) << 31);
         }
         BusType type() const {
-            return (BusType)(bus_ & 0x80000000);
+            return static_cast<BusType>(bus_ >> 31);
         }
         uint32 bus() const {
             return bus_ & 0x7FFFFFFF;

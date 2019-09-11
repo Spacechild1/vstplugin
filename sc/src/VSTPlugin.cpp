@@ -561,9 +561,9 @@ VSTPlugin::VSTPlugin(){
 }
 
 VSTPlugin::~VSTPlugin(){
+    clearMapping();
     if (paramState_) RTFree(mWorld, paramState_);
     if (paramMapping_) RTFree(mWorld, paramMapping_);
-    clearMapping();
     // both variables are volatile, so the compiler is not allowed to optimize it away!
     initialized_ = 0;
     queued_ = 0;
@@ -604,13 +604,13 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
 }
 
 void VSTPlugin::clearMapping() {
-    auto m = paramMappingList_;
-    while (m != nullptr) {
+    for (auto m = paramMappingList_; m != nullptr; ){
+        paramMapping_[m->index] = nullptr;
         auto next = m->next;
         RTFree(mWorld, m);
         m = next;
     }
-    paramMapping_ = nullptr;
+    paramMappingList_ = nullptr;
 }
 
 float VSTPlugin::readControlBus(uint32 num) {
@@ -656,7 +656,7 @@ void VSTPlugin::update() {
     {
         Mapping** result = nullptr;
         if (n > 0) {
-            result = (Mapping * *)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping*));
+            result = (Mapping **)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping*));
             if (!result) {
                 LOG_ERROR("RTRealloc failed!");
             }
@@ -674,13 +674,23 @@ void VSTPlugin::update() {
     }
 }
 
+#if 1
+#define PRINT_MAPPING \
+    LOG_DEBUG("mappings:"); \
+    for (auto mapping = paramMappingList_; mapping; mapping = mapping->next){ \
+        LOG_DEBUG(mapping->index << " -> " << mapping->bus() << " (" << mapping->type() << ")"); \
+    }
+#else
+#define PRINT_MAPPING
+#endif
+
 void VSTPlugin::map(int32 index, int32 bus, bool audio) {
-    if (paramMapping_[index] == nullptr) {
-        auto mapping = (Mapping*)RTAlloc(mWorld, sizeof(Mapping));
+    Mapping *mapping = paramMapping_[index];
+    if (mapping == nullptr) {
+        mapping = (Mapping*)RTAlloc(mWorld, sizeof(Mapping));
         if (mapping) {
             // add to head of linked list
             mapping->index = index;
-            mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
             mapping->prev = nullptr;
             mapping->next = paramMappingList_;
             if (paramMappingList_) {
@@ -691,8 +701,11 @@ void VSTPlugin::map(int32 index, int32 bus, bool audio) {
         }
         else {
             LOG_ERROR("RTAlloc failed!");
+            return;
         }
     }
+    mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
+    PRINT_MAPPING
 }
 
 void VSTPlugin::unmap(int32 index) {
@@ -711,6 +724,7 @@ void VSTPlugin::unmap(int32 index) {
         RTFree(mWorld, mapping);
         paramMapping_[index] = nullptr;
     }
+    PRINT_MAPPING
 }
 
 // perform routine
@@ -1386,6 +1400,12 @@ void VSTPluginDelegate::unmapParam(int32 index) {
     }
 }
 
+void VSTPluginDelegate::unmapAll() {
+    if (check()) {
+        owner_->clearMapping();
+    }
+}
+
 // program/bank
 void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
@@ -1894,13 +1914,8 @@ void vst_unmap(VSTPlugin* unit, sc_msg_iter *args) {
             } while (args->remain() > 0);
         }
         else {
-            // unmap all parameters:
-            int nparam = unit->delegate().plugin()->getNumParameters();
-            for (int i = 0; i < nparam; ++i) {
-                unit->delegate().unmapParam(i);
-            }
+            unit->delegate().unmapAll();
         }
-
     }
 }
 
