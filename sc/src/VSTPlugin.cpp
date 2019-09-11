@@ -1013,18 +1013,12 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
             LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
         }
-        float* buf = (float*)RTAlloc(world(), sysex.size * sizeof(float));
-        if (buf) {
-            for (int i = 0; i < sysex.size; ++i) {
-                // no need to cast to unsigned because SC's Int8Array is signed anyway
-                buf[i] = sysex.data[i];
-            }
-            sendMsg("/vst_sysex", sysex.size, buf);
-            RTFree(world(), buf);
+        float* buf = (float*)alloca(sysex.size * sizeof(float));
+        for (int i = 0; i < sysex.size; ++i) {
+            // no need to cast to unsigned because SC's Int8Array is signed anyway
+            buf[i] = sysex.data[i];
         }
-        else {
-            LOG_ERROR("RTAlloc failed!");
-        }
+        sendMsg("/vst_sysex", sysex.size, buf);
     }
 }
 
@@ -1365,19 +1359,17 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
         if (index >= 0 && index < nparam) {
             count = std::min<int32>(count, nparam - index);
             const int bufsize = count + 1;
-            float *buf = (float *)RTAlloc(world(), sizeof(float) * bufsize);
-            if (buf) {
+            if (bufsize * sizeof(float) < MAX_OSC_PACKET_SIZE){
+                float *buf = (float *)alloca(sizeof(float) * bufsize);
                 buf[0] = count;
                 for (int i = 0; i < count; ++i) {
                     float value = plugin_->getParameter(i + index);
                     buf[i + 1] = value;
                 }
                 sendMsg("/vst_setn", bufsize, buf);
-                RTFree(world(), buf);
                 return;
-            }
-            else {
-                LOG_ERROR("RTAlloc failed!");
+            } else {
+                LOG_WARNING("VSTPlugin: too many parameters requested!");
             }
         }
         else {
@@ -2042,21 +2034,19 @@ void vst_midi_msg(VSTPlugin* unit, sc_msg_iter *args) {
 
 void vst_midi_sysex(VSTPlugin* unit, sc_msg_iter *args) {
     int len = args->getbsize();
-    if (len > 0) {
-        // LATER avoid unnecessary copying
-        char *buf = (char *)RTAlloc(unit->mWorld, len);
-        if (buf) {
-            args->getb(buf, len);
-            unit->delegate().sendSysexMsg(buf, len);
-            RTFree(unit->mWorld, buf);
-        }
-        else {
-            LOG_ERROR("vst_midi_sysex: RTAlloc failed!");
-        }
-    }
-    else {
+    if (len < 0){
         LOG_WARNING("vst_midi_sysex: no data!");
+        return;
     }
+    if (len > 65536){
+        // arbitrary limit (can only be reached with TCP)
+        LOG_WARNING("vst_midi_sysex: message exceeding internal limit of 64 kB");
+        return;
+    }
+    // LATER avoid unnecessary copying.
+    char *buf = (char *)alloca(len);
+    args->getb(buf, len);
+    unit->delegate().sendSysexMsg(buf, len);
 }
 
 void vst_tempo(VSTPlugin* unit, sc_msg_iter *args) {
@@ -2097,21 +2087,17 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
     int32 size = args->getbsize();
     char *data = nullptr;
     if (size > 0) {
-        data = (char *)RTAlloc(unit->mWorld, size);
-        if (data) {
-            args->getb(data, size);
-        }
-        else {
-            LOG_ERROR("RTAlloc failed!");
+        if (len > 65536){
+            // arbitrary limit (can only be reached with TCP)
+            LOG_WARNING("vst_vendor_method: message exceeding internal limit of 64 kB");
             return;
         }
+        data = (char *)alloca(size);
+        args->getb(data, size);
     }
     float opt = args->getf();
     bool async = args->geti();
     unit->delegate().vendorSpecific(index, value, size, data, opt, async);
-    if (data) {
-        RTFree(unit->mWorld, data);
-    }
 }
 
 /*** plugin command callbacks ***/
