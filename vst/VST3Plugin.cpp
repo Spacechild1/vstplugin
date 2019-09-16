@@ -364,12 +364,6 @@ void EventList::clear(){
 
 /*/////////////////////// VST3Plugin ///////////////////////*/
 
-#if HAVE_NRT_THREAD
-#define LOCK_GUARD std::lock_guard<std::mutex> LOCK_GUARD_lock(mutex_);
-#else
-#define LOCK_GUARD
-#endif
-
 template <typename T>
 inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     T* obj = nullptr;
@@ -733,27 +727,6 @@ void doBypassProcessing(IPlugin::ProcessData<T>& data, T** output, int numOut, T
 
 template<typename T>
 void VST3Plugin::doProcess(ProcessData<T>& inData){
-    auto callProcess = [this](auto& data){
-        // process
-    #if HAVE_NRT_THREAD
-        // We don't want to put the audio thread to sleep.
-        // this means we might loose a buffer if we happen
-        // to manipulate the plugin from the NRT thread at the same time.
-        // Only few operations require the mutex:
-        // 1) preset loading/saving, 2) resetting, 3) message sending
-        // The user can mute the plugin while doing such tasks
-        // and the rest of his program will not suffer.
-        if (mutex_.try_lock()){
-    #endif
-            processor_->process(data);
-    #if HAVE_NRT_THREAD
-            mutex_.unlock();
-        } else {
-            LOG_DEBUG("VST3Plugin: skip processing");
-        }
-    #endif
-    };
-
     // process data
     Vst::ProcessData data;
     Vst::AudioBusBuffers input[2];
@@ -876,10 +849,10 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
-        callProcess(data);
+        processor_->process(data);
     } else if (bypassRamp) {
         // process <-> bypass transition
-        callProcess(data);
+        processor_->process(data);
 
         if (bypassState == Bypass::Soft){
             // soft bypass
@@ -938,7 +911,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
         }
     } else if (!bypassSilent_){
         // continue to process with empty input till the output is silent
-        callProcess(data);
+        processor_->process(data);
         // check for silence (RMS < ca. -80dB)
         auto isChannelSilent = [](auto buf, auto n){
             const T threshold = 0.0001;
@@ -1102,13 +1075,11 @@ bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
 }
 
 void VST3Plugin::suspend(){
-    LOCK_GUARD
     processor_->setProcessing(false);
     component_->setActive(false);
 }
 
 void VST3Plugin::resume(){
-    LOCK_GUARD
     component_->setActive(true);
     processor_->setProcessing(true);
 }
@@ -1202,7 +1173,6 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
             }
         }
     }
-    LOCK_GUARD
     processor_->setBusArrangements(busIn, numIn, busOut, numOut);
     // we have to (de)activate busses *after* setting the bus arrangement
     component_->activateBus(Vst::kAudio, Vst::kInput, 0, in > 0); // main
@@ -1563,7 +1533,6 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     // get chunk data
     for (auto& entry : entries){
         stream.setPos(entry.offset);
-        LOCK_GUARD
         if (isChunkType(entry.id, Vst::kComponentState)){
             if (component_->setState(&stream) == kResultOk){
                 // also update controller state!
@@ -1614,7 +1583,6 @@ void VST3Plugin::writeProgramData(std::string& buffer){
         ChunkListEntry entry;
         memcpy(entry.id, Vst::getChunkID(type), sizeof(Vst::ChunkID));
         stream.tell(&entry.offset);
-        LOCK_GUARD
         // TODO what do for a GUI editor?
         if (component->getState(&stream) == kResultTrue){
             auto pos = stream.getPos();
@@ -1717,7 +1685,6 @@ void VST3Plugin::addBinary(const char* id, const char *data, size_t size) {
 
 void VST3Plugin::endMessage() {
     if (msg_){
-        LOCK_GUARD
         sendMessage(msg_.get());
         msg_ = nullptr;
     }

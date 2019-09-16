@@ -300,9 +300,6 @@ class VST3Plugin final :
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
-#if HAVE_NRT_THREAD
-    std::mutex mutex_; // better use a spinlock
-#endif
     // audio
     enum BusType {
         Main = 0,
