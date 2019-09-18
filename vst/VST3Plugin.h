@@ -289,6 +289,7 @@ class VST3Plugin final :
     template<typename T>
     void doProcess(ProcessData<T>& inData);
     void handleEvents();
+    void handleOutputParameterChanges();
     void updateAutomationState();
     void sendMessage(Vst::IMessage* msg);
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
@@ -319,7 +320,7 @@ class VST3Plugin final :
     int numMidiOutChannels_ = 0;
     // parameters
     ParameterChanges inputParamChanges_;
-    // ParameterChanges outputParamChanges_;
+    ParameterChanges outputParamChanges_;
     std::vector<Vst::ParamValue> paramCache_;
     // programs
     int program_ = 0;

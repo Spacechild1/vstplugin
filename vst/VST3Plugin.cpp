@@ -591,7 +591,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     // setup parameter queues/cache
     int numParams = info_->numParameters();
     inputParamChanges_.setMaxNumParameters(numParams);
-    // outputParamChanges_.setMaxNumParameters(numParams);
+    outputParamChanges_.setMaxNumParameters(numParams);
     paramCache_.resize(numParams);
     updateParamCache();
     LOG_DEBUG("program change: " << info_->programChange);
@@ -742,7 +742,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     data.inputEvents = &inputEvents_;
     data.outputEvents = &outputEvents_;
     data.inputParameterChanges = &inputParamChanges_;
-    // data.outputParameterChanges = &outputParamChanges_;
+    data.outputParameterChanges = &outputParamChanges_;
 
     auto bypassState = bypass_; // do we have to care about bypass?
     bool bypassRamp = (bypass_ != lastBypass_);
@@ -977,7 +977,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
 
     // handle outgoing events
     handleEvents();
-    // handle output parameter changes (send to GUI)
+    handleOutputParameterChanges();
 
     // update time info
     context_.continousTimeSamples += data.numSamples;
@@ -1061,6 +1061,29 @@ void VST3Plugin::handleEvents(){
         }
         outputEvents_.clear();
     }
+}
+
+void VST3Plugin::handleOutputParameterChanges(){
+    auto listener = listener_.lock();
+    if (listener){
+        int numParams = outputParamChanges_.getParameterCount();
+        for (int i = 0; i < numParams; ++i){
+            auto data = outputParamChanges_.getParameterData(i);
+            if (data){
+                auto index = info().getParamIndex(data->getParameterId());
+                int numPoints = data->getPointCount();
+                for (int j = 0; j < numPoints; ++j){
+                    int32 offset = 0;
+                    Vst::ParamValue value = 0;
+                    if (data->getPoint(j, offset, value) == kResultOk){
+                        // for now we ignore the sample offset
+                        listener->parameterAutomated(index, value);
+                    }
+                }
+            }
+        }
+    }
+    outputParamChanges_.clear();
 }
 
 bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
