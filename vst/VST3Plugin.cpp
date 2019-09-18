@@ -1681,14 +1681,44 @@ bool VST3Plugin::hasEditor() const {
 }
 
 void VST3Plugin::openEditor(void * window){
-
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+    #if defined(_WIN32)
+        view_->attached(window, "HWND");
+    #elif defined(__APPLE__)
+        view_->attached(window, "NSView");
+        // TODO: iOS ("UIView")
+    #else
+        view_->attached(window, "X11EmbedWindowID");
+    #endif
+    }
 }
 
 void VST3Plugin::closeEditor(){
-
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        view_->removed();
+    }
 }
 
 bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        ViewRect rect;
+        if (view_->getSize(&rect) == kResultOk){
+            left = rect.left;
+            top = rect.top;
+            right = rect.right;
+            bottom = rect.bottom;
+            return true;
+        }
+    }
     return false;
 }
 
