@@ -850,6 +850,14 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     auto auxoutvec = (T **)alloca(sizeof(T*) * getNumAuxOutputs());
     setAudioOutputBuffers(output[Vst::kAux], auxoutvec, getNumAuxOutputs(), (T **)inData.auxOutput, inData.numAuxOutputs, outbuf);
 
+    // send parameter changes from editor to processor
+    ParamChange paramChange;
+    while (paramChangesFromGui_.pop(paramChange)){
+        int32 index;
+        auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
+        queue->addPoint(0, paramChange.value, index);
+    }
+
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing

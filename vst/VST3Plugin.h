@@ -176,6 +176,42 @@ class EventList : public Vst::IEventList {
 
 //--------------------------------------------------------------------------------------------------------
 
+template<typename T, size_t N>
+class LockfreeFifo {
+ public:
+    bool push(T&& data){
+        int next = (writeHead_.load(std::memory_order_relaxed) + 1) % N;
+        if (next == readHead_.load(std::memory_order_relaxed)){
+            return false; // FIFO is full
+        }
+        data_[next] = std::forward<T>(data);
+        writeHead_.store(next, std::memory_order_release);
+        return true;
+    }
+    bool pop(T& data){
+        int pos = readHead_.load(std::memory_order_relaxed);
+        if (pos == writeHead_.load()){
+            return false; // FIFO is empty
+        }
+        int next = (pos + 1) % N;
+        data = data_[next];
+        readHead_.store(next, std::memory_order_release);
+        return true;
+    }
+    void clear() {
+        readHead_.store(writeHead_.load());
+    }
+    bool empty() const {
+        return readHead_.load(std::memory_order_relaxed) == writeHead_.load(std::memory_order_relaxed);
+    }
+ private:
+    std::atomic<int> readHead_{0};
+    std::atomic<int> writeHead_{0};
+    std::array<T, N> data_;
+};
+
+//--------------------------------------------------------------------------------------------------------
+
 class VST3Plugin final :
         public IPlugin,
         public Vst::IComponentHandler,
@@ -331,6 +367,14 @@ class VST3Plugin final :
         std::atomic<bool> changed;
     };
     std::vector<ParamState> paramCache_;
+    struct ParamChange {
+        ParamChange() : id(0), value(0) {}
+        ParamChange(Vst::ParamID _id, Vst::ParamValue _value)
+            : id(_id), value(_value) {}
+        Vst::ParamID id;
+        Vst::ParamValue value;
+    };
+    LockfreeFifo<ParamChange, 64> paramChangesFromGui_;
     // programs
     int program_ = 0;
     // message from host to plugin
