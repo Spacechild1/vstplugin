@@ -615,7 +615,11 @@ tresult VST3Plugin::beginEdit(Vst::ParamID id){
 tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
     auto listener = listener_.lock();
     if (listener){
-        listener->parameterAutomated(info().getParamIndex(id), value);
+        int index = info().getParamIndex(id);
+        listener->parameterAutomated(index, value);
+    }
+    if (window_){
+        paramChangesFromGui_.push(ParamChange(id, value));
     }
     return kResultOk;
 }
@@ -750,7 +754,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     T rampAdvance = 0;
     if (bypassRamp){
         if ((bypass_ == Bypass::Hard || lastBypass_ == Bypass::Hard)){
-            // hard bypass: just crossfade to inprocessed input - but keep processing
+            // hard bypass: just crossfade to unprocessed input - but keep processing
             // till the *plugin output* is silent (this will clear delay lines, for example).
             bypassState = Bypass::Hard;
         } else if (bypass_ == Bypass::Soft || lastBypass_ == Bypass::Soft){
@@ -1392,7 +1396,6 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 void VST3Plugin::setParameter(int index, float value, int sampleOffset){
     auto id = info().getParamID(index);
     doSetParameter(id, value, sampleOffset);
-    paramCache_[index] = value;
 }
 
 bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffset){
@@ -1402,7 +1405,6 @@ bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffse
     if (convertString(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
             doSetParameter(id, value, sampleOffset);
-            paramCache_[index] = value;
             return true;
         }
     }
@@ -1412,24 +1414,23 @@ bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffse
 void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset){
     int32 dummy;
     inputParamChanges_.addParameterData(id, dummy)->addPoint(sampleOffset, value, dummy);
+    auto index = info().getParamIndex(id);
+    paramCache_[index].value = value;
     if (window_){
-        // The VST3 guys say that you must only call IEditController methods on the GUI thread!
-        // This means we have to transfer parameter changes to a ring buffer and install a timer
-        // on the GUI thread which polls the ring buffer and calls the edit controller.
-        // Similarly, we have to have a ringbuffer for parameter changes coming from the GUI.
+        paramCache_[index].changed = true;
     } else {
         controller_->setParamNormalized(id, value);
     }
 }
 
 float VST3Plugin::getParameter(int index) const {
-    return paramCache_[index];
+    return paramCache_[index].value;
 }
 
 std::string VST3Plugin::getParameterString(int index) const {
     Vst::String128 display;
-    auto id = info().getParamID(index);
-    auto value = paramCache_[index];
+    Vst::ParamID id = info().getParamID(index);
+    float value = paramCache_[index].value;
     if (controller_->getParamStringByValue(id, value, display) == kResultOk){
         return convertString(display);
     }
@@ -1443,7 +1444,8 @@ int VST3Plugin::getNumParameters() const {
 void VST3Plugin::updateParamCache(){
     for (int i = 0; i < (int)paramCache_.size(); ++i){
         auto id = info().getParamID(i);
-        paramCache_[i] = controller_->getParamNormalized(id);
+        paramCache_[i].value = controller_->getParamNormalized(id);
+        paramCache_[i].changed = true;
     }
 }
 
@@ -1668,7 +1670,15 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 }
 
 void VST3Plugin::updateEditor(){
-
+    int n = paramCache_.size();
+    for (int i = 0; i < n; ++i){
+        bool expected = true;
+        if (paramCache_[i].changed.compare_exchange_strong(expected, false)){
+            auto id = info().getParamID(i);
+            float value = paramCache_[i].value;
+            controller_->setParamNormalized(id, value);
+        }
+    }
 }
 
 // VST3 only
@@ -1720,11 +1730,8 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
     }
     FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
     if (p2){
-        if (window_){
-            // TODO ?
-        } else {
-            p2->notify(msg);
-        }
+        // do we have to call this on the UI thread when we have a GUI editor?
+        p2->notify(msg);
     }
 }
 

@@ -321,7 +321,16 @@ class VST3Plugin final :
     // parameters
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;
-    std::vector<Vst::ParamValue> paramCache_;
+    struct ParamState {
+        ParamState()
+            : value(0.f), changed(false) {}
+        // copy ctor is needed so we can use it in a vector
+        ParamState(const ParamState& other)
+            : value(other.value.load()), changed(other.changed.load()) {}
+        std::atomic<float> value;
+        std::atomic<bool> changed;
+    };
+    std::vector<ParamState> paramCache_;
     // programs
     int program_ = 0;
     // message from host to plugin
