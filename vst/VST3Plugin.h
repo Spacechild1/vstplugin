@@ -332,6 +332,7 @@ class VST3Plugin final :
     void updateParamCache();
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
+    mutable IPlugView *view_ = nullptr;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
     IFactory::const_ptr factory_;
     PluginInfo::const_ptr info_;

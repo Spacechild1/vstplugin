@@ -522,7 +522,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         info->numOutputs = getNumOutputs();
         info->numAuxOutputs = getNumAuxOutputs();
         uint32_t flags = 0;
-        flags |= hasEditor() * PluginInfo::HasEditor;
+        LOG_DEBUG("has editor: " << hasEditor());
+        flags |= hasEditor();
         flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
@@ -1662,7 +1663,21 @@ void VST3Plugin::writeBankData(std::string& buffer){
 }
 
 bool VST3Plugin::hasEditor() const {
-    return false;
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+    #if defined(_WIN32)
+        return view_->isPlatformTypeSupported("HWND") == kResultOk;
+    #elif defined(__APPLE__)
+        return view_->isPlatformTypeSupported("NSView") == kResultOk;
+        // TODO: check for iOS ("UIView")
+    #else
+        return view_->isPlatformTypeSupported("X11EmbedWindowID") == kResultOk;
+    #endif
+    } else {
+        return false;
+    }
 }
 
 void VST3Plugin::openEditor(void * window){
