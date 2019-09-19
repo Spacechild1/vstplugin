@@ -237,7 +237,7 @@ code::
 
 note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).::
 
-- If the VSTPlugin UGen holds a plugin info Event (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor ommitted.
+- If the VSTPlugin UGen holds a plugin info (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor ommitted.
 code::
 VSTPlugin.search;
 (

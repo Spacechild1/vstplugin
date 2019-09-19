@@ -77,7 +77,7 @@ SynthDef(\test, { arg in, out;
 ::
 
 ARGUMENT:: info
-An optional plugin info Event; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
+An optional plugin info; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
 
 If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices
 code::
@@ -108,7 +108,7 @@ SUBSECTION:: Plugin Management
 All VST plugin information is cached on the Client. This is done mainly for performance reasons but it can be also handy for end users
 because it's possible to investigate plugins without actually creating any instances.
 
-The plugin info is an link::Classes/Event:: with the following entries:
+The plugin info is an link::Classes/IdentityDictionary:: with the following entries:
 table::
 ## key || a symbol under which the plugin is stored
 ## path || the file path
@@ -181,7 +181,7 @@ the Server. If code::nil::, the default Server is assumed.
 ARGUMENT:: sorted
 whether the Array should be sorted alphabetically (by name).
 
-RETURNS:: an Array of plugin info Events.
+RETURNS:: an Array of plugin infos.
 
 METHOD:: pluginKeys
 get the keys of all plugins on a given Server.
@@ -192,8 +192,8 @@ the Server. If code::nil::, the default Server is assumed.
 RETURNS:: an Array of plugin keys.
 
 DISCUSSION::
-This method only considers the keys stored in the plugin info Event,
-not the additional keys in the plugin dictionary. 
+This method only considers the keys stored in the plugin info,
+not the additional keys in the plugin dictionary.
 
 
 METHOD:: print
@@ -339,7 +339,7 @@ the wait time, see link::#*search::.
 
 ARGUMENT:: action
 an action to be evaluated after the search has finished.
-On success, the plugin info is passed as an link::Classes/Event::, otherwise the argument is code::nil::.
+On success, the plugin info is passed as an link::Classes/IdentityDictionary::, otherwise the argument is code::nil::.
 
 DISCUSSION::
 
