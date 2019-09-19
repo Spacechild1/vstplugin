@@ -265,6 +265,33 @@ VSTPlugin : MultiOutUGen {
 			});
 		}.forkIfNeeded;
 	}
+	*readPlugins {
+		var path, stream, dict = IdentityDictionary.new;
+		// handle 32-bit Windows
+		path = ((thisProcess.platform.name == \windows) && Platform.resourceDir.find("(x86").notNil).if
+		{ "plugins32.ini" } { "plugins.ini" };
+		path = ("~/.VSTPlugin/" ++ path).standardizePath;
+		// read plugins.ini file
+		File.exists(path).not.if {
+			"Couldn't find plugin cache file! Make sure to call VSTPlugin.search at least once.".warn;
+			^dict;
+		};
+		try {
+			File.use(path, "rb", { arg file;
+				stream = CollStream.new(file.readAllString);
+			});
+		} {
+			"Failed to read plugin info file (%)!".format(path).error;
+			^dict;
+		};
+		stream.notNil.if {
+			this.prParseIni(stream).do { arg info;
+				// store under key
+				dict[info.key] = info;
+			};
+		};
+		^dict;
+	}
 	*prGetLine { arg stream, skip=false;
 		var pos, line;
 		{

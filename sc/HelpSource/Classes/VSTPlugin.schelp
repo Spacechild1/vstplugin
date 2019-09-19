@@ -370,6 +370,11 @@ DISCUSSION::
 
 Sending this message to the Server will emphasis::not:: update any info in the Client!
 
+METHOD:: readPlugins
+
+get the info of all locally cached plugins. For this to work, you have to call link::#*search:: at least once (with code::save: true::), then the plugin info will be available without starting a Server.
+
+RETURNS:: an link::Classes/IdentityDictionary:: containing all plugin infos.
 
 METHOD:: clear
 Deletes all cached plugin info for a given Server.
