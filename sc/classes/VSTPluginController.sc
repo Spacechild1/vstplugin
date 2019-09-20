@@ -158,9 +158,10 @@ VSTPluginController {
 		});
 	}
 	openMsg { arg path, editor=false;
-		// path must be a plugin name or *absolute* file path.
-		// (we can't really distinguish between relative file paths and plugin names
-		// without having access to the plugin dictionary)
+		// if path is nil we try to get it from VSTPlugin
+		path ?? {
+			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
+		};
 		^this.makeMsg('/open', path, editor.asInteger);
 	}
 	prClear {

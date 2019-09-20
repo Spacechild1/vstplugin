@@ -267,6 +267,8 @@ METHOD:: openMsg
 ARGUMENT:: path
 the plugin name/key or file path. Relative paths are resolved to the standard VST directories.
 
+If the VSTPlugin UGen holds a plugin info (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor ommitted.
+
 ARGUMENT:: editor
 request the VST editor.
 
