@@ -120,10 +120,10 @@ VSTPluginController {
 	gui { arg parent, bounds;
 		^this.class.guiClass.new(this).gui(parent, bounds);
 	}
-	open { arg path, editor=false, info=false, action;
+	open { arg path, editor=false, verbose=false, action;
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
-			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".error }
+			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
 		};
 		VSTPlugin.prGetInfo(synth.server, path, wait, { arg theInfo;
 			theInfo.notNil.if {
@@ -133,22 +133,21 @@ VSTPluginController {
 					window = msg[4].asBoolean;
 					loaded.if {
 						theInfo.notNil.if {
-							this.slotPut('info', theInfo); // hack because of name clash with 'info'
+							info = theInfo; // now set 'info' property
 							paramCache = Array.fill(theInfo.numParameters, [0, nil]);
 							program = 0;
 							// copy default program names (might change later when loading banks)
 							programNames = theInfo.programs.collect(_.name);
 							this.prQueryParams;
 							// post info if wanted
-							info.if { theInfo.print };
+							verbose.if { theInfo.print };
 						} {
-							// shouldn't happen...
-							"bug: got no info!".error;
+							"bug: got no info!".error; // shouldn't happen...
 							loaded = false; window = false;
 						};
 					} {
 						// shouldn't happen because /open is only sent if the plugin has been successfully probed
-						"bug: couldn't open '%'".format(path).error;
+						"couldn't open '%'".format(path).error;
 					};
 					action.value(this, loaded);
 					this.changed('/open', path, loaded);

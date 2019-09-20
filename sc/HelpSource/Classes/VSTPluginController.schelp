@@ -253,8 +253,8 @@ ARGUMENT:: editor
 request the VST plugin editor.
 note::This is not supported (yet) on macOS and for VST3 plugins!::
 
-ARGUMENT:: info
-post the plugin info to the console (if loaded successfully).
+ARGUMENT:: verbose
+post the plugin info to the console if loaded successfully.
 
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
