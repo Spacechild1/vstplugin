@@ -159,7 +159,7 @@ static void readIniFile(){
     try {
         gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
     } catch (const Error& e){
-        LOG_ERROR("couldn't read settings file: " << e.what());
+        LOG_ERROR("couldn't read cache file: " << e.what());
     }
 }
 
