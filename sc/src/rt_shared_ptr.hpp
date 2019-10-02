@@ -4,6 +4,10 @@
 #include <memory>
 #include "SC_InterfaceTable.h"
 
+#ifndef DEBUG_RT_MEMORY
+#define DEBUG_RT_MEMORY 0
+#endif
+
 namespace rt {
 
     extern InterfaceTable* interfaceTable;
@@ -21,10 +25,17 @@ namespace rt {
             : world_(other.world_) {}
 
         value_type* allocate(std::size_t n) {
-            return static_cast<value_type*>(interfaceTable->fRTAlloc(world_, n));
+            auto p = static_cast<value_type*>(interfaceTable->fRTAlloc(world_, n * sizeof(T)));
+        #if DEBUG_RT_MEMORY
+            interfaceTable->fPrint("allocate %d bytes at %p\n", n * sizeof(T), p);
+        #endif
+            return p;
         }
 
-        void deallocate(value_type* p, std::size_t) noexcept {
+        void deallocate(value_type* p, std::size_t n) noexcept {
+        #if DEBUG_RT_MEMORY
+            interfaceTable->fPrint("deallocate %d bytes at %p\n", n * sizeof(T), p);
+        #endif
             interfaceTable->fRTFree(world_, p);
         }
 

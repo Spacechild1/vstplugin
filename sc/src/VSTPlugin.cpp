@@ -558,6 +558,7 @@ VSTPlugin::VSTPlugin(){
             item = next;
         }
     }
+    LOG_DEBUG("created VSTPlugin instance");
 }
 
 VSTPlugin::~VSTPlugin(){
