@@ -630,6 +630,7 @@ float VSTPlugin::readControlBus(uint32 num) {
 
 // update data (after loading a new plugin)
 void VSTPlugin::update() {
+    paramQueue_.clear();
     clearMapping();
     int n = delegate().plugin()->getNumParameters();
     // parameter states
@@ -863,17 +864,10 @@ void VSTPlugin::next(int inNumSamples) {
         plugin->process(data);
 
 #if HAVE_UI_THREAD
-        // send parameter automation notification posted from the GUI thread.
-        // we assume this is only possible if we have a VST editor window.
-        // try_lock() won't block the audio thread and we don't mind if notifications
-        // will be delayed if try_lock() fails (which happens rarely in practice).
-        if (plugin->getWindow() && mutex_.try_lock()) {
-            std::vector<std::pair<int, float>> queue;
-            queue.swap(paramQueue_);
-            mutex_.unlock();
-            for (auto& p : queue) {
-                delegate_->sendParameterAutomated(p.first, p.second);
-            }
+        // send parameter automation notification posted from the GUI thread [or NRT thread]
+        ParamChange p;
+        while (paramQueue_.pop(p)){
+            delegate_->sendParameterAutomated(p.index, p.value);
         }
 #endif
     }
@@ -978,11 +972,13 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
     }
 #endif
 #if HAVE_UI_THREAD
-    // from GUI thread (neither RT nor NRT thread) - push to queue
+    // from GUI thread [or NRT thread] - push to queue
     else {
         // LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
-        std::lock_guard<std::mutex> guard(owner_->mutex_);
-        owner_->paramQueue_.emplace_back(index, value);
+        std::unique_lock<std::mutex> lock(owner_->paramQueueMutex_);
+        if (!(owner_->paramQueue_.emplace(index, value))){
+            LOG_DEBUG("param queue overflow");
+        }
     }
 #endif
 }

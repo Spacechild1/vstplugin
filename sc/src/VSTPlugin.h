@@ -263,8 +263,12 @@ private:
 
     // threading
 #if HAVE_UI_THREAD
-    std::mutex mutex_;
-    std::vector<std::pair<int, float>> paramQueue_;
+    struct ParamChange {
+        int index;
+        float value;
+    };
+    LockfreeFifo<ParamChange, 16> paramQueue_;
+    std::mutex paramQueueMutex_; // for writers
 #endif
 };
 
