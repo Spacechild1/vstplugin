@@ -28,10 +28,10 @@ VSTPlugin.search;
 ~fx = VSTPluginController(~synth);
 
 // open a plugin by name/key (might require VSTPlugin.search!)
-~fx.open("myplugin", info: true);
+~fx.open("myplugin", verbose: true);
 // alternatively, you can open a plugin by its file path
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
-~fx.open("/path/to/plugin", info: true);
+~fx.open("/path/to/plugin", verbose: true);
 
 // show the GUI:
 ~fx.gui;
