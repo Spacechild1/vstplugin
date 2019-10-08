@@ -478,7 +478,6 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                 addPlugin(factory->getPlugin(0));
             }
             else {
-                if (verbose) LOG_VERBOSE(pluginPath);
                 for (int i = 0; i < numPlugins; ++i) {
                     // add and post plugins
                     addPlugin(factory->getPlugin(i), i, numPlugins);
