@@ -156,7 +156,7 @@ void EventLoop::destroy(IPlugin::ptr plugin){
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin) {
-    origin_ = NSMakePoint(100, 100); // default position
+    origin_ = NSMakePoint(100, 100); // default position (bottom left)
 }
 
 // the destructor must be called on the main thread!
@@ -202,9 +202,7 @@ void Window::doOpen(){
         setTitle(plugin_->info().name);
         int left = 100, top = 100, right = 400, bottom = 400;
         plugin_->getEditorRect(left, top, right, bottom);
-        setGeometry(left, top, right, bottom);
-        
-        [window_ setFrameOrigin:origin_];
+        setFrame(origin_.x, origin_.y, right - left, bottom - top);
         
         plugin_->openEditor(getHandle());
 
@@ -255,21 +253,46 @@ void Window::setTitle(const std::string& title){
     }
 }
 
-void Window::setGeometry(int left, int top, int right, int bottom){
+void Window::setFrame(int x, int y, int w, int h){
     if (window_){
-        // in CoreGraphics y coordinates are "flipped" (0 = bottom)
-        NSRect content = NSMakeRect(left, bottom, right-left, bottom-top);
+        if (adjustY_){
+            y  -= window_.frame.size.height;
+            adjustY_ = false;
+        }
+        NSRect content = NSMakeRect(x, y, w, h);
         NSRect frame = [window_  frameRectForContentRect:content];
         [window_ setFrame:frame display:YES];
     }
 }
 
 void Window::setPos(int x, int y){
-    // TODO
+    // on Cocoa, the y-axis is inverted (goes up).
+    NSScreen *screen = nullptr;
+    if (window_){
+        [window_ setFrameOrigin:NSMakePoint(x, y)];
+        // First move the window to the given x coordinate,
+        // then obtain the screen height.
+        screen = [window_ screen];
+    } else {
+        screen = [NSScreen mainScreen];
+    }
+    origin_.x = x;
+    // now correct the y coordinate
+    origin_.y = screen.frame.size.height - y;
+    if (window_){
+        origin_.y -= window_.frame.size.height;
+        [window_ setFrameOrigin:origin_];
+    } else {
+        // no window height, adjust later
+        adjustY_ = true;
+    }
 }
 
 void Window::setSize(int w, int h){
-    // TODO
+    if (window_){
+        NSPoint origin = window_.frame.origin;
+        setFrame(origin.x, origin.y, w, h);
+    }
 }
 
 } // Cocoa

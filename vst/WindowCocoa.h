@@ -59,11 +59,12 @@ class Window : public IWindow {
     void onClose();
     void updateEditor();
  private:
-    void setGeometry(int left, int top, int right, int bottom);
+    void setFrame(int x, int y, int w, int h);
     CocoaEditorWindow * window_ = nullptr;
     IPlugin * plugin_;
-    NSPoint origin_;
     NSTimer *timer_;
+    NSPoint origin_;
+    bool adjustY_ = false;
 };
 
 } // Cocoa
