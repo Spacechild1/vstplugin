@@ -418,7 +418,7 @@ VSTPlugin : MultiOutUGen {
 					n.do { arg i;
 						keys[i] = this.prGetLine(stream);
 					};
-					// for now, there is only one key
+					// take the first (primary) key
 					info.key = keys[0].asSymbol;
 					// *** EXIT POINT ***
 					^info;

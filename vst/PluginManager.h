@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <mutex>
+#include <algorithm>
 
 namespace vst {
 
@@ -205,10 +206,15 @@ void PluginManager::doWrite(const std::string& path){
     file << "[plugins]\n";
     file << "n=" << pluginMap.size() << "\n";
     for (auto& it : pluginMap){
+        // serialize plugin info
         it.first->serialize(file);
+        // serialize keys
         file << "[keys]\n";
-        file << "n=" << it.second.size() << "\n";
-        for (auto& key : it.second){
+        auto& keys = it.second;
+        file << "n=" << keys.size() << "\n";
+        // sort by length, so that the short key comes first
+        std::sort(keys.begin(), keys.end(), [](auto& a, auto& b){ return a.size() < b.size(); });
+        for (auto& key : keys){
             file << key << "\n";
         }
     }
