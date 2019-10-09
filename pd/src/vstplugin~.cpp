@@ -912,8 +912,13 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
             bundlePath = getBundleBinaryPath().c_str();
+        #ifdef _WIN32
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
                      path.c_str(), bundlePath, fileName(path).c_str());
+        #else
+            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
+                     path.c_str(), bundlePath, baseName(path).c_str());
+         #endif
             fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
         }
     #endif

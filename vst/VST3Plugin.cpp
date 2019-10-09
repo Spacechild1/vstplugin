@@ -176,7 +176,11 @@ void VST3Factory::doLoad(){
         std::string modulePath = path_;
     #ifndef __APPLE__
         if (isDirectory(modulePath)){
+        #ifdef _WIN32
             modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path_);
+        #else
+            modulePath += "/" + getBundleBinaryPath() + "/" + baseName(path_) + ".so";
+        #endif
         }
     #endif
         auto module = IModule::load(modulePath); // throws on failure
