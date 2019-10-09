@@ -21,10 +21,6 @@ const size_t MAX_OSC_PACKET_SIZE = 1600;
 class VSTPlugin;
 class VSTPluginDelegate;
 
-// do we set parameters in the NRT thread?
-// seemed to work with VST2 but pointless with VST3...
-#define NRT_PARAM_SET 0
-
 struct CmdData {
     template<typename T>
     static T* create(World * world, int size = 0);
@@ -122,7 +118,6 @@ public:
     // param
     void setParam(int32 index, float value);
     void setParam(int32 index, const char* display);
-    void setParamDone(int32 index);
     void queryParams(int32 index, int32 count);
     void getParam(int32 index);
     void getParams(int32 index, int32 count);
@@ -181,11 +176,7 @@ private:
     int numAuxOutChannels_ = 0;
     // thread safety
     std::thread::id rtThreadID_;
-#if NRT_PARAM_SET
-    std::thread::id nrtThreadID_;
-#else
-    bool bParamSet_ = false; // did we just set a parameter manually?
-#endif
+    bool paramSet_ = false; // did we just set a parameter manually?
 };
 
 class VSTPlugin : public SCUnit {
