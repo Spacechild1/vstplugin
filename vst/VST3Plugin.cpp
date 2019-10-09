@@ -8,7 +8,7 @@
 
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
-// DEF_CLASS_IID (IPlugFrame)
+DEF_CLASS_IID (IPlugFrame)
 DEF_CLASS_IID (IPlugView)
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPluginFactory)
@@ -176,7 +176,11 @@ void VST3Factory::doLoad(){
         std::string modulePath = path_;
     #ifndef __APPLE__
         if (isDirectory(modulePath)){
+        #ifdef _WIN32
             modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path_);
+        #else
+            modulePath += "/" + getBundleBinaryPath() + "/" + baseName(path_) + ".so";
+        #endif
         }
     #endif
         auto module = IModule::load(modulePath); // throws on failure
@@ -364,12 +368,6 @@ void EventList::clear(){
 
 /*/////////////////////// VST3Plugin ///////////////////////*/
 
-#if HAVE_NRT_THREAD
-#define LOCK_GUARD std::lock_guard<std::mutex> LOCK_GUARD_lock(mutex_);
-#else
-#define LOCK_GUARD
-#endif
-
 template <typename T>
 inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     T* obj = nullptr;
@@ -528,7 +526,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         info->numOutputs = getNumOutputs();
         info->numAuxOutputs = getNumAuxOutputs();
         uint32_t flags = 0;
-        flags |= hasEditor() * PluginInfo::HasEditor;
+        LOG_DEBUG("has editor: " << hasEditor());
+        flags |= hasEditor();
         flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
@@ -597,7 +596,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     // setup parameter queues/cache
     int numParams = info_->numParameters();
     inputParamChanges_.setMaxNumParameters(numParams);
-    // outputParamChanges_.setMaxNumParameters(numParams);
+    outputParamChanges_.setMaxNumParameters(numParams);
     paramCache_.resize(numParams);
     updateParamCache();
     LOG_DEBUG("program change: " << info_->programChange);
@@ -619,9 +618,16 @@ tresult VST3Plugin::beginEdit(Vst::ParamID id){
 }
 
 tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
+    int index = info().getParamIndex(id);
     auto listener = listener_.lock();
     if (listener){
-        listener->parameterAutomated(info().getParamIndex(id), value);
+        listener->parameterAutomated(index, value);
+    }
+    if (index >= 0){
+        paramCache_[index].value = value;
+    }
+    if (window_){
+        paramChangesFromGui_.push(ParamChange(id, value));
     }
     return kResultOk;
 }
@@ -669,11 +675,7 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 #if LOGLEVEL > 2
     printMessage(message);
 #endif
-    if (window_){
-        // TODO
-    } else {
-        sendMessage(message);
-    }
+    sendMessage(message);
     return kResultTrue;
 }
 
@@ -733,27 +735,6 @@ void doBypassProcessing(IPlugin::ProcessData<T>& data, T** output, int numOut, T
 
 template<typename T>
 void VST3Plugin::doProcess(ProcessData<T>& inData){
-    auto callProcess = [this](auto& data){
-        // process
-    #if HAVE_NRT_THREAD
-        // We don't want to put the audio thread to sleep.
-        // this means we might loose a buffer if we happen
-        // to manipulate the plugin from the NRT thread at the same time.
-        // Only few operations require the mutex:
-        // 1) preset loading/saving, 2) resetting, 3) message sending
-        // The user can mute the plugin while doing such tasks
-        // and the rest of his program will not suffer.
-        if (mutex_.try_lock()){
-    #endif
-            processor_->process(data);
-    #if HAVE_NRT_THREAD
-            mutex_.unlock();
-        } else {
-            LOG_DEBUG("VST3Plugin: skip processing");
-        }
-    #endif
-    };
-
     // process data
     Vst::ProcessData data;
     Vst::AudioBusBuffers input[2];
@@ -769,7 +750,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     data.inputEvents = &inputEvents_;
     data.outputEvents = &outputEvents_;
     data.inputParameterChanges = &inputParamChanges_;
-    // data.outputParameterChanges = &outputParamChanges_;
+    data.outputParameterChanges = &outputParamChanges_;
 
     auto bypassState = bypass_; // do we have to care about bypass?
     bool bypassRamp = (bypass_ != lastBypass_);
@@ -777,7 +758,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     T rampAdvance = 0;
     if (bypassRamp){
         if ((bypass_ == Bypass::Hard || lastBypass_ == Bypass::Hard)){
-            // hard bypass: just crossfade to inprocessed input - but keep processing
+            // hard bypass: just crossfade to unprocessed input - but keep processing
             // till the *plugin output* is silent (this will clear delay lines, for example).
             bypassState = Bypass::Hard;
         } else if (bypass_ == Bypass::Soft || lastBypass_ == Bypass::Soft){
@@ -873,13 +854,21 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     auto auxoutvec = (T **)alloca(sizeof(T*) * getNumAuxOutputs());
     setAudioOutputBuffers(output[Vst::kAux], auxoutvec, getNumAuxOutputs(), (T **)inData.auxOutput, inData.numAuxOutputs, outbuf);
 
+    // send parameter changes from editor to processor
+    ParamChange paramChange;
+    while (paramChangesFromGui_.pop(paramChange)){
+        int32 index;
+        auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
+        queue->addPoint(0, paramChange.value, index);
+    }
+
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
-        callProcess(data);
+        processor_->process(data);
     } else if (bypassRamp) {
         // process <-> bypass transition
-        callProcess(data);
+        processor_->process(data);
 
         if (bypassState == Bypass::Soft){
             // soft bypass
@@ -938,7 +927,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
         }
     } else if (!bypassSilent_){
         // continue to process with empty input till the output is silent
-        callProcess(data);
+        processor_->process(data);
         // check for silence (RMS < ca. -80dB)
         auto isChannelSilent = [](auto buf, auto n){
             const T threshold = 0.0001;
@@ -1004,7 +993,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
 
     // handle outgoing events
     handleEvents();
-    // handle output parameter changes (send to GUI)
+    handleOutputParameterChanges();
 
     // update time info
     context_.continousTimeSamples += data.numSamples;
@@ -1090,6 +1079,42 @@ void VST3Plugin::handleEvents(){
     }
 }
 
+void VST3Plugin::handleOutputParameterChanges(){
+    auto listener = listener_.lock();
+    if (listener){
+        int numParams = outputParamChanges_.getParameterCount();
+        for (int i = 0; i < numParams; ++i){
+            auto data = outputParamChanges_.getParameterData(i);
+            if (data){
+                auto id = data->getParameterId();
+                int numPoints = data->getPointCount();
+                auto index = info().getParamIndex(id);
+                if (index >= 0){
+                    // automatable parameter
+                    for (int j = 0; j < numPoints; ++j){
+                        int32 offset = 0;
+                        Vst::ParamValue value = 0;
+                        if (data->getPoint(j, offset, value) == kResultOk){
+                            // for now we ignore the sample offset
+                            listener->parameterAutomated(index, value);
+                        }
+                    }
+                } else if (window_){
+                    // non-automatable parameter (e.g. VU meter)
+                    for (int j = 0; j < numPoints; ++j){
+                        int32 offset = 0;
+                        Vst::ParamValue value = 0;
+                        if (data->getPoint(j, offset, value) == kResultOk){
+                            paramChangesToGui_.emplace(id, value);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    outputParamChanges_.clear();
+}
+
 bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
     switch (precision){
     case ProcessPrecision::Single:
@@ -1102,13 +1127,11 @@ bool VST3Plugin::hasPrecision(ProcessPrecision precision) const {
 }
 
 void VST3Plugin::suspend(){
-    LOCK_GUARD
     processor_->setProcessing(false);
     component_->setActive(false);
 }
 
 void VST3Plugin::resume(){
-    LOCK_GUARD
     component_->setActive(true);
     processor_->setProcessing(true);
 }
@@ -1202,7 +1225,6 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
             }
         }
     }
-    LOCK_GUARD
     processor_->setBusArrangements(busIn, numIn, busOut, numOut);
     // we have to (de)activate busses *after* setting the bus arrangement
     component_->activateBus(Vst::kAudio, Vst::kInput, 0, in > 0); // main
@@ -1260,7 +1282,7 @@ void VST3Plugin::setTransportAutomationReading(bool reading){
 
 void VST3Plugin::updateAutomationState(){
     if (window_){
-        // TODO ?
+        automationStateChanged_ = true;
     } else {
         FUnknownPtr<Vst::IAutomationState> automationState(controller_);
         if (automationState){
@@ -1399,7 +1421,6 @@ void VST3Plugin::sendSysexEvent(const SysexEvent &event){
 void VST3Plugin::setParameter(int index, float value, int sampleOffset){
     auto id = info().getParamID(index);
     doSetParameter(id, value, sampleOffset);
-    paramCache_[index] = value;
 }
 
 bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffset){
@@ -1409,7 +1430,6 @@ bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffse
     if (convertString(str, string)){
         if (controller_->getParamValueByString(id, string, value) == kResultOk){
             doSetParameter(id, value, sampleOffset);
-            paramCache_[index] = value;
             return true;
         }
     }
@@ -1419,24 +1439,33 @@ bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffse
 void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset){
     int32 dummy;
     inputParamChanges_.addParameterData(id, dummy)->addPoint(sampleOffset, value, dummy);
-    if (window_){
-        // The VST3 guys say that you must only call IEditController methods on the GUI thread!
-        // This means we have to transfer parameter changes to a ring buffer and install a timer
-        // on the GUI thread which polls the ring buffer and calls the edit controller.
-        // Similarly, we have to have a ringbuffer for parameter changes coming from the GUI.
+    auto index = info().getParamIndex(id);
+    if (index >= 0){
+        // automatable parameter
+        paramCache_[index].value = value;
+        if (window_){
+            paramCache_[index].changed = true;
+        } else {
+            controller_->setParamNormalized(id, value);
+        }
     } else {
-        controller_->setParamNormalized(id, value);
+        // non-automatable parameter
+        if (window_){
+            paramChangesToGui_.emplace(id, value);
+        } else {
+            controller_->setParamNormalized(id, value);
+        }
     }
 }
 
 float VST3Plugin::getParameter(int index) const {
-    return paramCache_[index];
+    return paramCache_[index].value;
 }
 
 std::string VST3Plugin::getParameterString(int index) const {
     Vst::String128 display;
-    auto id = info().getParamID(index);
-    auto value = paramCache_[index];
+    Vst::ParamID id = info().getParamID(index);
+    float value = paramCache_[index].value;
     if (controller_->getParamStringByValue(id, value, display) == kResultOk){
         return convertString(display);
     }
@@ -1450,7 +1479,9 @@ int VST3Plugin::getNumParameters() const {
 void VST3Plugin::updateParamCache(){
     for (int i = 0; i < (int)paramCache_.size(); ++i){
         auto id = info().getParamID(i);
-        paramCache_[i] = controller_->getParamNormalized(id);
+        paramCache_[i].value = controller_->getParamNormalized(id);
+        // we don't need to tell the GUI to update
+        // paramCache_[i].changed = true;
     }
 }
 
@@ -1563,30 +1594,22 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     // get chunk data
     for (auto& entry : entries){
         stream.setPos(entry.offset);
-        LOCK_GUARD
         if (isChunkType(entry.id, Vst::kComponentState)){
             if (component_->setState(&stream) == kResultOk){
                 // also update controller state!
                 stream.setPos(entry.offset); // rewind
-                if (window_){
-                    // TODO ?
-                } else {
-                    controller_->setComponentState(&stream);
-                    updateParamCache();
-                }
+                controller_->setComponentState(&stream); // TODO: make thread-safe
+                updateParamCache();
                 LOG_DEBUG("restored component state");
             } else {
                 LOG_WARNING("couldn't restore component state");
             }
         } else if (isChunkType(entry.id, Vst::kControllerState)){
-            if (window_){
-                // TODO ?
+            // TODO: make thread-safe
+            if (controller_->setState(&stream) == kResultOk){
+                LOG_DEBUG("restored controller state");
             } else {
-                if (controller_->setState(&stream) == kResultOk){
-                    LOG_DEBUG("restored controller set");
-                } else {
-                    LOG_WARNING("couldn't restore controller state");
-                }
+                LOG_WARNING("couldn't restore controller state");
             }
         }
     }
@@ -1603,30 +1626,29 @@ void VST3Plugin::writeProgramFile(const std::string& path){
 }
 
 void VST3Plugin::writeProgramData(std::string& buffer){
-    std::vector<ChunkListEntry> entries;
+    std::array<ChunkListEntry, 2> entries;
     WriteStream stream;
     stream.writeChunkID(Vst::getChunkID(Vst::kHeader)); // header
     stream.writeInt32(Vst::kFormatVersion); // version
     stream.writeTUID(info().getUID()); // class ID
     stream.writeInt64(0); // skip offset
     // write data
-    auto writeData = [&](auto component, Vst::ChunkType type){
+    auto writeData = [&](auto index, auto component, Vst::ChunkType type){
         ChunkListEntry entry;
         memcpy(entry.id, Vst::getChunkID(type), sizeof(Vst::ChunkID));
         stream.tell(&entry.offset);
-        LOCK_GUARD
         // TODO what do for a GUI editor?
         if (component->getState(&stream) == kResultTrue){
             auto pos = stream.getPos();
             entry.size = pos - entry.offset;
-            entries.push_back(entry);
+            entries[index] = entry;
         } else {
             LOG_DEBUG("couldn't get state");
             // throw?
         }
     };
-    writeData(component_, Vst::kComponentState);
-    writeData(controller_, Vst::kControllerState);
+    writeData(0, component_, Vst::kComponentState);
+    writeData(1, controller_, Vst::kControllerState);
     // store list offset
     auto listOffset = stream.getPos();
     // write list
@@ -1661,23 +1683,109 @@ void VST3Plugin::writeBankData(std::string& buffer){
 }
 
 bool VST3Plugin::hasEditor() const {
-    return false;
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+    #if defined(_WIN32)
+        return view_->isPlatformTypeSupported("HWND") == kResultOk;
+    #elif defined(__APPLE__)
+        return view_->isPlatformTypeSupported("NSView") == kResultOk;
+        // TODO: check for iOS ("UIView")
+    #else
+        return view_->isPlatformTypeSupported("X11EmbedWindowID") == kResultOk;
+    #endif
+    } else {
+        return false;
+    }
+}
+
+tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
+    LOG_DEBUG("resizeView");
+    return view->onSize(newSize);
 }
 
 void VST3Plugin::openEditor(void * window){
-
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        view_->setFrame(this);
+        LOG_DEBUG("attach view");
+    #if defined(_WIN32)
+        auto result = view_->attached(window, "HWND");
+    #elif defined(__APPLE__)
+        auto result = view_->attached(window, "NSView");
+        // TODO: iOS ("UIView")
+    #else
+        auto result = view_->attached(window, "X11EmbedWindowID");
+    #endif
+        if (result == kResultOk) {
+            LOG_DEBUG("opened VST3 editor");
+        }
+        else {
+            LOG_ERROR("couldn't open VST3 editor");
+        }
+    }
 }
 
 void VST3Plugin::closeEditor(){
-
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        if (view_->removed() == kResultOk) {
+            LOG_DEBUG("closed VST3 editor");
+        }
+        else {
+            LOG_ERROR("couldn't close VST3 editor");
+        }
+    }
 }
 
 bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        ViewRect rect;
+        if (view_->getSize(&rect) == kResultOk){
+            left = rect.left;
+            top = rect.top;
+            right = rect.right;
+            bottom = rect.bottom;
+            return true;
+        }
+    }
     return false;
 }
 
 void VST3Plugin::updateEditor(){
-
+    // automatable parameters
+    int n = paramCache_.size();
+    for (int i = 0; i < n; ++i){
+        bool expected = true;
+        if (paramCache_[i].changed.compare_exchange_strong(expected, false)){
+            auto id = info().getParamID(i);
+            float value = paramCache_[i].value;
+            LOG_DEBUG("update parameter " << id << ": " << value);
+            controller_->setParamNormalized(id, value);
+        }
+    }
+    // non-automatable parameters (e.g. VU meter)
+    ParamChange p;
+    while (paramChangesToGui_.pop(p)){
+        controller_->setParamNormalized(p.id, p.value);
+    }
+    // automation state
+    bool expected = true;
+    if (automationStateChanged_.compare_exchange_strong(expected, false)){
+        FUnknownPtr<Vst::IAutomationState> automationState(controller_);
+        if (automationState){
+            LOG_DEBUG("update automation state");
+            automationState->setAutomationState(automationState_);
+        }
+    }
 }
 
 // VST3 only
@@ -1717,7 +1825,6 @@ void VST3Plugin::addBinary(const char* id, const char *data, size_t size) {
 
 void VST3Plugin::endMessage() {
     if (msg_){
-        LOCK_GUARD
         sendMessage(msg_.get());
         msg_ = nullptr;
     }
@@ -1730,11 +1837,8 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
     }
     FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
     if (p2){
-        if (window_){
-            // TODO ?
-        } else {
-            p2->notify(msg);
-        }
+        // do we have to call this on the UI thread if we have a GUI editor?
+        p2->notify(msg);
     }
 }
 

@@ -21,9 +21,6 @@
 
 #include <unordered_map>
 #include <atomic>
-#if HAVE_NRT_THREAD
-#include <mutex>
-#endif
 
 namespace Steinberg {
 namespace Vst {
@@ -179,7 +176,8 @@ class EventList : public Vst::IEventList {
 class VST3Plugin final :
         public IPlugin,
         public Vst::IComponentHandler,
-        public Vst::IConnectionPoint
+        public Vst::IConnectionPoint,
+        public IPlugFrame
 {
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
@@ -198,6 +196,9 @@ class VST3Plugin final :
     tresult PLUGIN_API connect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API disconnect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API notify(Vst::IMessage* message) override;
+
+    // IPlugFrame
+    tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
 
     PluginType getType() const override { return PluginType::VST3; }
 
@@ -289,20 +290,19 @@ class VST3Plugin final :
     template<typename T>
     void doProcess(ProcessData<T>& inData);
     void handleEvents();
+    void handleOutputParameterChanges();
     void updateAutomationState();
     void sendMessage(Vst::IMessage* msg);
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     void updateParamCache();
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
+    mutable IPlugView *view_ = nullptr;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
     IFactory::const_ptr factory_;
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
-#if HAVE_NRT_THREAD
-    std::mutex mutex_; // better use a spinlock
-#endif
     // audio
     enum BusType {
         Main = 0,
@@ -311,7 +311,10 @@ class VST3Plugin final :
     int numInputs_[2]; // main + aux
     int numOutputs_[2]; // main + aux
     Vst::ProcessContext context_;
-    int32 automationState_ = 0;
+    // automation
+    int32 automationState_ = 0; // should better be atomic as well...
+    std::atomic_bool automationStateChanged_{false};
+    // bypass
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;
     bool bypassSilent_ = false; // check if we can stop processing
@@ -322,8 +325,26 @@ class VST3Plugin final :
     int numMidiOutChannels_ = 0;
     // parameters
     ParameterChanges inputParamChanges_;
-    // ParameterChanges outputParamChanges_;
-    std::vector<Vst::ParamValue> paramCache_;
+    ParameterChanges outputParamChanges_;
+    struct ParamState {
+        ParamState()
+            : value(0.f), changed(false) {}
+        // copy ctor is needed so we can use it in a vector
+        ParamState(const ParamState& other)
+            : value(other.value.load()), changed(other.changed.load()) {}
+        std::atomic<float> value;
+        std::atomic<bool> changed;
+    };
+    std::vector<ParamState> paramCache_;
+    struct ParamChange {
+        ParamChange() : id(0), value(0) {}
+        ParamChange(Vst::ParamID _id, Vst::ParamValue _value)
+            : id(_id), value(_value) {}
+        Vst::ParamID id;
+        Vst::ParamValue value;
+    };
+    LockfreeFifo<ParamChange, 64> paramChangesFromGui_;
+    LockfreeFifo<ParamChange, 16> paramChangesToGui_; // e.g. VU meter
     // programs
     int program_ = 0;
     // message from host to plugin

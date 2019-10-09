@@ -92,29 +92,29 @@
 #X restore 20 201 pd open;
 #X msg 208 234 close;
 #X msg 222 305 vis \$1;
-#X obj 222 285 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 222 285 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
 1;
-#X msg 227 348 bypass \$1;
-#X obj 187 407 s \$0-msg;
+#X msg 232 404 bypass \$1;
+#X obj 187 463 s \$0-msg;
 #X obj 27 318 r \$0-msg;
 #X text 255 235 close the plugin;
 #X text 272 305 show/hide editor;
 #X text 257 261 print plugin info to console;
-#X text 184 434 parameters;
-#X text 273 433 FX programs/banks;
+#X text 184 490 parameters;
+#X text 273 489 FX programs/banks;
 #N canvas 753 189 760 527 parameter 0;
-#X obj 100 76 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X obj 19 18 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+#X obj 100 76 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
+#X obj 19 18 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 19 124 param_set \$1 \$2;
-#X obj 40 230 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 40 230 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 50 351 param_count;
 #X msg 54 377 param_list;
 #X msg 30 190 param_get \$1;
-#X obj 30 166 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 30 166 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 57 406 param_dump;
 #X obj 19 449 s \$0-msg;
 #X text 158 75 index;
@@ -170,7 +170,7 @@ plugins - but the plugin has to actually support it!, f 44;
 #X connect 23 0 9 0;
 #X connect 30 0 21 1;
 #X connect 31 0 6 0;
-#X restore 185 454 pd parameter;
+#X restore 185 510 pd parameter;
 #N canvas 672 104 609 571 midi 0;
 #X obj 33 466 s \$0-msg;
 #X msg 33 34 midi_raw <list>;
@@ -183,8 +183,8 @@ plugins - but the plugin has to actually support it!, f 44;
 #X msg 76 288 midi_bend 1 \$1;
 #X obj 79 264 hsl 128 15 -1 1 0 0 empty empty empty -2 -8 0 10 -262144
 -1 -1 0 1;
-#X obj 82 320 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 82 320 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X text 136 35 send raw MIDI message (list of bytes);
 #X text 155 59 send MIDI system exclusive message (list of bytes);
 #X text 49 89 convenience methods:;
@@ -222,13 +222,13 @@ plugin has to actually support it!, f 42;
 #X connect 23 0 0 0;
 #X connect 24 0 0 0;
 #X connect 25 0 0 0;
-#X restore 185 493 pd midi;
+#X restore 185 549 pd midi;
 #X f 13;
-#X text 185 475 MIDI messages;
+#X text 185 531 MIDI messages;
 #N canvas 814 225 469 439 transport 0;
 #X obj 22 299 s \$0-msg;
 #X msg 22 78 tempo \$1;
-#X obj 22 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+#X obj 22 56 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 34 137 time_signature \$1 \$2;
 #X msg 34 111 4 4;
@@ -238,8 +238,8 @@ plugin has to actually support it!, f 42;
 #X msg 43 184 play \$1;
 #X obj 43 163 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 51 211 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 51 211 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 59 262 transport_get;
 #X msg 51 229 transport_set \$1;
 #X text 102 183 start/stop sequencing;
@@ -266,11 +266,11 @@ f 51;
 #X connect 10 0 12 0;
 #X connect 11 0 0 0;
 #X connect 12 0 0 0;
-#X restore 281 493 pd transport;
+#X restore 281 549 pd transport;
 #X f 16;
-#X text 279 474 transport/timing;
-#X msg 233 376 reset;
-#X text 275 376 reset the plugin (e.g. clear delay lines);
+#X text 279 530 transport/timing;
+#X msg 233 431 reset;
+#X text 275 431 reset the plugin (e.g. clear delay lines);
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
@@ -352,20 +352,20 @@ the limited precision of decimal numbers in Pd., f 63;
 #X connect 1 0 0 0;
 #X connect 2 0 1 0;
 #X connect 7 0 0 0;
-#X restore 394 493 pd advanced;
+#X restore 394 549 pd advanced;
 #X f 14;
-#X text 391 474 advanced stuff;
+#X text 391 530 advanced stuff;
 #N canvas 327 22 669 774 preset 0;
 #X obj 23 333 s \$0-msg;
-#X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+#X obj 23 34 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X text 127 54 set program;
 #X msg 34 87 program_get;
 #X text 114 88 get the current program index;
 #X symbolatom 45 123 10 0 0 2 - - -;
 #X text 185 201 get the name of a program;
-#X obj 56 179 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 56 179 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 77 270 program_count;
 #X text 168 269 get number of programs;
 #X msg 86 303 program_list;
@@ -422,7 +422,7 @@ your own preset banks in Pd, f 47;
 #X obj 305 131 t b b, f 7;
 #X obj 305 174 until;
 #X msg 305 153 16;
-#X obj 305 218 text set \$0-data 1e+007;
+#X obj 305 218 text set \$0-data 1e+07;
 #X msg 305 195 list;
 #X obj 305 110 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
@@ -493,7 +493,7 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X connect 50 0 42 0;
 #X connect 51 0 42 0;
 #X connect 52 0 0 0;
-#X restore 274 454 pd preset;
+#X restore 274 510 pd preset;
 #X f 17;
 #X msg 216 261 print;
 #N canvas 204 74 799 648 search 0;
@@ -604,9 +604,9 @@ freezing Pd for an indeterminate amount of time., f 56;
 #X connect 32 0 0 0;
 #X connect 39 0 0 0;
 #X connect 43 0 0 0;
-#X restore 394 454 pd search;
+#X restore 394 510 pd search;
 #X f 14;
-#X text 392 432 search + info;
+#X text 392 488 search + info;
 #N canvas 271 215 513 507 open 0;
 #X msg 39 250 open \$1;
 #X obj 39 204 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
@@ -877,12 +877,25 @@ label;
 #X obj 187 51 vstpluginbrowser;
 #X text 23 14 [vstplugin~] - load VST plug-ins in Pd on all platforms
 ;
-#X text 91 343 <- click me, f 16;
+#X text 91 342 <- click me, f 13;
 #X text 89 319 <- message in;
-#X obj 227 328 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
+#X obj 232 384 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
 -1 -1 0;
-#X text 280 328 bypass;
-#X text 295 350 0: off \, 1: hard \, 2: soft;
+#X text 285 384 bypass;
+#X text 300 406 0: off \, 1: hard \, 2: soft;
+#X msg 226 357 pos \$1 \$2;
+#N canvas 0 23 450 300 pos 0;
+#X floatatom 114 104 5 0 0 0 x #0-bar #0-foo;
+#X floatatom 162 104 5 0 0 0 y #0-bar #0-foo;
+#X obj 114 179 outlet;
+#X obj 114 158 pack f f;
+#X obj 132 134 t b f;
+#X connect 3 0 2 0;
+#X connect 4 0 3 0;
+#X connect 4 1 3 1;
+#X coords 0 -1 1 1 100 24 2 100 100;
+#X restore 226 328 pd pos;
+#X text 293 357 move editor;
 #X connect 1 0 20 0;
 #X connect 1 1 20 1;
 #X connect 2 0 6 0;
@@ -898,3 +911,5 @@ label;
 #X connect 29 0 6 0;
 #X connect 40 0 6 0;
 #X connect 44 0 5 0;
+#X connect 47 0 6 0;
+#X connect 48 0 47 0;

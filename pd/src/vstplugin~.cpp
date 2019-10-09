@@ -710,6 +710,8 @@ void t_vsteditor::setup(){
     float height = nrows * col_height + 2 * yoffset;
     if (width > 1000) width = 1000;
     send_vmess(gensym("setbounds"), "ffff", 0.f, 0.f, width, height);
+    width_ = width;
+    height_ = height;
     send_vmess(gensym("vis"), "i", 0);
 
     update();
@@ -750,6 +752,18 @@ void t_vsteditor::vis(bool v){
         }
     } else if (e_canvas) {
         send_vmess(gensym("vis"), "i", (int)v);
+    }
+}
+
+void t_vsteditor::set_pos(int x, int y){
+    auto win = window();
+    if (win){
+        win->setPos(x, y);
+    } else if (e_canvas) {
+        send_vmess(gensym("setbounds"), "ffff", 
+            (float)x, (float)y, (float)x + width_, (float)y + height_);
+        send_vmess(gensym("vis"), "i", 0);
+        send_vmess(gensym("vis"), "i", 1);
     }
 }
 
@@ -898,8 +912,13 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
             bundlePath = getBundleBinaryPath().c_str();
+        #ifdef _WIN32
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
                      path.c_str(), bundlePath, fileName(path).c_str());
+        #else
+            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
+                     path.c_str(), bundlePath, baseName(path).c_str());
+         #endif
             fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
         }
     #endif
@@ -1020,11 +1039,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         } else {
             plugin = info->create();
         }
-    #if 1
-        if (editor && plugin->getType() == PluginType::VST3){
-            post("%s: can't use VST3 editor (yet)", classname(x));
-        }
-    #endif
         x->x_uithread = editor;
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
         verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
@@ -1208,6 +1222,11 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
 static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     x->x_editor->vis(f);
+}
+// move the editor window
+static void vstplugin_pos(t_vstplugin *x, t_floatarg x_, t_floatarg y_){
+    if (!x->check_plugin()) return;
+    x->x_editor->set_pos(x_, y_);
 }
 
 static void vstplugin_click(t_vstplugin *x){
@@ -2016,6 +2035,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_pos, gensym("pos"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);

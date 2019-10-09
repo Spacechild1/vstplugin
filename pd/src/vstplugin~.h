@@ -109,6 +109,7 @@ class t_vsteditor : public IPluginListener {
     IWindow * window() const {
         return e_owner->x_plugin ? e_owner->x_plugin->getWindow() : nullptr;
     }
+    void set_pos(int x, int y);
  private:
         // plugin callbacks
     void parameterAutomated(int index, float value) override;
@@ -139,4 +140,6 @@ class t_vsteditor : public IPluginListener {
     std::vector<std::pair<int, float>> e_automated;
     std::vector<MidiEvent> e_midi;
     std::vector<SysexEvent> e_sysex;
+    int width_ = 0;
+    int height_ = 0;
 };
