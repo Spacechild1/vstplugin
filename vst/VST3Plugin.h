@@ -311,7 +311,10 @@ class VST3Plugin final :
     int numInputs_[2]; // main + aux
     int numOutputs_[2]; // main + aux
     Vst::ProcessContext context_;
-    int32 automationState_ = 0;
+    // automation
+    int32 automationState_ = 0; // should better be atomic as well...
+    std::atomic_bool automationStateChanged_{false};
+    // bypass
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;
     bool bypassSilent_ = false; // check if we can stop processing

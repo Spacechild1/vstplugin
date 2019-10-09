@@ -1266,7 +1266,7 @@ void VST3Plugin::setTransportAutomationReading(bool reading){
 
 void VST3Plugin::updateAutomationState(){
     if (window_){
-        // TODO ?
+        automationStateChanged_ = true;
     } else {
         FUnknownPtr<Vst::IAutomationState> automationState(controller_);
         if (automationState){
