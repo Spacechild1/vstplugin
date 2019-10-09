@@ -668,11 +668,7 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 #if LOGLEVEL > 2
     printMessage(message);
 #endif
-    if (window_){
-        // TODO
-    } else {
-        sendMessage(message);
-    }
+    sendMessage(message);
     return kResultTrue;
 }
 
