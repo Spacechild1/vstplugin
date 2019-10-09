@@ -155,7 +155,7 @@ public:
     // helper functions
     bool sendProgramName(int32 num); // unchecked
     void sendCurrentProgramName();
-    void sendParameter(int32 index); // unchecked
+    void sendParameter(int32 index, float value); // unchecked
     void sendParameterAutomated(int32 index, float value); // unchecked
     // perform sequenced command
     template<bool owner = true, typename T>

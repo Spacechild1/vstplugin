@@ -1192,9 +1192,10 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
 #endif
             paramSet_ = true;
             plugin_->setParameter(index, value, owner_->mWorld->mSampleOffset);
-            owner_->paramState_[index] = plugin_->getParameter(index);
+            float newValue = plugin_->getParameter(index);
+            owner_->paramState_[index] = newValue;
+            sendParameter(index, newValue);
             owner_->unmap(index);
-            sendParameter(index);
             paramSet_ = false;
         }
         else {
@@ -1214,9 +1215,10 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             if (!plugin_->setParameter(index, display, owner_->mWorld->mSampleOffset)) {
                 LOG_WARNING("VSTPlugin: couldn't set parameter " << index << " to " << display);
             }
-            owner_->paramState_[index] = plugin_->getParameter(index);
+            float newValue = plugin_->getParameter(index);
+            owner_->paramState_[index] = newValue;
+            sendParameter(index, newValue);
             owner_->unmap(index);
-            sendParameter(index);
             paramSet_ = false;
         }
         else {
@@ -1231,7 +1233,7 @@ void VSTPluginDelegate::queryParams(int32 index, int32 count) {
         if (index >= 0 && index < nparam) {
             count = std::min<int32>(count, nparam - index);
             for (int i = 0; i < count; ++i) {
-                sendParameter(index + i);
+                sendParameter(index + i, plugin_->getParameter(index + i));
             }
         }
         else {
@@ -1625,19 +1627,19 @@ void VSTPluginDelegate::sendCurrentProgramName() {
 }
 
 // unchecked
-void VSTPluginDelegate::sendParameter(int32 index) {
+void VSTPluginDelegate::sendParameter(int32 index, float value) {
     const int maxSize = 64;
     float buf[maxSize];
     // msg format: index, value, display length, display chars...
     buf[0] = index;
-    buf[1] = plugin_->getParameter(index);
+    buf[1] = value;
     int size = string2floatArray(plugin_->getParameterString(index), buf + 2, maxSize - 2);
     sendMsg("/vst_param", size + 2, buf);
 }
 
 // unchecked
 void VSTPluginDelegate::sendParameterAutomated(int32 index, float value) {
-    sendParameter(index);
+    sendParameter(index, value);
     float buf[2] = { (float)index, value };
     sendMsg("/vst_auto", 2, buf);
 }
