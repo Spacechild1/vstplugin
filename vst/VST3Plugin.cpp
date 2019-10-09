@@ -1442,6 +1442,11 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
     auto index = info().getParamIndex(id);
     if (index >= 0){
         // automatable parameter
+    #if 1
+        // verify parameter value
+        value = controller_->normalizedParamToPlain(id, value);
+        value = controller_->plainParamToNormalized(id, value);
+    #endif
         paramCache_[index].value = value;
         if (window_){
             paramCache_[index].changed = true;
