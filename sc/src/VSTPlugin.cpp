@@ -1154,11 +1154,6 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         if (editor_) {
         #if defined(__APPLE__)
             Print("Warning: can't use the VST editor on macOS (yet)\n");
-        #elif 1
-            if (plugin_->getType() == PluginType::VST3) {
-                Print("Warning: can't use the VST3 editor (yet)\n");
-            }
-        #endif
         }
         if (!plugin_->hasPrecision(ProcessPrecision::Single)) {
             Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 

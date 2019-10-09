@@ -1039,11 +1039,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         } else {
             plugin = info->create();
         }
-    #if 1
-        if (editor && plugin->getType() == PluginType::VST3){
-            post("%s: can't use VST3 editor (yet)", classname(x));
-        }
-    #endif
         x->x_uithread = editor;
         x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
         verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
