@@ -1090,12 +1090,6 @@ bool cmdOpen(World *world, void* cmdData) {
     return true;
 }
 
-bool cmdOpenDone(World* world, void* cmdData) {
-    auto data = (PluginCmdData*)cmdData;
-    data->owner->doneOpen(*data); // alive() checked in doneOpen!
-    return false; // done
-}
-
 // try to open the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::open(const char *path, bool gui) {
     LOG_DEBUG("open");
@@ -1112,7 +1106,11 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
     auto cmdData = PluginCmdData::create(world(), path);
     if (cmdData) {
         cmdData->value = gui;
-        doCmd(cmdData, cmdOpen, cmdOpenDone);
+        doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
+            auto data = (PluginCmdData*)cmdData;
+            data->owner->doneOpen(*data); // alive() checked in doneOpen!
+            return false; // done
+        });
         editor_ = gui;
         isLoading_ = true;
     }
@@ -1423,25 +1421,10 @@ bool cmdReadPresetDone(World *world, void *cmdData){
     return false; // done
 }
 
-template<bool bank>
-void VSTPluginDelegate::readPreset(const char *path){
+template<bool bank, typename T>
+void VSTPluginDelegate::readPreset(T dest, bool async){
     if (check()){
-        doCmd(InfoCmdData::create(world(), path),
-            cmdReadPreset<bank>, cmdReadPresetDone<bank>);
-    } else {
-        if (bank) {
-            sendMsg("/vst_bank_read", 0);
-        }
-        else {
-            sendMsg("/vst_program_read", 0);
-        }
-    }
-}
-
-template<bool bank>
-void VSTPluginDelegate::readPreset(int32 buf) {
-    if (check()) {
-        doCmd(InfoCmdData::create(world(), buf),
+        doCmd(InfoCmdData::create(world(), dest),
             cmdReadPreset<bank>, cmdReadPresetDone<bank>);
     } else {
         if (bank) {
@@ -1494,25 +1477,10 @@ bool cmdWritePresetDone(World *world, void *cmdData){
     return true; // continue
 }
 
-template<bool bank>
-void VSTPluginDelegate::writePreset(const char *path) {
+template<bool bank, typename T>
+void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
-        doCmd(InfoCmdData::create(world(), path),
-            cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
-    } else {
-        if (bank) {
-            sendMsg("/vst_bank_write", 0);
-        }
-        else {
-            sendMsg("/vst_program_write", 0);
-        }
-    }
-}
-
-template<bool bank>
-void VSTPluginDelegate::writePreset(int32 buf) {
-    if (check()) {
-        doCmd(InfoCmdData::create(world(), buf),
+        doCmd(InfoCmdData::create(world(), dest),
             cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
     } else {
         if (bank) {
@@ -1906,37 +1874,53 @@ void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
 
 void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->delegate().readPreset<false>(args->gets()); // file name
+        const char* name = args->gets(); // file name
+        bool async = args->geti();
+        unit->delegate().readPreset<false>(name, async);
     }
     else {
-        unit->delegate().readPreset<false>(args->geti()); // buf num
+        int32 buf = args->geti(); // buf num
+        bool async = args->geti();
+        unit->delegate().readPreset<false>(buf, async);
     }
 }
 
 void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->delegate().writePreset<false>(args->gets()); // file name
+        const char* name = args->gets(); // file name
+        bool async = args->geti();
+        unit->delegate().writePreset<false>(name, async);
     }
     else {
-        unit->delegate().writePreset<false>(args->geti()); // buf num
+        int32 buf = args->geti(); // buf num
+        bool async = args->geti();
+        unit->delegate().writePreset<false>(buf, async);
     }
 }
 
 void vst_bank_read(VSTPlugin* unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->delegate().readPreset<true>(args->gets()); // file name
+        const char* name = args->gets(); // file name
+        bool async = args->geti();
+        unit->delegate().readPreset<true>(name, async);
     }
     else {
-        unit->delegate().readPreset<true>(args->geti()); // buf num
+        int32 buf = args->geti(); // buf num
+        bool async = args->geti();
+        unit->delegate().readPreset<true>(buf, async);
     }
 }
 
 void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
     if (args->nextTag() == 's') {
-        unit->delegate().writePreset<true>(args->gets()); // file name
+        const char* name = args->gets(); // file name
+        bool async = args->geti();
+        unit->delegate().writePreset<true>(name, async);
     }
     else {
-        unit->delegate().writePreset<true>(args->geti()); // buf num
+        int32 buf = args->geti(); // buf num
+        bool async = args->geti();
+        unit->delegate().writePreset<true>(buf, async);
     }
 }
 
