@@ -11,7 +11,7 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 * automate plugin parameters programmatically (sample accurate for VST3 plugins)
 * arbitrary number of inputs/outputs + VST3 side chain inputs/outputs
 * use either the native VST GUI (WIN32, Cocoa, X11) or a generic editor
-* preset management: read/write standard .fxp and .fxb files or
+* preset management: read/write standard VST preset files or
   set/get the plugin state as raw data to build your own preset management
 * MIDI input/output
 * basic sequencing support (for arpeggiators, sequencers etc.)
@@ -27,7 +27,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
-* On Windows and Linux, the native GUI window runs in its own thread, which means
+* On Windows and Linux, the native GUI window runs in a dedicated UI thread, which means
 that GUI updates shouldn't have a noticable effect on audio performance.
 On MacOS, however, because of technical limitations the GUI must run on
 the main thread[^1] - which happens to be the audio thread in Pd...
@@ -36,8 +36,6 @@ windows closed in low-latency realtime situations to avoid audio hick-ups.
 
 * On SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
 to open a plugin with "editor: true".
-
-* For VST3 plugins, the GUI is not available (yet).
 
 * If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
 This only seems to happen if either the plugin *or* the host link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship
@@ -59,7 +57,7 @@ The source code for the Pd external and Supercollider UGen is permissively licen
 ### Build instructions:
 
 This project is built with CMake, supported compilers are GCC, Clang and MSVC.
-On Windows, you can also compile with MinGW; it is recommended to use Msys2: https://www.msys2.org/)
+(On Windows, you can also compile with MinGW; it is recommended to use Msys2: https://www.msys2.org/)
 
 By default, the project is built in release mode. You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build, for example.
 
