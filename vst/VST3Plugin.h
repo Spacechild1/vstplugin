@@ -344,6 +344,7 @@ class VST3Plugin final :
         Vst::ParamValue value;
     };
     LockfreeFifo<ParamChange, 64> paramChangesFromGui_;
+    LockfreeFifo<ParamChange, 16> paramChangesToGui_; // e.g. VU meter
     // programs
     int program_ = 0;
     // message from host to plugin

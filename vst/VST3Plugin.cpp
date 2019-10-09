@@ -1082,14 +1082,27 @@ void VST3Plugin::handleOutputParameterChanges(){
         for (int i = 0; i < numParams; ++i){
             auto data = outputParamChanges_.getParameterData(i);
             if (data){
-                auto index = info().getParamIndex(data->getParameterId());
+                auto id = data->getParameterId();
                 int numPoints = data->getPointCount();
-                for (int j = 0; j < numPoints; ++j){
-                    int32 offset = 0;
-                    Vst::ParamValue value = 0;
-                    if (data->getPoint(j, offset, value) == kResultOk){
-                        // for now we ignore the sample offset
-                        listener->parameterAutomated(index, value);
+                auto index = info().getParamIndex(id);
+                if (index >= 0){
+                    // automatable parameter
+                    for (int j = 0; j < numPoints; ++j){
+                        int32 offset = 0;
+                        Vst::ParamValue value = 0;
+                        if (data->getPoint(j, offset, value) == kResultOk){
+                            // for now we ignore the sample offset
+                            listener->parameterAutomated(index, value);
+                        }
+                    }
+                } else if (window_){
+                    // non-automatable parameter (e.g. VU meter)
+                    for (int j = 0; j < numPoints; ++j){
+                        int32 offset = 0;
+                        Vst::ParamValue value = 0;
+                        if (data->getPoint(j, offset, value) == kResultOk){
+                            paramChangesToGui_.emplace(id, value);
+                        }
                     }
                 }
             }
@@ -1423,11 +1436,21 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
     int32 dummy;
     inputParamChanges_.addParameterData(id, dummy)->addPoint(sampleOffset, value, dummy);
     auto index = info().getParamIndex(id);
-    paramCache_[index].value = value;
-    if (window_){
-        paramCache_[index].changed = true;
+    if (index >= 0){
+        // automatable parameter
+        paramCache_[index].value = value;
+        if (window_){
+            paramCache_[index].changed = true;
+        } else {
+            controller_->setParamNormalized(id, value);
+        }
     } else {
-        controller_->setParamNormalized(id, value);
+        // non-automatable parameter
+        if (window_){
+            paramChangesToGui_.emplace(id, value);
+        } else {
+            controller_->setParamNormalized(id, value);
+        }
     }
 }
 
@@ -1740,13 +1763,29 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 }
 
 void VST3Plugin::updateEditor(){
+    // automatable parameters
     int n = paramCache_.size();
     for (int i = 0; i < n; ++i){
         bool expected = true;
         if (paramCache_[i].changed.compare_exchange_strong(expected, false)){
             auto id = info().getParamID(i);
             float value = paramCache_[i].value;
+            LOG_DEBUG("update parameter " << id << ": " << value);
             controller_->setParamNormalized(id, value);
+        }
+    }
+    // non-automatable parameters (e.g. VU meter)
+    ParamChange p;
+    while (paramChangesToGui_.pop(p)){
+        controller_->setParamNormalized(p.id, p.value);
+    }
+    // automation state
+    bool expected = true;
+    if (automationStateChanged_.compare_exchange_strong(expected, false)){
+        FUnknownPtr<Vst::IAutomationState> automationState(controller_);
+        if (automationState){
+            LOG_DEBUG("update automation state");
+            automationState->setAutomationState(automationState_);
         }
     }
 }
