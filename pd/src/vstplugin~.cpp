@@ -2082,6 +2082,6 @@ EXPORT void vstplugin_tilde_setup(void){
     post("[vstplugin~] v%i.%i.%i%s", VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX,
          VERSION_BETA ? " (beta)" : "");
 #ifdef __APPLE__
-    post("NOTE: on macOS, the VST editor GUI must run on the audio thread. Use with care!");
+    post("WARNING: on macOS, the VST GUI must run on the audio thread - use with care!");
 #endif
 }
