@@ -8,7 +8,7 @@
 
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
-// DEF_CLASS_IID (IPlugFrame)
+DEF_CLASS_IID (IPlugFrame)
 DEF_CLASS_IID (IPlugView)
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPluginFactory)
@@ -1680,19 +1680,32 @@ bool VST3Plugin::hasEditor() const {
     }
 }
 
+tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
+    LOG_DEBUG("resizeView");
+    return view->onSize(newSize);
+}
+
 void VST3Plugin::openEditor(void * window){
     if (!view_){
         view_ = controller_->createView("editor");
     }
     if (view_){
+        view_->setFrame(this);
+        LOG_DEBUG("attach view");
     #if defined(_WIN32)
-        view_->attached(window, "HWND");
+        auto result = view_->attached(window, "HWND");
     #elif defined(__APPLE__)
-        view_->attached(window, "NSView");
+        auto result = view_->attached(window, "NSView");
         // TODO: iOS ("UIView")
     #else
-        view_->attached(window, "X11EmbedWindowID");
+        auto result = view_->attached(window, "X11EmbedWindowID");
     #endif
+        if (result == kResultOk) {
+            LOG_DEBUG("opened VST3 editor");
+        }
+        else {
+            LOG_ERROR("couldn't open VST3 editor");
+        }
     }
 }
 
@@ -1701,7 +1714,12 @@ void VST3Plugin::closeEditor(){
         view_ = controller_->createView("editor");
     }
     if (view_){
-        view_->removed();
+        if (view_->removed() == kResultOk) {
+            LOG_DEBUG("closed VST3 editor");
+        }
+        else {
+            LOG_ERROR("couldn't close VST3 editor");
+        }
     }
 }
 
@@ -1783,7 +1801,7 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
     }
     FUnknownPtr<Vst::IConnectionPoint> p2(controller_);
     if (p2){
-        // do we have to call this on the UI thread when we have a GUI editor?
+        // do we have to call this on the UI thread if we have a GUI editor?
         p2->notify(msg);
     }
 }

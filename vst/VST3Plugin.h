@@ -21,9 +21,6 @@
 
 #include <unordered_map>
 #include <atomic>
-#if HAVE_NRT_THREAD
-#include <mutex>
-#endif
 
 namespace Steinberg {
 namespace Vst {
@@ -179,7 +176,8 @@ class EventList : public Vst::IEventList {
 class VST3Plugin final :
         public IPlugin,
         public Vst::IComponentHandler,
-        public Vst::IConnectionPoint
+        public Vst::IConnectionPoint,
+        public IPlugFrame
 {
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
@@ -198,6 +196,9 @@ class VST3Plugin final :
     tresult PLUGIN_API connect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API disconnect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API notify(Vst::IMessage* message) override;
+
+    // IPlugFrame
+    tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
 
     PluginType getType() const override { return PluginType::VST3; }
 
