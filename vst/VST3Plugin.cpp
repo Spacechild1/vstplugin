@@ -1476,7 +1476,8 @@ void VST3Plugin::updateParamCache(){
     for (int i = 0; i < (int)paramCache_.size(); ++i){
         auto id = info().getParamID(i);
         paramCache_[i].value = controller_->getParamNormalized(id);
-        paramCache_[i].changed = true;
+        // we don't need to tell the GUI to update
+        // paramCache_[i].changed = true;
     }
 }
 
