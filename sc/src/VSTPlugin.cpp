@@ -740,8 +740,14 @@ void VSTPlugin::next(int inNumSamples) {
     delegate_->rtThreadID_ = std::this_thread::get_id();
 #endif
     auto plugin = delegate_->plugin();
+    bool process = plugin && plugin->hasPrecision(ProcessPrecision::Single);
+    if (process && delegate_->suspended()){
+        // if we're temporarily suspended, we have to grab the mutex.
+        // we use a try_lock() and bypass on failure, so we don't block the whole Server.
+        process = delegate_->tryLock();
+    }
 
-    if (plugin && plugin->hasPrecision(ProcessPrecision::Single)) {
+    if (process) {
         auto vst3 = plugin->getType() == PluginType::VST3;
 
         // check bypass state
@@ -862,13 +868,16 @@ void VSTPlugin::next(int inNumSamples) {
         data.numSamples = inNumSamples;
         plugin->process(data);
 
-#if HAVE_UI_THREAD
+    #if HAVE_UI_THREAD
         // send parameter automation notification posted from the GUI thread [or NRT thread]
         ParamChange p;
         while (paramQueue_.pop(p)){
             delegate_->sendParameterAutomated(p.index, p.value);
         }
-#endif
+    #endif
+        if (delegate_->suspended()){
+            delegate_->unlock();
+        }
     }
     else {
         // bypass (copy input to output and zero remaining output channels)
@@ -989,23 +998,26 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
 }
 
 bool VSTPluginDelegate::check() {
-    if (plugin_) {
-        return true;
-    }
-    else {
+    if (!plugin_){
         LOG_WARNING("VSTPlugin: no plugin loaded!");
         return false;
     }
+    if (suspended_){
+        LOG_WARNING("VSTPlugin: temporarily suspended!");
+        return false;
+    }
+    return true;
 }
 
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::close() {
     if (plugin_) {
         LOG_DEBUG("about to close");
-        // owner_ == 0 -> close() called as result of this being the last reference,
+        // owner_ == nullptr -> close() called as result of this being the last reference,
         // otherwise we check if there is more than one reference.
         if (owner_ && !owner_->delegate_.unique()) {
             LOG_WARNING("VSTPlugin: can't close plugin while commands are still running");
+            // will be closed by the command's cleanup function
             return;
         }
         auto cmdData = PluginCmdData::create(world());
@@ -1159,24 +1171,28 @@ void VSTPluginDelegate::showEditor(bool show) {
     }
 }
 
-// some plugins crash when being reset reset
-// in the NRT thread. we let the user choose
-// and add a big fat warning in the help file.
-bool cmdReset(World *world, void *cmdData) {
-    auto data = (PluginCmdData *)cmdData;
-    data->owner->plugin()->suspend();
-    data->owner->plugin()->resume();
-    return false; // done
-}
-
 void VSTPluginDelegate::reset(bool async) {
     if (check()) {
         if (async) {
-            // reset in the NRT thread (unsafe)
-            doCmd(PluginCmdData::create(world()), cmdReset);
+            // reset in the NRT thread
+            suspended_ = true; // suspend
+            doCmd(PluginCmdData::create(world()),
+                [](World *world, void *cmdData){
+                    auto data = (PluginCmdData *)cmdData;
+                    std::lock_guard<std::mutex> lock(data->owner->mutex_);
+                    data->owner->plugin()->suspend();
+                    data->owner->plugin()->resume();
+                    return true; // continue
+                },
+                [](World *world, void *cmdData){
+                    auto data = (PluginCmdData *)cmdData;
+                    data->owner->suspended_ = false; // resume
+                    return false; // done
+                }
+            );
         }
         else {
-            // reset in the RT thread (safe)
+            // reset in the RT thread
             plugin_->suspend();
             plugin_->resume();
         }

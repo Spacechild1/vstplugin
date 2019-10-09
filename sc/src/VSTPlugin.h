@@ -9,6 +9,7 @@
 using namespace vst;
 
 #include <thread>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -110,11 +111,14 @@ public:
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
     bool check();
+    bool suspended() const { return suspended_; }
+    bool tryLock() { return mutex_.try_lock(); }
+    void unlock() { mutex_.unlock(); }
     void open(const char* path, bool gui);
     void doneOpen(PluginCmdData& msg);
     void close();
     void showEditor(bool show);
-    void reset(bool async = false);
+    void reset(bool async);
     // param
     void setParam(int32 index, float value);
     void setParam(int32 index, const char* display);
@@ -177,6 +181,8 @@ private:
     // thread safety
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
+    bool suspended_ = false;
+    std::mutex mutex_;
 };
 
 class VSTPlugin : public SCUnit {
