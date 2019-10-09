@@ -1593,25 +1593,18 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             if (component_->setState(&stream) == kResultOk){
                 // also update controller state!
                 stream.setPos(entry.offset); // rewind
-                if (window_){
-                    // TODO ?
-                } else {
-                    controller_->setComponentState(&stream);
-                    updateParamCache();
-                }
+                controller_->setComponentState(&stream); // TODO: make thread-safe
+                updateParamCache();
                 LOG_DEBUG("restored component state");
             } else {
                 LOG_WARNING("couldn't restore component state");
             }
         } else if (isChunkType(entry.id, Vst::kControllerState)){
-            if (window_){
-                // TODO ?
+            // TODO: make thread-safe
+            if (controller_->setState(&stream) == kResultOk){
+                LOG_DEBUG("restored controller state");
             } else {
-                if (controller_->setState(&stream) == kResultOk){
-                    LOG_DEBUG("restored controller set");
-                } else {
-                    LOG_WARNING("couldn't restore controller state");
-                }
+                LOG_WARNING("couldn't restore controller state");
             }
         }
     }
