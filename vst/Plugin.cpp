@@ -225,6 +225,18 @@ std::string fileName(const std::string& path){
     }
 }
 
+std::string baseName(const std::string& path){
+#ifdef _WIN32
+    auto pos = path.find_last_of("/\\");
+#else
+    auto pos = path.find_last_of('/');
+#endif
+    auto dot = path.find_last_of('.');
+    size_t start = (pos != std::string::npos) ? pos + 1 : 0;
+    size_t n = (dot != std::string::npos) ? dot - start : std::string::npos;
+    return path.substr(start, n);
+}
+
 std::string getTmpDirectory(){
 #ifdef _WIN32
     wchar_t tmpDir[MAX_PATH + 1];
@@ -683,11 +695,11 @@ class ModuleSO : public IModule {
     }
     bool init() override {
         auto fn = getFnPtr<InitFunc>("ModuleEntry");
-        return (fn && fn(handle_)); // init is mandatory
+        return (!fn || fn(handle_)); // init is mandatory
     }
     bool exit() override {
         auto fn = getFnPtr<ExitFunc>("ModuleExit");
-        return (fn && fn()); // exit is mandatory
+        return (!fn || fn()); // exit is mandatory
     }
     void * doGetFnPtr(const char *name) const override {
         return dlsym(handle_, name);

@@ -88,6 +88,8 @@ bool createDirectory(const std::string& dir);
 
 std::string fileName(const std::string& path);
 
+std::string baseName(const std::string& path);
+
 //--------------------------------------------------------------------------------------------------------
 
 // cross platform fstream, taking UTF-8 file paths.
