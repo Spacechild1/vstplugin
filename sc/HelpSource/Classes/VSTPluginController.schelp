@@ -63,19 +63,12 @@ SynthDef(\insert2, { arg bus;
 
 subsection:: Parameter Automation and Preset Management
 
-There are three different ways to automate plugin parameters:
+There are three different ways to automate plugin parameters (listed with increasing precedence):
 list::
 ## with the link::#-set:: and link::#-setn:: methods
 code::
 // set parameter 1 to 0.5
 ~fx.set(1, 0.5);
-::
-## map them to control or audio busses with link::#-map::
-code::
-// map parameter 2 to a control bus
-~c = Bus.control;
-~fx.map(2, ~c);
-~c.set(0.5);
 ::
 ## with the code::params:: argument of link::Classes/VSTPlugin#*ar::
 code::
@@ -92,6 +85,13 @@ SynthDef(\insert, { arg bus, f;
 ~fx = VSTPluginController(Synth(\insert, [\bus, 0, \f, 0.5])).open("someFX");
 // now set it to 0.7
 ~fx.synth.set(\f, 0.7);
+::
+## map them to control or audio busses with link::#-map::
+code::
+// map parameter 2 to a control bus
+~c = Bus.control;
+~fx.map(2, ~c);
+~c.set(0.5);
 ::
 ::
 
@@ -431,6 +431,7 @@ Each parameter can only be mapped to one control bus channel at the time.
 
 note::setting a parameter with link::#-set:: or link::#-setn:: will automatically unmap it from any control bus.::
 
+note::code::map:: will override automation via UGen arguments.::
 
 METHOD:: mapMsg
 returns a emphasis::bundle:: containing control and/or audio bus mapping messages. Takes the same arguments as code::map::.

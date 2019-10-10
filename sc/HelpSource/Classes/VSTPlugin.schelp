@@ -45,7 +45,7 @@ SynthDef(\test, { arg in, p1, p2, idx;
 ::
 You can set the index to a negative value to "unmap" the parameter.
 
-note::emphasis::params:: overrides any automation of the same parameters by link::Classes/VSTPluginController#-set:: or
+note::emphasis::params:: overrides any automation of the same parameters by link::Classes/VSTPluginController#-set::, but it can itself be overriden with
 link::Classes/VSTPluginController#-map::.
 ::
 
