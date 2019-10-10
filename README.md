@@ -1,4 +1,4 @@
-vstplugin v0.2.0-test
+vstplugin v0.2.0
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
