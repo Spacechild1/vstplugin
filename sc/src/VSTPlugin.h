@@ -67,11 +67,13 @@ namespace SearchFlags {
 };
 
 struct InfoCmdData : CmdData {
-    static InfoCmdData* create(World* world, const char* path);
-    static InfoCmdData* create(World* world, int bufnum);
+    static InfoCmdData* create(World* world, const char* path, bool async = false);
+    static InfoCmdData* create(World* world, int bufnum, bool async = false);
     static bool nrtFree(World* world, void* cmdData);
     int32 flags = 0;
     int32 bufnum = -1;
+    bool async = false;
+    std::string buffer;
     void* freeData = nullptr;
     char path[256];
     // flexible array
@@ -112,8 +114,11 @@ public:
     IPlugin* plugin() { return plugin_.get(); }
     bool check();
     bool suspended() const { return suspended_; }
-    bool tryLock() { return mutex_.try_lock(); }
-    void unlock() { mutex_.unlock(); }
+    void resume() { suspended_ = false; }
+    using ScopedLock = std::unique_lock<std::mutex>;
+    ScopedLock scopedLock();
+    bool tryLock();
+    void unlock();
     void open(const char* path, bool gui);
     void doneOpen(PluginCmdData& msg);
     void close();

@@ -177,6 +177,18 @@ Additionally, you can browse for plugins, select programs and read/write preset 
 See link::#-gui:: and link::Classes/VSTPluginGui:: for more information.
 ::
 
+subsection:: Realtime Safety
+
+VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
+Some methods, like link::#-reset:: or link::#-readProgram::, offer two options via the code::async:: parameter:
+
+code::async: false:: means that the plugin method is simply called on the RT thread. 
+Depending on the plugin, this might be just fine - or block the Server. You have to test yourself.
+
+code::async: true:: means that the plugin method is called on the NRT thread. 
+The UGen is temporarily "suspended", so it won't accept other messages until the command has finished.
+Also, the plugin itself might be bypassed for a short time, but it will never block the Server!
+
 CLASSMETHODS::
 
 PRIVATE:: guiClass, msg2string
@@ -316,7 +328,7 @@ METHOD:: resetMsg
 reset the plugin state.
 
 ARGUMENT:: async
-reset asynchronously.
+see link::#Realtime Safety::.
 
 DISCUSSION::
 Generally, emphasis::reset:: might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line.
@@ -524,6 +536,11 @@ ARGUMENT:: action
 
 an action to be called with code::this:: and a Boolean (success/fail).
 
+ARGUMENT:: async
+
+where to execute the plugin method, see link::#Realtime Safety::. 
+note::The file/buffer IO itself is always performed asynchronously!::
+
 discussion::
 The program and bank files are in a standard format which is recogized by every decent DAW or VST host.
 This means you can freely exchange presets between different applications!
@@ -545,6 +562,10 @@ it has to be allocated and freed by the Client.
 code::write*Msg::: the Buffer should be initially empty. The UGen will fill the Buffer
 on the Server, the Client can then read the data and free the Buffer.
 
+ARGUMENT:: async
+
+see above.
+
 RETURNS:: the message for reading/writing a program/bank file or exchanging program/bank data via a Buffer.
 
 METHOD:: setProgramData
@@ -558,12 +579,20 @@ the raw plugin data.
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
+ARGUMENT:: async
+
+where to execute the plugin method, see link::#Realtime Safety::. 
+note::The data transfer itself is always performed asynchronously!::
+
 METHOD:: getProgramData
 METHOD:: getBankData
 get the current program/bank state as an link::Classes/Int8Array::.
 
 ARGUMENT:: action
 an action to pass the data - or code::nil:: if the method failed.
+
+ARGUMENT:: async
+see above.
 
 DISCUSSION::
 Internally, the program data is exchanged via temp files.
@@ -582,6 +611,10 @@ temporarily overwrites link::#-wait:: if not code::nil::.
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
+ARGUMENT:: async
+where to execute the plugin method, see link::#Realtime Safety::. 
+note::The data transfer itself is always performed asynchronously!::
+
 METHOD:: receiveProgramData
 METHOD:: receiveBankData
 receive the current program/bank state as an link::Classes/Int8Array::.
@@ -595,10 +628,13 @@ the number of seconds to wait before giving up.
 ARGUMENT:: action
 an action to pass the data.
 
+ARGUMENT:: async
+see above.
+
 discussion::
 Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above
 also work with remote Servers because the data is streamed via OSC messages. This means
-it is not 100% reliable (at least not with UDP).
+it is not 100% reliable when using UDP.
 
 subsection:: MIDI
 

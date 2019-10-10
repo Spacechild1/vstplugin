@@ -469,7 +469,7 @@ VSTPlugin : MultiOutUGen {
 		dict !? { info = dict[key] } !? { action.value(info) }
 		?? { this.probe(server, key, key, wait, action) };
 	}
-	*prResolvePath { arg path;
+	*prResolvePath { arg path, vst=true, exists=true;
 		var root, temp;
 		path = path.asString;
 		(thisProcess.platform.name == \windows).if {
@@ -487,11 +487,11 @@ VSTPlugin : MultiOutUGen {
 				PathName(temp).isFolder.if { ^temp };
 				// otherwise treat it as a file path
 				// no extension: append VST2 platform extension
-				(path.find(".vst3").isNil && path.find(platformExtension).isNil).if {
+				(vst && path.find(".vst3").isNil && path.find(platformExtension).isNil).if {
 					temp = temp ++ platformExtension;
 				};
 				// check if the file actually exists
-				PathName(temp).isFile.if { ^temp };
+				(exists.not || PathName(temp).isFile).if { ^temp };
 			}
 			// otherwise the path is passed to the UGen which tries
 			// to resolve it to the standard VST search paths.

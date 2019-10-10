@@ -74,19 +74,21 @@ bool CmdData::alive() const {
 }
 
 // InfoCmdData
-InfoCmdData* InfoCmdData::create(World* world, const char* path) {
+InfoCmdData* InfoCmdData::create(World* world, const char* path, bool async) {
     auto data = CmdData::create<InfoCmdData>(world);
     if (data) {
         snprintf(data->path, sizeof(data->path), "%s", path);
+        data->async = async;
     }
     return data;
 }
 
-InfoCmdData* InfoCmdData::create(World* world, int bufnum) {
+InfoCmdData* InfoCmdData::create(World* world, int bufnum, bool async) {
     auto data = CmdData::create<InfoCmdData>(world);
     if (data) {
         data->bufnum = bufnum;
         data->path[0] = '\0';
+        data->async = async;
     }
     return data;
 }
@@ -100,6 +102,9 @@ bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
     // The SndBuf is then freed by the client.
     if (data->freeData)
         NRTFree(data->freeData);
+    // free preset data
+    std::string dummy;
+    std::swap(data->buffer, dummy);
     return true;
 }
 
@@ -745,6 +750,9 @@ void VSTPlugin::next(int inNumSamples) {
         // if we're temporarily suspended, we have to grab the mutex.
         // we use a try_lock() and bypass on failure, so we don't block the whole Server.
         process = delegate_->tryLock();
+        if (!process){
+            LOG_DEBUG("couldn't lock mutex");
+        }
     }
 
     if (process) {
@@ -1009,6 +1017,18 @@ bool VSTPluginDelegate::check() {
     return true;
 }
 
+VSTPluginDelegate::ScopedLock VSTPluginDelegate::scopedLock(){
+    return ScopedLock(mutex_);
+}
+
+bool VSTPluginDelegate::tryLock() {
+    return mutex_.try_lock();
+}
+
+void VSTPluginDelegate::unlock() {
+    mutex_.unlock();
+}
+
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::close() {
     if (plugin_) {
@@ -1177,7 +1197,7 @@ void VSTPluginDelegate::reset(bool async) {
             doCmd(PluginCmdData::create(world()),
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
-                    std::lock_guard<std::mutex> lock(data->owner->mutex_);
+                    auto lock = data->owner->scopedLock();
                     data->owner->plugin()->suspend();
                     data->owner->plugin()->resume();
                     return true; // continue
@@ -1375,24 +1395,47 @@ template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
     auto data = (InfoCmdData*)cmdData;
     auto plugin = data->owner->plugin();
+    auto& buffer = data->buffer;
+    bool async = data->async;
     bool result = true;
     try {
         if (data->bufnum < 0) {
             // from file
-            if (bank)
-                plugin->readBankFile(data->path);
-            else
-                plugin->readProgramFile(data->path);
+            if (async){
+                // load preset now
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->readBankFile(data->path);
+                else
+                    plugin->readProgramFile(data->path);
+            } else {
+                // load preset later in RT thread
+                vst::File file(data->path);
+                if (!file.is_open()){
+                    throw Error("couldn't open file " + std::string(data->path));
+                }
+                file.seekg(0, std::ios_base::end);
+                buffer.resize(file.tellg());
+                file.seekg(0, std::ios_base::beg);
+                file.read(&buffer[0], buffer.size());
+            }
         }
         else {
             // from buffer
             std::string presetData;
             auto buf = World_GetNRTBuf(world, data->bufnum);
             writeBuffer(buf, presetData);
-            if (bank)
-                plugin->readBankData(presetData);
-            else
-                plugin->readProgramData(presetData);
+            if (async){
+                // load preset now
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->readBankData(presetData);
+                else
+                    plugin->readProgramData(presetData);
+            } else {
+                // load preset later in RT thread
+                buffer = std::move(presetData);
+            }
         }
     }
     catch (const Error& e) {
@@ -1408,6 +1451,22 @@ bool cmdReadPresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
     if (!data->alive()) return false;
     auto owner = data->owner;
+
+    if (data->async){
+        data->owner->resume();
+    } else if (data->flags) {
+        // read preset data
+        try {
+            if (bank)
+                owner->plugin()->readBankData(data->buffer);
+            else
+                owner->plugin()->readProgramData(data->buffer);
+        } catch (const Error& e){
+            Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
+            data->flags = 0;
+        }
+    }
+
     if (bank) {
         owner->sendMsg("/vst_bank_read", data->flags);
         // a bank change also sets the current program number!
@@ -1418,14 +1477,18 @@ bool cmdReadPresetDone(World *world, void *cmdData){
     }
     // the program name has most likely changed
     owner->sendCurrentProgramName();
-    return false; // done
+
+    return true; // continue
 }
 
 template<bool bank, typename T>
 void VSTPluginDelegate::readPreset(T dest, bool async){
     if (check()){
-        doCmd(InfoCmdData::create(world(), dest),
-            cmdReadPreset<bank>, cmdReadPresetDone<bank>);
+        if (async){
+            suspended_ = true;
+        }
+        doCmd(InfoCmdData::create(world(), dest, async),
+            cmdReadPreset<bank>, cmdReadPresetDone<bank>, InfoCmdData::nrtFree);
     } else {
         if (bank) {
             sendMsg("/vst_bank_read", 0);
@@ -1440,21 +1503,42 @@ template<bool bank>
 bool cmdWritePreset(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
     auto plugin = data->owner->plugin();
+    auto& buffer = data->buffer;
+    bool async = data->async;
     bool result = true;
     try {
         if (data->bufnum < 0) {
-            if (bank)
-                plugin->writeBankFile(data->path);
-            else
-                plugin->writeProgramFile(data->path);
+            // to file
+            if (async){
+                // get and write preset data
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->writeBankFile(data->path);
+                else
+                    plugin->writeProgramFile(data->path);
+            } else {
+                // write data to file
+                vst::File file(data->path, File::WRITE);
+                if (!file.is_open()){
+                    throw Error("couldn't create file " + std::string(data->path));
+                }
+                file.write(buffer.data(), buffer.size());
+            }
         }
         else {
             // to buffer
             std::string presetData;
-            if (bank)
-                plugin->writeBankData(presetData);
-            else
-                plugin->writeProgramData(presetData);
+            if (async){
+                // get preset data
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->writeBankData(presetData);
+                else
+                    plugin->writeProgramData(presetData);
+            } else {
+                // move preset data
+                presetData = std::move(buffer);
+            }
             auto buf = World_GetNRTBuf(world, data->bufnum);
             data->freeData = buf->data; // to be freed in stage 4
             allocReadBuffer(buf, presetData);
@@ -1472,7 +1556,12 @@ template<bool bank>
 bool cmdWritePresetDone(World *world, void *cmdData){
     auto data = (InfoCmdData *)cmdData;
     if (!data->alive()) return true; // will just free data
-    syncBuffer(world, data->bufnum);
+    if (data->async){
+        data->owner->resume();
+    }
+    if (data->bufnum >= 0){
+        syncBuffer(world, data->bufnum);
+    }
     data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
     return true; // continue
 }
@@ -1480,9 +1569,24 @@ bool cmdWritePresetDone(World *world, void *cmdData){
 template<bool bank, typename T>
 void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
-        doCmd(InfoCmdData::create(world(), dest),
-            cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
+        auto data = InfoCmdData::create(world(), dest, async);
+        if (async){
+            suspended_ = true;
+        } else {
+            try {
+                if (bank){
+                    plugin_->writeBankData(data->buffer);
+                } else {
+                    plugin_->writeProgramData(data->buffer);
+                }
+            } catch (const Error& e){
+                Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
+                goto fail;
+            }
+        }
+        doCmd(data, cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
     } else {
+    fail:
         if (bank) {
             sendMsg("/vst_bank_write", 0);
         }
