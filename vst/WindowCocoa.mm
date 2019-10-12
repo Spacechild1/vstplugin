@@ -83,9 +83,13 @@ EventLoop::EventLoop(){
     ProcessSerialNumber psn = {0, kCurrentProcess};
     TransformProcessType(&psn, kProcessTransformToForegroundApplication);
 #if HAVE_UI_THREAD
-    // we must access NSApp only once in the beginning
+    // we must access NSApp only once in the beginning (why?)
     haveNSApp_ = (NSApp != nullptr);
-    LOG_DEBUG("init cocoa event loop");
+    if (haveNSApp_){
+        LOG_DEBUG("init cocoa event loop");
+    } else {
+        LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.")
+    }
 #else
     // create NSApplication in this thread (= main thread) 
     // check if someone already created NSApp (just out of curiousity)
@@ -129,11 +133,11 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
             throw err;
         }
     } else {
-        LOG_ERROR("EventLoop::destroy: can't dispatch to main thread - no NSApp!");
+        return info.create(); // create without window in this thread
     }
-    // fallback:
-#endif
+#else
     return doCreate();
+#endif
 }
 
 void EventLoop::destroy(IPlugin::ptr plugin){
@@ -145,8 +149,6 @@ void EventLoop::destroy(IPlugin::ptr plugin){
         dispatch_sync(queue, ^{ delete p; });
         LOG_DEBUG("done!");
         return;
-    } else {
-        LOG_ERROR("EventLoop::destroy: can't dispatch to main thread - no NSApp!");
     }
 #endif
     // plugin destroyed

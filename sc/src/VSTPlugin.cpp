@@ -1146,11 +1146,6 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         LOG_WARNING("VSTPlugin: freed during background task");
     }
     if (plugin_){
-        if (editor_) {
-        #if defined(__APPLE__)
-            Print("Warning: can't use the VST editor on macOS (yet)\n");
-        #endif
-        }
         if (!plugin_->hasPrecision(ProcessPrecision::Single)) {
             Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 
                 plugin_->info().name.c_str());
