@@ -88,7 +88,7 @@ EventLoop::EventLoop(){
     if (haveNSApp_){
         LOG_DEBUG("init cocoa event loop");
     } else {
-        LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.")
+        LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
     }
 #else
     // create NSApplication in this thread (= main thread) 
