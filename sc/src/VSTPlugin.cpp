@@ -1289,7 +1289,11 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
     if (check()) {
         int32 nparam = plugin_->getNumParameters();
         if (index >= 0 && index < nparam) {
-            count = std::min<int32>(count, nparam - index);
+            if (count < 0){
+                count = nparam - index;
+            } else {
+                count = std::min<int32>(count, nparam - index);
+            }
             const int bufsize = count + 1;
             if (bufsize * sizeof(float) < MAX_OSC_PACKET_SIZE){
                 float *buf = (float *)alloca(sizeof(float) * bufsize);

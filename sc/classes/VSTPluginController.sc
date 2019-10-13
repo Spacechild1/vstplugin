@@ -213,7 +213,6 @@ VSTPluginController {
 		this.sendMsg('/get', index);
 	}
 	getn { arg index = 0, count = -1, action;
-		(count < 0).if { count = this.numParameters - index };
 		this.prMakeOscFunc({ arg msg;
 			// msg: address, nodeID, index, count, values...
 			action.value(msg[4..]); // only pass values
