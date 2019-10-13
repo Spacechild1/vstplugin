@@ -35,10 +35,10 @@ table::
 ARGUMENT:: params
 An optional Array of parameter controls in pairs of index and value. Both can be automated.
 code::
-// 'p1' controls parameter 1. 
+// 'p1' controls parameter 1.
 // 'p2' controls a parameter whose index can be set dynamically with 'idx'.
 SynthDef(\test, { arg in, p1, p2, idx;
-	var sig = VSTPlugin.ar(In.ar(in, 2), 1, 
+	var sig = VSTPlugin.ar(In.ar(in, 2), 1,
 		params: [1, p1, idx, p2]);
 	Out.ar(0, sig);
 });
@@ -65,7 +65,7 @@ SynthDef(\test, { arg in, out;
 	Out.ar(out, sig);
 }).add;
 )
-~synth = Synth(\test, [\in, ~in, \out, ~out]); 
+~synth = Synth(\test, [\in, ~in, \out, ~out]);
 (
 // this is how you get a handle to a specific plugin instance in the Synth:
 ~eq = VSTPluginController.new(~synth, \eq);
@@ -99,7 +99,7 @@ An Array of channels or a single auxiliary input for the plugin to process. You 
 This is only useful for certain VST3 plugins (e.g. for side chaining).
 
 ARGUMENT:: numAuxOut
-The number of auxiliary output channels. This must be a fixed number greater or equal 0. 
+The number of auxiliary output channels. This must be a fixed number greater or equal 0.
 Like code::auxInput::, this is only useful for certain VST3 plugins.
 
 
@@ -136,7 +136,7 @@ table::
 ::
 It also defines the following convenience methods:
 table::
-## print (long = false) || post the plugin info to the console. 
+## print (long = false) || post the plugin info to the console.
 
 if emphasis::long:: is code::true::, also list parameters and programs.
 ## printParameters || post parameter names and labels to the console.
@@ -145,7 +145,7 @@ if emphasis::long:: is code::true::, also list parameters and programs.
 
 note::The info is to be considered read-only!::
 
-The plugin info is stored in an link::Classes/IdentityDictionary:: under its code::key:: and code::path:: 
+The plugin info is stored in an link::Classes/IdentityDictionary:: under its code::key:: and code::path::
 and can be retrieved with link::#*plugins::.
 
 For VST 2.x plugins, the key is simply the plugin name; for VST 3 plugins, the key has an additional ".vst3" extension
@@ -220,7 +220,9 @@ An optional Array of directories to search. Relative paths are resolved to the c
 
 ARGUMENT:: useDefault
 Whether to search in the default paths, which currently are:
-table:: 
+table::
+## VST 2.x ||
+table::
 ## Windows || list::
 ## %ProgramFiles%\VSTPlugins
 ## %ProgramFiles%\Steinberg\VSTPlugins
@@ -228,12 +230,29 @@ table::
 ## %ProgramFiles%\Common Files\Steinberg\VST2
 ::
 ## macOS || list::
-## /Library/Audio/Plug-Ins/VST
 ## ~/Library/Audio/Plug-Ins/VST
+## /Library/Audio/Plug-Ins/VST
 ::
 ## Linux || list::
-## /usr/lib/vst
+## ~/.vst
 ## /usr/local/lib/vst
+## /usr/lib/vst
+::
+::
+## VST 3.x ||
+table::
+## Windows || list::
+## %ProgramFiles%\Common Files\VST3
+::
+## macOS || list::
+## ~/Library/Audio/Plug-Ins/VST3
+## /Library/Audio/Plug-Ins/VST3
+::
+## Linux || list::
+## ~/.vst3
+## /usr/local/lib/vst3
+## /usr/lib/vst3
+::
 ::
 ::
 
@@ -269,21 +288,20 @@ Shell plugins like "Waves" are always probed in parallel for performance reasons
 
 
 DISCUSSION::
-Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client 
+Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client
 and can be retrieved with its key (see link::#Plugin Management::).
 
-If a plugin can't be probed ("... failed!") it either means it's not a valid VST 2.x plugin (VST 3 is not supported yet)
-or it has the wrong architecture. 
+If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong architecture.
 note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
 
-A new search doesn't automatically clear the dictionary, but existing keys are overwritten. 
+A new search doesn't automatically clear the dictionary, but existing keys are overwritten.
 You can clear the dictionary explicitly with link::#*clear::.
 
-For efficiency, search results are written to a cache file (on the Server's computer) to significantly speed up subsequent searches 
+For efficiency, search results are written to a cache file (on the Server's computer) to significantly speed up subsequent searches
 (cached plugins don't have to probed again). Many DAWs use a similar strategy. If you want to search directories without updating the cache, set code::save:: to code::false::.
 
 NOTE::
-The very first search in a directory usually takes a couple of seconds, but if you have many (heavy) plugins, the process can take significantly longer. 
+The very first search in a directory usually takes a couple of seconds, but if you have many (heavy) plugins, the process can take significantly longer.
 However, subsequent searches will be almost instantaneous (because of the cache file).
 ::
 
@@ -293,7 +311,7 @@ Shell plugins like "Waves" contain hundreds of (heavy) sub-plugins. On my machin
 
 METHOD:: searchMsg
 
-ARGUMENT:: dir 
+ARGUMENT:: dir
 (see above)
 ARGUMENT:: useDefault
 (see above)
@@ -343,7 +361,7 @@ On success, the plugin info is passed as an link::Classes/IdentityDictionary::, 
 
 DISCUSSION::
 
-The given plugin file path is probed on the Server (in a seperate process). 
+The given plugin file path is probed on the Server (in a seperate process).
 On success, the plugin info is stored under its key, the file path and the (optional) key argument.
 
 This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find a key in the plugin dictionary.
@@ -352,7 +370,7 @@ It might be occasionally useful for other purposes.
 
 METHOD:: probeMsg
 
-ARGUMENT:: path 
+ARGUMENT:: path
 the plugin path (see above)
 ARGUMENT:: dest
 
