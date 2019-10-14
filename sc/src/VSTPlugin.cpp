@@ -1348,15 +1348,14 @@ void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->getNumPrograms()) {
             plugin_->setProgram(index);
-            sendMsg("/vst_program_index", plugin_->getProgram());
-            return;
         }
         else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
     }
-    sendMsg("/vst_program_index", -1);
+    sendMsg("/vst_program_index", plugin_->getProgram());
 }
+
 void VSTPluginDelegate::setProgramName(const char *name) {
     if (check()) {
         plugin_->setProgramName(name);
