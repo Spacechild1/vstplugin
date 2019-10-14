@@ -1,0 +1,173 @@
+<!doctype html><html lang='en'><head><title>High order ambisonics using IEM Plugins | SuperCollider 3.10.0 Help</title>
+<link rel='stylesheet' href='./../scdoc.css' type='text/css' />
+<link rel='stylesheet' href='./../codemirror.css' type='text/css' />
+<link rel='stylesheet' href='./../editor.css' type='text/css' />
+<link rel='stylesheet' href='./../frontend.css' type='text/css' />
+<link rel='stylesheet' href='./../custom.css' type='text/css' />
+<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />
+<script src='./../lib/jquery.min.js'></script>
+<script src='./../lib/codemirror-5.39.2.min.js' type='text/javascript'></script>
+<script src='./../lib/codemirror-addon-simple-5.39.2.min.js' type='text/javascript'></script>
+<script>
+var helpRoot = './..';
+var scdoc_title = 'High order ambisonics using IEM Plugins';
+var scdoc_sc_version = '3.10.0';
+</script>
+<script src='./../scdoc.js' type='text/javascript'></script>
+<script src='./../docmap.js' type='text/javascript'></script>
+<script src='qrc:///qtwebchannel/qwebchannel.js' type='text/javascript'></script>
+</head>
+<body onload='fixTOC()'>
+<div id='toc'>
+<div id='toctitle'>High order ambisonics using IEM Plugins:</div>
+<span class='toc_search'>Filter: <input id='toc_search'></span><ul class='toc'><li class='toc1'><a href='#description'>Description</a></li>
+<ul class='toc'><li class='toc2'><a href='#Dependencies'>Dependencies</a></li>
+<ul class='toc'></ul></ul><li class='toc1'><a href='#Code'>Code</a></li>
+<ul class='toc'></ul></ul></div><div id='menubar'></div>
+<div class='contents'>
+<div class='header'>
+<div id='label'>
+<span id='folder'>Guides (extension)</span>
+ | <span id='categories'><a href='./..\Browse.html#UGens'>UGens</a>&#8201;&gt;&#8201;<a href='./..\Browse.html#UGens>FX'>FX</a></span>
+</div><h1>High order ambisonics using IEM Plugins<div class='extension-indicator-ctr' title='This help file originates from a third-party quark or plugin for SuperCollider.'><img class='extension-indicator-icon' alt='Extension' src='./../images/plugin.png'><span class='extension-indicator-text'>Extension</span></div></h1>
+<div id='summary'>Working with High Order Ambisonics in SuperCollider using the IEM Plugins and the SuperCollider VST package by IEM</div>
+</div>
+<div class='subheader'>
+<div id='related'>See also: <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a></div>
+</div>
+<h2><a class='anchor' name='description'>Description</a></h2>
+
+<p>In this example we will test out an high order ambisonic workflow using plugins and SuperCollider.
+<p>The workflow usually in ambisonics is like this: Sound source -&gt; [Fx] -&gt; Encoder (panning/conversion to ambisonic domain) -&gt; [Fx] -&gt; [Master FX] -&gt; Decoding (to arbitrary speaker setups)
+<p>We will make functions that will allocate encoder "voices" as groups in SuperCollider and put our sound sources into those, then route it all through an fx group and finally through a decoder for listening.
+<p>We will then manipulate and modulate the VST plugins using SuperCollider LFOs.<h3><a class='anchor' name='Dependencies'>Dependencies</a></h3>
+<ul>
+<li>IEM Plugins: <a href="https://plugins.iem.at/">https://plugins.iem.at/</a></ul>
+<h2><a class='anchor' name='Code'>Code</a></h2>
+<textarea class='editor'>// SynthDefs
+(
+~order = 3; // set this to the order you want
+~numChannels = ((~order + 1)**2).asInteger;
+// binaural decoder (~numChannels -&gt; 2) - reads from 'bus' and sums into 'out'
+SynthDef.new(\binauralDecoder, {arg bus, out = 0;
+    Out.ar(out, VSTPlugin.ar(In.ar(bus, ~numChannels), 2));
+}).add;
+
+// stereo encoder (2 -&gt; ~numChannels) - replaces stereo signal with ambisonics signal
+SynthDef.new(\stereoEncoder, {arg bus = 0;
+    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), ~numChannels));
+}).add;
+
+// ambisonics insert FX (replaces input with output)
+SynthDef.new(\ambiFX, {arg bus = 0, bypass;
+    ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), ~numChannels, bypass));
+}).add;
+
+// helper Synth (throws audio from ambi bus to ambi master bus)
+SynthDef.new(\ambiThrow, {arg from, to;
+    Out.ar(to, In.ar(from, ~numChannels));
+}).add;
+
+// load sound file (replace with your test sound file)
+~buf = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+
+// play a sound file (in different rates)
+SynthDef(\test, { arg out = 0, vol = 1.0;
+    Out.ar(out,
+        PlayBuf.ar(2, ~buf, BufRateScale.kr(~buf), rate: Rand(0.5, 2), loop: 1) * vol;
+    )
+}).add;
+
+// search for plugins
+VSTPlugin.search(verbose: false);
+)
+
+// create ambisonic master section
+(
+{
+    // bus + group
+    ~ambiMasterBus = Bus.audio(s, ~numChannels);
+    ~ambiMasterGroup = Group.new;
+    s.sync;
+    // binaural decoder (writes to master output)
+    ~decoder = VSTPluginController(Synth(\binauralDecoder, [\bus, ~ambiMasterBus, \out, 0],
+        target: ~ambiMasterGroup, addAction: \addToTail)).open("BinauralDecoder");
+    s.sync;
+    // a group for ambisonic master effects
+    ~ambiMasterFXGroup = Group.before(~decoder.synth);
+}.fork;
+)
+
+// create ambisonic busses
+(
+// N ambisonic busses (3rd order) with stereo encoder. add ambi groups *before* master group!
+~numBus = 4; // change this if you want
+~ambiBus = Array.newClear(~numBus);
+~ambiGroup = Array.newClear(~numBus);
+~encoder = Array.newClear(~numBus);
+~numBus.do { arg i;
+    {
+        ~ambiBus[i] = Bus.audio(s, ~numChannels);
+        ~ambiGroup[i] = Group.before(~ambiMasterGroup);
+        s.sync;
+        // sound source (head)
+        Synth.new(\test, [\out, ~ambiBus[i], \vol, 1.0 / ~numBus], ~ambiGroup[i], addAction: \addToHead);
+
+        // encoder (after sound source)
+        ~encoder[i] = VSTPluginController(Synth(\stereoEncoder, [\bus, ~ambiBus[i], \out, ~ambiMasterBus],
+            target: ~ambiGroup[i], addAction: \addToTail));
+        // open plugin and randomize azimuth
+        ~encoder[i].open("StereoEncoder", action: { arg self; self.set(6, rand(1.0)) }); // 6 -&gt; azimuth
+
+        // throw to master section (after encoder)
+        Synth(\ambiThrow, [\from, ~ambiBus[i], \to, ~ambiMasterBus], target: ~ambiGroup[i], addAction: \addToTail);
+
+        // you can add more sound sources to the head of the group, stereo FX *before* the encoder and ambi FX *after* the encoder:
+        // sound source, [sound source] ..., [stereo FX], [stereo FX], ..., ENCODER, [ambi FX], [ambi FX], ..., THROW
+    }.fork;
+}
+)
+s.queryAllNodes;
+
+// randomize source positions
+~encoder.do(_.set(6, rand(1.0))) // 6 -&gt; azimuth
+
+// move around manually with the GUI:
+~encoder.do(_.gui);
+
+// modulate azimuth values with random LFOs:
+(
+~lfoGroup = Group.new;
+~lfoBus = { Bus.control } ! ~numBus;
+~lfo = { arg i; { arg rate = 0.5; LFNoise1.kr(rate, 0.5, 0.5) }.play(~lfoGroup, ~lfoBus[i]) } ! ~numBus;
+~encoder.do { arg enc, i; enc.map(6, ~lfoBus[i]) }; // map azimuth parameter (nr. 6) to control bus
+)
+
+~lfoGroup.set(\rate, exprand(0.1, 4.0));  // change LFO rates
+~encoder.do(_.unmap(6)); // unmap
+
+// add an ambisonic master FX
+(
+~ambiReverb = VSTPluginController(Synth(\ambiFX, [\bus, ~ambiMasterBus, \out, 0],
+    target: ~ambiMasterFXGroup)).open("FdnReverb");
+)
+~ambiReverb.set(0, rand(1.0)); // vary room size
+~ambiReverb.set(1, rand(1.0)); // vary reverb time
+// bypass it:
+~ambiReverb.synth.set(\bypass, 1); // bypass
+~ambiReverb.synth.set(\bypass, 0); // process
+
+// Recording
+(
+// When recording ambisonics, we usually don't want the decoded output.
+// Instead, we want the signal while it's still in the ambisonic domain
+// (so that we can use it with any kind of decoder in the future), i.e. just before the decoder.
+var path = "~/Music/ambisonic-piece-%_o%_%chan.wav".format(Date.getDate.stamp, ~order, ~numChannels).standardizePath;
+r = Recorder(s);
+// Put the recorder after the master FX group (before the decoder)
+r.record(path, ~ambiMasterBus, ~numChannels, ~ambiMasterFXGroup);
+)
+r.stopRecording;</textarea>
+
+<p><div class='doclink'>helpfile source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/HelpSource/Guides/HOA_IEM.schelp'>C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\HelpSource\Guides\HOA_IEM.schelp</a><br>link::Guides/HOA_IEM::<br></div></div><script src='./../editor.js' type='text/javascript'></script>
+</body></html>
