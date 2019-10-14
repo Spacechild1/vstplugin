@@ -944,10 +944,6 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
     owner_ = owner;
 }
 
-// NOTE: in case we don't have a GUI thread we *could* get rid of nrtThreadID
-// and just assume that std::this_thread::get_id() != rtThreadID_ means
-// we're on the NRT thread - but I don't know if can be 100% sure about this,
-// so let's play it safe.
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
     // RT thread
     if (std::this_thread::get_id() == rtThreadID_) {
@@ -961,7 +957,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
     // from GUI thread [or NRT thread] - push to queue
     else {
         // LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
-        std::unique_lock<std::mutex> lock(owner_->paramQueueMutex_);
+        std::unique_lock<std::mutex> writerLock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
         }
