@@ -182,10 +182,10 @@ subsection:: Realtime Safety
 VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
 Some methods, like link::#-reset:: or link::#-readProgram::, offer two options via the code::async:: parameter:
 
-code::async: false:: means that the plugin method is simply called on the RT thread. 
+code::async: false:: means that the plugin method is simply called on the RT thread.
 Depending on the plugin, this might be just fine - or block the Server. You have to test yourself.
 
-code::async: true:: means that the plugin method is called on the NRT thread. 
+code::async: true:: means that the plugin method is called on the NRT thread.
 The UGen is temporarily "suspended", so it won't accept other messages until the command has finished.
 Also, the plugin itself might be bypassed for a short time, but it will never block the Server!
 
@@ -539,7 +539,7 @@ an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
 
-where to execute the plugin method, see link::#Realtime Safety::. 
+where to execute the plugin method, see link::#Realtime Safety::.
 note::The file/buffer IO itself is always performed asynchronously!::
 
 discussion::
@@ -582,7 +582,7 @@ an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
 
-where to execute the plugin method, see link::#Realtime Safety::. 
+where to execute the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
 METHOD:: getProgramData
@@ -613,7 +613,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-where to execute the plugin method, see link::#Realtime Safety::. 
+where to execute the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
 METHOD:: receiveProgramData
@@ -734,7 +734,7 @@ ARGUMENT:: action
 will be called with an Integer result. The meaning depends on the VST plugin.
 
 ARGUMENT:: async
-whether the method call should be executed in the NRT thread (true) or in the RT thread (false).
+whether the method call should be executed in the NRT thread (true) or in the RT thread (false), see link::#Realtime Safety::.
 
 EXAMPLES::
 
