@@ -18,41 +18,49 @@ subsection:: UGen inputs
 table::
 ## numOutputs || \ir || number of main audio outputs
 ## flags || \ir || creation flags (reserved for future use)
+## bypass || \kr || bypass state
 ## numInputs || \ir || number of main audio inputs; can be 0
-## [inputs...] || \ar || (optional) main audio inputs
+## [inputs...] || \ar || (optional) main audio inputs; N = numInputs
 ## numAuxInputs || \ir || number of auxiliary audio inputs; can be 0
-## [auxInputs...] || \ar || (optional) auxiliary audio inputs
+## [auxInputs...] || \ar || (optional) auxiliary audio inputs; N = numAuxInputs
 ## numParams || \ir || number of parameter controls; can be 0
-## [params...] ||  || (optional) parameter controls
+## [params...] ||  || (optional) parameter controls; N = 2 * numParams
 ::
 
-Each parameter control is a pair of code::index, value::, so code::params:: takes up 2 * code::numParams:: UGen inputs in total.
+If a plugin is bypassed, processing is suspended and each input is passed straight to its corresponding output. The bypass parameter can have the following states:
+table::
+## 0 || off (processing)
+## 1 || hard bypass; processing is suspended immediately and the plugin's own bypass method is called (if available). Good plugins will do a short crossfade, others will cause a click.
+## 2 || soft bypass; if the plugin has a tail (e.g. reverb or delay), it will fade out. Also, this doesn't call the plugin's bypass method, so we can always do a nice crossfade.
+::
 
-code::index:: is the index of the parameter to be automated. A negative number deactivates the control.
+Each parameter control is a pair of teletype::index, value::, so teletype::params:: takes up 2 * teletype::numParams:: UGen inputs in total.
+
+teletype::index:: is the index of the parameter to be automated. A negative number deactivates the control.
 You can dynamically switch between different parameters at control rate.
 
-code::value:: is the new state for the given plugin parameter and should be a floating point number between 0.0 and 1.0.
-Generally, it can change at any rate, but code::\ir:: and code::\kr:: are recommended.
-code::\ar:: only makes sense for VST3 plugins, and only if the plugin actually supports sample accurate automation (many plugins do not!).
+teletype::value:: is the new state for the given plugin parameter and should be a floating point number between 0.0 and 1.0.
+Generally, it can change at any rate, but teletype::\ir:: and teletype::\kr:: are recommended.
+teletype::\ar:: only makes sense for VST3 plugins, and only if the plugin actually supports sample accurate automation (many plugins do not!).
 
 note::Automation via UGen inputs can be overriden by link::#/map:: and link::#/mapa::.::
 
 subsection:: UGen outputs
 
 table::
-## [outputs...] || \ar || (optional) main audio outputs; the count must match code::numOutputs::
-## [auxOutputs...] || \ar || (optional) auxiliary audio outputs; the count must match code::numAuxOutputs::
+## [outputs...] || \ar || (optional) main audio outputs; N = teletype::numOutputs:: (see link above)
+## [auxOutputs...] || \ar || (optional) auxiliary audio outputs;
 ::
 
 subsection:: Realtime safety
 
 VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
-Some methods, like link::#/reset:: or link::#/program_read::, offer two options via the code::async:: parameter:
+Some methods, like link::#/reset:: or link::#/program_read::, offer two options via the teletype::async:: parameter:
 
-code::async: false:: means that the plugin method is simply called on the RT thread.
+teletype::async: false:: means that the plugin method is simply called on the RT thread.
 Depending on the plugin, this might be just fine - or block the server. You have to test yourself.
 
-code::async: true:: means that the plugin method is called on the NRT thread.
+teletype::async: true:: means that the plugin method is called on the NRT thread.
 The UGen is temporarily "suspended", so it won't accept other messages until the command has finished.
 Also, the plugin itself might be bypassed for a short time, but it will never block the server!
 
@@ -73,7 +81,7 @@ section:: Plugin commands
 Plugin commands can be called without any UGen instance and take the following form:
 
 table::
-## strong::string:: || code::/cmd::
+## strong::string:: || teletype::/cmd::
 ## strong::string:: || command name
 ## ... || arguments
 ::
@@ -193,7 +201,7 @@ section:: Unit commands
 Unit commands are used to control a specific UGen instance and take the following form:
 
 table::
-## strong::string:: || code::/u_cmd::
+## strong::string:: || teletype::/u_cmd::
 ## strong::int:: || node ID
 ## strong::int:: || UGen index
 ## strong::string:: || command name
@@ -263,13 +271,13 @@ table::
 
 Replies with link::#/vst_param::.
 
-You can automated several parameters at once, e.g. code::[/u_cmd, <nodeID>, <synthIndex>, /set, 0, 0.5, 1, "12", "Wet", 0.7]:: will set parameters 0, 1 and "Wet" to values 0.5, "12" and 0.7.
+You can automated several parameters at once, e.g. teletype::[/u_cmd, <nodeID>, <synthIndex>, /set, 0, 0.5, 1, "12", "Wet", 0.7]:: will set parameters 0, 1 and "Wet" to values 0.5, "12" and 0.7.
 
-note::code::/set:: will automatically unmap the corresponding parameter(s) from any audio/control busses, see link::#/unmap::.::
+note::teletype::/set:: will automatically unmap the corresponding parameter(s) from any audio/control busses, see link::#/unmap::.::
 
 subsection:: /setn
 
-Like code::/set::, but with a range of subsequent parameters.
+Like teletype::/set::, but with a range of subsequent parameters.
 
 definitionlist:: ## Arguments: ||
 table::
@@ -322,7 +330,7 @@ table::
 ::
 ::
 
-To get all parameter values, you can do code::[/u_cmd, <nodeID>, <synthIndex>, /getn, 0, -1]::
+To get all parameter values, you can do teletype::[/u_cmd, <nodeID>, <synthIndex>, /getn, 0, -1]::
 
 subsection:: /parameter_query
 
@@ -349,7 +357,7 @@ table::
 ::
 ::
 
-For example, code::[/u_cmd, <nodeID>, <synthIndex>, /map, 0, 4, 2]:: will map parameter 0 to control bus 4 and parameter 1 to control bus 5.
+For example, teletype::[/u_cmd, <nodeID>, <synthIndex>, /map, 0, 4, 2]:: will map parameter 0 to control bus 4 and parameter 1 to control bus 5.
 
 
 subsection:: /mapa
@@ -655,9 +663,9 @@ table::
 ::
 ::
 
-code::/vst_param:: messages are sent after link::#/set::, link::#/param_query:: or when automating parameters in the VST GUI editor. They are emphasis::not:: sent when parameters are automated via UGen input parameter controls (see link::#UGen inputs::) or audio/control bus mappings (see link::#/map::), because this would lead to excessive OSC traffic.
+teletype::/vst_param:: messages are sent after link::#/set::, link::#/param_query:: or when automating parameters in the VST GUI editor. They are emphasis::not:: sent when parameters are automated via UGen input parameter controls (see link::#UGen inputs::) or audio/control bus mappings (see link::#/map::), because this would lead to excessive OSC traffic.
 
-note::A single parameter change might produce several code::/vst_param:: messages, e.g. for linked parameters.::
+note::A single parameter change might produce several teletype::/vst_param:: messages, e.g. for linked parameters.::
 
 subsection:: /vst_program
 
@@ -733,7 +741,7 @@ subsection:: String encoding
 Because of limitations in the SuperCollider plugin API, node reply messages can only contain float arguments. Therefore we encode string arguments as a list of bytes with a length prefix ("Pascal strings"), where every byte takes up a single float.
 
 For example, the string "Dry" is encoded as
-code::[3.0, 44.0, 72.0, 79.0]::
+teletype::[3.0, 44.0, 72.0, 79.0]::
 
 
 section:: Data transfer
@@ -756,7 +764,7 @@ subsection:: Plugin info
 
 This is the structure of a single plugin description, as used by link::#/vst_probe:::
 
-code::
+teletype::
 [plugin]\n
 id=<unique ID string>\n
 path=<file path>\n
@@ -792,7 +800,7 @@ n=<number of keys>\n
 <key #N-1>\n
 ::
 
-code::flags:: is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
+teletype::flags:: is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
 table::
 ## 1 || supports the GUI editor
 ## 2 || is a VST instrument
@@ -806,20 +814,20 @@ table::
 
 String values, like plugin/parameter/program names, can contain any characters except newlines and commas. (Those are bashed to a replacement symbol by the UGen.)
 
-Each parameter entry takes up a single line and consists of three fields, separated by a comma: code::<parameter name>, <parameber label>, <parameter ID>::.
+Each parameter entry takes up a single line and consists of three fields, separated by a comma: teletype::<parameter name>, <parameber label>, <parameter ID>::.
 
 The parameter label is the unit of measurement (e.g. "dB", "ms", "%"); it can be an empty string!
 
 The parameter ID is a hexidecimal number. For VST 2.x plugins it is the same as the parameter index, but for VST 3.x plugins it can be an arbitrary 32 bit integer.
 
-note::Program names can be empty strings; this means that empty lines after the code::[programs]:: section are significant and must not be ignored!::
+note::Program names can be empty strings; this means that empty lines after the teletype::[programs]:: section are significant and must not be ignored!::
 
 Each plugin can be referred to by one or more strong::keys::. The primary key always comes first in the list.
 
 
 Example:
 
-code::
+teletype::
 [plugin]
 id=6779416F
 path=C:/Program Files/VSTPlugins/GVST/GChorus.dll
@@ -859,7 +867,7 @@ subsection:: Search results
 
 This is used by link::#/vst_search:: to transmit search results to the client. It has the following structure:
 
-code::
+teletype::
 [plugins]\n
 n=<number of plugins>
 <plugin info #0>
@@ -873,11 +881,11 @@ Each <plugin info> entry has the same structure as in link::#Plugin info::.
 
 subsection:: Plugin cache file
 
-Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see link::#/vst_search::), which is located in a hidden folder called code::.VSTPlugin:: in the user's home directory. The cache file itself is named code::plugins.ini:: on 64-bit servers and code::plugins_32.ini:: on 32-bit servers.
+Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see link::#/vst_search::), which is located in a hidden folder called teletype::.VSTPlugin:: in the user's home directory. The cache file itself is named teletype::plugins.ini:: on 64-bit servers and teletype::plugins_32.ini:: on 32-bit servers.
 
-The cache file structure is very similar to link::#Search results::. The only difference is that it also contains a black-list (marked by code::[ignore]::).
+The cache file structure is very similar to link::#Search results::. The only difference is that it also contains a black-list (marked by teletype::[ignore]::).
 
-code::
+teletype::
 [plugins]\n
 n=<number of plugins>
 <plugin info #0>

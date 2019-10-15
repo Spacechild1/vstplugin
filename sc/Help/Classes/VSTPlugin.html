@@ -68,7 +68,7 @@ var scdoc_sc_version = '3.10.0';
 <p>An Array of channels or single input for the plugin to process. You cannot change the size of this once a SynthDef has been built. Set this to <code>nil</code> if the plugin takes no audio input (e.g. software synthesizers).<tr><td class='argumentname'>numOut<td class='argumentdesc'>
 <p>The number of output channels. This must be a fixed number greater than 0.<tr><td class='argumentname'>bypass<td class='argumentdesc'>
 <p>change the bypass state. If bypass is non-zero, then processing is suspended and each input is passed straight to its corresponding output.<table>
-<tr><td>0<td>off (processing)<tr><td>1<td>hard bypass. Processing is suspended immediately and the plugin's own bypass method is called (if available). Good plugins will do a short crossfade, but some will give you a click.<tr><td>2<td>soft bypass. If the plugin has a tail (e.g. reverb or delay) it will fade away. Also, this doesn't call the plugin's bypass method, so we always get a nice crossfade.</table>
+<tr><td>0<td>off (processing)<tr><td>1<td>hard bypass; processing is suspended immediately and the plugin's own bypass method is called (if available). Good plugins will do a short crossfade, others will cause a click.<tr><td>2<td>soft bypass; if the plugin has a tail (e.g. reverb or delay), it will fade out. This doesn't call the plugin's bypass method, so we can always do a nice crossfade.</table>
 <tr><td class='argumentname'>params<td class='argumentdesc'>
 <p>An optional Array of parameter controls in pairs of index and value. Both can be automated.<textarea class='editor'>// 'p1' controls parameter 1.
 // 'p2' controls a parameter whose index can be set dynamically with 'idx'.
