@@ -266,6 +266,8 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     vstEvents_ = (VstEvents *)malloc(sizeof(VstEvents) + DEFAULT_EVENT_QUEUE_SIZE * sizeof(VstEvent *));
     memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
     vstEventBufferSize_ = DEFAULT_EVENT_QUEUE_SIZE;
+        // pre-allocate midi queue
+    midiQueue_.reserve(DEFAULT_EVENT_QUEUE_SIZE);
 
     plugin_->user = this;
     LOG_DEBUG("opening plugin");
