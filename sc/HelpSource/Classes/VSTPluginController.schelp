@@ -647,7 +647,9 @@ RETURNS:: an instance of link::Classes/VSTPluginMIDIProxy::.
 DISCUSSION::
 link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably. This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
 
-The code::noteOn:: and code::noteOff:: methods accept an additional detune argument in cent (not supported by all VST instruments!)
+note::
+MIDI pitches can be Floats! The fractional part is converted to cents and passed as the code::detune:: argument to link::#-sendMidi::. This is not part of the MIDI standard and not all VST instruments actually support it!
+::
 
 All methods have a corresponding code::*Msg:: version which returns raw OSC messages; they can be scheduled sample accurately when sent as bundles!
 

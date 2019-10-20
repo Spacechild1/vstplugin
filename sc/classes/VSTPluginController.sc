@@ -477,7 +477,7 @@ VSTPluginController {
 		this.sendMsg('/tempo', bpm);
 	}
 	setTempoMsg { arg bpm=120;
-		^this.mskeMsg('/tempo', bpm);
+		^this.makeMsg('/tempo', bpm);
 	}
 	setTimeSignature { arg num=4, denom=4;
 		this.sendMsg('/time_sig', num, denom);
@@ -577,17 +577,17 @@ VSTPluginMIDIProxy {
 	writeMsg { arg len, hiStatus, loStatus, a=0, b=0, detune;
 		^owner.sendMidiMsg(hiStatus bitOr: loStatus, a, b, detune);
 	}
-	noteOn { arg chan, note=60, veloc=64, detune;
-		this.write(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, detune);
+	noteOn { arg chan, note=60, veloc=64;
+		this.write(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
-	noteOnMsg { arg chan, note=60, veloc=64, detune;
-		^this.writeMsg(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, detune);
+	noteOnMsg { arg chan, note=60, veloc=64;
+		^this.writeMsg(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
 	noteOff { arg chan, note=60, veloc=64;
-		this.write(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger);
+		this.write(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
 	noteOffMsg { arg chan, note=60, veloc=64;
-		^this.writeMsg(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger);
+		^this.writeMsg(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
 	polyTouch { arg chan, note=60, val=64;
 		this.write(3, 16rA0, chan.asInteger, note.asInteger, val.asInteger);

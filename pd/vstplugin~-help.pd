@@ -92,7 +92,7 @@
 #X restore 20 201 pd open;
 #X msg 208 234 close;
 #X msg 222 305 vis \$1;
-#X obj 222 285 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
+#X obj 222 285 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
 #X msg 232 404 bypass \$1;
 #X obj 187 463 s \$0-msg;
@@ -103,18 +103,18 @@
 #X text 184 490 parameters;
 #X text 273 489 FX programs/banks;
 #N canvas 753 189 760 527 parameter 0;
-#X obj 100 76 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
-#X obj 19 18 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+#X obj 100 76 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X obj 19 18 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 19 124 param_set \$1 \$2;
-#X obj 40 230 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 40 230 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 50 351 param_count;
 #X msg 54 377 param_list;
 #X msg 30 190 param_get \$1;
-#X obj 30 166 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 30 166 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 57 406 param_dump;
 #X obj 19 449 s \$0-msg;
 #X text 158 75 index;
@@ -183,8 +183,8 @@ plugins - but the plugin has to actually support it!, f 44;
 #X msg 76 288 midi_bend 1 \$1;
 #X obj 79 264 hsl 128 15 -1 1 0 0 empty empty empty -2 -8 0 10 -262144
 -1 -1 0 1;
-#X obj 82 320 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 82 320 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X text 136 35 send raw MIDI message (list of bytes);
 #X text 155 59 send MIDI system exclusive message (list of bytes);
 #X text 49 89 convenience methods:;
@@ -200,14 +200,14 @@ plugins - but the plugin has to actually support it!, f 44;
 #X msg 82 340 midi_program 1 \$1;
 #X msg 87 379 midi_polytouch 1 60 127;
 #X msg 95 418 midi_touch 1 127;
-#X msg 56 138 midi_note 1 60 127 50;
-#X text 195 134 optional 'detune' argument in cent;
-#X text 192 149 - not supported by all VST insstruments!;
 #X obj 106 457 cnv 20 285 65 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 114 465 NOTE: MIDI messagees are scheduled at the current logical
 time. This allows for *sample accurate* event proccessing - but the
 plugin has to actually support it!, f 42;
+#X text 210 136 the MIDI pitch can be a float \, but this is not part
+of MIDI standard and only supported by certain VST instruments.;
+#X msg 56 138 midi_note 1 60.5 127 50;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 0 0;
@@ -221,14 +221,14 @@ plugin has to actually support it!, f 42;
 #X connect 22 0 0 0;
 #X connect 23 0 0 0;
 #X connect 24 0 0 0;
-#X connect 25 0 0 0;
+#X connect 28 0 0 0;
 #X restore 185 549 pd midi;
 #X f 13;
 #X text 185 531 MIDI messages;
 #N canvas 814 225 469 439 transport 0;
 #X obj 22 299 s \$0-msg;
 #X msg 22 78 tempo \$1;
-#X obj 22 56 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+#X obj 22 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 34 137 time_signature \$1 \$2;
 #X msg 34 111 4 4;
@@ -238,8 +238,8 @@ plugin has to actually support it!, f 42;
 #X msg 43 184 play \$1;
 #X obj 43 163 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 51 211 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 51 211 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 59 262 transport_get;
 #X msg 51 229 transport_set \$1;
 #X text 102 183 start/stop sequencing;
@@ -357,15 +357,15 @@ the limited precision of decimal numbers in Pd., f 63;
 #X text 391 530 advanced stuff;
 #N canvas 327 22 669 774 preset 0;
 #X obj 23 333 s \$0-msg;
-#X obj 23 34 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+#X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X text 127 54 set program;
 #X msg 34 87 program_get;
 #X text 114 88 get the current program index;
 #X symbolatom 45 123 10 0 0 2 - - -;
 #X text 185 201 get the name of a program;
-#X obj 56 179 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 56 179 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 77 270 program_count;
 #X text 168 269 get number of programs;
 #X msg 86 303 program_list;
@@ -422,7 +422,7 @@ your own preset banks in Pd, f 47;
 #X obj 305 131 t b b, f 7;
 #X obj 305 174 until;
 #X msg 305 153 16;
-#X obj 305 218 text set \$0-data 1e+07;
+#X obj 305 218 text set \$0-data 1e+007;
 #X msg 305 195 list;
 #X obj 305 110 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;

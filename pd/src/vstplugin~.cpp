@@ -1411,10 +1411,12 @@ static void vstplugin_midi_mess(t_vstplugin *x, int onset, int channel, int d1, 
 
 // send MIDI messages (convenience methods)
 static void vstplugin_midi_noteoff(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
-    vstplugin_midi_mess(x, 128, channel, pitch, velocity);
+    float detune = (pitch - static_cast<int>(pitch)) * 100.f;
+    vstplugin_midi_mess(x, 128, channel, pitch, velocity, detune);
 }
 
-static void vstplugin_midi_note(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity, t_floatarg detune){
+static void vstplugin_midi_note(t_vstplugin *x, t_floatarg channel, t_floatarg pitch, t_floatarg velocity){
+    float detune = (pitch - static_cast<int>(pitch)) * 100.f;
     vstplugin_midi_mess(x, 144, channel, pitch, velocity, detune);
 }
 
@@ -2061,7 +2063,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_dump, gensym("param_dump"), A_NULL);
         // midi
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_cc, gensym("midi_cc"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_bend, gensym("midi_bend"), A_FLOAT, A_FLOAT, A_NULL);
