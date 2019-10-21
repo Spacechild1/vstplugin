@@ -67,17 +67,8 @@ class VST2Plugin final : public IPlugin {
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;
     void process(ProcessData<double>& data) override;
-    bool hasPrecision(ProcessPrecision precision) const override;
     void suspend() override;
     void resume() override;
-    int getNumInputs() const override;
-    int getNumAuxInputs() const override { return 0; }
-    int getNumOutputs() const override;
-    int getNumAuxOutputs() const override { return 0; }
-    bool isSynth() const override;
-    bool hasTail() const override;
-    int getTailSize() const override;
-    bool hasBypass() const override;
     void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
 
@@ -98,11 +89,6 @@ class VST2Plugin final : public IPlugin {
     double getTransportPosition() const override {
         return timeInfo_.ppqPos;
     }
-
-    int getNumMidiInputChannels() const override;
-    int getNumMidiOutputChannels() const override;
-    bool hasMidiInput() const override;
-    bool hasMidiOutput() const override;
     void sendMidiEvent(const MidiEvent& event) override;
     void sendSysexEvent(const SysexEvent& event) override;
 
@@ -110,14 +96,12 @@ class VST2Plugin final : public IPlugin {
     bool setParameter(int index, const std::string& str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
-    int getNumParameters() const override;
 
     void setProgram(int program) override;
     void setProgramName(const std::string& name) override;
     int getProgram() const override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
-    int getNumPrograms() const override;
 
     void readProgramFile(const std::string& path) override;
     void readProgramData(const char *data, size_t size) override;
@@ -128,7 +112,6 @@ class VST2Plugin final : public IPlugin {
     void writeBankFile(const std::string& path) override;
     void writeBankData(std::string& buffer) override;
 
-    bool hasEditor() const override;
     void openEditor(void *window) override;
     void closeEditor() override;
     bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
@@ -147,6 +130,20 @@ class VST2Plugin final : public IPlugin {
     std::string getSDKVersion() const;
     std::string getParameterName(int index) const;
     std::string getParameterLabel(int index) const;
+    int getNumInputs() const;
+    int getNumOutputs() const;
+    int getNumParameters() const;
+    int getNumPrograms() const;
+    bool hasEditor() const;
+    bool hasPrecision(ProcessPrecision precision) const;
+    bool isSynth() const;
+    bool hasTail() const;
+    int getTailSize() const;
+    bool hasBypass() const;
+    int getNumMidiInputChannels() const;
+    int getNumMidiOutputChannels() const;
+    bool hasMidiInput() const;
+    bool hasMidiOutput() const;
         // other helpers
     static bool canHostDo(const char *what);
     bool hasFlag(VstAEffectFlags flag) const;

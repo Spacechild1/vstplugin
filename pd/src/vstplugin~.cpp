@@ -725,7 +725,7 @@ void t_vsteditor::update(){
     if (window()){
         window()->update();
     } else if (e_canvas) {
-        int n = e_owner->x_plugin->getNumParameters();
+        int n = e_owner->x_plugin->info().numParameters();
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
         }
@@ -1331,7 +1331,7 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
     }
     int index = -1;
     if (!findParamIndex(x, argv, index)) return;
-    if (index >= 0 && index < x->x_plugin->getNumParameters()){
+    if (index >= 0 && index < x->x_plugin->info().numParameters()){
         t_atom msg[3];
 		SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
@@ -1363,14 +1363,14 @@ static void vstplugin_param_info(t_vstplugin *x, t_floatarg _index){
 static void vstplugin_param_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
-    SETFLOAT(&msg, x->x_plugin->getNumParameters());
+    SETFLOAT(&msg, x->x_plugin->info().numParameters());
 	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
 // list parameters (index + info)
 static void vstplugin_param_list(t_vstplugin *x){
     if (!x->check_plugin()) return;
-    int n = x->x_plugin->getNumParameters();
+    int n = x->x_plugin->info().numParameters();
 	for (int i = 0; i < n; ++i){
         vstplugin_param_info(x, i);
 	}
@@ -1379,7 +1379,7 @@ static void vstplugin_param_list(t_vstplugin *x){
 // list parameter states (index + value)
 static void vstplugin_param_dump(t_vstplugin *x){
     if (!x->check_plugin()) return;
-    int n = x->x_plugin->getNumParameters();
+    int n = x->x_plugin->info().numParameters();
     for (int i = 0; i < n; ++i){
         t_atom a;
         SETFLOAT(&a, i);
@@ -1462,7 +1462,7 @@ static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *
 static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
     if (!x->check_plugin()) return;
     int index = _index;
-    if (index >= 0 && index < x->x_plugin->getNumPrograms()){
+    if (index >= 0 && index < x->x_plugin->info().numPrograms()){
         x->x_plugin->setProgram(index);
         x->x_editor->update();
 	} else {
@@ -1503,13 +1503,13 @@ static void vstplugin_program_name_get(t_vstplugin *x, t_symbol *s, int argc, t_
 static void vstplugin_program_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
 	t_atom msg;
-    SETFLOAT(&msg, x->x_plugin->getNumPrograms());
+    SETFLOAT(&msg, x->x_plugin->info().numPrograms());
 	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
 }
 
 // list all programs (index + name)
 static void vstplugin_program_list(t_vstplugin *x){
-    int n = x->x_plugin->getNumPrograms();
+    int n = x->x_plugin->info().numPrograms();
     t_atom msg[2];
     for (int i = 0; i < n; ++i){
         SETFLOAT(&msg[0], i);
@@ -1617,7 +1617,7 @@ static t_class *vstplugin_class;
 
 // automated is true if parameter was set from the (generic) GUI, false if set by message ("param_set")
 void t_vstplugin::set_param(int index, float value, bool automated){
-    if (index >= 0 && index < x_plugin->getNumParameters()){
+    if (index >= 0 && index < x_plugin->info().numParameters()){
         value = std::max(0.f, std::min(1.f, value));
         int offset = x_plugin->getType() == PluginType::VST3 ? get_sample_offset() : 0;
         x_plugin->setParameter(index, value, offset);
@@ -1628,7 +1628,7 @@ void t_vstplugin::set_param(int index, float value, bool automated){
 }
 
 void t_vstplugin::set_param(int index, const char *s, bool automated){
-    if (index >= 0 && index < x_plugin->getNumParameters()){
+    if (index >= 0 && index < x_plugin->info().numParameters()){
         int offset = x_plugin->getType() == PluginType::VST3 ? get_sample_offset() : 0;
         if (!x_plugin->setParameter(index, s, offset)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
@@ -1653,12 +1653,12 @@ void t_vstplugin::setup_plugin(){
     x_plugin->suspend();
     // check if precision is actually supported
     auto precision = x_precision;
-    if (!x_plugin->hasPrecision(precision)){
-        if (x_plugin->hasPrecision(ProcessPrecision::Single)){
+    if (!x_plugin->info().hasPrecision(precision)){
+        if (x_plugin->info().hasPrecision(ProcessPrecision::Single)){
             post("%s: '%s' doesn't support double precision, using single precision instead",
                  classname(this), x_plugin->info().name.c_str());
             precision = ProcessPrecision::Single;
-        } else if (x_plugin->hasPrecision(ProcessPrecision::Double)){
+        } else if (x_plugin->info().hasPrecision(ProcessPrecision::Double)){
             post("%s: '%s' doesn't support single precision, using double precision instead",
                  classname(this), x_plugin->info().name.c_str());
             precision = ProcessPrecision::Double;
@@ -1893,10 +1893,10 @@ static t_int *vstplugin_perform(t_int *w){
 
     if (doit){
             // check processing precision (single or double)
-        if (!plugin->hasPrecision(precision)){
-            if (plugin->hasPrecision(ProcessPrecision::Single)){
+        if (!plugin->info().hasPrecision(precision)){
+            if (plugin->info().hasPrecision(ProcessPrecision::Single)){
                 precision = ProcessPrecision::Single;
-            } else if (plugin->hasPrecision(ProcessPrecision::Double)){
+            } else if (plugin->info().hasPrecision(ProcessPrecision::Double)){
                 precision = ProcessPrecision::Double;
             } else {
                 doit = false; // maybe some VST2 MIDI plugins

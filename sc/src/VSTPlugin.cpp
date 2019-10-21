@@ -636,7 +636,7 @@ float VSTPlugin::readControlBus(uint32 num) {
 void VSTPlugin::update() {
     paramQueue_.clear();
     clearMapping();
-    int n = delegate().plugin()->getNumParameters();
+    int n = delegate().plugin()->info().numParameters();
     // parameter states
     {
         float* result = nullptr;
@@ -745,7 +745,7 @@ void VSTPlugin::next(int inNumSamples) {
     delegate_->rtThreadID_ = std::this_thread::get_id();
 #endif
     auto plugin = delegate_->plugin();
-    bool process = plugin && plugin->hasPrecision(ProcessPrecision::Single);
+    bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
     if (process && delegate_->suspended()){
         // if we're temporarily suspended, we have to grab the mutex.
         // we use a try_lock() and bypass on failure, so we don't block the whole Server.
@@ -776,7 +776,7 @@ void VSTPlugin::next(int inNumSamples) {
 
         // parameter automation
         if (paramState_) {
-            int nparam = plugin->getNumParameters();
+            int nparam = plugin->info().numParameters();
             // automate parameters with mapped control busses
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
                 uint32 index = m->index;
@@ -1084,16 +1084,16 @@ bool cmdOpen(World *world, void* cmdData) {
             auto owner = data->owner;
             plugin->suspend();
             // we only access immutable members of owner!
-            if (plugin->hasPrecision(ProcessPrecision::Single)) {
+            if (plugin->info().hasPrecision(ProcessPrecision::Single)) {
                 plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
             }
             else {
                 LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
             }
-            int nin = std::min<int>(plugin->getNumInputs(), owner->numInChannels());
-            int nout = std::min<int>(plugin->getNumOutputs(), owner->numOutChannels());
-            int nauxin = std::min<int>(plugin->getNumAuxInputs(), owner->numAuxInChannels());
-            int nauxout = std::min<int>(plugin->getNumAuxOutputs(), owner->numAuxOutChannels());
+            int nin = std::min<int>(plugin->info().numInputs, owner->numInChannels());
+            int nout = std::min<int>(plugin->info().numOutputs, owner->numOutChannels());
+            int nauxin = std::min<int>(plugin->info().numAuxInputs, owner->numAuxInChannels());
+            int nauxout = std::min<int>(plugin->info().numAuxOutputs, owner->numAuxOutChannels());
             plugin->setNumSpeakers(nin, nout, nauxin, nauxout);
             // LOG_DEBUG("nin: " << nin << ", nout: " << nout << ", nauxin: " << nauxin << ", nauxout: " << nauxout);
             plugin->resume();
@@ -1142,7 +1142,7 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         LOG_WARNING("VSTPlugin: freed during background task");
     }
     if (plugin_){
-        if (!plugin_->hasPrecision(ProcessPrecision::Single)) {
+        if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
             Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 
                 plugin_->info().name.c_str());
         }
@@ -1210,7 +1210,7 @@ void VSTPluginDelegate::reset(bool async) {
 
 void VSTPluginDelegate::setParam(int32 index, float value) {
     if (check()){
-        if (index >= 0 && index < plugin_->getNumParameters()) {
+        if (index >= 0 && index < plugin_->info().numParameters()) {
 #ifdef SUPERNOVA
             // set the RT thread back to the main audio thread (see "next")
             rtThreadID_ = std::this_thread::get_id();
@@ -1231,7 +1231,7 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
 
 void VSTPluginDelegate::setParam(int32 index, const char* display) {
     if (check()){
-        if (index >= 0 && index < plugin_->getNumParameters()) {
+        if (index >= 0 && index < plugin_->info().numParameters()) {
 #ifdef SUPERNOVA
             // set the RT thread back to the main audio thread (see "next")
             rtThreadID_ = std::this_thread::get_id();
@@ -1254,7 +1254,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
 
 void VSTPluginDelegate::queryParams(int32 index, int32 count) {
     if (check()) {
-        int32 nparam = plugin_->getNumParameters();
+        int32 nparam = plugin_->info().numParameters();
         if (index >= 0 && index < nparam) {
             count = std::min<int32>(count, nparam - index);
             for (int i = 0; i < count; ++i) {
@@ -1269,7 +1269,7 @@ void VSTPluginDelegate::queryParams(int32 index, int32 count) {
 
 void VSTPluginDelegate::getParam(int32 index) {
     if (check()) {
-        if (index >= 0 && index < plugin_->getNumParameters()) {
+        if (index >= 0 && index < plugin_->info().numParameters()) {
             float value = plugin_->getParameter(index);
             sendMsg("/vst_set", value);
             return;
@@ -1283,7 +1283,7 @@ void VSTPluginDelegate::getParam(int32 index) {
 
 void VSTPluginDelegate::getParams(int32 index, int32 count) {
     if (check()) {
-        int32 nparam = plugin_->getNumParameters();
+        int32 nparam = plugin_->info().numParameters();
         if (index >= 0 && index < nparam) {
             if (count < 0){
                 count = nparam - index;
@@ -1313,7 +1313,7 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
 
 void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
     if (check()) {
-        if (index >= 0 && index < plugin_->getNumParameters()) {
+        if (index >= 0 && index < plugin_->info().numParameters()) {
             owner_->map(index, bus, audio);
         }
         else {
@@ -1324,7 +1324,7 @@ void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
 
 void VSTPluginDelegate::unmapParam(int32 index) {
     if (check()) {
-        if (index >= 0 && index < plugin_->getNumParameters()) {
+        if (index >= 0 && index < plugin_->info().numParameters()) {
             owner_->unmap(index);
         }
         else {
@@ -1342,7 +1342,7 @@ void VSTPluginDelegate::unmapAll() {
 // program/bank
 void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
-        if (index >= 0 && index < plugin_->getNumPrograms()) {
+        if (index >= 0 && index < plugin_->info().numPrograms()) {
             plugin_->setProgram(index);
         }
         else {
@@ -1361,7 +1361,7 @@ void VSTPluginDelegate::setProgramName(const char *name) {
 
 void VSTPluginDelegate::queryPrograms(int32 index, int32 count) {
     if (check()) {
-        int32 nprogram = plugin_->getNumPrograms();
+        int32 nprogram = plugin_->info().numPrograms();
         if (index >= 0 && index < nprogram) {
             count = std::min<int32>(count, nprogram - index);
 #if 1

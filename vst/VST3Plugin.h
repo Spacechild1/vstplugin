@@ -207,17 +207,8 @@ class VST3Plugin final :
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;
     void process(ProcessData<double>& data) override;
-    bool hasPrecision(ProcessPrecision precision) const override;
     void suspend() override;
     void resume() override;
-    int getNumInputs() const override;
-    int getNumAuxInputs() const override;
-    int getNumOutputs() const override;
-    int getNumAuxOutputs() const override;
-    bool isSynth() const override;
-    bool hasTail() const override;
-    int getTailSize() const override;
-    bool hasBypass() const override;
     void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
 
@@ -237,10 +228,6 @@ class VST3Plugin final :
     void setTransportPosition(double beat) override;
     double getTransportPosition() const override;
 
-    int getNumMidiInputChannels() const override;
-    int getNumMidiOutputChannels() const override;
-    bool hasMidiInput() const override;
-    bool hasMidiOutput() const override;
     void sendMidiEvent(const MidiEvent& event) override;
     void sendSysexEvent(const SysexEvent& event) override;
 
@@ -248,14 +235,12 @@ class VST3Plugin final :
     bool setParameter(int index, const std::string& str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
-    int getNumParameters() const override;
 
     void setProgram(int program) override;
     void setProgramName(const std::string& name) override;
     int getProgram() const override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
-    int getNumPrograms() const override;
 
     void readProgramFile(const std::string& path) override;
     void readProgramData(const char *data, size_t size) override;
@@ -266,7 +251,6 @@ class VST3Plugin final :
     void writeBankFile(const std::string& path) override;
     void writeBankData(std::string& buffer) override;
 
-    bool hasEditor() const override;
     void openEditor(void *window) override;
     void closeEditor() override;
     bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
@@ -286,7 +270,23 @@ class VST3Plugin final :
     void addString(const char* id, const std::string& value) override;
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
- protected:
+ private:
+     int getNumInputs() const;
+     int getNumAuxInputs() const;
+     int getNumOutputs() const;
+     int getNumAuxOutputs() const;
+     int getNumParameters() const;
+     int getNumPrograms() const;
+     bool hasEditor() const;
+     bool hasPrecision(ProcessPrecision precision) const;
+     bool isSynth() const;
+     bool hasTail() const;
+     int getTailSize() const;
+     bool hasBypass() const;
+     int getNumMidiInputChannels() const;
+     int getNumMidiOutputChannels() const;
+     bool hasMidiInput() const;
+     bool hasMidiOutput() const;
     template<typename T>
     void doProcess(ProcessData<T>& inData);
     void handleEvents();

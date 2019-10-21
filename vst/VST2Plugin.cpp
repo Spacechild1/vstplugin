@@ -282,8 +282,8 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         info->category = getPluginCategory();
         info->version = getPluginVersion();
         info->sdkVersion = getSDKVersion();
-        info->numInputs = plugin_->numInputs;
-        info->numOutputs = plugin_->numOutputs;
+        info->numInputs = getNumInputs();
+        info->numOutputs = getNumOutputs();
         // flags
         uint32_t flags = 0;
         flags |= hasEditor() * PluginInfo::HasEditor;

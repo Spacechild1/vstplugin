@@ -105,17 +105,8 @@ class IPlugin {
     virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
     virtual void process(ProcessData<float>& data) = 0;
     virtual void process(ProcessData<double>& data) = 0;
-    virtual bool hasPrecision(ProcessPrecision precision) const = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
-    virtual int getNumInputs() const = 0;
-    virtual int getNumAuxInputs() const = 0;
-    virtual int getNumOutputs() const = 0;
-    virtual int getNumAuxOutputs() const = 0;
-    virtual bool isSynth() const = 0;
-    virtual bool hasTail() const = 0;
-    virtual int getTailSize() const = 0;
-    virtual bool hasBypass() const = 0;
     virtual void setBypass(Bypass state) = 0;
     virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
 
@@ -133,10 +124,6 @@ class IPlugin {
     virtual void setTransportPosition(double beat) = 0;
     virtual double getTransportPosition() const = 0;
 
-    virtual int getNumMidiInputChannels() const = 0;
-    virtual int getNumMidiOutputChannels() const = 0;
-    virtual bool hasMidiInput() const = 0;
-    virtual bool hasMidiOutput() const = 0;
     virtual void sendMidiEvent(const MidiEvent& event) = 0;
     virtual void sendSysexEvent(const SysexEvent& event) = 0;
 
@@ -144,14 +131,12 @@ class IPlugin {
     virtual bool setParameter(int index, const std::string& str, int sampleOffset = 0) = 0;
     virtual float getParameter(int index) const = 0;
     virtual std::string getParameterString(int index) const = 0;
-    virtual int getNumParameters() const = 0;
 
     virtual void setProgram(int index) = 0;
     virtual void setProgramName(const std::string& name) = 0;
     virtual int getProgram() const = 0;
     virtual std::string getProgramName() const = 0;
     virtual std::string getProgramNameIndexed(int index) const = 0;
-    virtual int getNumPrograms() const = 0;
 
     // the following methods throws an Error exception on failure!
     virtual void readProgramFile(const std::string& path) = 0;
@@ -169,7 +154,6 @@ class IPlugin {
     virtual void writeBankFile(const std::string& path) = 0;
     virtual void writeBankData(std::string& buffer) = 0;
 
-    virtual bool hasEditor() const = 0;
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
     virtual bool getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
@@ -322,6 +306,14 @@ struct PluginInfo {
     }
     bool doublePrecision() const {
         return flags & DoublePrecision;
+    }
+    bool hasPrecision(ProcessPrecision precision) const {
+        if (precision == ProcessPrecision::Double) {
+            return doublePrecision();
+        }
+        else {
+            return singlePrecision();
+        }
     }
     bool midiInput() const {
         return flags & MidiInput;
