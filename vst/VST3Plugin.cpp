@@ -606,9 +606,14 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 VST3Plugin::~VST3Plugin(){
     window_ = nullptr;
     processor_ = nullptr;
+    // destroy controller
     controller_->terminate();
     controller_ = nullptr;
+    LOG_DEBUG("destroyed VST3 controller");
+    // destroy component
     component_->terminate();
+    component_ = nullptr;
+    LOG_DEBUG("destroyed VST3 component");
 }
 
 // IComponentHandler
@@ -1711,6 +1716,9 @@ tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
 }
 
 void VST3Plugin::openEditor(void * window){
+    if (editor_){
+        return;
+    }
     if (!view_){
         view_ = controller_->createView("editor");
     }
@@ -1732,9 +1740,13 @@ void VST3Plugin::openEditor(void * window){
             LOG_ERROR("couldn't open VST3 editor");
         }
     }
+    editor_ = true;
 }
 
 void VST3Plugin::closeEditor(){
+    if (!editor_){
+        return;
+    }
     if (!view_){
         view_ = controller_->createView("editor");
     }
@@ -1746,6 +1758,7 @@ void VST3Plugin::closeEditor(){
             LOG_ERROR("couldn't close VST3 editor");
         }
     }
+    editor_ = false;
 }
 
 bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {

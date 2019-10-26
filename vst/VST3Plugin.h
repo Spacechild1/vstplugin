@@ -349,6 +349,7 @@ class VST3Plugin final :
     int program_ = 0;
     // message from host to plugin
     IPtr<Vst::IMessage> msg_;
+    bool editor_ = false;
 };
 
 //--------------------------------------------------------------------------------

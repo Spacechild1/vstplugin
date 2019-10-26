@@ -1166,11 +1166,19 @@ bool VST2Plugin::hasEditor() const {
 }
 
 void VST2Plugin::openEditor(void * window){
+    if (editor_){
+        return;
+    }
     dispatch(effEditOpen, 0, 0, window);
+    editor_ = true;
 }
 
 void VST2Plugin::closeEditor(){
+    if (!editor_){
+        return;
+    }
     dispatch(effEditClose);
+    editor_ = false;
 }
 
 bool VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {

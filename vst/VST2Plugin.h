@@ -184,6 +184,7 @@ class VST2Plugin final : public IPlugin {
     VstEvents *vstEvents_; // VstEvents is basically an array of VstEvent pointers
     int vstEventBufferSize_ = 0;
     bool vstTimeWarned_ = false;
+    bool editor_ = false;
 };
 
 } // vst
