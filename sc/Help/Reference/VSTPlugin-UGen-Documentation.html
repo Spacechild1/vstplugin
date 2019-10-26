@@ -545,7 +545,7 @@ n=&lt;number of plugins&gt;
 &lt;plugin info #N-1&gt;</pre>
 <p>Each &lt;plugin info&gt; entry has the same structure as in <a href="#Plugin%20info">Plugin info</a>.<h3><a class='anchor' name='Plugin%20cache%20file'>Plugin cache file</a></h3>
 
-<p>Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see <a href="#/vst_search">/vst_search</a>), which is located in a hidden folder called <code>.VSTPlugin</code> in the user's home directory. The cache file itself is named <code>plugins.ini</code> on 64-bit servers and <code>plugins_32.ini</code> on 32-bit servers.
+<p>Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see <a href="#/vst_search">/vst_search</a>), which is located in a hidden folder called <code>.VSTPlugin</code> in the user's home directory. The cache file itself is named <code>cache.ini</code> on 64-bit servers and <code>cache32.ini</code> on 32-bit servers.
 <p>The cache file structure is very similar to <a href="#Search%20results">Search results</a>. The only difference is that it also contains a black-list (marked by <code>[ignore]</code>).<pre>[plugins]\n
 n=&lt;number of plugins&gt;
 &lt;plugin info #0&gt;

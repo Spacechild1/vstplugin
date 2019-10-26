@@ -55,9 +55,9 @@ static PluginManager gPluginManager;
 #define SETTINGS_DIR ".vstplugin~"
 // so that 64-bit and 32-bit installations can co-exist!
 #if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
-#define SETTINGS_FILE "plugins_32.ini"
+#define SETTINGS_FILE "cache32.ini"
 #else
-#define SETTINGS_FILE "plugins.ini"
+#define SETTINGS_FILE "cache.ini"
 #endif
 
 static std::string getSettingsDir(){

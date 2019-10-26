@@ -267,9 +267,9 @@ VSTPlugin : MultiOutUGen {
 	}
 	*readPlugins {
 		var path, stream, dict = IdentityDictionary.new;
-		// handle 32-bit Windows
+		// handle 32-bit SuperCollider on Windows (should we care about 32-bit builds on macOS and Linux?)
 		path = ((thisProcess.platform.name == \windows) && Platform.resourceDir.find("(x86").notNil).if
-		{ "plugins32.ini" } { "plugins.ini" };
+		{ "cache32.ini" } { "cache.ini" };
 		path = ("~/.VSTPlugin/" ++ path).standardizePath;
 		// read plugins.ini file
 		File.exists(path).not.if {

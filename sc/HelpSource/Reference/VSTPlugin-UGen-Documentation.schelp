@@ -881,7 +881,7 @@ Each <plugin info> entry has the same structure as in link::#Plugin info::.
 
 subsection:: Plugin cache file
 
-Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see link::#/vst_search::), which is located in a hidden folder called teletype::.VSTPlugin:: in the user's home directory. The cache file itself is named teletype::plugins.ini:: on 64-bit servers and teletype::plugins_32.ini:: on 32-bit servers.
+Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see link::#/vst_search::), which is located in a hidden folder called teletype::.VSTPlugin:: in the user's home directory. The cache file itself is named teletype::cache.ini:: on 64-bit servers and teletype::cache32.ini:: on 32-bit servers.
 
 The cache file structure is very similar to link::#Search results::. The only difference is that it also contains a black-list (marked by teletype::[ignore]::).
 
