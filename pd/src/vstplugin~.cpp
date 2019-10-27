@@ -1668,7 +1668,7 @@ void t_vstplugin::setup_plugin(){
         }
     }
     x_plugin->setupProcessing(x_sr, x_blocksize, precision);
-    x_plugin->setNumSpeakers(x_siginlets.size(), x_sigauxoutlets.size(),
+    x_plugin->setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
                            x_sigauxinlets.size(), x_sigauxoutlets.size());
     x_plugin->resume();
     if (x_bypass != Bypass::Off){
