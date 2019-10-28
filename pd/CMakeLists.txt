@@ -68,6 +68,7 @@ endif()
 add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
 target_link_libraries(${PROJECT} ${VST_LIBS})
+set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
 # platform specific definitions and options
 if (WIN32 OR MINGW)

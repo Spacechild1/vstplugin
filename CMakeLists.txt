@@ -176,6 +176,7 @@ add_executable(${PROBE} "${VST}/${PROBE}.cpp") # probe exe
 target_sources(${PROBE} PUBLIC ${VST_HEADERS} ${VST_SRC})
 target_compile_definitions(${PROBE} PUBLIC -DHAVE_UI_THREAD=1)
 target_link_libraries(${PROBE} ${VST_LIBS})
+set_target_properties(${PROBE} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
     # -municode for wmain and -mwindows to hide console window
     target_link_libraries(${PROBE} -municode)
