@@ -492,6 +492,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             Vst::BusInfo bus;
             if (component_->getBusInfo(media, dir, i, bus) == kResultTrue
                 && bus.busType == type)
+            // we assume that the first bus is 'main' and the second bus is 'aux'
             {
                 if ((type == Vst::kMain && i != 0) ||
                     (type == Vst::kAux && i != 1))
@@ -1204,12 +1205,15 @@ void VST3Plugin::setBypass(Bypass state){
     }
 }
 
-#define makeChannels(n) ((1 << (n)) - 1)
+#define makeChannels(n) ((uint64_t)(1 << (n)) - 1)
 
 void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
+    // NOTE: for convenience, we assume that the first bus is 'main' and the second bus is 'aux',
+    // but this is not necessarily true...
+
     // input busses (max. 2)
     Vst::SpeakerArrangement busIn[2] = { 0 };
-    auto numIn = std::max<int>(2, component_->getBusCount(Vst::kAudio, Vst::kInput));
+    auto numIn = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kInput));
     for (int i = 0; i < numIn; ++i){
         Vst::BusInfo bus;
         if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
@@ -1222,10 +1226,10 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
     }
     // output busses (max. 2)
     Vst::SpeakerArrangement busOut[2] = { 0 };
-    auto numOut = std::max<int>(2, component_->getBusCount(Vst::kAudio, Vst::kOutput));
+    auto numOut = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kOutput));
     for (int i = 0; i < numOut; ++i){
         Vst::BusInfo bus;
-        if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
+        if (component_->getBusInfo(Vst::kAudio, Vst::kOutput, i, bus) == kResultTrue){
             if (bus.busType == Vst::kMain && i == 0){
                 busOut[i] = makeChannels(std::min<int>(out, getNumOutputs()));
             } else if (bus.busType == Vst::kAux && i == 1){
@@ -1235,10 +1239,18 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
     }
     processor_->setBusArrangements(busIn, numIn, busOut, numOut);
     // we have to (de)activate busses *after* setting the bus arrangement
-    component_->activateBus(Vst::kAudio, Vst::kInput, 0, in > 0); // main
-    component_->activateBus(Vst::kAudio, Vst::kInput, 1, auxIn > 0); // aux
-    component_->activateBus(Vst::kAudio, Vst::kOutput, 0, out > 0); // main
-    component_->activateBus(Vst::kAudio, Vst::kOutput, 1, auxOut > 0); // aux
+    if (numIn > 0){
+        component_->activateBus(Vst::kAudio, Vst::kInput, 0, in > 0); // main
+    }
+    if (numIn > 1){
+        component_->activateBus(Vst::kAudio, Vst::kInput, 1, auxIn > 0); // aux
+    }
+    if (numOut > 0){
+        component_->activateBus(Vst::kAudio, Vst::kOutput, 0, out > 0); // main
+    }
+    if (numOut > 1){
+        component_->activateBus(Vst::kAudio, Vst::kOutput, 1, auxOut > 0); // aux
+    }
 }
 
 void VST3Plugin::setTempoBPM(double tempo){
