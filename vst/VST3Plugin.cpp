@@ -627,11 +627,11 @@ tresult VST3Plugin::beginEdit(Vst::ParamID id){
 
 tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
     int index = info().getParamIndex(id);
-    auto listener = listener_.lock();
-    if (listener){
-        listener->parameterAutomated(index, value);
-    }
     if (index >= 0){
+        auto listener = listener_.lock();
+        if (listener){
+            listener->parameterAutomated(index, value);
+        }
         paramCache_[index].value = value;
     }
     if (window_){
