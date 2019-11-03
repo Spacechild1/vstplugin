@@ -1094,8 +1094,8 @@ bool cmdOpen(World *world, void* cmdData) {
             int nout = std::min<int>(plugin->info().numOutputs, owner->numOutChannels());
             int nauxin = std::min<int>(plugin->info().numAuxInputs, owner->numAuxInChannels());
             int nauxout = std::min<int>(plugin->info().numAuxOutputs, owner->numAuxOutChannels());
+            LOG_DEBUG("nin: " << nin << ", nout: " << nout << ", nauxin: " << nauxin << ", nauxout: " << nauxout);
             plugin->setNumSpeakers(nin, nout, nauxin, nauxout);
-            // LOG_DEBUG("nin: " << nin << ", nout: " << nout << ", nauxin: " << nauxin << ", nauxout: " << nauxout);
             plugin->resume();
             data->plugin = std::move(plugin);
         }

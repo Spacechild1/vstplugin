@@ -457,11 +457,14 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     FUnknownPtr<Vst::IConnectionPoint> controllerCP(controller_);
     // connect component and controller
     if (componentCP && controllerCP){
-    #if 0
+    #if 1
+        // connect directly (not recommended)
         componentCP->connect(controllerCP);
         controllerCP->connect(componentCP);
     #else
-        // use *this* as a proxy
+        // use the host as a proxy.
+        // actually, we would need seperate connection points for
+        // the component and controller, so that we know the message destination.
         componentCP->connect(this);
         controllerCP->connect(this);
     #endif
