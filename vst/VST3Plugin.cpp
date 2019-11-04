@@ -1357,21 +1357,20 @@ bool VST3Plugin::hasMidiOutput() const {
 void VST3Plugin::sendMidiEvent(const MidiEvent &event){
     Vst::Event e;
     e.busIndex = 0;
-    e.sampleOffset = 0;
+    e.sampleOffset = event.delta;
     e.ppqPosition = context_.projectTimeMusic;
     e.flags = Vst::Event::kIsLive;
     auto status = event.data[0] & 0xf0;
     auto channel = event.data[0] & 0x0f;
     auto data1 = event.data[1] & 127;
     auto data2 = event.data[2] & 127;
-    auto value = (float)data2 / 127.f;
     switch (status){
     case 0x80: // note off
         e.type = Vst::Event::kNoteOffEvent;
         e.noteOff.channel = channel;
         e.noteOff.noteId = -1;
         e.noteOff.pitch = data1;
-        e.noteOff.velocity = value;
+        e.noteOff.velocity = data2 / 127.f;
         e.noteOff.tuning = event.detune;
         break;
     case 0x90: // note on
@@ -1379,7 +1378,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.noteOn.channel = channel;
         e.noteOn.noteId = -1;
         e.noteOn.pitch = data1;
-        e.noteOn.velocity = value;
+        e.noteOn.velocity = data2 / 127.f;
         e.noteOn.length = 0;
         e.noteOn.tuning = event.detune;
         break;
@@ -1387,7 +1386,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.type = Vst::Event::kPolyPressureEvent;
         e.polyPressure.channel = channel;
         e.polyPressure.pitch = data1;
-        e.polyPressure.pressure = value;
+        e.polyPressure.pressure = data2 / 127.f;
         e.polyPressure.noteId = -1;
         break;
     case 0xb0: // CC
@@ -1395,21 +1394,32 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             Vst::ParamID id = Vst::kNoParamId;
             FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, data1, id) == kResultOk){
-                doSetParameter(id, value);
+                doSetParameter(id, data2 / 127.f, event.delta);
             } else {
                 LOG_WARNING("MIDI CC control number " << data1 << " not supported");
             }
             return;
         }
     case 0xc0: // program change
-        setProgram(event.data[1]);
-        return;
+        {
+            auto id = info().programChange;
+            if (id != PluginInfo::NoParamID){
+                doSetParameter(id, data1 / 127.f);
+            #if 0
+                program_ = data1;
+            #endif
+                updateParamCache();
+            } else {
+                LOG_DEBUG("no program change parameter");
+            }
+            return;
+        }
     case 0xd0: // channel aftertouch
         {
             Vst::ParamID id = Vst::kNoParamId;
             FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, Vst::kAfterTouch, id) == kResultOk){
-                doSetParameter(id, (float)data2 / 127.f);
+                doSetParameter(id, data1 / 127.f, event.delta);
             } else {
                 LOG_WARNING("MIDI channel aftertouch not supported");
             }
@@ -1421,7 +1431,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, Vst::kPitchBend, id) == kResultOk){
                 uint32_t bend = data1 | (data2 << 7);
-                doSetParameter(id, (float)bend / 16383.f);
+                doSetParameter(id, (float)bend / 16383.f, event.delta);
             } else {
                 LOG_WARNING("MIDI pitch bend not supported");
             }
@@ -1511,18 +1521,18 @@ void VST3Plugin::updateParamCache(){
 }
 
 void VST3Plugin::setProgram(int program){
-    auto id = info().programChange;
-    if (id != PluginInfo::NoParamID){
-        if (program >= 0 && program < getNumPrograms()){
+    if (program >= 0 && program < getNumPrograms()){
+        auto id = info().programChange;
+        if (id != PluginInfo::NoParamID){
             auto value = controller_->plainParamToNormalized(id, program);
             doSetParameter(id, value);
             program_ = program;
             updateParamCache();
         } else {
-            LOG_WARNING("program number out of range!");
+            LOG_DEBUG("no program change parameter");
         }
     } else {
-        LOG_DEBUG("no program change parameter");
+        LOG_WARNING("program number out of range!");
     }
 }
 
