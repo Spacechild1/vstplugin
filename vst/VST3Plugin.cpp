@@ -598,7 +598,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         info_ = info;
     }
     // setup parameter queues/cache
-    int numParams = info_->numParameters();
+    // we have to allocate space for all parameters, including hidden ones, e.g. for MIDI CC messages.
+    int numParams = controller_->getParameterCount();
     inputParamChanges_.setMaxNumParameters(numParams);
     outputParamChanges_.setMaxNumParameters(numParams);
     paramCache_.resize(numParams);
