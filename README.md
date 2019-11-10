@@ -1,4 +1,4 @@
-vstplugin v0.2.0
+vstplugin v0.2.1
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -18,6 +18,8 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 
 
 **NOTE:** 64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VSTPlugin.scx and vice versa.
+
+The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above (not released yet at the time of writing).
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 

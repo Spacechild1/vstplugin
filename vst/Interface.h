@@ -31,7 +31,7 @@ namespace vst {
 
 const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 2;
-const int VERSION_BUGFIX = 0;
+const int VERSION_BUGFIX = 1;
 const bool VERSION_BETA = false;
 
 struct MidiEvent {
