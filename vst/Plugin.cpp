@@ -17,13 +17,14 @@
 #include <mutex>
 #include <condition_variable>
 #include <deque>
+#include <algorithm>
 
 #ifdef _WIN32
 # include <Windows.h>
 # include <process.h>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
-#else 
+#else
 // just because of Clang on macOS not shipping <experimental/filesystem>...
 # include <dirent.h>
 # include <unistd.h>
@@ -40,11 +41,18 @@ namespace fs = std::experimental::filesystem;
 # include <CoreFoundation/CoreFoundation.h>
 # include <mach-o/dyld.h>
 # include <unistd.h>
+# include <mach/machine.h>
+# include <mach-o/loader.h>
+# include <mach-o/fat.h>
+#endif
+
+#if defined(__linux__)
+# include <elf.h>
 #endif
 
 namespace vst {
 
-// forward declarations to avoid including the header files 
+// forward declarations to avoid including the header files
 // (creates troubles with Cocoa)
 #ifdef _WIN32
 namespace Win32 {
@@ -110,7 +118,7 @@ std::string shorten(const std::wstring& s){
 
 static HINSTANCE hInstance = 0;
 
-static std::wstring getDirectory(){
+static std::wstring getModuleDirectory(){
     wchar_t wpath[MAX_PATH+1];
     if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
         wchar_t *ptr = wpath;
@@ -165,6 +173,15 @@ bool pathExists(const std::string& path){
 #else
     struct stat stbuf;
     return stat(path.c_str(), &stbuf) == 0;
+#endif
+}
+
+bool isFile(const std::string& path){
+#ifdef _WIN32
+    return fs::is_regular_file(widen(path));
+#else
+    struct stat stbuf;
+    return (stat(path.c_str(), &stbuf) == 0) && S_ISREG(stbuf.st_mode);
 #endif
 }
 
@@ -255,6 +272,345 @@ std::string getTmpDirectory(){
 #endif
 }
 
+enum class CpuArch {
+    unknown,
+    amd64,
+    i386,
+    arm,
+    aarch64,
+    ppc,
+    ppc64
+};
+
+CpuArch getHostCpuArchitecture(){
+#if defined(__i386__) || defined(_M_IX86)
+    return CpuArch::i386;
+#elif defined(__x86_64__) || defined(_M_X64)
+    return CpuArch::amd64;
+#elif defined(__arm__) || defined(_M_ARM)
+    return CpuArch::arm;
+#elif defined(__aarch64__)
+    return CpuArch::aarch64;
+#elif defined(__ppc__)
+    return CpuArch::ppc;
+#elif defined(__ppc64__)
+    return CpuArch::ppc64;
+#else
+    return CpuArch::unknown;
+#endif
+}
+
+const char * getCpuArchString(CpuArch arch){
+    switch (arch){
+    case CpuArch::i386:
+        return "i386";
+    case CpuArch::amd64:
+        return "amd64";
+    case CpuArch::arm:
+        return "arm";
+    case CpuArch::aarch64:
+        return "aarch64";
+    case CpuArch::ppc:
+        return "ppc";
+    case CpuArch::ppc64:
+        return "ppc64";
+    default:
+        return "unknown";
+    }
+}
+
+template<typename T>
+static void swap_bytes(T& i){
+    const auto n = sizeof(T);
+    char a[n];
+    char b[n];
+    memcpy(a, &i, n);
+    for (int i = 0, j = n-1; i < n; ++i, --j){
+        b[i] = a[j];
+    }
+    memcpy(&i, b, n);
+}
+
+namespace detail {
+std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
+    std::vector<CpuArch> results;
+    if (isDirectory(path)){
+    #ifdef _APPLE__
+        const char *dir = "/Contents/MacOS"; // only has a single binary folder
+    #else
+        const char *dir = "/Contents";
+    #endif
+         // plugin bundle: iterate over Contents/* recursively
+        vst::search(path + dir, [&](const std::string& resPath){
+            auto res = getCpuArchitectures(resPath, true); // bundle!
+            results.insert(results.end(), res.begin(), res.end());
+        }, false); // don't filter by VST extensions (needed for MacOS bundles!)
+    } else {
+        vst::File file(path);
+        if (file.is_open()){
+        #if defined(_WIN32) // Windows
+            // read PE header
+            // note: we don't have to worry about byte order (always LE)
+            const uint16_t dos_signature = 0x5A4D;
+            const char pe_signature[] = { 'P', 'E', 0, 0 };
+            const auto header_size = 24; // PE signature + COFF header
+            char data[1024]; // should be large enough for DOS stub
+            file.read(data, sizeof(data));
+            int nbytes = file.gcount();
+            // check DOS signature
+            if (nbytes > sizeof(dos_signature) && !memcmp(data, &dos_signature, sizeof(dos_signature))){
+                int32_t offset;
+                // get the file offset to the PE signature
+                memcpy(&offset, &data[0x3C], sizeof(offset));
+                if (offset < (sizeof(data) - header_size)){
+                    const char *header = data + offset;
+                    if (!memcmp(header, pe_signature, sizeof(pe_signature))){
+                        header += sizeof(pe_signature);
+                        // get CPU architecture
+                        uint16_t arch;
+                        memcpy(&arch, &header[0], sizeof(arch));
+                        switch (arch){
+                        case IMAGE_FILE_MACHINE_AMD64:
+                            results.push_back(CpuArch::amd64);
+                            break;
+                        case IMAGE_FILE_MACHINE_I386:
+                            results.push_back(CpuArch::i386);
+                            break;
+                        case IMAGE_FILE_MACHINE_POWERPC:
+                            results.push_back(CpuArch::ppc);
+                            break;
+                        case IMAGE_FILE_MACHINE_ARM:
+                            results.push_back(CpuArch::arm);
+                            break;
+                        case IMAGE_FILE_MACHINE_ARM64:
+                            results.push_back(CpuArch::aarch64);
+                            break;
+                        default:
+                            results.push_back(CpuArch::unknown);
+                            break;
+                        }
+                        // check if this is really a DLL
+                        uint16_t flags;
+                        memcpy(&flags, &header[18], sizeof(flags));
+                        if (!(flags & IMAGE_FILE_DLL)){
+                            throw Error(Error::ModuleError, "not a DLL");
+                        }
+                    } else {
+                        throw Error(Error::ModuleError, "bad PE signature");
+                    }
+                } else {
+                    throw Error(Error::ModuleError, "DOS stub too large");
+                }
+            } else if (!bundle) {
+                throw Error(Error::ModuleError, "not a DLL");
+            }
+        #elif defined(__APPLE__) // macOS (TODO: handle iOS?)
+            // read Mach-O header
+            auto read_uint32 = [](std::fstream& f, bool swap){
+                uint32_t i;
+                if (!f.read((char *)&i, sizeof(i))){
+                    throw Error(Error::ModuleError, "end of file reached");
+                }
+                if (swap){
+                    swap_bytes(i);
+                }
+                return i;
+            };
+
+            auto getCpuArch = [](cpu_type_t arch){
+                switch (arch){
+                // case CPU_TYPE_I386:
+                case CPU_TYPE_X86:
+                    return CpuArch::i386;
+                case CPU_TYPE_X86_64:
+                    return CpuArch::amd64;
+                case CPU_TYPE_ARM:
+                    return CpuArch::arm;
+                case CPU_TYPE_ARM64:
+                    return CpuArch::aarch64;
+                case CPU_TYPE_POWERPC:
+                    return CpuArch::ppc;
+                case CPU_TYPE_POWERPC64:
+                    return CpuArch::ppc64;
+                default:
+                    return CpuArch::unknown;
+                }
+            };
+
+            auto readMachHeader = [&](std::fstream& f, bool swap, bool wide){
+                LOG_DEBUG("reading mach-o header");
+                cpu_type_t cputype = read_uint32(f, swap);
+                uint32_t cpusubtype = read_uint32(f, swap); // ignored
+                uint32_t filetype = read_uint32(f, swap);
+                if (filetype != MH_DYLIB && filetype != MH_BUNDLE){
+                    throw Error(Error::ModuleError, "not a plugin");
+                }
+                return getCpuArch(cputype);
+            };
+
+            auto readFatArchive = [&](std::fstream& f, bool swap, bool wide){
+                LOG_DEBUG("reading fat archive");
+                std::vector<CpuArch> archs;
+                auto count = read_uint32(f, swap);
+                for (auto i = 0; i < count; ++i){
+                    // fat_arch is 20 bytes and fat_arch_64 is 32 bytes
+                    // read CPU type
+                    cpu_type_t arch = read_uint32(f, swap);
+                    archs.push_back(getCpuArch(arch));
+                    // skip remaining bytes. LATER also check file type.
+                    if (wide){
+                        char dummy[28];
+                        f.read(dummy, sizeof(dummy));
+                    } else {
+                        char dummy[16];
+                        f.read(dummy, sizeof(dummy));
+                    }
+                }
+                return archs;
+            };
+
+            uint32_t magic = 0;
+            file.read((char *)&magic, sizeof(magic));
+
+            // *_CIGAM tells us to swap endianess
+            switch (magic){
+            case MH_MAGIC:
+                results = { readMachHeader(file, false, false) };
+                break;
+            case MH_CIGAM:
+                results = { readMachHeader(file, true, false) };
+                break;
+        #ifdef MH_MAGIC_64
+            case MH_MAGIC_64:
+                results = { readMachHeader(file, false, true) };
+                break;
+            case MH_CIGAM_64:
+                results = { readMachHeader(file, true, true) };
+                break;
+        #endif
+            case FAT_MAGIC:
+                results = readFatArchive(file, false, false);
+                break;
+            case FAT_CIGAM:
+                results = readFatArchive(file, true, false);
+                break;
+        #ifdef FAT_MAGIC_64
+            case FAT_MAGIC_64:
+                results = readFatArchive(file, false, true);
+                break;
+            case FAT_CIGAM_64:
+                results = readFatArchive(file, true, true);
+                break;
+        #endif
+            default:
+                // on macOS, VST plugins are always bundles, so we just ignore non-plugin files
+                break;
+            }
+        #else // Linux, FreeBSD, etc. (TODO: handle Android?)
+            // read ELF header
+            // check magic number
+            char data[64]; // ELF header size
+            if (file.read(data, sizeof(data)) && !memcmp(data, ELFMAG, SELFMAG)){
+                char endian = data[0x05];
+                int byteorder;
+                if (endian == ELFDATA2LSB){
+                    byteorder = LITTLE_ENDIAN;
+                } else if (endian == ELFDATA2MSB){
+                    byteorder = BIG_ENDIAN;
+                } else {
+                    throw Error(Error::ModuleError, "invalid data encoding in ELF header");
+                }
+                // check file type
+                uint16_t filetype;
+                memcpy(&filetype, &data[0x10], sizeof(filetype));
+                if (BYTE_ORDER != byteorder){
+                    swap_bytes(filetype);
+                }
+                if (filetype != ET_DYN){
+                    throw Error(Error::ModuleError, "not a shared object");
+                }
+                // read CPU architecture
+                uint16_t arch;
+                memcpy(&arch, &data[0x12], sizeof(arch));
+                if (BYTE_ORDER != byteorder){
+                    swap_bytes(arch);
+                }
+                switch (arch){
+                case EM_386:
+                    results.push_back(CpuArch::i386);
+                    break;
+                case EM_X86_64:
+                    results.push_back(CpuArch::amd64);
+                    break;
+                case EM_PPC:
+                    results.push_back(CpuArch::ppc);
+                    break;
+                case EM_PPC64:
+                    results.push_back(CpuArch::ppc64);
+                    break;
+                case EM_ARM:
+                    results.push_back(CpuArch::arm);
+                    break;
+                case EM_AARCH64:
+                    results.push_back(CpuArch::aarch64);
+                    break;
+                default:
+                    results.push_back(CpuArch::unknown);
+                    break;
+                }
+            } else if (!bundle) {
+                throw Error(Error::ModuleError, "not a shared object");
+            }
+        #endif
+        } else {
+            if (!bundle){
+                throw Error(Error::ModuleError, "couldn't open file");
+            } else {
+                LOG_ERROR("couldn't open " << path);
+            }
+        }
+    }
+    return results;
+}
+} // detail
+
+std::vector<CpuArch> getCpuArchitectures(const std::string& path){
+    auto results = detail::getCpuArchitectures(path, false);
+    if (results.empty()) {
+        // this code path is only reached by bundles
+        throw Error(Error::ModuleError, "bundle doesn't contain any plugins");
+    }
+    return results;
+}
+
+void printCpuArchitectures(const std::string& path){
+    auto archs = getCpuArchitectures(path);
+    if (!archs.empty()){
+        std::stringstream ss;
+        for (auto& arch : archs){
+            ss << getCpuArchString(arch) << " ";
+        }
+        LOG_VERBOSE("CPU architectures: " << ss.str());
+    } else {
+        LOG_VERBOSE("CPU architectures: none");
+    }
+}
+
+// specialized exception for CPU architecture mismatch.
+// will be used for bit bridging.
+class CpuArchError : public Error {
+ public:
+    CpuArchError(const std::vector<CpuArch>& archs)
+        : Error(Error::ModuleError, "Wrong CPU architecture"),
+          architectures_(archs){}
+
+    const std::vector<CpuArch>& architectures() const {
+        return architectures_;
+    }
+ private:
+    std::vector<CpuArch> architectures_;
+};
+
 /*////////////////////// search ///////////////////////*/
 
 static std::vector<const char *> platformExtensions = {
@@ -314,7 +670,7 @@ static std::vector<const char *> defaultSearchPaths = {
 #if USE_VST2
     // macOS
 #ifdef __APPLE__
-	"~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
+    "~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
 #endif
     // Windows
 #ifdef _WIN32
@@ -456,8 +812,8 @@ std::string find(const std::string &dir, const std::string &path){
 #endif
 }
 
-// recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full path and base name.
-void search(const std::string &dir, std::function<void(const std::string&, const std::string&)> fn) {
+// recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full absolute path.
+void search(const std::string &dir, std::function<void(const std::string&)> fn, bool filter) {
     // extensions
     std::unordered_set<std::string> extensions;
     for (auto& ext : platformExtensions) {
@@ -470,15 +826,16 @@ void search(const std::string &dir, std::function<void(const std::string&, const
             // LOG_DEBUG("searching in " << shorten(dirname));
             for (auto& entry : fs::directory_iterator(dirname)) {
                 // check the extension
-                auto ext = entry.path().extension().u8string();
+                auto path = entry.path();
+                auto ext = path.extension().u8string();
                 if (extensions.count(ext)) {
                     // found a VST2 plugin (file or bundle)
-                    auto abspath = entry.path().u8string();
-                    auto basename = entry.path().filename().u8string();
-                    fn(abspath, basename);
-                } else if (fs::is_directory(entry.path())){
+                    fn(path.u8string());
+                } else if (fs::is_directory(path)){
                     // otherwise search it if it's a directory
-                    searchDir(entry.path());
+                    searchDir(path);
+                } else if (!filter && fs::is_regular_file(path)){
+                    fn(path.u8string());
                 }
             }
         } catch (const fs::filesystem_error& e) {
@@ -504,16 +861,17 @@ void search(const std::string &dir, std::function<void(const std::string&, const
                 // check the extension
                 std::string ext;
                 auto extPos = name.find_last_of('.');
-                if (extPos != std::string::npos) {
+                if (extPos != std::string::npos){
                     ext = name.substr(extPos);
                 }
-                if (extensions.count(ext)) {
+                if (extensions.count(ext)){
                     // found a VST2 plugin (file or bundle)
-                    fn(absPath, name);
-                }
-                // otherwise search it if it's a directory
-                else if (isDirectory(dirname, entry)) {
+                    fn(absPath);
+                } else if (isDirectory(dirname, entry)){
+                    // otherwise search it if it's a directory
                     searchDir(absPath);
+                } else if (!filter && isFile(absPath)){
+                    fn(absPath);
                 }
                 free(entry);
             }
@@ -566,7 +924,7 @@ namespace UIThread {
     #elif defined(__APPLE__)
         Cocoa::UIThread::poll();
     #elif defined(USE_X11)
-        X11::UIThread::poll();   
+        X11::UIThread::poll();
     #endif
     }
 #endif
@@ -594,6 +952,10 @@ class ModuleWin32 : public IModule {
         handle_ = LoadLibraryW(widen(path).c_str());
         if (!handle_){
             auto error = GetLastError();
+            auto arch = getCpuArchitectures(path);
+            if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
+                throw CpuArchError(arch);
+            }
             std::stringstream ss;
             char buf[1000];
             buf[0] = 0;
@@ -603,7 +965,7 @@ class ModuleWin32 : public IModule {
                 buf[size-2] = 0; // omit newline
             }
             ss << buf << " (" << error << ")";
-            throw Error(ss.str());
+            throw Error(Error::ModuleError, ss.str());
         }
         // LOG_DEBUG("loaded Win32 library " << path);
     }
@@ -636,16 +998,36 @@ class ModuleApple : public IModule {
     ModuleApple(const std::string& path){
         // Create a fullPath to the bundle
         // kudos to http://teragonaudio.com/article/How-to-make-your-own-VST-host.html
+        int err = 0;
         auto pluginPath = CFStringCreateWithCString(NULL, path.c_str(), kCFStringEncodingUTF8);
         auto bundleUrl = CFURLCreateWithFileSystemPath(NULL, pluginPath, kCFURLPOSIXPathStyle, true);
-        if (bundleUrl) {
-                // Open the bundle
-            bundle_ = CFBundleCreate(NULL, bundleUrl);
+        if (pluginPath) { 
+            CFRelease(pluginPath);
         }
-        if (pluginPath) CFRelease(pluginPath);
-        if (bundleUrl) CFRelease(bundleUrl);
-        if (!bundle_){
-            throw Error("CFBundleCreate failed"); // LATER replace with better more detailed error message
+        if (bundleUrl){
+            bundle_ = CFBundleCreate(NULL, bundleUrl); // Open the bundle
+            err = errno; // immediately catch possible error
+            CFRelease(bundleUrl);
+        } else {
+            throw Error(Error::ModuleError, "couldn't create bundle URL");
+        }
+
+        if (bundle_){
+            // force loading!
+            if (!CFBundleLoadExecutable(bundle_)){
+                err = errno; // immediately catch possible error
+                // check for CPU architecture mismatch
+                auto arch = getCpuArchitectures(path);
+                if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
+                    throw CpuArchError(arch);
+                }
+                // other errors
+                throw Error(Error::ModuleError, strerror(err));
+            }
+        } else {
+            std::stringstream ss;
+            ss << "couldn't open bundle (" << strerror(err) << ")";
+            throw Error(Error::ModuleError, ss.str());
         }
         // LOG_DEBUG("loaded macOS bundle " << path);
     }
@@ -680,11 +1062,15 @@ class ModuleSO : public IModule {
     typedef bool (PLUGIN_API* ExitFunc) ();
     ModuleSO(const std::string& path){
         handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
-        auto error = dlerror();
         if (!handle_) {
+            auto error = dlerror();
+            auto arch = getCpuArchitectures(path);
+            if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
+                throw CpuArchError(arch);
+            }
             std::stringstream ss;
             ss << (error ? error : "dlopen failed");
-            throw Error(ss.str());
+            throw Error(Error::ModuleError, ss.str());
         }
         // LOG_DEBUG("loaded dynamic library " << path);
     }
@@ -720,7 +1106,7 @@ std::unique_ptr<IModule> IModule::load(const std::string& path){
 #if DL_OPEN
     return std::make_unique<ModuleSO>(path);
 #endif
-    return std::unique_ptr<IModule>{};
+    return nullptr;
 }
 
 /*///////////////////// IFactory ////////////////////////*/
@@ -729,26 +1115,36 @@ IFactory::ptr IFactory::load(const std::string& path){
 #ifdef _WIN32
     const char *ext = ".dll";
 #elif defined(__APPLE__)
-	const char *ext = ".vst";
+    const char *ext = ".vst";
 #else // Linux/BSD/etc.
     const char *ext = ".so";
 #endif
     // LOG_DEBUG("IFactory: loading " << path);
     if (path.find(".vst3") != std::string::npos){
     #if USE_VST3
-        return std::make_shared<VST3Factory>(path);
+        try {
+            return std::make_shared<VST3Factory>(path);
+        } catch (const CpuArchError& e){
+            // TODO try bridging
+            throw;
+        }
     #else
-        throw Error("VST3 plug-ins not supported");
+        throw Error(Error::ModuleError, "VST3 plug-ins not supported");
     #endif
     } else {
     #if USE_VST2
-        if (path.find(ext) != std::string::npos){
-            return std::make_shared<VST2Factory>(path);
-        } else {
-            return std::make_shared<VST2Factory>(path + ext);
+        std::string realPath = path;
+        if (path.find(ext) == std::string::npos){
+            realPath += ext;
+        }
+        try {
+            return std::make_shared<VST2Factory>(realPath);
+        } catch (const CpuArchError& e){
+            // TODO try bridging
+            throw;
         }
     #else
-        throw Error("VST2 plug-ins not supported");
+        throw Error(Error::ModuleError, "VST2 plug-ins not supported");
     #endif
     }
 }
@@ -772,7 +1168,7 @@ public:
 #define PROBE_LOG 0
 
 // probe a plugin in a seperate process and return the info in a file
-PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPluginID) {
+IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int shellPluginID) {
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     // put the information we already have (might be overriden)
     desc->name = name;
@@ -786,7 +1182,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     // LOG_DEBUG("temp path: " << tmpPath);
 #ifdef _WIN32
     // get full path to probe exe
-    std::wstring probePath = getDirectory() + L"\\probe.exe";
+    std::wstring probePath = getModuleDirectory() + L"\\probe.exe";
     /// LOG_DEBUG("probe path: " << shorten(probePath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::stringstream cmdLineStream;
@@ -803,15 +1199,15 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
 
     if (!CreateProcessW(probePath.c_str(), &cmdLine[0], NULL, NULL,
                         PROBE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi)){
-        throw Error("probe: couldn't spawn process!");
+        throw Error(Error::SystemError, "Couldn't spawn probe process!");
     }
     auto wait = [pi](){
         if (WaitForSingleObject(pi.hProcess, INFINITE) != 0){
-            throw Error("probe: couldn't wait for process!");
+            throw Error(Error::SystemError, "Couldn't wait for probe process!");
         }
         DWORD code = -1;
         if (!GetExitCodeProcess(pi.hProcess, &code)){
-            throw Error("probe: couldn't retrieve exit code!");
+            throw Error(Error::SystemError, "Couldn't retrieve exit code for probe process!");
         }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -822,7 +1218,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     // get full path to probe exe
     // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
-        throw Error("probe: couldn't get module path!");
+        throw Error(Error::SystemError, "Couldn't get module path!");
     }
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');
@@ -830,7 +1226,7 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     // fork
     pid_t pid = fork();
     if (pid == -1) {
-        throw Error("probe: fork failed!");
+        throw Error(Error::SystemError, "fork() failed!");
     }
     else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
@@ -860,26 +1256,45 @@ PluginInfo::Future IFactory::probePlugin(const std::string& name, int shellPlugi
     };
 #endif
     return [desc=std::move(desc), tmpPath=std::move(tmpPath), wait=std::move(wait)](){
-        /// LOG_DEBUG("result: " << result);
-        auto result = wait();
-        if (result == EXIT_SUCCESS) {
+        ProbeResult result;
+        result.plugin = std::move(desc);
+        result.total = 1;
+        auto ret = wait(); // wait for process to finish
+        /// LOG_DEBUG("return code: " << ret);
+        if (ret == EXIT_SUCCESS) {
             // get info from temp file
             TmpFile file(tmpPath);
             if (file.is_open()) {
                 desc->deserialize(file);
-                desc->probeResult = ProbeResult::success;
             }
             else {
-                throw Error("probe: couldn't read temp file!");
+                result.error = Error(Error::SystemError, "couldn't read temp file!");
             }
         }
-        else if (result == EXIT_FAILURE) {
-            desc->probeResult = ProbeResult::fail;
+        else if (ret == EXIT_FAILURE) {
+            vst::File file(tmpPath, File::READ);
+            if (file.is_open()) {
+                int code;
+                std::string msg;
+                file >> code;
+                if (!file){
+                    // happens in certain cases, e.g. the plugin destructor
+                    // terminates the probe process with exit code 1.
+                    code = (int)Error::UnknownError;
+                }
+                std::getline(file, msg); // skip newline
+                std::getline(file, msg); // read message
+                LOG_DEBUG("code: " << code << ", msg: " << msg);
+                result.error = Error((Error::ErrorCode)code, msg);
+            }
+            else {
+                result.error = Error(Error::SystemError, "couldn't read temp file!");
+            }
         }
         else {
-            desc->probeResult = ProbeResult::crash;
+            result.error = Error(Error::Crash);
         }
-        return desc;
+        return result;
     };
 }
 
@@ -900,7 +1315,7 @@ static std::mutex gLogMutex;
 #endif
 
 std::vector<PluginInfo::ptr> IFactory::probePlugins(
-        const ProbeList& pluginList, ProbeCallback callback, bool& valid){
+        const ProbeList& pluginList, ProbeCallback callback){
     // shell plugin!
     int numPlugins = pluginList.size();
     std::vector<PluginInfo::ptr> results;
@@ -909,75 +1324,57 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
 #endif
 #if !PROBE_THREADS
     /// LOG_DEBUG("numPlugins: " << numPlugins);
-    std::vector<std::tuple<int, std::string, PluginInfo::Future>> futures;
+    std::vector<std::pair<int, ProbeResultFuture>> futures;
     int i = 0;
     while (i < numPlugins){
         futures.clear();
         // probe the next n plugins
         int n = std::min<int>(numPlugins - i, PROBE_FUTURES);
         for (int j = 0; j < n; ++j, ++i){
-            auto& pair = pluginList[i];
-            auto& name = pair.first;
-            auto& id = pair.second;
-            try {
-                /// LOG_DEBUG("probing '" << pair.first << "'");
-                futures.emplace_back(i, name, probePlugin(name, id));
-            } catch (const Error& e){
-                // should we rather propagate the error and break from the loop?
-                LOG_ERROR("couldn't probe '" << name << "': " << e.what());
-            }
+            auto& name = pluginList[i].first;
+            auto& id = pluginList[i].second;
+            /// LOG_DEBUG("probing '" << name << "'");
+            futures.emplace_back(i, probePlugin(name, id));
         }
         // collect results
-        for (auto& tup : futures){
-            int index;
-            std::string name;
-            PluginInfo::Future future;
-            std::tie(index, name, future) = tup;
-            try {
-                auto plugin = future(); // wait for process
-                results.push_back(plugin);
-                // factory is valid if contains at least 1 valid plugin
-                if (plugin->valid()){
-                    valid = true;
-                }
-                if (callback){
-                    callback(*plugin, index, numPlugins);
-                }
-            } catch (const Error& e){
-                // should we rather propagate the error and break from the loop?
-                LOG_ERROR("couldn't probe '" << name << "': " << e.what());
+        for (auto& it : futures) {
+            auto result = it.second(); // wait on future
+            result.index = it.first;
+            result.total = numPlugins;
+            if (result.valid()) {
+                results.push_back(result.plugin);
+            }
+            if (callback){
+                callback(result);
             }
         }
     }
 #else
     DEBUG_THREAD("numPlugins: " << numPlugins);
-    auto next = pluginList.begin();
-    auto end = next + numPlugins;
-    int count = 0;
-    std::deque<std::tuple<int, std::string, PluginInfo::ptr, Error>> resultQueue;
+    std::vector<ProbeResult> probeResults;
+    int head = 0;
+    int tail = 0;
 
     std::mutex mutex;
     std::condition_variable cond;
     int numThreads = std::min<int>(numPlugins, PROBE_THREADS);
     std::vector<std::thread> threads;
+
     // thread function
     auto threadFun = [&](int i){
         std::unique_lock<std::mutex> lock(mutex);
-        while (next != end){
-            auto it = next++;
-            auto& name = it->first;
-            auto& id = it->second;
+        while (head < numPlugins){
+            auto& name = pluginList[head].first;
+            auto& id = pluginList[head].second;
+            head++;
             lock.unlock();
-            try {
-                DEBUG_THREAD("probing '" << name << "'");
-                auto plugin = probePlugin(name, id)();
-                lock.lock();
-                resultQueue.emplace_back(count++, name, plugin, Error{});
-                DEBUG_THREAD("thread " << i << ": probed " << name);
-            } catch (const Error& e){
-                lock.lock();
-                resultQueue.emplace_back(count++, name, nullptr, e);
-            }
+
+            DEBUG_THREAD("thread " << i << ": probing '" << name << "'");
+            auto result = probePlugin(name, id)(); // call future
+
+            lock.lock();
+            probeResults.push_back(result);
+            DEBUG_THREAD("thread " << i << ": probed " << name);
             cond.notify_one();
         }
         DEBUG_THREAD("worker thread " << i << " finished");
@@ -988,43 +1385,30 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
     }
     // collect results
     std::unique_lock<std::mutex> lock(mutex);
-    while (true) {
+    while (tail < numPlugins) {
+        DEBUG_THREAD("wait...");
+        cond.wait(lock); // wait for new data
         // process available data
-        while (resultQueue.size() > 0){
-            int index;
-            std::string name;
-            PluginInfo::ptr plugin;
-            Error e;
-            std::tie(index, name, plugin, e) = resultQueue.front();
-            resultQueue.pop_front();
+        while (tail < (int)probeResults.size()){
+            auto result = probeResults[tail]; // copy!
             lock.unlock();
 
-            if (plugin){
-                results.push_back(plugin);
-                DEBUG_THREAD("got plugin " << plugin->name << " (" << (index + 1) << " of " << numPlugins << ")");
-                // factory is valid if contains at least 1 valid plugin
-                if (plugin->valid()){
-                    valid = true;
-                }
-                if (callback){
-                    callback(*plugin, index, numPlugins);
-                }
-            } else {
-                // should we rather propagate the error and break from the loop?
-                DEBUG_THREAD("couldn't probe '" << name << "': " << e.what());
+            result.index = tail++;
+            result.total = numPlugins;
+            if (result.valid()) {
+                results.push_back(result.plugin);
             }
+            DEBUG_THREAD("got plugin " << result.plugin->name
+                << " (" << (result.index + 1) << " of " << numPlugins << ")");
+            if (callback){
+                callback(result);
+            }
+
             lock.lock();
         }
-        if (count < numPlugins) {
-            DEBUG_THREAD("wait...");
-            cond.wait(lock); // wait for more
-        }
-        else {
-            break; // done
-        }
     }
+    lock.unlock(); // !!!
 
-    lock.unlock(); // !
     DEBUG_THREAD("exit loop");
     // join worker threads
     for (auto& thread : threads){
@@ -1144,13 +1528,13 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
         file << bashString(param.name) << "," << param.label << "," << toHex(param.id) << "\n";
-	}
+    }
     // programs
     file << "[programs]\n";
     file << "n=" << programs.size() << "\n";
-	for (auto& pgm : programs) {
+    for (auto& pgm : programs) {
         file << pgm << "\n";
-	}
+    }
 #if USE_VST2
     // shell plugins (only used for probe.exe)
     if (!shellPlugins.empty()){

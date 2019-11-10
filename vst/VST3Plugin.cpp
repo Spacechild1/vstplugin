@@ -105,7 +105,7 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 VST3Factory::VST3Factory(const std::string& path)
     : path_(path) {
     if (!pathExists(path)){
-        throw Error(path + " doesn't exist");
+        throw Error(Error::ModuleError, "No such file");
     }
 }
 
@@ -140,7 +140,7 @@ IFactory::ProbeFuture VST3Factory::probeAsync() {
     doLoad(); // lazy loading
 
     if (pluginList_.empty()){
-        throw Error("factory doesn't have any plugin(s)");
+        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
     }
     plugins_.clear();
     pluginMap_.clear();
@@ -151,8 +151,8 @@ IFactory::ProbeFuture VST3Factory::probeAsync() {
             for (auto& name : pluginList_){
                 pluginList.emplace_back(name, 0);
             }
-            plugins_ = probePlugins(pluginList, callback, valid_);
-            for (auto& desc : plugins_){
+            plugins_ = probePlugins(pluginList, callback);
+            for (auto& desc : plugins_) {
                 pluginMap_[desc->name] = desc;
             }
         };
@@ -160,13 +160,14 @@ IFactory::ProbeFuture VST3Factory::probeAsync() {
         auto f = probePlugin(pluginList_[0]);
         return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
             auto result = f();
-            plugins_ = { result };
-            valid_ = result->valid();
-            /// LOG_DEBUG("probed plugin " << result->name);
-            if (callback){
-                callback(*result, 0, 1);
+            if (result.valid()) {
+                plugins_ = { result.plugin };
+                pluginMap_[result.plugin->name] = result.plugin;
             }
-            pluginMap_[result->name] = result;
+            /// LOG_DEBUG("probed plugin " << result.plugin->name);
+            if (callback){
+                callback(result);
+            }
         };
     }
 }
@@ -186,14 +187,14 @@ void VST3Factory::doLoad(){
         auto module = IModule::load(modulePath); // throws on failure
         auto factoryProc = module->getFnPtr<GetFactoryProc>("GetPluginFactory");
         if (!factoryProc){
-            throw Error("couldn't find 'GetPluginFactory' function");
+            throw Error(Error::ModuleError, "Couldn't find entry point (not a VST3 plugin?)");
         }
         if (!module->init()){
-            throw Error("couldn't init module");
+            throw Error(Error::ModuleError, "Couldn't init module");
         }
         factory_ = IPtr<IPluginFactory>(factoryProc());
         if (!factory_){
-            throw Error("couldn't get VST3 plug-in factory");
+            throw Error(Error::ModuleError, "Couldn't get plugin factory");
         }
         /// LOG_DEBUG("VST3Factory: loaded " << path_);
         // map plugin names to indices
@@ -210,7 +211,7 @@ void VST3Factory::doLoad(){
                     pluginIndexMap_[ci.name] = i;
                 }
             } else {
-                throw Error("couldn't get class info!");
+                throw Error(Error::ModuleError, "Couldn't get class info!");
             }
         }
         // done
@@ -224,16 +225,13 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe
     PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
     if (!probe){
         if (plugins_.empty()){
-            throw Error("factory doesn't have any plugin(s)");
+            throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
         }
         auto it = pluginMap_.find(name);
         if (it == pluginMap_.end()){
-            throw Error("can't find (sub)plugin '" + name + "'");
+            throw Error(Error::ModuleError, "Can't find (sub)plugin '" + name + "'");
         }
         desc = it->second;
-        if (!desc->valid()){
-            throw Error("plugin not probed successfully");
-        }
     }
     return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], shared_from_this(), desc);
 }
@@ -416,7 +414,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 info->sdkVersion = "VST 3";
             }
         } else {
-            throw Error("couldn't get class info!");
+            throw Error(Error::PluginError, "Couldn't get class info!");
         }
     }
     if (info){
@@ -424,12 +422,12 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
     // create component
     if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){
-        throw Error("couldn't create VST3 component");
+        throw Error(Error::PluginError, "Couldn't create VST3 component");
     }
     LOG_DEBUG("created VST3 component");
     // initialize component
     if (component_->initialize(getHostContext()) != kResultOk){
-        throw Error("couldn't initialize VST3 component");
+        throw Error(Error::PluginError, "Couldn't initialize VST3 component");
     }
     // first try to get controller from the component part (simple plugins)
     auto controller = FUnknownPtr<Vst::IEditController>(component_);
@@ -441,17 +439,17 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         if (component_->getControllerClassId(controllerCID) == kResultTrue){
             controller_ = createInstance<Vst::IEditController>(factory, controllerCID);
             if (controller_ && (controller_->initialize(getHostContext()) != kResultOk)){
-                throw Error("couldn't initialize VST3 controller");
+                throw Error(Error::PluginError, "Couldn't initialize VST3 controller");
             }
         }
     }
     if (controller_){
         LOG_DEBUG("created VST3 controller");
     } else {
-        throw Error("couldn't get VST3 controller!");
+        throw Error(Error::PluginError, "Couldn't get VST3 controller!");
     }
     if (controller_->setComponentHandler(this) != kResultOk){
-        throw Error("couldn't set component handler");
+        throw Error(Error::PluginError, "Couldn't set component handler");
     }
     FUnknownPtr<Vst::IConnectionPoint> componentCP(component_);
     FUnknownPtr<Vst::IConnectionPoint> controllerCP(controller_);
@@ -482,7 +480,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
     // check processor
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
-        throw Error("couldn't get VST3 processor");
+        throw Error(Error::PluginError, "Couldn't get VST3 processor");
     }
     // check
     // get IO channel count

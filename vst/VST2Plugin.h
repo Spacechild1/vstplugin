@@ -28,7 +28,7 @@ class VST2Factory : public IFactory {
         return !plugins_.empty();
     }
     bool valid() const override {
-        return valid_;
+        return numPlugins() > 0;
     }
     std::string path() const override {
         return path_;
@@ -43,7 +43,6 @@ class VST2Factory : public IFactory {
     EntryPoint entry_;
     std::vector<PluginInfo::ptr> plugins_;
     std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
-    bool valid_ = false;
 };
 
 //-----------------------------------------------------------------------------

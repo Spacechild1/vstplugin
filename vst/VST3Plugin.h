@@ -80,7 +80,7 @@ class VST3Factory : public IFactory {
         return !plugins_.empty();
     }
     bool valid() const override {
-        return valid_;
+        return plugins_.size() > 0;
     }
     std::string path() const override {
         return path_;
@@ -99,7 +99,6 @@ class VST3Factory : public IFactory {
     // factory plugins:
     std::vector<std::string> pluginList_;
     mutable std::unordered_map<std::string, int> pluginIndexMap_;
-    bool valid_ = false;
 };
 
 //----------------------------------------------------------------------

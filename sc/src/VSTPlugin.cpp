@@ -244,10 +244,7 @@ static bool addFactory(const std::string& path, IFactory::ptr factory){
         gPluginManager.addFactory(path, factory);
         for (int i = 0; i < factory->numPlugins(); ++i) {
             auto plugin = factory->getPlugin(i);
-            if (plugin->valid()) {
-                gPluginManager.addPlugin(makeKey(*plugin), plugin);
-                // LOG_DEBUG("added plugin " << plugin->name);
-            }
+            gPluginManager.addPlugin(makeKey(*plugin), plugin);
         }
         return true;
     }
@@ -257,19 +254,25 @@ static bool addFactory(const std::string& path, IFactory::ptr factory){
     }
 }
 
-static void postResult(ProbeResult pr){
-    switch (pr) {
-    case ProbeResult::success:
+static void postResult(const Error& e){
+    switch (e.code()) {
+    case Error::NoError:
         Print("ok!\n");
         break;
-    case ProbeResult::fail:
-        Print("failed!\n");
-        break;
-    case ProbeResult::crash:
+    case Error::Crash:
         Print("crashed!\n");
         break;
+    case Error::SystemError:
+        Print("error! %s\n", e.what());
+        break;
+    case Error::ModuleError:
+        Print("couldn't load! %s\n", e.what());
+        break;
+    case Error::PluginError:
+        Print("failed! %s\n", e.what());
+        break;
     default:
-        Print("bug: probePlugin\n");
+        Print("unexpected error! %s\n", e.what());
         break;
     }
 }
@@ -283,88 +286,78 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
     if (verbose) Print("probing %s... ", path.c_str());
 
     try {
-        factory->probe([&](const PluginInfo & desc, int which, int numPlugins) {
+        factory->probe([&](const ProbeResult& result) {
             if (verbose) {
-                if (numPlugins > 1) {
-                    if (which == 0) {
+                if (result.total > 1) {
+                    if (result.index == 0) {
                         Print("\n");
                     }
-                    Print("\t[%d/%d] ", which + 1, numPlugins);
-                    if (!desc.name.empty()) {
-                        Print("'%s' ... ", desc.name.c_str());
-                    }
-                    else {
-                        Print("plugin "); // e.g. "plugin crashed!"
+                    Print("\t[%d/%d] ", result.index + 1, result.total);
+                    auto& name = result.plugin->name;
+                    if (!name.empty()) {
+                        Print("'%s' ... ", name.c_str());
                     }
                 }
-                postResult(desc.probeResult);
+                postResult(result.error);
             }
         });
         if (addFactory(path, factory)){
             return factory; // success
         }
-    }
-    catch (const Error& e) {
-        if (verbose) {
-            Print("error!\n%s\n", e.what());
-        }
+    } catch (const Error& e){
+        if (verbose) postResult(e);
     }
     return nullptr;
 }
 
 using FactoryFuture = std::function<IFactory::ptr()>;
 
-static FactoryFuture nullFactoryFuture([](){ return nullptr; });
-
 static FactoryFuture probePluginParallel(const std::string& path, bool verbose) {
     auto factory = loadFactory(path, verbose);
     if (!factory){
-        return nullFactoryFuture;
+        return []() { return nullptr; };
     }
+    // start probing process
     try {
-        // start probing process
         auto future = factory->probeAsync();
         // return future
         return [=]() -> IFactory::ptr {
             if (verbose) Print("probing %s... ", path.c_str());
-            try {
-                // wait for results
-                future([&](const PluginInfo & desc, int which, int numPlugins) {
-                    if (verbose) {
-                        if (numPlugins > 1) {
-                            if (which == 0) {
-                                Print("\n");
-                            }
-                            Print("\t[%d/%d] ", which + 1, numPlugins);
-                            if (!desc.name.empty()) {
-                                Print("'%s' ... ", desc.name.c_str());
-                            }
-                            else {
-                                Print("plugin "); // e.g. "plugin crashed!"
-                            }
-                        }
-                        postResult(desc.probeResult);
-                    }
-                });
-                // collect results
-                if (addFactory(path, factory)){
-                    return factory; // success
-                }
-            }
-            catch (const Error& e) {
+
+            // wait for results
+            future([&](const ProbeResult& result) {
                 if (verbose) {
-                    Print("error!\n%s\n", e.what());
+                    if (result.total > 1) {
+                        if (result.index == 0) {
+                            Print("\n");
+                        }
+                        Print("\t[%d/%d] ", result.index + 1, result.total);
+                        auto& name = result.plugin->name;
+                        if (!name.empty()) {
+                            Print("'%s' ... ", name.c_str());
+                        }
+                    }
+                    postResult(result.error);
                 }
+            });
+            // collect results
+            if (addFactory(path, factory)){
+                return factory; // success
+            } else {
+                return nullptr;
+            }
+        };
+    }
+    catch (const Error& e) {
+        // return future which prints the error message
+        return [=]() -> IFactory::ptr {
+            if (verbose) {
+                Print("probing %s... ", path.c_str());
+                postResult(e);
             }
             return nullptr;
         };
     }
-    catch (const Error& e) {
-        if (verbose) {
-            Print("error!\n%s\n", e.what());
-        }
-    }
-    return nullFactoryFuture;
 }
 
 
@@ -443,12 +436,10 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
     std::vector<PluginInfo::const_ptr> results;
 
     auto addPlugin = [&](const PluginInfo::const_ptr& plugin, int which = 0, int n = 0){
-        if (plugin->valid()) {
-            if (verbose && n > 0) {
-                Print("\t[%d/%d] %s\n", which + 1, n, plugin->name.c_str());
-            }
-            results.push_back(plugin);
+        if (verbose && n > 0) {
+            Print("\t[%d/%d] %s\n", which + 1, n, plugin->name.c_str());
         }
+        results.push_back(plugin);
     };
 
     std::vector<FactoryFuture> futures;
@@ -466,7 +457,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
         futures.clear();
     };
 
-    vst::search(path, [&](const std::string & absPath, const std::string &) {
+    vst::search(path, [&](const std::string & absPath) {
         std::string pluginPath = absPath;
 #ifdef _WIN32
         for (auto& c : pluginPath) {
@@ -947,8 +938,7 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
     // RT thread
     if (std::this_thread::get_id() == rtThreadID_) {
-        // LOG_DEBUG("parameterAutomated (RT): " << index << ", " << value);
-        // might have been caused by "/set"
+        // only if caused by /set! ignore UGen input automation and parameter mappings.
         if (paramSet_) {
             sendParameterAutomated(index, value);
         }
@@ -956,7 +946,6 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 #if HAVE_UI_THREAD
     // from GUI thread [or NRT thread] - push to queue
     else {
-        // LOG_DEBUG("parameterAutomated (GUI): " << index << ", " << value);
         std::unique_lock<std::mutex> writerLock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
@@ -1071,7 +1060,7 @@ bool cmdOpen(World *world, void* cmdData) {
     data->threadID = std::this_thread::get_id();
     // create plugin in main thread
     auto info = queryPlugin(data->buf);
-    if (info && info->valid()) {
+    if (info) {
         try {
             IPlugin::ptr plugin;
             bool editor = data->value;
@@ -2425,6 +2414,8 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
 
+    Print("VSTPlugin v%d.%d.%d%s\n",
+          VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX, VERSION_BETA ? " (beta)" : "");
     // read cached plugin info
     readIniFile();
 }

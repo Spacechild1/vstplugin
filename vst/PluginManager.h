@@ -136,7 +136,6 @@ void PluginManager::read(const std::string& path, bool update){
                 }
                 factory->addPlugin(desc);
                 desc->setFactory(factory);
-                desc->probeResult = ProbeResult::success;
                 for (auto& key : keys){
                     plugins_[key] = desc;
                 }
@@ -178,9 +177,7 @@ void PluginManager::doWrite(const std::string& path){
     // inverse mapping (plugin -> keys)
     std::unordered_map<PluginInfo::const_ptr, std::vector<std::string>> pluginMap;
     for (auto& it : plugins_){
-        if (it.second->valid()){
-            pluginMap[it.second].push_back(it.first);
-        }
+        pluginMap[it.second].push_back(it.first);
     }
 #if 0
     // actually, I'd like to sort alphabetically.

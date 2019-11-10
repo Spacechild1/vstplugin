@@ -161,19 +161,25 @@ public:
         }
         return *this;
     }
-    PdLog& operator <<(ProbeResult result){
-        switch (result){
-        case ProbeResult::success:
+    PdLog& operator <<(const ProbeResult& result){
+        switch (result.error.code()){
+        case Error::NoError:
             *this << "ok!";
             break;
-        case ProbeResult::fail:
-            *this << "failed!";
-            break;
-        case ProbeResult::crash:
+        case Error::Crash:
             *this << "crashed!";
             break;
+        case Error::SystemError:
+            *this << "error! " << result.error.what();
+            break;
+        case Error::ModuleError:
+            *this << "couldn't load! " << result.error.what();
+            break;
+        case Error::PluginError:
+            *this << "failed! " << result.error.what();
+            break;
         default:
-            bug("probePlugin");
+            *this << "unexpected error! " << result.error.what();
             break;
         }
         return *this;
@@ -246,31 +252,27 @@ static std::string makeKey(const PluginInfo& desc){
 static bool addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
-        if (plugin->valid()){
-            // factories with a single plugin can also be aliased by their file path(s)
-            gPluginManager.addPlugin(plugin->path, plugin);
-            gPluginManager.addPlugin(path, plugin);
-        }
+        // factories with a single plugin can also be aliased by their file path(s)
+        gPluginManager.addPlugin(plugin->path, plugin);
+        gPluginManager.addPlugin(path, plugin);
     }
 
     if (factory->valid()){
         gPluginManager.addFactory(path, factory);
         for (int i = 0; i < factory->numPlugins(); ++i){
             auto plugin = factory->getPlugin(i);
-            if (plugin->valid()){
-                // also map bashed parameter names
-                int num = plugin->parameters.size();
-                for (int j = 0; j < num; ++j){
-                    auto key = plugin->parameters[j].name;
-                    bash_name(key);
-                    const_cast<PluginInfo&>(*plugin).addParamAlias(j, key);
-                }
-                // add plugin info
-                auto key = makeKey(*plugin);
-                gPluginManager.addPlugin(key, plugin);
-                bash_name(key); // also add bashed version!
-                gPluginManager.addPlugin(key, plugin);
+            // also map bashed parameter names
+            int num = plugin->parameters.size();
+            for (int j = 0; j < num; ++j){
+                auto key = plugin->parameters[j].name;
+                bash_name(key);
+                const_cast<PluginInfo&>(*plugin).addParamAlias(j, key);
             }
+            // add plugin info
+            auto key = makeKey(*plugin);
+            gPluginManager.addPlugin(key, plugin);
+            bash_name(key); // also add bashed version!
+            gPluginManager.addPlugin(key, plugin);
         }
         return true;
     } else {
@@ -289,21 +291,20 @@ static IFactory::ptr probePlugin(const std::string& path){
     PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
 
     try {
-        factory->probe([&](const PluginInfo& desc, int which, int numPlugins){
-            if (numPlugins > 1){
-                if (which == 0){
+        factory->probe([&](const ProbeResult& result){
+            if (result.total > 1){
+                if (result.index == 0){
                     consume(std::move(log)); // force
                 }
                 // Pd's posting methods have a size limit, so we log each plugin seperately!
-                PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", which + 1, numPlugins);
-                if (!desc.name.empty()){
-                    log1 << desc.name << "' ... ";
-                } else {
-                    log1 << "plugin "; // e.g. "plugin crashed!"
+                PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", result.index + 1, result.total);
+                auto& name = result.plugin->name;
+                if (!name.empty()){
+                    log1 << name << "' ... ";
                 }
-                log1 << desc.probeResult;
+                log1 << result;
             } else {
-                log << desc.probeResult;
+                log << result;
                 consume(std::move(log));
             }
         });
@@ -311,7 +312,8 @@ static IFactory::ptr probePlugin(const std::string& path){
             return factory; // success
         }
     } catch (const Error& e){
-        log << "error";
+        ProbeResult result;
+        result.error = e;
         log << e;
     }
     return nullptr;
@@ -319,13 +321,11 @@ static IFactory::ptr probePlugin(const std::string& path){
 
 using FactoryFuture = std::function<IFactory::ptr()>;
 
-static FactoryFuture nullFactoryFuture([](){ return nullptr; });
-
 template<bool async>
 static FactoryFuture probePluginParallel(const std::string& path){
     auto factory = loadFactory<async>(path);
     if (!factory){
-        return nullFactoryFuture;
+        return []() { return nullptr;  };
     }
     try {
         // start probing process
@@ -333,41 +333,40 @@ static FactoryFuture probePluginParallel(const std::string& path){
         // return future
         return [=]() -> IFactory::ptr {
             PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
-            try {
-                // wait for results
-                future([&](const PluginInfo& desc, int which, int numPlugins){
-                    if (numPlugins > 1){
-                        if (which == 0){
-                            consume(std::move(log)); // force
-                        }
-                        // Pd's posting methods have a size limit, so we log each plugin seperately!
-                        PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", which + 1, numPlugins);
-                        if (!desc.name.empty()){
-                            log1 << desc.name << "' ... ";
-                        } else {
-                            log1 << "plugin "; // e.g. "plugin crashed!"
-                        }
-                        log1 << desc.probeResult;
-                    } else {
-                        log << desc.probeResult;
-                        consume(std::move(log));
+            // wait for results
+            future([&](const ProbeResult& result){
+                if (result.total > 1){
+                    if (result.index == 0){
+                        consume(std::move(log)); // force
                     }
-                }); // collect result(s)
-                if (addFactory(path, factory)){
-                    return factory;
+                    // Pd's posting methods have a size limit, so we log each plugin seperately!
+                    PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", result.index + 1, result.total);
+                    auto& name = result.plugin->name;
+                    if (!name.empty()){
+                        log1 << name << "' ... ";
+                    }
+                    log1 << result;
+                } else {
+                    log << result;
+                    consume(std::move(log));
                 }
-            } catch (const Error& e){
-                log << "error";
-                log << e;
+            }); // collect result(s)
+            if (addFactory(path, factory)){
+                return factory;
+            } else {
+                return nullptr;
             }
-            return nullptr;
         };
     } catch (const Error& e){
-        PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
-        log << "error";
-        log << e;
+        // return future which prints the error message
+        return [=]() -> IFactory::ptr {
+            PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
+            ProbeResult result;
+            result.error = e;
+            log << result;
+            return nullptr;
+        };
     }
-    return nullFactoryFuture;
 }
 
 #define PROBE_PROCESSES 8
@@ -382,19 +381,17 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
     }
 
     auto addPlugin = [&](const PluginInfo& plugin, int which = 0, int n = 0){
-        if (plugin.valid()){
-            if (x){
-                auto key = makeKey(plugin);
-                bash_name(key);
-                x->x_plugins.push_back(gensym(key.c_str()));
-            }
-            // Pd's posting methods have a size limit, so we log each plugin seperately!
-            if (n > 0){
-                PdLog<async> log(PD_DEBUG, "\t[%d/%d] ", which + 1, n);
-                log << plugin.name;
-            }
-            count++;
+        if (x){
+            auto key = makeKey(plugin);
+            bash_name(key);
+            x->x_plugins.push_back(gensym(key.c_str()));
         }
+        // Pd's posting methods have a size limit, so we log each plugin seperately!
+        if (n > 0){
+            PdLog<async> log(PD_DEBUG, "\t[%d/%d] ", which + 1, n);
+            log << plugin.name;
+        }
+        count++;
     };
 
     std::vector<FactoryFuture> futures;
@@ -412,7 +409,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
         futures.clear();
     };
 
-    vst::search(path, [&](const std::string& absPath, const std::string&){
+    vst::search(path, [&](const std::string& absPath){
         LOG_DEBUG("found " << absPath);
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
@@ -1023,10 +1020,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     }
     if (!(info = queryPlugin(x, pathsym->s_name))){
         pd_error(x, "%s: can't load '%s'", classname(x), pathsym->s_name);
-        return;
-    }
-    if (!info->valid()){
-        pd_error(x, "%s: can't use plugin '%s'", classname(x), info->path.c_str());
         return;
     }
         // *now* close the old plugin
@@ -2101,7 +2094,7 @@ EXPORT void vstplugin_tilde_setup(void){
     clock_delay(eventLoopClock, 0);
 #endif
 
-    post("[vstplugin~] v%i.%i.%i%s", VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX,
+    post("vstplugin~ v%d.%d.%d%s", VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX,
          VERSION_BETA ? " (beta)" : "");
 #ifdef __APPLE__
     post("WARNING: on macOS, the VST GUI must run on the audio thread - use with care!");

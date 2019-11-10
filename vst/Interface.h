@@ -138,7 +138,7 @@ class IPlugin {
     virtual std::string getProgramName() const = 0;
     virtual std::string getProgramNameIndexed(int index) const = 0;
 
-    // the following methods throws an Error exception on failure!
+    // the following methods throw an Error exception on failure!
     virtual void readProgramFile(const std::string& path) = 0;
     virtual void readProgramData(const char *data, size_t size) = 0;
     void readProgramData(const std::string& buffer) {
@@ -177,19 +177,11 @@ class IPlugin {
 
 class IFactory;
 
-enum class ProbeResult {
-    success,
-    fail,
-    crash,
-    none
-};
-
 struct PluginInfo {
     static const uint32_t NoParamID = 0xffffffff;
 
     using ptr = std::shared_ptr<PluginInfo>;
     using const_ptr = std::shared_ptr<const PluginInfo>;
-    using Future = std::function<PluginInfo::ptr()>;
 
     PluginInfo() = default;
     PluginInfo(const std::shared_ptr<const IFactory>& factory);
@@ -204,9 +196,6 @@ struct PluginInfo {
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file);
-    bool valid() const {
-        return probeResult == ProbeResult::success;
-    }
     void setUniqueID(int _id); // VST2
     int getUniqueID() const {
         return id_.id;
@@ -217,7 +206,6 @@ struct PluginInfo {
     }
     PluginType type() const { return type_; }
     // info data
-    ProbeResult probeResult = ProbeResult::none;
     std::string uniqueID;
     std::string path;
     std::string name;
@@ -380,11 +368,48 @@ class IModule {
     virtual void *doGetFnPtr(const char *name) const = 0;
 };
 
+class Error : public std::exception {
+ public:
+    enum ErrorCode {
+        NoError,
+        Crash,
+        SystemError,
+        ModuleError,
+        PluginError,
+        UnknownError
+    };
+
+    Error(ErrorCode code = NoError)
+        : code_(code) {}
+    Error(const std::string& msg)
+        : msg_(msg), code_(UnknownError) {}
+    Error(ErrorCode code, const std::string& msg)
+        : msg_(msg), code_(code) {}
+    const char * what() const noexcept override {
+        return msg_.c_str();
+    }
+    ErrorCode code() const noexcept {
+        return code_;
+    }
+ private:
+    std::string msg_;
+    ErrorCode code_ = NoError;
+};
+
+struct ProbeResult {
+    PluginInfo::ptr plugin;
+    Error error;
+    int index = 0;
+    int total = 0;
+    bool valid() const { return error.code() == Error::NoError; }
+};
+
 class IFactory : public std::enable_shared_from_this<IFactory> {
  public:
     using ptr = std::shared_ptr<IFactory>;
     using const_ptr = std::shared_ptr<const IFactory>;
-    using ProbeCallback = std::function<void(const PluginInfo&, int, int)>;
+
+    using ProbeCallback = std::function<void(const ProbeResult&)>;
     using ProbeFuture = std::function<void(ProbeCallback)>;
 
     // expects an absolute path to the actual plugin file with or without extension
@@ -395,36 +420,24 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual void addPlugin(PluginInfo::ptr desc) = 0;
     virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
     virtual int numPlugins() const = 0;
-    // throws an Error exception on failure!
     void probe(ProbeCallback callback);
     virtual ProbeFuture probeAsync() = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin
     virtual std::string path() const = 0;
     // create a new plugin instance
-    // throws an Error exception on failure!
+    // throws an Error on failure!
     virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
  protected:
-    PluginInfo::Future probePlugin(const std::string& name, int shellPluginID = 0);
+    using ProbeResultFuture = std::function<ProbeResult()>;
+    ProbeResultFuture probePlugin(const std::string& name, int shellPluginID = 0);
     using ProbeList = std::vector<std::pair<std::string, int>>;
     std::vector<PluginInfo::ptr> probePlugins(const ProbeList& pluginList,
-            ProbeCallback callback, bool& valid);
+            ProbeCallback callback);
 };
 
-class Error : public std::exception {
- public:
-    Error() = default;
-    Error(const std::string& msg)
-        : msg_(msg){}
-    const char * what() const noexcept override {
-        return msg_.c_str();
-    }
- private:
-    std::string msg_;
-};
-
-// recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path and basename.
-void search(const std::string& dir, std::function<void(const std::string&, const std::string&)> fn);
+// recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path.
+void search(const std::string& dir, std::function<void(const std::string&)> fn, bool filter = true);
 
 // recursively search 'dir' for a VST plugin. returns empty string on failure
 std::string find(const std::string& dir, const std::string& path);
