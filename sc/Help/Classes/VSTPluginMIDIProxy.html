@@ -36,7 +36,6 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#-continueMsg'>continueMsg</a> </li>
 <li class='toc3'><a href='#-control'>control</a> </li>
 <li class='toc3'><a href='#-controlMsg'>controlMsg</a> </li>
-<li class='toc3'><a href='#-latency'>latency</a> </li>
 <li class='toc3'><a href='#-midiClock'>midiClock</a> </li>
 <li class='toc3'><a href='#-midiClockMsg'>midiClockMsg</a> </li>
 <li class='toc3'><a href='#-noteOff'>noteOff</a> </li>
@@ -46,7 +45,6 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#-owner'>owner</a> </li>
 <li class='toc3'><a href='#-polyTouch'>polyTouch</a> </li>
 <li class='toc3'><a href='#-polyTouchMsg'>polyTouchMsg</a> </li>
-<li class='toc3'><a href='#-port'>port</a> </li>
 <li class='toc3'><a href='#-program'>program</a> </li>
 <li class='toc3'><a href='#-programMsg'>programMsg</a> </li>
 <li class='toc3'><a href='#-reset'>reset</a> </li>
@@ -64,7 +62,6 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#-sysexMsg'>sysexMsg</a> </li>
 <li class='toc3'><a href='#-touch'>touch</a> </li>
 <li class='toc3'><a href='#-touchMsg'>touchMsg</a> </li>
-<li class='toc3'><a href='#-uid'>uid</a> </li>
 <li class='toc3'><a href='#-write'>write</a> </li>
 <li class='toc3'><a href='#-writeMsg'>writeMsg</a> </li>
 </ul></ul><li class='toc1'><a href='#Help%20template'>Help template</a></li>
@@ -97,8 +94,6 @@ var scdoc_sc_version = '3.10.0';
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-continueMsg' href='./../Overviews/Methods.html#continueMsg'>continueMsg</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-control' href='./../Overviews/Methods.html#control'>control</a>(<span class='argstr'>chan</span>, <span class='argstr'>ctlNum: 7</span>, <span class='argstr'>val: 64</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-controlMsg' href='./../Overviews/Methods.html#controlMsg'>controlMsg</a>(<span class='argstr'>chan</span>, <span class='argstr'>ctlNum: 7</span>, <span class='argstr'>val: 64</span>)</h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-latency' href='./../Overviews/Methods.html#latency'>latency</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-latency' href='./../Overviews/Methods.html#latency'>latency</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midiClock' href='./../Overviews/Methods.html#midiClock'>midiClock</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midiClockMsg' href='./../Overviews/Methods.html#midiClockMsg'>midiClockMsg</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-noteOff' href='./../Overviews/Methods.html#noteOff'>noteOff</a>(<span class='argstr'>chan</span>, <span class='argstr'>note: 60</span>, <span class='argstr'>veloc: 64</span>)</h3>
@@ -109,8 +104,6 @@ var scdoc_sc_version = '3.10.0';
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-owner' href='./../Overviews/Methods.html#owner'>owner</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-polyTouch' href='./../Overviews/Methods.html#polyTouch'>polyTouch</a>(<span class='argstr'>chan</span>, <span class='argstr'>note: 60</span>, <span class='argstr'>val: 64</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-polyTouchMsg' href='./../Overviews/Methods.html#polyTouchMsg'>polyTouchMsg</a>(<span class='argstr'>chan</span>, <span class='argstr'>note: 60</span>, <span class='argstr'>val: 64</span>)</h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-port' href='./../Overviews/Methods.html#port'>port</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-port' href='./../Overviews/Methods.html#port'>port</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-program' href='./../Overviews/Methods.html#program'>program</a>(<span class='argstr'>chan</span>, <span class='argstr'>num: 1</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programMsg' href='./../Overviews/Methods.html#programMsg'>programMsg</a>(<span class='argstr'>chan</span>, <span class='argstr'>num: 1</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-reset' href='./../Overviews/Methods.html#reset'>reset</a></h3>
@@ -128,8 +121,6 @@ var scdoc_sc_version = '3.10.0';
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sysexMsg' href='./../Overviews/Methods.html#sysexMsg'>sysexMsg</a>(<span class='argstr'>packet</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-touch' href='./../Overviews/Methods.html#touch'>touch</a>(<span class='argstr'>chan</span>, <span class='argstr'>val: 64</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-touchMsg' href='./../Overviews/Methods.html#touchMsg'>touchMsg</a>(<span class='argstr'>chan</span>, <span class='argstr'>val: 64</span>)</h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-uid' href='./../Overviews/Methods.html#uid'>uid</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-uid' href='./../Overviews/Methods.html#uid'>uid</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-write' href='./../Overviews/Methods.html#write'>write</a>(<span class='argstr'>len</span>, <span class='argstr'>hiStatus</span>, <span class='argstr'>loStatus</span>, <span class='argstr'>a: 0</span>, <span class='argstr'>b: 0</span>, <span class='argstr'>detune</span>)</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-writeMsg' href='./../Overviews/Methods.html#writeMsg'>writeMsg</a>(<span class='argstr'>len</span>, <span class='argstr'>hiStatus</span>, <span class='argstr'>loStatus</span>, <span class='argstr'>a: 0</span>, <span class='argstr'>b: 0</span>, <span class='argstr'>detune</span>)</h3>
 <h2><a class='anchor' name='Help%20template'>Help template</a></h2>
@@ -170,7 +161,56 @@ ARGUMENT:: veloc
 
 returns:: (describe returnvalue here)
 
-METHOD:: bend
+METHOD:: sysex
+(describe method here)
+
+ARGUMENT:: packet
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: midiClock
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: reset
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: allNotesOff
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: songSelect
+(describe method here)
+
+ARGUMENT:: song
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: owner
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: start
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: continueMsg
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: touchMsg
 (describe method here)
 
 ARGUMENT:: chan
@@ -181,10 +221,91 @@ ARGUMENT:: val
 
 returns:: (describe returnvalue here)
 
-METHOD:: allNotesOffMsg
+METHOD:: touch
 (describe method here)
 
 ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: val
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: sysexMsg
+(describe method here)
+
+ARGUMENT:: packet
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: smpte
+(describe method here)
+
+ARGUMENT:: frames
+(describe argument here)
+
+ARGUMENT:: seconds
+(describe argument here)
+
+ARGUMENT:: minutes
+(describe argument here)
+
+ARGUMENT:: hours
+(describe argument here)
+
+ARGUMENT:: frameRate
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: polyTouch
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: note
+(describe argument here)
+
+ARGUMENT:: val
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: control
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: ctlNum
+(describe argument here)
+
+ARGUMENT:: val
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: songPtrMsg
+(describe method here)
+
+ARGUMENT:: songPtr
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: controlMsg
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: ctlNum
+(describe argument here)
+
+ARGUMENT:: val
 (describe argument here)
 
 returns:: (describe returnvalue here)
@@ -212,7 +333,7 @@ ARGUMENT:: detune
 
 returns:: (describe returnvalue here)
 
-METHOD:: touchMsg
+METHOD:: bendMsg
 (describe method here)
 
 ARGUMENT:: chan
@@ -223,14 +344,13 @@ ARGUMENT:: val
 
 returns:: (describe returnvalue here)
 
-METHOD:: bendMsg
+METHOD:: stopMsg
 (describe method here)
 
-ARGUMENT:: chan
-(describe argument here)
+returns:: (describe returnvalue here)
 
-ARGUMENT:: val
-(describe argument here)
+METHOD:: resetMsg
+(describe method here)
 
 returns:: (describe returnvalue here)
 
@@ -245,10 +365,84 @@ ARGUMENT:: num
 
 returns:: (describe returnvalue here)
 
+METHOD:: noteOn
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: note
+(describe argument here)
+
+ARGUMENT:: veloc
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: midiClockMsg
+(describe method here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: polyTouchMsg
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: note
+(describe argument here)
+
+ARGUMENT:: val
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: continue
+(describe method here)
+
+returns:: (describe returnvalue here)
+
 METHOD:: songPtr
 (describe method here)
 
 ARGUMENT:: songPtr
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: noteOnMsg
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: note
+(describe argument here)
+
+ARGUMENT:: veloc
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: songSelectMsg
+(describe method here)
+
+ARGUMENT:: song
+(describe argument here)
+
+returns:: (describe returnvalue here)
+
+METHOD:: noteOffMsg
+(describe method here)
+
+ARGUMENT:: chan
+(describe argument here)
+
+ARGUMENT:: note
+(describe argument here)
+
+ARGUMENT:: veloc
 (describe argument here)
 
 returns:: (describe returnvalue here)
@@ -281,106 +475,6 @@ METHOD:: stop
 
 returns:: (describe returnvalue here)
 
-METHOD:: noteOn
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-ARGUMENT:: note
-(describe argument here)
-
-ARGUMENT:: veloc
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: start
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: control
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-ARGUMENT:: ctlNum
-(describe argument here)
-
-ARGUMENT:: val
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: midiClockMsg
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: reset
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: sysexMsg
-(describe method here)
-
-ARGUMENT:: packet
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: port
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: noteOnMsg
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-ARGUMENT:: note
-(describe argument here)
-
-ARGUMENT:: veloc
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: polyTouch
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-ARGUMENT:: note
-(describe argument here)
-
-ARGUMENT:: val
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: allNotesOff
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: songPtrMsg
-(describe method here)
-
-ARGUMENT:: songPtr
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
 METHOD:: program
 (describe method here)
 
@@ -392,72 +486,12 @@ ARGUMENT:: num
 
 returns:: (describe returnvalue here)
 
-METHOD:: songSelect
-(describe method here)
-
-ARGUMENT:: song
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: smpte
-(describe method here)
-
-ARGUMENT:: frames
-(describe argument here)
-
-ARGUMENT:: seconds
-(describe argument here)
-
-ARGUMENT:: minutes
-(describe argument here)
-
-ARGUMENT:: hours
-(describe argument here)
-
-ARGUMENT:: frameRate
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: stopMsg
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: sysex
-(describe method here)
-
-ARGUMENT:: packet
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: polyTouchMsg
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-ARGUMENT:: note
-(describe argument here)
-
-ARGUMENT:: val
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
 METHOD:: startMsg
 (describe method here)
 
 returns:: (describe returnvalue here)
 
-METHOD:: continueMsg
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: touch
+METHOD:: bend
 (describe method here)
 
 ARGUMENT:: chan
@@ -468,69 +502,11 @@ ARGUMENT:: val
 
 returns:: (describe returnvalue here)
 
-METHOD:: songSelectMsg
-(describe method here)
-
-ARGUMENT:: song
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: latency
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: continue
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: controlMsg
+METHOD:: allNotesOffMsg
 (describe method here)
 
 ARGUMENT:: chan
 (describe argument here)
-
-ARGUMENT:: ctlNum
-(describe argument here)
-
-ARGUMENT:: val
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: resetMsg
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: noteOffMsg
-(describe method here)
-
-ARGUMENT:: chan
-(describe argument here)
-
-ARGUMENT:: note
-(describe argument here)
-
-ARGUMENT:: veloc
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: midiClock
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: owner
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: uid
-(describe method here)
 
 returns:: (describe returnvalue here)
 

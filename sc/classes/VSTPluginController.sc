@@ -634,9 +634,6 @@ VSTPluginController {
 
 // mimicks MIDIOut
 VSTPluginMIDIProxy {
-	var <>latency = 0;
-	var <>port = 0;
-	var <>uid = 0;
 	var <>owner;
 
 	*new { arg theOwner;
