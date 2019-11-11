@@ -198,6 +198,19 @@ Pbind(
 	\dur, Prand([0.25, 0.5, 1], inf)
 )
 ::
+If you omit the code::\params:: argument, the play method will automatically try to look up parameters by name:
+code::
+Pbind(
+    \type, \vst_set,
+    \vst, ~fx,
+    \Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
+	\dur, Prand([0.25, 0.5, 1], inf)
+)
+::
+warning::
+This can be very inefficient for plugins with a large number of parameters! It is always better to explicitly specify the parameters you're interested in with the code::\params:: argument
+::
+
 See link::#Automation:: for more examples.
 
 ## code::\vst_midi::

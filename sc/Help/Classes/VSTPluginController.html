@@ -265,6 +265,14 @@ SynthDef(\insert, { arg bus, f;
     \dur, Prand([0.25, 0.5, 1], inf)
 )</textarea>
 
+<p>If you omit the <code>\params</code> argument, the play method will automatically try to look up parameters by name:<textarea class='editor'>Pbind(
+    \type, \vst_set,
+    \vst, ~fx,
+    \Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
+    \dur, Prand([0.25, 0.5, 1], inf)
+)</textarea>
+
+<p><div class='warning'><span class='warninglabel'>WARNING:</span> This can be very inefficient for plugins with a large number of parameters! It is always better to explicitly specify the parameters you're interested in with the <code>\params</code> argument</div>
 <p>See <a href="#Automation">Automation</a> for more examples.<dt><code>\vst_midi</code><dd>send MIDI messages; the interface is very similar to <code>\midi</code>.<table>
 <tr><td><code>\vst</code><td>the VSTPluginController instance<tr><td><code>\midicmd</code><td>the MIDI method (see below)<tr><td><code>\chan</code><td>the MIDI channel; the default is 0<tr><td><code>\midinote</code><td>MIDI pitch for <code>\noteOn</code>, <code>\noteOff</code> and <code>\polyTouch</code><tr><td><code>\amp</code><td>amplitude (0.0 - 1.0) for <code>\noteOn</code> and <code>\noteOff</code><tr><td><code>\ctlNum</code><td>CC number for <code>\control</code><tr><td><code>\control</code><td>CC value for <code>\control</code><tr><td><code>\val</code><td>value argument for <code>\touch</code> and <code>\bend</code><tr><td><code>\polyTouch</code><td>touch value for <code>\polyTouch</code><tr><td><code>\progNum</code><td>program number for <code>\program</code><tr><td><code>\array</code><td>UInt8Array for <code>\sysex</code></table>
 

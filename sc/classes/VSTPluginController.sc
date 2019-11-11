@@ -72,8 +72,8 @@ VSTPluginController {
 		});
 		// custom event type for setting VST parameters:
 		Event.addEventType(\vst_set, #{ arg server;
-			var bndl, msgFunc, getParams;
-			// custom version of envirPairs/envirGet which also supports numbers
+			var bndl, msgFunc, getParams, params, vst;
+			// custom version of envirPairs/envirGet which also supports integer keys (for parameter indices)
 			getParams = #{ arg array;
 				var result = [];
 				array.do { arg name;
@@ -83,10 +83,15 @@ VSTPluginController {
 				result;
 			};
 			// ~params is an Array of parameter names and/or indices which are looked up in the current environment (= the Event).
-			// ~paramArray is just a plain Array of parameter name/value pairs.
-			bndl = getParams.(~params).flop.collect({ arg params;
-				~vst.value.setMsg(*params);
-			});
+			// if ~params is omitted, we try to look up *every* parameter by name (not very efficient for large plugins!)
+			vst = ~vst.value;
+			params = ~params.value;
+			if (params.isNil) {
+				params = vst.info.parameters.collect { arg p; p.name.asSymbol };
+			};
+			bndl = getParams.(params).flop.collect { arg params;
+				vst.value.setMsg(*params);
+			};
 			~schedBundleArray.value(~lag, ~timingOffset, server, bndl, ~latency);
 		});
 	}
