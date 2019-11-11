@@ -24,6 +24,7 @@ var scdoc_sc_version = '3.10.0';
 <ul class='toc'><li class='toc2'><a href='#Introduction'>Introduction</a></li>
 <ul class='toc'></ul><li class='toc2'><a href='#Parameter%20Automation%20and%20Preset%20Management'>Parameter Automation and Preset Management</a></li>
 <ul class='toc'></ul><li class='toc2'><a href='#GUI'>GUI</a></li>
+<ul class='toc'></ul><li class='toc2'><a href='#Sequencing'>Sequencing</a></li>
 <ul class='toc'></ul><li class='toc2'><a href='#Realtime%20Safety'>Realtime Safety</a></li>
 <ul class='toc'></ul></ul><li class='toc1'><a href='#classmethods'>Class methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#*new'>new</a> </li>
@@ -249,6 +250,26 @@ SynthDef(\insert, { arg bus, f;
 ~fx.gui;</textarea>
 
 <p>You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins). Additionally, you can browse for plugins, select programs and read/write preset files. See <a href="#-gui">-gui</a> and <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a> for more information.</ul>
+<h3><a class='anchor' name='Sequencing'>Sequencing</a></h3>
+
+<p>VSTPlugin defines two custom event types, which makes it easy to use with <a href="./..\Classes/Pbind.html">Pbind</a>. Like most other event types, commands are scheduled as bundles with Server latency taken into account.<dl>
+<dt><code>\vst_set</code><dd>sets one or more plugin parameters to the specified values; the interface is similar to <code>\set</code>.<table>
+<tr><td><code>\vst</code><td>the VSTPluginController instance<tr><td><code>\params</code><td>an Array of parameter names and/or indices which will be looked up in the Event</table>
+
+<p><textarea class='editor'>Pbind(
+    \type, \vst_set,
+    \vst, ~fx,
+    \params, [1, \Mix], // look up parameter 1 and 'Mix'
+    1, Pwhite(0.1, 0.9), // value for parameter 1
+    \Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
+    \dur, Prand([0.25, 0.5, 1], inf)
+)</textarea>
+
+<p>See <a href="#Automation">Automation</a> for more examples.<dt><code>\vst_midi</code><dd>send MIDI messages; the interface is very similar to <code>\midi</code>.<table>
+<tr><td><code>\vst</code><td>the VSTPluginController instance<tr><td><code>\midicmd</code><td>the MIDI method (see below)<tr><td><code>\chan</code><td>the MIDI channel; the default is 0<tr><td><code>\midinote</code><td>MIDI pitch for <code>\noteOn</code>, <code>\noteOff</code> and <code>\polyTouch</code><tr><td><code>\amp</code><td>amplitude (0.0 - 1.0) for <code>\noteOn</code> and <code>\noteOff</code><tr><td><code>\ctlNum</code><td>CC number for <code>\control</code><tr><td><code>\control</code><td>CC value for <code>\control</code><tr><td><code>\val</code><td>value argument for <code>\touch</code> and <code>\bend</code><tr><td><code>\polyTouch</code><td>touch value for <code>\polyTouch</code><tr><td><code>\progNum</code><td>program number for <code>\program</code><tr><td><code>\array</code><td>UInt8Array for <code>\sysex</code></table>
+
+<p>The default value for <code>\midicmd</code> is <code>\noteOn</code>, with <code>\noteOff</code> commands being scheduled automatically. Other possible values are <code>\noteOff</code>, <code>\control</code>, <code>\bend</code>, <code>\touch</code>, <code>\polyTouch</code>, <code>\program</code>, <code>\allNotesOff</code> and <code>\sysex</code>. The commands correspond to the methods listed in <a href="./..\Classes/VSTPluginMIDIProxy.html">VSTPluginMIDIProxy</a> and <a href="./..\Classes/MIDIOut.html">MIDIOut</a>.
+<p>See <a href="#VST%20Instruments">VST Instruments</a> for examples.</dl>
 <h3><a class='anchor' name='Realtime%20Safety'>Realtime Safety</a></h3>
 
 <p>VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread. Some methods, like <a href="#-reset">-reset</a> or <a href="#-readProgram">-readProgram</a>, offer two options via the <code>async</code> parameter:
@@ -740,9 +761,27 @@ SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 ~fx.synth.set(\rate, 0.9); // change modulation rate
 ~fx.synth.set(\bypass, 1); // bypass
 ~fx.synth.free; // release FX</textarea>
+
+<p>Automate parameters with a Pbind of type <code>\vst_set</code>:<textarea class='editor'>~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
+// open plugin (the example uses 'GChorus' from GVST plugins)
+~fx.gui;
+
+(
+p = Pbind(
+    \type, \vst_set,
+    \vst, ~fx, // the VSTPluginController instance
+    \params, [1, 3, \Mix], // parameter indices/names (looked up below)
+    0, Pwhite(0.1, 0.9), // value for parameter 0
+    1, Pwhite(0.3, 0.7), // value for parameter 1
+    \Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
+    \dur, Prand([0.25, 0.5, 1], inf)
+).play;
+)
+
+p.stop;</textarea>
 <h3><a class='anchor' name='VST%20Instruments'>VST Instruments</a></h3>
 
-<p>You can easily play VST instruments with a <a href="./..\Classes/Pbind.html">Pbind</a> of event type <code>\midi</code>:<textarea class='editor'>// Cmd + .
+<p>You can easily play VST instruments with a <a href="./..\Classes/Pbind.html">Pbind</a> of event type <code>\vst_midi</code>:<textarea class='editor'>// Cmd + .
 (
 SynthDef.new(\vsti, {arg out = 0;
     // VST instruments usually don't have inputs
@@ -754,17 +793,16 @@ SynthDef.new(\vsti, {arg out = 0;
 ~vsti = VSTPluginController(Synth(\vsti));
 // open plugin
 ~vsti.gui;
-// or if you want the VST editor:
-~vsti.open("/plugin/path", editor: true);
 
-// play the instrument with a \midi Pbind
+// play the instrument with a \vst_midi Pbind
 (
 p = Pbind(
-    \type, \midi,
-    \midiout, ~vsti.midi, // set the midi target
-    \chan, 0,
-    \degree, Pwhite(0, 12, inf),
-    \dur, Prand(#[0.125, 0.25, 0.5, 1], inf),
+    \type, \vst_midi,
+    \vst, ~vsti, // the VSTPluginController instance
+    \midicmd, \noteOn, // the default, can be omitted
+    \chan, 0, // MIDI channel (default: 0)
+    \midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
+    \dur, Prand(#[0.125, 0.25, 0.5], inf),
     \legato, Pexprand(0.5, 1.0, inf),
     \amp, Pexprand(0.5, 1.0, inf)
 ).play(quant: 1);

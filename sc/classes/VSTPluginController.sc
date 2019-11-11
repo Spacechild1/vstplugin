@@ -19,6 +19,77 @@ VSTPluginController {
 	var <programNames;
 	var window;
 
+	*initClass {
+		Class.initClassTree(Event);
+		// custom event type for playing VSTis:
+		Event.addEventType(\vst_midi, #{ arg server;
+			var freqs, lag, offset, strumOffset, dur, sustain, strum;
+			var bndl, noteoffs, vst, hasGate, midicmd;
+
+			freqs = ~freq = ~detunedFreq.value;
+
+			~amp = ~amp.value;
+			~midinote = (freqs.cpsmidi); // keep as float!
+			strum = ~strum;
+			lag = ~lag;
+			offset = ~timingOffset;
+			sustain = ~sustain = ~sustain.value;
+			vst = ~vst.value.midi;
+			hasGate = ~hasGate ? true;
+			midicmd = ~midicmd;
+			bndl = ~midiEventFunctions[midicmd].valueEnvir.asCollection.flop;
+			bndl = bndl.collect({ arg args;
+				vst.performList((midicmd ++ "Msg").asSymbol, args);
+			});
+
+			if (strum == 0) {
+				~schedBundleArray.(lag, offset, server, bndl, ~latency);
+			} {
+				if (strum < 0) { bndl = bndl.reverse };
+				strumOffset = offset + Array.series(bndl.size, 0, strum.abs);
+				~schedBundleArray.(lag, strumOffset, server, bndl, ~latency);
+			};
+
+			if (hasGate and: { midicmd === \noteOn }) {
+				noteoffs = ~midiEventFunctions[\noteOff].valueEnvir.asCollection.flop;
+				noteoffs = noteoffs.collect({ arg args;
+					vst.noteOffMsg(*args);
+				});
+
+				if (strum == 0) {
+					~schedBundleArray.(lag, sustain + offset, server, noteoffs, ~latency);
+				} {
+					if (strum < 0) { noteoffs = noteoffs.reverse };
+					if (~strumEndsTogether) {
+						strumOffset = sustain + offset
+					} {
+						strumOffset = sustain + strumOffset
+					};
+					~schedBundleArray.(lag, strumOffset, server, noteoffs, ~latency);
+				};
+
+			};
+		});
+		// custom event type for setting VST parameters:
+		Event.addEventType(\vst_set, #{ arg server;
+			var bndl, msgFunc, getParams;
+			// custom version of envirPairs/envirGet which also supports numbers
+			getParams = #{ arg array;
+				var result = [];
+				array.do { arg name;
+					var value = currentEnvironment.at(name);
+					value !? { result = result.add(name).add(value); };
+				};
+				result;
+			};
+			// ~params is an Array of parameter names and/or indices which are looked up in the current environment (= the Event).
+			// ~paramArray is just a plain Array of parameter name/value pairs.
+			bndl = getParams.(~params).flop.collect({ arg params;
+				~vst.value.setMsg(*params);
+			});
+			~schedBundleArray.value(~lag, ~timingOffset, server, bndl, ~latency);
+		});
+	}
 	*guiClass {
 		^VSTPluginGui;
 	}

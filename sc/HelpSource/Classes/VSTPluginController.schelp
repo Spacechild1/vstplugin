@@ -177,6 +177,49 @@ Additionally, you can browse for plugins, select programs and read/write preset 
 See link::#-gui:: and link::Classes/VSTPluginGui:: for more information.
 ::
 
+subsection:: Sequencing
+
+VSTPlugin defines two custom event types, which makes it easy to use with link::Classes/Pbind::. Like most other event types, commands are scheduled as bundles with Server latency taken into account.
+
+definitionlist::
+## code::\vst_set::
+|| sets one or more plugin parameters to the specified values; the interface is similar to code::\set::.
+table::
+## code::\vst:: || the VSTPluginController instance
+## code::\params:: || an Array of parameter names and/or indices which will be looked up in the Event
+::
+code::
+Pbind(
+    \type, \vst_set,
+    \vst, ~fx,
+	\params, [1, \Mix], // look up parameter 1 and 'Mix'
+    1, Pwhite(0.1, 0.9), // value for parameter 1
+    \Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
+	\dur, Prand([0.25, 0.5, 1], inf)
+)
+::
+See link::#Automation:: for more examples.
+
+## code::\vst_midi::
+|| send MIDI messages; the interface is very similar to code::\midi::.
+table::
+## code::\vst:: || the VSTPluginController instance
+## code::\midicmd:: || the MIDI method (see below)
+## code::\chan:: || the MIDI channel; the default is 0
+## code::\midinote:: || MIDI pitch for code::\noteOn::, code::\noteOff:: and code::\polyTouch::
+## code::\amp:: || amplitude (0.0 - 1.0) for code::\noteOn:: and code::\noteOff::
+## code::\ctlNum:: || CC number for code::\control::
+## code::\control:: || CC value for code::\control::
+## code::\val:: || value argument for code::\touch:: and code::\bend::
+## code::\polyTouch:: || touch value for code::\polyTouch::
+## code::\progNum:: || program number for code::\program::
+## code::\array:: || UInt8Array for code::\sysex::
+::
+The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy:: and link::Classes/MIDIOut::.
+
+See link::#VST Instruments:: for examples.
+::
+
 subsection:: Realtime Safety
 
 VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
@@ -891,9 +934,31 @@ SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 ~fx.synth.free; // release FX
 ::
 
+Automate parameters with a Pbind of type code::\vst_set:::
+
+code::
+~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
+// open plugin (the example uses 'GChorus' from GVST plugins)
+~fx.gui;
+
+(
+p = Pbind(
+	\type, \vst_set,
+	\vst, ~fx, // the VSTPluginController instance
+	\params, [1, 3, \Mix], // parameter indices/names (looked up below)
+	0, Pwhite(0.1, 0.9), // value for parameter 0
+	1, Pwhite(0.3, 0.7), // value for parameter 1
+	\Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
+	\dur, Prand([0.25, 0.5, 1], inf)
+).play;
+)
+
+p.stop;
+::
+
 Subsection:: VST Instruments
 
-You can easily play VST instruments with a link::Classes/Pbind:: of event type code::\midi:::
+You can easily play VST instruments with a link::Classes/Pbind:: of event type code::\vst_midi:::
 code::
 // Cmd + .
 (
@@ -907,17 +972,16 @@ SynthDef.new(\vsti, {arg out = 0;
 ~vsti = VSTPluginController(Synth(\vsti));
 // open plugin
 ~vsti.gui;
-// or if you want the VST editor:
-~vsti.open("/plugin/path", editor: true);
 
-// play the instrument with a \midi Pbind
+// play the instrument with a \vst_midi Pbind
 (
 p = Pbind(
-    \type, \midi,
-    \midiout, ~vsti.midi, // set the midi target
-    \chan, 0,
-	\degree, Pwhite(0, 12, inf),
-	\dur, Prand(#[0.125, 0.25, 0.5, 1], inf),
+    \type, \vst_midi,
+    \vst, ~vsti, // the VSTPluginController instance
+	\midicmd, \noteOn, // the default, can be omitted
+	\chan, 0, // MIDI channel (default: 0)
+	\midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
+	\dur, Prand(#[0.125, 0.25, 0.5], inf),
     \legato, Pexprand(0.5, 1.0, inf),
     \amp, Pexprand(0.5, 1.0, inf)
 ).play(quant: 1);
