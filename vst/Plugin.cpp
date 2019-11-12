@@ -1254,7 +1254,13 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         if (execl(probePath.c_str(), "probe", path().c_str(), pluginName.c_str(), tmpPath.c_str(), nullptr) < 0) {
-            LOG_ERROR("probe: exec failed!");
+            // write error to temp file
+            int err = errno;
+            File file(tmpPath, File::WRITE);
+            if (file.is_open()){
+                file << static_cast<int>(Error::SystemError) << "\n";
+                file << "couldn't open probe process (" << errorMessage(err) << ")\n";
+            }
         }
         std::exit(EXIT_FAILURE);
     }
