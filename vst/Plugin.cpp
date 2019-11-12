@@ -1355,7 +1355,16 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
             auto& name = pluginList[i].first;
             auto& id = pluginList[i].second;
             /// LOG_DEBUG("probing '" << name << "'");
-            futures.emplace_back(i, probePlugin(name, id));
+            try {
+                futures.emplace_back(i, probePlugin(name, id));
+            } catch (const Error& e){
+                // return error future
+                futures.emplace_back(i, [=](){
+                    ProbeResult result;
+                    result.error = e;
+                    return result;
+                });
+            }
         }
         // collect results
         for (auto& it : futures) {
@@ -1391,7 +1400,13 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
             lock.unlock();
 
             DEBUG_THREAD("thread " << i << ": probing '" << name << "'");
-            auto result = probePlugin(name, id)(); // call future
+            ProbeResult result;
+            try {
+                result = probePlugin(name, id)(); // call future
+            } catch (const Error& e){
+                DEBUG_THREAD("probe error " << e.what());
+                result.error = e;
+            }
 
             lock.lock();
             probeResults.push_back(result);
@@ -1418,9 +1433,9 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
             result.total = numPlugins;
             if (result.valid()) {
                 results.push_back(result.plugin);
+                DEBUG_THREAD("got plugin " << result.plugin->name
+                    << " (" << (result.index + 1) << " of " << numPlugins << ")");
             }
-            DEBUG_THREAD("got plugin " << result.plugin->name
-                << " (" << (result.index + 1) << " of " << numPlugins << ")");
             if (callback){
                 callback(result);
             }
