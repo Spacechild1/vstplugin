@@ -272,6 +272,26 @@ std::string getTmpDirectory(){
 #endif
 }
 
+std::string errorMessage(int err){
+    std::stringstream ss;
+#ifdef _WIN32
+    wchar_t buf[1000];
+    buf[0] = 0;
+    auto size = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err,
+                                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, 1000, NULL);
+    // omit trailing \r\n
+    if (size > 1 && buf[size-2] == '\r'){
+        buf[size-2] = 0;
+    }
+    ss << shorten(buf);
+#else
+    ss << strerror(err);
+#endif
+    // include error number
+    ss << " [" << err << "]";
+    return ss.str();
+}
+
 enum class CpuArch {
     unknown,
     amd64,
@@ -956,16 +976,7 @@ class ModuleWin32 : public IModule {
             if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
                 throw CpuArchError(arch);
             }
-            std::stringstream ss;
-            char buf[1000];
-            buf[0] = 0;
-            auto size = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error,
-                                            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), NULL);
-            if (size >= 2){
-                buf[size-2] = 0; // omit newline
-            }
-            ss << buf << " (" << error << ")";
-            throw Error(Error::ModuleError, ss.str());
+            throw Error(Error::ModuleError, errorMessage(error));
         }
         // LOG_DEBUG("loaded Win32 library " << path);
     }
@@ -1022,11 +1033,11 @@ class ModuleApple : public IModule {
                     throw CpuArchError(arch);
                 }
                 // other errors
-                throw Error(Error::ModuleError, strerror(err));
+                throw Error(Error::ModuleError, errorMessage(err));
             }
         } else {
             std::stringstream ss;
-            ss << "couldn't open bundle (" << strerror(err) << ")";
+            ss << "couldn't open bundle (" << errorMessage(err) << ")";
             throw Error(Error::ModuleError, ss.str());
         }
         // LOG_DEBUG("loaded macOS bundle " << path);
@@ -1199,15 +1210,18 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
 
     if (!CreateProcessW(probePath.c_str(), &cmdLine[0], NULL, NULL,
                         PROBE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi)){
-        throw Error(Error::SystemError, "Couldn't spawn probe process!");
+        auto err = GetLastError();
+        std::stringstream ss;
+        ss << "couldn't open probe process (" << errorMessage(err) << ")";
+        throw Error(Error::SystemError, ss.str());
     }
     auto wait = [pi](){
         if (WaitForSingleObject(pi.hProcess, INFINITE) != 0){
-            throw Error(Error::SystemError, "Couldn't wait for probe process!");
+            throw Error(Error::SystemError, "couldn't wait for probe process!");
         }
         DWORD code = -1;
         if (!GetExitCodeProcess(pi.hProcess, &code)){
-            throw Error(Error::SystemError, "Couldn't retrieve exit code for probe process!");
+            throw Error(Error::SystemError, "couldn't retrieve exit code for probe process!");
         }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -1218,7 +1232,7 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
     // get full path to probe exe
     // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
-        throw Error(Error::SystemError, "Couldn't get module path!");
+        throw Error(Error::SystemError, "couldn't get module path!");
     }
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');

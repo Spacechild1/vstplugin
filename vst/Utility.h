@@ -118,6 +118,8 @@ std::string fileName(const std::string& path);
 
 std::string baseName(const std::string& path);
 
+std::string errorMessage(int err);
+
 //--------------------------------------------------------------------------------------------------------
 
 // cross platform fstream, taking UTF-8 file paths.
