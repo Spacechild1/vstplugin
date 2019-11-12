@@ -1281,9 +1281,9 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
         result.total = 1;
         auto ret = wait(); // wait for process to finish
         /// LOG_DEBUG("return code: " << ret);
+        TmpFile file(tmpPath); // removes the file on destruction
         if (ret == EXIT_SUCCESS) {
             // get info from temp file
-            TmpFile file(tmpPath);
             if (file.is_open()) {
                 desc->deserialize(file);
             }
@@ -1292,7 +1292,7 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
             }
         }
         else if (ret == EXIT_FAILURE) {
-            vst::File file(tmpPath, File::READ);
+            // get error from temp file
             if (file.is_open()) {
                 int code;
                 std::string msg;
@@ -1312,6 +1312,7 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
             }
         }
         else {
+            // ignore temp file
             result.error = Error(Error::Crash);
         }
         return result;
