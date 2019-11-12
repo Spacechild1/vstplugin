@@ -293,9 +293,10 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
                         Print("\n");
                     }
                     Print("\t[%d/%d] ", result.index + 1, result.total);
-                    auto& name = result.plugin->name;
-                    if (!name.empty()) {
-                        Print("'%s' ... ", name.c_str());
+                    if (result.plugin && !result.plugin->name.empty()) {
+                        Print("'%s' ... ", result.plugin->name.c_str());
+                    } else {
+                        Print("... ");
                     }
                 }
                 postResult(result.error);
@@ -332,9 +333,10 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
                             Print("\n");
                         }
                         Print("\t[%d/%d] ", result.index + 1, result.total);
-                        auto& name = result.plugin->name;
-                        if (!name.empty()) {
-                            Print("'%s' ... ", name.c_str());
+                        if (result.plugin && !result.plugin->name.empty()) {
+                            Print("'%s' ... ", result.plugin->name.c_str());
+                        } else {
+                            Print("... ");
                         }
                     }
                     postResult(result.error);

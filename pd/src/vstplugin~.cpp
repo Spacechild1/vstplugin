@@ -297,12 +297,11 @@ static IFactory::ptr probePlugin(const std::string& path){
                     consume(std::move(log)); // force
                 }
                 // Pd's posting methods have a size limit, so we log each plugin seperately!
-                PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", result.index + 1, result.total);
-                auto& name = result.plugin->name;
-                if (!name.empty()){
-                    log1 << name << "' ... ";
+                PdLog<async> log1(PD_DEBUG, "\t[%d/%d] ", result.index + 1, result.total);
+                if (result.plugin && !result.plugin->name.empty()){
+                    log1 << "'" << result.plugin->name << "' ";
                 }
-                log1 << result;
+                log1 << "... " << result;
             } else {
                 log << result;
                 consume(std::move(log));
@@ -340,12 +339,11 @@ static FactoryFuture probePluginParallel(const std::string& path){
                         consume(std::move(log)); // force
                     }
                     // Pd's posting methods have a size limit, so we log each plugin seperately!
-                    PdLog<async> log1(PD_DEBUG, "\t[%d/%d] '", result.index + 1, result.total);
-                    auto& name = result.plugin->name;
-                    if (!name.empty()){
-                        log1 << name << "' ... ";
+                    PdLog<async> log1(PD_DEBUG, "\t[%d/%d] ", result.index + 1, result.total);
+                    if (result.plugin && !result.plugin->name.empty()){
+                        log1 << "'" << result.plugin->name << "' ";
                     }
-                    log1 << result;
+                    log1 << "... " << result;
                 } else {
                     log << result;
                     consume(std::move(log));
