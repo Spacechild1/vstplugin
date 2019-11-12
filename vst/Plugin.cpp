@@ -1392,6 +1392,7 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
 
     // thread function
     auto threadFun = [&](int i){
+        DEBUG_THREAD("worker thread " << i << " started");
         std::unique_lock<std::mutex> lock(mutex);
         while (head < numPlugins){
             auto& name = pluginList[head].first;
@@ -1421,9 +1422,8 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
     }
     // collect results
     std::unique_lock<std::mutex> lock(mutex);
-    while (tail < numPlugins) {
-        DEBUG_THREAD("wait...");
-        cond.wait(lock); // wait for new data
+    DEBUG_THREAD("collect results");
+    while (true) {
         // process available data
         while (tail < (int)probeResults.size()){
             auto result = probeResults[tail]; // copy!
@@ -1441,6 +1441,13 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
             }
 
             lock.lock();
+        }
+        // wait for more data if needed
+        if ((int)probeResults.size() < numPlugins){
+            DEBUG_THREAD("wait...");
+            cond.wait(lock);
+        } else {
+            break;
         }
     }
     lock.unlock(); // !!!
