@@ -109,6 +109,18 @@ EventLoop::EventLoop(){
     // wait for thread to create message queue
     cond_.wait(lock, [&](){ return ready_; });
     LOG_DEBUG("message queue created");
+
+#if HAVE_UI_THREAD
+    // lower the thread priority
+    if (SetThreadPriority(thread_, THREAD_PRIORITY_LOWEST)){
+        // disable priority boost
+        if (!SetThreadPriorityBoost(thread_, TRUE)){
+            LOG_WARNING("couldn't disable thread priority boost");
+        }
+    } else {
+        LOG_WARNING("couldn't set thread priority");
+    }
+#endif
 }
 
 EventLoop::~EventLoop(){
