@@ -92,13 +92,15 @@ class t_vsteditor : public IPluginListener {
  public:
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
-        // setup the generic Pd editor
+    // setup the generic Pd editor
     void setup();
-        // update the parameter displays
+    // update the parameter displays
     void update();
-        // notify generic GUI for parameter changes
+    // notify generic GUI for parameter changes
     void param_changed(int index, float value, bool automated = false);
-        // show/hide window
+    // flush parameter, MIDI and sysex queues
+    void flush_queues();
+    // show/hide window
     void vis(bool v);
     bool pd_gui() const {
         return e_canvas && !vst_gui();
@@ -111,11 +113,11 @@ class t_vsteditor : public IPluginListener {
     }
     void set_pos(int x, int y);
  private:
-        // plugin callbacks
+    // plugin callbacks
     void parameterAutomated(int index, float value) override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
-        // helper functions
+    // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
         if (e_canvas) pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
     }
@@ -123,19 +125,20 @@ class t_vsteditor : public IPluginListener {
     void send_vmess(t_symbol *sel, const char *fmt, T... args){
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
-        // notify Pd (e.g. for MIDI event or GUI automation)
+    // notify Pd (e.g. for MIDI event or GUI automation)
     template<typename T, typename U>
     void post_event(T& queue, U&& event);
     static void tick(t_vsteditor *x);
-        // data
+    // data
     t_vstplugin *e_owner;
     t_canvas *e_canvas = nullptr;
     std::vector<t_vstparam> e_params;
-        // outgoing messages:
+    // outgoing messages:
     t_clock *e_clock;
 #if HAVE_UI_THREAD
     std::mutex e_mutex;
     std::thread::id e_mainthread;
+    std::atomic_bool e_needclock {false};
 #endif
     std::vector<std::pair<int, float>> e_automated;
     std::vector<MidiEvent> e_midi;

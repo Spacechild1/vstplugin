@@ -534,30 +534,38 @@ t_vsteditor::~t_vsteditor(){
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
 #if HAVE_UI_THREAD
-    bool vstgui = window();
-        // we only need to lock for GUI windows, but never for the generic Pd editor
-    if (vstgui){
+    // we only need to lock for VST GUI editors
+    bool editor = window();
+    if (editor){
         e_mutex.lock();
     }
 #endif
     queue.push_back(std::forward<U>(event));
 #if HAVE_UI_THREAD
-    if (vstgui){
+    if (editor){
         e_mutex.unlock();
     }
-        // sys_lock / sys_unlock are not recursive so we check if we are in the main thread
-    auto id = std::this_thread::get_id();
-    if (id != e_mainthread){
-        // LOG_DEBUG("lock");
-        sys_lock();
+
+    if (std::this_thread::get_id() == e_mainthread){
+        // called from the main thread (e.g. perform routine)
+        clock_delay(e_clock, 0);
+    } else {
+        // Only lock Pd if DSP is off. This is better for real-time safety and it also
+        // prevents a possible deadlock with plugins that use a mutex for synchronization
+        // between UI thread and processing thread.
+        // Calling pd_getdspstate() is not 100% thread-safe, but it won't update when Pd
+        // is locked by the main thread, which is where the above mentioned deadlock can occur.
+        if (pd_getdspstate()){
+            e_needclock.store(true); // set the clock in the perform routine
+        } else {
+            // lock the Pd scheduler
+            sys_lock();
+            clock_delay(e_clock, 0);
+            sys_unlock();
+        }
     }
-#endif
+#else
     clock_delay(e_clock, 0);
-#if HAVE_UI_THREAD
-    if (id != e_mainthread){
-        sys_unlock();
-        // LOG_DEBUG("unlocked");
-    }
 #endif
 }
 
@@ -577,60 +585,42 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
+
 #if HAVE_UI_THREAD
-    bool vstgui = x->vst_gui();
-        // we only need to lock if we have a GUI thread
-    if (vstgui){
-        // it's more important to not block than flushing the queues on time
+    // we only need to lock for VST GUI editors
+    bool editor = x->window();
+    if (editor){
+        // it's more important not to block than flushing the queues on time
         if (!x->e_mutex.try_lock()){
             LOG_DEBUG("couldn't lock mutex");
             return;
         }
     }
 #endif
-        // swap parameter, midi and sysex queues.
-    std::vector<std::pair<int, float>> paramQueue;
-    paramQueue.swap(x->e_automated);
-    std::vector<MidiEvent> midiQueue;
-    midiQueue.swap(x->e_midi);
-    std::vector<SysexEvent> sysexQueue;
-    sysexQueue.swap(x->e_sysex);
-
-#if HAVE_UI_THREAD
-    if (vstgui){
-        x->e_mutex.unlock();
-    }
-#endif
-        // NOTE: it is theoretically possible that outputting messages
-        // will cause more messages to be sent (e.g. when being fed back into [vstplugin~]
-        // and if there's no mutex involved this would modify a std::vector while being read.
-        // one solution is to just double buffer via swap, so subsequent events will go to
-        // a new empty queue. Although I *think* this might not be necessary for midi/sysex messages
-        // I do it anyway. swapping a std::vector is cheap. also it minimizes the time spent
-        // in the critical section.
-
-        // automated parameters:
-    for (auto& param : paramQueue){
+    // automated parameters:
+    for (auto& param : x->e_automated){
         int index = param.first;
         float value = param.second;
-            // update the generic GUI
+        // update the generic GUI
         x->param_changed(index, value);
-            // send message
+        // send message
         t_atom msg[2];
         SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], value);
         outlet_anything(outlet, gensym("param_automated"), 2, msg);
     }
-        // midi events:
-    for (auto& midi : midiQueue){
+    x->e_automated.clear();
+    // midi events:
+    for (auto& midi : x->e_midi){
         t_atom msg[3];
         SETFLOAT(&msg[0], (unsigned char)midi.data[0]);
         SETFLOAT(&msg[1], (unsigned char)midi.data[1]);
         SETFLOAT(&msg[2], (unsigned char)midi.data[2]);
         outlet_anything(outlet, gensym("midi"), 3, msg);
     }
-        // sysex events:
-    for (auto& sysex : sysexQueue){
+    x->e_midi.clear();
+    // sysex events:
+    for (auto& sysex : x->e_sysex){
         std::vector<t_atom> msg;
         int n = sysex.size;
         msg.resize(n);
@@ -639,6 +629,12 @@ void t_vsteditor::tick(t_vsteditor *x){
         }
         outlet_anything(outlet, gensym("midi"), n, msg.data());
     }
+    x->e_sysex.clear();
+#if HAVE_UI_THREAD
+    if (editor){
+        x->e_mutex.unlock();
+    }
+#endif
 }
 
 const int xoffset = 30;
@@ -727,13 +723,20 @@ void t_vsteditor::update(){
     }
 }
 
-    // automated: true if parameter change comes from the (generic) GUI
+// automated: true if parameter change comes from the (generic) GUI
 void t_vsteditor::param_changed(int index, float value, bool automated){
     if (pd_gui() && index >= 0 && index < (int)e_params.size()){
         e_params[index].set(value);
         if (automated){
             parameterAutomated(index, value);
         }
+    }
+}
+
+void t_vsteditor::flush_queues(){
+    bool expected = true;
+    if (e_needclock.compare_exchange_strong(expected, false)){
+        clock_delay(e_clock, 0);
     }
 }
 
@@ -755,7 +758,7 @@ void t_vsteditor::set_pos(int x, int y){
     if (win){
         win->setPos(x, y);
     } else if (e_canvas) {
-        send_vmess(gensym("setbounds"), "ffff", 
+        send_vmess(gensym("setbounds"), "ffff",
             (float)x, (float)y, (float)x + width_, (float)y + height_);
         send_vmess(gensym("vis"), "i", 0);
         send_vmess(gensym("vis"), "i", 1);
@@ -1324,13 +1327,13 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
     if (!findParamIndex(x, argv, index)) return;
     if (index >= 0 && index < x->x_plugin->info().numParameters()){
         t_atom msg[3];
-		SETFLOAT(&msg[0], index);
+        SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
         SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterString(index).c_str()));
         outlet_anything(x->x_messout, gensym("param_state"), 3, msg);
-	} else {
+    } else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
-	}
+    }
 }
 
 // get parameter info (name + label + ...)
@@ -1340,31 +1343,31 @@ static void vstplugin_param_info(t_vstplugin *x, t_floatarg _index){
     auto& info = x->x_plugin->info();
     if (index >= 0 && index < info.numParameters()){
         t_atom msg[3];
-		SETFLOAT(&msg[0], index);
+        SETFLOAT(&msg[0], index);
         SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
         SETSYMBOL(&msg[2], gensym(info.parameters[index].label.c_str()));
         // LATER add more info
         outlet_anything(x->x_messout, gensym("param_info"), 3, msg);
-	} else {
+    } else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
-	}
+    }
 }
 
 // number of parameters
 static void vstplugin_param_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
-	t_atom msg;
+    t_atom msg;
     SETFLOAT(&msg, x->x_plugin->info().numParameters());
-	outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
+    outlet_anything(x->x_messout, gensym("param_count"), 1, &msg);
 }
 
 // list parameters (index + info)
 static void vstplugin_param_list(t_vstplugin *x){
     if (!x->check_plugin()) return;
     int n = x->x_plugin->info().numParameters();
-	for (int i = 0; i < n; ++i){
+    for (int i = 0; i < n; ++i){
         vstplugin_param_info(x, i);
-	}
+    }
 }
 
 // list parameter states (index + value)
@@ -1456,15 +1459,15 @@ static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
     if (index >= 0 && index < x->x_plugin->info().numPrograms()){
         x->x_plugin->setProgram(index);
         x->x_editor->update();
-	} else {
+    } else {
         pd_error(x, "%s: program number %d out of range!", classname(x), index);
-	}
+    }
 }
 
 // get the current program index
 static void vstplugin_program_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
-	t_atom msg;
+    t_atom msg;
     SETFLOAT(&msg, x->x_plugin->getProgram());
     outlet_anything(x->x_messout, gensym("program"), 1, &msg);
 }
@@ -1493,9 +1496,9 @@ static void vstplugin_program_name_get(t_vstplugin *x, t_symbol *s, int argc, t_
 // get number of programs
 static void vstplugin_program_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
-	t_atom msg;
+    t_atom msg;
     SETFLOAT(&msg, x->x_plugin->info().numPrograms());
-	outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
+    outlet_anything(x->x_messout, gensym("program_count"), 1, &msg);
 }
 
 // list all programs (index + name)
@@ -1735,7 +1738,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int totalin = in + auxin - 1;
     while (totalin--){
         inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
-	}
+    }
     x_siginlets.resize(in);
     x_sigauxinlets.resize(auxin);
         // outlets:
@@ -1923,6 +1926,9 @@ static t_int *vstplugin_perform(t_int *w){
         writeOutput(x->x_sigoutlets, (t_sample*)x->x_inbuf.data(), x->x_siginlets.size(), n);
         writeOutput(x->x_sigauxoutlets, (t_sample*)x->x_auxinbuf.data(), x->x_sigauxinlets.size(), n);
     }
+
+    x->x_editor->flush_queues();
+
     return (w+3);
 }
 
