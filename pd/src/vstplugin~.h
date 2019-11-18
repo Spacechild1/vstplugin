@@ -143,6 +143,7 @@ class t_vsteditor : public IPluginListener {
     std::vector<std::pair<int, float>> e_automated;
     std::vector<MidiEvent> e_midi;
     std::vector<SysexEvent> e_sysex;
+    bool e_tick = false;
     int width_ = 0;
     int height_ = 0;
 };

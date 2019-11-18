@@ -534,6 +534,17 @@ t_vsteditor::~t_vsteditor(){
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
 #if HAVE_UI_THREAD
+    bool mainthread = std::this_thread::get_id() == e_mainthread;
+#else
+    bool mainthread = true;
+#endif
+    // prevent event scheduling from within the tick method to avoid
+    // deadlocks or memory errors
+    if (mainthread && e_tick){
+        LOG_WARNING("vstplugin~: recursion detected!");
+        return;
+    }
+#if HAVE_UI_THREAD
     // we only need to lock for VST GUI editors
     bool editor = window();
     if (editor){
@@ -546,8 +557,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
         e_mutex.unlock();
     }
 
-    if (std::this_thread::get_id() == e_mainthread){
-        // called from the main thread (e.g. perform routine)
+    if (mainthread){
         clock_delay(e_clock, 0);
     } else {
         // Only lock Pd if DSP is off. This is better for real-time safety and it also
@@ -585,6 +595,7 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
+    x->e_tick = true; // prevent recursion
 
 #if HAVE_UI_THREAD
     // we only need to lock for VST GUI editors
@@ -593,6 +604,7 @@ void t_vsteditor::tick(t_vsteditor *x){
         // it's more important not to block than flushing the queues on time
         if (!x->e_mutex.try_lock()){
             LOG_DEBUG("couldn't lock mutex");
+            x->e_tick = false;
             return;
         }
     }
@@ -635,6 +647,7 @@ void t_vsteditor::tick(t_vsteditor *x){
         x->e_mutex.unlock();
     }
 #endif
+    x->e_tick = false;
 }
 
 const int xoffset = 30;
