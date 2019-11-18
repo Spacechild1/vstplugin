@@ -747,10 +747,12 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
 }
 
 void t_vsteditor::flush_queues(){
+#if HAVE_UI_THREAD
     bool expected = true;
     if (e_needclock.compare_exchange_strong(expected, false)){
         clock_delay(e_clock, 0);
     }
+#endif
 }
 
 void t_vsteditor::vis(bool v){
