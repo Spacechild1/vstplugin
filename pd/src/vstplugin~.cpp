@@ -541,7 +541,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     // prevent event scheduling from within the tick method to avoid
     // deadlocks or memory errors
     if (mainthread && e_tick){
-        LOG_WARNING("vstplugin~: recursion detected!");
+        pd_error(e_owner, "%s: recursion detected", classname(e_owner));
         return;
     }
 #if HAVE_UI_THREAD
