@@ -374,7 +374,7 @@ static FactoryFuture probePluginParallel(const std::string& path){
 #define PROBE_PROCESSES 8
 
 template<bool async>
-static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x = nullptr){
+static void searchPlugins(const std::string& path, bool parallel, t_vstplugin::t_search_data_ptr data = nullptr){
     int count = 0;
     {
         std::string bashPath = path;
@@ -383,10 +383,10 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
     }
 
     auto addPlugin = [&](const PluginInfo& plugin, int which = 0, int n = 0){
-        if (x){
+        if (data){
             auto key = makeKey(plugin);
             bash_name(key);
-            x->x_plugins.push_back(gensym(key.c_str()));
+            data->s_plugins.push_back(gensym(key.c_str()));
         }
         // Pd's posting methods have a size limit, so we log each plugin seperately!
         if (n > 0){
@@ -412,6 +412,9 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin *x
     };
 
     vst::search(path, [&](const std::string& absPath){
+        if (data && !data->s_running){
+            return; // search was cancelled
+        }
         LOG_DEBUG("found " << absPath);
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
@@ -534,7 +537,7 @@ t_vsteditor::~t_vsteditor(){
     clock_free(e_clock);
 }
 
-    // post outgoing event (thread-safe if needed)
+// post outgoing event (thread-safe if needed)
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
 #if HAVE_UI_THREAD
@@ -567,8 +570,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
         // Only lock Pd if DSP is off. This is better for real-time safety and it also
         // prevents a possible deadlock with plugins that use a mutex for synchronization
         // between UI thread and processing thread.
-        // Calling pd_getdspstate() is not 100% thread-safe, but it won't update when Pd
-        // is locked by the main thread, which is where the above mentioned deadlock can occur.
+        // Calling pd_getdspstate() is not really thread-safe, though...
         if (pd_getdspstate()){
             e_needclock.store(true); // set the clock in the perform routine
         } else {
@@ -583,12 +585,12 @@ void t_vsteditor::post_event(T& queue, U&& event){
 #endif
 }
 
-    // parameter automation notification might come from another thread (VST plugin GUI).
+// parameter automation notification might come from another thread (VST GUI editor).
 void t_vsteditor::parameterAutomated(int index, float value){
     post_event(e_automated, std::make_pair(index, value));
 }
 
-    // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
+// MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
 void t_vsteditor::midiEvent(const MidiEvent &event){
     post_event(e_midi, event);
 }
@@ -788,39 +790,51 @@ void t_vsteditor::set_pos(int x, int y){
 
 // search
 static void vstplugin_search_done(t_vstplugin *x){
-        // for async search:
-    if (x->x_thread.joinable()){
-        x->x_thread.join();
-    }
     verbose(PD_NORMAL, "search done");
     // sort plugin names alphabetically and case independent
-    std::sort(x->x_plugins.begin(), x->x_plugins.end(), [](const auto& lhs, const auto& rhs){
+    auto& plugins = x->x_search_data->s_plugins;
+    std::sort(plugins.begin(), plugins.end(), [](const auto& lhs, const auto& rhs){
         std::string s1 = lhs->s_name;
         std::string s2 = rhs->s_name;
         for (auto& c : s1) { c = std::tolower(c); }
         for (auto& c : s2) { c = std::tolower(c); }
         return s1 < s2;
     });
-    for (auto& plugin : x->x_plugins){
+    for (auto& plugin : plugins){
         t_atom msg;
         SETSYMBOL(&msg, plugin);
         outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
     }
     outlet_anything(x->x_messout, gensym("search_done"), 0, nullptr);
+    x->x_search_data->s_running = false;
 }
 
-static void vstplugin_search_threadfun(t_vstplugin *x, std::vector<std::string> searchPaths,
+static void vstplugin_search_threadfun(t_vstplugin *x, t_vstplugin::t_search_data_ptr data,
+                                       std::vector<std::string> searchPaths,
                                        bool parallel, bool update){
-    LOG_DEBUG("thread function started: " << x->x_thread.get_id());
+    LOG_DEBUG("thread function started: " << std::this_thread::get_id());
     for (auto& path : searchPaths){
-        searchPlugins<true>(path, parallel, x); // async
+        if (data->s_running){
+            searchPlugins<true>(path, parallel, data); // async
+        } else {
+            break;
+        }
     }
-    if (update){
-        writeIniFile();
-    }
+
+    // we need to lock Pd before calling clock_delay().
+    // also, 's_running' won't change its value while we hold the lock.
     sys_lock();
-    clock_delay(x->x_clock, 0); // schedules vstplugin_search_done
+    if (data->s_running){
+        clock_delay(x->x_search_clock, 0); // schedules vstplugin_search_done
+    } else {
+        LOG_DEBUG("search cancelled!");
+        update = false; // don't update cache file
+    }
     sys_unlock();
+
+    if (update){
+        writeIniFile(); // mutex protected
+    }
     LOG_DEBUG("thread function terminated");
 }
 
@@ -830,7 +844,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     bool update = true; // update cache file
     std::vector<std::string> searchPaths;
 
-    if (x->x_thread.joinable()){
+    if (x->x_search_data->s_running){
         pd_error(x, "%s: already searching!", classname(x));
         return;
     }
@@ -851,7 +865,8 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         }
     }
 
-    x->x_plugins.clear(); // clear list of plug-in keys
+    x->x_search_data->s_plugins.clear(); // clear list of plug-in keys
+    x->x_search_data->s_running = true;
 
     if (argc > 0){
         while (argc--){
@@ -861,28 +876,35 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             if (async){
                 searchPaths.emplace_back(path); // save for later
             } else {
-                searchPlugins<false>(path, parallel, x);
+                searchPlugins<false>(path, parallel, x->x_search_data);
             }
         }
-    } else {  // search in the default VST search paths if no user paths were provided
+    } else {
+        // search in the default VST search paths if no user paths were provided
         for (auto& path : getDefaultSearchPaths()){
             if (async){
                 searchPaths.emplace_back(path); // save for later
             } else {
-                searchPlugins<false>(path, parallel, x);
+                searchPlugins<false>(path, parallel, x->x_search_data);
             }
         }
     }
 
     if (async){
-            // spawn thread which does the actual searching in the background
-        x->x_thread = std::thread(vstplugin_search_threadfun, x, std::move(searchPaths), parallel, update);
+        // spawn thread which does the actual searching in the background
+        auto thread = std::thread(vstplugin_search_threadfun, x, x->x_search_data,
+                                  std::move(searchPaths), parallel, update);
+        thread.detach();
     } else {
         if (update){
             writeIniFile();
         }
         vstplugin_search_done(x);
     }
+}
+
+static void vstplugin_search_stop(t_vstplugin *x){
+    x->x_search_data->s_running = false;
 }
 
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
@@ -1751,7 +1773,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_precision = precision;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
-    x_clock = clock_new(this, (t_method)vstplugin_search_done);
+    x_search_clock = clock_new(this, (t_method)vstplugin_search_done);
 
         // inlets (we already have a main inlet!)
     int totalin = in + auxin - 1;
@@ -1770,6 +1792,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_messout = outlet_new(&x_obj, 0); // additional message outlet
 
         // search
+    x_search_data = std::make_shared<t_search_data>();
+
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
             searchPlugins<false>(path, true); // synchronous and parallel
@@ -1810,10 +1834,8 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 // destructor
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
-    if (x_thread.joinable()){
-        x_thread.join();
-    }
-    if (x_clock) clock_free(x_clock);
+    x_search_data->s_running = false; // quit running async search!
+    if (x_search_clock) clock_free(x_search_clock);
     LOG_DEBUG("vstplugin free");
 }
 
@@ -2025,11 +2047,6 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->x_auxoutbuf.resize(x->x_sigauxoutlets.size() * sizeof(double) * blocksize);
 }
 
-static void my_terminate(){
-    LOG_DEBUG("terminate called!");
-    std::abort();
-}
-
 // setup function
 #ifdef _WIN32
 #define EXPORT extern "C" __declspec(dllexport)
@@ -2049,7 +2066,9 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_search_stop, gensym("search_stop"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search_clear, gensym("search_clear"), A_DEFFLOAT, A_NULL);
+
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
@@ -2106,8 +2125,6 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<true>, gensym("bank_write"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
-
-    std::set_terminate(my_terminate);
 
     // read cached plugin info
     readIniFile();

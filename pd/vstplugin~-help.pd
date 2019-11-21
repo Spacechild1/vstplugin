@@ -496,14 +496,14 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X restore 274 510 pd preset;
 #X f 17;
 #X msg 216 261 print;
-#N canvas 204 74 799 648 search 0;
-#X obj 29 607 s \$0-msg;
-#X msg 61 462 info;
-#X text 100 599 the info method will output the following messages:
+#N canvas 204 74 799 657 search 0;
+#X obj 12 626 s \$0-msg;
+#X msg 61 481 info;
+#X text 100 618 the info method will output the following messages:
 , f 27;
-#X msg 65 530 info \$1;
-#X obj 65 509 openpanel;
-#X obj 65 488 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 65 549 info \$1;
+#X obj 65 528 openpanel;
+#X obj 65 507 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
 #X text 383 220 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
@@ -542,24 +542,24 @@ between Pd and other hosts (e.g. your favourite DAW);
 #X text 18 85 info version <s>: plugin version;
 #X text 18 49 info vendor <s>: plugin vendor;
 #X text 18 67 info category <s>: plugin category;
-#X restore 274 603 pd info;
+#X restore 274 622 pd info;
 #X text 28 195 additionally \, you can use the following methods:;
-#X text 100 461 get info about currently loaded plugin;
-#X msg 48 410 search_clear;
-#X text 130 410 clear the plugin dictionary;
-#X text 95 488 get info about any plugin (key or file name);
+#X text 100 480 get info about currently loaded plugin;
+#X msg 48 429 search_clear;
+#X text 138 429 clear the plugin dictionary;
+#X text 95 507 get info about any plugin (key or file name);
 #X text 420 152 is "Program Files (x86)";
-#X msg 69 576 info \$1;
-#X symbolatom 69 554 16 0 0 0 - - -;
-#X msg 29 221 search;
-#X text 85 220 search the standard VST directories;
-#X text 115 244 alternatively \, you can provide a list of user search
+#X msg 69 595 info \$1;
+#X symbolatom 69 573 16 0 0 0 - - -;
+#X msg 12 221 search;
+#X text 63 220 search the standard VST directories;
+#X text 93 244 alternatively \, you can provide a list of user search
 paths. relative paths are resolved to the current patch directory.
 , f 41;
-#X msg 35 249 search <l>;
-#X msg 40 290 search -a;
-#X text 114 290 search asynchronously, f 22;
-#X text 114 346 after the search has finished \, the message [search_done(
+#X msg 18 249 search <l>;
+#X msg 25 290 search -a;
+#X text 92 290 search asynchronously, f 22;
+#X text 92 346 after the search has finished \, the message [search_done(
 is sent., f 35;
 #X text 28 144 [vstplugin~ -s];
 #X text 29 115 you can use the -s flag to perform a search in the standard
@@ -569,13 +569,13 @@ several objects receive this flag., f 44;
 #X text 14 24 searched plugins are stored in a global dictionary using
 their name as the key \, which can be used as the creation argument
 to [vstplugin~] or in the [open( message.;
-#X msg 54 435 search_clear 1;
-#X text 156 434 clear and delete cache file;
+#X msg 54 454 search_clear 1;
+#X text 156 453 clear and delete cache file;
 #X text 12 63 (whitespace in names is replaced by underscores.);
 #X text 14 84 on startup \, plugin definitions are read from a cache
 file - which is updated after every new search operation., f 57;
-#X msg 44 382 search -n;
-#X text 114 382 search but don't update the cache file;
+#X msg 30 382 search -n;
+#X text 101 382 search but don't update the cache file;
 #X obj 384 326 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 388 329 NOTE:;
@@ -588,10 +588,12 @@ file., f 47;
 of seconds to several minutes \, depending on the number of plugins
 (shell plugins like Waves contain hundreds of sub-plugins!), f 50
 ;
-#X text 113 308 this prevents Pd from freezing till the search has
-finished and it lets you see the progress in the console., f 37;
+#X text 91 308 this prevents Pd from freezing till the search has finished
+and it lets you see the progress in the console., f 37;
 #X text 383 478 [vstpluginbrowser] uses [search -a( by default to avoid
 freezing Pd for an indeterminate amount of time., f 56;
+#X msg 37 407 search_stop;
+#X text 119 406 stop the current (asynchronous) search;
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
 #X connect 4 0 3 0;
@@ -604,6 +606,7 @@ freezing Pd for an indeterminate amount of time., f 56;
 #X connect 32 0 0 0;
 #X connect 39 0 0 0;
 #X connect 43 0 0 0;
+#X connect 52 0 0 0;
 #X restore 394 510 pd search;
 #X f 14;
 #X text 392 488 search + info;

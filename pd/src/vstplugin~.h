@@ -50,7 +50,7 @@ class t_vstplugin {
     std::vector<char> x_auxinbuf;
     std::vector<char> x_outbuf;
     std::vector<char> x_auxoutbuf;
-        // VST plugin
+    // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
     bool x_uithread = false;
@@ -59,11 +59,15 @@ class t_vstplugin {
     ProcessPrecision x_precision; // single/double precision
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
-        // thread for async operations (e.g. search)
-    std::thread x_thread;
-    t_clock *x_clock;
-    std::vector<t_symbol *> x_plugins;
-        // methods
+    // search
+    struct t_search_data {
+        std::vector<t_symbol *> s_plugins;
+        std::atomic_bool s_running { false };
+    };
+    using t_search_data_ptr = std::shared_ptr<t_search_data>;
+    t_clock *x_search_clock;
+    t_search_data_ptr x_search_data;
+    // methods
     IPlugin::ptr open_plugin(const PluginInfo& desc, bool editor);
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
