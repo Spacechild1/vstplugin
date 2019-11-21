@@ -148,6 +148,9 @@ table::
 
 note::here, emphasis::%ProgramFiles%:: stands for "C:\Program Files" on a 64 bit Server and "C:\Program Files (x86)" on a 32 bit Server.::
 
+subsection:: /vst_search_stop
+
+Stop a running search. (No arguments)
 
 subsection:: /vst_probe
 

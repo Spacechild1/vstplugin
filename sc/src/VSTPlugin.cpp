@@ -140,7 +140,7 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
 }
 
 // search and probe
-static bool gSearching = false;
+static std::atomic_bool gSearching {false};
 
 static PluginManager gPluginManager;
 
@@ -464,6 +464,9 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
     };
 
     vst::search(path, [&](const std::string & absPath) {
+        if (!gSearching){
+            return;
+        }
         std::string pluginPath = absPath;
 #ifdef _WIN32
         for (auto& c : pluginPath) {
@@ -2126,8 +2129,14 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     }
     // search for plugins
     for (auto& path : searchPaths) {
-        auto result = searchPlugins(path, parallel, verbose);
-        plugins.insert(plugins.end(), result.begin(), result.end());
+        if (gSearching){
+            auto result = searchPlugins(path, parallel, verbose);
+            plugins.insert(plugins.end(), result.begin(), result.end());
+        } else {
+            save = false; // don't update cache file
+            LOG_DEBUG("search cancelled");
+            break;
+        }
     }
     if (save){
         writeIniFile();
@@ -2234,6 +2243,10 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             data, cmdSearch, cmdSearchDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
         gSearching = true;
     }
+}
+
+void vst_search_stop(World* inWorld, void* inUserData, struct sc_msg_iter*args, void* replyAddr) {
+    gSearching = false;
 }
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
@@ -2417,6 +2430,7 @@ PluginLoad(VSTPlugin) {
     UnitCmd(vendor_method);
 
     PluginCmd(vst_search);
+    PluginCmd(vst_search_stop);
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
 

@@ -193,6 +193,11 @@ VSTPlugin : MultiOutUGen {
 			});
 		}.forkIfNeeded;
 	}
+	*stopSearch { arg server;
+		server = server ?? Server.default;
+		server.listSendMsg(this.stopSearchMsg);
+	}
+	*stopSearchMsg { ^['/cmd', '/vst_search_stop']; }
 	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
 		// resolve the path

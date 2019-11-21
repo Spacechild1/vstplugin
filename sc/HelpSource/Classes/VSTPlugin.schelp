@@ -338,6 +338,15 @@ DISCUSSION::
 Sending the message to the Server will emphasis::not:: update any info in the Client!
 Useful for NRT synthesis.
 
+METHOD:: stopSearch
+Stop a running search.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+METHOD:: stopSearchMsg
+
+RETURNS:: the message for a emphasis::stopSearch:: command (see link::#*stopSearch::).
 
 METHOD:: probe
 Probe a single VST plugin.

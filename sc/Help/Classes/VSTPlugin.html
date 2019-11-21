@@ -32,6 +32,8 @@ var scdoc_sc_version = '3.10.0';
 </ul><li class='toc2'><a href='#Searching%20for%20plugins'>Searching for plugins</a></li>
 <ul class='toc'><li class='toc3'><a href='#*search'>search</a> </li>
 <li class='toc3'><a href='#*searchMsg'>searchMsg</a> </li>
+<li class='toc3'><a href='#*stopSearch'>stopSearch</a> </li>
+<li class='toc3'><a href='#*stopSearchMsg'>stopSearchMsg</a> </li>
 <li class='toc3'><a href='#*probe'>probe</a> </li>
 <li class='toc3'><a href='#*probeMsg'>probeMsg</a> </li>
 <li class='toc3'><a href='#*readPlugins'>readPlugins</a> </li>
@@ -223,7 +225,16 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <div class='returnvalue'>
 <p>the message for a <em>search</em> command (see <a href="#*search">*search</a>).</div><h4>Discussion:</h4>
 
-<p>Sending the message to the Server will <em>not</em> update any info in the Client! Useful for NRT synthesis.</div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*probe' href='./../Overviews/Methods.html#probe'>probe</a>(<span class='argstr'>server</span>, <span class='argstr'>path</span>, <span class='argstr'>key</span>, <span class='argstr'>wait: -1</span>, <span class='argstr'>action</span>)</h3>
+<p>Sending the message to the Server will <em>not</em> update any info in the Client! Useful for NRT synthesis.</div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*stopSearch' href='./../Overviews/Methods.html#stopSearch'>stopSearch</a>(<span class='argstr'>server</span>)</h3>
+<div class='method'>
+<p>Stop a running search.<h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>server<td class='argumentdesc'>
+<p>the Server. If <code>nil</code>, the default Server is assumed.</table></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*stopSearchMsg' href='./../Overviews/Methods.html#stopSearchMsg'>stopSearchMsg</a></h3>
+<div class='method'>
+<p><h4>Returns:</h4>
+<div class='returnvalue'>
+<p>the message for a <em>stopSearch</em> command (see <a href="#*stopSearch">*stopSearch</a>).</div></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*probe' href='./../Overviews/Methods.html#probe'>probe</a>(<span class='argstr'>server</span>, <span class='argstr'>path</span>, <span class='argstr'>key</span>, <span class='argstr'>wait: -1</span>, <span class='argstr'>action</span>)</h3>
 <div class='method'>
 <p>Probe a single VST plugin.<h4>Arguments:</h4>
 <table class='arguments'>
