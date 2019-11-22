@@ -1088,12 +1088,8 @@ bool cmdOpen(World *world, void* cmdData) {
             else {
                 LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
             }
-            int nin = std::min<int>(plugin->info().numInputs, owner->numInChannels());
-            int nout = std::min<int>(plugin->info().numOutputs, owner->numOutChannels());
-            int nauxin = std::min<int>(plugin->info().numAuxInputs, owner->numAuxInChannels());
-            int nauxout = std::min<int>(plugin->info().numAuxOutputs, owner->numAuxOutChannels());
-            LOG_DEBUG("nin: " << nin << ", nout: " << nout << ", nauxin: " << nauxin << ", nauxout: " << nauxout);
-            plugin->setNumSpeakers(nin, nout, nauxin, nauxout);
+            plugin->setNumSpeakers(owner->numInChannels(), owner->numOutChannels(),
+                                   owner->numAuxInChannels(), owner->numAuxOutChannels());
             plugin->resume();
             data->plugin = std::move(plugin);
         }

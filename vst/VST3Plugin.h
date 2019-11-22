@@ -307,8 +307,10 @@ class VST3Plugin final :
         Main = 0,
         Aux = 1
     };
-    int numInputs_[2]; // main + aux
-    int numOutputs_[2]; // main + aux
+    int numInputBusses_ = 0;
+    int numInputChannels_[2]; // main + aux
+    int numOutputBusses_ = 0;
+    int numOutputChannels_[2]; // main + aux
     Vst::ProcessContext context_;
     // automation
     int32 automationState_ = 0; // should better be atomic as well...

@@ -290,6 +290,8 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         }
         info_ = info;
     }
+    numInputChannels_ = getNumInputs();
+    numOutputChannels_ = getNumOutputs();
     haveBypass_ = hasBypass(); // cache for performance
 }
 
@@ -378,14 +380,13 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
         bypassRamp = false;
     }
     lastBypass_ = bypass_;
-    // LATER try to get actual channel count from bus arrangement
-    // (We only need this so we can zero output channels which are not touched by the plugin.)
 
     // prepare input
-    int nin = getNumInputs();
+    int nin = numInputChannels_;
     auto input = (T **)alloca(sizeof(T *) * nin); // array of buffers
-    auto inbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
-    std::fill(inbuf, inbuf + data.numSamples, 0); // zero!
+    auto indummy = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
+    std::fill(indummy, indummy + data.numSamples, 0); // zero!
+
     for (int i = 0; i < nin; ++i){
         if (i < data.numInputs){
             switch (bypassState){
@@ -401,7 +402,7 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
                         dst[j] = src[j] * mix;
                     }
                 } else {
-                    input[i] = inbuf; // silence
+                    input[i] = indummy; // silence
                 }
                 break;
             case Bypass::Hard:
@@ -409,7 +410,7 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
                     // point to input (for creating the ramp)
                     input[i] = (T *)data.input[i];
                 } else {
-                    input[i] = inbuf; // silence (for flushing the effect)
+                    input[i] = indummy; // silence (for flushing the effect)
                 }
                 break;
             default:
@@ -419,20 +420,22 @@ void VST2Plugin::doProcessing(ProcessData<T>& data, TProc processRoutine){
             }
         } else {
             // point to silence
-            input[i] = inbuf;
+            input[i] = indummy;
         }
     }
+
     // prepare output
-    int nout = getNumOutputs();
+    int nout = numOutputChannels_;
     auto output = (T **)alloca(sizeof(T *) * nout);
-    auto outbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy output buffer (don't have to zero)
+    auto outdummy = (T *)alloca(sizeof(T) * data.numSamples); // dummy output buffer (don't have to zero)
     for (int i = 0; i < nout; ++i){
         if (i < data.numOutputs){
             output[i] = data.output[i];
         } else {
-            output[i] = outbuf;
+            output[i] = outdummy;
         }
     }
+
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
@@ -655,6 +658,27 @@ void VST2Plugin::setNumSpeakers(int in, int out, int auxin, int auxout){
     dispatch(effSetSpeakerArrangement, 0, reinterpret_cast<VstIntPtr>(input), output);
     free(input);
     free(output);
+
+    // verify speaker arrangement
+    input = nullptr;
+    output = nullptr;
+    dispatch(effGetSpeakerArrangement, 0, reinterpret_cast<VstIntPtr>(&input), &output);
+
+    if (input){
+        numInputChannels_ = input->numChannels;
+    } else {
+        numInputChannels_ = getNumInputs();
+    }
+    if (output){
+        numOutputChannels_ = output->numChannels;
+    } else {
+        numOutputChannels_ = getNumOutputs();
+    }
+    LOG_DEBUG("setNumSpeakers: in " << numInputChannels_
+              << ", out " << numOutputChannels_);
+    if (!input || !output){
+        LOG_DEBUG("(effGetSpeakerArrangement not supported)");
+    }
 }
 
 void VST2Plugin::setTempoBPM(double tempo){

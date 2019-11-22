@@ -172,6 +172,8 @@ class VST2Plugin final : public IPlugin {
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
         // processing
+    int numInputChannels_ = 0;
+    int numOutputChannels_ = 0;
     VstTimeInfo timeInfo_;
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;

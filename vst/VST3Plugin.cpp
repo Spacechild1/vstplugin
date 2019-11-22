@@ -377,7 +377,7 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
 }
 
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
-    : factory_(std::move(f)), info_(std::move(desc)), numInputs_{0}, numOutputs_{0}
+    : factory_(std::move(f)), info_(std::move(desc))
 {
     memset(&context_, 0, sizeof(context_));
     context_.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kContTimeValid
@@ -482,7 +482,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error(Error::PluginError, "Couldn't get VST3 processor");
     }
-    // check
     // get IO channel count
     auto getChannelCount = [this](auto media, auto dir, auto type) -> int {
         auto count = component_->getBusCount(media, dir);
@@ -503,14 +502,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
         return 0;
     };
-    numInputs_[Main] = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
-    numInputs_[Aux] = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
-    numOutputs_[Main] = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
-    numOutputs_[Aux] = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
-    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
-    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
-    LOG_DEBUG("in: " << getNumInputs() << ", auxin: " << getNumAuxInputs());
-    LOG_DEBUG("out: " << getNumOutputs() << ", auxout: " << getNumAuxOutputs());
     // finally set remaining info
     if (info){
         info->setUID(uid);
@@ -523,10 +514,10 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 info->vendor = "Unknown";
             }
         }
-        info->numInputs = getNumInputs();
-        info->numAuxInputs = getNumAuxInputs();
-        info->numOutputs = getNumOutputs();
-        info->numAuxOutputs = getNumAuxOutputs();
+        info->numInputs = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
+        info->numAuxInputs = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
+        info->numOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
+        info->numAuxOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
         uint32_t flags = 0;
         LOG_DEBUG("has editor: " << hasEditor());
         flags |= hasEditor();
@@ -595,6 +586,19 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
         info_ = info;
     }
+    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
+    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
+    numInputBusses_ = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kInput));
+    numInputChannels_[Main] = getNumInputs();
+    numInputChannels_[Aux] = getNumAuxInputs();
+    numOutputBusses_ = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kOutput));
+    numOutputChannels_[Main] = getNumOutputs();
+    numOutputChannels_[Aux] = getNumAuxOutputs();
+#if 0
+    LOG_DEBUG("input busses: " << numInputBusses_ << ", output busses: " << numOutputBusses_);
+    LOG_DEBUG("in: " << getNumInputs() << ", auxin: " << getNumAuxInputs()
+              << ", out: " << getNumOutputs() << ", auxout: " << getNumAuxOutputs());
+#endif
     // setup parameter queues/cache
     // we have to allocate space for all parameters, including hidden ones, e.g. for MIDI CC messages.
     int numParams = controller_->getParameterCount();
@@ -749,9 +753,9 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     Vst::AudioBusBuffers output[2];
     data.numSamples = inData.numSamples;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
-    // some buggy plugins don't do proper bound checking, so we better make sure we don't exceed the maxium bus count
-    data.numInputs = std::min<int>(inData.auxInput ? 2 : 1, component_->getBusCount(Vst::kAudio, Vst::kInput));
-    data.numOutputs = std::min<int>(inData.auxOutput ? 2 : 1, component_->getBusCount(Vst::kAudio, Vst::kOutput));
+    // we send data for all busses (max. 2 per direction); some might have been deactivated in 'setNumSpeakers'
+    data.numInputs = numInputBusses_;
+    data.numOutputs = numOutputBusses_;
     data.inputs = input;
     data.outputs = output;
     data.processContext = &context_;
@@ -787,14 +791,13 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     lastBypass_ = bypass_;
 
     // create dummy buffers
-    auto inbuf = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
-    std::fill(inbuf, inbuf + data.numSamples, 0); // zero!
-    auto outbuf = (T *)alloca(sizeof(T) * data.numSamples); // (don't have to zero)
+    auto indummy = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
+    std::fill(indummy, indummy + data.numSamples, 0); // zero!
+    auto outdummy = (T *)alloca(sizeof(T) * data.numSamples); // (don't have to zero)
 
-    // LATER try to get actual channel count from bus arrangement
-    // We only need this so we can zero output channels which are not touched by the plugin
-    auto setAudioInputBuffers = [&](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
-                            auto** inputs, int numIn, auto** outputs, int numOut, auto* buf){
+    // prepare input buffers
+    auto setInputBuffers = [&](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
+                            auto** inputs, int numIn, auto** outputs, int numOut, auto* dummy){
         bus.silenceFlags = 0;
         bus.numChannels = numChannels;
         for (int i = 0; i < numChannels; ++i){
@@ -812,7 +815,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                             dst[j] = src[j] * mix;
                         }
                     } else {
-                        vec[i] = buf; // silence
+                        vec[i] = dummy; // silence
                     }
                     break;
                 case Bypass::Hard:
@@ -820,7 +823,7 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                         // point to input (for creating the ramp)
                         vec[i] = inputs[i];
                     } else {
-                        vec[i] = buf; // silence (for flushing the effect)
+                        vec[i] = dummy; // silence (for flushing the effect)
                     }
                     break;
                 default:
@@ -829,38 +832,43 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                     break;
                 }
             } else {
-                vec[i] = buf; // point to dummy buffer
+                vec[i] = dummy; // silence
             }
         }
         setAudioBusBuffers(bus, vec);
     };
-    auto setAudioOutputBuffers = [](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
-                            auto** outputs, int numOut, auto* buf){
+    // prepare output buffers
+    auto setOutputBuffers = [](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
+                            auto** outputs, int numOut, auto* dummy){
         bus.silenceFlags = 0;
         bus.numChannels = numChannels;
         for (int i = 0; i < numChannels; ++i){
             if (i < numOut){
                 vec[i] = outputs[i];
             } else {
-                vec[i] = buf; // point to dummy buffer
+                vec[i] = dummy; // point to dummy buffer
             }
         }
         setAudioBusBuffers(bus, vec);
     };
     // input:
-    auto invec = (T **)alloca(sizeof(T*) * getNumInputs());
-    setAudioInputBuffers(input[Vst::kMain], invec, getNumInputs(),
-            (T **)inData.input, inData.numInputs, inData.output, inData.numOutputs, inbuf);
+    auto nin = numInputChannels_[Main];
+    auto invec = (T **)alloca(sizeof(T*) * nin);
+    setInputBuffers(input[Main], invec, nin, (T **)inData.input, inData.numInputs,
+            inData.output, inData.numOutputs, indummy);
     // aux input:
-    auto auxinvec = (T **)alloca(sizeof(T*) * getNumAuxInputs());
-    setAudioInputBuffers(input[Vst::kAux], auxinvec, getNumAuxInputs(),
-            (T **)inData.auxInput, inData.numAuxInputs, inData.auxOutput, inData.numAuxOutputs, inbuf);
+    auto nauxin = numInputChannels_[Aux];
+    auto auxinvec = (T **)alloca(sizeof(T*) * nauxin);
+    setInputBuffers(input[Aux], auxinvec, nauxin, (T **)inData.auxInput, inData.numAuxInputs,
+            inData.auxOutput, inData.numAuxOutputs, indummy);
     // output:
-    auto outvec = (T **)alloca(sizeof(T*) * getNumOutputs());
-    setAudioOutputBuffers(output[Vst::kMain], outvec, getNumOutputs(), (T **)inData.output, inData.numOutputs, outbuf);
+    auto nout = numOutputChannels_[Main];
+    auto outvec = (T **)alloca(sizeof(T*) * nout);
+    setOutputBuffers(output[Main], outvec, nout, (T **)inData.output, inData.numOutputs, outdummy);
     // aux output:
-    auto auxoutvec = (T **)alloca(sizeof(T*) * getNumAuxOutputs());
-    setAudioOutputBuffers(output[Vst::kAux], auxoutvec, getNumAuxOutputs(), (T **)inData.auxOutput, inData.numAuxOutputs, outbuf);
+    auto nauxout = numOutputChannels_[Aux];
+    auto auxoutvec = (T **)alloca(sizeof(T*) * nauxout);
+    setOutputBuffers(output[Aux], auxoutvec, nauxout, (T **)inData.auxOutput, inData.numAuxOutputs, outdummy);
 
     // send parameter changes from editor to processor
     ParamChange paramChange;
@@ -898,8 +906,8 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                     }
                 }
             };
-            softRamp(inData.input, inData.numInputs, outvec, getNumOutputs());
-            softRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, getNumAuxOutputs());
+            softRamp(inData.input, inData.numInputs, outvec, nout);
+            softRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout);
             if (rampDir){
                 LOG_DEBUG("process -> soft bypass");
             } else {
@@ -925,8 +933,8 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                    }
                 }
             };
-            hardRamp(inData.input, inData.numInputs, outvec, getNumOutputs());
-            hardRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, getNumAuxOutputs());
+            hardRamp(inData.input, inData.numInputs, outvec, nout);
+            hardRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout);
             if (rampDir){
                 LOG_DEBUG("process -> hard bypass");
             } else {
@@ -955,8 +963,8 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                 }
             }
         };
-        checkBusSilent(outvec, getNumOutputs(), data.numSamples);
-        checkBusSilent(auxoutvec, getNumAuxOutputs(), data.numSamples);
+        checkBusSilent(outvec, nout, data.numSamples);
+        checkBusSilent(auxoutvec, nauxout, data.numSamples);
         if (silent){
             LOG_DEBUG("plugin output became silent!");
         }
@@ -974,11 +982,11 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
                     }
                 }
             };
-            mix(inData.input, inData.numInputs, outvec, getNumOutputs(), inData.numSamples);
-            mix(inData.auxInput, inData.numAuxInputs, auxoutvec, getNumAuxOutputs(), inData.numSamples);
+            mix(inData.input, inData.numInputs, outvec, nout, inData.numSamples);
+            mix(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout, inData.numSamples);
         } else {
             // overwrite output
-            doBypassProcessing(inData, outvec, getNumOutputs(), auxoutvec, getNumAuxOutputs());
+            doBypassProcessing(inData, outvec, nout, auxoutvec, nauxout);
         }
     } else {
         // simple bypass
@@ -992,8 +1000,8 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
             std::fill(out, out + n, 0);
         }
     };
-    clearOutputs(inData.output, inData.numOutputs, getNumOutputs(), inData.numSamples);
-    clearOutputs(inData.auxOutput, inData.numAuxOutputs, getNumAuxOutputs(), inData.numSamples);
+    clearOutputs(inData.output, inData.numOutputs, nout, inData.numSamples);
+    clearOutputs(inData.auxOutput, inData.numAuxOutputs, nauxout, inData.numSamples);
 
     // clear input queues
     inputEvents_.clear();
@@ -1145,19 +1153,19 @@ void VST3Plugin::resume(){
 }
 
 int VST3Plugin::getNumInputs() const {
-    return numInputs_[Vst::kMain];
+    return info_->numInputs;
 }
 
 int VST3Plugin::getNumAuxInputs() const {
-    return numInputs_[Vst::kAux];
+    return info_->numAuxInputs;
 }
 
 int VST3Plugin::getNumOutputs() const {
-    return numOutputs_[Vst::kMain];
+    return info_->numOutputs;
 }
 
 int VST3Plugin::getNumAuxOutputs() const {
-    return numOutputs_[Vst::kAux];
+    return info_->numAuxOutputs;
 }
 
 bool VST3Plugin::isSynth() const {
@@ -1204,52 +1212,52 @@ void VST3Plugin::setBypass(Bypass state){
     }
 }
 
-#define makeChannels(n) ((uint64_t)(1 << (n)) - 1)
+static uint64_t makeChannels(int n){
+    return ((uint64_t)(1 << (n)) - 1);
+}
 
 void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
     // NOTE: for convenience, we assume that the first bus is 'main' and the second bus is 'aux',
     // but this is not necessarily true...
+    LOG_DEBUG("requested bus arrangement: in " << in << ", auxin " << auxIn << ", out " << out << ", auxout " << auxOut);
 
     // input busses (max. 2)
-    Vst::SpeakerArrangement busIn[2] = { 0 };
-    auto numIn = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kInput));
-    for (int i = 0; i < numIn; ++i){
-        Vst::BusInfo bus;
-        if (component_->getBusInfo(Vst::kAudio, Vst::kInput, i, bus) == kResultTrue){
-            if (bus.busType == Vst::kMain && i == 0){
-                busIn[i] = makeChannels(std::min<int>(in, getNumInputs()));
-            } else if (bus.busType == Vst::kAux && i == 1){
-                busIn[i] = makeChannels(std::min<int>(auxIn, getNumAuxInputs()));
-            }
-        }
-    }
+    Vst::SpeakerArrangement inputBusses[2] = {
+        makeChannels(std::min<int>(in, getNumInputs())),
+        makeChannels(std::min<int>(auxIn, getNumAuxInputs()))
+    };
     // output busses (max. 2)
-    Vst::SpeakerArrangement busOut[2] = { 0 };
-    auto numOut = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kOutput));
-    for (int i = 0; i < numOut; ++i){
-        Vst::BusInfo bus;
-        if (component_->getBusInfo(Vst::kAudio, Vst::kOutput, i, bus) == kResultTrue){
-            if (bus.busType == Vst::kMain && i == 0){
-                busOut[i] = makeChannels(std::min<int>(out, getNumOutputs()));
-            } else if (bus.busType == Vst::kAux && i == 1){
-                busOut[i] = makeChannels(std::min<int>(auxOut, getNumAuxOutputs()));
-            }
+    Vst::SpeakerArrangement outputBusses[2] = {
+        makeChannels(std::min<int>(out, getNumOutputs())),
+        makeChannels(std::min<int>(auxOut, getNumAuxOutputs()))
+    };
+    processor_->setBusArrangements(inputBusses, numInputBusses_, outputBusses, numOutputBusses_);
+    // we have to (de)activate busses *after* setting the bus arrangement.
+    // we also retrieve and save the actual bus channel counts.
+    for (int i = 0; i < numInputBusses_; ++i){
+        bool active = i > 0 ? auxIn : in;
+        component_->activateBus(Vst::kAudio, Vst::kInput, i, active);
+        if (processor_->getBusArrangement(Vst::kInput, i, inputBusses[i]) == kResultOk){
+            numInputChannels_[i] = Vst::SpeakerArr::getChannelCount(inputBusses[i]);
+        } else {
+            numInputChannels_[i] = i > 0 ? getNumAuxInputs() : getNumInputs();
+            LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
         }
     }
-    processor_->setBusArrangements(busIn, numIn, busOut, numOut);
-    // we have to (de)activate busses *after* setting the bus arrangement
-    if (numIn > 0){
-        component_->activateBus(Vst::kAudio, Vst::kInput, 0, in > 0); // main
+    for (int i = 0; i < numOutputBusses_; ++i){
+        bool active = i > 0 ? auxOut : out;
+        component_->activateBus(Vst::kAudio, Vst::kOutput, i, active);
+        if (processor_->getBusArrangement(Vst::kOutput, i, outputBusses[i]) == kResultOk){
+            numOutputChannels_[i] = Vst::SpeakerArr::getChannelCount(outputBusses[i]);
+        } else {
+            numOutputChannels_[i] = i > 0 ? getNumAuxOutputs() : getNumOutputs();
+            LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+        }
     }
-    if (numIn > 1){
-        component_->activateBus(Vst::kAudio, Vst::kInput, 1, auxIn > 0); // aux
-    }
-    if (numOut > 0){
-        component_->activateBus(Vst::kAudio, Vst::kOutput, 0, out > 0); // main
-    }
-    if (numOut > 1){
-        component_->activateBus(Vst::kAudio, Vst::kOutput, 1, auxOut > 0); // aux
-    }
+    LOG_DEBUG("actual bus arrangement: in " << numInputChannels_[Main]
+              << ", auxin " << numInputChannels_[Aux]
+              << ", out " << numOutputChannels_[Main]
+              << ", auxout " << numOutputChannels_[Aux]);
 }
 
 void VST3Plugin::setTempoBPM(double tempo){
