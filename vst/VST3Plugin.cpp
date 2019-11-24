@@ -561,7 +561,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             }
         }
         // programs
-        auto ui = FUnknownPtr<Vst::IUnitInfo>(controller);
+        auto ui = FUnknownPtr<Vst::IUnitInfo>(controller_);
         if (ui){
             int count = ui->getProgramListCount();
             if (count > 0){
@@ -579,10 +579,15 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                             info->programs.push_back("");
                         }
                     }
+                    LOG_DEBUG("num programs: " << pli.programCount);
                 } else {
                     LOG_ERROR("couldn't get program list info");
                 }
+            } else {
+                LOG_DEBUG("no program list");
             }
+        } else {
+            LOG_DEBUG("no unit info");
         }
         info_ = info;
     }
