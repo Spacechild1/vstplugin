@@ -1433,8 +1433,8 @@ static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *ar
     if (!x->check_plugin()) return;
 
     MidiEvent event;
-    for (int i = 0; i < 3 && i < argc; ++i){
-        event.data[i] = atom_getfloat(argv + i);
+    for (int i = 0; i < 3; ++i){
+        event.data[i] = atom_getfloatarg(i, argc, argv);
     }
     event.delta = x->get_sample_offset();
     x->x_plugin->sendMidiEvent(event);
@@ -1442,6 +1442,8 @@ static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *ar
 
 // helper function
 static void vstplugin_midi_mess(t_vstplugin *x, int onset, int channel, int d1, int d2 = 0, float detune = 0){
+    if (!x->check_plugin()) return;
+
     channel = std::max(1, std::min(16, (int)channel)) - 1;
     d1 = std::max(0, std::min(127, d1));
     d2 = std::max(0, std::min(127, d2));
@@ -1476,7 +1478,7 @@ static void vstplugin_midi_touch(t_vstplugin *x, t_floatarg channel, t_floatarg 
 }
 
 static void vstplugin_midi_bend(t_vstplugin *x, t_floatarg channel, t_floatarg bend){
-        // map from [-1.f, 1.f] to [0, 16383] (14 bit)
+    // map from [-1.f, 1.f] to [0, 16383] (14 bit)
     int val = (bend + 1.f) * 8192.f; // 8192 is the center position
     val = std::max(0, std::min(16383, val));
     vstplugin_midi_mess(x, 224, channel, val & 127, (val >> 7) & 127);
