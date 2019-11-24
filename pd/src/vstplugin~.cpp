@@ -235,7 +235,7 @@ static IFactory::ptr loadFactory(const std::string& path){
     try {
         factory = IFactory::load(path);
     } catch (const Error& e){
-        PdLog<async> log(PD_DEBUG, "couldn't load '%s': %s", path.c_str(), e.what());
+        PdLog<async> log(PD_ERROR, "couldn't load '%s': %s", path.c_str(), e.what());
         gPluginManager.addException(path);
         return nullptr;
     }

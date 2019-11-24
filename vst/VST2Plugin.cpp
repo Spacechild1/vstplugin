@@ -99,11 +99,7 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 VstInt32 VST2Factory::shellPluginID = 0;
 
 VST2Factory::VST2Factory(const std::string& path)
-    : path_(path) {
-    if (!pathExists(path)){
-        throw Error(Error::ModuleError, "No such file");
-    }
-}
+    : path_(path) {}
 
 VST2Factory::~VST2Factory(){
     // LOG_DEBUG("freed VST2 module " << path_);

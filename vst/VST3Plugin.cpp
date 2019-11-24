@@ -103,11 +103,7 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 /*/////////////////////// VST3Factory /////////////////////////*/
 
 VST3Factory::VST3Factory(const std::string& path)
-    : path_(path) {
-    if (!pathExists(path)){
-        throw Error(Error::ModuleError, "No such file");
-    }
-}
+    : path_(path) {}
 
 VST3Factory::~VST3Factory(){
     if (module_ && !module_->exit()){

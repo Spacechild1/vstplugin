@@ -616,21 +616,6 @@ void printCpuArchitectures(const std::string& path){
     }
 }
 
-// specialized exception for CPU architecture mismatch.
-// will be used for bit bridging.
-class CpuArchError : public Error {
- public:
-    CpuArchError(const std::vector<CpuArch>& archs)
-        : Error(Error::ModuleError, "Wrong CPU architecture"),
-          architectures_(archs){}
-
-    const std::vector<CpuArch>& architectures() const {
-        return architectures_;
-    }
- private:
-    std::vector<CpuArch> architectures_;
-};
-
 /*////////////////////// search ///////////////////////*/
 
 static std::vector<const char *> platformExtensions = {
@@ -971,12 +956,7 @@ class ModuleWin32 : public IModule {
     ModuleWin32(const std::string& path){
         handle_ = LoadLibraryW(widen(path).c_str());
         if (!handle_){
-            auto error = GetLastError();
-            auto arch = getCpuArchitectures(path);
-            if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
-                throw CpuArchError(arch);
-            }
-            throw Error(Error::ModuleError, errorMessage(error));
+            throw Error(Error::ModuleError, errorMessage(GetLastError()));
         }
         // LOG_DEBUG("loaded Win32 library " << path);
     }
@@ -1026,14 +1006,8 @@ class ModuleApple : public IModule {
         if (bundle_){
             // force loading!
             if (!CFBundleLoadExecutable(bundle_)){
-                err = errno; // immediately catch possible error
-                // check for CPU architecture mismatch
-                auto arch = getCpuArchitectures(path);
-                if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
-                    throw CpuArchError(arch);
-                }
-                // other errors
-                throw Error(Error::ModuleError, errorMessage(err));
+                err = errno;
+                throw Error(Error::ModuleError, err ? errorMessage(err) : "CFBundleLoadExecutable failed");
             }
         } else {
             std::stringstream ss;
@@ -1075,10 +1049,6 @@ class ModuleSO : public IModule {
         handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
         if (!handle_) {
             auto error = dlerror();
-            auto arch = getCpuArchitectures(path);
-            if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
-                throw CpuArchError(arch);
-            }
             std::stringstream ss;
             ss << (error ? error : "dlopen failed");
             throw Error(Error::ModuleError, ss.str());
@@ -1133,12 +1103,15 @@ IFactory::ptr IFactory::load(const std::string& path){
     // LOG_DEBUG("IFactory: loading " << path);
     if (path.find(".vst3") != std::string::npos){
     #if USE_VST3
-        try {
-            return std::make_shared<VST3Factory>(path);
-        } catch (const CpuArchError& e){
-            // TODO try bridging
-            throw;
+        if (!pathExists(path)){
+            throw Error(Error::ModuleError, "No such file");
         }
+        auto arch = getCpuArchitectures(path);
+        if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
+            // TODO try bridging
+            throw Error(Error::ModuleError, "Wrong CPU architecture");
+        }
+        return std::make_shared<VST3Factory>(path);
     #else
         throw Error(Error::ModuleError, "VST3 plug-ins not supported");
     #endif
@@ -1148,12 +1121,15 @@ IFactory::ptr IFactory::load(const std::string& path){
         if (path.find(ext) == std::string::npos){
             realPath += ext;
         }
-        try {
-            return std::make_shared<VST2Factory>(realPath);
-        } catch (const CpuArchError& e){
-            // TODO try bridging
-            throw;
+        if (!pathExists(realPath)){
+            throw Error(Error::ModuleError, "No such file");
         }
+        auto arch = getCpuArchitectures(realPath);
+        if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
+            // TODO try bridging
+            throw Error(Error::ModuleError, "Wrong CPU architecture");
+        }
+        return std::make_shared<VST2Factory>(realPath);
     #else
         throw Error(Error::ModuleError, "VST2 plug-ins not supported");
     #endif
