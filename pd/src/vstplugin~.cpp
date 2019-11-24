@@ -113,9 +113,13 @@ public:
         if (async){
             // post immediately
             sys_lock();
-            startpost(fmt, args...);
+            if (level >= PD_NORMAL){
+                startpost(fmt, args...);
+                force_ = true; // force newline on destruction!
+            } else {
+                verbose(level, fmt, args...);
+            }
             sys_unlock();
-            force_ = true; // force newline on destruction!
         } else {
             // defer posting
             char buf[MAXPDSTRING];
