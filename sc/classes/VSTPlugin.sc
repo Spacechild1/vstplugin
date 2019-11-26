@@ -137,7 +137,7 @@ VSTPluginDesc {
 						\vendor, { info.vendor = value },
 						\category, { info.category = value },
 						\version, { info.version = value },
-						\sdkVersion, { info.sdkVersion = value },
+						\sdkversion, { info.sdkVersion = value },
 						\id, { info.id = value },
 						\inputs, { info.numInputs = value.asInteger },
 						\outputs, { info.numOutputs = value.asInteger },
