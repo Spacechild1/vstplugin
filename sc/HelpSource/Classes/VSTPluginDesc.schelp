@@ -1,0 +1,149 @@
+TITLE:: VSTPluginDesc
+summary:: VST plugin description
+categories:: Undocumented classes
+related:: Classes/VSTPlugin, Classes/VSTPluginController
+
+DESCRIPTION::
+
+This class describes the structure and properties of a VST plugin. Instances are stored in a global dictionary and can be retrieved with link::Classes/VSTPlugin#plugins:: using the link::#-key::.
+
+note::Plugin descriptions are read-only and shouldn't be modified by the user::
+
+CLASSMETHODS::
+
+PRIVATE:: prParse
+
+INSTANCEMETHODS::
+
+PRIVATE:: prToString, prParamIndexMap
+
+METHOD:: key
+
+a symbol used to identify this plugin.
+
+Discussion::
+For VST 2.x plugins, the key is simply the plugin name; for VST 3 plugins, the key has an additional ".vst3" extension
+(to distinguish it from a VST 2.x plugin of the same name). It can be used in link::Classes/VSTPluginController#-open::.
+
+METHOD:: path
+
+the full path to the module containing this plugin.
+
+METHOD:: name
+
+the plugin name.
+
+METHOD:: vendor
+
+the plugin vendor.
+
+METHOD:: category
+
+the plugin category. Multiple (sub)categories are seperated with the '|' character.
+
+METHOD:: version
+
+the plugin version.
+
+METHOD:: sdkVersion
+
+the VST SDK version.
+
+METHOD:: id
+
+the unique ID.
+
+METHOD:: numInputs
+
+number of (main) audio inputs
+
+METHOD:: numOutputs
+
+number of (main) audio outputs
+
+METHOD:: numAuxInputs
+
+number of auxiliary audio inputs (VST3 only)
+
+METHOD:: numAuxOutputs
+
+number of auxiliary audio outputs (VST3 only)
+
+METHOD:: hasEditor
+
+whether the plugin has a VST GUI editor
+
+METHOD:: isSynth
+
+whether the plugin is a VST instrument
+
+METHOD:: singlePrecision
+
+whether the plugin supports single precision processing
+
+METHOD:: doublePrecision
+
+whether the plugin supports double precision processing
+
+METHOD:: midiInput
+
+whether the plugin accepts MIDI input
+
+METHOD:: midiOutput
+
+whether the plugin accepts MIDI output
+
+METHOD:: sysexInput
+
+whether the plugin accepts SysEx input (undefined for VST3)
+
+METHOD:: sysexOutput
+
+whether the plugin accepts SysEx output (undefined for VST3)
+
+METHOD:: parameters
+
+link::Classes/Array:: of (automatable) parameters. Each parameter is represented as an link::Classes/Event:: containing the following fields:
+
+table::
+## name || parameter name
+## label || the unit of measurement (e.g. 'dB')
+::
+
+More entries might be added later.
+
+METHOD:: numParameters
+
+RETURNS:: the number of parameters.
+
+METHOD:: programs
+
+link::Classes/Array:: of built-in plugin programs. Each program is represented as an link::Classes/Event:: which currently only contains a single field 'name'. More entries might be added later.
+
+
+METHOD:: numPrograms
+
+RETURNS:: the number of programs.
+
+
+METHOD:: print
+
+post plugin info to the console.
+
+ARGUMENT:: long
+
+also post parameters and programs.
+
+METHOD:: printParameters
+
+post parameters.
+
+METHOD:: printPrograms
+
+post programs.
+
+
+METHOD:: findParamIndex
+
+get the index of parameter by name.
+

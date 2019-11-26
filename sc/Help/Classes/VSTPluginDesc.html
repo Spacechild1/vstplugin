@@ -1,0 +1,171 @@
+<!doctype html><html lang='en'><head><title>VSTPluginDesc | SuperCollider 3.10.0 Help</title>
+<link rel='stylesheet' href='./../scdoc.css' type='text/css' />
+<link rel='stylesheet' href='./../codemirror.css' type='text/css' />
+<link rel='stylesheet' href='./../editor.css' type='text/css' />
+<link rel='stylesheet' href='./../frontend.css' type='text/css' />
+<link rel='stylesheet' href='./../custom.css' type='text/css' />
+<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />
+<script src='./../lib/jquery.min.js'></script>
+<script src='./../lib/codemirror-5.39.2.min.js' type='text/javascript'></script>
+<script src='./../lib/codemirror-addon-simple-5.39.2.min.js' type='text/javascript'></script>
+<script>
+var helpRoot = './..';
+var scdoc_title = 'VSTPluginDesc';
+var scdoc_sc_version = '3.10.0';
+</script>
+<script src='./../scdoc.js' type='text/javascript'></script>
+<script src='./../docmap.js' type='text/javascript'></script>
+<script src='qrc:///qtwebchannel/qwebchannel.js' type='text/javascript'></script>
+</head>
+<body onload='fixTOC()'>
+<div id='toc'>
+<div id='toctitle'>VSTPluginDesc:</div>
+<span class='toc_search'>Filter: <input id='toc_search'></span><ul class='toc'><li class='toc1'><a href='#description'>Description</a></li>
+<ul class='toc'></ul><li class='toc1'><a href='#classmethods'>Class methods</a></li>
+<ul class='toc'><li class='toc2'><a href='#Inherited%20class%20methods'>Inherited class methods</a></li>
+</ul><li class='toc1'><a href='#instancemethods'>Instance methods</a></li>
+<ul class='toc'><li class='toc3'><a href='#-key'>key</a> </li>
+<li class='toc3'><a href='#-path'>path</a> </li>
+<li class='toc3'><a href='#-name'>name</a> </li>
+<li class='toc3'><a href='#-vendor'>vendor</a> </li>
+<li class='toc3'><a href='#-category'>category</a> </li>
+<li class='toc3'><a href='#-version'>version</a> </li>
+<li class='toc3'><a href='#-sdkVersion'>sdkVersion</a> </li>
+<li class='toc3'><a href='#-id'>id</a> </li>
+<li class='toc3'><a href='#-numInputs'>numInputs</a> </li>
+<li class='toc3'><a href='#-numOutputs'>numOutputs</a> </li>
+<li class='toc3'><a href='#-numAuxInputs'>numAuxInputs</a> </li>
+<li class='toc3'><a href='#-numAuxOutputs'>numAuxOutputs</a> </li>
+<li class='toc3'><a href='#-hasEditor'>hasEditor</a> </li>
+<li class='toc3'><a href='#-isSynth'>isSynth</a> </li>
+<li class='toc3'><a href='#-singlePrecision'>singlePrecision</a> </li>
+<li class='toc3'><a href='#-doublePrecision'>doublePrecision</a> </li>
+<li class='toc3'><a href='#-midiInput'>midiInput</a> </li>
+<li class='toc3'><a href='#-midiOutput'>midiOutput</a> </li>
+<li class='toc3'><a href='#-sysexInput'>sysexInput</a> </li>
+<li class='toc3'><a href='#-sysexOutput'>sysexOutput</a> </li>
+<li class='toc3'><a href='#-parameters'>parameters</a> </li>
+<li class='toc3'><a href='#-numParameters'>numParameters</a> </li>
+<li class='toc3'><a href='#-programs'>programs</a> </li>
+<li class='toc3'><a href='#-numPrograms'>numPrograms</a> </li>
+<li class='toc3'><a href='#-print'>print</a> </li>
+<li class='toc3'><a href='#-printParameters'>printParameters</a> </li>
+<li class='toc3'><a href='#-printPrograms'>printPrograms</a> </li>
+<li class='toc3'><a href='#-findParamIndex'>findParamIndex</a> </li>
+<li class='toc2'><a href='#Inherited%20instance%20methods'>Inherited instance methods</a></li>
+<li class='toc2'><a href='#Undocumented%20instance%20methods'>Undocumented instance methods</a></li>
+<ul class='toc'><li class='toc3'><a href='#-presets'>presets</a> </li>
+</ul></ul></ul></div><div id='menubar'></div>
+<div class='contents'>
+<div class='header'>
+<div id='label'>
+<span id='folder'>Classes (extension)</span>
+ | <span id='categories'><a href='./..\Browse.html#Undocumented classes'>Undocumented classes</a></span>
+</div><h1>VSTPluginDesc<span id='superclasses'> : <a href="../Classes/Object.html">Object</a></span>
+<div class='extension-indicator-ctr' title='This help file originates from a third-party quark or plugin for SuperCollider.'><img class='extension-indicator-icon' alt='Extension' src='./../images/plugin.png'><span class='extension-indicator-text'>Extension</span></div></h1>
+<div id='summary'>VST plugin description</div>
+</div>
+<div class='subheader'>
+<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPlugin.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPlugin.sc'>VSTPlugin.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a></div>
+</div>
+<h2><a class='anchor' name='description'>Description</a></h2>
+
+<p>This class describes the structure and properties of a VST plugin. Instances are stored in a global dictionary and can be retrieved with <a href="./..\Classes/VSTPlugin.html#plugins">VSTPlugin: plugins</a> using the <a href="#-key">-key</a>.<div class='note'><span class='notelabel'>NOTE:</span> Plugin descriptions are read-only and shouldn't be modified by the user</div><h2><a class='anchor' name='classmethods'>Class Methods</a></h2>
+<h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
+<div id='inheritedclassmets'></div><h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-key' href='./../Overviews/Methods.html#key'>key</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-key' href='./../Overviews/Methods.html#key'>key</a> = value</h3>
+<div class='method'>
+<p>a symbol used to identify this plugin.<h4>Discussion:</h4>
+
+<p>For VST 2.x plugins, the key is simply the plugin name; for VST 3 plugins, the key has an additional ".vst3" extension (to distinguish it from a VST 2.x plugin of the same name). It can be used in <a href="./..\Classes/VSTPluginController.html#-open">VSTPluginController: -open</a>.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-path' href='./../Overviews/Methods.html#path'>path</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-path' href='./../Overviews/Methods.html#path'>path</a> = value</h3>
+<div class='method'>
+<p>the full path to the module containing this plugin.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-name' href='./../Overviews/Methods.html#name'>name</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-name' href='./../Overviews/Methods.html#name'>name</a> = value</h3>
+<div class='method'>
+<p>the plugin name.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-vendor' href='./../Overviews/Methods.html#vendor'>vendor</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-vendor' href='./../Overviews/Methods.html#vendor'>vendor</a> = value</h3>
+<div class='method'>
+<p>the plugin vendor.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-category' href='./../Overviews/Methods.html#category'>category</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-category' href='./../Overviews/Methods.html#category'>category</a> = value</h3>
+<div class='method'>
+<p>the plugin category. Multiple (sub)categories are seperated with the '|' character.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-version' href='./../Overviews/Methods.html#version'>version</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-version' href='./../Overviews/Methods.html#version'>version</a> = value</h3>
+<div class='method'>
+<p>the plugin version.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sdkVersion' href='./../Overviews/Methods.html#sdkVersion'>sdkVersion</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sdkVersion' href='./../Overviews/Methods.html#sdkVersion'>sdkVersion</a> = value</h3>
+<div class='method'>
+<p>the VST SDK version.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a> = value</h3>
+<div class='method'>
+<p>the unique ID.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numInputs' href='./../Overviews/Methods.html#numInputs'>numInputs</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numInputs' href='./../Overviews/Methods.html#numInputs'>numInputs</a> = value</h3>
+<div class='method'>
+<p>number of (main) audio inputs</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numOutputs' href='./../Overviews/Methods.html#numOutputs'>numOutputs</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numOutputs' href='./../Overviews/Methods.html#numOutputs'>numOutputs</a> = value</h3>
+<div class='method'>
+<p>number of (main) audio outputs</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numAuxInputs' href='./../Overviews/Methods.html#numAuxInputs'>numAuxInputs</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numAuxInputs' href='./../Overviews/Methods.html#numAuxInputs'>numAuxInputs</a> = value</h3>
+<div class='method'>
+<p>number of auxiliary audio inputs (VST3 only)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numAuxOutputs' href='./../Overviews/Methods.html#numAuxOutputs'>numAuxOutputs</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numAuxOutputs' href='./../Overviews/Methods.html#numAuxOutputs'>numAuxOutputs</a> = value</h3>
+<div class='method'>
+<p>number of auxiliary audio outputs (VST3 only)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-hasEditor' href='./../Overviews/Methods.html#hasEditor'>hasEditor</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-hasEditor' href='./../Overviews/Methods.html#hasEditor'>hasEditor</a> = value</h3>
+<div class='method'>
+<p>whether the plugin has a VST GUI editor</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-isSynth' href='./../Overviews/Methods.html#isSynth'>isSynth</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-isSynth' href='./../Overviews/Methods.html#isSynth'>isSynth</a> = value</h3>
+<div class='method'>
+<p>whether the plugin is a VST instrument</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-singlePrecision' href='./../Overviews/Methods.html#singlePrecision'>singlePrecision</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-singlePrecision' href='./../Overviews/Methods.html#singlePrecision'>singlePrecision</a> = value</h3>
+<div class='method'>
+<p>whether the plugin supports single precision processing</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-doublePrecision' href='./../Overviews/Methods.html#doublePrecision'>doublePrecision</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-doublePrecision' href='./../Overviews/Methods.html#doublePrecision'>doublePrecision</a> = value</h3>
+<div class='method'>
+<p>whether the plugin supports double precision processing</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midiInput' href='./../Overviews/Methods.html#midiInput'>midiInput</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midiInput' href='./../Overviews/Methods.html#midiInput'>midiInput</a> = value</h3>
+<div class='method'>
+<p>whether the plugin accepts MIDI input</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midiOutput' href='./../Overviews/Methods.html#midiOutput'>midiOutput</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midiOutput' href='./../Overviews/Methods.html#midiOutput'>midiOutput</a> = value</h3>
+<div class='method'>
+<p>whether the plugin accepts MIDI output</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sysexInput' href='./../Overviews/Methods.html#sysexInput'>sysexInput</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sysexInput' href='./../Overviews/Methods.html#sysexInput'>sysexInput</a> = value</h3>
+<div class='method'>
+<p>whether the plugin accepts SysEx input (undefined for VST3)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sysexOutput' href='./../Overviews/Methods.html#sysexOutput'>sysexOutput</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sysexOutput' href='./../Overviews/Methods.html#sysexOutput'>sysexOutput</a> = value</h3>
+<div class='method'>
+<p>whether the plugin accepts SysEx output (undefined for VST3)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-parameters' href='./../Overviews/Methods.html#parameters'>parameters</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-parameters' href='./../Overviews/Methods.html#parameters'>parameters</a> = value</h3>
+<div class='method'>
+<p><a href="./..\Classes/Array.html">Array</a> of (automatable) parameters. Each parameter is represented as an <a href="./..\Classes/Event.html">Event</a> containing the following fields:<table>
+<tr><td>name<td>parameter name<tr><td>label<td>the unit of measurement (e.g. 'dB')</table>
+
+<p>More entries might be added later.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numParameters' href='./../Overviews/Methods.html#numParameters'>numParameters</a></h3>
+<div class='method'>
+<p><h4>Returns:</h4>
+<div class='returnvalue'>
+<p>the number of parameters.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programs' href='./../Overviews/Methods.html#programs'>programs</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programs' href='./../Overviews/Methods.html#programs'>programs</a> = value</h3>
+<div class='method'>
+<p><a href="./..\Classes/Array.html">Array</a> of built-in plugin programs. Each program is represented as an <a href="./..\Classes/Event.html">Event</a> which currently only contains a single field 'name'. More entries might be added later.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numPrograms' href='./../Overviews/Methods.html#numPrograms'>numPrograms</a></h3>
+<div class='method'>
+<p><h4>Returns:</h4>
+<div class='returnvalue'>
+<p>the number of programs.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-print' href='./../Overviews/Methods.html#print'>print</a>(<span class='argstr'>long: false</span>)</h3>
+<div class='method'>
+<p>post plugin info to the console.<h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>long<td class='argumentdesc'>
+<p>also post parameters and programs.</table></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-printParameters' href='./../Overviews/Methods.html#printParameters'>printParameters</a></h3>
+<div class='method'>
+<p>post parameters.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-printPrograms' href='./../Overviews/Methods.html#printPrograms'>printPrograms</a></h3>
+<div class='method'>
+<p>post programs.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-findParamIndex' href='./../Overviews/Methods.html#findParamIndex'>findParamIndex</a>(<span class='argstr'>name</span>)</h3>
+<div class='method'>
+<p>get the index of parameter by name.</div><h3><a class='anchor' name='Inherited%20instance%20methods'>Inherited instance methods</a></h3>
+<div id='inheritedinstmets'></div><h3><a class='anchor' name='Undocumented%20instance%20methods'>Undocumented instance methods</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presets' href='./../Overviews/Methods.html#presets'>presets</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presets' href='./../Overviews/Methods.html#presets'>presets</a> = value</h3>
+<div class='doclink'>helpfile source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/HelpSource/Classes/VSTPluginDesc.schelp'>C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\HelpSource\Classes\VSTPluginDesc.schelp</a><br>link::Classes/VSTPluginDesc::<br></div></div><script src='./../editor.js' type='text/javascript'></script>
+</body></html>

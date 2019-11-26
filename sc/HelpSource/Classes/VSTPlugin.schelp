@@ -1,6 +1,6 @@
 TITLE:: VSTPlugin
 summary:: load VST plugins as UGens
-related:: Classes/VSTPluginController, Classes/VSTPluginGui, Guides/HOA_IEM, Reference/VSTPlugin-UGen-Documentation
+related:: Classes/VSTPluginController, Classes/VSTPluginDesc, Classes/VSTPluginGui, Guides/HOA_IEM, Reference/VSTPlugin-UGen-Documentation
 categories:: UGens>FX
 
 DESCRIPTION::
@@ -11,8 +11,7 @@ VSTPlugin also has class methods to scan a Server for plugins and cache the info
 
 CLASSMETHODS::
 
-PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prResolvePath, prMakeDest, prMakeTmpPath
-PRIVATE:: prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension, reset
+PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prResolvePath, prMakeDest, prMakeTmpPath, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension, reset
 
 METHOD:: ar
 create a UGen instance.
@@ -77,7 +76,7 @@ SynthDef(\test, { arg in, out;
 ::
 
 ARGUMENT:: info
-An optional plugin info; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
+An optional link::Classes/VSTPluginDesc:: instance; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
 
 If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices
 code::
@@ -105,53 +104,10 @@ Like code::auxInput::, this is only useful for certain VST3 plugins.
 
 SUBSECTION:: Plugin Management
 
-All VST plugin information is cached on the Client. This is done mainly for performance reasons but it can be also handy for end users
+All VST plugin information is cached in the Client. This is done mainly for performance reasons but it can be also handy for end users
 because it's possible to investigate plugins without actually creating any instances.
 
-The plugin info is an link::Classes/IdentityDictionary:: with the following entries:
-table::
-## key || a symbol under which the plugin is stored
-## path || the file path
-## name || the plugin name
-## vendor || the plugin vendor
-## category || the plugin category name
-## version || the plugin version string
-## id || the unique plugin ID
-## hasEditor || if the plugin has an editor
-## numInputs || the number of input channels
-## numOutputs || the number of output channels
-## numAuxInputs || the number of auxiliary input channels (VST3 only)
-## numAuxOutputs || the number of auxiliary output channels (VST3 only)
-## singlePrecision || single precision processing supported
-## doublePrecision || double precision processing supported
-## midiInput || if the plugin receives MIDI messages
-## midiOutput || if the plugin sends MIDI messages
-## sysexInput || if the plugin receives SysEx messages
-## sysexOutput || if the plugin sends SysEx messages
-## isSynth || if the plugin is a VST instrument
-## numParameters || the number of parameters
-## parameters || Array of parameter info Events (e.g. 'name', 'label')
-## numPrograms || the number of programs
-## programs || Array of program info Events (e.g. 'name')
-::
-It also defines the following convenience methods:
-table::
-## print (long = false) || post the plugin info to the console.
-
-if emphasis::long:: is code::true::, also list parameters and programs.
-## printParameters || post parameter names and labels to the console.
-## printPrograms || post default program names to the console
-::
-
-note::The info is to be considered read-only!::
-
-The plugin info is stored in an link::Classes/IdentityDictionary:: under its code::key:: and code::path::
-and can be retrieved with link::#*plugins::.
-
-For VST 2.x plugins, the key is simply the plugin name; for VST 3 plugins, the key has an additional ".vst3" extension
-(to distinguish it from a VST 2.x plugin of the same name). It can be used in link::Classes/VSTPluginController#-open::.
-
-SUBSECTION:: Plugin Info
+The plugin info is stored as a link::Classes/VSTPluginDesc:: instance under its key (see link::Classes/VSTPluginDesc#-key::) and can be retrieved with link::#*plugins::.
 
 METHOD:: plugins
 get information about (probed) VST plugins on a Server.
@@ -159,10 +115,10 @@ get information about (probed) VST plugins on a Server.
 ARGUMENT:: server
 the Server. If this is code::nil::, the default Server is assumed.
 
-RETURNS:: an link::Classes/IdentityDictionary:: containing the info of all VST plugins on the Server.
+RETURNS:: an link::Classes/IdentityDictionary:: containing the descriptions of all VST plugins on the Server as instances of link::Classes/VSTPluginDesc::.
 
 DISCUSSION::
-The dictionary can be simply indexed with the plugin code::key:: or code::path:: (see link::#Plugin Management::). Both must be a symbol.
+The dictionary can be simply indexed with plugin keys (see link::Classes/VSTPluginDesc#-key::).
 code::
 // search in default paths
 VSTPlugin.search(s);
@@ -181,7 +137,7 @@ the Server. If code::nil::, the default Server is assumed.
 ARGUMENT:: sorted
 whether the Array should be sorted alphabetically (by name).
 
-RETURNS:: an Array of plugin infos.
+RETURNS:: an Array of link::Classes/VSTPluginDesc:: instances.
 
 METHOD:: pluginKeys
 get the keys of all plugins on a given Server.
@@ -192,7 +148,7 @@ the Server. If code::nil::, the default Server is assumed.
 RETURNS:: an Array of plugin keys.
 
 DISCUSSION::
-This method only considers the keys stored in the plugin info,
+This method only considers the keys stored in the plugin descriptions,
 not the additional keys in the plugin dictionary.
 
 
@@ -271,7 +227,7 @@ The wait time between OSC messages.
 
 0 is not safe with UDP, but is probably ok with TCP.
 
-note::This is only relevant for remote Servers (local Servers will send the plugin info via temp files).::
+note::This is only relevant for remote Servers (local Servers will send the plugin description via temp files).::
 
 ARGUMENT:: action
 an action to be called after the search has finished.
@@ -359,19 +315,19 @@ the plugin path. Relative paths are resolved to the currently executing file (if
 (see link::#*search::).
 
 ARGUMENT:: key
-an (optional) additional key under which the plugin info is stored.
+an (optional) additional key under which the plugin description is stored.
 
 ARGUMENT:: wait
 the wait time, see link::#*search::.
 
 ARGUMENT:: action
 an action to be evaluated after the search has finished.
-On success, the plugin info is passed as an link::Classes/IdentityDictionary::, otherwise the argument is code::nil::.
+On success, a link::Classes/VSTPluginDesc:: instances is passed, otherwise the argument is code::nil::.
 
 DISCUSSION::
 
 The given plugin file path is probed on the Server (in a seperate process).
-On success, the plugin info is stored under its key, the file path and the (optional) key argument.
+On success, the plugin description is stored under its key, the file path and the (optional) key argument.
 
 This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find a key in the plugin dictionary.
 It might be occasionally useful for other purposes.
@@ -399,12 +355,12 @@ Sending this message to the Server will emphasis::not:: update any info in the C
 
 METHOD:: readPlugins
 
-get the info of all locally cached plugins. For this to work, you have to call link::#*search:: at least once (with code::save: true::), then the plugin info will be available without starting a Server.
+get the descriptions of all locally cached plugins. For this to work, you have to call link::#*search:: at least once (with code::save: true::), then the plugin description will be available without starting a Server.
 
-RETURNS:: an link::Classes/IdentityDictionary:: containing all plugin infos.
+RETURNS:: an link::Classes/IdentityDictionary:: containing all plugin descriptions as link::Classes/VSTPluginDesc:: instances.
 
 METHOD:: clear
-Deletes all cached plugin info for a given Server.
+Deletes all cached plugin descriptions for a given Server.
 
 ARGUMENT:: server
 the Server. If this is code::nil::, the default Server is assumed.

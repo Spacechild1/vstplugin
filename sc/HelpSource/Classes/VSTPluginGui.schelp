@@ -1,7 +1,7 @@
 TITLE:: VSTPluginGui
 summary:: a generic Qt GUI for VSTPluginController
 categories:: GUI
-related:: Classes/VSTPlugin, Classes/VSTPluginController
+related:: Classes/VSTPlugin, Classes/VSTPluginController, Classes/VSTPluginDesc
 
 DESCRIPTION::
 This class is the default Qt GUI class for link::Classes/VSTPluginController::, see link::Classes/VSTPluginController#-gui::.
@@ -124,9 +124,9 @@ SynthDef.new(\insert, {arg bus = 0;
 ::
 
 SUBSECTION:: Embedding
-It's possible to embed several VSTPluginGui instances within a single view. 
+It's possible to embed several VSTPluginGui instances within a single view.
 
-The emphasis::bounds:: argument determines the size and position of each subview. 
+The emphasis::bounds:: argument determines the size and position of each subview.
 (In link::Classes/FlowLayout::s the position is managed automatically,
 so it's enough to provide a link::Classes/Point:: instead of a link::Classes/Rect::.)
 
