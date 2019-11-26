@@ -167,6 +167,7 @@ VSTPluginDesc {
 		++ "vendor: %".format(this.vendor) ++ sep
 		++ "category: %".format(this.category) ++ sep
 		++ "version: %".format(this.version) ++ sep
+		++ "SDK version: %".format(this.sdkVersion) ++ sep
 		++ "input channels: %".format(this.numInputs) ++ sep
 		++ ((this.numAuxInputs > 0).if { "aux input channels: %".format(this.numAuxInputs) ++ sep } {""})
 		++ "output channels: %".format(this.numOutputs) ++ sep
@@ -175,12 +176,13 @@ VSTPluginDesc {
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "MIDI input: %".format(this.midiInput) ++ sep
 		++ "MIDI output: %".format(this.midiOutput) ++ sep
-		++ "sysex input: %".format(this.sysexInput) ++ sep
-		++ "sysex output: %".format(this.sysexOutput) ++ sep
+		// ++ "sysex input: %".format(this.sysexInput) ++ sep
+		// ++ "sysex output: %".format(this.sysexOutput) ++ sep
 		++ "synth: %".format(this.isSynth) ++ sep
 		++ "editor: %".format(this.hasEditor) ++ sep
-		++ "single precision: %".format(this.singlePrecision) ++ sep
-		++ "double precision: %".format(this.doublePrecision);
+		// ++ "single precision: %".format(this.singlePrecision) ++ sep
+		// ++ "double precision: %".format(this.doublePrecision)
+		;
 		^s;
 	}
 }
