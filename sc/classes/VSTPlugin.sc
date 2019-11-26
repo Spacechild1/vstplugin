@@ -1,4 +1,4 @@
-VSTPluginInfo {
+VSTPluginDesc {
 	// public fields
 	var <>key;
 	var <>path;
@@ -58,7 +58,7 @@ VSTPluginInfo {
 	}
 	// private methods
 	*prParse { arg stream;
-		var info = VSTPluginInfo.new;
+		var info = VSTPluginDesc.new;
 		var parameters, indexMap, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
 		var hex2int = #{ arg str;
@@ -360,7 +360,7 @@ VSTPlugin : MultiOutUGen {
 				} { "Failed to read tmp file!".error };
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
 				stream.notNil.if {
-					info = VSTPluginInfo.prParse(stream);
+					info = VSTPluginDesc.prParse(stream);
 					// store under key
 					dict[info.key] = info;
 					// also store under resolved path and custom key
@@ -387,7 +387,7 @@ VSTPlugin : MultiOutUGen {
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
 					var info;
 					(string.size > 0).if {
-						info = VSTPluginInfo.prParse(CollStream.new(string));
+						info = VSTPluginDesc.prParse(CollStream.new(string));
 						// store under key
 						dict[info.key] = info;
 						// also store under resolved path and custom key
@@ -486,7 +486,7 @@ VSTPlugin : MultiOutUGen {
 		results = Array.newClear(n);
 		// now serialize plugins
 		n.do { arg i;
-			results[i] = VSTPluginInfo.prParse(stream);
+			results[i] = VSTPluginDesc.prParse(stream);
 		};
 		^results;
 	}
