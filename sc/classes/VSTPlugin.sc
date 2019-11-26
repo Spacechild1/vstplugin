@@ -1,7 +1,193 @@
+VSTPluginInfo {
+	// public fields
+	var <>key;
+	var <>path;
+	var <>name;
+	var <>vendor;
+	var <>category;
+	var <>version;
+	var <>sdkVersion;
+	var <>id;
+	var <>numInputs;
+	var <>numOutputs;
+	var <>numAuxInputs;
+	var <>numAuxOutputs;
+	var <>hasEditor;
+	var <>isSynth;
+	var <>singlePrecision;
+	var <>doublePrecision;
+	var <>midiInput;
+	var <>midiOutput;
+	var <>sysexInput;
+	var <>sysexOutput;
+	var <>parameters;
+	var <>programs;
+	var <>presets;
+	// private fields
+	var <>prParamIndexMap;
+	// public methods
+	numParameters { ^parameters.size; }
+	numPrograms { ^programs.size; }
+	findParamIndex { arg name;
+		^this.prParamIndexMap[name.asSymbol];
+	}
+	print { arg long = false;
+		"---".postln;
+		this.prToString.postln;
+		long.if {
+			"".postln;
+			"parameters (%):".format(this.numParameters).postln;
+			this.printParameters;
+			"".postln;
+			"programs (%):".format(this.numPrograms).postln;
+			this.printPrograms;
+		};
+		"".postln;
+	}
+	printParameters {
+		this.parameters.do { arg param, i;
+			var label;
+			label = (param.label.size > 0).if { "(%)".format(param.label) };
+			"[%] % %".format(i, param.name, label ?? "").postln;
+		}
+	}
+	printPrograms {
+		this.program.do { arg pgm, i;
+			"[%] %".format(i, pgm.name).postln;
+		}
+	}
+	// private methods
+	*prParse { arg stream;
+		var info = VSTPluginInfo.new;
+		var parameters, indexMap, programs, keys;
+		var line, key, value, onset, n, f, flags, plugin = false;
+		var hex2int = #{ arg str;
+			str.toUpper.ascii.reverse.sum { arg c, i;
+				(c >= 65).if {
+					(c - 55) << (i * 4);
+				} {
+					(c - 48) << (i * 4);
+				}
+			}
+		};
+		// default values:
+		info.numAuxInputs = 0;
+		info.numAuxOutputs = 0;
+		{
+			line = VSTPlugin.prGetLine(stream, true);
+			line ?? { ^Error("EOF reached").throw };
+			// line.postln;
+			switch(line,
+				"[plugin]", { plugin = true; },
+				"[parameters]",
+				{
+					line = VSTPlugin.prGetLine(stream);
+					n = VSTPlugin.prParseCount(line);
+					parameters = Array.newClear(n);
+					indexMap = IdentityDictionary.new;
+					n.do { arg i;
+						var name, label;
+						line = VSTPlugin.prGetLine(stream);
+						#name, label = line.split($,);
+						parameters[i] = (
+							name: VSTPlugin.prTrim(name),
+							label: VSTPlugin.prTrim(label)
+							// more info later
+						);
+					};
+					info.parameters = parameters;
+					parameters.do { arg param, index;
+						indexMap[param.name.asSymbol] = index;
+					};
+					info.prParamIndexMap = indexMap;
+				},
+				"[programs]",
+				{
+					line = VSTPlugin.prGetLine(stream);
+					n = VSTPlugin.prParseCount(line);
+					programs = Array.newClear(n);
+					n.do { arg i;
+						var name = VSTPlugin.prGetLine(stream);
+						programs[i] = (name: name); // more info later
+					};
+					info.programs = programs;
+				},
+				"[keys]",
+				{
+					line = VSTPlugin.prGetLine(stream);
+					n = VSTPlugin.prParseCount(line);
+					keys = Array.newClear(n);
+					n.do { arg i;
+						keys[i] = VSTPlugin.prGetLine(stream);
+					};
+					// take the first (primary) key
+					info.key = keys[0].asSymbol;
+					// *** EXIT POINT ***
+					^info;
+				},
+				{
+					// plugin
+					plugin.not.if {
+						^Error("plugin info: bad data (%)".format(line)).throw;
+					};
+					#key, value = VSTPlugin.prParseKeyValuePair(line);
+					switch(key,
+						\path, { info.path = value },
+						\name, { info.name = value },
+						\vendor, { info.vendor = value },
+						\category, { info.category = value },
+						\version, { info.version = value },
+						\sdkVersion, { info.sdkVersion = value },
+						\id, { info.id = value },
+						\inputs, { info.numInputs = value.asInteger },
+						\outputs, { info.numOutputs = value.asInteger },
+						\auxinputs, { info.numAuxInputs = value.asInteger },
+						\auxoutputs, { info.numAuxOutputs = value.asInteger },
+						\flags,
+						{
+							f = hex2int.(value);
+							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
+							info.hasEditor = flags[0];
+							info.isSynth = flags[1];
+							info.singlePrecision = flags[2];
+							info.doublePrecision = flags[3];
+							info.midiInput = flags[4];
+							info.midiOutput = flags[5];
+							info.sysexInput = flags[6];
+							info.sysexOutput = flags[7];
+						}
+					);
+				},
+			);
+		}.loop;
+	}
+	prToString { arg sep = $\n;
+		var s = "name: %".format(this.name) ++ sep
+		++ "path: %".format(this.path) ++ sep
+		++ "vendor: %".format(this.vendor) ++ sep
+		++ "category: %".format(this.category) ++ sep
+		++ "version: %".format(this.version) ++ sep
+		++ "input channels: %".format(this.numInputs) ++ sep
+		++ ((this.numAuxInputs > 0).if { "aux input channels: %".format(this.numAuxInputs) ++ sep } {""})
+		++ "output channels: %".format(this.numOutputs) ++ sep
+		++ ((this.numAuxOutputs > 0).if { "aux output channels: %".format(this.numAuxOutputs) ++ sep } {""})
+		++ "parameters: %".format(this.numParameters) ++ sep
+		++ "programs: %".format(this.numPrograms) ++ sep
+		++ "MIDI input: %".format(this.midiInput) ++ sep
+		++ "MIDI output: %".format(this.midiOutput) ++ sep
+		++ "sysex input: %".format(this.sysexInput) ++ sep
+		++ "sysex output: %".format(this.sysexOutput) ++ sep
+		++ "synth: %".format(this.isSynth) ++ sep
+		++ "editor: %".format(this.hasEditor) ++ sep
+		++ "single precision: %".format(this.singlePrecision) ++ sep
+		++ "double precision: %".format(this.doublePrecision);
+		^s;
+	}
+}
+
 VSTPlugin : MultiOutUGen {
 	// class members
 	classvar pluginDict;
-	classvar parentInfo;
 	classvar <platformExtension;
 	// instance members
 	var <id;
@@ -14,62 +200,6 @@ VSTPlugin : MultiOutUGen {
 			);
 			pluginDict = IdentityDictionary.new;
 			pluginDict[Server.default] = IdentityDictionary.new;
-			parentInfo = (
-				numParameters: #{ arg self; self.parameters.size },
-				numPrograms: #{ arg self; self.programs.size },
-				findParamIndex: #{ arg self, name; self.prParamIndexMap[name.asSymbol] },
-				print: #{ arg self, long = false;
-					"---".postln;
-					self.toString.postln;
-					long.if {
-						"".postln;
-						"parameters (%):".format(self.numParameters).postln;
-						self.printParameters;
-						"".postln;
-						"programs (%):".format(self.numPrograms).postln;
-						self.printPrograms;
-					};
-					"".postln;
-				},
-				toString: #{ arg self, sep = $\n;
-					var s, auxin = (self.numAuxInputs > 0), auxout = (self.numAuxOutputs > 0);
-					s = "name: %".format(self.name) ++ sep
-					++ "path: %".format(self.path) ++ sep
-					++ "vendor: %".format(self.vendor) ++ sep
-					++ "category: %".format(self.category) ++ sep
-					++ "version: %".format(self.version) ++ sep
-					++ "input channels: %".format(self.numInputs) ++ sep
-					++ (auxin.if { "aux input channels: %".format(self.numAuxInputs) ++ sep } {""})
-					++ "output channels: %".format(self.numOutputs) ++ sep
-					++ (auxout.if { "aux output channels: %".format(self.numAuxOutputs) ++ sep } {""})
-					++ "parameters: %".format(self.numParameters) ++ sep
-					++ "programs: %".format(self.numPrograms) ++ sep
-					++ "MIDI input: %".format(self.midiInput) ++ sep
-					++ "MIDI output: %".format(self.midiOutput) ++ sep
-					++ "sysex input: %".format(self.sysexInput) ++ sep
-					++ "sysex output: %".format(self.sysexOutput) ++ sep
-					++ "synth: %".format(self.isSynth) ++ sep
-					++ "editor: %".format(self.hasEditor) ++ sep
-					++ "single precision: %".format(self.singlePrecision) ++ sep
-					++ "double precision: %".format(self.doublePrecision);
-				},
-				printParameters: #{ arg self;
-					self.parameters.do { arg param, i;
-						var label;
-						label = (param.label.size > 0).if { "(%)".format(param.label) };
-						"[%] % %".format(i, param.name, label ?? "").postln;
-					};
-				},
-				printPrograms: #{ arg self;
-					self.program.do { arg pgm, i;
-						"[%] %".format(i, pgm.name).postln;
-					};
-				},
-				// deprecated (removed) methods from v0.1
-				parameterNames: #{ arg self; Error("parameterNames is deprecated, use parameters[index].name").throw; },
-				parameterLabels: #{ arg self; Error("parameterLabels is deprecated, use parameters[index].label").throw; },
-				programNames: #{ arg self; Error("programNames is deprecated, use programs[index].name").throw; }
-			);
 		}
 	}
 	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0;
@@ -230,7 +360,7 @@ VSTPlugin : MultiOutUGen {
 				} { "Failed to read tmp file!".error };
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
 				stream.notNil.if {
-					info = this.prParseInfo(stream);
+					info = VSTPluginInfo.prParse(stream);
 					// store under key
 					dict[info.key] = info;
 					// also store under resolved path and custom key
@@ -257,7 +387,7 @@ VSTPlugin : MultiOutUGen {
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
 					var info;
 					(string.size > 0).if {
-						info = this.prParseInfo(CollStream.new(string));
+						info = VSTPluginInfo.prParse(CollStream.new(string));
 						// store under key
 						dict[info.key] = info;
 						// also store under resolved path and custom key
@@ -356,115 +486,9 @@ VSTPlugin : MultiOutUGen {
 		results = Array.newClear(n);
 		// now serialize plugins
 		n.do { arg i;
-			results[i] = this.prParseInfo(stream);
+			results[i] = VSTPluginInfo.prParse(stream);
 		};
 		^results;
-	}
-	*prParseInfo { arg stream;
-		var info = IdentityDictionary.new(parent: parentInfo, know: true);
-		var parameters, indexMap, programs, keys;
-		var line, key, value, onset, n, f, flags, plugin = false;
-		var hex2int = #{ arg str;
-			str.toUpper.ascii.reverse.sum { arg c, i;
-				(c >= 65).if {
-					(c - 55) << (i * 4);
-				} {
-					(c - 48) << (i * 4);
-				}
-			}
-		};
-		// default values:
-		info.numAuxInputs = 0;
-		info.numAuxOutputs = 0;
-		{
-			line = this.prGetLine(stream, true);
-			line ?? { ^Error("EOF reached").throw };
-			// line.postln;
-			switch(line,
-				"[plugin]", { plugin = true; },
-				"[parameters]",
-				{
-					line = this.prGetLine(stream);
-					n = this.prParseCount(line);
-					parameters = Array.newClear(n);
-					indexMap = IdentityDictionary.new;
-					n.do { arg i;
-						var name, label;
-						line = this.prGetLine(stream);
-						#name, label = line.split($,);
-						parameters[i] = (
-							name: this.prTrim(name),
-							label: this.prTrim(label)
-							// more info later
-						);
-					};
-					info.parameters = parameters;
-					parameters.do { arg param, index;
-						indexMap[param.name.asSymbol] = index;
-					};
-					info.prParamIndexMap = indexMap;
-				},
-				"[programs]",
-				{
-					line = this.prGetLine(stream);
-					n = this.prParseCount(line);
-					programs = Array.newClear(n);
-					n.do { arg i;
-						var name = this.prGetLine(stream);
-						programs[i] = (name: name); // more info later
-					};
-					info.programs = programs;
-				},
-				"[keys]",
-				{
-					line = this.prGetLine(stream);
-					n = this.prParseCount(line);
-					keys = Array.newClear(n);
-					n.do { arg i;
-						keys[i] = this.prGetLine(stream);
-					};
-					// take the first (primary) key
-					info.key = keys[0].asSymbol;
-					// *** EXIT POINT ***
-					^info;
-				},
-				{
-					// plugin
-					plugin.not.if {
-						^Error("plugin info: bad data (%)".format(line)).throw;
-					};
-					#key, value = this.prParseKeyValuePair(line);
-					switch(key,
-						\path, { info[key] = value },
-						\name, { info[key] = value; },
-						\vendor, { info[key] = value },
-						\category, { info[key] = value },
-						\version, { info[key] = value },
-						\sdkVersion, { info[key] = value },
-						\id, { info[key] = value },
-						\inputs, { info.numInputs = value.asInteger },
-						\outputs, { info.numOutputs = value.asInteger },
-						\auxinputs, { info.numAuxInputs = value.asInteger },
-						\auxoutputs, { info.numAuxOutputs = value.asInteger },
-						\flags,
-						{
-							f = hex2int.(value);
-							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
-							info.putPairs([
-								hasEditor: flags[0],
-								isSynth: flags[1],
-								singlePrecision: flags[2],
-								doublePrecision: flags[3],
-								midiInput: flags[4],
-								midiOutput: flags[5],
-								sysexInput: flags[6],
-								sysexOutput: flags[7]
-							]);
-						}
-					);
-				},
-			);
-		}.loop;
 	}
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];

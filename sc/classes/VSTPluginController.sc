@@ -124,6 +124,7 @@ VSTPluginController {
 		wait = waitTime;
 		info = theInfo;
 		loaded = false;
+		window = false;
 		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
 		// parameter changed:

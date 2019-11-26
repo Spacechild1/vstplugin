@@ -117,7 +117,7 @@ VSTPluginGui : ObjectGui {
 		view !? { view.removeAll };
 		(model.notNil and: { model.info.notNil}).if {
 			name = model.info.name;
-			info = model.info.toString;
+			info = model.info.prToString;
 			menu = menu.asBoolean;
 			// parameters: calculate number of rows and columns
 			nparams = model.numParameters;
