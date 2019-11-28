@@ -227,9 +227,8 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     try {
         factory = IFactory::load(path);
     } catch (const Error& e){
-        if (verbose) {
-            Print("ERROR: couldn't load '%s': %s\n", path.c_str(), e.what());
-        }
+        // always print error
+        Print("ERROR: couldn't load '%s': %s\n", path.c_str(), e.what());
         gPluginManager.addException(path);
         return nullptr;
     }
