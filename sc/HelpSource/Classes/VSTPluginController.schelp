@@ -26,14 +26,16 @@ VSTPlugin.search;
 ~synth = Synth(\insert, [\bus, 0]);
 // get a handle to the VSTPlugin:
 ~fx = VSTPluginController(~synth);
-
 // open a plugin by name/key (might require VSTPlugin.search!)
 ~fx.open("myplugin", verbose: true);
 // alternatively, you can open a plugin by its file path
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
 ~fx.open("/path/to/plugin", verbose: true);
 
-// show the GUI:
+// you can do all of the above in a single line:
+~fx = VSTPluginController(Synth(\insert, [\bus, 0])).open("myplugin");
+
+// show the generic GUI:
 ~fx.gui;
 // etc.
 ::
@@ -61,7 +63,7 @@ SynthDef(\insert2, { arg bus;
 // etc.
 ::
 
-subsection:: Parameter Automation and Preset Management
+subsection:: Parameter Automation
 
 There are three different ways to automate plugin parameters (listed with increasing precedence):
 list::
@@ -108,7 +110,9 @@ code::
 ~fx.get(\Depth, {arg f; f.postln;});
 ::
 
-Change FX programs with link::#-program:::
+subsection:: Preset Management
+
+Change built-in FX programs with link::#-program:::
 
 code::
 // check for available programs:
@@ -122,14 +126,16 @@ code::
 You can read/write preset files in the standard code::.fxp/.fxp:: (VST2) or code::.vstpreset:: (VST3) format, recognized by most DAWs and VST hosts:
 code::
 // write current plugin state to a preset file.
-~fx.writeProgram("/preset/file/path/test.fxp");
+~fx.writeProgram("mypresetfolder/test.fxp");
 
 // ... mess around with the plugin ...
 ~fx.gui;
 
 // restore previous state:
-~fx.readProgram("/preset/file/path/text.fxp");
+~fx.readProgram("mypresetfolder/text.fxp");
 ::
+
+note::Relative paths are resolved to the currently executing file::
 
 It's also possible to get/set the raw plugin state as an link::Classes/Int8Array:::
 code::
@@ -143,9 +149,9 @@ code::
 ~fx.setProgramData(d);
 ::
 
-The data is in the same binary format as the preset files. Use these methods to build your own preset management!
+The data has the same binary format as the preset files. You can use these methods to build your own preset management!
 
-note::Some plugins have additional state beyond their parameter values,
+note::Many plugins have additional state beyond their parameter values,
 so you emphasis::have:: to use the program and bank methods above to fully save/restore them.
 ::
 
@@ -163,7 +169,7 @@ code::
 ~fx.editor;
 ::
 On Windows and Linux this will run a native window on the Server (in a seperate thread).
-note:: Unfortunately, this is not possible (yet?) on macOS for technical reasons.::
+note:: Unfortunately, this is not possible (yet) on macOS for technical reasons.::
 
 ## a generic Qt GUI which can be opened in a new Window or embedded into existing views:
 code::
