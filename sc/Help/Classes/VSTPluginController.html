@@ -130,7 +130,7 @@ var scdoc_sc_version = '3.10.0';
 <div id='summary'>Client-side representation of a VSTPlugin UGen instance</div>
 </div>
 <div class='subheader'>
-<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPluginController.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPluginController.sc'>VSTPluginController.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Classes/VSTPluginMIDIProxy.html">VSTPluginMIDIProxy</a>, <a href="./..\Guides/HOA_IEM.html">High order ambisonics using IEM Plugins</a>, <a href="./..\Reference/VSTPlugin-UGen-Documentation.html">VSTPlugin - UGen documentation</a></div>
+<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPluginController.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPluginController.sc'>VSTPluginController.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Classes/VSTPluginMIDIProxy.html">VSTPluginMIDIProxy</a>, <a href="./..\Guides/HOA_IEM.html">High order ambisonics using IEM Plugins</a>, <a href="./..\Reference/VSTPlugin-UGen-Documentation.html">VSTPlugin - UGen documentation</a></div>
 </div>
 <h2><a class='anchor' name='description'>Description</a></h2>
 
@@ -316,7 +316,7 @@ SynthDef(\insert, { arg bus, f;
 // the plugin is in a subfolder 'myplugins' below the currently executing file:
 ~fx.open("myplugins/GChorus");</textarea>
 <div class='note'><span class='notelabel'>NOTE:</span> This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).</div>
-<p>- If the VSTPlugin UGen holds a plugin info (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<textarea class='editor'>VSTPlugin.search;
+<p>- If the VSTPlugin UGen holds a plugin description (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor omitted.<textarea class='editor'>VSTPlugin.search;
 (
 SynthDef(\chorus, { arg bus=0;
     var plugin = VSTPlugin.plugins[\GChorus];
@@ -335,7 +335,7 @@ SynthDef(\chorus, { arg bus=0;
 <table class='arguments'>
 <tr><td class='argumentname'>path<td class='argumentdesc'>
 <p>the plugin name/key or file path. Relative paths are resolved to the standard VST directories.
-<p>If the VSTPlugin UGen holds a plugin info (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<tr><td class='argumentname'>editor<td class='argumentdesc'>
+<p>If the VSTPlugin UGen holds a plugin description (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<tr><td class='argumentname'>editor<td class='argumentdesc'>
 <p>request the VST editor.</table><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>the message for an <em>open</em> command (see <a href="#-open">-open</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-close' href='./../Overviews/Methods.html#close'>close</a></h3>
@@ -360,7 +360,7 @@ SynthDef(\chorus, { arg bus=0;
 <p>a new <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a> instance.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
-<p>the (static) plugin info (see <a href="./..\Classes/VSTPlugin.html#Plugin%20Info">VSTPlugin: Plugin Info</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loaded' href='./../Overviews/Methods.html#loaded'>loaded</a></h3>
+<p>the (static) plugin description (see <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loaded' href='./../Overviews/Methods.html#loaded'>loaded</a></h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>whether a plugin is currently loaded.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-reset' href='./../Overviews/Methods.html#reset'>reset</a>(<span class='argstr'>async: false</span>)</h3>

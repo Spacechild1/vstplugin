@@ -24,7 +24,6 @@ var scdoc_sc_version = '3.10.0';
 <ul class='toc'></ul><li class='toc1'><a href='#classmethods'>Class methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#*ar'>ar</a> </li>
 <li class='toc2'><a href='#Plugin%20Management'>Plugin Management</a></li>
-<ul class='toc'></ul><li class='toc2'><a href='#Plugin%20Info'>Plugin Info</a></li>
 <ul class='toc'><li class='toc3'><a href='#*plugins'>plugins</a> </li>
 <li class='toc3'><a href='#*pluginList'>pluginList</a> </li>
 <li class='toc3'><a href='#*pluginKeys'>pluginKeys</a> </li>
@@ -56,7 +55,7 @@ var scdoc_sc_version = '3.10.0';
 <div id='summary'>load VST plugins as UGens</div>
 </div>
 <div class='subheader'>
-<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPlugin.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPlugin.sc'>VSTPlugin.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Guides/HOA_IEM.html">High order ambisonics using IEM Plugins</a>, <a href="./..\Reference/VSTPlugin-UGen-Documentation.html">VSTPlugin - UGen documentation</a></div>
+<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPlugin.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPlugin.sc'>VSTPlugin.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>, <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Guides/HOA_IEM.html">High order ambisonics using IEM Plugins</a>, <a href="./..\Reference/VSTPlugin-UGen-Documentation.html">VSTPlugin - UGen documentation</a></div>
 </div>
 <h2><a class='anchor' name='description'>Description</a></h2>
 
@@ -101,7 +100,7 @@ SynthDef(\test, { arg in, out;
 ~eq.open("...");
 ~chorus.open("...");</textarea>
 <tr><td class='argumentname'>info<td class='argumentdesc'>
-<p>An optional plugin info; the plugin must have been successfully probed (e.g. with <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>).
+<p>An optional <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance; the plugin must have been successfully probed (e.g. with <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>).
 <p>If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices<textarea class='editor'>(
 SynthDef(\chorus, { arg bus;
     var plugin = VSTPlugin.plugins['GChorus'];
@@ -115,26 +114,17 @@ SynthDef(\chorus, { arg bus;
 <p>An Array of channels or a single auxiliary input for the plugin to process. You cannot change the size of this once a SynthDef has been built. This is only useful for certain VST3 plugins (e.g. for side chaining).<tr><td class='argumentname'>numAuxOut<td class='argumentdesc'>
 <p>The number of auxiliary output channels. This must be a fixed number greater or equal 0. Like <code>auxInput</code>, this is only useful for certain VST3 plugins.</table></div><h3><a class='anchor' name='Plugin%20Management'>Plugin Management</a></h3>
 
-<p>All VST plugin information is cached on the Client. This is done mainly for performance reasons but it can be also handy for end users because it's possible to investigate plugins without actually creating any instances.
-<p>The plugin info is an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a> with the following entries:<table>
-<tr><td>key<td>a symbol under which the plugin is stored<tr><td>path<td>the file path<tr><td>name<td>the plugin name<tr><td>vendor<td>the plugin vendor<tr><td>category<td>the plugin category name<tr><td>version<td>the plugin version string<tr><td>id<td>the unique plugin ID<tr><td>hasEditor<td>if the plugin has an editor<tr><td>numInputs<td>the number of input channels<tr><td>numOutputs<td>the number of output channels<tr><td>numAuxInputs<td>the number of auxiliary input channels (VST3 only)<tr><td>numAuxOutputs<td>the number of auxiliary output channels (VST3 only)<tr><td>singlePrecision<td>single precision processing supported<tr><td>doublePrecision<td>double precision processing supported<tr><td>midiInput<td>if the plugin receives MIDI messages<tr><td>midiOutput<td>if the plugin sends MIDI messages<tr><td>sysexInput<td>if the plugin receives SysEx messages<tr><td>sysexOutput<td>if the plugin sends SysEx messages<tr><td>isSynth<td>if the plugin is a VST instrument<tr><td>numParameters<td>the number of parameters<tr><td>parameters<td>Array of parameter info Events (e.g. 'name', 'label')<tr><td>numPrograms<td>the number of programs<tr><td>programs<td>Array of program info Events (e.g. 'name')</table>
-
-<p>It also defines the following convenience methods:<table>
-<tr><td>print (long = false)<td>post the plugin info to the console.
-<p>if <em>long</em> is <code>true</code>, also list parameters and programs.<tr><td>printParameters<td>post parameter names and labels to the console.<tr><td>printPrograms<td>post default program names to the console</table>
-<div class='note'><span class='notelabel'>NOTE:</span> The info is to be considered read-only!</div>
-<p>The plugin info is stored in an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a> under its <code>key</code> and <code>path</code>and can be retrieved with <a href="#*plugins">*plugins</a>.
-<p>For VST 2.x plugins, the key is simply the plugin name; for VST 3 plugins, the key has an additional ".vst3" extension (to distinguish it from a VST 2.x plugin of the same name). It can be used in <a href="./..\Classes/VSTPluginController.html#-open">VSTPluginController: -open</a>.<h3><a class='anchor' name='Plugin%20Info'>Plugin Info</a></h3>
-<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*plugins' href='./../Overviews/Methods.html#plugins'>plugins</a>(<span class='argstr'>server</span>)</h3>
+<p>All VST plugin information is cached in the Client. This is done mainly for performance reasons but it can be also handy for end users because it's possible to investigate plugins without actually creating any instances.
+<p>The plugin info is stored as a <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance under its key (see <a href="./..\Classes/VSTPluginDesc.html#-key">VSTPluginDesc: -key</a>) and can be retrieved with <a href="#*plugins">*plugins</a>.<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*plugins' href='./../Overviews/Methods.html#plugins'>plugins</a>(<span class='argstr'>server</span>)</h3>
 <div class='method'>
 <p>get information about (probed) VST plugins on a Server.<h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>server<td class='argumentdesc'>
 <p>the Server. If this is <code>nil</code>, the default Server is assumed.</table><h4>Returns:</h4>
 <div class='returnvalue'>
-<p>an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a> containing the info of all VST plugins on the Server.</div><h4>Discussion:</h4>
+<p>an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a> containing the descriptions of all VST plugins on the Server as instances of <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>.</div><h4>Discussion:</h4>
 
-<p>The dictionary can be simply indexed with the plugin <code>key</code> or <code>path</code> (see <a href="#Plugin%20Management">Plugin Management</a>). Both must be a symbol.<textarea class='editor'>// search in default paths
+<p>The dictionary can be simply indexed with plugin keys (see <a href="./..\Classes/VSTPluginDesc.html#-key">VSTPluginDesc: -key</a>).<textarea class='editor'>// search in default paths
 VSTPlugin.search(s);
 VSTPlugin.plugins(s)['AwesomePlugin'].print;
 // for the default server this can be shortend to:
@@ -148,7 +138,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <p>the Server. If <code>nil</code>, the default Server is assumed.<tr><td class='argumentname'>sorted<td class='argumentdesc'>
 <p>whether the Array should be sorted alphabetically (by name).</table><h4>Returns:</h4>
 <div class='returnvalue'>
-<p>an Array of plugin infos.</div></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*pluginKeys' href='./../Overviews/Methods.html#pluginKeys'>pluginKeys</a>(<span class='argstr'>server</span>)</h3>
+<p>an Array of <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instances.</div></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*pluginKeys' href='./../Overviews/Methods.html#pluginKeys'>pluginKeys</a>(<span class='argstr'>server</span>)</h3>
 <div class='method'>
 <p>get the keys of all plugins on a given Server.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -157,7 +147,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <div class='returnvalue'>
 <p>an Array of plugin keys.</div><h4>Discussion:</h4>
 
-<p>This method only considers the keys stored in the plugin info, not the additional keys in the plugin dictionary.</div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*print' href='./../Overviews/Methods.html#print'>print</a>(<span class='argstr'>server</span>)</h3>
+<p>This method only considers the keys stored in the plugin descriptions, not the additional keys in the plugin dictionary.</div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*print' href='./../Overviews/Methods.html#print'>print</a>(<span class='argstr'>server</span>)</h3>
 <div class='method'>
 <p>post all available plugins.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -201,7 +191,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <p>The message shows the file path, name and probe result. Probing can fail if the file is not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).<tr><td class='argumentname'>wait<td class='argumentdesc'>
 <p>The wait time between OSC messages.
 <p>-1 allows an OSC roundtrip between packets.
-<p>0 is not safe with UDP, but is probably ok with TCP.<div class='note'><span class='notelabel'>NOTE:</span> This is only relevant for remote Servers (local Servers will send the plugin info via temp files).</div><tr><td class='argumentname'>action<td class='argumentdesc'>
+<p>0 is not safe with UDP, but is probably ok with TCP.<div class='note'><span class='notelabel'>NOTE:</span> This is only relevant for remote Servers (local Servers will send the plugin description via temp files).</div><tr><td class='argumentname'>action<td class='argumentdesc'>
 <p>an action to be called after the search has finished.<tr><td class='argumentname'>save<td class='argumentdesc'>
 <p>whether the search results should be written to the cache file.<tr><td class='argumentname'>parallel<td class='argumentdesc'>
 <p>whether plugins should be probed in parallel. This can be significantly faster - at the cost of possible audio dropouts (because all CPU cores might be fully utilized).<div class='note'><span class='notelabel'>NOTE:</span> Shell plugins like "Waves" are always probed in parallel for performance reasons.</div></table><h4>Discussion:</h4>
@@ -241,11 +231,11 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <tr><td class='argumentname'>server<td class='argumentdesc'>
 <p>the Server. If <code>nil</code>, the default Server is assumed.<tr><td class='argumentname'>path<td class='argumentdesc'>
 <p>the plugin path. Relative paths are resolved to the currently executing file (if saved) or to the standard VST directories (see <a href="#*search">*search</a>).<tr><td class='argumentname'>key<td class='argumentdesc'>
-<p>an (optional) additional key under which the plugin info is stored.<tr><td class='argumentname'>wait<td class='argumentdesc'>
+<p>an (optional) additional key under which the plugin description is stored.<tr><td class='argumentname'>wait<td class='argumentdesc'>
 <p>the wait time, see <a href="#*search">*search</a>.<tr><td class='argumentname'>action<td class='argumentdesc'>
-<p>an action to be evaluated after the search has finished. On success, the plugin info is passed as an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a>, otherwise the argument is <code>nil</code>.</table><h4>Discussion:</h4>
+<p>an action to be evaluated after the search has finished. On success, a <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instances is passed, otherwise the argument is <code>nil</code>.</table><h4>Discussion:</h4>
 
-<p>The given plugin file path is probed on the Server (in a seperate process). On success, the plugin info is stored under its key, the file path and the (optional) key argument.
+<p>The given plugin file path is probed on the Server (in a seperate process). On success, the plugin description is stored under its key, the file path and the (optional) key argument.
 <p>This method is used internally by <a href="./..\Classes/VSTPluginController.html#-open">VSTPluginController: -open</a> whenever it can't find a key in the plugin dictionary. It might be occasionally useful for other purposes.</div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*probeMsg' href='./../Overviews/Methods.html#probeMsg'>probeMsg</a>(<span class='argstr'>path</span>, <span class='argstr'>dest</span>)</h3>
 <div class='method'>
 <p><h4>Arguments:</h4>
@@ -260,11 +250,11 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 
 <p>Sending this message to the Server will <em>not</em> update any info in the Client!</div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*readPlugins' href='./../Overviews/Methods.html#readPlugins'>readPlugins</a></h3>
 <div class='method'>
-<p>get the info of all locally cached plugins. For this to work, you have to call <a href="#*search">*search</a> at least once (with <code>save: true</code>), then the plugin info will be available without starting a Server.<h4>Returns:</h4>
+<p>get the descriptions of all locally cached plugins. For this to work, you have to call <a href="#*search">*search</a> at least once (with <code>save: true</code>), then the plugin description will be available without starting a Server.<h4>Returns:</h4>
 <div class='returnvalue'>
-<p>an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a> containing all plugin infos.</div></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*clear' href='./../Overviews/Methods.html#clear'>clear</a>(<span class='argstr'>server</span>, <span class='argstr'>remove: true</span>)</h3>
+<p>an <a href="./..\Classes/IdentityDictionary.html">IdentityDictionary</a> containing all plugin descriptions as <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instances.</div></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*clear' href='./../Overviews/Methods.html#clear'>clear</a>(<span class='argstr'>server</span>, <span class='argstr'>remove: true</span>)</h3>
 <div class='method'>
-<p>Deletes all cached plugin info for a given Server.<h4>Arguments:</h4>
+<p>Deletes all cached plugin descriptions for a given Server.<h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>server<td class='argumentdesc'>
 <p>the Server. If this is <code>nil</code>, the default Server is assumed.<tr><td class='argumentname'>remove<td class='argumentdesc'>

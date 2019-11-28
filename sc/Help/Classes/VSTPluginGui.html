@@ -58,7 +58,7 @@ var scdoc_sc_version = '3.10.0';
 <div id='summary'>a generic Qt GUI for VSTPluginController</div>
 </div>
 <div class='subheader'>
-<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPluginGui.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPluginGui.sc'>VSTPluginGui.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a></div>
+<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPluginGui.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPluginGui.sc'>VSTPluginGui.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>, <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a></div>
 </div>
 <h2><a class='anchor' name='description'>Description</a></h2>
 
@@ -161,8 +161,8 @@ SynthDef.new(\insert, {arg bus = 0;
 // close the windows</textarea>
 <h3><a class='anchor' name='Embedding'>Embedding</a></h3>
 
-<p>It's possible to embed several VSTPluginGui instances within a single view. 
-<p>The <em>bounds</em> argument determines the size and position of each subview.  (In <a href="./..\Classes/FlowLayout.html">FlowLayout</a>s the position is managed automatically, so it's enough to provide a <a href="./..\Classes/Point.html">Point</a> instead of a <a href="./..\Classes/Rect.html">Rect</a>.)
+<p>It's possible to embed several VSTPluginGui instances within a single view.
+<p>The <em>bounds</em> argument determines the size and position of each subview. (In <a href="./..\Classes/FlowLayout.html">FlowLayout</a>s the position is managed automatically, so it's enough to provide a <a href="./..\Classes/Point.html">Point</a> instead of a <a href="./..\Classes/Rect.html">Rect</a>.)
 <p>If the plugin editor needs more space than <em>bounds</em>, scrollbars are shown automatically.<textarea class='editor'>(
 // create a Window large enough to hold two VSTPluginGuis per row (see below).
 ~view = Window.new(bounds: 850@450, scroll: true);
