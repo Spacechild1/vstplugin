@@ -28,8 +28,14 @@ VSTPluginDesc {
 	// public methods
 	numParameters { ^parameters.size; }
 	numPrograms { ^programs.size; }
+	numPresets { ^presets.size; }
 	findParamIndex { arg name;
 		^this.prParamIndexMap[name.asSymbol];
+	}
+	printOn { arg stream;
+		stream.atLimit.not.if {
+			stream << this.class.name << "( " << this.name << " )";
+		}
 	}
 	print { arg long = false;
 		"---".postln;
@@ -41,6 +47,8 @@ VSTPluginDesc {
 			"".postln;
 			"programs (%):".format(this.numPrograms).postln;
 			this.printPrograms;
+			"presets (%):".format(this.numPresets).postln;
+			this.printPresets;
 		};
 		"".postln;
 	}
@@ -52,9 +60,152 @@ VSTPluginDesc {
 		}
 	}
 	printPrograms {
-		this.program.do { arg pgm, i;
+		this.programs.do { arg pgm, i;
 			"[%] %".format(i, pgm.name).postln;
 		}
+	}
+	printPresets {
+		// collect presets by type
+		var result = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
+		this.presets.do { arg preset, i;
+			result[preset.type].add(preset);
+		};
+		// print results
+		#[
+			\user, "--- user presets ---",
+			\userFactory, "--- user factory presets ---",
+			\sharedFactory, "--- shared factory presets ---",
+			\global, "--- global presets ---"
+		].pairsDo { arg type, label;
+			(result[type].size > 0).if {
+				label.postln;
+				result[type].do { arg p; p.name.postln };
+			}
+		};
+	}
+	scanPresets {
+		presets.clear;
+		[\user, \userFactory, \sharedFactory, \global].do { arg type;
+			var folder = this.presetFolder(type);
+			folder.notNil.if {
+				PathName(folder).files.do { arg file;
+					var preset = (
+						name: file.fileNameWithoutExtension,
+						path: file.fullPath,
+						type: type
+					);
+					presets = presets.add(preset);
+				}
+			}
+		};
+		this.changed('/preset');
+	}
+	presetFolder { arg type = \user;
+		var folder, vst3 = this.sdkVersion.find("VST 3").notNil;
+		Platform.case(
+			\windows,
+			{
+				folder = switch(type,
+					\user, "USERPROFILE".getenv +/+ "Documents",
+					\userFactory, "APPDATA".getenv,
+					\sharedFactory, "PROGRAMDATA".getenv
+				);
+				folder !? { folder = folder +/+ if(vst3, "VST3 Presets", "VST2 Presets") }
+			},
+			\osx,
+			{
+				folder = switch(type,
+					\user, "~/Library/Audio/Presets",
+					\sharedFactory, "Library/Audio/Presets"
+				)
+			},
+			\linux,
+			{
+				var vst = if(type == \user, ".") ++ if(vst3, "vst3", "vst2");
+				folder = switch(type,
+					\user, "~",
+					\sharedFactory, "/usr/local/share",
+					\global, "usr/share",
+				);
+				folder !? { folder = folder +/+ vst +/+ "presets"; }
+			}
+		);
+		^folder !? {
+			folder.standardizePath +/+ this.vendor +/+ this.name;
+		}
+	}
+	presetPath { arg name;
+		var vst3 = sdkVersion.find("VST 3").notNil;
+		^this.presetFolder +/+ name ++ if(vst3, ".vstpreset", ".fxp");
+	}
+	findPreset { arg preset;
+		preset.isNumber.if {
+			^presets[preset.asInteger];
+		} {
+			presets.do { arg p, i;
+				(p.name == preset).if { ^p };
+			};
+		}
+		^nil; // not found
+	}
+	prPresetIndex { arg name;
+		presets.do { arg p, index;
+			(p.name == name).if { ^index }
+		};
+		^nil;
+	}
+	addPreset { arg name, path;
+		var preset = (name: name, path: path, type: \user);
+		// check if preset exists
+		presets.do { arg p, i;
+			((p.type == preset.type) and: { p.name == preset.name }).if { ^i }
+		};
+		presets = presets.addFirst(preset); // append!
+		this.changed('/presets');
+		^0; // first index
+	}
+	deletePreset { arg preset;
+		var result = this.findPreset(preset);
+		// can only remove user presets!
+		result.notNil.if {
+			(result.type == \user).if {
+				File.delete(result.path).if {
+					presets.remove(result);
+					this.changed('/presets');
+					^true;
+				} {
+					("couldn't delete preset file" + result.path).error;
+				}
+			} { "preset '%' is not writeable!".format(preset).error;	}
+		} {	"couldn't find preset '%'".format(preset).error	}
+		^false;
+	}
+	renamePreset { arg preset, name;
+		var result = this.findPreset(preset);
+		var newPath = this.presetPath(name);
+		// can only rename user presets!
+		result.notNil.if {
+			(result.type == \user).if {
+				File.exists(newPath).not.if {
+					try {
+						File.copy(result.path, newPath);
+					} {
+						("couldn't create file" + result.path).error;
+						^false;
+					};
+					// delete old file
+					File.delete(result.path).not.if {
+						("couldn't delete old preset file" + result.path).warn;
+					};
+					// update name + path
+					result.name = name;
+					result.path = newPath;
+					this.changed('/presets');
+					^true;
+				} { "preset '%' already exists!".format(name).error; }
+			} { "preset '%' not writeable!".format(preset).error }
+		} {	"couldn't find preset '%'".format(preset).error	};
+		^false;
 	}
 	// private methods
 	*prParse { arg stream;
@@ -63,16 +214,14 @@ VSTPluginDesc {
 		var line, key, value, onset, n, f, flags, plugin = false;
 		var hex2int = #{ arg str;
 			str.toUpper.ascii.reverse.sum { arg c, i;
-				(c >= 65).if {
-					(c - 55) << (i * 4);
-				} {
-					(c - 48) << (i * 4);
-				}
+				(c >= 65).if { (c - 55) << (i * 4);	}
+				{ (c - 48) << (i * 4); }
 			}
 		};
 		// default values:
 		info.numAuxInputs = 0;
 		info.numAuxOutputs = 0;
+		info.presets = [];
 		{
 			line = VSTPlugin.prGetLine(stream, true);
 			line ?? { ^Error("EOF reached").throw };
@@ -362,7 +511,7 @@ VSTPlugin : MultiOutUGen {
 				} { "Failed to read tmp file!".error };
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
 				stream.notNil.if {
-					info = VSTPluginDesc.prParse(stream);
+					info = VSTPluginDesc.prParse(stream).scanPresets;
 					// store under key
 					dict[info.key] = info;
 					// also store under resolved path and custom key
@@ -389,7 +538,7 @@ VSTPlugin : MultiOutUGen {
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
 					var info;
 					(string.size > 0).if {
-						info = VSTPluginDesc.prParse(CollStream.new(string));
+						info = VSTPluginDesc.prParse(CollStream.new(string)).scanPresets;
 						// store under key
 						dict[info.key] = info;
 						// also store under resolved path and custom key
@@ -488,7 +637,7 @@ VSTPlugin : MultiOutUGen {
 		results = Array.newClear(n);
 		// now serialize plugins
 		n.do { arg i;
-			results[i] = VSTPluginDesc.prParse(stream);
+			results[i] = VSTPluginDesc.prParse(stream).scanPresets;
 		};
 		^results;
 	}

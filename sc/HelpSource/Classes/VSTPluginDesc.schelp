@@ -15,7 +15,7 @@ PRIVATE:: prParse
 
 INSTANCEMETHODS::
 
-PRIVATE:: prToString, prParamIndexMap
+PRIVATE:: prToString, prParamIndexMap, prPresetIndex
 
 METHOD:: key
 
@@ -123,8 +123,23 @@ link::Classes/Array:: of built-in plugin programs. Each program is represented a
 
 METHOD:: numPrograms
 
-RETURNS:: the number of programs.
+RETURNS:: the number of built-in programs.
 
+METHOD:: presets
+
+link::Classes/Array:: of VST presets. Each preset is represented as an link::Classes/Event:: with the following fields:
+table::
+## name || preset name
+## path || file path
+## type || preset type (code::user::, code::userFactory::, code::sharedFactory:: or code::global::)
+::
+More entries might be added later.
+
+The preset list is populated automatically and updated whenever you call link::Classes/VSTPluginController#-savePreset::, link::Classes/VSTPluginController#-deletePreset:: or link::Classes/VSTPluginController#-renamePreset::.
+
+METHOD:: numPresets
+
+RETURNS:: the number of VST presets.
 
 METHOD:: print
 

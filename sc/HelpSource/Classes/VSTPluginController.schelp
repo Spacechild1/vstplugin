@@ -115,7 +115,7 @@ subsection:: Preset Management
 Change built-in FX programs with link::#-program:::
 
 code::
-// check for available programs:
+// list available programs:
 ~fx.info.printPrograms;
 // get current program number
 ~fx.program;
@@ -123,7 +123,25 @@ code::
 ~fx.program_(4);
 ::
 
-You can read/write preset files in the standard code::.fxp/.fxp:: (VST2) or code::.vstpreset:: (VST3) format, recognized by most DAWs and VST hosts:
+The easiest way to manage user presets are the link::#-savePreset:: and link::#-loadPreset:: methods. Because they use standardized preset folder locations, presets can be simply referred to by name:
+
+code::
+// list available presets
+~fx.info.printPresets;
+
+// save (new) preset
+~fx.savePreset("my_preset");
+// do something
+~fx.gui;
+// save again
+~fx.savePreset;
+// do something
+~fx.gui;
+// load preset
+~fx.loadPreset("my_preset");
+::
+
+Internally, preset files use the standard code::.fxp/.fxp:: (VST2) or code::.vstpreset:: (VST3) format, recognized by most DAWs and VST hosts. You can save presets to your own folders with the following methods:
 code::
 // write current plugin state to a preset file.
 ~fx.writeProgram("mypresetfolder/test.fxp");
@@ -142,7 +160,7 @@ code::
 // get plugin state as Int8Array:
 ~fx.getProgramData({ arg data; d = data;});
 
-// ... mess around with the plugin ...
+// do something
 ~fx.gui;
 
 // restore previous state:
@@ -566,22 +584,20 @@ In that case it is not possible to determine which parameter has been automated 
 
 subsection:: Preset Management
 
-Generally, all preset management methods works asynchronously (in the non-realtime thread) and are therefore emphasis::realtime safe::!
-
 METHOD:: numPrograms
-returns:: the number of available plugin programs.
+returns:: the number of available built-in plugin programs.
 
 METHOD:: program
 METHOD:: programMsg
-get/set the program number.
+select a built-in program or get the current program number.
 
 DISCUSSION::
-use the setter to change between FX programs.
+use the setter to change between built-in programs.
 
 METHOD:: programName
 METHOD:: programNameMsg
 
-get/set the name of the current program.
+get/set the name of the current program (VST2 only).
 
 METHOD:: readProgram
 METHOD:: readBank
@@ -593,7 +609,7 @@ ARGUMENT:: path
 
 can be an absolute or relative file path. Relative paths are resolved to the currently executing file (must have been saved!).
 
-The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for program files and emphasis::.fxb:: for bank files.
+The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for VST2 program files, emphasis::.fxb:: for VST2 bank files and emphasis::.vstpreset:: for VST3 preset files.
 
 ARGUMENT:: action
 
@@ -608,14 +624,15 @@ discussion::
 The program and bank files are in a standard format which is recogized by every decent DAW or VST host.
 This means you can freely exchange presets between different applications!
 
+note::Preset banks are only supported by VST2 plugins::.
+
 METHOD:: readProgramMsg
 METHOD:: readBankMsg
 METHOD:: writeProgramMsg
 METHOD:: writeBankMsg
 
 ARGUMENT:: dest
-a) String: path for a preset file to be read or written. Relative paths are resolved to the currently executing file (if saved),
-so for remote Servers you have to specify an absolute file path.
+a) String: preset file to be read or written. Relative paths are resolved to the currently executing file (if saved), so for remote Servers you have to specify an absolute file path.
 
 b) link::Classes/Buffer:: or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
 
@@ -698,6 +715,75 @@ discussion::
 Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above
 also work with remote Servers because the data is streamed via OSC messages. This means
 it is not 100% reliable when using UDP.
+
+METHOD:: loadPreset
+METHOD:: savePreset
+load/save VST presets.
+
+ARGUMENT:: preset
+the preset name or index (see link::Classes/VSTPluginDesc#-presets::). You can create a new preset by passing a non-existing preset name to code::savePreset::.
+
+ARGUMENT:: action
+
+an action which is called with code::this:: and a Boolean (success/fail).
+
+ARGUMENT:: async
+
+where to execute the plugin method, see link::#Realtime Safety::.
+note::The file/buffer IO itself is always performed asynchronously!::
+
+discussion::
+These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+These are the standard VST3 preset paths:
+table::
+## Windows ||
+table::
+## user || %USERPROFILE%\Documents\VST3 Presets\[VENDOR]\[PLUGIN]
+## user factory || %APPDATA%\VST3 Presets\[VENDOR]\[PLUGIN]
+## shared factory || %PROGRAMDATA%\VST3 Presets\[VENDOR]\[PLUGIN]
+::
+## OSX ||
+table::
+## user || ~/Library/Audio/presets/[VENDOR]/[PLUGIN]
+## shared factory || /Library/Audio/presets/[VENDOR]/[PLUGIN]
+::
+## Linux ||
+table::
+## user || ~/.vst3/presets/[VENDOR]/[PLUGIN]
+## shared factory || /usr/local/share/vst3/presets/[VENDOR]/[PLUGIN]
+## global || /usr/share/vst3/presets/[VENDOR]/[PLUGIN]
+::
+::
+
+note::Only the emphasis::user:: preset paths are writeable.::
+
+For VST2 plugins, the following (non-standard) paths are used:
+
+table::
+## Windows || %USERPROFILE%\Documents\VST2 Presets\[VENDOR]\[PLUGIN]
+## OSX || ~/Library/Audio/Presets/[VENDOR]/[PLUGIN]
+## Linux || ~/.vst2/presets/[VENDOR]/[PLUGIN]
+::
+
+Presets are searched in the following order: emphasis::user, userFactory, sharedFactory, global::. The folders are automatically scanned everytime you boot the Server and call link::Classes/VSTPlugin#*search::.
+
+note::These methods currently only work with local Servers!::
+
+METHOD:: deletePreset
+delete a VST preset.
+
+ARGUMENT:: preset
+the preset name or index.
+
+METHOD:: renamePreset
+delete a VST preset.
+
+ARGUMENT:: preset
+the old preset name or index
+
+ARGUMENT:: name
+the new preset name.
 
 subsection:: MIDI
 

@@ -17,6 +17,7 @@ VSTPluginController {
 	var oscFuncs;
 	var <paramCache; // only for dependants
 	var <programNames;
+	var currentPreset;
 	var window;
 
 	*initClass {
@@ -156,7 +157,7 @@ VSTPluginController {
 			(index < programNames.size).if {
 				programNames[index] = name;
 				// notify dependants
-				this.changed('/program', index, name);
+				this.changed('/program_name', index, name);
 			} { "program number % out of range!".format(index).warn };
 		}, '/vst_program'));
 		// parameter automated:
@@ -242,7 +243,7 @@ VSTPluginController {
 		^this.makeMsg('/open', path, editor.asInteger);
 	}
 	prClear {
-		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; program = nil;
+		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; program = nil; currentPreset = nil;
 	}
 	close {
 		this.sendMsg('/close');
@@ -337,7 +338,121 @@ VSTPluginController {
 	unmapMsg { arg ...args;
 		^this.makeMsg('/unmap', *args);
 	}
-	// programs and banks
+	// preset management
+	savePreset { arg preset, action, async=false;
+		var result, name, path;
+		synth.server.isLocal.not.if {
+			^"'%' only works with a local Server".format(thisMethod.name).throw;
+		};
+
+		info.notNil.if {
+			File.mkdir(info.presetFolder); // make sure that the folder exists!
+			// if 'preset' is omitted, use the last preset (if possible)
+			preset.isNil.if {
+				currentPreset.notNil.if {
+					result = info.presets[currentPreset];
+					(result.type != \user).if {
+						"current preset is not writeable!".error; ^this;
+					};
+					name = result.name;
+				} { "no current preset".error; ^this };
+			} {
+				// 'preset' can be an index
+				preset.isNumber.if {
+					preset = preset.asInteger;
+					result = info.presets[preset];
+					result ?? {
+						^"preset index % out of range".format(preset).throw
+					};
+					(result.type != \user).if {
+						^"preset % is not writeable!".throw
+					};
+					name = result.name;
+				} {
+					// or a string
+					name = preset.asString;
+				}
+			};
+			path = info.presetPath(name);
+			this.writeProgram(path, { arg self, success;
+				success.if {
+					currentPreset = info.addPreset(name, path);
+					this.changed('/preset_save', currentPreset);
+				} { "couldn't save preset".error };
+				action.value(self, success);
+			}, async);
+		} { "no plugin loaded".error }
+	}
+	loadPreset { arg preset, action, async=false;
+		var index, result;
+		synth.server.isLocal.not.if {
+			^"'%' only works with a local Server".format(thisMethod.name).throw;
+		};
+
+		info.notNil.if {
+			// if 'preset' is omitted, use the last preset (if possible)
+			preset.isNil.if {
+				currentPreset.notNil.if {
+					index = currentPreset;
+				} { "no current preset".error; ^this };
+			} {
+				preset.isNumber.if {
+					index = preset.asInteger;
+				} { index = info.prPresetIndex(preset.asString) };
+			};
+			result = info.presets[index];
+			result.notNil.if {
+				this.readProgram(result.path, { arg self, success;
+					success.if {
+						currentPreset = index;
+						this.changed('/preset_load', index);
+					} { "couldn't load preset".error };
+					action.value(self, success);
+				}, async);
+			} { "couldn't find preset '%'".format(preset).error }
+		} { "no plugin loaded".error }
+	}
+	deletePreset { arg preset;
+		var current = false;
+		synth.server.isLocal.not.if {
+			^"'%' only works with a local Server".format(thisMethod.name).throw;
+		};
+
+		info.notNil.if {
+			// if 'preset' is omitted, use the last preset (if possible)
+			preset.isNil.if {
+				currentPreset.notNil.if {
+					preset = currentPreset;
+					current = true;
+				} { "no current preset".error; ^false };
+			};
+			info.deletePreset(preset).if {
+				current.if { currentPreset = nil };
+				^true;
+			}{
+				"couldn't delete preset '%'".format(preset).error;
+			}
+		} { "no plugin loaded".error };
+		^false;
+	}
+	renamePreset { arg preset, name;
+		synth.server.isLocal.not.if {
+			^"'%' only works with a local Server".format(thisMethod.name).throw;
+		};
+
+		info.notNil.if {
+			// if 'preset' is omitted, use the last preset (if possible)
+			preset.isNil.if {
+				currentPreset.notNil.if {
+					preset = currentPreset;
+				} { "no current preset".error; ^false };
+			};
+			info.renamePreset(preset, name).if { ^true } {
+				"couldn't rename preset '%'".format(preset).error;
+			}
+		} { "no plugin loaded".error };
+		^false;
+	}
 	numPrograms {
 		^(info !? (_.numPrograms) ?? 0);
 	}
@@ -415,13 +530,13 @@ VSTPluginController {
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		synth.server.isLocal.if {
 			this.prSetData(data, action, false, async);
-		} { "'%' only works with a local Server".format(thisMethod.name).warn; ^nil };
+		} { ^"'%' only works with a local Server".format(thisMethod.name).throw };
 	}
 	setBankData { arg data, action, async=false;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		synth.server.isLocal.if {
 			this.prSetData(data, action, true, async);
-		} { "'%' only works with a local Server".format(thisMethod.name).warn; ^nil };
+		} { ^"'%' only works with a local Server".format(thisMethod.name).throw; };
 	}
 	prSetData { arg data, action, bank, async;
 		try {

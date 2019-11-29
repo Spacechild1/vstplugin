@@ -22,7 +22,8 @@ var scdoc_sc_version = '3.10.0';
 <div id='toctitle'>VSTPluginController:</div>
 <span class='toc_search'>Filter: <input id='toc_search'></span><ul class='toc'><li class='toc1'><a href='#description'>Description</a></li>
 <ul class='toc'><li class='toc2'><a href='#Introduction'>Introduction</a></li>
-<ul class='toc'></ul><li class='toc2'><a href='#Parameter%20Automation%20and%20Preset%20Management'>Parameter Automation and Preset Management</a></li>
+<ul class='toc'></ul><li class='toc2'><a href='#Parameter%20Automation'>Parameter Automation</a></li>
+<ul class='toc'></ul><li class='toc2'><a href='#Preset%20Management'>Preset Management</a></li>
 <ul class='toc'></ul><li class='toc2'><a href='#GUI'>GUI</a></li>
 <ul class='toc'></ul><li class='toc2'><a href='#Sequencing'>Sequencing</a></li>
 <ul class='toc'></ul><li class='toc2'><a href='#Realtime%20Safety'>Realtime Safety</a></li>
@@ -83,6 +84,10 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#-sendBankData'>sendBankData</a> </li>
 <li class='toc3'><a href='#-receiveProgramData'>receiveProgramData</a> </li>
 <li class='toc3'><a href='#-receiveBankData'>receiveBankData</a> </li>
+<li class='toc3'><a href='#-loadPreset'>loadPreset</a> </li>
+<li class='toc3'><a href='#-savePreset'>savePreset</a> </li>
+<li class='toc3'><a href='#-deletePreset'>deletePreset</a> </li>
+<li class='toc3'><a href='#-renamePreset'>renamePreset</a> </li>
 </ul><li class='toc2'><a href='#MIDI'>MIDI</a></li>
 <ul class='toc'><li class='toc3'><a href='#-midi'>midi</a> </li>
 <li class='toc3'><a href='#-sendMidi'>sendMidi</a> </li>
@@ -130,7 +135,7 @@ var scdoc_sc_version = '3.10.0';
 <div id='summary'>Client-side representation of a VSTPlugin UGen instance</div>
 </div>
 <div class='subheader'>
-<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPluginController.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPluginController.sc'>VSTPluginController.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Classes/VSTPluginMIDIProxy.html">VSTPluginMIDIProxy</a>, <a href="./..\Guides/HOA_IEM.html">High order ambisonics using IEM Plugins</a>, <a href="./..\Reference/VSTPlugin-UGen-Documentation.html">VSTPlugin - UGen documentation</a></div>
+<div id='filename'>Source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/classes/VSTPluginController.sc' title='C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\classes\VSTPluginController.sc'>VSTPluginController.sc</a></div><div id='related'>See also: <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a>, <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>, <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>, <a href="./..\Classes/VSTPluginMIDIProxy.html">VSTPluginMIDIProxy</a>, <a href="./..\Guides/HOA_IEM.html">High order ambisonics using IEM Plugins</a>, <a href="./..\Reference/VSTPlugin-UGen-Documentation.html">VSTPlugin - UGen documentation</a></div>
 </div>
 <h2><a class='anchor' name='description'>Description</a></h2>
 
@@ -149,14 +154,16 @@ VSTPlugin.search;
 ~synth = Synth(\insert, [\bus, 0]);
 // get a handle to the VSTPlugin:
 ~fx = VSTPluginController(~synth);
-
 // open a plugin by name/key (might require VSTPlugin.search!)
 ~fx.open("myplugin", verbose: true);
 // alternatively, you can open a plugin by its file path
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
 ~fx.open("/path/to/plugin", verbose: true);
 
-// show the GUI:
+// you can do all of the above in a single line:
+~fx = VSTPluginController(Synth(\insert, [\bus, 0])).open("myplugin");
+
+// show the generic GUI:
 ~fx.gui;
 // etc.</textarea>
 
@@ -178,7 +185,7 @@ SynthDef(\insert2, { arg bus;
 ~chorus = VSTPluginController(~synth, \chorus).open("myChorus");
 )
 // etc.</textarea>
-<h3><a class='anchor' name='Parameter%20Automation%20and%20Preset%20Management'>Parameter Automation and Preset Management</a></h3>
+<h3><a class='anchor' name='Parameter%20Automation'>Parameter Automation</a></h3>
 
 <p>There are three different ways to automate plugin parameters (listed with increasing precedence):<ul>
 <li>with the <a href="#-set">-set</a> and <a href="#-setn">-setn</a> methods<textarea class='editor'>// set parameter 1 to 0.5
@@ -210,33 +217,48 @@ SynthDef(\insert, { arg bus, f;
 <p><a href="#-set">-set</a>, <a href="#-map">-map</a> and <a href="#-get">-get</a> also accept parameter names instead of indices:<textarea class='editor'>// with the GChorus (GVST) plugin:
 ~fx.set(\Depth, 0.5);
 ~fx.get(\Depth, {arg f; f.postln;});</textarea>
+<h3><a class='anchor' name='Preset%20Management'>Preset Management</a></h3>
 
-<p>Change FX programs with <a href="#-program">-program</a>:<textarea class='editor'>// check for available programs:
+<p>Change built-in FX programs with <a href="#-program">-program</a>:<textarea class='editor'>// list available programs:
 ~fx.info.printPrograms;
 // get current program number
 ~fx.program;
 // switch to program 4:
 ~fx.program_(4);</textarea>
 
-<p>You can read/write preset files in the standard <code>.fxp/.fxp</code> (VST2) or <code>.vstpreset</code> (VST3) format, recognized by most DAWs and VST hosts:<textarea class='editor'>// write current plugin state to a preset file.
-~fx.writeProgram("/preset/file/path/test.fxp");
+<p>The easiest way to manage user presets are the <a href="#-savePreset">-savePreset</a> and <a href="#-loadPreset">-loadPreset</a> methods. Because they use standardized preset folder locations, presets can be simply referred to by name:<textarea class='editor'>// list available presets
+~fx.info.printPresets;
+
+// save (new) preset
+~fx.savePreset("my_preset");
+// do something
+~fx.gui;
+// save again
+~fx.savePreset;
+// do something
+~fx.gui;
+// load preset
+~fx.loadPreset("my_preset");</textarea>
+
+<p>Internally, preset files use the standard <code>.fxp/.fxp</code> (VST2) or <code>.vstpreset</code> (VST3) format, recognized by most DAWs and VST hosts. You can save presets to your own folders with the following methods:<textarea class='editor'>// write current plugin state to a preset file.
+~fx.writeProgram("mypresetfolder/test.fxp");
 
 // ... mess around with the plugin ...
 ~fx.gui;
 
 // restore previous state:
-~fx.readProgram("/preset/file/path/text.fxp");</textarea>
-
+~fx.readProgram("mypresetfolder/text.fxp");</textarea>
+<div class='note'><span class='notelabel'>NOTE:</span> Relative paths are resolved to the currently executing file</div>
 <p>It's also possible to get/set the raw plugin state as an <a href="./..\Classes/Int8Array.html">Int8Array</a>:<textarea class='editor'>// get plugin state as Int8Array:
 ~fx.getProgramData({ arg data; d = data;});
 
-// ... mess around with the plugin ...
+// do something
 ~fx.gui;
 
 // restore previous state:
 ~fx.setProgramData(d);</textarea>
 
-<p>The data is in the same binary format as the preset files. Use these methods to build your own preset management!<div class='note'><span class='notelabel'>NOTE:</span> Some plugins have additional state beyond their parameter values, so you <em>have</em> to use the program and bank methods above to fully save/restore them.</div><h3><a class='anchor' name='GUI'>GUI</a></h3>
+<p>The data has the same binary format as the preset files. You can use these methods to build your own preset management!<div class='note'><span class='notelabel'>NOTE:</span> Many plugins have additional state beyond their parameter values, so you <em>have</em> to use the program and bank methods above to fully save/restore them.</div><h3><a class='anchor' name='GUI'>GUI</a></h3>
 
 <p>Generally, there are two kind of GUIs:<ul>
 <li>the native VST editor, which must be explicitly requested when opening a plugin:<textarea class='editor'>// load a plugin
@@ -244,7 +266,7 @@ SynthDef(\insert, { arg bus, f;
 // open the VST editor window
 ~fx.editor;</textarea>
 
-<p>On Windows and Linux this will run a native window on the Server (in a seperate thread).<div class='note'><span class='notelabel'>NOTE:</span> Unfortunately, this is not possible (yet?) on macOS for technical reasons.</div><li>a generic Qt GUI which can be opened in a new Window or embedded into existing views:<textarea class='editor'>// load a plugin
+<p>On Windows and Linux this will run a native window on the Server (in a seperate thread).<div class='note'><span class='notelabel'>NOTE:</span> Unfortunately, this is not possible (yet) on macOS for technical reasons.</div><li>a generic Qt GUI which can be opened in a new Window or embedded into existing views:<textarea class='editor'>// load a plugin
 ~fx.open("/path/to/plugin");
 // create a Window with the plugin GUI
 ~fx.gui;</textarea>
@@ -316,7 +338,7 @@ SynthDef(\insert, { arg bus, f;
 // the plugin is in a subfolder 'myplugins' below the currently executing file:
 ~fx.open("myplugins/GChorus");</textarea>
 <div class='note'><span class='notelabel'>NOTE:</span> This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).</div>
-<p>- If the VSTPlugin UGen holds a plugin info (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<textarea class='editor'>VSTPlugin.search;
+<p>- If the VSTPlugin UGen holds a plugin description (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor omitted.<textarea class='editor'>VSTPlugin.search;
 (
 SynthDef(\chorus, { arg bus=0;
     var plugin = VSTPlugin.plugins[\GChorus];
@@ -335,7 +357,7 @@ SynthDef(\chorus, { arg bus=0;
 <table class='arguments'>
 <tr><td class='argumentname'>path<td class='argumentdesc'>
 <p>the plugin name/key or file path. Relative paths are resolved to the standard VST directories.
-<p>If the VSTPlugin UGen holds a plugin info (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<tr><td class='argumentname'>editor<td class='argumentdesc'>
+<p>If the VSTPlugin UGen holds a plugin description (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<tr><td class='argumentname'>editor<td class='argumentdesc'>
 <p>request the VST editor.</table><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>the message for an <em>open</em> command (see <a href="#-open">-open</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-close' href='./../Overviews/Methods.html#close'>close</a></h3>
@@ -360,7 +382,7 @@ SynthDef(\chorus, { arg bus=0;
 <p>a new <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a> instance.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
-<p>the (static) plugin info (see <a href="./..\Classes/VSTPlugin.html#Plugin%20Info">VSTPlugin: Plugin Info</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loaded' href='./../Overviews/Methods.html#loaded'>loaded</a></h3>
+<p>the (static) plugin description (see <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loaded' href='./../Overviews/Methods.html#loaded'>loaded</a></h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>whether a plugin is currently loaded.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-reset' href='./../Overviews/Methods.html#reset'>reset</a>(<span class='argstr'>async: false</span>)</h3>
@@ -473,21 +495,20 @@ SynthDef(\chorus, { arg bus=0;
 <p>a <a href="./..\Classes/Function.html">Function</a> or <a href="./..\Classes/FunctionList.html">FunctionList</a> to be called when parameters are automated from the VST editor.<h4>Discussion:</h4>
 
 <p>The action receives the parameter index and value. This can be helpful if you want to know the index of a parameter in the editor.<div class='note'><span class='notelabel'>NOTE:</span> Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated". In that case it is not possible to determine which parameter has been automated manually.</div></div><h3><a class='anchor' name='Preset%20Management'>Preset Management</a></h3>
-
-<p>Generally, all preset management methods works asynchronously (in the non-realtime thread) and are therefore <em>realtime safe</em>!<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numPrograms' href='./../Overviews/Methods.html#numPrograms'>numPrograms</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numPrograms' href='./../Overviews/Methods.html#numPrograms'>numPrograms</a></h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
-<p>the number of available plugin programs.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-program' href='./../Overviews/Methods.html#program'>program</a></h3>
+<p>the number of available built-in plugin programs.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-program' href='./../Overviews/Methods.html#program'>program</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-program' href='./../Overviews/Methods.html#program'>program</a> = <span class='argstr'>number</span></h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programMsg' href='./../Overviews/Methods.html#programMsg'>programMsg</a>(<span class='argstr'>number</span>)</h3>
 <div class='method'>
-<p>get/set the program number.<h4>Discussion:</h4>
+<p>select a built-in program or get the current program number.<h4>Discussion:</h4>
 
-<p>use the setter to change between FX programs.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programName' href='./../Overviews/Methods.html#programName'>programName</a></h3>
+<p>use the setter to change between built-in programs.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programName' href='./../Overviews/Methods.html#programName'>programName</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programName' href='./../Overviews/Methods.html#programName'>programName</a> = <span class='argstr'>name</span></h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-programNameMsg' href='./../Overviews/Methods.html#programNameMsg'>programNameMsg</a>(<span class='argstr'>name</span>)</h3>
 <div class='method'>
-<p>get/set the name of the current program.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-readProgram' href='./../Overviews/Methods.html#readProgram'>readProgram</a>(<span class='argstr'>path</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
+<p>get/set the name of the current program (VST2 only).</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-readProgram' href='./../Overviews/Methods.html#readProgram'>readProgram</a>(<span class='argstr'>path</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-readBank' href='./../Overviews/Methods.html#readBank'>readBank</a>(<span class='argstr'>path</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-writeProgram' href='./../Overviews/Methods.html#writeProgram'>writeProgram</a>(<span class='argstr'>path</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-writeBank' href='./../Overviews/Methods.html#writeBank'>writeBank</a>(<span class='argstr'>path</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
@@ -496,11 +517,12 @@ SynthDef(\chorus, { arg bus=0;
 <table class='arguments'>
 <tr><td class='argumentname'>path<td class='argumentdesc'>
 <p>can be an absolute or relative file path. Relative paths are resolved to the currently executing file (must have been saved!).
-<p>The file extension is arbitrary but it is good practice to use <em>.fxp</em> for program files and <em>.fxb</em> for bank files.<tr><td class='argumentname'>action<td class='argumentdesc'>
+<p>The file extension is arbitrary but it is good practice to use <em>.fxp</em> for VST2 program files, <em>.fxb</em> for VST2 bank files and <em>.vstpreset</em> for VST3 preset files.<tr><td class='argumentname'>action<td class='argumentdesc'>
 <p>an action to be called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>async<td class='argumentdesc'>
 <p>where to execute the plugin method, see <a href="#Realtime%20Safety">Realtime Safety</a>.<div class='note'><span class='notelabel'>NOTE:</span> The file/buffer IO itself is always performed asynchronously!</div></table><h4>Discussion:</h4>
 
-<p>The program and bank files are in a standard format which is recogized by every decent DAW or VST host. This means you can freely exchange presets between different applications!</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-readProgramMsg' href='./../Overviews/Methods.html#readProgramMsg'>readProgramMsg</a>(<span class='argstr'>dest</span>, <span class='argstr'>async: false</span>)</h3>
+<p>The program and bank files are in a standard format which is recogized by every decent DAW or VST host. This means you can freely exchange presets between different applications!<div class='note'><span class='notelabel'>NOTE:</span> Preset banks are only supported by VST2 plugins</div>
+<p>.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-readProgramMsg' href='./../Overviews/Methods.html#readProgramMsg'>readProgramMsg</a>(<span class='argstr'>dest</span>, <span class='argstr'>async: false</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-readBankMsg' href='./../Overviews/Methods.html#readBankMsg'>readBankMsg</a>(<span class='argstr'>dest</span>, <span class='argstr'>async: false</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-writeProgramMsg' href='./../Overviews/Methods.html#writeProgramMsg'>writeProgramMsg</a>(<span class='argstr'>dest</span>, <span class='argstr'>async: false</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-writeBankMsg' href='./../Overviews/Methods.html#writeBankMsg'>writeBankMsg</a>(<span class='argstr'>dest</span>, <span class='argstr'>async: false</span>)</h3>
@@ -508,7 +530,7 @@ SynthDef(\chorus, { arg bus=0;
 <p><h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>dest<td class='argumentdesc'>
-<p>a) String: path for a preset file to be read or written. Relative paths are resolved to the currently executing file (if saved), so for remote Servers you have to specify an absolute file path.
+<p>a) String: preset file to be read or written. Relative paths are resolved to the currently executing file (if saved), so for remote Servers you have to specify an absolute file path.
 <p>b) <a href="./..\Classes/Buffer.html">Buffer</a> or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
 <p><code>read*Msg</code>: the Buffer should contain the preset data with each float representing a single byte; it has to be allocated and freed by the Client.
 <p><code>write*Msg</code>: the Buffer should be initially empty. The UGen will fill the Buffer on the Server, the Client can then read the data and free the Buffer.<tr><td class='argumentname'>async<td class='argumentdesc'>
@@ -551,7 +573,43 @@ SynthDef(\chorus, { arg bus=0;
 <p>an action to pass the data.<tr><td class='argumentname'>async<td class='argumentdesc'>
 <p>see above.</table><h4>Discussion:</h4>
 
-<p>Contrary to <a href="#-setProgramData">-setProgramData</a>, <a href="#-getProgramData">-getProgramData</a> etc., the methods above also work with remote Servers because the data is streamed via OSC messages. This means it is not 100% reliable when using UDP.</div><h3><a class='anchor' name='MIDI'>MIDI</a></h3>
+<p>Contrary to <a href="#-setProgramData">-setProgramData</a>, <a href="#-getProgramData">-getProgramData</a> etc., the methods above also work with remote Servers because the data is streamed via OSC messages. This means it is not 100% reliable when using UDP.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loadPreset' href='./../Overviews/Methods.html#loadPreset'>loadPreset</a>(<span class='argstr'>preset</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
+<div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-savePreset' href='./../Overviews/Methods.html#savePreset'>savePreset</a>(<span class='argstr'>preset</span>, <span class='argstr'>action</span>, <span class='argstr'>async: false</span>)</h3>
+<div class='method'>
+<p>load/save VST presets.<h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>preset<td class='argumentdesc'>
+<p>the preset name or index (see <a href="./..\Classes/VSTPluginDesc.html#-presets">VSTPluginDesc: -presets</a>). You can create a new preset by passing a non-existing preset name to <code>savePreset</code>.<tr><td class='argumentname'>action<td class='argumentdesc'>
+<p>an action which is called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>async<td class='argumentdesc'>
+<p>where to execute the plugin method, see <a href="#Realtime%20Safety">Realtime Safety</a>.<div class='note'><span class='notelabel'>NOTE:</span> The file/buffer IO itself is always performed asynchronously!</div></table><h4>Discussion:</h4>
+
+<p>These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see <a href="./..\Classes/VSTPluginDesc.html#-presets">VSTPluginDesc: -presets</a>).
+<p>These are the standard VST3 preset paths:<table>
+<tr><td>Windows<td><table>
+<tr><td>user<td>%USERPROFILE%\Documents\VST3 Presets\[VENDOR]\[PLUGIN]<tr><td>user factory<td>%APPDATA%\VST3 Presets\[VENDOR]\[PLUGIN]<tr><td>shared factory<td>%PROGRAMDATA%\VST3 Presets\[VENDOR]\[PLUGIN]</table>
+
+<p><tr><td>OSX<td><table>
+<tr><td>user<td>~/Library/Audio/presets/[VENDOR]/[PLUGIN]<tr><td>shared factory<td>/Library/Audio/presets/[VENDOR]/[PLUGIN]</table>
+
+<p><tr><td>Linux<td><table>
+<tr><td>user<td>~/.vst3/presets/[VENDOR]/[PLUGIN]<tr><td>shared factory<td>/usr/local/share/vst3/presets/[VENDOR]/[PLUGIN]<tr><td>global<td>/usr/share/vst3/presets/[VENDOR]/[PLUGIN]</table>
+</table>
+<div class='note'><span class='notelabel'>NOTE:</span> Only the <em>user</em> preset paths are writeable.</div>
+<p>For VST2 plugins, the following (non-standard) paths are used:<table>
+<tr><td>Windows<td>%USERPROFILE%\Documents\VST2 Presets\[VENDOR]\[PLUGIN]<tr><td>OSX<td>~/Library/Audio/Presets/[VENDOR]/[PLUGIN]<tr><td>Linux<td>~/.vst2/presets/[VENDOR]/[PLUGIN]</table>
+
+<p>Presets are searched in the following order: <em>user, userFactory, sharedFactory, global</em>. The folders are automatically scanned everytime you boot the Server and call <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>.<div class='note'><span class='notelabel'>NOTE:</span> These methods currently only work with local Servers!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-deletePreset' href='./../Overviews/Methods.html#deletePreset'>deletePreset</a>(<span class='argstr'>preset</span>)</h3>
+<div class='method'>
+<p>delete a VST preset.<h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>preset<td class='argumentdesc'>
+<p>the preset name or index.</table></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-renamePreset' href='./../Overviews/Methods.html#renamePreset'>renamePreset</a>(<span class='argstr'>preset</span>, <span class='argstr'>name</span>)</h3>
+<div class='method'>
+<p>delete a VST preset.<h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>preset<td class='argumentdesc'>
+<p>the old preset name or index<tr><td class='argumentname'>name<td class='argumentdesc'>
+<p>the new preset name.</table></div><h3><a class='anchor' name='MIDI'>MIDI</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-midi' href='./../Overviews/Methods.html#midi'>midi</a></h3>
 <div class='method'>
 <p>send MIDI messages to the plugin via a proxy class.<h4>Returns:</h4>

@@ -48,13 +48,22 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#-numParameters'>numParameters</a> </li>
 <li class='toc3'><a href='#-programs'>programs</a> </li>
 <li class='toc3'><a href='#-numPrograms'>numPrograms</a> </li>
+<li class='toc3'><a href='#-presets'>presets</a> </li>
+<li class='toc3'><a href='#-numPresets'>numPresets</a> </li>
 <li class='toc3'><a href='#-print'>print</a> </li>
 <li class='toc3'><a href='#-printParameters'>printParameters</a> </li>
 <li class='toc3'><a href='#-printPrograms'>printPrograms</a> </li>
 <li class='toc3'><a href='#-findParamIndex'>findParamIndex</a> </li>
 <li class='toc2'><a href='#Inherited%20instance%20methods'>Inherited instance methods</a></li>
 <li class='toc2'><a href='#Undocumented%20instance%20methods'>Undocumented instance methods</a></li>
-<ul class='toc'><li class='toc3'><a href='#-presets'>presets</a> </li>
+<ul class='toc'><li class='toc3'><a href='#-addPreset'>addPreset</a> </li>
+<li class='toc3'><a href='#-deletePreset'>deletePreset</a> </li>
+<li class='toc3'><a href='#-findPreset'>findPreset</a> </li>
+<li class='toc3'><a href='#-presetFolder'>presetFolder</a> </li>
+<li class='toc3'><a href='#-presetPath'>presetPath</a> </li>
+<li class='toc3'><a href='#-printPresets'>printPresets</a> </li>
+<li class='toc3'><a href='#-renamePreset'>renamePreset</a> </li>
+<li class='toc3'><a href='#-scanPresets'>scanPresets</a> </li>
 </ul></ul></ul></div><div id='menubar'></div>
 <div class='contents'>
 <div class='header'>
@@ -152,7 +161,18 @@ var scdoc_sc_version = '3.10.0';
 <div class='method'>
 <p><h4>Returns:</h4>
 <div class='returnvalue'>
-<p>the number of programs.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-print' href='./../Overviews/Methods.html#print'>print</a>(<span class='argstr'>long: false</span>)</h3>
+<p>the number of built-in programs.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presets' href='./../Overviews/Methods.html#presets'>presets</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presets' href='./../Overviews/Methods.html#presets'>presets</a> = value</h3>
+<div class='method'>
+<p><a href="./..\Classes/Array.html">Array</a> of VST presets. Each preset is represented as an <a href="./..\Classes/Event.html">Event</a> with the following fields:<table>
+<tr><td>name<td>preset name<tr><td>path<td>file path<tr><td>type<td>preset type (<code>user</code>, <code>userFactory</code>, <code>sharedFactory</code> or <code>global</code>)</table>
+
+<p>More entries might be added later.
+<p>The preset list is populated automatically and updated whenever you call <a href="./..\Classes/VSTPluginController.html#-savePreset">VSTPluginController: -savePreset</a>, <a href="./..\Classes/VSTPluginController.html#-deletePreset">VSTPluginController: -deletePreset</a> or <a href="./..\Classes/VSTPluginController.html#-renamePreset">VSTPluginController: -renamePreset</a>.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numPresets' href='./../Overviews/Methods.html#numPresets'>numPresets</a></h3>
+<div class='method'>
+<p><h4>Returns:</h4>
+<div class='returnvalue'>
+<p>the number of VST presets.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-print' href='./../Overviews/Methods.html#print'>print</a>(<span class='argstr'>long: false</span>)</h3>
 <div class='method'>
 <p>post plugin info to the console.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -165,7 +185,13 @@ var scdoc_sc_version = '3.10.0';
 <div class='method'>
 <p>get the index of parameter by name.</div><h3><a class='anchor' name='Inherited%20instance%20methods'>Inherited instance methods</a></h3>
 <div id='inheritedinstmets'></div><h3><a class='anchor' name='Undocumented%20instance%20methods'>Undocumented instance methods</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presets' href='./../Overviews/Methods.html#presets'>presets</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presets' href='./../Overviews/Methods.html#presets'>presets</a> = value</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-addPreset' href='./../Overviews/Methods.html#addPreset'>addPreset</a>(<span class='argstr'>name</span>, <span class='argstr'>path</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-deletePreset' href='./../Overviews/Methods.html#deletePreset'>deletePreset</a>(<span class='argstr'>preset</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-findPreset' href='./../Overviews/Methods.html#findPreset'>findPreset</a>(<span class='argstr'>preset</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presetFolder' href='./../Overviews/Methods.html#presetFolder'>presetFolder</a>(<span class='argstr'>type: 'user'</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-presetPath' href='./../Overviews/Methods.html#presetPath'>presetPath</a>(<span class='argstr'>name</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-printPresets' href='./../Overviews/Methods.html#printPresets'>printPresets</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-renamePreset' href='./../Overviews/Methods.html#renamePreset'>renamePreset</a>(<span class='argstr'>preset</span>, <span class='argstr'>name</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-scanPresets' href='./../Overviews/Methods.html#scanPresets'>scanPresets</a></h3>
 <div class='doclink'>helpfile source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/HelpSource/Classes/VSTPluginDesc.schelp'>C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\HelpSource\Classes\VSTPluginDesc.schelp</a><br>link::Classes/VSTPluginDesc::<br></div></div><script src='./../editor.js' type='text/javascript'></script>
 </body></html>
