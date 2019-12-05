@@ -203,7 +203,8 @@ VSTPluginController {
 		path ?? {
 			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
 		};
-		VSTPlugin.prGetInfo(synth.server, path.standardizePath, wait, { arg theInfo;
+		path.isString.if { path = path.standardizePath };
+		VSTPlugin.prGetInfo(synth.server, path, wait, { arg theInfo;
 			theInfo.notNil.if {
 				this.prClear;
 				this.prMakeOscFunc({arg msg;
@@ -240,6 +241,7 @@ VSTPluginController {
 		path ?? {
 			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
 		};
+		path.isString.if { path = path.standardizePath };
 		^this.makeMsg('/open', path, editor.asInteger);
 	}
 	prClear {
