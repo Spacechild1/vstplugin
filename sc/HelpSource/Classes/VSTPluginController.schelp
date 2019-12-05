@@ -388,8 +388,10 @@ the parent. If code::nil::, the GUI is created in a new toplevel window.
 ARGUMENT:: bounds
 the bounds.
 
-RETURNS:: a new link::Classes/VSTPluginGui:: instance.
+ARGUMENT:: params
+show/hide parameters. Set to code::false::, if you only need to show the preset manager!
 
+RETURNS:: a new link::Classes/VSTPluginGui:: instance.
 
 METHOD:: info
 returns:: the (static) plugin description (see link::Classes/VSTPluginDesc::).

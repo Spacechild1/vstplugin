@@ -368,13 +368,14 @@ SynthDef(\chorus, { arg bus=0;
 <div class='method'>
 <p>shows/hide the VST editor window.<h4>Discussion:</h4>
 
-<p>The plugin has to be opened with <em>editor</em> set to <code>true</code>.<div class='note'><span class='notelabel'>NOTE:</span> This is not supported (yet) on macOS!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-gui' href='./../Overviews/Methods.html#gui'>gui</a>(<span class='argstr'>parent</span>, <span class='argstr'>bounds</span>)</h3>
+<p>The plugin has to be opened with <em>editor</em> set to <code>true</code>.<div class='note'><span class='notelabel'>NOTE:</span> This is not supported (yet) on macOS!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-gui' href='./../Overviews/Methods.html#gui'>gui</a>(<span class='argstr'>parent</span>, <span class='argstr'>bounds</span>, <span class='argstr'>params: true</span>)</h3>
 <div class='method'>
 <p>creates a generic Qt GUI (see <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>).<h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>parent<td class='argumentdesc'>
 <p>the parent. If <code>nil</code>, the GUI is created in a new toplevel window.<tr><td class='argumentname'>bounds<td class='argumentdesc'>
-<p>the bounds.</table><h4>Returns:</h4>
+<p>the bounds.<tr><td class='argumentname'>params<td class='argumentdesc'>
+<p>show/hide parameters. Set to <code>false</code>, if you only need to show the preset manager!</table><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>a new <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a> instance.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>
 <div class='method'><h4>Returns:</h4>

@@ -17,14 +17,16 @@ note::Automating parameters from the Qt GUI will automatically unmap it from any
 
 To get some information about the plugin, just hover over the name.
 
-The GUI also features a pop-up menu with available programs and panels for reading/writing program/bank files.
+The GUI also has a simple preset manager and plugin browser.
 
 IMAGE::editor.jpg::
 
-Pressing the "Open" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories
+Pressing the "Browse" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories
 (see link::Classes/VSTPlugin#*search::) or load a plugin from a file dialog.
 
 IMAGE::browser.jpg::
+
+note::You can use the VSTPluginGui together with the VST editor (see link::Classes/VSTPluginController#-editor::)::
 
 CLASSMETHODS::
 
@@ -44,6 +46,9 @@ in the given parent (see link::#Embedding::).
 ARGUMENT:: bounds
 If parent is code::nil::, this will set the window geometry, otherwise it
 determines the size and position of the embedded GUI.
+
+ARGUMENT:: params
+Show/hide parameters. Set to code::false::, if you only want to show the preset manager!
 
 DISCUSSION::
 Usually, this is called indirectly by link::Classes/VSTPluginController#-gui::.

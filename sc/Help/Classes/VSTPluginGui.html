@@ -69,10 +69,10 @@ var scdoc_sc_version = '3.10.0';
 <p>For each parameter, the GUI shows the parameter name, a slider, a text display and the parameter label (e.g. "dB").<div class='note'><span class='notelabel'>NOTE:</span> For performance reasons, the Qt GUI will <em>not</em> reflect parameter automation via <a href="./..\Classes/VSTPluginController.html#-map">VSTPluginController: -map</a> or UGen arguments (<a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>).</div>
 <p>You can automate parameters by moving the slider or entering text into the text display (not supported by all plugins).<div class='note'><span class='notelabel'>NOTE:</span> Automating parameters from the Qt GUI will automatically unmap it from any control busses (see <a href="./..\Classes/VSTPluginController.html#-map">VSTPluginController: -map</a>)</div>
 <p>To get some information about the plugin, just hover over the name.
-<p>The GUI also features a pop-up menu with available programs and panels for reading/writing program/bank files.<div class='image'><img src='editor.jpg'/></div>
+<p>The GUI also has a simple preset manager and plugin browser.<div class='image'><img src='editor.jpg'/></div>
 
-<p>Pressing the "Open" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories (see <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>) or load a plugin from a file dialog.<div class='image'><img src='browser.jpg'/></div>
-<h2><a class='anchor' name='classmethods'>Class Methods</a></h2>
+<p>Pressing the "Browse" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories (see <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>) or load a plugin from a file dialog.<div class='image'><img src='browser.jpg'/></div>
+<div class='note'><span class='notelabel'>NOTE:</span> You can use the VSTPluginGui together with the VST editor (see <a href="./..\Classes/VSTPluginController.html#-editor">VSTPluginController: -editor</a>)</div><h2><a class='anchor' name='classmethods'>Class Methods</a></h2>
 
 <p>Global defaults for GUI properties, see <a href="#Customization">Customization</a>.<h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
 <div id='inheritedclassmets'></div><h3><a class='anchor' name='Undocumented%20class%20methods'>Undocumented class methods</a></h3>
@@ -89,13 +89,14 @@ var scdoc_sc_version = '3.10.0';
 <h3 class='method-code'><span class='method-prefix'>VSTPluginGui.</span><a class='method-name' name='*sliderWidth' href='./../Overviews/Methods.html#sliderWidth'>sliderWidth</a></h3>
 <h3 class='method-code'><span class='method-prefix'>VSTPluginGui.</span><a class='method-name' name='*sliderWidth' href='./../Overviews/Methods.html#sliderWidth'>sliderWidth</a> = value</h3>
 <h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-gui' href='./../Overviews/Methods.html#gui'>gui</a>(<span class='argstr'>parent</span>, <span class='argstr'>bounds</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-gui' href='./../Overviews/Methods.html#gui'>gui</a>(<span class='argstr'>parent</span>, <span class='argstr'>bounds</span>, <span class='argstr'>params: true</span>)</h3>
 <div class='method'>
 <p>Initialize the GUI.<h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>parent<td class='argumentdesc'>
 <p>If parent is <code>nil</code>, the GUI will be displayed in a new top level <a href="./..\Classes/Window.html">Window</a>, otherwise it is embedded in the given parent (see <a href="#Embedding">Embedding</a>).<tr><td class='argumentname'>bounds<td class='argumentdesc'>
-<p>If parent is <code>nil</code>, this will set the window geometry, otherwise it determines the size and position of the embedded GUI.</table><h4>Discussion:</h4>
+<p>If parent is <code>nil</code>, this will set the window geometry, otherwise it determines the size and position of the embedded GUI.<tr><td class='argumentname'>params<td class='argumentdesc'>
+<p>Show/hide parameters. Set to <code>false</code>, if you only want to show the preset manager!</table><h4>Discussion:</h4>
 
 <p>Usually, this is called indirectly by <a href="./..\Classes/VSTPluginController.html#-gui">VSTPluginController: -gui</a>.
 <p>Occasionally you might want to call it directly, e.g. to create an initially empty view where you can set the <a href="#-model">-model</a> later.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-model' href='./../Overviews/Methods.html#model'>model</a></h3>

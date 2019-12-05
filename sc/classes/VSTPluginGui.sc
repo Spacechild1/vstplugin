@@ -23,6 +23,7 @@ VSTPluginGui : ObjectGui {
 	var paramDisplays;
 	var embedded;
 	var dialog;
+	var showParams;
 
 	model_ { arg newModel;
 		// always notify when changing models
@@ -67,9 +68,6 @@ VSTPluginGui : ObjectGui {
 	}
 
 	guify { arg parent, bounds;
-		// converts the parent to a FlowView or compatible object
-		// thus creating a window from nil if needed
-		// registers to remove self as dependent on model if window closes
 		bounds.notNil.if {
 			bounds = bounds.asRect;
 		};
@@ -81,8 +79,9 @@ VSTPluginGui : ObjectGui {
 		^parent
 	}
 
-	gui { arg parent, bounds;
+	gui { arg parent, bounds, params=true;
 		var numRows, sliderWidth, layout = this.guify(parent, bounds);
+		showParams = params;
 		parent.isNil.if {
 			view = View(layout, bounds).background_(this.background);
 			embedded = false;
@@ -101,7 +100,11 @@ VSTPluginGui : ObjectGui {
 			bounds.isNil.if {
 				numRows = this.numRows ?? this.class.numRows;
 				sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
-				layout.setInnerExtent(sliderWidth * 2, numRows * 40);
+				params.if {
+					layout.setInnerExtent(sliderWidth * 2, numRows * 40);
+				} {
+					layout.setInnerExtent(sliderWidth * 1.5, 150);
+				}
 			};
 			layout.front;
 		};
@@ -133,10 +136,12 @@ VSTPluginGui : ObjectGui {
 			info = model.info.prToString;
 			menu = menu.asBoolean;
 			// parameters: calculate number of rows and columns
-			nparams = model.numParameters;
-			ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInteger;
-			(ncolumns == 0).if {ncolumns = 1}; // just to prevent division by zero
-			nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInteger;
+			showParams.if {
+				nparams = model.numParameters;
+				ncolumns = nparams.div(numRows) + ((nparams % numRows) != 0).asInteger;
+				(ncolumns == 0).if {ncolumns = 1}; // just to prevent division by zero
+				nrows = nparams.div(ncolumns) + ((nparams % ncolumns) != 0).asInteger;
+			}
 		} { menu = false };
 
 		font = Font.new(*GUI.skin.fontSpecs).pointSize_(12);
@@ -236,7 +241,7 @@ VSTPluginGui : ObjectGui {
 				layout.add(HLayout(presetMenu, HLayout(save, saveas, rename, delete), nil));
 			} {
 				layout.add(presetMenu);
-				layout.add(HLayout(save, saveas, rename, delete));
+				layout.add(HLayout(save, saveas, rename, delete, nil));
 			};
 
 			this.prUpdatePresets;
@@ -245,50 +250,55 @@ VSTPluginGui : ObjectGui {
 		};
 
 		// build parameters
-		grid = GridLayout.new.spacing_(12);
-		paramSliders = Array.new(nparams);
-		paramDisplays = Array.new(nparams);
-		nparams.do { arg i;
-			var param, row, col, name, label, display, slider, bar, unit, state;
-			param = model.info.parameters[i];
-			state = model.paramCache[i];
-			col = i.div(nrows);
-			row = i % nrows;
-			// param name
-			name = StaticText.new
-			.string_("%: %".format(i, param.name));
-			// param label
-			label = (param.label.size > 0).if { StaticText.new.string_(param.label) };
-			// param display
-			display = TextField.new
-			.fixedWidth_(displayWidth).font_(displayFont).string_(state[1]);
-			display.action = {arg s; model.set(i, s.value)};
-			paramDisplays.add(display);
-			// slider
-			slider = Slider.new(bounds: sliderWidth@sliderHeight)
-			.fixedSize_(sliderWidth@sliderHeight).value_(state[0]);
-			slider.action = {arg s; model.set(i, s.value)};
-			paramSliders.add(slider);
-			// put together
-			bar = HLayout.new([name.align_(\left), stretch: 1], display.align_(\right)).spacing_(5);
-			label !? { bar.add(label) };
-			unit = VLayout.new(bar, slider).spacing_(5);
-			grid.add(unit, row, col);
-		};
-		grid.setRowStretch(nrows, 1);
-		grid.setColumnStretch(ncolumns, 1);
-		grid.margins_([2, 12, 2, 2]);
-		layout.add(grid);
+		showParams.if {
+			grid = GridLayout.new.spacing_(12);
+			paramSliders = Array.new(nparams);
+			paramDisplays = Array.new(nparams);
+			nparams.do { arg i;
+				var param, row, col, name, label, display, slider, bar, unit, state;
+				param = model.info.parameters[i];
+				state = model.paramCache[i];
+				col = i.div(nrows);
+				row = i % nrows;
+				// param name
+				name = StaticText.new
+				.string_("%: %".format(i, param.name));
+				// param label
+				label = (param.label.size > 0).if { StaticText.new.string_(param.label) };
+				// param display
+				display = TextField.new
+				.fixedWidth_(displayWidth).font_(displayFont).string_(state[1]);
+				display.action = {arg s; model.set(i, s.value)};
+				paramDisplays.add(display);
+				// slider
+				slider = Slider.new(bounds: sliderWidth@sliderHeight)
+				.fixedSize_(sliderWidth@sliderHeight).value_(state[0]);
+				slider.action = {arg s; model.set(i, s.value)};
+				paramSliders.add(slider);
+				// put together
+				bar = HLayout.new([name.align_(\left), stretch: 1], display.align_(\right)).spacing_(5);
+				label !? { bar.add(label) };
+				unit = VLayout.new(bar, slider).spacing_(5);
+				grid.add(unit, row, col);
+			};
+			grid.setRowStretch(nrows, 1);
+			grid.setColumnStretch(ncolumns, 1);
+			grid.margins_([2, 12, 2, 2]);
+			layout.add(grid);
+		} { layout.add(nil) };
+
 		// make the canvas (view) large enough to hold all its contents.
 		// somehow it can't figure out the necessary size itself...
-		minWidth = ((sliderWidth + 20) * ncolumns).max(sliderWidth);
-		minHeight = ((sliderHeight * 3 * nrows) + 120).max(sliderWidth); // empirically
+		minWidth = ((sliderWidth + 20) * ncolumns).max(240);
+		minHeight = ((sliderHeight * 3 * nrows) + 120).max(140); // empirically
 		view.layout_(layout).fixedSize_(minWidth@minHeight);
 	}
 
 	prParam { arg index, value, display;
-		paramSliders[index].value_(value);
-		paramDisplays[index].string_(display);
+		showParams.if {
+			paramSliders[index].value_(value);
+			paramDisplays[index].string_(display);
+		}
 	}
 	prProgramIndex { arg index;
 		presetMenu !? {

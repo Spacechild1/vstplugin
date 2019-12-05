@@ -195,8 +195,8 @@ VSTPluginController {
 	editorMsg { arg show=true;
 		^this.makeMsg('/vis', show.asInteger);
 	}
-	gui { arg parent, bounds;
-		^this.class.guiClass.new(this).gui(parent, bounds);
+	gui { arg parent, bounds, params=true;
+		^this.class.guiClass.new(this).gui(parent, bounds, params);
 	}
 	open { arg path, editor=false, verbose=false, action;
 		// if path is nil we try to get it from VSTPlugin
