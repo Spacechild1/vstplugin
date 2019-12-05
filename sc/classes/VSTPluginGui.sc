@@ -17,7 +17,8 @@ VSTPluginGui : ObjectGui {
 	classvar pluginPath;
 	classvar presetPath;
 	var server;
-	var programMenu;
+	var presetMenu;
+	var updateButtons;
 	var paramSliders;
 	var paramDisplays;
 	var embedded;
@@ -25,10 +26,16 @@ VSTPluginGui : ObjectGui {
 
 	model_ { arg newModel;
 		// always notify when changing models
-		model.removeDependant(this);
+		model !? {
+			model.removeDependant(this);
+			model.info.removeDependant(this);
+		};
 		model = newModel;
-		model.addDependant(this);
-		model.notNil.if { server = model.synth.server } { Server.default };
+		model.notNil.if {
+			model.addDependant(this);
+			model.info.addDependant(this);
+			server = model.synth.server;
+		} { server = Server.default };
 		// close the browser (if opened)
 		dialog !? { dialog.close };
 		// only update if we have a view (i.e. -gui has been called)
@@ -40,17 +47,22 @@ VSTPluginGui : ObjectGui {
 	// this is called whenever something important in the model changes.
 	update { arg who, what ...args;
 		{
-			(who == model).if {
-				what.switch
-				{ '/open'} { this.prUpdateGui }
-				{ '/close' } { this.prUpdateGui }
-				{ '/free' } { this.prFree } // Synth has been freed
-				{ '/param' } { this.prParam(*args) }
-				{ '/program' } { this.prProgram(*args) }
-				{ '/program_index' } { this.prProgramIndex(*args) };
-			};
-			// empty update call
-			who ?? { this.prUpdateGui };
+			who.notNil.if {
+				switch(what,
+					'/open', { this.prUpdateGui },
+					'/close', { this.prUpdateGui },
+					'/free', { this.prFree }, // Synth has been freed
+					'/param', { this.prParam(*args) },
+					'/program_name', { this.prUpdatePresets },
+					'/program_index', { this.prProgramIndex(*args) },
+					'/presets', { this.prUpdatePresets },
+					'/preset_load', { this.prPresetSelect(*args) },
+					'/preset_save', { this.prPresetSelect(*args) }
+				)
+			} {
+				// empty update call
+				this.prUpdateGui;
+			}
 		}.defer;
 	}
 
@@ -101,13 +113,14 @@ VSTPluginGui : ObjectGui {
 	}
 
 	prUpdateGui {
-		var rowOnset, nparams=0, name, info, header, open, nrows=0, ncolumns=0, row, col;
-		var grid, font, minWidth, minHeight, minSize, displayFont, makePanel;
+		var nparams=0, name, info, header, browse, nrows=0, ncolumns=0;
+		var layout, grid, font, minWidth, minHeight, displayFont, makePanel;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
 		var displayWidth = this.displayWidth ?? this.class.displayWidth;
 		var menu = this.menu ?? this.class.menu;
+		var save, saveas, delete, rename, textField;
 		// displayWidth is measured in characters, so use a monospace font.
 		// use point size to adapt to different screen resolutions
 		displayFont = Font.new(Font.defaultMonoFace, 10, usePointSize: true);
@@ -133,119 +146,233 @@ VSTPluginGui : ObjectGui {
 		};
 
 		header = StaticText.new
-		.stringColor_(GUI.skin.fontColor)
 		.font_(font)
-		.background_(GUI.skin.background)
-		.align_(\center)
+		// .stringColor_(GUI.skin.fontColor)
+		// .background_(GUI.skin.background)
+		.align_(\left)
 		.object_(name ?? "[empty]")
 		.toolTip_(info ?? "No plugin loaded");
-		// "Open" button
-		open = Button.new
-		.states_([["Open"]])
+		// "Browse" button
+		browse = Button.new
+		.states_([["Browse"]])
 		.maxWidth_(60)
-		.action_({this.prOpen})
-		.toolTip_("Open a plugin");
+		.action_({this.prBrowse})
+		.toolTip_("Browse plugins");
 
-		grid = GridLayout.new;
-		grid.add(header, 0, 0);
+		layout = VLayout.new;
+		layout.add(HLayout(browse, header));
+
 		menu.if {
-			row = 1; col = 0;
-			makePanel = { arg what;
-				var label, read, write;
-				label = StaticText.new.string_(what).align_(\right)
-				.toolTip_("Read/write % files (.fx%)".format(what.toLower, what[0].toLower)); // let's be creative :-)
-				read = Button.new.states_([["Read"]]).action_({
-					var sel = ("read" ++ what).asSymbol;
-					FileDialog.new({ arg path;
-						presetPath = path;
-						model.perform(sel, path);
-					}, nil, 1, 0, true, presetPath);
-				}).maxWidth_(60);
-				write = Button.new.states_([["Write"]]).action_({
-					var sel = ("write" ++ what).asSymbol;
-					FileDialog.new({ arg path;
-						presetPath = path;
-						model.perform(sel, path);
-					}, nil, 0, 1, true, presetPath);
-				}).maxWidth_(60);
-				HLayout(label, read, write);
+			// build preset menu
+			presetMenu = PopUpMenu.new.fixedWidth_(sliderWidth);
+
+			textField = { arg parent, action, name;
+				var pos = parent.absoluteBounds.origin;
+				TextField.new(bounds: Rect.new(pos.x, pos.y, 200, 30))
+				.name_("Preset name")
+				.string_(name)
+				.addAction({ arg self ... args;
+					// Return key pressed
+					(args[4] == 0x01000004).if {
+						(self.string.size > 0).if {
+							action.value(self.string);
+						};
+						self.close
+					}
+				}, 'keyDownAction')
+				.front;
 			};
-			// build program menu
-			programMenu = PopUpMenu.new;
-			programMenu.action = { model.program_(programMenu.value) };
-			programMenu.items_(model.programNames.collect { arg name, index;
-				"%: %".format(index, name);
-			});
-			programMenu.value_(model.program);
-			grid.add(HLayout.new(programMenu, open), row, col);
-			// try to use another columns if available
-			row = (ncolumns > 1).if { 0 } { row + 1 };
-			col = (ncolumns > 1).asInteger;
-			grid.add(makePanel.value("Program"), row, col);
-			grid.add(makePanel.value("Bank"), row + 1, col);
-			rowOnset = row + 2;
+
+			save = Button.new.states_([["Save"]]).action_({
+				var item = presetMenu.item;
+				(item.notNil and: { item.type == \preset }).if {
+					model.savePreset(item.index);
+				} { "Save button bug".throw }
+			}).maxWidth_(60).enabled_(false);
+			saveas = Button.new.states_([["Save As"]]).action_({ arg self;
+				textField.value(self, { arg name;
+					model.savePreset(name);
+				});
+			}).maxWidth_(60);
+			rename = Button.new.states_([["Rename"]]).action_({ arg self;
+				var item = presetMenu.item;
+				(item.notNil and: { item.type == \preset }).if {
+					textField.value(self, { arg name;
+						model.renamePreset(item.index, name);
+					}, item.preset.name);
+				} { "Rename button bug".throw }
+			}).maxWidth_(60).enabled_(false);
+			delete = Button.new.states_([["Delete"]]).action_({
+				var item = presetMenu.item;
+				(item.notNil and: { item.type == \preset }).if {
+					model.deletePreset(item.index);
+				} { "Delete button bug".throw }
+			}).maxWidth_(60).enabled_(false);
+
+			presetMenu.action = {
+				var item = presetMenu.item;
+				item.notNil.if {
+					item.postln;
+					(item.type == \program).if {
+						model.program_(item.index);
+					} {
+						model.loadPreset(item.index);
+					}
+				};
+				updateButtons.value;
+			};
+
+			updateButtons = {
+				var enable = false;
+				var item = (presetMenu.items.size > 0).if { presetMenu.item }; // 'item' throws if 'items' is empty
+				(item.notNil and: { item.type == \preset }).if {
+					enable = item.preset.type == \user;
+				};
+				save.enabled_(enable);
+				rename.enabled_(enable);
+				delete.enabled_(enable);
+			};
+
+			(ncolumns > 1).if {
+				layout.add(HLayout(presetMenu, HLayout(save, saveas, rename, delete), nil));
+			} {
+				layout.add(presetMenu);
+				layout.add(HLayout(save, saveas, rename, delete));
+			};
+
+			this.prUpdatePresets;
 		} {
-			grid.add(open, 1, 0);
-			programMenu = nil; rowOnset = 2
+			presetMenu = nil; updateButtons = nil;
 		};
 
 		// build parameters
+		grid = GridLayout.new.spacing_(12);
 		paramSliders = Array.new(nparams);
 		paramDisplays = Array.new(nparams);
 		nparams.do { arg i;
-			var name, label, display, slider, bar, unit, param;
-			param = model.paramCache[i];
+			var param, row, col, name, label, display, slider, bar, unit, state;
+			param = model.info.parameters[i];
+			state = model.paramCache[i];
 			col = i.div(nrows);
 			row = i % nrows;
 			// param name
 			name = StaticText.new
-			.string_("%: %".format(i, model.info.parameters[i].name));
+			.string_("%: %".format(i, param.name));
 			// param label
-			label = StaticText.new.string_(model.info.parameters[i].label ?? "");
+			label = (param.label.size > 0).if { StaticText.new.string_(param.label) };
 			// param display
 			display = TextField.new
-			.fixedWidth_(displayWidth).font_(displayFont).string_(param[1]);
+			.fixedWidth_(displayWidth).font_(displayFont).string_(state[1]);
 			display.action = {arg s; model.set(i, s.value)};
 			paramDisplays.add(display);
 			// slider
 			slider = Slider.new(bounds: sliderWidth@sliderHeight)
-			.fixedSize_(sliderWidth@sliderHeight).value_(param[0]);
+			.fixedSize_(sliderWidth@sliderHeight).value_(state[0]);
 			slider.action = {arg s; model.set(i, s.value)};
 			paramSliders.add(slider);
 			// put together
-			bar = View.new.layout_(HLayout.new(name.align_(\left),
-				nil, display.align_(\right), label.align_(\right)));
-			unit = VLayout.new(bar, slider).spacing_(0);
-			grid.add(unit, row+rowOnset, col);
+			bar = HLayout.new([name.align_(\left), stretch: 1], display.align_(\right)).spacing_(5);
+			label !? { bar.add(label) };
+			unit = VLayout.new(bar, slider).spacing_(5);
+			grid.add(unit, row, col);
 		};
-		grid.setRowStretch(rowOnset + nrows, 1);
+		grid.setRowStretch(nrows, 1);
 		grid.setColumnStretch(ncolumns, 1);
-
-
+		grid.margins_([2, 12, 2, 2]);
+		layout.add(grid);
 		// make the canvas (view) large enough to hold all its contents.
 		// somehow it can't figure out the necessary size itself...
 		minWidth = ((sliderWidth + 20) * ncolumns).max(sliderWidth);
-		minHeight = ((sliderHeight * 4 * nrows) + 120).max(sliderWidth); // empirically
-		minSize = minWidth@minHeight;
-		view.layout_(grid).fixedSize_(minSize);
+		minHeight = ((sliderHeight * 3 * nrows) + 120).max(sliderWidth); // empirically
+		view.layout_(layout).fixedSize_(minWidth@minHeight);
 	}
 
 	prParam { arg index, value, display;
 		paramSliders[index].value_(value);
 		paramDisplays[index].string_(display);
 	}
-	prProgram { arg index, name;
-		var items, value;
-		programMenu !? {
-			value = programMenu.value;
-			items = programMenu.items;
-			items[index] = "%: %".format(index, name);
-			programMenu.items_(items);
-			programMenu.value_(value);
-		};
-	}
 	prProgramIndex { arg index;
-		programMenu !? { programMenu.value_(index)};
+		presetMenu !? {
+			presetMenu.value_(index + 1); // skip label
+			updateButtons.value;
+		}
+	}
+	prUpdatePresets {
+		var oldpreset, oldsize, oldindex, presets, sorted, labels = [], items = [];
+		(presetMenu.notNil && model.notNil).if {
+			oldsize = presetMenu.items.size;
+			oldindex = presetMenu.value;
+			oldpreset = (oldindex.notNil and:
+				{ presetMenu.item.notNil and: { presetMenu.item.type == \preset }}).if {
+				presetMenu.item.preset;
+			};
+			(model.info.numPrograms > 0).if {
+				// append programs
+				labels = labels.add("--- built-in programs ---");
+				items = items.add(nil);
+				model.programNames.do { arg name, i;
+					labels = labels.add(name);
+					items = items.add((type: \program, index: i));
+				}
+			};
+			(model.info.numPresets > 0).if {
+				presets = model.info.presets;
+				// collect preset indices by type
+				sorted = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
+				presets.do { arg preset, i;
+					sorted[preset.type].add(i);
+				};
+				#[
+					\user, "--- user presets ---",
+					\userFactory, "--- user factory presets ---",
+					\sharedFactory, "--- shared factory presets ---",
+					\global, "--- global presets ---"
+				].pairsDo { arg type, label;
+					(sorted[type].size > 0).if {
+						// add label
+						labels = labels.add(label);
+						items = items.add(nil);
+						// add presets
+						sorted[type].do { arg index;
+							labels = labels.add(presets[index].name);
+							items = items.add((type: \preset, index: index, preset: presets[index]));
+						}
+					};
+				};
+			};
+			// set labels and replace items
+			presetMenu.items_(labels);
+			items.do { arg item, i;
+				presetMenu.items[i] = item;
+			};
+			// check if preset count has changed
+			(oldpreset.notNil and: { oldsize != presetMenu.items.size }).if {
+				// try to find old preset (if not found, the index will remain 0)
+				presetMenu.items.do { arg item, index;
+					(item.notNil and: { item.preset == oldpreset }).if {
+						presetMenu.value_(index);
+					}
+				}
+			} {
+				// simply restore old index
+				oldindex.notNil.if { presetMenu.value_(oldindex) }
+			};
+			updateButtons.value;
+			presetMenu.focus(true); // hack
+		}
+	}
+	prPresetSelect { arg preset;
+		(presetMenu.notNil && model.notNil).if {
+			presetMenu.items.do { arg item, index;
+				item.notNil.if {
+					((item.type == \preset) and: { item.index == preset }).if {
+						presetMenu.value_(index);
+						updateButtons.value;
+						^this;
+					}
+				}
+			}
+		}
 	}
 	prFree {
 		(this.closeOnFree ?? this.class.closeOnFree).if {
@@ -256,7 +383,7 @@ VSTPluginGui : ObjectGui {
 		};
 		this.prUpdateGui;
 	}
-	prOpen {
+	prBrowse {
 		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
 		var showPath, showSearch, updateBrowser, plugins;
 		model.notNil.if {
