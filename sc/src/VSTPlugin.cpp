@@ -1693,12 +1693,14 @@ bool VSTPluginDelegate::sendProgramName(int32 num) {
 }
 
 void VSTPluginDelegate::sendCurrentProgramName() {
-    const int maxSize = 64;
-    float buf[maxSize];
-    // msg format: index, len, characters...
-    buf[0] = plugin_->getProgram();
-    int size = string2floatArray(plugin_->getProgramName(), buf + 1, maxSize - 1);
-    sendMsg("/vst_program", size + 1, buf);
+    if (plugin_->info().numPrograms() > 0){
+        const int maxSize = 64;
+        float buf[maxSize];
+        // msg format: index, len, characters...
+        buf[0] = plugin_->getProgram();
+        int size = string2floatArray(plugin_->getProgramName(), buf + 1, maxSize - 1);
+        sendMsg("/vst_program", size + 1, buf);
+    }
 }
 
 // unchecked
