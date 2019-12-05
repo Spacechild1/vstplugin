@@ -418,7 +418,7 @@ VSTPlugin : MultiOutUGen {
 		var flags = 0;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
-		dir = dir.collect { arg p; this.prResolvePath(p) };
+		dir = dir.collect(_.standardizePath);
 		// make flags
 		[useDefault, verbose, save, parallel].do { arg value, bit;
 			flags = flags | (value.asBoolean.asInteger << bit);
@@ -481,15 +481,14 @@ VSTPlugin : MultiOutUGen {
 	*stopSearchMsg { ^['/cmd', '/vst_search_stop']; }
 	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
-		// resolve the path
-		path = this.prResolvePath(path);
+		path = path.standardizePath;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
 		{ this.prProbeRemote(server, path, key, wait, action); };
 	}
 	*probeMsg { arg path, dest=nil;
-		path = this.prResolvePath(path);
+		path = path.standardizePath;
 		dest = this.prMakeDest(dest);
 		// use remote probe (won't write to temp file)!
 		^['/cmd', '/vst_probe', path, dest];
@@ -649,43 +648,14 @@ VSTPlugin : MultiOutUGen {
 		dict !? { info = dict[key] } !? { action.value(info) }
 		?? { this.probe(server, key, key, wait, action) };
 	}
-	*prResolvePath { arg path, vst=true, exists=true;
-		var root, temp;
-		path = path.asString;
-		(thisProcess.platform.name == \windows).if {
-			// replace / with \ because of a bug in PathName
-			path = path.tr($/, $\\);
-		};
-		path = path.standardizePath; // expand ~/
-		// other methods don't work for folders...
-		PathName(path).isAbsolutePath.not.if {
-			// resolve relative paths to the currently executing file
-			root = thisProcess.nowExecutingPath;
-			root.notNil.if {
-				temp = root.dirname +/+ path;
-				// first check if it's an existing folder
-				PathName(temp).isFolder.if { ^temp };
-				// otherwise treat it as a file path
-				// no extension: append VST2 platform extension
-				(vst && path.find(".vst3").isNil && path.find(platformExtension).isNil).if {
-					temp = temp ++ platformExtension;
-				};
-				// check if the file actually exists
-				(exists.not || PathName(temp).isFile).if { ^temp };
-			}
-			// otherwise the path is passed to the UGen which tries
-			// to resolve it to the standard VST search paths.
-		};
-		^path;
-	}
 	*prMakeTmpPath {
 		^PathName.tmp +/+ "vst_" ++ UniqueID.next;
 	}
 	*prMakeDest { arg dest;
 		// 'dest' may be a) temp file path, b) bufnum, c) Buffer, d) nil
 		dest !? {
-			dest.isString.if {
-				^dest; // tmp file path
+			(dest.isString).if {
+				^dest.standardizePath; // tmp file path
 			};
 			dest = dest.asUGenInput;
 			dest.isNumber.if { ^dest.asInteger }; // bufnum

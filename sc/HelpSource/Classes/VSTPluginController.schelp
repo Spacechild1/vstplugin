@@ -153,8 +153,6 @@ code::
 ~fx.readProgram("mypresetfolder/text.fxp");
 ::
 
-note::Relative paths are resolved to the currently executing file::
-
 It's also possible to get/set the raw plugin state as an link::Classes/Int8Array:::
 code::
 // get plugin state as Int8Array:
@@ -312,8 +310,7 @@ code::
 ~fx.open("GChorus"); // assuming 'GChorus' is in the Server's plugin dictionary.
 ~fx.open("mda Delay.vst3"); // VST3 plugins always need a '.vst3' extensions
 ::
-- Alternatively, you can open plugins by strong::file path:: (with or without extension). Relative paths are resolved to the currently executing file (if saved)
-or to the standard VST directories (see link::Classes/VSTPlugin#*search::). The latter are tried recursively, which means you don't necessarily have to specify any subfolders.
+- Alternatively, you can use a strong::file path:: (with or without extension). Relative paths are resolved to the standard VST directories (see link::Classes/VSTPlugin#*search::); this is done recursively, which means you don't necessarily have to specify any subfolders.
 code::
 // absolute file path:
 ~fx.open("C:/Program Files/VSTPlugins/GVST/GChorus");
@@ -322,9 +319,6 @@ code::
 // the plugin can also be opened like this:
 ~fx.open("GVST/GChorus");
 ~fx.open("GChorus"); // even without subfolder
-
-// the plugin is in a subfolder 'myplugins' below the currently executing file:
-~fx.open("myplugins/GChorus");
 ::
 
 note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).::
@@ -607,7 +601,7 @@ read/write program/bank files.
 
 ARGUMENT:: path
 
-can be an absolute or relative file path. Relative paths are resolved to the currently executing file (must have been saved!).
+an absolute file path.
 
 The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for VST2 program files, emphasis::.fxb:: for VST2 bank files and emphasis::.vstpreset:: for VST3 preset files.
 
@@ -632,7 +626,7 @@ METHOD:: writeProgramMsg
 METHOD:: writeBankMsg
 
 ARGUMENT:: dest
-a) String: preset file to be read or written. Relative paths are resolved to the currently executing file (if saved), so for remote Servers you have to specify an absolute file path.
+a) String: preset file to be read or written.
 
 b) link::Classes/Buffer:: or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
 

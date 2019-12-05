@@ -162,7 +162,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <table class='arguments'>
 <tr><td class='argumentname'>server<td class='argumentdesc'>
 <p>The server to scan for plugins. If the argument is <code>nil</code>, the default Server is used.<tr><td class='argumentname'>dir<td class='argumentdesc'>
-<p>An optional Array of directories to search. Relative paths are resolved to the currently executing file (must have been saved!).<tr><td class='argumentname'>useDefault<td class='argumentdesc'>
+<p>An optional Array of directories to search.<tr><td class='argumentname'>useDefault<td class='argumentdesc'>
 <p>Whether to search in the default paths, which currently are:<table>
 <tr><td>VST 2.x<td><table>
 <tr><td>Windows<td><ul>
@@ -230,7 +230,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <table class='arguments'>
 <tr><td class='argumentname'>server<td class='argumentdesc'>
 <p>the Server. If <code>nil</code>, the default Server is assumed.<tr><td class='argumentname'>path<td class='argumentdesc'>
-<p>the plugin path. Relative paths are resolved to the currently executing file (if saved) or to the standard VST directories (see <a href="#*search">*search</a>).<tr><td class='argumentname'>key<td class='argumentdesc'>
+<p>the plugin file path.<tr><td class='argumentname'>key<td class='argumentdesc'>
 <p>an (optional) additional key under which the plugin description is stored.<tr><td class='argumentname'>wait<td class='argumentdesc'>
 <p>the wait time, see <a href="#*search">*search</a>.<tr><td class='argumentname'>action<td class='argumentdesc'>
 <p>an action to be evaluated after the search has finished. On success, a <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instances is passed, otherwise the argument is <code>nil</code>.</table><h4>Discussion:</h4>
