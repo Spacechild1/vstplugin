@@ -212,7 +212,6 @@ VSTPluginGui : ObjectGui {
 			presetMenu.action = {
 				var item = presetMenu.item;
 				item.notNil.if {
-					item.postln;
 					(item.type == \program).if {
 						model.program_(item.index);
 					} {
