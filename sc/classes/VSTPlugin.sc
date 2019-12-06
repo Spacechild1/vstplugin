@@ -418,7 +418,7 @@ VSTPlugin : MultiOutUGen {
 		var flags = 0;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
-		dir = dir.collect(_.standardizePath);
+		dir = dir.collect({ arg p; p.asString.standardizePath});
 		// make flags
 		[useDefault, verbose, save, parallel].do { arg value, bit;
 			flags = flags | (value.asBoolean.asInteger << bit);
@@ -481,14 +481,14 @@ VSTPlugin : MultiOutUGen {
 	*stopSearchMsg { ^['/cmd', '/vst_search_stop']; }
 	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
-		path = path.standardizePath;
+		path = path.asString.standardizePath;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
 		{ this.prProbeRemote(server, path, key, wait, action); };
 	}
 	*probeMsg { arg path, dest=nil;
-		path = path.standardizePath;
+		path = path.asString.standardizePath;
 		dest = this.prMakeDest(dest);
 		// use remote probe (won't write to temp file)!
 		^['/cmd', '/vst_probe', path, dest];

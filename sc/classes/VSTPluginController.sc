@@ -241,8 +241,7 @@ VSTPluginController {
 		path ?? {
 			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
 		};
-		path.isString.if { path = path.standardizePath };
-		^this.makeMsg('/open', path, editor.asInteger);
+		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger);
 	}
 	prClear {
 		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; program = nil; currentPreset = nil;
@@ -482,7 +481,7 @@ VSTPluginController {
 		^this.makeMsg('/program_name', name);
 	}
 	readProgram { arg path, action, async=false;
-		path = path.standardizePath;
+		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -494,7 +493,7 @@ VSTPluginController {
 		^this.makeMsg('/program_read', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
 	readBank { arg path, action, async=false;
-		path = path.standardizePath;
+		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -507,7 +506,7 @@ VSTPluginController {
 		^this.makeMsg('/bank_read', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
 	writeProgram { arg path, action, async=false;
-		path = path.standardizePath;
+		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
@@ -518,7 +517,7 @@ VSTPluginController {
 		^this.makeMsg('/program_write', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
 	writeBank { arg path, action, async=false;
-		path = path.standardizePath;
+		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
 			action.value(this, success);
