@@ -229,6 +229,7 @@ VSTPluginController {
 						"couldn't open '%'".format(path).error;
 					};
 					action.value(this, loaded);
+					theInfo.addDependant(this);
 					this.changed('/open', path, loaded);
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
@@ -244,7 +245,18 @@ VSTPluginController {
 		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger);
 	}
 	prClear {
+		info !? { info.removeDependant(this) };
 		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; program = nil; currentPreset = nil;
+	}
+	update { arg who, what ... args;
+		((who === info) and: { what == '/presets' }).if {
+			currentPreset !? {
+				info.prPresetIndex(currentPreset).isNil.if {
+					currentPreset = nil;
+					// "updated current preset".postln;
+				}
+			}
+		}
 	}
 	close {
 		this.sendMsg('/close');
@@ -351,11 +363,10 @@ VSTPluginController {
 			// if 'preset' is omitted, use the last preset (if possible)
 			preset.isNil.if {
 				currentPreset.notNil.if {
-					result = info.presets[currentPreset];
-					(result.type != \user).if {
+					(currentPreset.type != \user).if {
 						"current preset is not writeable!".error; ^this;
 					};
-					name = result.name;
+					name = currentPreset.name;
 				} { "no current preset".error; ^this };
 			} {
 				// 'preset' can be an index
@@ -376,9 +387,11 @@ VSTPluginController {
 			};
 			path = info.presetPath(name);
 			this.writeProgram(path, { arg self, success;
+				var index;
 				success.if {
-					currentPreset = info.addPreset(name, path);
-					this.changed('/preset_save', currentPreset);
+					index = info.addPreset(name, path);
+					currentPreset = info.presets[index];
+					this.changed('/preset_save', index);
 				} { "couldn't save preset".error };
 				action.value(self, success);
 			}, async);
@@ -394,7 +407,7 @@ VSTPluginController {
 			// if 'preset' is omitted, use the last preset (if possible)
 			preset.isNil.if {
 				currentPreset.notNil.if {
-					index = currentPreset;
+					index = info.prPresetIndex(currentPreset);
 				} { "no current preset".error; ^this };
 			} {
 				preset.isNumber.if {
@@ -405,7 +418,7 @@ VSTPluginController {
 			result.notNil.if {
 				this.readProgram(result.path, { arg self, success;
 					success.if {
-						currentPreset = index;
+						currentPreset = result;
 						this.changed('/preset_load', index);
 					} { "couldn't load preset".error };
 					action.value(self, success);
@@ -423,14 +436,17 @@ VSTPluginController {
 			// if 'preset' is omitted, use the last preset (if possible)
 			preset.isNil.if {
 				currentPreset.notNil.if {
-					preset = currentPreset;
+					(currentPreset.type != \user).if {
+						"current preset is not writeable!".error; ^this;
+					};
+					preset = currentPreset.name;
 					current = true;
 				} { "no current preset".error; ^false };
 			};
 			info.deletePreset(preset).if {
 				current.if { currentPreset = nil };
 				^true;
-			}{
+			} {
 				"couldn't delete preset '%'".format(preset).error;
 			}
 		} { "no plugin loaded".error };
@@ -445,7 +461,10 @@ VSTPluginController {
 			// if 'preset' is omitted, use the last preset (if possible)
 			preset.isNil.if {
 				currentPreset.notNil.if {
-					preset = currentPreset;
+					(currentPreset.type != \user).if {
+						"current preset is not writeable!".error; ^this;
+					};
+					preset = currentPreset.name;
 				} { "no current preset".error; ^false };
 			};
 			info.renamePreset(preset, name).if { ^true } {
