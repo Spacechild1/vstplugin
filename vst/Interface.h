@@ -300,6 +300,7 @@ struct PluginInfo {
     int findPreset(const std::string& name) const;
     int addPreset(Preset preset);
     bool removePreset(int index, bool del = true);
+    bool renamePreset(int index, const std::string& newName);
     Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
     std::string getPresetFolder(PresetType type, bool create = false) const;
 private:

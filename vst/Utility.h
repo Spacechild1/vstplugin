@@ -112,6 +112,8 @@ bool isFile(const std::string& path);
 
 bool removeFile(const std::string& path);
 
+bool renameFile(const std::string& from, const std::string& to);
+
 bool createDirectory(const std::string& dir);
 
 std::string fileName(const std::string& path);

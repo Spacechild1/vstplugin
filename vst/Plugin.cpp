@@ -206,7 +206,34 @@ bool removeFile(const std::string& path){
         return true;
     }
 #else
-    return remove(path.c_str()) == 0;
+    int result = remove(path.c_str());
+    if (result != 0){
+        LOG_ERROR(strerror(errno));
+        return false;
+    } else {
+        return true;
+    }
+#endif
+}
+
+bool renameFile(const std::string& from, const std::string& to){
+#ifdef _WIN32
+    std::error_code e;
+    fs::rename(widen(from), widen(to), e);
+    if (e){
+        LOG_ERROR(e.message());
+        return false;
+    } else {
+        return true;
+    }
+#else
+    int result = rename(from.c_str(), to.c_str());
+    if (result != 0){
+        LOG_ERROR(strerror(errno));
+        return false;
+    } else {
+        return true;
+    }
 #endif
 }
 
@@ -224,6 +251,8 @@ bool createDirectory(const std::string& dir){
         } else {
             LOG_ERROR("chmod failed!");
         }
+    } else {
+        LOG_ERROR(strerror(errno));
     }
     return false;
 #endif
@@ -1597,6 +1626,17 @@ bool PluginInfo::removePreset(int index, bool del){
         }
         presets.erase(presets.begin() + index);
         return true;
+    }
+    return false;
+}
+
+bool PluginInfo::renamePreset(int index, const std::string& newName){
+    if (index >= 0 && index < presets.size()){
+        auto newPreset = makePreset(newName);
+        if (renameFile(presets[index].path, newPreset.path)){
+            presets[index] = newPreset;
+            return true;
+        }
     }
     return false;
 }
