@@ -242,7 +242,16 @@ std::string fileName(const std::string& path){
     }
 }
 
-std::string baseName(const std::string& path){
+std::string fileExtension(const std::string& path){
+    auto dot = path.find_last_of('.');
+    if (dot != std::string::npos){
+        return path.substr(dot + 1);
+    } else {
+        return "";
+    }
+}
+
+std::string fileBaseName(const std::string& path){
 #ifdef _WIN32
     auto pos = path.find_last_of("/\\");
 #else
