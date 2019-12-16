@@ -1575,7 +1575,9 @@ void PluginInfo::serialize(std::ostream& file) const {
 #endif
 }
 
-static std::string ltrim(std::string str){
+namespace {
+
+std::string ltrim(std::string str){
     auto pos = str.find_first_not_of(" \t");
     if (pos != std::string::npos && pos > 0){
         return str.substr(pos);
@@ -1584,7 +1586,7 @@ static std::string ltrim(std::string str){
     }
 }
 
-static std::string rtrim(std::string str){
+std::string rtrim(std::string str){
     auto pos = str.find_last_not_of(" \t") + 1;
     if (pos != std::string::npos && pos < str.size()){
         return str.substr(0, pos);
@@ -1598,31 +1600,7 @@ bool isComment(const std::string& line){
     return c == ';' || c == '#';
 }
 
-bool getLine(std::istream& stream, std::string& line){
-    std::string temp;
-    while (std::getline(stream, temp)){
-        if (!temp.empty() && !isComment(temp)){
-            line = std::move(temp);
-            return true;
-        }
-    }
-    return false;
-}
-
-int getCount(const std::string& line){
-    auto pos = line.find('=');
-    if (pos == std::string::npos){
-        throw Error("missing '=' after key: " + line);
-    }
-    try {
-        return std::stol(line.substr(pos + 1));
-    }
-    catch (...){
-        throw Error("expected number after 'n='");
-    }
-}
-
-static void getKeyValuePair(const std::string& line, std::string& key, std::string& value){
+void getKeyValuePair(const std::string& line, std::string& key, std::string& value){
     auto pos = line.find('=');
     if (pos == std::string::npos){
         throw Error("missing '=' after key: " + line);
@@ -1658,6 +1636,32 @@ void parseArg(uint32_t& lh, const std::string& rh){
 
 void parseArg(std::string& lh, const std::string& rh){
     lh = rh;
+}
+
+} // namespace
+
+bool getLine(std::istream& stream, std::string& line){
+    std::string temp;
+    while (std::getline(stream, temp)){
+        if (!temp.empty() && !isComment(temp)){
+            line = std::move(temp);
+            return true;
+        }
+    }
+    return false;
+}
+
+int getCount(const std::string& line){
+    auto pos = line.find('=');
+    if (pos == std::string::npos){
+        throw Error("missing '=' after key: " + line);
+    }
+    try {
+        return std::stol(line.substr(pos + 1));
+    }
+    catch (...){
+        throw Error("expected number after 'n='");
+    }
 }
 
 void PluginInfo::deserialize(std::istream& file) {
