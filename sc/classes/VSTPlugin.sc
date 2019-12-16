@@ -154,9 +154,15 @@ VSTPluginDesc {
 		}
 		^nil; // not found
 	}
-	prPresetIndex { arg name;
-		presets.do { arg p, index;
-			(p.name == name).if { ^index }
+	prPresetIndex { arg preset;
+		(preset.class == Event).if {
+			presets.do { arg p, index;
+				(p === preset).if { ^index }
+			}
+		} {
+			presets.do { arg p, index;
+				(p.name == name).if { ^index }
+			}
 		};
 		^nil;
 	}
