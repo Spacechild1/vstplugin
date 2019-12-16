@@ -176,7 +176,7 @@ void VST3Factory::doLoad(){
         #ifdef _WIN32
             modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path_);
         #else
-            modulePath += "/" + getBundleBinaryPath() + "/" + baseName(path_) + ".so";
+            modulePath += "/" + getBundleBinaryPath() + "/" + fileBaseName(path_) + ".so";
         #endif
         }
     #endif

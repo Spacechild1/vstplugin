@@ -1494,13 +1494,13 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
         result = "/usr/local/share/";
         break;
     case PresetType::Global:
-        result = "/usr/share/"
+        result = "/usr/share/";
         break;
     default:
         return "";
     }
     if (pluginType == PluginType::VST3){
-        return result + "vst3/presets"
+        return result + "vst3/presets";
     } else {
         return result + "vst2/presets";
     }
