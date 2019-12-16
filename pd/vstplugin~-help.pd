@@ -703,85 +703,85 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X obj 19 46 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 48 creation arguments:;
-#N canvas 200 228 986 481 message-out 0;
-#X obj 9 15 inlet;
-#X obj 9 36 t a a;
-#X floatatom 10 171 5 0 0 0 - - -;
-#X floatatom 50 172 5 0 0 0 - - -;
-#X floatatom 115 138 5 0 0 0 - - -;
-#X text 6 189 index;
-#X text 50 188 value;
-#X floatatom 198 180 5 0 0 0 - - -;
-#X text 194 198 index;
-#X symbolatom 238 182 16 0 0 0 - - -;
-#X text 238 197 name;
-#X floatatom 9 278 5 0 0 0 - - -;
-#X text 6 296 index;
-#X obj 168 283 route program_name, f 29;
-#X floatatom 168 328 5 0 0 0 - - -;
-#X text 164 346 index;
-#X obj 168 306 unpack f s;
-#X symbolatom 225 328 16 0 0 0 - - -;
-#X text 224 345 name;
-#X obj 9 257 route program program_count;
-#X floatatom 88 282 5 0 0 0 - - -;
-#X text 88 298 count;
-#X text 113 153 count;
-#X obj 339 332 s \$0-program-data;
-#X obj 339 309 route program_data bank_data, f 39;
-#X obj 454 332 s \$0-bank-data;
-#X text 105 49 param_count <f>: number of parameters;
-#X text 438 123 program_count <f>: number of programs;
-#X text 438 103 program <f>: index of current program;
-#X text 437 142 program_name <f> <s>: program index + name;
-#X text 438 161 program_data <list>: current program data;
-#X text 437 180 bank_data <list>: current bank data;
-#X text 594 214 param_automated <f> <f>: parameter index + value;
-#X text 593 308 sysex <list>: system exclusive message (from the plugin)
+#N canvas 200 228 1036 481 message-out 0;
+#X obj 10 15 inlet;
+#X obj 10 36 t a a;
+#X floatatom 68 196 5 0 0 0 - - -;
+#X floatatom 108 197 5 0 0 0 - - -;
+#X floatatom 173 163 5 0 0 0 - - -;
+#X text 64 214 index;
+#X text 108 213 value;
+#X floatatom 256 205 5 0 0 0 - - -;
+#X text 252 223 index;
+#X symbolatom 296 207 16 0 0 0 - - -;
+#X text 296 222 name;
+#X floatatom 67 303 5 0 0 0 - - -;
+#X text 64 321 index;
+#X obj 226 308 route program_name, f 29;
+#X floatatom 226 353 5 0 0 0 - - -;
+#X text 222 371 index;
+#X obj 226 331 unpack f s;
+#X symbolatom 283 353 16 0 0 0 - - -;
+#X text 282 370 name;
+#X obj 67 282 route program program_count;
+#X floatatom 146 307 5 0 0 0 - - -;
+#X text 146 323 count;
+#X text 171 178 count;
+#X obj 397 357 s \$0-program-data;
+#X obj 397 334 route program_data bank_data, f 39;
+#X obj 512 357 s \$0-bank-data;
+#X text 112 94 param_count <f>: number of parameters;
+#X text 523 158 program_count <f>: number of programs;
+#X text 523 138 program <f>: index of current program;
+#X text 522 177 program_name <f> <s>: program index + name;
+#X text 588 206 program_data <list>: current program data;
+#X text 587 225 bank_data <list>: current bank data;
+#X text 622 252 param_automated <f> <f>: parameter index + value;
+#X text 666 334 sysex <list>: system exclusive message (from the plugin)
 ;
-#X obj 402 243 t a;
-#X obj 570 335 route param_automated, f 27;
-#X obj 729 387 unpack f f f, f 14;
-#X floatatom 729 408 5 0 0 0 - - -;
-#X floatatom 769 408 5 0 0 0 - - -;
-#X floatatom 810 409 5 0 0 0 - - -;
-#X text 723 426 status;
-#X text 766 427 data1;
-#X text 809 427 data2;
-#X obj 570 356 unpack f f;
-#X floatatom 570 378 5 0 0 0 - - -;
-#X floatatom 627 379 5 0 0 0 - - -;
-#X text 569 396 index;
-#X text 624 397 value;
-#X obj 729 366 route midi, f 18;
-#X text 593 233 (this message is sent whenever you change a parameter
+#X obj 460 266 t a;
+#X obj 628 360 route param_automated, f 27;
+#X obj 787 412 unpack f f f, f 14;
+#X floatatom 787 433 5 0 0 0 - - -;
+#X floatatom 827 433 5 0 0 0 - - -;
+#X floatatom 868 434 5 0 0 0 - - -;
+#X text 781 451 status;
+#X text 824 452 data1;
+#X text 867 452 data2;
+#X obj 628 381 unpack f f;
+#X floatatom 628 403 5 0 0 0 - - -;
+#X floatatom 685 404 5 0 0 0 - - -;
+#X text 627 421 index;
+#X text 682 422 value;
+#X obj 787 391 route midi, f 18;
+#X text 621 269 (this message is sent whenever you change a parameter
 in the GUI. this is useful if you want to record automation data),
 f 44;
-#X text 592 284 midi <list>: MIDI message (from the plugin);
-#X obj 9 115 route param_state param_count, f 32;
-#X obj 10 135 unpack f f s, f 14;
-#X symbolatom 91 173 12 0 0 0 - - -;
-#X text 91 189 display;
-#X obj 198 136 route param_info, f 25;
-#X obj 198 156 unpack f s s, f 14;
-#X symbolatom 279 205 10 0 0 0 - - -;
-#X text 279 224 label;
+#X text 664 316 midi <list>: MIDI message (from the plugin);
+#X obj 67 140 route param_state param_count, f 32;
+#X obj 68 160 unpack f f s, f 14;
+#X symbolatom 149 198 12 0 0 0 - - -;
+#X text 149 214 display;
+#X obj 256 161 route param_info, f 25;
+#X obj 256 181 unpack f s s, f 14;
+#X symbolatom 337 230 10 0 0 0 - - -;
+#X text 337 249 label;
 #X obj 36 78 print;
-#X obj 345 160 route info;
+#X obj 403 185 route info;
 #N canvas 664 174 730 446 info 0;
 #X obj 21 24 inlet;
 #X symbolatom 21 88 10 0 0 0 - - -;
 #X floatatom 68 258 5 0 0 0 - - -;
-#X floatatom 116 256 5 0 0 0 - - -;
+#X floatatom 115 256 5 0 0 0 - - -;
 #X obj 163 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 203 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 210 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 248 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 258 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 286 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 305 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 21 234 route inputs outputs midiin midiout editor synth;
+#X obj 68 234 route inputs outputs midiin midiout editor synth;
 #X obj 21 45 route name, f 12;
 #X obj 21 66 symbol;
 #X symbolatom 89 109 10 0 0 0 - - -;
@@ -826,19 +826,23 @@ f 44;
 #X connect 25 0 20 0;
 #X connect 25 1 26 0;
 #X connect 26 0 8 0;
-#X restore 345 184 pd info;
+#X restore 403 209 pd info;
 #X obj 36 57 spigot 1;
 #X obj 81 36 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0 1
 ;
-#X text 105 31 param_state <f> <f> <s>: parameter index + value + display
-;
-#X text 105 68 param_info <f> <s> <s> ...: parameter index + name +
-label;
-#X text 458 67 (unit of measurement);
-#X text 461 31 (stringified value);
-#X text 589 68 ... LATER more info;
+#X obj 10 118 route open;
+#X text 82 18 print messages;
+#X obj 10 140 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+1;
+#X text 452 210 <== click me;
+#X text 416 162 plugin info;
+#X text 14 98 success/fail;
+#X text 113 76 param_state <f> <f> <s>: parameter index + value + display
+(stringified value), f 79;
+#X text 112 112 param_info <f> <s> <s> ...: parameter index + name
++ label (unit of measurement) ... LATER more info, f 101;
 #X connect 0 0 1 0;
-#X connect 1 0 51 0;
+#X connect 1 0 64 0;
 #X connect 1 1 62 0;
 #X connect 13 0 16 0;
 #X connect 13 1 24 0;
@@ -874,6 +878,8 @@ label;
 #X connect 60 1 34 0;
 #X connect 62 0 59 0;
 #X connect 63 0 62 1;
+#X connect 64 0 66 0;
+#X connect 64 1 51 0;
 #X restore 78 364 pd message-out;
 #X text 22 124 input signals;
 #X text 24 169 output signals + 1 message outlet, f 16;

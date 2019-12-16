@@ -1039,7 +1039,6 @@ static void vstplugin_close(t_vstplugin *x){
 
 // open
 static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
-    const PluginInfo *info = nullptr;
     t_symbol *pathsym = nullptr;
     bool editor = false;
         // parse arguments
@@ -1055,24 +1054,35 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             argc--; argv++;
         } else { // file name
             pathsym = sym;
-                // don't reopen the same plugin (mainly for -k flag)
-            if (pathsym == x->x_path && x->x_editor->vst_gui() == editor){
-                return;
-            }
             break;
         }
     }
-    if (!pathsym){
-        pd_error(x, "%s: 'open' needs a symbol argument!", classname(x));
+    // don't reopen the same plugin (mainly for -k flag)
+    if (pathsym == x->x_path && x->x_editor->vst_gui() == editor){
         return;
     }
-    if (!(info = queryPlugin(x, pathsym->s_name))){
-        pd_error(x, "%s: can't load '%s'", classname(x), pathsym->s_name);
-        return;
+    bool success = x->open_plugin(pathsym, editor);
+    // output message
+    t_atom a;
+    SETFLOAT(&a, success);
+    outlet_anything(x->x_messout, gensym("open"), 1, &a);
+}
+
+bool t_vstplugin::open_plugin(t_symbol *s, bool editor){
+    // close the old plugin
+    vstplugin_close(this);
+
+    if (!s){
+        pd_error(this, "%s: 'open' needs a symbol argument!", classname(this));
+        return false;
     }
-        // *now* close the old plugin
-    vstplugin_close(x);
-        // open the new VST plugin
+    // get plugin info
+    const PluginInfo *info = queryPlugin(this, s->s_name);
+    if (!info){
+        pd_error(this, "%s: can't load '%s'", classname(this), s->s_name);
+        return false;
+    }
+    // open the new VST plugin
     try {
         IPlugin::ptr plugin;
         if (editor){
@@ -1080,20 +1090,22 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         } else {
             plugin = info->create();
         }
-        x->x_uithread = editor;
-        x->x_path = pathsym; // store path symbol (to avoid reopening the same plugin)
+        x_uithread = editor;
+        x_path = s; // store path symbol (to avoid reopening the same plugin)
         verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
-            // setup plugin
-        x->x_plugin = std::move(plugin);
-        x->setup_plugin();
-            // receive events from plugin
-        x->x_plugin->setListener(x->x_editor);
-            // update Pd editor
-        x->x_editor->setup();
+        // setup plugin
+        x_plugin = std::move(plugin);
+        setup_plugin();
+        // receive events from plugin
+        x_plugin->setListener(x_editor);
+        // update Pd editor
+        x_editor->setup();
+        return true;
     } catch (const Error& e) {
-            // shouldn't happen...
-        pd_error(x, "%s: couldn't open '%s': %s",
-                 classname(x), info->name.c_str(), e.what());
+        // shouldn't happen...
+        pd_error(this, "%s: couldn't open '%s': %s",
+                 classname(this), info->name.c_str(), e.what());
+        return false;
     }
 }
 
@@ -1762,18 +1774,18 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             break;
         }
     }
-        // inputs (default: 2)
+    // inputs (default: 2)
     int in = 2;
     if (argc > 0){
             // min. 1 because of CLASS_MAINSIGNALIN
         in = std::max<int>(1, atom_getfloat(argv));
     }
-        // outputs (default: 2)
+    // outputs (default: 2)
     int out = 2;
     if (argc > 1){
         out = std::max<int>(0, atom_getfloat(argv + 1));
     }
-        // optional aux inputs/outputs
+    // optional aux inputs/outputs
     int auxin = atom_getfloatarg(2, argc, argv);
     int auxout = atom_getfloatarg(3, argc, argv);
 
@@ -1783,14 +1795,14 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
     x_search_clock = clock_new(this, (t_method)vstplugin_search_done);
 
-        // inlets (we already have a main inlet!)
+    // inlets (we already have a main inlet!)
     int totalin = in + auxin - 1;
     while (totalin--){
         inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
     }
     x_siginlets.resize(in);
     x_sigauxinlets.resize(auxin);
-        // outlets:
+    // outlets:
     int totalout = out + auxout;
     while (totalout--){
         outlet_new(&x_obj, &s_signal);
@@ -1799,7 +1811,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_sigauxoutlets.resize(auxout);
     x_messout = outlet_new(&x_obj, 0); // additional message outlet
 
-        // search
+    // search
     x_search_data = std::make_shared<t_search_data>();
 
     if (search && !gDidSearch){
@@ -1812,24 +1824,16 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         gDidSearch = true;
     }
 
-        // open plugin
+    // open plugin
     if (file){
-        t_atom msg[2];
-        if (editor){
-            SETSYMBOL(&msg[0], gensym("-e"));
-            SETSYMBOL(&msg[1], file);
-        } else {
-            SETSYMBOL(&msg[0], file);
-        }
-        vstplugin_open(this, 0, (int)editor + 1, msg);
+        open_plugin(file, editor);
+        x_path = file; // HACK: set symbol for vstplugin_loadbang
     }
 
-        // restore state
+    // restore state
     t_symbol *asym = gensym("#A");
-        // bashily unbind #A
-    asym->s_thing = 0;
-        // now bind #A to us to receive following messages
-    pd_bind(&x_obj.ob_pd, asym);
+    asym->s_thing = 0; // bashily unbind #A
+    pd_bind(&x_obj.ob_pd, asym); // now bind #A to us to receive following messages
 }
 
 static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
@@ -1981,6 +1985,21 @@ static t_int *vstplugin_perform(t_int *w){
     return (w+3);
 }
 
+// loadbang
+static void vstplugin_loadbang(t_vstplugin *x, t_floatarg action){
+    // send message when plugin has been loaded (or failed to do so)
+    // x_path is set in constructor
+    if ((int)action == 0 && x->x_path){ // LB_LOAD
+        bool success = x->x_plugin != nullptr;
+        t_atom a;
+        SETFLOAT(&a, success);
+        outlet_anything(x->x_messout, gensym("open"), 1, &a);
+        if (!success){
+            x->x_path = nullptr; // undo HACK in vstplugin ctor
+        }
+    }
+}
+
 // save function
 static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     t_vstplugin *x = (t_vstplugin *)z;
@@ -2070,6 +2089,7 @@ EXPORT void vstplugin_tilde_setup(void){
     CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
     class_setsavefn(vstplugin_class, vstplugin_save);
     class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_loadbang, gensym("loadbang"), A_FLOAT, A_NULL);
         // plugin
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);

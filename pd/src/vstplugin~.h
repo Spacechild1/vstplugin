@@ -68,7 +68,7 @@ class t_vstplugin {
     t_clock *x_search_clock;
     t_search_data_ptr x_search_data;
     // methods
-    IPlugin::ptr open_plugin(const PluginInfo& desc, bool editor);
+    bool open_plugin(t_symbol *s, bool editor);
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
