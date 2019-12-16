@@ -119,6 +119,8 @@ void PluginManager::read(const std::string& path, bool update){
                         throw Error("bad format");
                     }
                 }
+                // scan presets
+                desc->scanPresets();
                 // load the factory (if not loaded already) to verify that the plugin still exists
                 IFactory::ptr factory;
                 if (!factories_.count(desc->path)){

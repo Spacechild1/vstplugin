@@ -177,6 +177,21 @@ class IPlugin {
 
 class IFactory;
 
+enum class PresetType {
+    User,
+    UserFactory,
+    SharedFactory,
+    Global
+};
+
+struct Preset {
+    std::string name;
+    std::string path;
+    PresetType type;
+};
+
+using PresetList = std::vector<Preset>;
+
 struct PluginInfo {
     static const uint32_t NoParamID = 0xffffffff;
 
@@ -275,11 +290,25 @@ struct PluginInfo {
         }
     }
 #endif
-    // default programs
-    std::vector<std::string> programs;
     int numParameters() const {
         return parameters.size();
     }
+    // presets
+    PresetList presets;
+    int numPresets() const { return (int)presets.size(); }
+    void scanPresets();
+    int findPreset(const std::string& name) const;
+    int addPreset(Preset preset);
+    bool removePreset(int index, bool del = true);
+    Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
+    std::string getPresetFolder(PresetType type, bool create = false) const;
+private:
+    mutable bool didCreatePresetFolder = false;
+    mutable std::string vendorBashed;
+    mutable std::string nameBashed;
+public:
+    // default programs
+    std::vector<std::string> programs;
     int numPrograms() const {
         return programs.size();
     }

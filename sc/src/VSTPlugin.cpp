@@ -247,6 +247,10 @@ static bool addFactory(const std::string& path, IFactory::ptr factory){
         gPluginManager.addFactory(path, factory);
         for (int i = 0; i < factory->numPlugins(); ++i) {
             auto plugin = factory->getPlugin(i);
+        #if 0
+            // search for presets
+            const_cast<PluginInfo&>(*plugin).scanPresets();
+        #endif
             gPluginManager.addPlugin(makeKey(*plugin), plugin);
         }
         return true;

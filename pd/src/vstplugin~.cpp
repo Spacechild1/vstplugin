@@ -276,6 +276,8 @@ static bool addFactory(const std::string& path, IFactory::ptr factory){
                 bash_name(key);
                 const_cast<PluginInfo&>(*plugin).addParamAlias(j, key);
             }
+            // search for presets
+            const_cast<PluginInfo&>(*plugin).scanPresets();
             // add plugin info
             auto key = makeKey(*plugin);
             gPluginManager.addPlugin(key, plugin);

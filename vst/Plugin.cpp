@@ -1453,6 +1453,60 @@ void IFactory::probe(ProbeCallback callback){
     probeAsync()(std::move(callback));
 }
 
+/*////////////////////// preset ///////////////////////*/
+
+static std::string getPresetLocation(PresetType presetType, PluginType pluginType){
+    std::string result;
+#if defined(_WIN32)
+    switch (presetType){
+    case PresetType::User:
+        result = expandPath("%USERPROFILE%") + "\\Documents";
+        break;
+    case PresetType::UserFactory:
+        result = expandPath("%APPDATA%");
+        break;
+    case PresetType::SharedFactory:
+        result = expandPath("%PROGRAMDATA%");
+        break;
+    default:
+        return "";
+    }
+    if (pluginType == PluginType::VST3){
+        return result + "\\VST3 Presets";
+    } else {
+        return result + "\\VST2 Presets";
+    }
+#elif defined(__APPLE__)
+    switch (presetType){
+    case PresetType::User:
+        return expandPath("~/Library/Audio/Presets");
+    case PresetType::SharedFactory:
+        return "/Library/Audio/Presets";
+    default:
+        return "";
+    }
+#else
+    switch (presetType){
+    case PresetType::User:
+        result = expandPath("~/.");
+        break;
+    case PresetType::SharedFactory:
+        result = "/usr/local/share/";
+        break;
+    case PresetType::Global:
+        result = "/usr/share/"
+        break;
+    default:
+        return "";
+    }
+    if (pluginType == PluginType::VST3){
+        return result + "vst3/presets"
+    } else {
+        return result + "vst2/presets";
+    }
+#endif
+}
+
 /*///////////////////// PluginInfo /////////////////////*/
 
 PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
@@ -1480,6 +1534,131 @@ void PluginInfo::setUID(const char *uid){
     }
     buf[32] = 0;
     uniqueID = buf;
+}
+
+void PluginInfo::scanPresets(){
+    const std::vector<PresetType> presetTypes = {
+#if defined(_WIN32)
+        PresetType::User, PresetType::UserFactory, PresetType::SharedFactory
+#elif defined(__APPLE__)
+        PresetType::User, PresetType::SharedFactory
+#else
+        PresetType::User, PresetType::SharedFactory, PresetType::Global
+#endif
+    };
+    PresetList results;
+    for (auto& presetType : presetTypes){
+        auto folder = getPresetFolder(presetType);
+        if (pathExists(folder)){
+            vst::search(folder, [&](const std::string& path){
+                auto ext = fileExtension(path);
+                if ((type_ == PluginType::VST3 && ext != "vstpreset") ||
+                    (type_ == PluginType::VST2 && ext != "fxp" && ext != "FXP")){
+                    return;
+                }
+                Preset preset;
+                preset.type = presetType;
+                preset.name = fileBaseName(path);
+                preset.path = path;
+                results.push_back(std::move(preset));
+            }, false);
+        }
+    }
+    presets = std::move(results);
+#if 0
+    if (numPresets()){
+        LOG_VERBOSE("presets:");
+        for (auto& preset : presets){
+            LOG_VERBOSE("\t" << preset.path);
+        }
+    }
+#endif
+}
+
+int PluginInfo::findPreset(const std::string &name) const {
+    for (int i = 0; i < presets.size(); ++i){
+        if (presets[i].name == name){
+            return i;
+        }
+    }
+    return -1;
+}
+
+int PluginInfo::addPreset(Preset preset){
+    // LATER sort alphabetically
+    presets.insert(presets.begin(), std::move(preset));
+    return 0;
+}
+
+bool PluginInfo::removePreset(int index, bool del){
+    if (index >= 0 && index < presets.size()){
+        if (del && !removeFile(presets[index].path)){
+            return false;
+        }
+        presets.erase(presets.begin() + index);
+        return true;
+    }
+    return false;
+}
+
+Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
+    Preset preset;
+    preset.name = name;
+    preset.type = type;
+    auto folder = getPresetFolder(type, true);
+    if (!folder.empty()){
+        preset.path = folder + "/" + name +
+                (type_ == PluginType::VST3 ? ".vstpreset" : ".fxp");
+    }
+    return preset;
+}
+
+static std::string bashPath(std::string path){
+    for (auto& c : path){
+        switch (c){
+        case '/':
+        case '\\':
+        case '\"':
+        case '?':
+        case '*':
+        case ':':
+        case '<':
+        case '>':
+        case '|':
+            c = '_';
+            break;
+        default:
+            break;
+        }
+    }
+    return path;
+}
+
+std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
+    auto location = getPresetLocation(type, type_);
+    if (!location.empty()){
+        // vendor component
+        if (vendorBashed.empty()){
+            vendorBashed = bashPath(vendor);
+        }
+        auto vendorFolder = location + "/" + vendorBashed;
+        // plugin name component
+        if (nameBashed.empty()){
+            nameBashed = bashPath(name);
+        }
+        auto pluginFolder = vendorFolder + "/" + nameBashed;
+        // create folder(s) if necessary
+        if (create && !didCreatePresetFolder && type == PresetType::User){
+            // LATER do some error handling
+            createDirectory(location);
+            createDirectory(vendorFolder);
+            createDirectory(pluginFolder);
+            didCreatePresetFolder = true;
+        }
+        return pluginFolder;
+    } else {
+        return "";
+    }
 }
 
 /// .ini file structure for each plugin:
