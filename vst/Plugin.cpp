@@ -1601,18 +1601,6 @@ bool PluginInfo::removePreset(int index, bool del){
     return false;
 }
 
-Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
-    Preset preset;
-    preset.name = name;
-    preset.type = type;
-    auto folder = getPresetFolder(type, true);
-    if (!folder.empty()){
-        preset.path = folder + "/" + name +
-                (type_ == PluginType::VST3 ? ".vstpreset" : ".fxp");
-    }
-    return preset;
-}
-
 static std::string bashPath(std::string path){
     for (auto& c : path){
         switch (c){
@@ -1632,6 +1620,18 @@ static std::string bashPath(std::string path){
         }
     }
     return path;
+}
+
+Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
+    Preset preset;
+    preset.name = name;
+    preset.type = type;
+    auto folder = getPresetFolder(type, true);
+    if (!folder.empty()){
+        preset.path = folder + "/" + bashPath(name) +
+                (type_ == PluginType::VST3 ? ".vstpreset" : ".fxp");
+    }
+    return preset;
 }
 
 std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
