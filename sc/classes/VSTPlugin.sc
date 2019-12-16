@@ -84,6 +84,7 @@ VSTPluginDesc {
 		};
 	}
 	scanPresets {
+		var vst3 = this.sdkVersion.find("VST 3").notNil;
 		presets.clear;
 		[\user, \userFactory, \sharedFactory, \global].do { arg type;
 			var folder = this.presetFolder(type);
@@ -94,7 +95,12 @@ VSTPluginDesc {
 						path: file.fullPath,
 						type: type
 					);
-					presets = presets.add(preset);
+					var ext = file.extension;
+					((vst3 and: { ext == "vstpreset" }) or:
+						{ vst3.not and: { (ext == "fxp") or: { ext == "FXP" } }}
+					).if {
+						presets = presets.add(preset);
+					}
 				}
 			}
 		};
@@ -116,7 +122,7 @@ VSTPluginDesc {
 			{
 				folder = switch(type,
 					\user, "~/Library/Audio/Presets",
-					\sharedFactory, "Library/Audio/Presets"
+					\sharedFactory, "/Library/Audio/Presets"
 				)
 			},
 			\linux,
@@ -125,7 +131,7 @@ VSTPluginDesc {
 				folder = switch(type,
 					\user, "~",
 					\sharedFactory, "/usr/local/share",
-					\global, "usr/share",
+					\global, "/usr/share",
 				);
 				folder !? { folder = folder +/+ vst +/+ "presets"; }
 			}
