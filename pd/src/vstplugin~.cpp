@@ -962,7 +962,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
                      path.c_str(), bundlePath, fileName(path).c_str());
         #else
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
-                     path.c_str(), bundlePath, baseName(path).c_str());
+                     path.c_str(), bundlePath, fileBaseName(path).c_str());
          #endif
             fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
         }
