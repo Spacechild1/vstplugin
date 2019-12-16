@@ -11,7 +11,7 @@ note::Plugin descriptions are read-only and shouldn't be modified by the user::
 
 CLASSMETHODS::
 
-PRIVATE:: prParse
+PRIVATE:: prParse, prBashPath
 
 INSTANCEMETHODS::
 

@@ -359,7 +359,7 @@ VSTPluginController {
 		};
 
 		info.notNil.if {
-			File.mkdir(info.presetFolder); // make sure that the folder exists!
+			File.mkdir(info.prPresetFolder); // make sure that the folder exists!
 			// if 'preset' is omitted, use the last preset (if possible)
 			preset.isNil.if {
 				currentPreset.notNil.if {
@@ -385,7 +385,7 @@ VSTPluginController {
 					name = preset.asString;
 				}
 			};
-			path = info.presetPath(name);
+			path = info.prPresetPath(name);
 			this.writeProgram(path, { arg self, success;
 				var index;
 				success.if {

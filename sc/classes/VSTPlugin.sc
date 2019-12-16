@@ -137,12 +137,12 @@ VSTPluginDesc {
 			}
 		);
 		^folder !? {
-			folder.standardizePath +/+ this.vendor +/+ this.name;
+			folder.standardizePath +/+ this.prBashPath(this.vendor) +/+ this.prBashPath(this.name);
 		}
 	}
-	presetPath { arg name;
+	presetPath { arg name, type = \user;
 		var vst3 = sdkVersion.find("VST 3").notNil;
-		^this.presetFolder +/+ name ++ if(vst3, ".vstpreset", ".fxp");
+		^this.presetFolder(type) +/+ this.prBashPath(name) ++ if(vst3, ".vstpreset", ".fxp");
 	}
 	findPreset { arg preset;
 		preset.isNumber.if {
@@ -165,6 +165,12 @@ VSTPluginDesc {
 			}
 		};
 		^nil;
+	}
+	*prBashPath { arg path;
+		var forbidden = IdentitySet[$/, $\\, $", $?, $*, $:, $<, $>, $|];
+		^path.collect({ arg c;
+			forbidden.findMatch(c).notNil.if { $_ } { c }
+		});
 	}
 	addPreset { arg name, path;
 		var preset = (name: name, path: path, type: \user);
