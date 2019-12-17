@@ -355,51 +355,151 @@ the limited precision of decimal numbers in Pd., f 63;
 #X restore 394 549 pd advanced;
 #X f 14;
 #X text 391 530 advanced stuff;
-#N canvas 327 22 669 774 preset 0;
-#X obj 23 333 s \$0-msg;
-#X obj 23 34 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
-#X text 127 54 set program;
-#X msg 34 87 program_get;
-#X text 114 88 get the current program index;
-#X symbolatom 45 123 10 0 0 2 - - -;
-#X text 185 201 get the name of a program;
-#X obj 56 179 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+#N canvas 486 0 887 709 preset 0;
+#X obj 525 356 s \$0-msg;
+#X obj 525 57 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X msg 77 270 program_count;
-#X text 168 269 get number of programs;
-#X msg 86 303 program_list;
-#X text 171 304 list all programs (index + name);
-#X obj 24 437 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X text 629 77 set program;
+#X msg 536 110 program_get;
+#X text 616 111 get the current program index;
+#X symbolatom 547 146 10 0 0 2 - - -;
+#X text 687 224 get the name of a program;
+#X obj 558 202 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X msg 579 293 program_count;
+#X text 670 292 get number of programs;
+#X msg 588 326 program_list;
+#X text 673 327 list all programs (index + name);
+#X obj 24 515 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 24 457 openpanel;
-#X msg 24 479 program_read \$1;
-#X obj 33 505 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X obj 24 535 openpanel;
+#X msg 24 557 program_read \$1;
+#X obj 33 583 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 33 525 savepanel;
-#X msg 33 544 program_write \$1;
-#X text 43 437 read program file (.fxp);
-#X text 52 505 write program file (.fxp);
-#X obj 270 435 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X obj 33 603 savepanel;
+#X msg 33 622 program_write \$1;
+#X obj 270 513 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 270 455 openpanel;
-#X obj 282 503 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X obj 270 533 openpanel;
+#X obj 282 581 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 282 523 savepanel;
-#X obj 270 568 s \$0-msg;
-#X text 289 435 read bank file (.fxb);
-#X text 301 502 write bank file (.fxb);
-#X msg 270 476 bank_read \$1;
-#X msg 282 545 bank_write \$1;
-#X text 115 124 name;
-#X text 85 35 index;
-#X text 117 177 index;
-#X text 177 238 get name of current program;
-#X text 23 362 read/write presets files:;
-#X obj 24 569 s \$0-msg;
-#X text 25 597 your can also deal with the raw .FXP / .FXB data \,
-e.g. to build your own preset management in Pd:, f 49;
-#N canvas 738 177 650 433 preset-management 0;
+#X obj 282 601 savepanel;
+#X obj 270 646 s \$0-msg;
+#X msg 270 554 bank_read \$1;
+#X msg 282 623 bank_write \$1;
+#X text 617 147 name;
+#X text 587 58 index;
+#X text 619 200 index;
+#X text 679 261 get name of current program;
+#X obj 24 647 s \$0-msg;
+#X text 539 516 get program data as list of bytes;
+#X text 528 476 set program data as list of bytes;
+#X obj 529 564 s \$0-msg;
+#X obj 528 674 s \$0-msg;
+#X text 673 169 set name of current program;
+#X msg 547 169 program_name_set \$1;
+#X msg 558 223 program_name_get \$1;
+#X msg 568 261 program_name_get;
+#X msg 529 495 program_data_set <list>;
+#X msg 542 538 program_data_get;
+#X msg 528 607 bank_data_set <list>;
+#X msg 536 649 bank_data_get;
+#X msg 525 79 program_set \$1;
+#X obj 523 26 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X obj 19 425 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 23 456 .fxp/.fxb (VST2) and .vstpreset (VST3) files are standard
+formats recognized by all conforming VST hosts \, so you can easily
+exchange your presets between Pd and other hosts (e.g. your favourite
+DAW);
+#X text 43 515 read program file (.fxp/.vstpreset);
+#X text 52 583 write program file (.fxp/.vstpreset);
+#X text 301 580 write bank file (.fxb) - VST2 only;
+#X text 289 513 read bank file (.fxb) - VST2 only;
+#X text 528 588 set bank data as list of bytes - VST2 only;
+#X text 534 628 get bank data as list of bytes - VST2 only;
+#X text 526 422 your can also work with the raw plugin data \, e.g.
+to build your own preset management in Pd:, f 48;
+#X obj 525 391 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 29 429 read/write VST preset files;
+#X text 535 395 raw VST plugin data;
+#X msg 21 82 preset_count;
+#X obj 21 388 s \$0-msg;
+#X obj 18 16 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 28 19 VST preset management;
+#X msg 30 110 preset_list;
+#X text 107 82 get number of presets;
+#N canvas 922 209 586 478 more 0;
+#X text 34 399 0 - user (writeable);
+#X text 34 416 1 - userFactory;
+#X text 34 433 2 - sharedFactory;
+#X text 34 451 3 - global;
+#X text 43 69 VST2:;
+#X text 44 122 VST3:;
+#X text 45 265 VST2:;
+#X text 42 315 VST3:;
+#X obj 12 12 cnv 15 120 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 18 16 preset locations:;
+#X text 418 68 0;
+#X text 418 84 1;
+#X text 418 102 2;
+#X obj 401 39 cnv 15 50 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 409 44 type;
+#X text 418 124 0;
+#X text 418 141 1;
+#X text 418 159 2;
+#X text 418 200 0;
+#X text 418 220 2;
+#X obj 19 370 cnv 15 50 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 24 375 types:;
+#X text 83 202 ~/Library/Audio/Presets/[VENDOR]/[PLUGIN];
+#X text 82 220 /Library/Audio/Presets/[VENDOR]/[PLUGIN];
+#X text 84 262 ~/.vst2/presets/[VENDOR]/[PLUGIN];
+#X text 83 277 /usr/local/shared/vst2/presets/[VENDOR]/[PLUGIN];
+#X text 83 293 /usr/shared/vst2/presets/[VENDOR]/[PLUGIN];
+#X text 81 314 ~/.vst3/presets/[VENDOR]/[PLUGIN];
+#X text 416 258 0;
+#X text 415 275 2;
+#X text 415 292 3;
+#X text 416 313 0;
+#X text 415 331 2;
+#X text 415 348 3;
+#X obj 24 42 cnv 15 60 25 empty empty empty 20 12 0 14 -257985 -66577
+0;
+#X text 29 46 Windows:;
+#X obj 19 178 cnv 15 60 25 empty empty empty 20 12 0 14 -257985 -66577
+0;
+#X obj 18 238 cnv 15 60 25 empty empty empty 20 12 0 14 -257985 -66577
+0;
+#X text 24 182 macOS:;
+#X text 23 242 Linux:;
+#X text 80 330 /usr/local/shared/vst3/presets/[VENDOR]/[PLUGIN];
+#X text 80 347 /usr/shared/vst3/presets/[VENDOR]/[PLUGIN];
+#X text 83 69 %USERPROFILE%/Documents/VST2 Presets/[VENDOR]/[PLUGIN]
+;
+#X text 84 86 %APPDATA%/VST2 Presets/[VENDOR]/[PLUGIN];
+#X text 83 103 %PROGRAMDATA%/VST2 Presets/[VENDOR]/[PLUGIN];
+#X text 84 123 %USERPROFILE%/Documents/VST3 Presets/[VENDOR]/[PLUGIN]
+;
+#X text 85 140 %APPDATA%/VST3 Presets/[VENDOR]/[PLUGIN];
+#X text 84 160 %PROGRAMDATA%/VST3 Presets/[VENDOR]/[PLUGIN];
+#X restore 277 67 pd more;
+#X msg 39 160 preset_info \$1;
+#X obj 39 139 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X text 98 138 index;
+#X msg 69 310 preset_delete [preset];
+#X msg 60 264 preset_save [preset];
+#X msg 51 233 preset_load [preset];
+#X msg 76 345 preset_rename [old] <new>;
+#X text 186 233 load a preset;
+#N canvas 738 177 650 433 preset-management-example 0;
 #X obj 31 87 hradio 15 1 0 16 empty empty empty 0 -8 0 10 -262144 -1
 -1 1;
 #X obj 33 271 hradio 15 1 0 16 empty empty empty 0 -8 0 10 -262144
@@ -448,51 +548,63 @@ your own preset banks in Pd, f 47;
 #X connect 21 0 16 0;
 #X connect 25 0 4 0;
 #X connect 26 0 9 0;
-#X restore 327 604 pd preset-management;
-#X text 38 669 get program data as list of bytes;
-#X text 27 629 set program data as list of bytes;
-#X text 269 635 set bank data as list of bytes;
-#X text 275 675 get bank data as list of bytes;
-#X obj 28 717 s \$0-msg;
-#X obj 269 721 s \$0-msg;
-#X text 171 146 set name of current program;
-#X text 23 378 .FXP and .FXB files are a standard format recognized
-by all conforming VST hosts \, so you can easily exchange your presets
-between Pd and other hosts (e.g. your favourite DAW);
-#X msg 45 146 program_name_set \$1;
-#X msg 56 200 program_name_get \$1;
-#X msg 66 238 program_name_get;
-#X msg 28 648 program_data_set <list>;
-#X msg 41 691 program_data_get;
-#X msg 269 654 bank_data_set <list>;
-#X msg 277 696 bank_data_get;
-#X msg 23 56 program_set \$1;
-#X connect 1 0 52 0;
+#X restore 528 453 pd preset-management-example;
+#X text 533 30 built-in VST programs;
+#X text 138 162 get preset info (index + name + path + type);
+#X text 109 111 list all presets (see preset_info);
+#X text 50 187 in the following methods \, [preset] might refer to
+a preset index or a preset name. if [preset] is omitted \, the current
+preset is taken (if possible)., f 65;
+#X text 216 311 delete a preset;
+#X text 237 346 rename a preset;
+#X obj 355 389 s \$0-msg;
+#X msg 368 360 preset_load \$1;
+#X msg 355 316 preset_save \$1;
+#X symbolatom 355 295 10 0 0 0 - - -;
+#X symbolatom 368 339 10 0 0 0 - - -;
+#X text 20 47 you can easily load/save presets. they are kept in standardized
+locations on the filesystem., f 52;
+#X text 194 260 save a preset. if [preset] is a non-existing name \,
+a new preset is generated \, otherwise an existing preset is overwritten
+, f 50;
+#X connect 1 0 42 0;
 #X connect 3 0 0 0;
-#X connect 5 0 45 0;
-#X connect 7 0 46 0;
+#X connect 5 0 35 0;
+#X connect 7 0 36 0;
 #X connect 8 0 0 0;
 #X connect 10 0 0 0;
 #X connect 12 0 13 0;
 #X connect 13 0 14 0;
-#X connect 14 0 34 0;
+#X connect 14 0 29 0;
 #X connect 15 0 16 0;
 #X connect 16 0 17 0;
-#X connect 17 0 34 0;
+#X connect 17 0 29 0;
+#X connect 18 0 19 0;
+#X connect 19 0 23 0;
 #X connect 20 0 21 0;
-#X connect 21 0 27 0;
-#X connect 22 0 23 0;
-#X connect 23 0 28 0;
-#X connect 27 0 24 0;
-#X connect 28 0 24 0;
-#X connect 45 0 0 0;
-#X connect 46 0 0 0;
-#X connect 47 0 0 0;
-#X connect 48 0 41 0;
-#X connect 49 0 41 0;
-#X connect 50 0 42 0;
-#X connect 51 0 42 0;
-#X connect 52 0 0 0;
+#X connect 21 0 24 0;
+#X connect 23 0 22 0;
+#X connect 24 0 22 0;
+#X connect 35 0 0 0;
+#X connect 36 0 0 0;
+#X connect 37 0 0 0;
+#X connect 38 0 32 0;
+#X connect 39 0 32 0;
+#X connect 40 0 33 0;
+#X connect 41 0 33 0;
+#X connect 42 0 0 0;
+#X connect 56 0 57 0;
+#X connect 60 0 57 0;
+#X connect 63 0 57 0;
+#X connect 64 0 63 0;
+#X connect 66 0 57 0;
+#X connect 67 0 57 0;
+#X connect 68 0 57 0;
+#X connect 69 0 57 0;
+#X connect 79 0 78 0;
+#X connect 80 0 78 0;
+#X connect 81 0 80 0;
+#X connect 82 0 79 0;
 #X restore 274 510 pd preset;
 #X f 17;
 #X msg 216 261 print;
