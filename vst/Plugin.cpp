@@ -1565,6 +1565,15 @@ void PluginInfo::setUID(const char *uid){
     uniqueID = buf;
 }
 
+static void conformPath(std::string& path){
+    // replace backslashes
+    for (auto& c : path){
+        if (c == '\\'){
+            c = '/';
+        }
+    }
+}
+
 void PluginInfo::scanPresets(){
     const std::vector<PresetType> presetTypes = {
 #if defined(_WIN32)
@@ -1589,6 +1598,9 @@ void PluginInfo::scanPresets(){
                 preset.type = presetType;
                 preset.name = fileBaseName(path);
                 preset.path = path;
+            #ifdef _WIN32
+                conformPath(preset.path);
+            #endif
                 results.push_back(std::move(preset));
             }, false);
         }
@@ -1613,12 +1625,6 @@ int PluginInfo::findPreset(const std::string &name) const {
     return -1;
 }
 
-int PluginInfo::addPreset(Preset preset){
-    // LATER sort alphabetically
-    presets.insert(presets.begin(), std::move(preset));
-    return 0;
-}
-
 bool PluginInfo::removePreset(int index, bool del){
     if (index >= 0 && index < presets.size()){
         if (del && !removeFile(presets[index].path)){
@@ -1632,10 +1638,13 @@ bool PluginInfo::removePreset(int index, bool del){
 
 bool PluginInfo::renamePreset(int index, const std::string& newName){
     if (index >= 0 && index < presets.size()){
-        auto newPreset = makePreset(newName);
-        if (renameFile(presets[index].path, newPreset.path)){
-            presets[index] = newPreset;
-            return true;
+        auto newPath = makePresetPath(newName);
+        if (!newPath.empty()){
+            if (renameFile(presets[index].path, newPath)){
+                presets[index].name = newName;
+                presets[index].path = newPath;
+                return true;
+            }
         }
     }
     return false;
@@ -1662,16 +1671,23 @@ static std::string bashPath(std::string path){
     return path;
 }
 
-Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
+int PluginInfo::addPreset(const std::string &name) {
     Preset preset;
     preset.name = name;
-    preset.type = type;
-    auto folder = getPresetFolder(type, true);
-    if (!folder.empty()){
-        preset.path = folder + "/" + bashPath(name) +
+    preset.type = PresetType::User;
+    preset.path = makePresetPath(name);
+    // LATER sort alphabetically
+    presets.insert(presets.begin(), std::move(preset));
+    return 0;
+}
+
+std::string PluginInfo::makePresetPath(const std::string &name, PresetType type) const {
+    auto presetPath = getPresetFolder(type, true);
+    if (!presetPath.empty()){
+        presetPath += "/" + bashPath(name) +
                 (type_ == PluginType::VST3 ? ".vstpreset" : ".fxp");
     }
-    return preset;
+    return presetPath;
 }
 
 std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
@@ -1695,6 +1711,9 @@ std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
             createDirectory(pluginFolder);
             didCreatePresetFolder = true;
         }
+    #ifdef _WIN32
+        conformPath(pluginFolder);
+    #endif
         return pluginFolder;
     } else {
         return "";
