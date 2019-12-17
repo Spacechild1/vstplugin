@@ -53,6 +53,7 @@ class t_vstplugin {
     // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_path = nullptr;
+    t_symbol *x_preset = nullptr;
     bool x_uithread = false;
     bool x_keep = false;
     Bypass x_bypass = Bypass::Off;

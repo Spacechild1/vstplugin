@@ -1034,6 +1034,7 @@ static void vstplugin_close(t_vstplugin *x){
         x->x_plugin = nullptr;
         x->x_editor->vis(false);
         x->x_path = nullptr;
+        x->x_preset = nullptr;
     }
 }
 
@@ -1564,6 +1565,7 @@ static void vstplugin_program_count(t_vstplugin *x){
 
 // list all programs (index + name)
 static void vstplugin_program_list(t_vstplugin *x){
+    if (!x->check_plugin()) return;
     int n = x->x_plugin->info().numPrograms();
     t_atom msg[2];
     for (int i = 0; i < n; ++i){
@@ -1572,6 +1574,8 @@ static void vstplugin_program_list(t_vstplugin *x){
         outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
     }
 }
+
+/* -------------------------------- presets ---------------------------------------*/
 
 // set program/bank data (list of bytes)
 template<bool bank>
@@ -1663,6 +1667,180 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s){
     } catch (const Error& e){
         pd_error(x, "%s: couldn't write %s file '%s':\n%s",
                  classname(x), (bank ? "bank" : "program"), s->s_name, e.what());
+    }
+}
+
+static void vstplugin_preset_count(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    t_atom msg;
+    SETFLOAT(&msg, x->x_plugin->info().numPresets());
+    outlet_anything(x->x_messout, gensym("preset_count"), 1, &msg);
+}
+
+static void vstplugin_preset_info(t_vstplugin *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    int index = f;
+    if (index >= 0 && index < x->x_plugin->info().numPresets()){
+        auto& preset = x->x_plugin->info().presets[index];
+        int type = 0;
+        switch (preset.type){
+        case PresetType::User:
+            type = 0;
+            break;
+        case PresetType::UserFactory:
+            type = 1;
+            break;
+        case PresetType::SharedFactory:
+            type = 2;
+            break;
+        case PresetType::Global:
+            type = 3;
+            break;
+        default:
+            bug("vstplugin_preset_list");
+            break;
+        }
+        t_atom msg[4];
+        SETFLOAT(&msg[0], index);
+        SETSYMBOL(&msg[1], gensym(preset.name.c_str()));
+        SETSYMBOL(&msg[2], gensym(preset.path.c_str()));
+        SETFLOAT(&msg[3], type);
+        outlet_anything(x->x_messout, gensym("preset_info"), 4, msg);
+    } else {
+        pd_error(x, "%s: preset index %d out of range!", classname(x), index);
+    }
+}
+
+static void vstplugin_preset_list(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    int n = x->x_plugin->info().numPresets();
+    t_atom msg[4];
+    for (int i = 0; i < n; ++i){
+        vstplugin_preset_info(x, i);
+    }
+}
+
+static int vstplugin_preset_index(t_vstplugin *x, int argc, t_atom *argv, bool loud = true){
+    if (argc){
+        switch (argv->a_type){
+        case A_FLOAT:
+            {
+                int index = argv->a_w.w_float;
+                if (index >= 0 && index < x->x_plugin->info().numPresets()){
+                    return index;
+                } else {
+                    pd_error(x, "%s: preset index %d out of range!", classname(x), index);
+                }
+            }
+            break;
+        case A_SYMBOL:
+            {
+                t_symbol *s = argv->a_w.w_symbol;
+                if (*s->s_name){
+                    int index = x->x_plugin->info().findPreset(s->s_name);
+                    if (index >= 0 || !loud){
+                        return index;
+                    } else {
+                        pd_error(x, "%s: couldn't find preset '%s'!", classname(x), s->s_name);
+                    }
+                } else {
+                    pd_error(x, "%s: bad preset name!", classname(x));
+                }
+                break;
+            }
+        default:
+            pd_error(x, "%s: bad atom type for preset!", classname(x));
+            break;
+        }
+    } else if (x->x_preset){
+        int index = x->x_plugin->info().findPreset(x->x_preset->s_name);
+        if (index >= 0){
+            return index;
+        } else {
+            pd_error(x, "%s: couldn't find (current) preset '%s'!",
+                     classname(x), x->x_preset->s_name);
+        }
+    } else {
+        pd_error(x, "%s: no current preset!", classname(x));
+    }
+    return -1;
+}
+
+static bool vstplugin_preset_writeable(t_vstplugin *x, int index){
+    bool writeable = x->x_plugin->info().presets[index].type == PresetType::User;
+    if (!writeable){
+        pd_error(x, "%s: preset is not writeable!", classname(x));
+    }
+    return writeable;
+}
+
+static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    auto& info = x->x_plugin->info();
+    int index = vstplugin_preset_index(x, argc, argv);
+    if (index < 0) return;
+
+    vstplugin_preset_read<false>(x, gensym(info.presets[index].path.c_str()));
+    x->x_preset = gensym(info.presets[index].name.c_str());
+}
+
+static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    auto& info = x->x_plugin->info();
+    int index = vstplugin_preset_index(x, argc, argv, false);
+    if (index < 0){
+        // if the preset couldn't be found and it's a (valid) symbol, make a new preset
+        t_symbol *sym = atom_getsymbolarg(0, argc, argv);
+        if (*sym->s_name){
+            index = const_cast<PluginInfo&>(info).addPreset(sym->s_name);
+        }
+    }
+    if (index >= 0 && vstplugin_preset_writeable(x, index)){
+        vstplugin_preset_write<false>(x, gensym(info.presets[index].path.c_str()));
+        x->x_preset = gensym(info.presets[index].name.c_str());
+    }
+}
+
+static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    // [preset] newname
+    if (!argc){
+        return;
+    }
+    t_symbol *newname = atom_getsymbolarg((argc > 1), argc, argv);
+    if (!(*newname->s_name)){
+        pd_error(x, "%s: bad preset name %s!", classname(x), newname->s_name);
+        return;
+    }
+    int index = vstplugin_preset_index(x, (argc > 1), argv);
+    if (index < 0) return;
+
+    // check if we rename the current preset
+    bool update = x->x_plugin->info().presets[index].name == x->x_preset->s_name;
+
+    if (vstplugin_preset_writeable(x, index)){
+        if (!const_cast<PluginInfo&>(x->x_plugin->info()).renamePreset(index, newname->s_name)){
+            pd_error(x, "%s: couldn't rename preset!", classname(x));
+        } else if (update){
+            x->x_preset = newname;
+        }
+    }
+}
+
+static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    if (!x->check_plugin()) return;
+    int index = vstplugin_preset_index(x, argc, argv);
+    if (index < 0) return;
+
+    // check if we delete the current preset
+    if (x->x_plugin->info().presets[index].name == x->x_preset->s_name){
+        x->x_preset = nullptr;
+    }
+
+    if (vstplugin_preset_writeable(x, index)){
+        if (!const_cast<PluginInfo&>(x->x_plugin->info()).removePreset(index)){
+            pd_error(x, "%s: couldn't delete preset!", classname(x));
+        }
     }
 }
 
@@ -2090,7 +2268,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_setsavefn(vstplugin_class, vstplugin_save);
     class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_loadbang, gensym("loadbang"), A_FLOAT, A_NULL);
-        // plugin
+    // plugin
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
@@ -2106,7 +2284,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_print, gensym("print"), A_NULL);
-        // transport
+    // transport
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_play, gensym("play"), A_FLOAT, A_NULL);
@@ -2117,14 +2295,14 @@ EXPORT void vstplugin_tilde_setup(void){
 #endif
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_get, gensym("transport_get"), A_NULL);
-        // parameters
+    // parameters
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_info, gensym("param_info"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_count, gensym("param_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_list, gensym("param_list"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_dump, gensym("param_dump"), A_NULL);
-        // midi
+    // midi
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_note, gensym("midi_note"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_noteoff, gensym("midi_noteoff"), A_FLOAT, A_FLOAT, A_DEFFLOAT, A_NULL); // third floatarg is optional!
@@ -2134,19 +2312,27 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_polytouch, gensym("midi_polytouch"), A_FLOAT, A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_touch, gensym("midi_touch"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_sysex, gensym("midi_sysex"), A_GIMME, A_NULL);
-        // programs
+    // programs
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_set, gensym("program_set"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_get, gensym("program_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_name_set, gensym("program_name_set"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_name_get, gensym("program_name_get"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_count, gensym("program_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_list, gensym("program_list"), A_NULL);
-        // read/write fx programs
+    // presets
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_count, gensym("preset_count"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_info, gensym("preset_info"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_list, gensym("preset_list"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_load, gensym("preset_load"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_save, gensym("preset_save"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_rename, gensym("preset_rename"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_delete, gensym("preset_delete"), A_GIMME, A_NULL);
+    // read/write fx programs
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<false>, gensym("program_data_set"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<false>, gensym("program_data_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<false>, gensym("program_read"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<false>, gensym("program_write"), A_SYMBOL, A_NULL);
-        // read/write fx banks
+    // read/write fx banks
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<true>, gensym("bank_data_set"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<true>, gensym("bank_data_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<true>, gensym("bank_read"), A_SYMBOL, A_NULL);
