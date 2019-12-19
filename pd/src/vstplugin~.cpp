@@ -1791,7 +1791,7 @@ static void vstplugin_preset_notify(t_vstplugin *x){
     auto thing = gensym(t_vstplugin::glob_recv_name)->s_thing;
     if (thing){
         // notify all vstplugin~ instances for preset changes
-        pd_vmess(thing, gensym("preset_change"), (char *)"%s", x->x_key);
+        pd_vmess(thing, gensym("preset_change"), (char *)"s", x->x_key);
     }
 }
 
