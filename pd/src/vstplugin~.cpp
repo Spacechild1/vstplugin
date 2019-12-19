@@ -1840,7 +1840,7 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (index < 0) return;
 
     // check if we rename the current preset
-    bool update = x->x_plugin->info().presets[index].name == x->x_preset->s_name;
+    bool update = x->x_preset && x->x_preset->s_name == x->x_plugin->info().presets[index].name;
 
     if (vstplugin_preset_writeable(x, index)){
         if (const_cast<PluginInfo&>(x->x_plugin->info()).renamePreset(index, newname->s_name)){
@@ -1860,7 +1860,7 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (index < 0) return;
 
     // check if we delete the current preset
-    if (x->x_plugin->info().presets[index].name == x->x_preset->s_name){
+    if (x->x_preset && x->x_preset->s_name == x->x_plugin->info().presets[index].name){
         x->x_preset = nullptr;
     }
 
