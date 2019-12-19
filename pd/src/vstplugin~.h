@@ -33,6 +33,8 @@ class t_vsteditor;
 // vstplugin~ object (no virtual methods!)
 class t_vstplugin {
  public:
+    static constexpr const char *glob_recv_name = "__vstplugin~__"; // receive name shared by all instances
+
     t_vstplugin(int argc, t_atom *argv);
     ~t_vstplugin();
         // Pd
@@ -52,6 +54,7 @@ class t_vstplugin {
     std::vector<char> x_auxoutbuf;
     // VST plugin
     IPlugin::ptr x_plugin;
+    t_symbol *x_key = nullptr;
     t_symbol *x_path = nullptr;
     t_symbol *x_preset = nullptr;
     bool x_uithread = false;

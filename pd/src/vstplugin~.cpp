@@ -1033,6 +1033,7 @@ static void vstplugin_close(t_vstplugin *x){
         }
         x->x_plugin = nullptr;
         x->x_editor->vis(false);
+        x->x_key = nullptr;
         x->x_path = nullptr;
         x->x_preset = nullptr;
     }
@@ -1093,6 +1094,7 @@ bool t_vstplugin::open_plugin(t_symbol *s, bool editor){
         }
         x_uithread = editor;
         x_path = s; // store path symbol (to avoid reopening the same plugin)
+        x_key = gensym(makeKey(*info).c_str());
         verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
         // setup plugin
         x_plugin = std::move(plugin);
@@ -1784,8 +1786,26 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     x->x_preset = gensym(info.presets[index].name.c_str());
 }
 
+
+static void vstplugin_preset_notify(t_vstplugin *x){
+    auto thing = gensym(t_vstplugin::glob_recv_name)->s_thing;
+    if (thing){
+        // notify all vstplugin~ instances for preset changes
+        pd_vmess(thing, gensym("preset_change"), (char *)"%s", x->x_key);
+    }
+}
+
+static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
+    // only forward message to matching instances
+    if (s == x->x_key){
+        outlet_anything(x->x_messout, gensym("preset_change"), 0, 0);
+    }
+}
+
 static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
+
+    bool newPreset = false;
     auto& info = x->x_plugin->info();
     int index = vstplugin_preset_index(x, argc, argv, false);
     if (index < 0){
@@ -1793,11 +1813,15 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         t_symbol *sym = atom_getsymbolarg(0, argc, argv);
         if (*sym->s_name){
             index = const_cast<PluginInfo&>(info).addPreset(sym->s_name);
+            newPreset = true;
         }
     }
     if (index >= 0 && vstplugin_preset_writeable(x, index)){
         vstplugin_preset_write<false>(x, gensym(info.presets[index].path.c_str()));
         x->x_preset = gensym(info.presets[index].name.c_str());
+        if (newPreset){
+            vstplugin_preset_notify(x);
+        }
     }
 }
 
@@ -1819,10 +1843,13 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     bool update = x->x_plugin->info().presets[index].name == x->x_preset->s_name;
 
     if (vstplugin_preset_writeable(x, index)){
-        if (!const_cast<PluginInfo&>(x->x_plugin->info()).renamePreset(index, newname->s_name)){
+        if (const_cast<PluginInfo&>(x->x_plugin->info()).renamePreset(index, newname->s_name)){
+            if (update){
+                x->x_preset = newname;
+            }
+            vstplugin_preset_notify(x);
+        } else {
             pd_error(x, "%s: couldn't rename preset!", classname(x));
-        } else if (update){
-            x->x_preset = newname;
         }
     }
 }
@@ -1838,7 +1865,9 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     }
 
     if (vstplugin_preset_writeable(x, index)){
-        if (!const_cast<PluginInfo&>(x->x_plugin->info()).removePreset(index)){
+        if (const_cast<PluginInfo&>(x->x_plugin->info()).removePreset(index)){
+            vstplugin_preset_notify(x);
+        } else {
             pd_error(x, "%s: couldn't delete preset!", classname(x));
         }
     }
@@ -2012,6 +2041,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     t_symbol *asym = gensym("#A");
     asym->s_thing = 0; // bashily unbind #A
     pd_bind(&x_obj.ob_pd, asym); // now bind #A to us to receive following messages
+
+    // bind to global receive name
+    pd_bind(&x_obj.ob_pd, gensym(glob_recv_name));
 }
 
 static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
@@ -2027,6 +2059,8 @@ t_vstplugin::~t_vstplugin(){
     x_search_data->s_running = false; // quit running async search!
     if (x_search_clock) clock_free(x_search_clock);
     LOG_DEBUG("vstplugin free");
+
+    pd_unbind(&x_obj.ob_pd, gensym(glob_recv_name));
 }
 
 static void vstplugin_free(t_vstplugin *x){
@@ -2337,6 +2371,8 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<true>, gensym("bank_data_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<true>, gensym("bank_read"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<true>, gensym("bank_write"), A_SYMBOL, A_NULL);
+    // private messages
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
 
