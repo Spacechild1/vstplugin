@@ -32,6 +32,9 @@ namespace fs = std::experimental::filesystem;
 # include <sys/wait.h>
 # include <sys/stat.h>
 # include <sys/types.h>
+# ifndef ACCESSPERMS
+#  define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
+# endif
 // for probing (and dlopen)
 # include <dlfcn.h>
 # include <stdio.h>
