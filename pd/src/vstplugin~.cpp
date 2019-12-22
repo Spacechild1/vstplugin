@@ -466,7 +466,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin::t
 
 // tell whether we've already searched the standard VST directory
 // (see '-s' flag for [vstplugin~])
-static bool gDidSearch = false;
+static std::atomic_bool gDidSearch{false};
 
 /*--------------------- t_vstparam --------------------------*/
 
@@ -530,9 +530,6 @@ t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
     : e_owner(&owner){
 #if HAVE_UI_THREAD
     e_mainthread = std::this_thread::get_id();
-#ifdef PDINSTANCE
-    e_pdinstance = pd_this;
-#endif
 #endif
     if (gui){
         pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
@@ -585,7 +582,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
         } else {
             // lock the Pd scheduler
         #ifdef PDINSTANCE
-            pd_setinstance(e_pdinstance);
+            pd_setinstance(e_owner->x_pdinstance);
         #endif
             sys_lock();
             clock_delay(e_clock, 0);
@@ -822,8 +819,13 @@ static void vstplugin_search_done(t_vstplugin *x){
 }
 
 static void vstplugin_search_threadfun(t_vstplugin *x, t_vstplugin::t_search_data_ptr data,
-                                       std::vector<std::string> searchPaths,
-                                       bool parallel, bool update){
+                                       std::vector<std::string> searchPaths, bool parallel, bool update
+#ifdef PDINSTANCE
+                                       , t_pdinstance *instance){
+    pd_setinstance(instance);
+#else
+                                       ){
+#endif
     LOG_DEBUG("thread function started: " << std::this_thread::get_id());
     for (auto& path : searchPaths){
         if (data->s_running){
@@ -905,7 +907,11 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     if (async){
         // spawn thread which does the actual searching in the background
         auto thread = std::thread(vstplugin_search_threadfun, x, x->x_search_data,
-                                  std::move(searchPaths), parallel, update);
+                                  std::move(searchPaths), parallel, update
+                              #ifdef PDINSTANCE
+                                  , x->x_pdinstance
+                              #endif
+                                  );
         thread.detach();
     } else {
         if (update){
@@ -2006,6 +2012,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_precision = precision;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
+#ifdef PDINSTANCE
+    x_pdinstance = pd_this;
+#endif
     x_search_clock = clock_new(this, (t_method)vstplugin_search_done);
 
     // inlets (we already have a main inlet!)

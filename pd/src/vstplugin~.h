@@ -63,6 +63,9 @@ class t_vstplugin {
     ProcessPrecision x_precision; // single/double precision
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
+#ifdef PDINSTANCE
+    t_pdinstance *x_pdinstance = nullptr; // keep track of the instance we belong to
+#endif
     // search
     struct t_search_data {
         std::vector<t_symbol *> s_plugins;
@@ -147,9 +150,6 @@ class t_vsteditor : public IPluginListener {
     std::mutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
-#ifdef PDINSTANCE
-    t_pdinstance *e_pdinstance = nullptr;
-#endif
 #endif
     std::vector<std::pair<int, float>> e_automated;
     std::vector<MidiEvent> e_midi;
