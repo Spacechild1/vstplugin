@@ -35,7 +35,10 @@ VSTPlugin.search;
 // you can do all of the above in a single line:
 ~fx = VSTPluginController(Synth(\insert, [\bus, 0])).open("myplugin");
 
-// show the generic GUI:
+// open the plugin browser:
+~fx.browse;
+
+// show the generic plugin GUI:
 ~fx.gui;
 // etc.
 ::
@@ -230,7 +233,7 @@ Pbind(
 )
 ::
 warning::
-This can be very inefficient for plugins with a large number of parameters! It is always better to explicitly specify the parameters you're interested in with the code::\params:: argument
+This can be very inefficient for plugins with a large number of parameters! It is always better to explicitly specify the parameters you need with the code::\params:: argument
 ::
 
 See link::#Automation:: for more examples.
@@ -369,6 +372,9 @@ This will automatically bypass the plugin (i.e. the input is just passed through
 
 Just like link::#-open::, this method is realtime-safe.
 
+
+METHOD:: browse
+open the plugin browser dialog.
 
 METHOD:: editor
 METHOD:: editorMsg
@@ -958,8 +964,8 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 )
 
 // open plugins
-~fx1.gui
-~fx2.gui
+~fx1.browse;
+~fx2.browse;
 
 // bypass FX
 ~synth.set(\bypass1, 1);
@@ -980,8 +986,8 @@ code::
 ~fx2 = VSTPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
 
 // open plugins
-~fx1.gui
-~fx2.gui
+~fx1.browse;
+~fx2.browse;
 
 // play test sound
 Synth(\test, [\out, 0]);
@@ -1000,7 +1006,7 @@ code::
 // insert FX (after ~test)
 ~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin
-~fx.gui;
+~fx.browse;
 // create control bus
 ~ctl = Bus.control;
 // create an LFO
@@ -1028,7 +1034,7 @@ SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 
 ~fx = VSTPluginController(Synth.new(\mod, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin
-~fx.gui;
+~fx.browse;
 
 ~fx.synth.set(\rate, 0.9); // change modulation rate
 ~fx.synth.set(\bypass, 1); // bypass
@@ -1040,15 +1046,15 @@ Automate parameters with a Pbind of type code::\vst_set:::
 code::
 ~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin (the example uses 'GChorus' from GVST plugins)
-~fx.gui;
+~fx.open("GChorus");
 
 (
 p = Pbind(
 	\type, \vst_set,
 	\vst, ~fx, // the VSTPluginController instance
 	\params, [1, 3, \Mix], // parameter indices/names (looked up below)
-	0, Pwhite(0.1, 0.9), // value for parameter 0
-	1, Pwhite(0.3, 0.7), // value for parameter 1
+	1, Pwhite(0.1, 0.9), // value for parameter 1
+	3, Pwhite(0.3, 0.7), // value for parameter 3
 	\Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
 	\dur, Prand([0.25, 0.5, 1], inf)
 ).play;
@@ -1072,7 +1078,7 @@ SynthDef.new(\vsti, {arg out = 0;
 // create Synth with VST instrument
 ~vsti = VSTPluginController(Synth(\vsti));
 // open plugin
-~vsti.gui;
+~vsti.browse;
 
 // play the instrument with a \vst_midi Pbind
 (

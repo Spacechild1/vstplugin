@@ -35,6 +35,7 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#-openMsg'>openMsg</a> </li>
 <li class='toc3'><a href='#-close'>close</a> </li>
 <li class='toc3'><a href='#-closeMsg'>closeMsg</a> </li>
+<li class='toc3'><a href='#-browse'>browse</a> </li>
 <li class='toc3'><a href='#-editor'>editor</a> </li>
 <li class='toc3'><a href='#-editorMsg'>editorMsg</a> </li>
 <li class='toc3'><a href='#-gui'>gui</a> </li>
@@ -164,7 +165,10 @@ VSTPlugin.search;
 // you can do all of the above in a single line:
 ~fx = VSTPluginController(Synth(\insert, [\bus, 0])).open("myplugin");
 
-// show the generic GUI:
+// open the plugin browser:
+~fx.browse;
+
+// show the generic plugin GUI:
 ~fx.gui;
 // etc.</textarea>
 
@@ -295,7 +299,7 @@ SynthDef(\insert, { arg bus, f;
     \dur, Prand([0.25, 0.5, 1], inf)
 )</textarea>
 
-<p><div class='warning'><span class='warninglabel'>WARNING:</span> This can be very inefficient for plugins with a large number of parameters! It is always better to explicitly specify the parameters you're interested in with the <code>\params</code> argument</div>
+<p><div class='warning'><span class='warninglabel'>WARNING:</span> This can be very inefficient for plugins with a large number of parameters! It is always better to explicitly specify the parameters you need with the <code>\params</code> argument</div>
 <p>See <a href="#Automation">Automation</a> for more examples.<dt><code>\vst_midi</code><dd>send MIDI messages; the interface is very similar to <code>\midi</code>.<table>
 <tr><td><code>\vst</code><td>the VSTPluginController instance<tr><td><code>\midicmd</code><td>the MIDI method (see below)<tr><td><code>\chan</code><td>the MIDI channel; the default is 0<tr><td><code>\midinote</code><td>MIDI pitch for <code>\noteOn</code>, <code>\noteOff</code> and <code>\polyTouch</code><tr><td><code>\amp</code><td>amplitude (0.0 - 1.0) for <code>\noteOn</code> and <code>\noteOff</code><tr><td><code>\ctlNum</code><td>CC number for <code>\control</code><tr><td><code>\control</code><td>CC value for <code>\control</code><tr><td><code>\val</code><td>value argument for <code>\touch</code> and <code>\bend</code><tr><td><code>\polyTouch</code><td>touch value for <code>\polyTouch</code><tr><td><code>\progNum</code><td>program number for <code>\program</code><tr><td><code>\array</code><td>UInt8Array for <code>\sysex</code></table>
 
@@ -364,7 +368,9 @@ SynthDef(\chorus, { arg bus=0;
 <p>close the current plugin (but don't free the Synth!). You can open another plugin later.<h4>Discussion:</h4>
 
 <p>This will automatically bypass the plugin (i.e. the input is just passed through).
-<p>Just like <a href="#-open">-open</a>, this method is realtime-safe.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editor' href='./../Overviews/Methods.html#editor'>editor</a>(<span class='argstr'>show: true</span>)</h3>
+<p>Just like <a href="#-open">-open</a>, this method is realtime-safe.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-browse' href='./../Overviews/Methods.html#browse'>browse</a></h3>
+<div class='method'>
+<p>open the plugin browser dialog.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editor' href='./../Overviews/Methods.html#editor'>editor</a>(<span class='argstr'>show: true</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editorMsg' href='./../Overviews/Methods.html#editorMsg'>editorMsg</a>(<span class='argstr'>show: true</span>)</h3>
 <div class='method'>
 <p>shows/hide the VST editor window.<h4>Discussion:</h4>
@@ -765,8 +771,8 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 )
 
 // open plugins
-~fx1.gui
-~fx2.gui
+~fx1.browse;
+~fx2.browse;
 
 // bypass FX
 ~synth.set(\bypass1, 1);
@@ -783,8 +789,8 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 ~fx2 = VSTPluginController(Synth(\insert, [\bus, 0], ~fxGroup, addAction: \addToTail));
 
 // open plugins
-~fx1.gui
-~fx2.gui
+~fx1.browse;
+~fx2.browse;
 
 // play test sound
 Synth(\test, [\out, 0]);</textarea>
@@ -797,7 +803,7 @@ Synth(\test, [\out, 0]);</textarea>
 // insert FX (after ~test)
 ~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin
-~fx.gui;
+~fx.browse;
 // create control bus
 ~ctl = Bus.control;
 // create an LFO
@@ -822,7 +828,7 @@ SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 
 ~fx = VSTPluginController(Synth.new(\mod, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin
-~fx.gui;
+~fx.browse;
 
 ~fx.synth.set(\rate, 0.9); // change modulation rate
 ~fx.synth.set(\bypass, 1); // bypass
@@ -830,15 +836,15 @@ SynthDef.new(\mod, {arg bus, rate=0.25, bypass=0;
 
 <p>Automate parameters with a Pbind of type <code>\vst_set</code>:<textarea class='editor'>~fx = VSTPluginController(Synth.new(\insert, [\bus, 0], ~test, addAction: \addAfter));
 // open plugin (the example uses 'GChorus' from GVST plugins)
-~fx.gui;
+~fx.open("GChorus");
 
 (
 p = Pbind(
     \type, \vst_set,
     \vst, ~fx, // the VSTPluginController instance
     \params, [1, 3, \Mix], // parameter indices/names (looked up below)
-    0, Pwhite(0.1, 0.9), // value for parameter 0
-    1, Pwhite(0.3, 0.7), // value for parameter 1
+    1, Pwhite(0.1, 0.9), // value for parameter 1
+    3, Pwhite(0.3, 0.7), // value for parameter 3
     \Mix, Pseq([0.1, 0.2, 0.5, 0.9], inf), // value for parameter 'Mix'
     \dur, Prand([0.25, 0.5, 1], inf)
 ).play;
@@ -858,7 +864,7 @@ SynthDef.new(\vsti, {arg out = 0;
 // create Synth with VST instrument
 ~vsti = VSTPluginController(Synth(\vsti));
 // open plugin
-~vsti.gui;
+~vsti.browse;
 
 // play the instrument with a \vst_midi Pbind
 (

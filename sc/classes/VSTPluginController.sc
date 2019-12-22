@@ -19,6 +19,7 @@ VSTPluginController {
 	var <programNames;
 	var currentPreset;
 	var window;
+	var browser;
 
 	*initClass {
 		Class.initClassTree(Event);
@@ -182,6 +183,7 @@ VSTPluginController {
 	}
 	prFree {
 		// "VSTPluginController: synth freed!".postln;
+		browser !? { browser.close };
 		oscFuncs.do { arg func;
 			func.free;
 		};
@@ -197,6 +199,15 @@ VSTPluginController {
 	}
 	gui { arg parent, bounds, params=true;
 		^this.class.guiClass.new(this).gui(parent, bounds, params);
+	}
+	browse {
+		// prevent opening the dialog multiple times
+		browser.isNil.if {
+			// create dialog
+			browser = VSTPluginGui.prMakePluginBrowser(this);
+			browser.view.addAction({ browser = nil }, 'onClose');
+		};
+		browser.front;
 	}
 	open { arg path, editor=false, verbose=false, action;
 		// if path is nil we try to get it from VSTPlugin

@@ -493,15 +493,13 @@ VSTPluginGui : ObjectGui {
 	}
 
 	prBrowse {
-		var window;
 		model.notNil.if {
 			// prevent opening the dialog multiple times
-			browser !? { ^this };
-			// create dialog
-			window = VSTPluginGui.prMakePluginBrowser(model);
-			window.view.addAction({ browser = nil }, 'onClose');
-			browser = window;
-			window.front;
+			browser.isNil.if {
+				browser = VSTPluginGui.prMakePluginBrowser(model);
+				browser.view.addAction({ browser = nil }, 'onClose');
+			};
+			browser.front;
 		} { "no model!".error };
 	}
 
