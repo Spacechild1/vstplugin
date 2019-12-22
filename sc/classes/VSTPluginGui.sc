@@ -180,21 +180,23 @@ VSTPluginGui : ObjectGui {
 		// .stringColor_(GUI.skin.fontColor)
 		// .background_(GUI.skin.background)
 		.align_(\left)
-		.object_(name ?? "[empty]")
+		.object_(model !? { name ?? "[no plugin]" } ?? "[no model]")
 		.toolTip_(infoString);
 		// "Browse" button
-		browse = Button.new
-		.states_([["Browse"]])
-		.maxWidth_(60)
-		.action_({this.prBrowse})
-		.toolTip_("Browse plugins");
+		model !? {
+			browse = Button.new
+			.states_([["Browse"]])
+			.maxWidth_(60)
+			.action_({this.prBrowse})
+			.toolTip_("Browse plugins");
+		};
 
 		layout = VLayout.new;
 		layout.add(HLayout(browse, header));
 
 		menu.if {
 			// build preset menu
-			presetMenu = PopUpMenu.new.fixedWidth_(sliderWidth);
+			presetMenu = PopUpMenu.new;
 
 			textField = { arg parent, action, name;
 				var pos = parent.absoluteBounds.origin;
@@ -263,10 +265,9 @@ VSTPluginGui : ObjectGui {
 			};
 
 			(ncolumns > 1).if {
-				layout.add(HLayout(presetMenu, HLayout(save, saveas, rename, delete), nil));
+				layout.add(HLayout(presetMenu, save, saveas, rename, delete, nil));
 			} {
-				layout.add(presetMenu);
-				layout.add(HLayout(save, saveas, rename, delete, nil));
+				layout.add(VLayout(presetMenu, HLayout(save, saveas, rename, delete, nil)));
 			};
 
 			this.prUpdatePresets;
