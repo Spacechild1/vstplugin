@@ -415,27 +415,77 @@ VSTPluginGui : ObjectGui {
 
 	*prMakePluginBrowser { arg model, settings;
 		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
-		var showPath, showSearch, updateBrowser, plugins, server;
+		var showPath, showSearch, updatePlugins, plugins, filteredPlugins, server;
+		var applyFilter, stringFilter, typeFilter, vendorFilter, categoryFilter;
 		server = model.synth.server;
 		window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 		browser = ListView.new.selectionMode_(\single);
 		browser.action = {
-			var info = plugins[browser.value];
+			var info = filteredPlugins[browser.value];
 			key = info.key;
 			info.notNil.if {
 				absPath = info.path;
 				showPath.value;
+				browser.toolTip_(info.prToString);
 			} { "bug: no info!".error; }; // should never happen
 		};
-		updateBrowser = {
+		applyFilter = {
 			var items;
-			plugins = VSTPlugin.pluginList(server, sorted: true);
-			items = plugins.collect({ arg item;
+			filteredPlugins = plugins.select({ arg item;
+				var vst3, ok = true;
+				var string = stringFilter.string;
+				(string.size > 0).if {
+					// search plugin and vendor name
+					ok = item.name.find(string).notNil or: { item.vendor.find(string).notNil };
+				};
+				(typeFilter.value > 0).if {
+					vst3 = item.sdkVersion.find("VST 3").notNil;
+					// use shortcircuiting to skip test if 'ok' is already 'false'
+					ok = ok and: {
+						switch(typeFilter.value,
+							1, { vst3.not and: { item.isSynth.not } },
+							2, { vst3.not and: { item.isSynth } },
+							3, { vst3 and: { item.isSynth.not } },
+							4, { vst3 and: { item.isSynth } },
+							false
+						)
+					};
+				};
+				(vendorFilter.value > 0).if {
+					ok = ok and: { item.vendor == vendorFilter.item };
+				};
+				(categoryFilter.value > 0).if {
+					ok = ok and: {
+						item.category.split($|).indexOfEqual(categoryFilter.item).notNil;
+					}
+				};
+				ok;
+			});
+			items = filteredPlugins.collect({ arg item;
 				"% (%)".format(item.key, item.vendor); // rather use key instead of name
 			});
+			browser.toolTip_(nil);
 			browser.items = items;
 			browser.value !? { browser.action.value } ?? { showPath.value };
 		};
+		updatePlugins = {
+			var categories = Set.new;
+			var vendors = Set.new;
+			plugins = VSTPlugin.pluginList(server, sorted: true);
+			plugins.do({ arg item;
+				vendors.add(item.vendor);
+				item.category.split($|).do { arg cat; categories.add(cat) };
+			});
+			categoryFilter.items = ["All"] ++ categories.asArray.sort({ arg a, b; a.compare(b, true) < 0});
+			vendorFilter.items = ["All"] ++ vendors.asArray.sort({ arg a, b; a.compare(b, true) < 0});
+			applyFilter.value;
+		};
+
+		stringFilter = TextField.new.action_(applyFilter);
+		typeFilter = PopUpMenu.new.items_(["All", "VST", "VSTi", "VST3", "VST3i"]).action_(applyFilter);
+		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
+		categoryFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
+
 		status = StaticText.new.align_(\left).string_("Path:");
 		showPath = { status.stringColor_(Color.black);
 			absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
@@ -447,7 +497,7 @@ VSTPluginGui : ObjectGui {
 		search.action = {
 			showSearch.value;
 			VSTPlugin.search(server, verbose: true, action: {
-				{ updateBrowser.value; }.defer;
+				{ updatePlugins.value; }.defer;
 			});
 		};
 		dir = Button.new.states_([["Directory"]]).maxWidth_(60)
@@ -456,7 +506,7 @@ VSTPluginGui : ObjectGui {
 			FileDialog.new({ arg d;
 				showSearch.value;
 				VSTPlugin.search(server, dir: d, useDefault: false, verbose: true, action: {
-					{ updateBrowser.value; }.defer;
+					{ updatePlugins.value; }.defer;
 				});
 			}, nil, 2, 0, true, pluginPath);
 		};
@@ -485,10 +535,18 @@ VSTPluginGui : ObjectGui {
 		};
 
 		window.layout_(VLayout(
-			browser, status, HLayout(search, dir, file, editor, nil, cancel, ok)
+			browser,
+			HLayout(
+				[StaticText.new.string_("Filter:"), stretch: 0], [stringFilter, stretch: 1],
+				[StaticText.new.string_("Type"), stretch: 0], [typeFilter, stretch: 1],
+				[StaticText.new.string_("Vendor"), stretch: 0], [vendorFilter, stretch: 1],
+				[StaticText.new.string_("Category"), stretch: 0], [categoryFilter, stretch: 1]
+			),
+			status,
+			HLayout(search, dir, file, editor, nil, cancel, ok)
 		));
 
-		updateBrowser.value;
+		updatePlugins.value;
 		^window;
 	}
 
