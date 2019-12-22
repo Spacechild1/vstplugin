@@ -4,14 +4,18 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
-#if !HAVE_UI_THREAD // don't use VST GUI threads
+#if !HAVE_UI_THREAD
+#ifndef PDINSTANCE
 # define EVENT_LOOP_POLL_INT 20 // time between polls in ms
 static t_clock *eventLoopClock = nullptr;
 static void eventLoopTick(void *x){
     UIThread::poll();
     clock_delay(eventLoopClock, EVENT_LOOP_POLL_INT);
 }
-#endif
+#else
+#error "HAVE_UI_THREAD must be 1 when compiling with PDINSTANCE. On macOS, you must run an event loop *on the main thread* if you want to use the VST GUI editor; on Windows and Linux, vstplugin~ will automatically create its own event loop."
+#endif // PDINSTANCE
+#endif // HAVE_UI_THREAD
 
 // substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
 static void substitute_whitespace(char *buf){
