@@ -385,7 +385,7 @@ VSTPluginController {
 					name = preset.asString;
 				}
 			};
-			path = info.prPresetPath(name);
+			path = info.presetPath(name);
 			this.writeProgram(path, { arg self, success;
 				var index;
 				success.if {

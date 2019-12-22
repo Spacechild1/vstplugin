@@ -137,12 +137,12 @@ VSTPluginDesc {
 			}
 		);
 		^folder !? {
-			folder.standardizePath +/+ this.prBashPath(this.vendor) +/+ this.prBashPath(this.name);
+			folder.standardizePath +/+ this.class.prBashPath(this.vendor) +/+ this.class.prBashPath(this.name);
 		}
 	}
 	presetPath { arg name, type = \user;
 		var vst3 = sdkVersion.find("VST 3").notNil;
-		^this.presetFolder(type) +/+ this.prBashPath(name) ++ if(vst3, ".vstpreset", ".fxp");
+		^this.presetFolder(type) +/+ this.class.prBashPath(name) ++ if(vst3, ".vstpreset", ".fxp");
 	}
 	findPreset { arg preset;
 		preset.isNumber.if {
@@ -194,7 +194,7 @@ VSTPluginDesc {
 				} {
 					("couldn't delete preset file" + result.path).error;
 				}
-			} { "preset '%' is not writeable!".format(preset).error;	}
+			} { "preset '%' is not writeable!".format(preset).error; }
 		} {	"couldn't find preset '%'".format(preset).error	}
 		^false;
 	}
