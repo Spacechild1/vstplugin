@@ -530,6 +530,9 @@ t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
     : e_owner(&owner){
 #if HAVE_UI_THREAD
     e_mainthread = std::this_thread::get_id();
+#ifdef PDINSTANCE
+    e_pdinstance = pd_this;
+#endif
 #endif
     if (gui){
         pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
@@ -581,6 +584,9 @@ void t_vsteditor::post_event(T& queue, U&& event){
             e_needclock.store(true); // set the clock in the perform routine
         } else {
             // lock the Pd scheduler
+        #ifdef PDINSTANCE
+            pd_setinstance(e_pdinstance);
+        #endif
             sys_lock();
             clock_delay(e_clock, 0);
             sys_unlock();

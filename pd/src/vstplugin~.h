@@ -147,6 +147,9 @@ class t_vsteditor : public IPluginListener {
     std::mutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
+#ifdef PDINSTANCE
+    t_pdinstance *e_pdinstance = nullptr;
+#endif
 #endif
     std::vector<std::pair<int, float>> e_automated;
     std::vector<MidiEvent> e_midi;
