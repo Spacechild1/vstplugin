@@ -341,6 +341,7 @@ VSTPluginDesc {
 		++ ((this.numAuxOutputs > 0).if { "aux output channels: %".format(this.numAuxOutputs) ++ sep } {""})
 		++ "parameters: %".format(this.numParameters) ++ sep
 		++ "programs: %".format(this.numPrograms) ++ sep
+		++ "presets: %".format(this.numPresets) ++ sep
 		++ "MIDI input: %".format(this.midiInput) ++ sep
 		++ "MIDI output: %".format(this.midiOutput) ++ sep
 		// ++ "sysex input: %".format(this.sysexInput) ++ sep
