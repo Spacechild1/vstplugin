@@ -24,25 +24,25 @@ VSTPluginGui : ObjectGui {
 	var embedded;
 	var dialog;
 	var showParams;
+	var info;
 
 	model_ { arg newModel;
+		// close the browser (if opened)
+		dialog !? { dialog.close };
 		// always notify when changing models
 		model !? {
+			this.prClose;
 			model.removeDependant(this);
-			model.info.removeDependant(this);
 		};
 		model = newModel;
 		model.notNil.if {
 			model.addDependant(this);
-			model.info.addDependant(this);
 			server = model.synth.server;
-		} { server = Server.default };
-		// close the browser (if opened)
-		dialog !? { dialog.close };
-		// only update if we have a view (i.e. -gui has been called)
-		view.notNil.if {
-			this.update;
-		};
+			this.prOpen;
+		} {
+			server = Server.default;
+			this.prUpdateGui;
+		}
 	}
 
 	// this is called whenever something important in the model changes.
@@ -50,8 +50,8 @@ VSTPluginGui : ObjectGui {
 		{
 			who.notNil.if {
 				switch(what,
-					'/open', { this.prUpdateGui },
-					'/close', { this.prUpdateGui },
+					'/open', { this.prOpen },
+					'/close', { this.prClose },
 					'/free', { this.prFree }, // Synth has been freed
 					'/param', { this.prParam(*args) },
 					'/program_name', { this.prUpdatePresets },
@@ -65,6 +65,30 @@ VSTPluginGui : ObjectGui {
 				this.prUpdateGui;
 			}
 		}.defer;
+	}
+
+	prOpen {
+		// unregister from old info
+		info !? { info.removeDependant(this) };
+		// register to new info
+		info = model.info;
+		info.addDependant(this);
+		this.prUpdateGui;
+	}
+
+	prClose {
+		info !? { info.removeDependant(this); info = nil };
+		this.prUpdateGui;
+	}
+
+	prFree {
+		(this.closeOnFree ?? this.class.closeOnFree).if {
+			embedded.not.if {
+				view.parent.close;
+				^this;
+			};
+		};
+		this.prClose;
 	}
 
 	guify { arg parent, bounds;
@@ -112,11 +136,12 @@ VSTPluginGui : ObjectGui {
 
 	viewDidClose {
 		dialog !? { dialog.close };
+		info !? { info.removeDependant(this); info = nil };
 		super.viewDidClose;
 	}
 
 	prUpdateGui {
-		var nparams=0, name, info, header, browse, nrows=0, ncolumns=0;
+		var nparams=0, name, infoString, header, browse, nrows=0, ncolumns=0;
 		var layout, grid, font, minWidth, minHeight, displayFont, makePanel;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
@@ -129,11 +154,11 @@ VSTPluginGui : ObjectGui {
 		displayFont = Font.new(Font.defaultMonoFace, 10, usePointSize: true);
 		// get the max. display width in pixels (use an extra character for safety)
 		displayWidth = String.fill(displayWidth + 1, $0).bounds(displayFont).width;
-		// remove old GUI body
-		view !? { view.removeAll };
-		(model.notNil and: { model.info.notNil}).if {
-			name = model.info.name;
-			info = model.info.prToString;
+		// remove old GUI body or return if don't have a view ('gui' hasn't been called)
+		view.notNil.if { view.removeAll } { ^this };
+		info.notNil.if {
+			name = info.name;
+			infoString = info.prToString;
 			menu = menu.asBoolean;
 			// parameters: calculate number of rows and columns
 			showParams.if {
@@ -156,7 +181,7 @@ VSTPluginGui : ObjectGui {
 		// .background_(GUI.skin.background)
 		.align_(\left)
 		.object_(name ?? "[empty]")
-		.toolTip_(info ?? "No plugin loaded");
+		.toolTip_(infoString);
 		// "Browse" button
 		browse = Button.new
 		.states_([["Browse"]])
@@ -256,7 +281,7 @@ VSTPluginGui : ObjectGui {
 			paramDisplays = Array.new(nparams);
 			nparams.do { arg i;
 				var param, row, col, name, label, display, slider, bar, unit, state;
-				param = model.info.parameters[i];
+				param = info.parameters[i];
 				state = model.paramCache[i];
 				col = i.div(nrows);
 				row = i % nrows;
@@ -315,7 +340,7 @@ VSTPluginGui : ObjectGui {
 				{ presetMenu.item.notNil and: { presetMenu.item.type == \preset }}).if {
 				presetMenu.item.preset;
 			};
-			(model.info.numPrograms > 0).if {
+			(info.numPrograms > 0).if {
 				// append programs
 				labels = labels.add("--- built-in programs ---");
 				items = items.add(nil);
@@ -324,8 +349,8 @@ VSTPluginGui : ObjectGui {
 					items = items.add((type: \program, index: i));
 				}
 			};
-			(model.info.numPresets > 0).if {
-				presets = model.info.presets;
+			(info.numPresets > 0).if {
+				presets = info.presets;
 				// collect preset indices by type
 				sorted = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
 				presets.do { arg preset, i;
@@ -382,15 +407,6 @@ VSTPluginGui : ObjectGui {
 				}
 			}
 		}
-	}
-	prFree {
-		(this.closeOnFree ?? this.class.closeOnFree).if {
-			embedded.not.if {
-				view.parent.close;
-				^this;
-			};
-		};
-		this.prUpdateGui;
 	}
 	prBrowse {
 		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;

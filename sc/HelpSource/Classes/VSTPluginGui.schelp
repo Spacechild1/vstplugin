@@ -34,7 +34,7 @@ Global defaults for GUI properties, see link::#Customization::.
 
 INSTANCEMETHODS::
 
-PRIVATE:: guify, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, prOpen, writeName
+PRIVATE:: guify, prOpen, prClose, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, writeName
 
 METHOD:: gui
 Initialize the GUI.
