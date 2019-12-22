@@ -32,6 +32,8 @@ CLASSMETHODS::
 
 Global defaults for GUI properties, see link::#Customization::.
 
+PRIVATE:: prMakePluginBrowser
+
 INSTANCEMETHODS::
 
 PRIVATE:: guify, prOpen, prClose, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, writeName

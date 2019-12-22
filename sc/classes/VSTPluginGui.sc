@@ -22,13 +22,13 @@ VSTPluginGui : ObjectGui {
 	var paramSliders;
 	var paramDisplays;
 	var embedded;
-	var dialog;
+	var browser;
 	var showParams;
 	var info;
 
 	model_ { arg newModel;
 		// close the browser (if opened)
-		dialog !? { dialog.close };
+		browser !? { browser.close };
 		// always notify when changing models
 		model !? {
 			this.prClose;
@@ -135,7 +135,7 @@ VSTPluginGui : ObjectGui {
 	}
 
 	viewDidClose {
-		dialog !? { dialog.close };
+		browser !? { browser.close };
 		info !? { info.removeDependant(this); info = nil };
 		super.viewDidClose;
 	}
@@ -326,12 +326,14 @@ VSTPluginGui : ObjectGui {
 			paramDisplays[index].string_(display);
 		}
 	}
+
 	prProgramIndex { arg index;
 		presetMenu !? {
 			presetMenu.value_(index + 1); // skip label
 			updateButtons.value;
 		}
 	}
+
 	prUpdatePresets {
 		var oldpreset, oldsize, oldindex, presets, sorted, labels = [], items = [];
 		(presetMenu.notNil && model.notNil).if {
@@ -396,6 +398,7 @@ VSTPluginGui : ObjectGui {
 			presetMenu.focus(true); // hack
 		}
 	}
+
 	prPresetSelect { arg preset;
 		(presetMenu.notNil && model.notNil).if {
 			presetMenu.items.do { arg item, index;
@@ -409,89 +412,99 @@ VSTPluginGui : ObjectGui {
 			}
 		}
 	}
-	prBrowse {
-		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
-		var showPath, showSearch, updateBrowser, plugins;
-		model.notNil.if {
-			// prevent opening the dialog multiple times
-			dialog !? { ^this };
-			// build dialog
-			window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
-			browser = ListView.new.selectionMode_(\single);
-			browser.action = {
-				var info = plugins[browser.value];
-				key = info.key;
-				info.notNil.if {
-					absPath = info.path;
-					showPath.value;
-				} { "bug: no info!".error; }; // should never happen
-			};
-			updateBrowser = {
-				var items;
-				plugins = VSTPlugin.pluginList(server, sorted: true);
-				items = plugins.collect({ arg item;
-					"% (%)".format(item.key, item.vendor); // rather use key instead of name
-				});
-				browser.items = items;
-				browser.value !? { browser.action.value } ?? { showPath.value };
-			};
-			status = StaticText.new.align_(\left).string_("Path:");
-			showPath = { status.stringColor_(Color.black);
-				absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
-			};
-			showSearch = { status.stringColor_(Color.red); status.string_("searching..."); };
 
-			search = Button.new.states_([["Search"]]).maxWidth_(60)
-			.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)");
-			search.action = {
+	*prMakePluginBrowser { arg model, settings;
+		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
+		var showPath, showSearch, updateBrowser, plugins, server;
+		server = model.synth.server;
+		window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
+		browser = ListView.new.selectionMode_(\single);
+		browser.action = {
+			var info = plugins[browser.value];
+			key = info.key;
+			info.notNil.if {
+				absPath = info.path;
+				showPath.value;
+			} { "bug: no info!".error; }; // should never happen
+		};
+		updateBrowser = {
+			var items;
+			plugins = VSTPlugin.pluginList(server, sorted: true);
+			items = plugins.collect({ arg item;
+				"% (%)".format(item.key, item.vendor); // rather use key instead of name
+			});
+			browser.items = items;
+			browser.value !? { browser.action.value } ?? { showPath.value };
+		};
+		status = StaticText.new.align_(\left).string_("Path:");
+		showPath = { status.stringColor_(Color.black);
+			absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
+		};
+		showSearch = { status.stringColor_(Color.red); status.string_("searching..."); };
+
+		search = Button.new.states_([["Search"]]).maxWidth_(60)
+		.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)");
+		search.action = {
+			showSearch.value;
+			VSTPlugin.search(server, verbose: true, action: {
+				{ updateBrowser.value; }.defer;
+			});
+		};
+		dir = Button.new.states_([["Directory"]]).maxWidth_(60)
+		.toolTip_("Search a directory for VST plugins");
+		dir.action = {
+			FileDialog.new({ arg d;
 				showSearch.value;
-				VSTPlugin.search(server, verbose: true, action: {
+				VSTPlugin.search(server, dir: d, useDefault: false, verbose: true, action: {
 					{ updateBrowser.value; }.defer;
 				});
-			};
-			dir = Button.new.states_([["Directory"]]).maxWidth_(60)
-			.toolTip_("Search a directory for VST plugins");
-			dir.action = {
-				FileDialog.new({ arg d;
-					showSearch.value;
-					VSTPlugin.search(server, dir: d, useDefault: false, verbose: true, action: {
-						{ updateBrowser.value; }.defer;
-					});
-				}, nil, 2, 0, true, pluginPath);
-			};
-			file = Button.new.states_([["File"]]).maxWidth_(60)
-			.toolTip_("Open a VST plugin file");
-			file.action = {
-				FileDialog.new({ arg p;
-					absPath = p;
-					key = absPath;
-					showPath.value;
-					ok.action.value;
-				}, nil, 1, 0, true, pluginPath);
-			};
-			editor = CheckBox.new(text: "editor");
+			}, nil, 2, 0, true, pluginPath);
+		};
+		file = Button.new.states_([["File"]]).maxWidth_(60)
+		.toolTip_("Open a VST plugin file");
+		file.action = {
+			FileDialog.new({ arg p;
+				absPath = p;
+				key = absPath;
+				showPath.value;
+				ok.action.value;
+			}, nil, 1, 0, true, pluginPath);
+		};
+		editor = CheckBox.new(text: "editor");
 
-			cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
-			cancel.action = { window.close };
-			ok = Button.new.states_([["OK"]]).maxWidth_(60);
-			ok.action = {
-				key !? {
-					// open with key - not absPath!
-					model.open(key, editor: editor.value);
-					pluginPath = absPath;
-					window.close;
-				};
+		cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
+		cancel.action = { window.close };
+		ok = Button.new.states_([["OK"]]).maxWidth_(60);
+		ok.action = {
+			key !? {
+				// open with key - not absPath!
+				model.open(key, editor: editor.value);
+				pluginPath = absPath;
+				window.close;
 			};
+		};
 
-			window.layout_(VLayout(
-				browser, status, HLayout(search, dir, file, editor, nil, cancel, ok)
-			));
-			window.view.addAction({ dialog = nil }, 'onClose');
-			dialog = window;
+		window.layout_(VLayout(
+			browser, status, HLayout(search, dir, file, editor, nil, cancel, ok)
+		));
+
+		updateBrowser.value;
+		^window;
+	}
+
+	prBrowse {
+		var window;
+		model.notNil.if {
+			// prevent opening the dialog multiple times
+			browser !? { ^this };
+			// create dialog
+			window = VSTPluginGui.prMakePluginBrowser(model);
+			window.view.addAction({ browser = nil }, 'onClose');
+			browser = window;
 			window.front;
-			updateBrowser.value;
 		} { "no model!".error };
 	}
+
 	writeName {}
 }
 
