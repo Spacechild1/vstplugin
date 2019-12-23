@@ -418,15 +418,17 @@ VSTPluginGui : ObjectGui {
 		server = model.synth.server;
 		window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 		browser = ListView.new.selectionMode_(\single);
+		// called when a plugin is selected
 		browser.action = {
 			var info = filteredPlugins[browser.value];
-			key = info.key;
 			info.notNil.if {
+				key = info.key;
 				absPath = info.path;
 				showPath.value;
 				browser.toolTip_(info.prToString);
 			} { "bug: no info!".error; }; // should never happen
 		};
+		// called when one of the filters change
 		applyFilter = {
 			var items;
 			filteredPlugins = plugins.select({ arg item;
@@ -441,10 +443,10 @@ VSTPluginGui : ObjectGui {
 					// use shortcircuiting to skip test if 'ok' is already 'false'
 					ok = ok and: {
 						switch(typeFilter.value,
-							1, { vst3.not and: { item.isSynth.not } },
-							2, { vst3.not and: { item.isSynth } },
-							3, { vst3 and: { item.isSynth.not } },
-							4, { vst3 and: { item.isSynth } },
+							1, { vst3.not and: { item.isSynth.not } }, // VST
+							2, { vst3.not and: { item.isSynth } }, // VSTi
+							3, { vst3 and: { item.isSynth.not } }, // VST3
+							4, { vst3 and: { item.isSynth } }, // VST3i
 							false
 						)
 					};
@@ -464,11 +466,21 @@ VSTPluginGui : ObjectGui {
 			});
 			browser.toolTip_(nil);
 			browser.items = items;
-			browser.value !? { browser.action.value } ?? { showPath.value };
+			// restore current plugin
+			key !? {
+				filteredPlugins.do { arg item, index;
+					(item.key == key).if { browser.value_(index) }
+				}
+			};
+			// manually call action
+			browser.value !? { browser.action.value } ?? { key = nil; absPath = nil; showPath.value };
 		};
+		// called after a new search
 		updatePlugins = {
 			var categories = Set.new;
 			var vendors = Set.new;
+			var oldCat = categoryFilter.item;
+			var oldVendor = vendorFilter.item;
 			plugins = VSTPlugin.pluginList(server, sorted: true);
 			plugins.do({ arg item;
 				vendors.add(item.vendor);
@@ -476,6 +488,18 @@ VSTPluginGui : ObjectGui {
 			});
 			categoryFilter.items = ["All"] ++ categories.asArray.sort({ arg a, b; a.compare(b, true) < 0});
 			vendorFilter.items = ["All"] ++ vendors.asArray.sort({ arg a, b; a.compare(b, true) < 0});
+			// restore filters
+			oldCat.notNil.if {
+				categoryFilter.items.do { arg item, index;
+					(item == oldCat).if { categoryFilter.value_(index) }
+				}
+			};
+			oldVendor.notNil.if {
+				vendorFilter.items.do { arg item, index;
+					(item == oldVendor).if { vendorFilter.value_(index) }
+				}
+			};
+			// now filter the plugins
 			applyFilter.value;
 		};
 
@@ -544,6 +568,8 @@ VSTPluginGui : ObjectGui {
 			HLayout(search, dir, file, editor, nil, cancel, ok)
 		));
 
+		// start at current plugin
+		model.info.notNil.if { key = model.info.key };
 		updatePlugins.value;
 		^window;
 	}
