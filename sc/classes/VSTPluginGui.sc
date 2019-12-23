@@ -508,7 +508,7 @@ VSTPluginGui : ObjectGui {
 		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 		categoryFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 
-		status = StaticText.new.align_(\left).string_("Path:");
+		status = StaticText.new.align_(\left).string_("Path:").fixedHeight_(24);
 		showPath = { status.stringColor_(Color.black);
 			absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
 		};
@@ -560,7 +560,7 @@ VSTPluginGui : ObjectGui {
 			browser,
 			HLayout(
 				[StaticText.new.string_("Filter:"), stretch: 0], [stringFilter, stretch: 1],
-				[StaticText.new.string_("Type"), stretch: 0], [typeFilter, stretch: 1],
+				[StaticText.new.string_("Type"), stretch: 0], [typeFilter, stretch: 0], // doesn't need to grow!
 				[StaticText.new.string_("Vendor"), stretch: 0], [vendorFilter, stretch: 1],
 				[StaticText.new.string_("Category"), stretch: 0], [categoryFilter, stretch: 1]
 			),
