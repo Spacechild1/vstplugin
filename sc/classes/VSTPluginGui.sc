@@ -413,20 +413,21 @@ VSTPluginGui : ObjectGui {
 
 	*prMakePluginBrowser { arg model, settings;
 		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
-		var showPath, showSearch, updatePlugins, plugins, filteredPlugins, server;
+		var showSearch, updatePlugins, plugins, filteredPlugins, server;
 		var applyFilter, stringFilter, typeFilter, vendorFilter, categoryFilter;
 		server = model.synth.server;
 		window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 		browser = ListView.new.selectionMode_(\single);
 		// called when a plugin is selected
 		browser.action = {
-			var info = filteredPlugins[browser.value];
+			var info;
+			browser.value !? { info = filteredPlugins[browser.value] };
 			info.notNil.if {
 				key = info.key;
 				absPath = info.path;
-				showPath.value;
 				browser.toolTip_(info.prToString);
-			} { "bug: no info!".error; }; // should never happen
+			} { key = nil; absPath = nil };
+			showSearch.(false);
 		};
 		// called when one of the filters change
 		applyFilter = {
@@ -473,7 +474,7 @@ VSTPluginGui : ObjectGui {
 				}
 			};
 			// manually call action
-			browser.value !? { browser.action.value } ?? { key = nil; absPath = nil; showPath.value };
+			browser.action.value;
 		};
 		// called after a new search
 		updatePlugins = {
@@ -509,41 +510,38 @@ VSTPluginGui : ObjectGui {
 		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 		categoryFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 
-		status = StaticText.new.align_(\left).string_("Path:").fixedHeight_(24);
-		showPath = { status.stringColor_(Color.black);
-			absPath !? { status.string_("Path:" + absPath) } ?? { status.string_("Path:") }
+		status = StaticText.new.align_(\left);
+		showSearch = { arg show;
+			show.if { status.stringColor_(Color.red); status.string_("searching..."); } { status.string_("") };
 		};
-		showSearch = { status.stringColor_(Color.red); status.string_("searching..."); };
-
 		search = Button.new.states_([["Search"]]).maxWidth_(60)
-		.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)");
-		search.action = {
-			showSearch.value;
+		.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)")
+		.action_({
+			showSearch.(true);
 			VSTPlugin.search(server, verbose: true, action: {
 				{ updatePlugins.value; }.defer;
 			});
-		};
+		});
 		dir = Button.new.states_([["Directory"]]).maxWidth_(60)
-		.toolTip_("Search a directory for VST plugins");
-		dir.action = {
+		.toolTip_("Search a directory for VST plugins")
+		.action_({
 			FileDialog.new({ arg d;
-				showSearch.value;
+				showSearch.(true);
 				VSTPlugin.search(server, dir: d, useDefault: false, verbose: true, action: {
 					{ updatePlugins.value; }.defer;
 				});
 			}, nil, 2, 0, true, pluginPath);
-		};
+		});
 		file = Button.new.states_([["File"]]).maxWidth_(60)
-		.toolTip_("Open a VST plugin file");
-		file.action = {
+		.toolTip_("Open a VST plugin file")
+		.action_({
 			FileDialog.new({ arg p;
+				key = p;
 				absPath = p;
-				key = absPath;
-				showPath.value;
 				ok.action.value;
 			}, nil, 1, 0, true, pluginPath);
-		};
-		editor = CheckBox.new(text: "editor");
+		});
+		editor = CheckBox.new(text: "Editor");
 
 		cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
 		cancel.action = { window.close };
@@ -552,7 +550,7 @@ VSTPluginGui : ObjectGui {
 			key !? {
 				// open with key - not absPath!
 				model.open(key, editor: editor.value);
-				pluginPath = absPath;
+				pluginPath = absPath.dirname;
 				window.close;
 			};
 		};
