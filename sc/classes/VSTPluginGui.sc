@@ -503,7 +503,8 @@ VSTPluginGui : ObjectGui {
 			applyFilter.value;
 		};
 
-		stringFilter = TextField.new.action_(applyFilter);
+		// update on every key input; the delay makes sure we really see the updated text.
+		stringFilter = TextField.new.addAction({ AppClock.sched(0, applyFilter) }, 'keyDownAction');
 		typeFilter = PopUpMenu.new.items_(["All", "VST", "VSTi", "VST3", "VST3i"]).action_(applyFilter);
 		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 		categoryFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
