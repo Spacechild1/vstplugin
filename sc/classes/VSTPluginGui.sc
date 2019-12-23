@@ -203,15 +203,13 @@ VSTPluginGui : ObjectGui {
 				TextField.new(bounds: Rect.new(pos.x, pos.y, 200, 30))
 				.name_("Preset name")
 				.string_(name)
-				.addAction({ arg self ... args;
+				.action_({ arg self;
 					// Return key pressed
-					(args[4] == 0x01000004).if {
-						(self.string.size > 0).if {
-							action.value(self.string);
-						};
-						self.close
-					}
-				}, 'keyDownAction')
+					(self.string.size > 0).if {
+						action.value(self.string);
+					};
+					self.close
+				})
 				.front;
 			};
 
