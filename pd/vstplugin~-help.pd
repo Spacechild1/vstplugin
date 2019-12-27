@@ -1,3 +1,4 @@
+#N struct 1004-button float x float y float color float id;
 #N canvas 540 112 557 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
@@ -883,17 +884,17 @@ f 44;
 #N canvas 664 174 730 446 info 0;
 #X obj 21 24 inlet;
 #X symbolatom 21 88 10 0 0 0 - - -;
-#X floatatom 68 258 5 0 0 0 - - -;
-#X floatatom 115 256 5 0 0 0 - - -;
-#X obj 163 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X floatatom 18 282 5 0 0 0 - - -;
+#X floatatom 65 280 5 0 0 0 - - -;
+#X obj 113 280 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 210 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 160 281 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 258 257 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 208 281 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 305 256 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 255 280 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 68 234 route inputs outputs midiin midiout editor synth;
+#X obj 18 258 route inputs outputs midiin midiout editor synth;
 #X obj 21 45 route name, f 12;
 #X obj 21 66 symbol;
 #X symbolatom 89 109 10 0 0 0 - - -;
@@ -904,14 +905,17 @@ f 44;
 #X obj 227 133 symbol;
 #X symbolatom 308 178 10 0 0 0 - - -;
 #X obj 308 156 symbol;
-#X symbolatom 383 202 10 0 0 0 - - -;
-#X obj 383 180 symbol;
+#X symbolatom 475 224 10 0 0 0 - - -;
+#X obj 475 202 symbol;
 #X obj 89 65 route path, f 12;
 #X obj 158 89 route vendor;
 #X obj 227 112 route category;
 #X obj 308 135 route version;
-#X obj 383 159 route id, f 12;
-#X obj 452 220 t a;
+#X obj 475 181 route id, f 12;
+#X obj 544 242 t a;
+#X obj 382 158 route sdkversion;
+#X obj 382 179 symbol;
+#X symbolatom 382 200 10 0 0 0 - - -;
 #X connect 0 0 9 0;
 #X connect 8 0 2 0;
 #X connect 8 1 3 0;
@@ -934,10 +938,12 @@ f 44;
 #X connect 23 0 16 0;
 #X connect 23 1 24 0;
 #X connect 24 0 18 0;
-#X connect 24 1 25 0;
 #X connect 25 0 20 0;
 #X connect 25 1 26 0;
 #X connect 26 0 8 0;
+#X connect 27 0 28 0;
+#X connect 27 1 25 0;
+#X connect 28 0 29 0;
 #X restore 403 209 pd info;
 #X obj 36 57 spigot 1;
 #X obj 81 36 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0 1

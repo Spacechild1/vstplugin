@@ -1155,26 +1155,25 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         if (!x->check_plugin()) return;
         info = &x->x_plugin->info();
     }
-    if (info){
-        sendInfo(x, "path", info->path);
-        sendInfo(x, "name", info->name);
-        sendInfo(x, "vendor", info->vendor);
-        sendInfo(x, "category", info->category);
-        sendInfo(x, "version", info->version);
-        sendInfo(x, "inputs", info->numInputs);
-        sendInfo(x, "outputs", info->numOutputs);
-        sendInfo(x, "auxinputs", info->numAuxInputs);
-        sendInfo(x, "auxoutputs", info->numAuxOutputs);
-        sendInfo(x, "id", ("0x"+info->uniqueID));
-        sendInfo(x, "editor", info->hasEditor());
-        sendInfo(x, "synth", info->isSynth());
-        sendInfo(x, "single", info->singlePrecision());
-        sendInfo(x, "double", info->doublePrecision());
-        sendInfo(x, "midiin", info->midiInput());
-        sendInfo(x, "midiout", info->midiOutput());
-        sendInfo(x, "sysexin", info->sysexInput());
-        sendInfo(x, "sysexout", info->sysexOutput());
-    }
+    sendInfo(x, "path", info->path);
+    sendInfo(x, "name", info->name);
+    sendInfo(x, "vendor", info->vendor);
+    sendInfo(x, "category", info->category);
+    sendInfo(x, "version", info->version);
+    sendInfo(x, "sdkversion", info->sdkVersion);
+    sendInfo(x, "inputs", info->numInputs);
+    sendInfo(x, "outputs", info->numOutputs);
+    sendInfo(x, "auxinputs", info->numAuxInputs);
+    sendInfo(x, "auxoutputs", info->numAuxOutputs);
+    sendInfo(x, "id", ("0x"+info->uniqueID));
+    sendInfo(x, "editor", info->hasEditor());
+    sendInfo(x, "synth", info->isSynth());
+    sendInfo(x, "single", info->singlePrecision());
+    sendInfo(x, "double", info->doublePrecision());
+    sendInfo(x, "midiin", info->midiInput());
+    sendInfo(x, "midiout", info->midiOutput());
+    sendInfo(x, "sysexin", info->sysexInput());
+    sendInfo(x, "sysexout", info->sysexOutput());
 }
 
 // query plugin for capabilities
