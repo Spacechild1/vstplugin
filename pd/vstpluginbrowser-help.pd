@@ -1,10 +1,9 @@
-#N canvas 0 0 637 381 10;
+#N canvas 18 32 637 381 10;
 #X obj 17 218 print open message;
 #X obj 75 245 vstplugin~;
 #X text 213 135 recursively search a directory for VST plugins. in
 the file dialog \, select any file within the directory you want to
 search, f 48;
-#X text 214 195 search for a VST plugin file and open it;
 #X obj 209 63 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X obj 210 118 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
@@ -18,7 +17,6 @@ search, f 48;
 #X text 213 63 search VST directories:;
 #X text 213 118 search user directory:;
 #X text 212 310 open:;
-#X text 213 217 editor:;
 #X text 211 83 recursively search the standard VST directories \, see
 vstplugin~-help.pd → [pd search])., f 48;
 #X text 216 329 open the selected VST plugin. this generates an appropiate
@@ -29,13 +27,15 @@ flag);
 0;
 #X text 20 33 search \, show and open available VST plugins, f 44
 ;
-#X text 24 12 vstbrowser;
 #X text 16 245 use with;
-#X text 213 176 open plugin file:;
 #X obj 17 61 vstpluginbrowser;
 #X obj 214 253 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 223 259 NOTE: on macOS the VST editor is highly experimental
 and runs on the audio thread! see the README for more information.
 , f 44;
-#X connect 21 0 0 0;
+#X text 213 176 search plug-in file:;
+#X text 214 195 search for a VST plugin file;
+#X text 213 217 use VST editor:;
+#X text 24 12 vstpluginbrowser;
+#X connect 17 0 0 0;
