@@ -1,5 +1,4 @@
-#N struct 1004-button float x float y float color float id;
-#N canvas 495 126 557 589 10;
+#N canvas 495 126 552 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -100,7 +99,7 @@
 #X obj 27 318 r \$0-msg;
 #X text 255 235 close the plugin;
 #X text 272 305 show/hide editor;
-#X text 257 261 print plugin info to console;
+#X text 257 261 print plugin info to console, f 18;
 #X text 184 490 parameters;
 #X text 273 489 FX programs/banks;
 #N canvas 753 189 627 553 parameter 0;
@@ -607,9 +606,9 @@ locations on the filesystem., f 52;
 #X msg 653 571 program_data <bytes>;
 #X text 569 698 responds with;
 #X msg 657 696 bank_data <bytes>;
-#X msg 21 462 preset_change;
 #X text 20 442 whenever the preset list of a plugin changes \,;
-#X text 110 463 is sent to each corresponding vstplugin~ instance;
+#X text 148 463 is sent to each corresponding vstplugin~ instance;
+#X msg 21 462 preset_change <key>;
 #X connect 1 0 41 0;
 #X connect 3 0 0 0;
 #X connect 5 0 34 0;
@@ -858,11 +857,11 @@ can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 58
 ;
-#X msg 73 484 open 1;
-#X text 124 485 on success and;
+#X text 156 485 on success and;
 #X text 21 484 outputs;
-#X msg 218 485 open 0;
-#X text 266 485 on failure;
+#X msg 250 485 open 0;
+#X text 298 485 on failure;
+#X msg 73 484 open 1 <key>;
 #X connect 0 0 5 0;
 #X connect 1 0 2 0;
 #X connect 2 0 0 0;
@@ -884,7 +883,7 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X obj 19 46 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 48 creation arguments:;
-#N canvas 212 227 301 177 message-out 0;
+#N canvas 364 346 301 177 message-out 0;
 #X obj 10 15 inlet;
 #X obj 10 36 t a a;
 #X obj 10 127 s \$0-program-data;
@@ -895,11 +894,13 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X obj 82 36 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0 1
 ;
 #X text 83 18 print messages;
+#X obj 241 126 s \$0-out;
 #X connect 0 0 1 0;
 #X connect 1 0 3 0;
 #X connect 1 1 6 0;
 #X connect 3 0 2 0;
 #X connect 3 1 4 0;
+#X connect 3 2 9 0;
 #X connect 6 0 5 0;
 #X connect 7 0 6 1;
 #X restore 78 364 pd message-out;

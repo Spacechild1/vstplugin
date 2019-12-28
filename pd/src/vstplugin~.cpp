@@ -1081,9 +1081,14 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     }
     bool success = x->open_plugin(pathsym, editor);
     // output message
-    t_atom a;
-    SETFLOAT(&a, success);
-    outlet_anything(x->x_messout, gensym("open"), 1, &a);
+    t_atom a[2];
+    int n = 1;
+    SETFLOAT(&a[0], success);
+    if (success){
+        SETSYMBOL(&a[1], x->x_key);
+        n++;
+    }
+    outlet_anything(x->x_messout, gensym("open"), n, a);
 }
 
 bool t_vstplugin::open_plugin(t_symbol *s, bool editor){
@@ -1813,7 +1818,9 @@ static void vstplugin_preset_notify(t_vstplugin *x){
 static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
     // only forward message to matching instances
     if (s == x->x_key){
-        outlet_anything(x->x_messout, gensym("preset_change"), 0, 0);
+        t_atom a;
+        SETSYMBOL(&a, s);
+        outlet_anything(x->x_messout, gensym("preset_change"), 1, &a);
     }
 }
 
@@ -2221,9 +2228,14 @@ static void vstplugin_loadbang(t_vstplugin *x, t_floatarg action){
     // x_path is set in constructor
     if ((int)action == 0 && x->x_path){ // LB_LOAD
         bool success = x->x_plugin != nullptr;
-        t_atom a;
-        SETFLOAT(&a, success);
-        outlet_anything(x->x_messout, gensym("open"), 1, &a);
+        t_atom a[2];
+        int n = 1;
+        SETFLOAT(&a[0], success);
+        if (success){
+            SETSYMBOL(&a[1], x->x_key);
+            n++;
+        }
+        outlet_anything(x->x_messout, gensym("open"), n, a);
         if (!success){
             x->x_path = nullptr; // undo HACK in vstplugin ctor
         }
