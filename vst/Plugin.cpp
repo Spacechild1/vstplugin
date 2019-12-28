@@ -1609,6 +1609,7 @@ void PluginInfo::scanPresets(){
         }
     }
     presets = std::move(results);
+    sortPresets(false);
 #if 0
     if (numPresets()){
         LOG_VERBOSE("presets:");
@@ -1617,6 +1618,26 @@ void PluginInfo::scanPresets(){
         }
     }
 #endif
+}
+
+bool stringCompare(const std::string& lhs, const std::string& rhs){
+    return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
+        [](const auto& c1, const auto& c2){ return std::tolower(c1) < std::tolower(c2); }
+    );
+}
+
+void PluginInfo::sortPresets(bool userOnly){
+    auto it1 = presets.begin();
+    auto it2 = it1;
+    if (userOnly){
+        // get iterator past user presets
+        while (it2 != presets.end() && it2->type == PresetType::User) ++it2;
+    } else {
+        it2 = presets.end();
+    }
+    std::sort(it1, it2, [](const auto& lhs, const auto& rhs) {
+        return stringCompare(lhs.name, rhs.name);
+    });
 }
 
 int PluginInfo::findPreset(const std::string &name) const {
@@ -1646,6 +1667,7 @@ bool PluginInfo::renamePreset(int index, const std::string& newName){
             if (renameFile(presets[index].path, newPath)){
                 presets[index].name = newName;
                 presets[index].path = newPath;
+                sortPresets();
                 return true;
             }
         }
@@ -1679,9 +1701,17 @@ int PluginInfo::addPreset(const std::string &name) {
     preset.name = name;
     preset.type = PresetType::User;
     preset.path = makePresetPath(name);
-    // LATER sort alphabetically
-    presets.insert(presets.begin(), std::move(preset));
-    return 0;
+    auto it = presets.begin();
+    while (it != presets.end() && it->type == PresetType::User){
+        if (stringCompare(preset.name, it->name)){
+            break;
+        } else {
+            ++it;
+        }
+    }
+    int index = (int)(it - presets.begin()); // before reallocation!
+    presets.insert(it, std::move(preset));
+    return index;
 }
 
 std::string PluginInfo::makePresetPath(const std::string &name, PresetType type) const {

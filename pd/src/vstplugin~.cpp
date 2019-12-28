@@ -802,16 +802,17 @@ void t_vsteditor::set_pos(int x, int y){
 /*---------------- t_vstplugin (public methods) ------------------*/
 
 // search
+
+namespace vst {
+    bool stringCompare(const std::string& lhs, const std::string& rhs);
+}
+
 static void vstplugin_search_done(t_vstplugin *x){
     verbose(PD_NORMAL, "search done");
     // sort plugin names alphabetically and case independent
     auto& plugins = x->x_search_data->s_plugins;
     std::sort(plugins.begin(), plugins.end(), [](const auto& lhs, const auto& rhs){
-        std::string s1 = lhs->s_name;
-        std::string s2 = rhs->s_name;
-        for (auto& c : s1) { c = std::tolower(c); }
-        for (auto& c : s2) { c = std::tolower(c); }
-        return s1 < s2;
+        return vst::stringCompare(lhs->s_name, rhs->s_name);
     });
     for (auto& plugin : plugins){
         t_atom msg;

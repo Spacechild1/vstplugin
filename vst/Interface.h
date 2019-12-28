@@ -304,6 +304,7 @@ struct PluginInfo {
     std::string getPresetFolder(PresetType type, bool create = false) const;
     std::string makePresetPath(const std::string& name, PresetType type = PresetType::User) const;
 private:
+    void sortPresets(bool userOnly = true);
     mutable bool didCreatePresetFolder = false;
     mutable std::string vendorBashed;
     mutable std::string nameBashed;
