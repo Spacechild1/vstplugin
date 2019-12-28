@@ -1,5 +1,5 @@
 #N struct 1004-button float x float y float color float id;
-#N canvas 540 112 557 589 10;
+#N canvas 495 126 557 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -103,31 +103,30 @@
 #X text 257 261 print plugin info to console;
 #X text 184 490 parameters;
 #X text 273 489 FX programs/banks;
-#N canvas 753 189 760 527 parameter 0;
+#N canvas 753 189 627 553 parameter 0;
 #X obj 100 76 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
 #X obj 19 18 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 19 124 param_set \$1 \$2;
-#X obj 40 230 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+#X obj 39 249 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X msg 50 351 param_count;
-#X msg 54 377 param_list;
+#X msg 50 357 param_count;
+#X msg 54 412 param_list;
 #X msg 30 190 param_get \$1;
 #X obj 30 166 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X msg 57 406 param_dump;
-#X obj 19 449 s \$0-msg;
+#X msg 56 464 param_dump;
+#X obj 19 518 s \$0-msg;
 #X text 158 75 index;
 #X text 124 123 set parameter;
-#X text 97 230 index;
-#X text 131 351 get number of parameters;
+#X text 96 249 index;
+#X text 131 357 get number of parameters;
 #X symbolatom 27 40 10 0 0 0 - - -;
 #X text 82 16 float value (0.0 - 1.0);
 #X text 268 17 a VST parameter can take two forms:;
 #X text 95 37 string value (not supported by all plugins), f 26;
-#X text 269 75 see [param_set <f> <f>( and [param_get <f>(;
-#X text 270 99 2) a string representation which is mainly used for
+#X text 269 79 2) a string representation which is mainly used for
 display \, but many plugins also allow you to set the parameter in
 this way. it corresponds to the symbol box in the generic editor.,
 f 47;
@@ -135,44 +134,58 @@ f 47;
 range 0 to 1 and corresponds to the slider position in the generic
 editor., f 47;
 #X obj 19 98 list prepend 0;
-#X text 116 200 (index \, value \, display);
-#X msg 39 256 param_info \$1;
-#X text 133 254 get parameter info;
-#X text 131 270 (index \, name \, label \, ...);
-#X text 54 291 the label is the unit of measurement \, e.g. dB \, ms
-, f 26;
-#X text 54 319 in the future \, more info might be added;
-#X text 132 378 get all parameter info;
-#X text 132 406 get all parameter state;
+#X msg 39 269 param_info \$1;
+#X text 128 269 get parameter info;
+#X text 44 315 the label is the unit of measurement \, e.g. dB \, ms
+, f 50;
+#X text 44 332 in the future \, more info might be added;
+#X text 127 412 get all parameter info;
+#X text 131 464 get all parameter state;
 #X symbolatom 115 98 10 0 0 0 - - -;
 #X symbolatom 92 166 10 0 0 0 - - -;
 #X text 28 149 index;
 #X text 91 147 name;
-#X text 117 186 get parameter;
+#X text 114 189 get parameter;
 #X text 183 97 name;
-#X text 272 152 Each parameter can be accessed by either its index
+#X text 271 132 Each parameter can be accessed by either its index
 or name (with whitespace replaced with underscores), f 46;
-#X obj 271 196 cnv 20 285 65 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 270 176 cnv 20 285 65 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 279 204 NOTE: The [param_set( message is scheduled at the current
+#X text 278 184 NOTE: The [param_set( message is scheduled at the current
 logical time. This allows for *sample accurate* automation of VST3
 plugins - but the plugin has to actually support it!, f 44;
-#X connect 0 0 21 1;
-#X connect 1 0 21 0;
+#X text 33 209 responds with;
+#X text 45 292 responds with;
+#X text 53 381 responds with;
+#X text 59 433 responds with a series of;
+#X msg 219 432 param_info;
+#X text 292 433 messages;
+#X text 61 486 responds with a series of;
+#X text 295 485 messages;
+#X msg 221 485 param_state;
+#X text 333 400 is sent through the rightmost outlet.;
+#X msg 121 212 param_state <index> <value> >display>, f 20;
+#X msg 131 293 param_info <index> <name> <label> ...;
+#X msg 140 380 param_count <count>;
+#X text 333 348 When you edit parameters in the GUI or automate linked
+parameters \,, f 34;
+#X msg 336 379 param_automated <index> <value>;
+#X connect 0 0 20 1;
+#X connect 1 0 20 0;
 #X connect 2 0 9 0;
-#X connect 3 0 23 0;
+#X connect 3 0 21 0;
 #X connect 4 0 9 0;
 #X connect 5 0 9 0;
 #X connect 6 0 9 0;
 #X connect 7 0 6 0;
 #X connect 8 0 9 0;
-#X connect 14 0 21 0;
-#X connect 21 0 2 0;
-#X connect 23 0 9 0;
-#X connect 30 0 21 1;
-#X connect 31 0 6 0;
+#X connect 14 0 20 0;
+#X connect 20 0 2 0;
+#X connect 21 0 9 0;
+#X connect 27 0 20 1;
+#X connect 28 0 6 0;
 #X restore 185 510 pd parameter;
-#N canvas 672 104 609 571 midi 0;
+#N canvas 672 104 609 578 midi 0;
 #X obj 33 466 s \$0-msg;
 #X msg 33 34 midi_raw <list>;
 #X msg 51 111 midi_note 1 60 127;
@@ -201,14 +214,19 @@ plugins - but the plugin has to actually support it!, f 44;
 #X msg 82 340 midi_program 1 \$1;
 #X msg 87 379 midi_polytouch 1 60 127;
 #X msg 95 418 midi_touch 1 127;
-#X obj 106 457 cnv 20 285 65 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 106 494 cnv 20 285 65 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 210 136 the MIDI pitch can be a float \, but this is not part
 of MIDI standard and only supported by certain VST instruments.;
 #X msg 56 138 midi_note 1 60.5 127 50;
-#X text 114 465 NOTE: MIDI messages are scheduled at the current logical
+#X text 114 502 NOTE: MIDI messages are scheduled at the current logical
 time. This allows for *sample accurate* event proccessing - but the
 plugin has to actually support it!, f 42;
+#X msg 108 468 midi <bytes>;
+#X msg 230 468 sysex <bytes>;
+#X text 191 469 resp.;
+#X text 105 448 MIDI and SysEx messages sent *from* the plugin are
+output as;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 0 0;
@@ -257,6 +275,8 @@ plugin parameters \, e.g. a delay time measured in quarter notes.,
 f 51;
 #X text 20 377 to simply 'rewind' the sequencer \, [transport_set 0
 \, reset( should always work.;
+#X text 82 283 responds with;
+#X msg 166 283 transport <pos>;
 #X connect 1 0 0 0;
 #X connect 2 0 1 0;
 #X connect 3 0 0 0;
@@ -324,115 +344,116 @@ and 2 input and 4 output channels., f 49;
 and 2 input and 2 output channels., f 49;
 #X restore 23 74 pd creation arguments;
 #N canvas 387 235 555 431 advanced 0;
-#X obj 23 358 s \$0-msg;
-#X msg 37 69 can_do \$1;
-#X symbolatom 37 48 24 0 0 0 - - -;
-#X text 190 44 query the plugin for special capabilites. you have to
+#X obj 23 386 s \$0-msg;
+#X msg 24 69 can_do \$1;
+#X symbolatom 24 48 24 0 0 0 - - -;
+#X text 175 47 query the plugin for special capabilites. you have to
 know the query string: some are documented in the VST SDK \, some are
 not..., f 44;
-#X text 57 165 access special functionality of a plugin which is not
+#X text 44 166 access special functionality of a plugin which is not
 available via the standard parameter interface., f 54;
-#X text 188 83 you will get a message "can_do" with the query string
+#X text 173 86 you will get a message "can_do" with the query string
 + the result as an integer:, f 42;
-#X text 187 113 1: yes \, -1: no \, 0: don't know;
-#X msg 43 145 vendor_method <index> <value> <opt> <ptr>;
-#X text 59 225 arguments:;
-#X text 57 263 <value>: pointer sized integer;
-#X text 57 246 <index>: 32bit integer;
-#X text 57 279 <opt>: float;
-#X text 59 298 <ptr>: raw data as list of bytes;
-#X text 266 240 <index> and <value> can be provided as floats or symbols
-(in hex representation \, e.g. "0x10FD7F04"), f 39;
-#X text 57 194 generally \, you have to know what you're doing \, check
+#X text 172 116 1: yes \, -1: no \, 0: don't know;
+#X msg 36 145 vendor_method <index> <value> <opt> <ptr>;
+#X text 46 226 arguments:;
+#X text 44 264 <value>: pointer sized integer;
+#X text 44 247 <index>: 32bit integer;
+#X text 44 280 <opt>: float;
+#X text 46 299 <ptr>: raw data as list of bytes;
+#X text 44 195 generally \, you have to know what you're doing \, check
 the documentation of the plugin to see what data it expects.;
-#X text 59 318 the return value is sent in a "vendor_method <f> <s>"
-message in both float and symbol (hex) representation., f 55;
-#X text 82 350 the purpose of sending/receiving hex symbols is to circumvent
+#X text 46 353 the purpose of sending/receiving hex symbols is to circumvent
 the limited precision of decimal numbers in Pd., f 63;
 #X text 21 24 VST2 only:;
+#X msg 229 319 vendor_method <f> <s>;
+#X text 47 336 message in both float and symbol (hex) representation.
+;
+#X text 238 242 <index> and <value> can be provided as floats or symbols
+(in hex representation \, e.g. "0x10FD7F04"), f 41;
+#X text 46 319 the return value is sent as a;
 #X connect 1 0 0 0;
 #X connect 2 0 1 0;
 #X connect 7 0 0 0;
 #X restore 394 549 pd advanced;
 #X f 14;
 #X text 391 530 advanced stuff;
-#N canvas 486 0 887 709 preset 0;
-#X obj 525 356 s \$0-msg;
-#X obj 525 57 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+#N canvas 486 0 887 751 preset 0;
+#X obj 525 377 s \$0-msg;
+#X obj 525 52 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X text 629 77 set program;
-#X msg 536 110 program_get;
-#X text 616 111 get the current program index;
+#X text 629 72 set program;
+#X msg 536 98 program_get;
+#X text 616 99 get the current program index;
 #X symbolatom 547 146 10 0 0 2 - - -;
-#X text 687 224 get the name of a program;
-#X obj 558 202 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+#X text 687 219 get the name of a program;
+#X obj 558 197 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X msg 579 293 program_count;
-#X text 670 292 get number of programs;
-#X msg 588 326 program_list;
-#X text 673 327 list all programs (index + name);
-#X obj 24 515 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 579 295 program_count;
+#X text 669 294 get number of programs;
+#X msg 588 342 program_list;
+#X obj 24 584 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 24 535 openpanel;
-#X msg 24 557 program_read \$1;
-#X obj 33 583 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X obj 24 604 openpanel;
+#X msg 24 626 program_read \$1;
+#X obj 33 650 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 33 603 savepanel;
-#X msg 33 622 program_write \$1;
-#X obj 270 513 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X obj 33 670 savepanel;
+#X msg 33 689 program_write \$1;
+#X obj 270 582 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 270 533 openpanel;
-#X obj 282 581 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X obj 270 602 openpanel;
+#X obj 282 650 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 282 601 savepanel;
-#X obj 270 646 s \$0-msg;
-#X msg 270 554 bank_read \$1;
-#X msg 282 623 bank_write \$1;
+#X obj 282 670 savepanel;
+#X obj 270 715 s \$0-msg;
+#X msg 270 623 bank_read \$1;
+#X msg 282 692 bank_write \$1;
 #X text 617 147 name;
-#X text 587 58 index;
-#X text 619 200 index;
-#X text 679 261 get name of current program;
-#X obj 24 647 s \$0-msg;
-#X text 539 516 get program data as list of bytes;
-#X text 528 476 set program data as list of bytes;
-#X obj 529 564 s \$0-msg;
-#X obj 528 674 s \$0-msg;
+#X text 587 53 index;
+#X text 619 195 index;
+#X text 679 243 get name of current program;
+#X obj 24 714 s \$0-msg;
+#X text 539 530 get program data as list of bytes;
+#X text 528 490 set program data as list of bytes;
+#X obj 529 593 s \$0-msg;
+#X obj 528 718 s \$0-msg;
 #X text 673 169 set name of current program;
 #X msg 547 169 program_name_set \$1;
-#X msg 558 223 program_name_get \$1;
-#X msg 568 261 program_name_get;
-#X msg 529 495 program_data_set <list>;
-#X msg 542 538 program_data_get;
-#X msg 528 607 bank_data_set <list>;
-#X msg 536 649 bank_data_get;
-#X msg 525 79 program_set \$1;
-#X obj 523 26 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+#X msg 558 218 program_name_get \$1;
+#X msg 568 243 program_name_get;
+#X msg 529 509 program_data_set <list>;
+#X msg 542 552 program_data_get;
+#X msg 528 638 bank_data_set <list>;
+#X msg 536 680 bank_data_get;
+#X msg 525 74 program_set \$1;
+#X obj 523 16 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X obj 19 425 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 19 494 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 23 456 .fxp/.fxb (VST2) and .vstpreset (VST3) files are standard
+#X text 23 525 .fxp/.fxb (VST2) and .vstpreset (VST3) files are standard
 formats recognized by all conforming VST hosts \, so you can easily
 exchange your presets between Pd and other hosts (e.g. your favourite
 DAW);
-#X text 43 515 read program file (.fxp/.vstpreset);
-#X text 52 583 write program file (.fxp/.vstpreset);
-#X text 301 580 write bank file (.fxb) - VST2 only;
-#X text 289 513 read bank file (.fxb) - VST2 only;
-#X text 528 588 set bank data as list of bytes - VST2 only;
-#X text 534 628 get bank data as list of bytes - VST2 only;
-#X text 526 422 your can also work with the raw plugin data \, e.g.
+#X text 43 584 read program file (.fxp/.vstpreset);
+#X text 52 650 write program file (.fxp/.vstpreset);
+#X text 301 649 write bank file (.fxb) - VST2 only;
+#X text 289 582 read bank file (.fxb) - VST2 only;
+#X text 528 619 set bank data as list of bytes - VST2 only;
+#X text 534 659 get bank data as list of bytes - VST2 only;
+#X text 526 436 your can also work with the raw plugin data \, e.g.
 to build your own preset management in Pd:, f 48;
-#X obj 525 391 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 525 405 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 29 429 read/write VST preset files;
-#X text 535 395 raw VST plugin data;
-#X msg 21 82 preset_count;
-#X obj 21 388 s \$0-msg;
+#X text 29 498 read/write VST preset files;
+#X text 535 409 raw VST plugin data;
+#X msg 21 92 preset_count;
+#X obj 21 419 s \$0-msg;
 #X obj 18 16 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 28 19 VST preset management;
-#X msg 30 110 preset_list;
-#X text 107 82 get number of presets;
+#X msg 30 137 preset_list;
+#X text 107 92 get number of presets;
 #N canvas 922 209 586 478 more 0;
 #X text 34 399 0 - user (writeable);
 #X text 34 416 1 - userFactory;
@@ -491,15 +512,15 @@ to build your own preset management in Pd:, f 48;
 #X text 85 140 %APPDATA%/VST3 Presets/[VENDOR]/[PLUGIN];
 #X text 84 160 %PROGRAMDATA%/VST3 Presets/[VENDOR]/[PLUGIN];
 #X restore 277 67 pd more;
-#X msg 39 160 preset_info \$1;
-#X obj 39 139 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+#X msg 39 187 preset_info \$1;
+#X obj 39 166 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
-#X text 98 138 index;
-#X msg 69 310 preset_delete [preset];
-#X msg 60 264 preset_save [preset];
-#X msg 51 233 preset_load [preset];
-#X msg 76 345 preset_rename [old] <new>;
-#X text 186 233 load a preset;
+#X text 98 165 index;
+#X msg 69 353 preset_delete [preset];
+#X msg 60 310 preset_save [preset];
+#X msg 51 279 preset_load [preset];
+#X msg 76 384 preset_rename [old] <new>;
+#X text 186 279 load a preset;
 #N canvas 738 177 650 433 preset-management-example 0;
 #X obj 31 87 hradio 15 1 0 16 empty empty empty 0 -8 0 10 -262144 -1
 -1 1;
@@ -549,74 +570,95 @@ your own preset banks in Pd, f 47;
 #X connect 21 0 16 0;
 #X connect 25 0 4 0;
 #X connect 26 0 9 0;
-#X restore 528 453 pd preset-management-example;
-#X text 533 30 built-in VST programs;
-#X text 138 162 get preset info (index + name + path + type);
-#X text 109 111 list all presets (see preset_info);
-#X text 50 187 in the following methods \, [preset] might refer to
+#X restore 528 467 pd preset-management-example;
+#X text 533 20 built-in VST programs;
+#X text 109 138 list all presets (see preset_info);
+#X text 50 234 in the following methods \, [preset] might refer to
 a preset index or a preset name. if [preset] is omitted \, the current
 preset is taken (if possible)., f 65;
-#X text 216 311 delete a preset;
-#X text 237 346 rename a preset;
-#X obj 355 389 s \$0-msg;
-#X msg 368 360 preset_load \$1;
-#X msg 355 316 preset_save \$1;
-#X symbolatom 355 295 10 0 0 0 - - -;
-#X symbolatom 368 339 10 0 0 0 - - -;
-#X text 20 47 you can easily load/save presets. they are kept in standardized
-locations on the filesystem., f 52;
-#X text 194 260 save a preset. if [preset] is a non-existing name \,
+#X text 216 354 delete a preset;
+#X text 237 385 rename a preset;
+#X obj 349 435 s \$0-msg;
+#X msg 362 410 preset_load \$1;
+#X msg 349 366 preset_save \$1;
+#X symbolatom 349 345 10 0 0 0 - - -;
+#X symbolatom 362 389 10 0 0 0 - - -;
+#X text 194 305 save a preset. if [preset] is a non-existing name \,
 a new preset is generated \, otherwise an existing preset is overwritten
 , f 50;
-#X connect 1 0 42 0;
+#X text 18 47 you can easily load/save presets. they are kept in standardized
+locations on the filesystem., f 52;
+#X text 38 113 responds with;
+#X msg 125 113 preset_count <count>;
+#X text 50 209 responds with;
+#X msg 137 208 preset_info <index> <name> <path> <type>;
+#X text 138 187 get preset info;
+#X text 560 121 responds with;
+#X msg 646 121 program <index>;
+#X text 595 267 responds with;
+#X msg 681 267 program_name <index> <name>;
+#X text 598 318 responds with;
+#X msg 684 318 program_count <count>;
+#X text 673 343 list all programs;
+#X text 589 365 responds with a series of;
+#X msg 748 365 program;
+#X text 801 367 messages;
+#X text 565 573 responds with;
+#X msg 653 571 program_data <bytes>;
+#X text 569 698 responds with;
+#X msg 657 696 bank_data <bytes>;
+#X msg 21 462 preset_change;
+#X text 20 442 whenever the preset list of a plugin changes \,;
+#X text 110 463 is sent to each corresponding vstplugin~ instance;
+#X connect 1 0 41 0;
 #X connect 3 0 0 0;
-#X connect 5 0 35 0;
-#X connect 7 0 36 0;
+#X connect 5 0 34 0;
+#X connect 7 0 35 0;
 #X connect 8 0 0 0;
 #X connect 10 0 0 0;
+#X connect 11 0 12 0;
 #X connect 12 0 13 0;
-#X connect 13 0 14 0;
-#X connect 14 0 29 0;
+#X connect 13 0 28 0;
+#X connect 14 0 15 0;
 #X connect 15 0 16 0;
-#X connect 16 0 17 0;
-#X connect 17 0 29 0;
-#X connect 18 0 19 0;
-#X connect 19 0 23 0;
-#X connect 20 0 21 0;
-#X connect 21 0 24 0;
-#X connect 23 0 22 0;
-#X connect 24 0 22 0;
+#X connect 16 0 28 0;
+#X connect 17 0 18 0;
+#X connect 18 0 22 0;
+#X connect 19 0 20 0;
+#X connect 20 0 23 0;
+#X connect 22 0 21 0;
+#X connect 23 0 21 0;
+#X connect 34 0 0 0;
 #X connect 35 0 0 0;
 #X connect 36 0 0 0;
-#X connect 37 0 0 0;
-#X connect 38 0 32 0;
+#X connect 37 0 31 0;
+#X connect 38 0 31 0;
 #X connect 39 0 32 0;
-#X connect 40 0 33 0;
-#X connect 41 0 33 0;
-#X connect 42 0 0 0;
-#X connect 56 0 57 0;
-#X connect 60 0 57 0;
-#X connect 63 0 57 0;
-#X connect 64 0 63 0;
-#X connect 66 0 57 0;
-#X connect 67 0 57 0;
-#X connect 68 0 57 0;
-#X connect 69 0 57 0;
+#X connect 40 0 32 0;
+#X connect 41 0 0 0;
+#X connect 55 0 56 0;
+#X connect 59 0 56 0;
+#X connect 62 0 56 0;
+#X connect 63 0 62 0;
+#X connect 65 0 56 0;
+#X connect 66 0 56 0;
+#X connect 67 0 56 0;
+#X connect 68 0 56 0;
+#X connect 77 0 76 0;
+#X connect 78 0 76 0;
 #X connect 79 0 78 0;
-#X connect 80 0 78 0;
-#X connect 81 0 80 0;
-#X connect 82 0 79 0;
+#X connect 80 0 77 0;
 #X restore 274 510 pd preset;
 #X f 17;
 #X msg 216 261 print;
-#N canvas 204 74 799 657 search 0;
-#X obj 12 626 s \$0-msg;
-#X msg 61 481 info;
-#X text 100 618 the info method will output the following messages:
+#N canvas 384 89 799 678 search 0;
+#X obj 12 641 s \$0-msg;
+#X msg 61 496 info;
+#X text 132 543 the info method will output the following messages:
 , f 27;
-#X msg 65 549 info \$1;
-#X obj 65 528 openpanel;
-#X obj 65 507 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 65 564 info \$1;
+#X obj 65 543 openpanel;
+#X obj 65 522 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
 #X text 383 220 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
@@ -638,42 +680,58 @@ a new preset is generated \, otherwise an existing preset is overwritten
 #X text 382 198 macOS:;
 #X text 381 259 Linux:;
 #X text 384 136 NOTE: on 32bit Pd "%ProgramFiles%";
-#N canvas 738 353 330 316 info 0;
-#X text 16 12 info name <s>: plugin name;
-#X text 17 32 info path <s>: full plugin path;
-#X text 19 148 info id <f>: plugin id;
-#X text 19 169 info editor <f>: has editor (0|1);
-#X text 20 190 info synth <f>: is synth (0|1);
-#X text 21 211 info single <f>: has single precision (0|1);
-#X text 22 231 info double <f>: has double precision (0|1);
-#X text 21 252 info midiin <f>: has midi input (0|1);
-#X text 21 271 info midiout <f>: has midi output (0|1);
-#X text 22 291 info sysexin <f>: has sysex input (0|1);
-#X text 22 310 info sysexout <f>: has sysex output (0|1);
-#X text 19 106 info inputs <f>: number of inputs;
-#X text 19 126 info outputs <f>: number of outputs;
-#X text 18 85 info version <s>: plugin version;
-#X text 18 49 info vendor <s>: plugin vendor;
-#X text 18 67 info category <s>: plugin category;
-#X restore 274 622 pd info;
+#N canvas 738 353 449 394 info 0;
+#X text 107 9 plugin name;
+#X msg 18 9 info name <s>;
+#X text 112 33 full plugin path;
+#X msg 19 32 info path <s>;
+#X text 121 53 plugin vendor;
+#X msg 19 53 info vendor <s>;
+#X text 130 76 plugin category;
+#X msg 19 76 info category <s>;
+#X text 127 98 plugin version;
+#X msg 19 98 info version <s>;
+#X msg 19 120 info sdkversion <s>;
+#X text 143 117 plugin SDK version;
+#X text 120 163 number of inputs;
+#X msg 19 163 info inputs <f>;
+#X text 123 185 number of outputs;
+#X msg 19 185 info outputs <f>;
+#X text 99 142 plugin unique ID;
+#X msg 19 142 info id <s>;
+#X text 120 208 has editor (0|1);
+#X msg 19 208 info editor <f>;
+#X text 115 229 is synth (0|1);
+#X msg 19 230 info synth <f>;
+#X text 120 253 has single precision (0|1);
+#X msg 19 252 info single <f>;
+#X text 119 274 has double precision (0|1);
+#X msg 19 274 info double <f>;
+#X text 120 296 has midi input (0|1);
+#X msg 19 296 info midiin <f>;
+#X text 127 318 has midi output (0|1);
+#X msg 19 318 info midiout <f>;
+#X text 126 339 has sysex input (0|1);
+#X msg 19 340 info sysexin <f>;
+#X text 132 363 as sysex output (0|1);
+#X msg 19 362 info sysexout <f>;
+#X restore 306 547 pd info;
 #X text 28 195 additionally \, you can use the following methods:;
-#X text 100 480 get info about currently loaded plugin;
-#X msg 48 429 search_clear;
-#X text 138 429 clear the plugin dictionary;
-#X text 95 507 get info about any plugin (key or file name);
+#X text 100 495 get info about currently loaded plugin;
+#X msg 48 444 search_clear;
+#X text 138 444 clear the plugin dictionary;
+#X text 95 522 get info about any plugin (key or file name);
 #X text 420 152 is "Program Files (x86)";
-#X msg 69 595 info \$1;
-#X symbolatom 69 573 16 0 0 0 - - -;
+#X msg 73 610 info \$1;
+#X symbolatom 73 588 16 0 0 0 - - -;
 #X msg 12 221 search;
 #X text 63 220 search the standard VST directories;
-#X text 93 244 alternatively \, you can provide a list of user search
+#X text 93 286 alternatively \, you can provide a list of user search
 paths. relative paths are resolved to the current patch directory.
 , f 41;
-#X msg 18 249 search <l>;
-#X msg 25 290 search -a;
-#X text 92 290 search asynchronously, f 22;
-#X text 92 346 after the search has finished \, the message [search_done(
-is sent., f 35;
+#X msg 19 291 search <l>;
+#X msg 25 329 search -a;
+#X text 92 329 search asynchronously, f 22;
 #X text 28 144 [vstplugin~ -s];
 #X text 29 115 you can use the -s flag to perform a search in the standard
 VST directories on object creation:, f 49;
@@ -682,13 +740,13 @@ several objects receive this flag., f 44;
 #X text 14 24 searched plugins are stored in a global dictionary using
 their name as the key \, which can be used as the creation argument
 to [vstplugin~] or in the [open( message.;
-#X msg 54 454 search_clear 1;
-#X text 156 453 clear and delete cache file;
+#X msg 54 469 search_clear 1;
+#X text 156 468 clear and delete cache file;
 #X text 12 63 (whitespace in names is replaced by underscores.);
 #X text 14 84 on startup \, plugin definitions are read from a cache
 file - which is updated after every new search operation., f 57;
-#X msg 30 382 search -n;
-#X text 101 382 search but don't update the cache file;
+#X msg 30 393 search -n;
+#X text 98 394 search but don't update the cache file;
 #X obj 384 326 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 388 329 NOTE:;
@@ -701,12 +759,18 @@ file., f 47;
 of seconds to several minutes \, depending on the number of plugins
 (shell plugins like Waves contain hundreds of sub-plugins!), f 50
 ;
-#X text 91 308 this prevents Pd from freezing till the search has finished
+#X text 91 347 this prevents Pd from freezing till the search has finished
 and it lets you see the progress in the console., f 37;
 #X text 383 478 [vstpluginbrowser] uses [search -a( by default to avoid
 freezing Pd for an indeterminate amount of time., f 56;
-#X msg 37 407 search_stop;
-#X text 119 406 stop the current (asynchronous) search;
+#X msg 37 418 search_stop;
+#X text 119 417 stop the current (asynchronous) search;
+#X text 42 242 responds with a series of;
+#X msg 199 243 plugin <key>;
+#X text 281 243 messages;
+#X text 42 263 and a final;
+#X msg 116 263 search_done;
+#X text 192 263 message;
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
 #X connect 4 0 3 0;
@@ -717,13 +781,13 @@ freezing Pd for an indeterminate amount of time., f 56;
 #X connect 28 0 0 0;
 #X connect 31 0 0 0;
 #X connect 32 0 0 0;
-#X connect 39 0 0 0;
-#X connect 43 0 0 0;
-#X connect 52 0 0 0;
+#X connect 38 0 0 0;
+#X connect 42 0 0 0;
+#X connect 51 0 0 0;
 #X restore 394 510 pd search;
 #X f 14;
 #X text 392 488 search + info;
-#N canvas 271 215 513 507 open 0;
+#N canvas 291 180 513 518 open 0;
 #X msg 39 250 open \$1;
 #X obj 39 204 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
@@ -753,20 +817,20 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 341 473 pd editor;
+#X restore 341 452 pd editor;
 #X f 10;
 #X text 127 361 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
 #X obj 24 455 outlet;
-#X text 171 473 more info about the editor:;
+#X text 171 452 more info about the editor:;
 #X text 146 105 VST3 plug-in keys get a '.vst3' extension to distinguish
 them from VST2 plugins of the same name.;
 #X text 147 131 generally \, keys can only be used after a search (see
 the 'search' method) or if the plug-in has already been opened by its
 file path., f 49;
-#X obj 125 415 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 125 394 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 133 420 NOTE: on macOS \, the VST editor is highly experimental
+#X text 133 399 NOTE: on macOS \, the VST editor is highly experimental
 and runs on the audio thread! see the README for more information.
 , f 44;
 #X text 134 26 plug-ins can be opened in 2 ways:;
@@ -794,7 +858,11 @@ can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 58
 ;
-#X text 130 390 The VST3 editor is not available (yet);
+#X msg 73 484 open 1;
+#X text 124 485 on success and;
+#X text 21 484 outputs;
+#X msg 218 485 open 0;
+#X text 266 485 on failure;
 #X connect 0 0 5 0;
 #X connect 1 0 2 0;
 #X connect 2 0 0 0;
@@ -816,188 +884,24 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X obj 19 46 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 48 creation arguments:;
-#N canvas 200 228 1036 481 message-out 0;
+#N canvas 212 227 301 177 message-out 0;
 #X obj 10 15 inlet;
 #X obj 10 36 t a a;
-#X floatatom 68 196 5 0 0 0 - - -;
-#X floatatom 108 197 5 0 0 0 - - -;
-#X floatatom 173 163 5 0 0 0 - - -;
-#X text 64 214 index;
-#X text 108 213 value;
-#X floatatom 256 205 5 0 0 0 - - -;
-#X text 252 223 index;
-#X symbolatom 296 207 16 0 0 0 - - -;
-#X text 296 222 name;
-#X floatatom 67 303 5 0 0 0 - - -;
-#X text 64 321 index;
-#X obj 226 308 route program_name, f 29;
-#X floatatom 226 353 5 0 0 0 - - -;
-#X text 222 371 index;
-#X obj 226 331 unpack f s;
-#X symbolatom 283 353 16 0 0 0 - - -;
-#X text 282 370 name;
-#X obj 67 282 route program program_count;
-#X floatatom 146 307 5 0 0 0 - - -;
-#X text 146 323 count;
-#X text 171 178 count;
-#X obj 397 357 s \$0-program-data;
-#X obj 397 334 route program_data bank_data, f 39;
-#X obj 512 357 s \$0-bank-data;
-#X text 112 94 param_count <f>: number of parameters;
-#X text 523 158 program_count <f>: number of programs;
-#X text 523 138 program <f>: index of current program;
-#X text 522 177 program_name <f> <s>: program index + name;
-#X text 588 206 program_data <list>: current program data;
-#X text 587 225 bank_data <list>: current bank data;
-#X text 622 252 param_automated <f> <f>: parameter index + value;
-#X text 666 334 sysex <list>: system exclusive message (from the plugin)
+#X obj 10 127 s \$0-program-data;
+#X obj 10 104 route program_data bank_data, f 39;
+#X obj 125 127 s \$0-bank-data;
+#X obj 37 78 print;
+#X obj 37 57 spigot 1;
+#X obj 82 36 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0 1
 ;
-#X obj 460 266 t a;
-#X obj 628 360 route param_automated, f 27;
-#X obj 787 412 unpack f f f, f 14;
-#X floatatom 787 433 5 0 0 0 - - -;
-#X floatatom 827 433 5 0 0 0 - - -;
-#X floatatom 868 434 5 0 0 0 - - -;
-#X text 781 451 status;
-#X text 824 452 data1;
-#X text 867 452 data2;
-#X obj 628 381 unpack f f;
-#X floatatom 628 403 5 0 0 0 - - -;
-#X floatatom 685 404 5 0 0 0 - - -;
-#X text 627 421 index;
-#X text 682 422 value;
-#X obj 787 391 route midi, f 18;
-#X text 621 269 (this message is sent whenever you change a parameter
-in the GUI. this is useful if you want to record automation data),
-f 44;
-#X text 664 316 midi <list>: MIDI message (from the plugin);
-#X obj 67 140 route param_state param_count, f 32;
-#X obj 68 160 unpack f f s, f 14;
-#X symbolatom 149 198 12 0 0 0 - - -;
-#X text 149 214 display;
-#X obj 256 161 route param_info, f 25;
-#X obj 256 181 unpack f s s, f 14;
-#X symbolatom 337 230 10 0 0 0 - - -;
-#X text 337 249 label;
-#X obj 36 78 print;
-#X obj 403 185 route info;
-#N canvas 664 174 730 446 info 0;
-#X obj 21 24 inlet;
-#X symbolatom 21 88 10 0 0 0 - - -;
-#X floatatom 18 282 5 0 0 0 - - -;
-#X floatatom 65 280 5 0 0 0 - - -;
-#X obj 113 280 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X obj 160 281 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X obj 208 281 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X obj 255 280 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X obj 18 258 route inputs outputs midiin midiout editor synth;
-#X obj 21 45 route name, f 12;
-#X obj 21 66 symbol;
-#X symbolatom 89 109 10 0 0 0 - - -;
-#X obj 89 87 symbol;
-#X symbolatom 158 132 10 0 0 0 - - -;
-#X obj 158 110 symbol;
-#X symbolatom 227 155 10 0 0 0 - - -;
-#X obj 227 133 symbol;
-#X symbolatom 308 178 10 0 0 0 - - -;
-#X obj 308 156 symbol;
-#X symbolatom 475 224 10 0 0 0 - - -;
-#X obj 475 202 symbol;
-#X obj 89 65 route path, f 12;
-#X obj 158 89 route vendor;
-#X obj 227 112 route category;
-#X obj 308 135 route version;
-#X obj 475 181 route id, f 12;
-#X obj 544 242 t a;
-#X obj 382 158 route sdkversion;
-#X obj 382 179 symbol;
-#X symbolatom 382 200 10 0 0 0 - - -;
-#X connect 0 0 9 0;
-#X connect 8 0 2 0;
-#X connect 8 1 3 0;
-#X connect 8 2 4 0;
-#X connect 8 3 5 0;
-#X connect 8 4 6 0;
-#X connect 8 5 7 0;
-#X connect 9 0 10 0;
-#X connect 9 1 21 0;
-#X connect 10 0 1 0;
-#X connect 12 0 11 0;
-#X connect 14 0 13 0;
-#X connect 16 0 15 0;
-#X connect 18 0 17 0;
-#X connect 20 0 19 0;
-#X connect 21 0 12 0;
-#X connect 21 1 22 0;
-#X connect 22 0 14 0;
-#X connect 22 1 23 0;
-#X connect 23 0 16 0;
-#X connect 23 1 24 0;
-#X connect 24 0 18 0;
-#X connect 25 0 20 0;
-#X connect 25 1 26 0;
-#X connect 26 0 8 0;
-#X connect 27 0 28 0;
-#X connect 27 1 25 0;
-#X connect 28 0 29 0;
-#X restore 403 209 pd info;
-#X obj 36 57 spigot 1;
-#X obj 81 36 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0 1
-;
-#X obj 10 118 route open;
-#X text 82 18 print messages;
-#X obj 10 140 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
-1;
-#X text 452 210 <== click me;
-#X text 416 162 plugin info;
-#X text 14 98 success/fail;
-#X text 113 76 param_state <f> <f> <s>: parameter index + value + display
-(stringified value), f 79;
-#X text 112 112 param_info <f> <s> <s> ...: parameter index + name
-+ label (unit of measurement) ... LATER more info, f 101;
+#X text 83 18 print messages;
 #X connect 0 0 1 0;
-#X connect 1 0 64 0;
-#X connect 1 1 62 0;
-#X connect 13 0 16 0;
-#X connect 13 1 24 0;
-#X connect 16 0 14 0;
-#X connect 16 1 17 0;
-#X connect 19 0 11 0;
-#X connect 19 1 20 0;
-#X connect 19 2 13 0;
-#X connect 24 0 23 0;
-#X connect 24 1 25 0;
-#X connect 24 2 35 0;
-#X connect 34 0 19 0;
-#X connect 35 0 43 0;
-#X connect 35 1 48 0;
-#X connect 36 0 37 0;
-#X connect 36 1 38 0;
-#X connect 36 2 39 0;
-#X connect 43 0 44 0;
-#X connect 43 1 45 0;
-#X connect 48 0 36 0;
-#X connect 51 0 52 0;
-#X connect 51 1 4 0;
-#X connect 51 2 55 0;
-#X connect 52 0 2 0;
-#X connect 52 1 3 0;
-#X connect 52 2 53 0;
-#X connect 55 0 56 0;
-#X connect 55 1 60 0;
-#X connect 56 0 7 0;
-#X connect 56 1 9 0;
-#X connect 56 2 57 0;
-#X connect 60 0 61 0;
-#X connect 60 1 34 0;
-#X connect 62 0 59 0;
-#X connect 63 0 62 1;
-#X connect 64 0 66 0;
-#X connect 64 1 51 0;
+#X connect 1 0 3 0;
+#X connect 1 1 6 0;
+#X connect 3 0 2 0;
+#X connect 3 1 4 0;
+#X connect 6 0 5 0;
+#X connect 7 0 6 1;
 #X restore 78 364 pd message-out;
 #X text 22 124 input signals;
 #X text 24 169 output signals + 1 message outlet, f 16;
