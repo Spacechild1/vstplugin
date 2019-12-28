@@ -333,9 +333,8 @@ VSTPluginGui : ObjectGui {
 	}
 
 	prUpdatePresets {
-		var oldpreset, oldsize, oldindex, presets, sorted, labels = [], items = [];
+		var oldpreset, oldindex, presets, sorted, labels = [], items = [];
 		(presetMenu.notNil && model.notNil).if {
-			oldsize = presetMenu.items.size;
 			oldindex = presetMenu.value;
 			oldpreset = (oldindex.notNil and:
 				{ presetMenu.item.notNil and: { presetMenu.item.type == \preset }}).if {
@@ -381,7 +380,7 @@ VSTPluginGui : ObjectGui {
 				presetMenu.items[i] = item;
 			};
 			// check if preset count has changed
-			(oldpreset.notNil and: { oldsize != presetMenu.items.size }).if {
+			oldpreset.notNil.if {
 				// try to find old preset (if not found, the index will remain 0)
 				presetMenu.items.do { arg item, index;
 					(item.notNil and: { item.preset == oldpreset }).if {
