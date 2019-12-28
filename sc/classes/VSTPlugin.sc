@@ -104,7 +104,8 @@ VSTPluginDesc {
 				}
 			}
 		};
-		this.changed('/preset');
+		this.prSortPresets(false);
+		this.changed('/presets');
 	}
 	presetFolder { arg type = \user;
 		var folder, vst3 = this.sdkVersion.find("VST 3").notNil;
@@ -166,6 +167,19 @@ VSTPluginDesc {
 		};
 		^nil;
 	}
+	prSortPresets { arg userOnly=true;
+		var temp = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
+		presets.do { arg p; temp[p.type].add(p) };
+		userOnly.if {
+			temp[\user].sort({ arg a, b; a.name.compare(b.name, true) < 0 });
+		} {
+			temp.do { arg l; l.sort({ arg a, b; a.name.compare(b.name, true) < 0 }) };
+		};
+		presets = [];
+		[\user, \userFactory, \sharedFactory, \global].do { arg type;
+			presets = presets.addAll(temp[type]);
+		}
+	}
 	*prBashPath { arg path;
 		var forbidden = IdentitySet[$/, $\\, $", $?, $*, $:, $<, $>, $|];
 		^path.collect({ arg c;
@@ -173,14 +187,18 @@ VSTPluginDesc {
 		});
 	}
 	addPreset { arg name, path;
-		var preset = (name: name, path: path, type: \user);
-		// check if preset exists
+		var index = 0, preset = (name: name, path: path, type: \user);
 		presets.do { arg p, i;
-			((p.type == preset.type) and: { p.name == preset.name }).if { ^i }
+			(preset.type == p.type).if {
+				// check if preset exists
+				(preset.name == p.name).if { ^i };
+				// find lexicographically correct position
+				(preset.name.compare(p.name, true) > 0).if { index = i + 1 }
+			}
 		};
-		presets = presets.addFirst(preset); // append!
+		presets = presets.insert(index, preset);
 		this.changed('/presets');
-		^0; // first index
+		^index;
 	}
 	deletePreset { arg preset;
 		var result = this.findPreset(preset);
@@ -218,6 +236,7 @@ VSTPluginDesc {
 					// update name + path
 					result.name = name;
 					result.path = newPath;
+					this.prSortPresets;
 					this.changed('/presets');
 					^true;
 				} { "preset '%' already exists!".format(name).error; }

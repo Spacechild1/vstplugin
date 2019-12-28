@@ -15,7 +15,7 @@ PRIVATE:: prParse, prBashPath
 
 INSTANCEMETHODS::
 
-PRIVATE:: prToString, prParamIndexMap, prPresetIndex
+PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets
 
 METHOD:: key
 
