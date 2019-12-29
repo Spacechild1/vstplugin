@@ -17,6 +17,167 @@ static void eventLoopTick(void *x){
 #endif // PDINSTANCE
 #endif // HAVE_UI_THREAD
 
+/*---------------------- work queue ----------------------------*/
+
+// we use raw pointers instead of std::unique_pointer to avoid calling the destructor,
+// because it might hang/crash Pd. (We don't know when the destructor is called exactly.)
+
+#ifdef PDINSTANCE
+std::unordered_map<t_pdinstance *, t_workqueue *> gWorkQueues;
+std::mutex gWorkQueueMutex;
+
+void t_workqueue::init(){
+    std::lock_guard<std::mutex> lock(gWorkQueueMutex);
+    if (!gWorkQueues.count(pd_this)){
+        gWorkQueues[pd_this] = new t_workqueue();
+    } else {
+        error("t_workqueue already initialized for this instance!");
+    }
+}
+
+t_workqueue* t_workqueue::get(){
+    auto it = gWorkQueues.find(pd_this);
+    if (it != gWorkQueues.end()){
+        return it->second;
+    } else {
+        return nullptr;
+    }
+}
+#else
+t_workqueue* gWorkQueue;
+
+void t_workqueue::init(){
+    gWorkQueue = new t_workqueue();
+}
+
+t_workqueue* t_workqueue::get(){
+    return gWorkQueue;
+}
+#endif
+
+
+t_workqueue::t_workqueue(){
+#ifdef PDINSTANCE
+    w_instance = pd_this;
+#endif
+
+    w_thread = std::thread([this]{
+        std::unique_lock<std::mutex> lock(w_mutex);
+    #ifdef PDINSTANCE
+        pd_setinstance(w_instance);
+    #endif
+
+        auto perform = [this, &lock](t_item& item){
+            auto it = std::find(w_nrt_cancel.begin(), w_nrt_cancel.end(), item.id);
+            if (it != w_nrt_cancel.end()){
+                // cancel item
+                item.workfn = nullptr;
+                item.cb = nullptr;
+                w_nrt_cancel.erase(it);
+            }
+            lock.unlock();
+            if (item.workfn){
+                item.workfn(item.data);
+            }
+            while (!w_rt_queue.push(item)){
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            lock.lock();
+        };
+
+        while (true) {
+            // first perform lockfree FIFO
+            t_item item;
+            while (w_nrt_queue.pop(item)){
+                perform(item);
+            }
+            // now perform blocking FIFO
+            std::unique_lock<std::mutex> nrt_lock(w_nrt_mutex);
+            while (!w_nrt_queue2.empty()){
+                item = w_nrt_queue2.front();
+                w_nrt_queue2.pop();
+                nrt_lock.unlock();
+                perform(item);
+                nrt_lock.lock();
+            }
+            if (w_running){
+                // wait for more
+                w_cond.wait(lock);
+            } else {
+                break;
+            }
+        }
+        LOG_DEBUG("worker thread finished");
+    });
+
+    w_clock = clock_new(this, (t_method)clockmethod);
+    clock_delay(w_clock, 0);
+}
+
+t_workqueue::~t_workqueue(){
+    // not actually called... see note above
+    {
+        std::lock_guard<std::mutex> lock(w_mutex);
+        w_running = false;
+        w_cond.notify_all();
+    }
+    if (w_thread.joinable()){
+        w_thread.join();
+    }
+    LOG_DEBUG("worker thread joined");
+    // don't free clock
+}
+
+void t_workqueue::clockmethod(t_workqueue *w){
+    w->poll();
+    clock_delay(w->w_clock, 1); // must not be zero!
+}
+
+int t_workqueue::push(void *data, t_fun<void> workfn,
+                      t_fun<void> cb, t_fun<void> cleanup){
+    t_item item;
+    item.data = data;
+    item.workfn = workfn;
+    item.cb = cb;
+    item.cleanup = cleanup;
+    item.id = w_counter++;
+    if (!w_nrt_queue.push(item)){
+        // push to other (blocking) queue
+        std::lock_guard<std::mutex> nrt_lock(w_nrt_mutex);
+        w_nrt_queue2.push(item);
+    }
+    w_cond.notify_all();
+    return item.id;
+}
+
+void t_workqueue::cancel(int id){
+    std::lock_guard<std::mutex> lock(w_mutex);
+    w_nrt_cancel.push_back(id);
+    w_rt_cancel.push_back(id);
+}
+
+void t_workqueue::poll(){
+    t_item item;
+    while (w_rt_queue.pop(item)){
+        if (!w_rt_cancel.empty()){
+            auto it = std::find(w_rt_cancel.begin(), w_rt_cancel.end(), item.id);
+            if (it != w_rt_cancel.end()){
+                // cancel item
+                item.cb = nullptr;
+                w_rt_cancel.erase(it);
+            }
+        }
+        if (item.cb){
+            item.cb(item.data);
+        }
+        if (item.cleanup){
+            item.cleanup(item.data);
+        }
+    }
+}
+
+/*---------------------- utility ----------------------------*/
+
 // substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
 static void substitute_whitespace(char *buf){
     for (char *c = buf; *c; c++){
@@ -2448,6 +2609,8 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
+
+    t_workqueue::init();
 
     // read cached plugin info
     readIniFile();

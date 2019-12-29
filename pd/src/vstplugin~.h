@@ -15,10 +15,12 @@ using namespace vst;
 #include <sstream>
 #include <algorithm>
 #include <vector>
+#include <queue>
 #include <unordered_map>
 #include <type_traits>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 enum PdLogLevel {
     PD_FATAL = -3,
@@ -157,4 +159,53 @@ class t_vsteditor : public IPluginListener {
     bool e_tick = false;
     int width_ = 0;
     int height_ = 0;
+};
+
+class t_workqueue {
+ public:
+    template<typename T>
+    using t_fun = void (*)(T *);
+
+    static void init();
+    static t_workqueue* get();
+
+    t_workqueue();
+    ~t_workqueue();
+    template<typename T>
+    int push(T *data, t_fun<T> workfn, t_fun<T> cb, t_fun<T> cleanup){
+        return push(data, t_fun<void>(workfn),
+                    t_fun<void>(cb), t_fun<void>(cleanup));
+    }
+    void cancel(int id);
+    void poll();
+ private:
+    struct t_item {
+        void *data;
+        t_fun<void> workfn;
+        t_fun<void> cb;
+        t_fun<void> cleanup;
+        int id;
+    };
+    int push(void *data, t_fun<void> workfn,
+             t_fun<void> cb, t_fun<void> cleanup);
+    // queues from RT to NRT
+    LockfreeFifo<t_item, 1024> w_nrt_queue;
+    std::queue<t_item> w_nrt_queue2;
+    std::mutex w_nrt_mutex;
+    // queue from NRT to RT
+    LockfreeFifo<t_item, 1024> w_rt_queue;
+    // worker thread
+    std::thread w_thread;
+    std::mutex w_mutex;
+    std::condition_variable w_cond;
+    int w_counter = 0;
+    std::vector<int> w_nrt_cancel;
+    std::vector<int> w_rt_cancel;
+    bool w_running = true;
+    // polling
+    t_clock *w_clock = nullptr;
+    static void clockmethod(t_workqueue *w);
+#ifdef PDINSTANCE
+    t_pdinstance *w_instance = nullptr;
+#endif
 };
