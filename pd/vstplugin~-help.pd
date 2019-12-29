@@ -1,4 +1,4 @@
-#N canvas 495 126 552 589 10;
+#N canvas 495 126 765 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -932,6 +932,9 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X coords 0 -1 1 1 100 24 2 100 100;
 #X restore 226 328 pd pos;
 #X text 293 357 move editor;
+#X obj 382 52 vstpresetbrowser;
+#X obj 382 29 r \$0-out;
+#X obj 382 309 s \$0-msg;
 #X connect 1 0 20 0;
 #X connect 1 1 20 1;
 #X connect 2 0 6 0;
@@ -949,3 +952,5 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X connect 44 0 5 0;
 #X connect 47 0 6 0;
 #X connect 48 0 47 0;
+#X connect 50 0 52 0;
+#X connect 51 0 50 0;
