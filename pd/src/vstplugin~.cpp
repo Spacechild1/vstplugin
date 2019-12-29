@@ -1420,17 +1420,22 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
 }
 
 // get parameter info (name + label + ...)
-static void vstplugin_param_info(t_vstplugin *x, t_floatarg _index){
+static void vstplugin_param_doinfo(const PluginInfo& info, int index, t_outlet *outlet){
+    t_atom msg[3];
+    SETFLOAT(&msg[0], index);
+    SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
+    SETSYMBOL(&msg[2], gensym(info.parameters[index].label.c_str()));
+    // LATER add more info
+    outlet_anything(outlet, gensym("param_info"), 3, msg);
+}
+
+// get parameter info (name + label + ...)
+static void vstplugin_param_info(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
-    int index = _index;
+    int index = f;
     auto& info = x->x_plugin->info();
     if (index >= 0 && index < info.numParameters()){
-        t_atom msg[3];
-        SETFLOAT(&msg[0], index);
-        SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
-        SETSYMBOL(&msg[2], gensym(info.parameters[index].label.c_str()));
-        // LATER add more info
-        outlet_anything(x->x_messout, gensym("param_info"), 3, msg);
+        vstplugin_param_doinfo(info, index, x->x_messout);
     } else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);
     }
@@ -1445,11 +1450,21 @@ static void vstplugin_param_count(t_vstplugin *x){
 }
 
 // list parameters (index + info)
-static void vstplugin_param_list(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    int n = x->x_plugin->info().numParameters();
+static void vstplugin_param_list(t_vstplugin *x, t_symbol *s){
+    const PluginInfo *info = nullptr;
+    if (*s->s_name){
+        auto path = s->s_name;
+        if (!(info = queryPlugin(x, path))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
+            return;
+        }
+    } else {
+        if (!x->check_plugin()) return;
+        info = &x->x_plugin->info();
+    }
+    int n = info->numParameters();
     for (int i = 0; i < n; ++i){
-        vstplugin_param_info(x, i);
+        vstplugin_param_doinfo(*info, i, x->x_messout);
     }
 }
 
@@ -1587,13 +1602,27 @@ static void vstplugin_program_count(t_vstplugin *x){
 }
 
 // list all programs (index + name)
-static void vstplugin_program_list(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    int n = x->x_plugin->info().numPrograms();
+static void vstplugin_program_list(t_vstplugin *x,  t_symbol *s){
+    const PluginInfo *info = nullptr;
+    bool local = false;
+    if (*s->s_name){
+        auto path = s->s_name;
+        if (!(info = queryPlugin(x, path))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
+            return;
+        }
+    } else {
+        if (!x->check_plugin()) return;
+        info = &x->x_plugin->info();
+        local = true;
+    }
+    int n = info->numPrograms();
     t_atom msg[2];
     for (int i = 0; i < n; ++i){
+        t_symbol *name = gensym(local ? x->x_plugin->getProgramNameIndexed(i).c_str()
+                                            : info->programs[i].c_str());
         SETFLOAT(&msg[0], i);
-        SETSYMBOL(&msg[1], gensym(x->x_plugin->getProgramNameIndexed(i).c_str()));
+        SETSYMBOL(&msg[1], name);
         outlet_anything(x->x_messout, gensym("program_name"), 2, msg);
     }
 }
@@ -1700,46 +1729,59 @@ static void vstplugin_preset_count(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("preset_count"), 1, &msg);
 }
 
+static void vstplugin_preset_doinfo(const PluginInfo& info, int index, t_outlet *outlet){
+    auto& preset = info.presets[index];
+    int type = 0;
+    switch (preset.type){
+    case PresetType::User:
+        type = 0;
+        break;
+    case PresetType::UserFactory:
+        type = 1;
+        break;
+    case PresetType::SharedFactory:
+        type = 2;
+        break;
+    case PresetType::Global:
+        type = 3;
+        break;
+    default:
+        bug("vstplugin_preset_info");
+        break;
+    }
+    t_atom msg[4];
+    SETFLOAT(&msg[0], index);
+    SETSYMBOL(&msg[1], gensym(preset.name.c_str()));
+    SETSYMBOL(&msg[2], gensym(preset.path.c_str()));
+    SETFLOAT(&msg[3], type);
+    outlet_anything(outlet, gensym("preset_info"), 4, msg);
+}
+
 static void vstplugin_preset_info(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     int index = f;
     if (index >= 0 && index < x->x_plugin->info().numPresets()){
-        auto& preset = x->x_plugin->info().presets[index];
-        int type = 0;
-        switch (preset.type){
-        case PresetType::User:
-            type = 0;
-            break;
-        case PresetType::UserFactory:
-            type = 1;
-            break;
-        case PresetType::SharedFactory:
-            type = 2;
-            break;
-        case PresetType::Global:
-            type = 3;
-            break;
-        default:
-            bug("vstplugin_preset_list");
-            break;
-        }
-        t_atom msg[4];
-        SETFLOAT(&msg[0], index);
-        SETSYMBOL(&msg[1], gensym(preset.name.c_str()));
-        SETSYMBOL(&msg[2], gensym(preset.path.c_str()));
-        SETFLOAT(&msg[3], type);
-        outlet_anything(x->x_messout, gensym("preset_info"), 4, msg);
+        vstplugin_preset_doinfo(x->x_plugin->info(), f, x->x_messout);
     } else {
         pd_error(x, "%s: preset index %d out of range!", classname(x), index);
     }
 }
 
-static void vstplugin_preset_list(t_vstplugin *x){
-    if (!x->check_plugin()) return;
-    int n = x->x_plugin->info().numPresets();
-    t_atom msg[4];
+static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
+    const PluginInfo *info = nullptr;
+    if (*s->s_name){
+        auto path = s->s_name;
+        if (!(info = queryPlugin(x, path))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
+            return;
+        }
+    } else {
+        if (!x->check_plugin()) return;
+        info = &x->x_plugin->info();
+    }
+    int n = info->numPresets();
     for (int i = 0; i < n; ++i){
-        vstplugin_preset_info(x, i);
+        vstplugin_preset_doinfo(*info, i, x->x_messout);
     }
 }
 
@@ -2365,7 +2407,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_info, gensym("param_info"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_count, gensym("param_count"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_param_list, gensym("param_list"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_param_list, gensym("param_list"), A_DEFSYM, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_dump, gensym("param_dump"), A_NULL);
     // midi
     class_addmethod(vstplugin_class, (t_method)vstplugin_midi_raw, gensym("midi_raw"), A_GIMME, A_NULL);
@@ -2383,11 +2425,11 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_name_set, gensym("program_name_set"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_name_get, gensym("program_name_get"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_program_count, gensym("program_count"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_program_list, gensym("program_list"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_program_list, gensym("program_list"), A_DEFSYM, A_NULL);
     // presets
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_count, gensym("preset_count"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_info, gensym("preset_info"), A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_list, gensym("preset_list"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_list, gensym("preset_list"), A_DEFSYM, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_load, gensym("preset_load"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_save, gensym("preset_save"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_rename, gensym("preset_rename"), A_GIMME, A_NULL);
