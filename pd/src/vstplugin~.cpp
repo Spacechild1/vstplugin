@@ -1553,10 +1553,31 @@ static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
 }
 
 // reset the plugin
+
 static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
-    x->x_plugin->suspend();
-    x->x_plugin->resume();
+    if (f){
+        // async
+        auto data = new t_plugin_data();
+        data->owner = x;
+        x->x_command = t_workqueue::get()->push(data,
+            [](t_plugin_data *x){
+                // protect against vstplugin_dsp() and vstplugin_save()
+                std::lock_guard<std::mutex> lock(x->owner->x_mutex);
+                x->owner->x_plugin->suspend();
+                x->owner->x_plugin->resume();
+            },
+            [](t_plugin_data *x){
+                x->owner->x_command = -1;
+                outlet_anything(x->owner->x_messout,
+                                gensym("reset"), 0, nullptr);
+            }
+        );
+    } else {
+        x->x_plugin->suspend();
+        x->x_plugin->resume();
+        outlet_anything(x->x_messout, gensym("reset"), 0, nullptr);
+    }
 }
 
 // show/hide editor window
@@ -2667,7 +2688,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_search_clear, gensym("search_clear"), A_DEFFLOAT, A_NULL);
 
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_DEFFLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_pos, gensym("pos"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);

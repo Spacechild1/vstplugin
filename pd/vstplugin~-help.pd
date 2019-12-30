@@ -94,8 +94,8 @@
 #X msg 222 305 vis \$1;
 #X obj 222 285 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 232 404 bypass \$1;
-#X obj 187 463 s \$0-msg;
+#X msg 232 402 bypass \$1;
+#X obj 187 468 s \$0-msg;
 #X obj 27 318 r \$0-msg;
 #X text 255 235 close the plugin;
 #X text 272 305 show/hide editor;
@@ -289,8 +289,7 @@ f 51;
 #X restore 281 549 pd transport;
 #X f 16;
 #X text 279 530 transport/timing;
-#X msg 233 431 reset;
-#X text 275 431 reset the plugin (e.g. clear delay lines);
+#X text 292 446 reset the plugin (e.g. clear delay lines);
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
@@ -931,10 +930,10 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 ;
 #X text 91 342 <- click me, f 13;
 #X text 89 319 <- message in;
-#X obj 232 384 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
+#X obj 232 382 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
 -1 -1 0;
-#X text 285 384 bypass;
-#X text 300 406 0: off \, 1: hard \, 2: soft;
+#X text 285 382 bypass;
+#X text 300 404 0: off \, 1: hard \, 2: soft;
 #X msg 226 357 pos \$1 \$2;
 #N canvas 0 23 450 300 pos 0;
 #X floatatom 114 104 5 0 0 0 x #0-bar #0-posx;
@@ -955,22 +954,30 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 #X obj 382 52 vstpresetbrowser;
 #X obj 382 29 r \$0-out;
 #X obj 382 309 s \$0-msg;
-#X connect 1 0 20 0;
-#X connect 1 1 20 1;
+#X obj 232 427 hradio 15 1 0 2 empty empty empty 0 -8 0 10 -262144
+-1 -1 0;
+#X msg 232 446 reset \$1;
+#X text 271 427 0: synchronous \, 1: asynchronous;
+#X msg 344 464 reset;
+#X text 383 464 when done;
+#X text 293 464 outputs;
+#X connect 1 0 19 0;
+#X connect 1 1 19 1;
 #X connect 2 0 6 0;
 #X connect 3 0 6 0;
 #X connect 4 0 3 0;
 #X connect 5 0 6 0;
-#X connect 7 0 20 0;
-#X connect 18 0 6 0;
-#X connect 20 0 0 0;
-#X connect 20 1 0 1;
-#X connect 20 2 37 0;
-#X connect 26 0 6 0;
-#X connect 29 0 6 0;
-#X connect 40 0 6 0;
-#X connect 44 0 5 0;
-#X connect 47 0 6 0;
-#X connect 48 0 47 0;
-#X connect 50 0 52 0;
-#X connect 51 0 50 0;
+#X connect 7 0 19 0;
+#X connect 19 0 0 0;
+#X connect 19 1 0 1;
+#X connect 19 2 36 0;
+#X connect 25 0 6 0;
+#X connect 28 0 6 0;
+#X connect 39 0 6 0;
+#X connect 43 0 5 0;
+#X connect 46 0 6 0;
+#X connect 47 0 46 0;
+#X connect 49 0 51 0;
+#X connect 50 0 49 0;
+#X connect 52 0 53 0;
+#X connect 53 0 6 0;
