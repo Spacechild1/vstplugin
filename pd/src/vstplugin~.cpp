@@ -1088,8 +1088,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         cmd->parallel = data.parallel;
         cmd->update = data.update;
         x->x_search_data = cmd;
-        t_workqueue::get()->push(cmd, vstplugin_dosearch, vstplugin_search_done,
-                                 t_search_data::free);
+        t_workqueue::get()->push(cmd, vstplugin_dosearch, vstplugin_search_done);
     } else {
         if (update){
             writeIniFile();

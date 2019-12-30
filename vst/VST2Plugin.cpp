@@ -236,7 +236,6 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     midiQueue_.reserve(DEFAULT_EVENT_QUEUE_SIZE);
 
     plugin_->user = this;
-    LOG_DEBUG("opening plugin");
     dispatch(effOpen);
     // are we probing?
     if (!info_){

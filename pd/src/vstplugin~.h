@@ -39,7 +39,8 @@ struct t_command {
     static void free(T *x){ delete x; }
     using t_fun = void (*)(T *);
 
-    t_vstplugin *owner;
+    t_vstplugin *owner = nullptr;
+};
 };
 
 struct t_search_data : t_command<t_search_data> {
@@ -185,9 +186,9 @@ class t_workqueue {
     t_workqueue();
     ~t_workqueue();
     template<typename T>
-    int push(T *data, t_fun<T> workfn, t_fun<T> cb, t_fun<T> cleanup){
+    int push(T *data, t_fun<T> workfn, t_fun<T> cb = nullptr){
         return push(data, t_fun<void>(workfn),
-                    t_fun<void>(cb), t_fun<void>(cleanup));
+                    t_fun<void>(cb), t_fun<void>(T::free));
     }
     void cancel(int id);
     void poll();
