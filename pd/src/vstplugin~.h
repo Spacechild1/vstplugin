@@ -35,21 +35,21 @@ class t_vstplugin;
 
 // async commands
 template<typename T>
-struct t_command {
+struct t_command_data {
     static void free(T *x){ delete x; }
     using t_fun = void (*)(T *);
 
     t_vstplugin *owner = nullptr;
 };
 
-struct t_plugin_data : t_command<t_plugin_data> {
+struct t_plugin_data : t_command_data<t_plugin_data> {
     t_symbol *path;
     bool editor;
     IPlugin::ptr plugin;
 };
 };
 
-struct t_search_data : t_command<t_search_data> {
+struct t_search_data : t_command_data<t_search_data> {
     std::vector<std::string> paths;
     std::vector<t_symbol *> plugins;
     bool parallel;
@@ -192,10 +192,10 @@ class t_workqueue {
 
     t_workqueue();
     ~t_workqueue();
-    template<typename T>
-    int push(T *data, t_fun<T> workfn, t_fun<T> cb = nullptr){
-        return push(data, t_fun<void>(workfn),
-                    t_fun<void>(cb), t_fun<void>(T::free));
+    template<typename T, typename Fn1, typename Fn2>
+    int push(T *data, Fn1 workfn, Fn2 cb){
+        return dopush(data, t_fun<void>(t_fun<T>(workfn)),
+                    t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
     }
     void cancel(int id);
     void poll();
@@ -207,7 +207,7 @@ class t_workqueue {
         t_fun<void> cleanup;
         int id;
     };
-    int push(void *data, t_fun<void> workfn,
+    int dopush(void *data, t_fun<void> workfn,
              t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
     LockfreeFifo<t_item, 1024> w_nrt_queue;

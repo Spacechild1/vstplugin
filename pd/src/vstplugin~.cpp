@@ -131,7 +131,7 @@ void t_workqueue::clockmethod(t_workqueue *w){
     clock_delay(w->w_clock, 1); // must not be zero!
 }
 
-int t_workqueue::push(void *data, t_fun<void> workfn,
+int t_workqueue::dopush(void *data, t_fun<void> workfn,
                       t_fun<void> cb, t_fun<void> cleanup){
     t_item item;
     item.data = data;
@@ -1100,7 +1100,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
 static void vstplugin_search_stop(t_vstplugin *x){
     if (x->x_search_data){
         x->x_search_data->cancel = true;
-        x->x_search_data = nullptr;
+        x->x_search_data = nullptr; // will be freed by work queue
     }
 }
 
@@ -1255,7 +1255,7 @@ static void vstplugin_close(t_vstplugin *x){
         if (x->x_async){
             auto data = new t_plugin_data();
             data->plugin = std::move(x->x_plugin);
-            t_workqueue::get()->push(data, vstplugin_close_do<true>);
+            t_workqueue::get()->push(data, vstplugin_close_do<true>, nullptr);
         } else {
             t_plugin_data data;
             data.plugin = std::move(x->x_plugin);
@@ -2394,6 +2394,9 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
     vstplugin_search_stop(this);
+    if (x_command >= 0){
+        t_workqueue::get()->cancel(x_command);
+    }
     LOG_DEBUG("vstplugin free");
 
     pd_unbind(&x_obj.ob_pd, gensym(glob_recv_name));
@@ -2484,11 +2487,10 @@ static t_int *vstplugin_perform(t_int *w){
     auto plugin = x->x_plugin.get();
     auto precision = x->x_precision;
     x->x_lastdsptime = clock_getlogicaltime();
-    // if an async command is running, try to lock the mutex and bypass on failure
-    bool doit = plugin != nullptr && (x->x_command < 0 || x->x_mutex.try_lock());
 
+    bool doit = plugin != nullptr;
     if (doit){
-            // check processing precision (single or double)
+        // check processing precision (single or double)
         if (!plugin->info().hasPrecision(precision)){
             if (plugin->info().hasPrecision(ProcessPrecision::Single)){
                 precision = ProcessPrecision::Single;
@@ -2496,6 +2498,12 @@ static t_int *vstplugin_perform(t_int *w){
                 precision = ProcessPrecision::Double;
             } else {
                 doit = false; // maybe some VST2 MIDI plugins
+            }
+        }
+        // if async command is running, try to lock the mutex or bypass on failure
+        if (x->x_command >= 0){
+            if (!(doit = x->x_mutex.try_lock())){
+                LOG_DEBUG("couldn't lock mutex");
             }
         }
     }
