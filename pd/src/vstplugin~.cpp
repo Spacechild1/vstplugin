@@ -281,6 +281,18 @@ static void writeIniFile(){
     }
 }
 
+template<bool async>
+class PdScopedLock {};
+
+template<>
+class PdScopedLock<true> {
+public:
+    PdScopedLock() {
+        sys_lock();
+    }
+    ~PdScopedLock() { sys_unlock(); }
+};
+
 // for asynchronous searching, we want to show the name of the plugin before
 // the result, especially if the plugin takes a long time to load (e.g. shell plugins).
 // The drawback is that we either have to post the result on a seperate line or post
@@ -327,9 +339,8 @@ public:
         auto str = ss_.str();
         if (!str.empty()){
             if (async){
-                sys_lock();
+                PdScopedLock<async> lock;
                 post("%s", ss_.str().c_str());
-                sys_unlock();
             } else {
                 verbose(level_, "%s", ss_.str().c_str());
             }
@@ -345,13 +356,9 @@ public:
     }
     PdLog& operator <<(const Error& e){
         flush();
-        if (async){
-            sys_lock();
-            verbose(PD_ERROR, "%s", e.what());
-            sys_unlock();
-        } else {
-            verbose(PD_ERROR, "%s", e.what());
-        }
+
+        PdScopedLock<async> lock;
+        verbose(PD_ERROR, "%s", e.what());
         return *this;
     }
     PdLog& operator <<(const ProbeResult& result){
@@ -390,16 +397,14 @@ void consume(T&& obj){
 
 template<bool async = false, typename... T>
 void postBug(const char *fmt, T... args){
-    if (async) sys_lock();
+    PdScopedLock<async> lock;
     bug(fmt, args...);
-    if (async) sys_unlock();
 }
 
 template<bool async = false, typename... T>
 void postError(const char *fmt, T... args){
-    if (async) sys_lock();
+    PdScopedLock<async> lock;
     error(fmt, args...);
-    if (async) sys_unlock();
 }
 
 
