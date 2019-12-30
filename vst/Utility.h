@@ -183,6 +183,12 @@ class LockfreeFifo {
     bool empty() const {
         return readHead_.load(std::memory_order_relaxed) == writeHead_.load(std::memory_order_relaxed);
     }
+    size_t capacity() const { return N; }
+    // raw data
+    int readPos() const { return readHead_.load(std::memory_order_relaxed); }
+    int writePos() const { return writeHead_.load(std::memory_order_relaxed); }
+    T * data() { return data_.data(); }
+    const T* data() const { return data_.data(); }
  private:
     std::atomic<int> readHead_{0};
     std::atomic<int> writeHead_{0};

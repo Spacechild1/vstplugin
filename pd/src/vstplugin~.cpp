@@ -68,13 +68,6 @@ t_workqueue::t_workqueue(){
     #endif
 
         auto perform = [this, &lock](t_item& item){
-            auto it = std::find(w_nrt_cancel.begin(), w_nrt_cancel.end(), item.id);
-            if (it != w_nrt_cancel.end()){
-                // cancel item
-                item.workfn = nullptr;
-                item.cb = nullptr;
-                w_nrt_cancel.erase(it);
-            }
             lock.unlock();
             if (item.workfn){
                 item.workfn(item.data);
@@ -92,13 +85,13 @@ t_workqueue::t_workqueue(){
                 perform(item);
             }
             // now perform blocking FIFO
-            std::unique_lock<std::mutex> nrt_lock(w_nrt_mutex);
+            std::unique_lock<std::mutex> queue_lock(w_queue_mutex);
             while (!w_nrt_queue2.empty()){
                 item = w_nrt_queue2.front();
-                w_nrt_queue2.pop();
-                nrt_lock.unlock();
+                w_nrt_queue2.pop_front();
+                queue_lock.unlock();
                 perform(item);
-                nrt_lock.lock();
+                queue_lock.lock();
             }
             if (w_running){
                 // wait for more
@@ -143,8 +136,8 @@ int t_workqueue::push(void *data, t_fun<void> workfn,
     item.id = w_counter++;
     if (!w_nrt_queue.push(item)){
         // push to other (blocking) queue
-        std::lock_guard<std::mutex> nrt_lock(w_nrt_mutex);
-        w_nrt_queue2.push(item);
+        std::lock_guard<std::mutex> lock(w_queue_mutex);
+        w_nrt_queue2.push_back(item);
     }
     w_cond.notify_all();
     return item.id;
@@ -152,21 +145,43 @@ int t_workqueue::push(void *data, t_fun<void> workfn,
 
 void t_workqueue::cancel(int id){
     std::lock_guard<std::mutex> lock(w_mutex);
-    w_nrt_cancel.push_back(id);
-    w_rt_cancel.push_back(id);
+    int read, write;
+    // NRT queue
+    read = w_nrt_queue.readPos();
+    write = w_nrt_queue.writePos();
+    while (read != write){
+        auto& data = w_nrt_queue.data()[read++];
+        if (data.id == id){
+            data.workfn = nullptr;
+            data.cb = nullptr;
+            return;
+        }
+        read %= w_nrt_queue.capacity();
+    }
+    // blocking NRT queue
+    for (auto& data : w_nrt_queue2){
+        if (data.id == id){
+            data.workfn = nullptr;
+            data.cb = nullptr;
+            return;
+        }
+    }
+    // RT queue
+    read = w_rt_queue.readPos();
+    write = w_rt_queue.writePos();
+    while (read != write){
+        auto& data = w_rt_queue.data()[read++];
+        if (data.id == id){
+            data.cb = nullptr;
+            return;
+        }
+        read %= w_rt_queue.capacity();
+    }
 }
 
 void t_workqueue::poll(){
     t_item item;
     while (w_rt_queue.pop(item)){
-        if (!w_rt_cancel.empty()){
-            auto it = std::find(w_rt_cancel.begin(), w_rt_cancel.end(), item.id);
-            if (it != w_rt_cancel.end()){
-                // cancel item
-                item.cb = nullptr;
-                w_rt_cancel.erase(it);
-            }
-        }
         if (item.cb){
             item.cb(item.data);
         }

@@ -15,7 +15,7 @@ using namespace vst;
 #include <sstream>
 #include <algorithm>
 #include <vector>
-#include <queue>
+#include <deque>
 #include <unordered_map>
 #include <type_traits>
 #include <thread>
@@ -203,8 +203,8 @@ class t_workqueue {
              t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
     LockfreeFifo<t_item, 1024> w_nrt_queue;
-    std::queue<t_item> w_nrt_queue2;
-    std::mutex w_nrt_mutex;
+    std::deque<t_item> w_nrt_queue2;
+    std::mutex w_queue_mutex;
     // queue from NRT to RT
     LockfreeFifo<t_item, 1024> w_rt_queue;
     // worker thread
@@ -212,8 +212,6 @@ class t_workqueue {
     std::mutex w_mutex;
     std::condition_variable w_cond;
     int w_counter = 0;
-    std::vector<int> w_nrt_cancel;
-    std::vector<int> w_rt_cancel;
     bool w_running = true;
     // polling
     t_clock *w_clock = nullptr;
