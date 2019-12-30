@@ -95,4 +95,5 @@ add_dependencies(${PROJECT} ${PROBE})
 install(TARGETS ${PROJECT} DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 install(PROGRAMS "${PROBE_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
-    "../README.md" "../LICENSE.txt" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+    "vstpresetbrowser.pd" "vstpresetbrowser-help.pd" "../README.md" "../LICENSE.txt"
+     DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
