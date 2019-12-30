@@ -20,7 +20,7 @@
 #include <algorithm>
 
 #ifdef _WIN32
-# include <Windows.h>
+# include <windows.h>
 # include <process.h>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
@@ -38,6 +38,8 @@ namespace fs = std::experimental::filesystem;
 // for probing (and dlopen)
 # include <dlfcn.h>
 # include <stdio.h>
+// for thread management
+# include <pthread.h>
 #endif
 
 #ifdef __APPLE__
@@ -972,6 +974,28 @@ namespace UIThread {
     #elif defined(USE_X11)
         X11::UIThread::poll();
     #endif
+    }
+#endif
+}
+
+void setThreadLowPriority(){
+#ifdef _WIN32
+    auto thread = GetCurrentThread();
+    // lower the thread priority
+    if (SetThreadPriority(thread, THREAD_PRIORITY_LOWEST)){
+        // disable priority boost
+        if (!SetThreadPriorityBoost(thread, TRUE)){
+            LOG_WARNING("couldn't disable thread priority boost");
+        }
+    } else {
+        LOG_WARNING("couldn't set thread priority");
+    }
+#else
+    // low priority
+    struct sched_param param;
+    param.sched_priority = 0;
+    if (pthread_setschedparam(pthread_self(), SCHED_OTHER, &param) != 0){
+        LOG_WARNING("couldn't set thread priority");
     }
 #endif
 }

@@ -4,6 +4,10 @@
 #include <cstring>
 
 namespace vst {
+
+// Plugin.cpp
+void setThreadLowPriority();
+
 namespace X11 {
 
 namespace  {
@@ -72,15 +76,6 @@ EventLoop::EventLoop() {
     // run timer thread
     timerThread_ = std::thread(&EventLoop::updatePlugins, this);
     LOG_DEBUG("X11: UI thread ready");
-
-#if HAVE_UI_THREAD
-    // low priority
-    struct sched_param param;
-    param.sched_priority = 0;
-    if (pthread_setschedparam(thread_.native_handle(), SCHED_OTHER, &param) != 0){
-        LOG_WARNING("couldn't set thread priority");
-    }
-#endif
 }
 
 EventLoop::~EventLoop(){
@@ -106,6 +101,8 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::run(){
+    setThreadLowPriority();
+
     XEvent event;
     LOG_DEBUG("X11: start event loop");
     while (true){

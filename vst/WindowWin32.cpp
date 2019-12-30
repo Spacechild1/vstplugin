@@ -8,7 +8,9 @@
 
 namespace vst {
 
-std::wstring widen(const std::string& s); // VSTPlugin.cpp
+// Plugin.cpp
+std::wstring widen(const std::string& s);
+void setThreadLowPriority();
 
 namespace Win32 {
     
@@ -37,6 +39,8 @@ EventLoop& EventLoop::instance(){
 }
 
 DWORD EventLoop::run(void *user){
+    setThreadLowPriority();
+
     auto obj = (EventLoop *)user;
     MSG msg;
     int ret;
@@ -109,18 +113,6 @@ EventLoop::EventLoop(){
     // wait for thread to create message queue
     cond_.wait(lock, [&](){ return ready_; });
     LOG_DEBUG("message queue created");
-
-#if HAVE_UI_THREAD
-    // lower the thread priority
-    if (SetThreadPriority(thread_, THREAD_PRIORITY_LOWEST)){
-        // disable priority boost
-        if (!SetThreadPriorityBoost(thread_, TRUE)){
-            LOG_WARNING("couldn't disable thread priority boost");
-        }
-    } else {
-        LOG_WARNING("couldn't set thread priority");
-    }
-#endif
 }
 
 EventLoop::~EventLoop(){
