@@ -41,6 +41,12 @@ struct t_command {
 
     t_vstplugin *owner = nullptr;
 };
+
+struct t_plugin_data : t_command<t_plugin_data> {
+    t_symbol *path;
+    bool editor;
+    IPlugin::ptr plugin;
+};
 };
 
 struct t_search_data : t_command<t_search_data> {
@@ -74,15 +80,17 @@ class t_vstplugin {
     std::vector<char> x_auxinbuf;
     std::vector<char> x_outbuf;
     std::vector<char> x_auxoutbuf;
+    std::mutex x_mutex;
     // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_key = nullptr;
     t_symbol *x_path = nullptr;
     t_symbol *x_preset = nullptr;
-    bool x_uithread = false;
+    bool x_async = false;
     bool x_keep = false;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
+    int x_command = -1;
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
 #ifdef PDINSTANCE
@@ -91,7 +99,6 @@ class t_vstplugin {
     // search
     t_search_data * x_search_data = nullptr;
     // methods
-    bool open_plugin(t_symbol *s, bool editor);
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();

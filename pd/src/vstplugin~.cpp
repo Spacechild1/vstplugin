@@ -1226,15 +1226,40 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
 }
 
 // close
+
+template<bool async>
+static void vstplugin_close_do(t_plugin_data *x){
+    if (x->plugin->getWindow()){
+        try {
+            UIThread::destroy(std::move(x->plugin));
+        } catch (const Error& e){
+            PdScopedLock<async> lock;
+            pd_error(x, "%s: couldn't close plugin: %s",
+                     classname(x), e.what());
+        }
+    } else {
+        x->plugin = nullptr; // we want to release it here!
+    }
+}
+
 static void vstplugin_close(t_vstplugin *x){
     if (x->x_plugin){
-        if (x->x_uithread){
-            try {
-                UIThread::destroy(std::move(x->x_plugin));
-            } catch (const Error& e){
-                pd_error(x, "%s: couldn't close plugin: %s",
-                         classname(x), e.what());
-            }
+        if (x->x_command >= 0){
+            pd_error(x, "%s: can't close plugin - temporarily suspended!",
+                     classname(x));
+            return;
+        }
+        // stop receiving events from plugin
+        x->x_plugin->setListener(nullptr);
+        // make sure to release the plugin on the same thread where it was opened
+        if (x->x_async){
+            auto data = new t_plugin_data();
+            data->plugin = std::move(x->x_plugin);
+            t_workqueue::get()->push(data, vstplugin_close_do<true>);
+        } else {
+            t_plugin_data data;
+            data.plugin = std::move(x->x_plugin);
+            vstplugin_close_do<false>(&data);
         }
         x->x_plugin = nullptr;
         x->x_editor->vis(false);
@@ -1244,11 +1269,75 @@ static void vstplugin_close(t_vstplugin *x){
     }
 }
 
+
 // open
+
+template<bool async>
+static void vstplugin_open_do(t_plugin_data *x){
+    // get plugin info
+    const PluginInfo *info = queryPlugin<async>(x->owner, x->path->s_name);
+    if (!info){
+        PdScopedLock<async> lock;
+        pd_error(x->owner, "%s: can't load '%s'", classname(x->owner), x->path->s_name);
+        return;
+    }
+    // open the new VST plugin
+    try {
+        IPlugin::ptr plugin;
+        if (x->editor){
+            plugin = UIThread::create(*info);
+        } else {
+            plugin = info->create();
+        }
+        if (plugin){
+            // protect against concurrent vstplugin_dsp() and vstplugin_save()
+            std::lock_guard<std::mutex> lock(x->owner->x_mutex);
+            x->owner->x_plugin = std::move(plugin);
+            // now setup plugin
+            x->owner->setup_plugin();
+        }
+    } catch (const Error& e) {
+        // shouldn't happen...
+        PdScopedLock<async> lock;
+        pd_error(x->owner, "%s: couldn't open '%s': %s",
+                 classname(x->owner), info->name.c_str(), e.what());
+    }
+}
+
+static void vstplugin_open_done(t_plugin_data *x){
+    if (x->owner->x_plugin){
+        auto& info = x->owner->x_plugin->info();
+        x->owner->x_key = gensym(makeKey(info).c_str());
+        x->owner->x_path = x->path; // store path symbol (to avoid reopening the same plugin)
+        // receive events from plugin
+        x->owner->x_plugin->setListener(x->owner->x_editor);
+        // update Pd editor
+        x->owner->x_editor->setup();
+        verbose(PD_DEBUG, "opened '%s'", info.name.c_str());
+    }
+}
+
+static void vstplugin_open_done_notify(t_plugin_data *x){
+    vstplugin_open_done(x);
+    // command finished
+    x->owner->x_command = -1;
+    // output message
+    bool success = x->owner->x_plugin != nullptr;
+    t_atom a[2];
+    int n = 1;
+    SETFLOAT(&a[0], success);
+    if (success){
+        SETSYMBOL(&a[1], x->owner->x_key);
+        n++;
+    }
+    outlet_anything(x->owner->x_messout, gensym("open"), n, a);
+}
+
 static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     t_symbol *pathsym = nullptr;
     bool editor = false;
-        // parse arguments
+    bool async = false;
+    // parse arguments
     while (argc && argv->a_type == A_SYMBOL){
         auto sym = argv->a_w.w_symbol;
         if (*sym->s_name == '-'){ // flag
@@ -1261,65 +1350,52 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             argc--; argv++;
         } else { // file name
             pathsym = sym;
+            if (--argc){
+                // "async" float argument after plugin name
+                async = atom_getfloat(++argv);
+            }
             break;
         }
     }
+
+    if (!pathsym){
+        pd_error(x, "%s: 'open' needs a symbol argument!", classname(x));
+        return;
+    }
+#if 0
+    if (!*pathsym->s_name){
+        pd_error(x, "%s: empty symbol for 'open' message!", classname(x));
+        return;
+    }
+#endif
     // don't reopen the same plugin (mainly for -k flag)
     if (pathsym == x->x_path && x->x_editor->vst_gui() == editor){
         return;
     }
-    bool success = x->open_plugin(pathsym, editor);
-    // output message
-    t_atom a[2];
-    int n = 1;
-    SETFLOAT(&a[0], success);
-    if (success){
-        SETSYMBOL(&a[1], x->x_key);
-        n++;
+    // don't open while async command is running
+    if (x->x_command >= 0){
+        pd_error(x, "%s: can't open plugin - temporarily suspended!",
+                 classname(x));
+        return;
     }
-    outlet_anything(x->x_messout, gensym("open"), n, a);
-}
-
-bool t_vstplugin::open_plugin(t_symbol *s, bool editor){
     // close the old plugin
-    vstplugin_close(this);
-
-    if (!s){
-        pd_error(this, "%s: 'open' needs a symbol argument!", classname(this));
-        return false;
+    vstplugin_close(x);
+    // open the new plugin
+    if (async){
+        auto data = new t_plugin_data();
+        data->owner = x;
+        data->path = pathsym;
+        data->editor = editor;
+        t_workqueue::get()->push(data, vstplugin_open_do<true>, vstplugin_open_done_notify);
+    } else {
+        t_plugin_data data;
+        data.owner = x;
+        data.path = pathsym;
+        data.editor = editor;
+        vstplugin_open_do<false>(&data);
+        vstplugin_open_done_notify(&data);
     }
-    // get plugin info
-    const PluginInfo *info = queryPlugin(this, s->s_name);
-    if (!info){
-        pd_error(this, "%s: can't load '%s'", classname(this), s->s_name);
-        return false;
-    }
-    // open the new VST plugin
-    try {
-        IPlugin::ptr plugin;
-        if (editor){
-            plugin = UIThread::create(*info);
-        } else {
-            plugin = info->create();
-        }
-        x_uithread = editor;
-        x_path = s; // store path symbol (to avoid reopening the same plugin)
-        x_key = gensym(makeKey(*info).c_str());
-        verbose(PD_DEBUG, "opened '%s'", info->name.c_str());
-        // setup plugin
-        x_plugin = std::move(plugin);
-        setup_plugin();
-        // receive events from plugin
-        x_plugin->setListener(x_editor);
-        // update Pd editor
-        x_editor->setup();
-        return true;
-    } catch (const Error& e) {
-        // shouldn't happen...
-        pd_error(this, "%s: couldn't open '%s': %s",
-                 classname(this), info->name.c_str(), e.what());
-        return false;
-    }
+    x->x_async = async; // remember
 }
 
 static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
@@ -2157,11 +2233,15 @@ void t_vstplugin::set_param(int index, const char *s, bool automated){
 
 bool t_vstplugin::check_plugin(){
     if (x_plugin){
-        return true;
+        if (x_command < 0){
+            return true;
+        } else {
+            pd_error(this, "%s: temporarily suspended!", classname(this));
+        }
     } else {
         pd_error(this, "%s: no plugin loaded!", classname(this));
-        return false;
     }
+    return false;
 }
 
 void t_vstplugin::setup_plugin(){
@@ -2285,7 +2365,12 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     // open plugin
     if (file){
-        open_plugin(file, editor);
+        t_plugin_data data;
+        data.owner = this;
+        data.path = file;
+        data.editor = editor;
+        vstplugin_open_do<false>(&data);
+        vstplugin_open_done(&data);
         x_path = file; // HACK: set symbol for vstplugin_loadbang
     }
 
@@ -2398,8 +2483,9 @@ static t_int *vstplugin_perform(t_int *w){
     int n = (int)(w[2]);
     auto plugin = x->x_plugin.get();
     auto precision = x->x_precision;
-    bool doit = plugin != nullptr;
     x->x_lastdsptime = clock_getlogicaltime();
+    // if an async command is running, try to lock the mutex and bypass on failure
+    bool doit = plugin != nullptr && (x->x_command < 0 || x->x_mutex.try_lock());
 
     if (doit){
             // check processing precision (single or double)
@@ -2418,6 +2504,9 @@ static t_int *vstplugin_perform(t_int *w){
             vstplugin_doperform<double>(x, n);
         } else { // single precision
             vstplugin_doperform<float>(x, n);
+        }
+        if (x->x_command >= 0){
+            x->x_mutex.unlock();
         }
     } else {
         auto copyInput = [](auto& inlets, auto buf, auto numSamples){
@@ -2476,17 +2565,19 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addbinbuf(bb, x->x_obj.ob_binbuf);
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
-            // 1) plugin
+        // protect against concurrent vstplugin_open_do()
+        std::lock_guard<std::mutex> lock(x->x_mutex);
+        // 1) plugin
         if (x->x_editor->vst_gui()){
             binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
         } else {
             binbuf_addv(bb, "sss", gensym("#A"), gensym("open"), x->x_path);
         }
         binbuf_addsemi(bb);
-            // 2) program number
+        // 2) program number
         binbuf_addv(bb, "ssi", gensym("#A"), gensym("program_set"), x->x_plugin->getProgram());
         binbuf_addsemi(bb);
-            // 3) program data
+        // 3) program data
         std::string buffer;
         x->x_plugin->writeProgramData(buffer);
         int n = buffer.size();
@@ -2512,30 +2603,32 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int blocksize = sp[0]->s_n;
     t_float sr = sp[0]->s_sr;
     dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)blocksize);
-        // only reset plugin if blocksize or samplerate has changed
+    // protect against concurrent vstplugin_open_do()
+    std::lock_guard<std::mutex> lock(x->x_mutex);
+    // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->setup_plugin();
     }
     x->x_blocksize = blocksize;
     x->x_sr = sr;
-        // update signal vectors and buffers
+    // update signal vectors and buffers
     int k = 0;
-        // main in:
+    // main in:
     for (auto it = x->x_siginlets.begin(); it != x->x_siginlets.end(); ++it){
         *it = sp[k++]->s_vec;
     }
     x->x_inbuf.resize(x->x_siginlets.size() * sizeof(double) * blocksize); // large enough for double precision
-        // aux in:
+    // aux in:
     for (auto it = x->x_sigauxinlets.begin(); it != x->x_sigauxinlets.end(); ++it){
         *it = sp[k++]->s_vec;
     }
     x->x_auxinbuf.resize(x->x_sigauxinlets.size() * sizeof(double) * blocksize);
-        // main out:
+    // main out:
     for (auto it = x->x_sigoutlets.begin(); it != x->x_sigoutlets.end(); ++it){
         *it = sp[k++]->s_vec;
     }
     x->x_outbuf.resize(x->x_sigoutlets.size() * sizeof(double) * blocksize);
-        // aux out:
+    // aux out:
     for (auto it = x->x_sigauxoutlets.begin(); it != x->x_sigauxoutlets.end(); ++it){
         *it = sp[k++]->s_vec;
     }
