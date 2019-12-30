@@ -545,7 +545,7 @@ static FactoryFuture probePluginParallel(const std::string& path){
 #define PROBE_PROCESSES 8
 
 template<bool async>
-static void searchPlugins(const std::string& path, bool parallel, t_vstplugin::t_search_data_ptr data = nullptr){
+static void searchPlugins(const std::string& path, bool parallel, t_search_data *data = nullptr){
     int count = 0;
     {
         std::string bashPath = path;
@@ -557,7 +557,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin::t
         if (data){
             auto key = makeKey(plugin);
             bash_name(key);
-            data->s_plugins.push_back(gensym(key.c_str()));
+            data->plugins.push_back(gensym(key.c_str()));
         }
         // Pd's posting methods have a size limit, so we log each plugin seperately!
         if (n > 0){
@@ -583,8 +583,8 @@ static void searchPlugins(const std::string& path, bool parallel, t_vstplugin::t
     };
 
     vst::search(path, [&](const std::string& absPath){
-        if (data && !data->s_running){
-            return; // search was cancelled
+        if (data && data->cancel){
+            return; // cancel search
         }
         LOG_DEBUG("found " << absPath);
         std::string pluginPath = absPath;
@@ -968,63 +968,47 @@ namespace vst {
     bool stringCompare(const std::string& lhs, const std::string& rhs);
 }
 
-static void vstplugin_search_done(t_vstplugin *x){
+static void vstplugin_search_done(t_search_data *x){
+    if (x->cancel){
+        return; // !
+    }
     verbose(PD_NORMAL, "search done");
     // sort plugin names alphabetically and case independent
-    auto& plugins = x->x_search_data->s_plugins;
+    auto& plugins = x->plugins;
     std::sort(plugins.begin(), plugins.end(), [](const auto& lhs, const auto& rhs){
         return vst::stringCompare(lhs->s_name, rhs->s_name);
     });
     for (auto& plugin : plugins){
         t_atom msg;
         SETSYMBOL(&msg, plugin);
-        outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
+        outlet_anything(x->owner->x_messout, gensym("plugin"), 1, &msg);
     }
-    outlet_anything(x->x_messout, gensym("search_done"), 0, nullptr);
-    x->x_search_data->s_running = false;
+    outlet_anything(x->owner->x_messout, gensym("search_done"), 0, nullptr);
+    x->owner->x_search_data = nullptr; // !
 }
 
-static void vstplugin_search_threadfun(t_vstplugin *x, t_vstplugin::t_search_data_ptr data,
-                                       std::vector<std::string> searchPaths, bool parallel, bool update
-#ifdef PDINSTANCE
-                                       , t_pdinstance *instance){
-    pd_setinstance(instance);
-#else
-                                       ){
-#endif
-    LOG_DEBUG("thread function started: " << std::this_thread::get_id());
-    for (auto& path : searchPaths){
-        if (data->s_running){
-            searchPlugins<true>(path, parallel, data); // async
+static void vstplugin_dosearch(t_search_data *x){
+    for (auto& path : x->paths){
+        if (!x->cancel){
+            searchPlugins<true>(path, x->parallel, x); // async
         } else {
             break;
         }
     }
 
-    // we need to lock Pd before calling clock_delay().
-    // also, 's_running' won't change its value while we hold the lock.
-    sys_lock();
-    if (data->s_running){
-        clock_delay(x->x_search_clock, 0); // schedules vstplugin_search_done
+    if (!x->cancel){
+        writeIniFile(); // mutex protected
     } else {
         LOG_DEBUG("search cancelled!");
-        update = false; // don't update cache file
     }
-    sys_unlock();
-
-    if (update){
-        writeIniFile(); // mutex protected
-    }
-    LOG_DEBUG("thread function terminated");
 }
 
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool async = false;
     bool parallel = true; // for now, always do a parallel search
     bool update = true; // update cache file
-    std::vector<std::string> searchPaths;
 
-    if (x->x_search_data->s_running){
+    if (x->x_search_data){
         pd_error(x, "%s: already searching!", classname(x));
         return;
     }
@@ -1045,8 +1029,10 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         }
     }
 
-    x->x_search_data->s_plugins.clear(); // clear list of plug-in keys
-    x->x_search_data->s_running = true;
+    t_search_data data;
+    data.owner = x;
+    data.parallel = parallel;
+    data.update = update;
 
     if (argc > 0){
         while (argc--){
@@ -1054,41 +1040,44 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
             char path[MAXPDSTRING];
             canvas_makefilename(x->x_canvas, sym->s_name, path, MAXPDSTRING);
             if (async){
-                searchPaths.emplace_back(path); // save for later
+                data.paths.emplace_back(path); // save for later
             } else {
-                searchPlugins<false>(path, parallel, x->x_search_data);
+                searchPlugins<false>(path, parallel, &data);
             }
         }
     } else {
         // search in the default VST search paths if no user paths were provided
         for (auto& path : getDefaultSearchPaths()){
             if (async){
-                searchPaths.emplace_back(path); // save for later
+                data.paths.emplace_back(path); // save for later
             } else {
-                searchPlugins<false>(path, parallel, x->x_search_data);
+                searchPlugins<false>(path, parallel, &data);
             }
         }
     }
 
     if (async){
-        // spawn thread which does the actual searching in the background
-        auto thread = std::thread(vstplugin_search_threadfun, x, x->x_search_data,
-                                  std::move(searchPaths), parallel, update
-                              #ifdef PDINSTANCE
-                                  , x->x_pdinstance
-                              #endif
-                                  );
-        thread.detach();
+        auto cmd = new t_search_data();
+        cmd->owner = data.owner;
+        cmd->paths = std::move(data.paths);
+        cmd->parallel = data.parallel;
+        cmd->update = data.update;
+        x->x_search_data = cmd;
+        t_workqueue::get()->push(cmd, vstplugin_dosearch, vstplugin_search_done,
+                                 t_search_data::free);
     } else {
         if (update){
             writeIniFile();
         }
-        vstplugin_search_done(x);
+        vstplugin_search_done(&data);
     }
 }
 
 static void vstplugin_search_stop(t_vstplugin *x){
-    x->x_search_data->s_running = false;
+    if (x->x_search_data){
+        x->x_search_data->cancel = true;
+        x->x_search_data = nullptr;
+    }
 }
 
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
@@ -2229,7 +2218,6 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 #ifdef PDINSTANCE
     x_pdinstance = pd_this;
 #endif
-    x_search_clock = clock_new(this, (t_method)vstplugin_search_done);
 
     // inlets (we already have a main inlet!)
     int totalin = in + auxin - 1;
@@ -2246,9 +2234,6 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     x_sigoutlets.resize(out);
     x_sigauxoutlets.resize(auxout);
     x_messout = outlet_new(&x_obj, 0); // additional message outlet
-
-    // search
-    x_search_data = std::make_shared<t_search_data>();
 
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
@@ -2285,8 +2270,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 // destructor
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
-    x_search_data->s_running = false; // quit running async search!
-    if (x_search_clock) clock_free(x_search_clock);
+    vstplugin_search_stop(this);
     LOG_DEBUG("vstplugin free");
 
     pd_unbind(&x_obj.ob_pd, gensym(glob_recv_name));

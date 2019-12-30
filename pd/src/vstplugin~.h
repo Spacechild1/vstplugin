@@ -31,6 +31,25 @@ enum PdLogLevel {
 };
 
 class t_vsteditor;
+class t_vstplugin;
+
+// async commands
+template<typename T>
+struct t_command {
+    static void free(T *x){ delete x; }
+    using t_fun = void (*)(T *);
+
+    t_vstplugin *owner;
+};
+
+struct t_search_data : t_command<t_search_data> {
+    std::vector<std::string> paths;
+    std::vector<t_symbol *> plugins;
+    bool parallel;
+    bool update;
+    std::atomic_bool cancel {false};
+
+};
 
 // vstplugin~ object (no virtual methods!)
 class t_vstplugin {
@@ -69,13 +88,7 @@ class t_vstplugin {
     t_pdinstance *x_pdinstance = nullptr; // keep track of the instance we belong to
 #endif
     // search
-    struct t_search_data {
-        std::vector<t_symbol *> s_plugins;
-        std::atomic_bool s_running { false };
-    };
-    using t_search_data_ptr = std::shared_ptr<t_search_data>;
-    t_clock *x_search_clock;
-    t_search_data_ptr x_search_data;
+    t_search_data * x_search_data = nullptr;
     // methods
     bool open_plugin(t_symbol *s, bool editor);
     void set_param(int index, float param, bool automated);
