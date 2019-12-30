@@ -1116,6 +1116,7 @@ static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
 
 // resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
 // returns empty string on failure!
+template<bool async>
 static std::string resolvePath(t_canvas *c, const std::string& s){
     std::string result;
         // resolve relative path
@@ -1138,14 +1139,21 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         char fullPath[MAXPDSTRING];
         char dirresult[MAXPDSTRING];
         char *name = nullptr;
+        int fd;
     #ifdef __APPLE__
         const char *bundlePath = "Contents/Info.plist";
         // on MacOS VST plugins are always bundles (directories) but canvas_open needs a real file
         snprintf(fullPath, MAXPDSTRING, "%s/%s", path.c_str(), bundlePath);
-        int fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+        {
+            PdScopedLock<async> lock;
+            fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+        }
     #else
         const char *bundlePath = nullptr;
-        int fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        {
+            PdScopedLock<async> lock;
+            fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        }
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
             bundlePath = getBundleBinaryPath().c_str();
@@ -1156,7 +1164,10 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
                      path.c_str(), bundlePath, fileBaseName(path).c_str());
          #endif
-            fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+            {
+                PdScopedLock<async> lock;
+                fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+            }
         }
     #endif
         if (fd >= 0){
@@ -1186,13 +1197,15 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
 }
 
 // query a plugin by its key or file path and probe if necessary.
+template<bool async = false>
 static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
     // query plugin
     auto desc = gPluginManager.findPlugin(path);
     if (!desc){
             // try as file path
-        std::string abspath = resolvePath(x->x_canvas, path);
+        std::string abspath = resolvePath<async>(x->x_canvas, path);
         if (abspath.empty()){
+            PdScopedLock<async> lock;
             verbose(PD_DEBUG, "'%s' is neither an existing plugin name "
                     "nor a valid file path", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(abspath))){
@@ -1202,6 +1215,7 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
                 if (!desc){
+                    PdScopedLock<async> lock;
                     verbose(PD_DEBUG, "'%s' contains more than one plugin. "
                             "Please use the 'search' method and open the desired "
                             "plugin by its name.", abspath.c_str());
