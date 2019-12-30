@@ -1914,41 +1914,52 @@ static void vstplugin_program_list(t_vstplugin *x,  t_symbol *s){
 
 /* -------------------------------- presets ---------------------------------------*/
 
+enum t_preset {
+    PROGRAM,
+    BANK,
+    PRESET
+};
+
+static const char * presetName(t_preset type){
+    static const char* names[] = { "program", "bank", "preset" };
+    return names[type];
+}
+
 // set program/bank data (list of bytes)
-template<bool bank>
+template<t_preset type>
 static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     std::string buffer;
     buffer.resize(argc);
     for (int i = 0; i < argc; ++i){
-           // first clamp to 0-255, then assign to char (not 100% portable...)
+        // first clamp to 0-255, then assign to char (not 100% portable...)
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     try {
-        if (bank)
+        if (type == BANK)
             x->x_plugin->readBankData(buffer);
         else
             x->x_plugin->readProgramData(buffer);
         x->x_editor->update();
     } catch (const Error& e) {
         pd_error(x, "%s: couldn't set %s data: %s",
-                 classname(x), (bank ? "bank" : "program"), e.what());
+                 classname(x), presetName(type), e.what());
     }
 }
 
 // get program/bank data
-template<bool bank>
+template<t_preset type>
 static void vstplugin_preset_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     try {
-        if (bank)
+        if (type == BANK)
             x->x_plugin->writeBankData(buffer);
         else
             x->x_plugin->writeProgramData(buffer);
     } catch (const Error& e){
         pd_error(x, "%s: couldn't get %s data: %s",
-                 classname(x), (bank ? "bank" : "program"), e.what());
+                 classname(x), presetName(type), e.what());
         return;
     }
     const int n = buffer.size();
@@ -1958,52 +1969,137 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
             // first convert to range 0-255, then assign to t_float (not 100% portable...)
         SETFLOAT(&atoms[i], (unsigned char)buffer[i]);
     }
-    outlet_anything(x->x_messout, gensym(bank ? "bank_data" : "program_data"),
+    outlet_anything(x->x_messout, gensym(type == BANK ? "bank_data" : "program_data"),
                     n, atoms.data());
 }
 
 // read program/bank file (.FXP/.FXB)
-template<bool bank>
-static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s){
-    if (!x->check_plugin()) return;
-    char dir[MAXPDSTRING], *name;
-    int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
+template<t_preset type, bool async>
+static void vstplugin_preset_read_do(t_preset_data *data){
+    auto x = data->owner;
+    char path[MAXPDSTRING];
+    int fd;
+    // avoid locking Pd for absolute paths!
+    if (sys_isabsolutepath(data->path.c_str())){
+        if ((fd = sys_open(data->path.c_str(), O_RDONLY)) >= 0){
+            snprintf(path, MAXPDSTRING, "%s", data->path.c_str());
+        }
+    } else {
+        char dir[MAXPDSTRING], *name;
+        PdScopedLock<async> lock;
+        if ((fd = canvas_open(x->x_canvas, data->path.c_str(), "",
+                              dir, &name, MAXPDSTRING, 1)) >= 0){
+            snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
+        }
+    }
     if (fd < 0){
+        PdScopedLock<async> lock;
         pd_error(x, "%s: couldn't read %s file '%s' - no such file!",
-                 classname(x), (bank ? "bank" : "program"), s->s_name);
+                 classname(x), presetName(type), data->path.c_str());
+        data->success = false;
         return;
     }
     sys_close(fd);
-    char path[MAXPDSTRING];
-    snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
     // sys_bashfilename(path, path);
     try {
-        if (bank)
+        // protect against vstplugin_dsp() and vstplugin_save()
+        std::lock_guard<std::mutex> lock(x->x_mutex);
+        if (type == BANK)
             x->x_plugin->readBankFile(path);
         else
             x->x_plugin->readProgramFile(path);
-        x->x_editor->update();
+        data->success = true;
     } catch (const Error& e) {
+        PdScopedLock<async> lock;
         pd_error(x, "%s: couldn't read %s file '%s':\n%s",
-                 classname(x), s->s_name, (bank ? "bank" : "program"), e.what());
+                 classname(x), presetName(type), data->path.c_str(), e.what());
+        data->success = false;
+    }
+}
+
+template<t_preset type>
+static void vstplugin_preset_read_done(t_preset_data *data){
+    // command finished
+    data->owner->x_command = -1;
+    // *now* update
+    data->owner->x_editor->update();
+    // notify
+    t_atom a;
+    SETFLOAT(&a, data->success);
+    static const char *names[] = { "program_read", "bank_read", "preset_load" };
+    outlet_anything(data->owner->x_messout, gensym(names[type]), 1, &a);
+}
+
+template<t_preset type>
+static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
+    if (!x->check_plugin()) return;
+    if (async){
+        auto data = new t_preset_data();
+        data->owner = x;
+        data->path = s->s_name;
+        x->x_command = t_workqueue::get()->push(data, vstplugin_preset_read_do<type, true>,
+                                 vstplugin_preset_read_done<type>);
+    } else {
+        t_preset_data data;
+        data.owner = x;
+        data.path = s->s_name;
+        vstplugin_preset_read_do<type, false>(&data);
+        vstplugin_preset_read_done<type>(&data);
     }
 }
 
 // write program/bank file (.FXP/.FXB)
-template<bool bank>
-static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s){
-    if (!x->check_plugin()) return;
-    char path[MAXPDSTRING];
-    canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
+template<t_preset type, bool async>
+static void vstplugin_preset_write_do(t_preset_data *data){
+    auto x = data->owner;
     try {
-        if (bank)
-            x->x_plugin->writeBankFile(path);
+        // protect against vstplugin_dsp() and vstplugin_save()
+        std::lock_guard<std::mutex> lock(x->x_mutex);
+        if (type == BANK)
+            x->x_plugin->writeBankFile(data->path);
         else
-            x->x_plugin->writeProgramFile(path);
+            x->x_plugin->writeProgramFile(data->path);
+        data->success = true;
 
     } catch (const Error& e){
+        PdScopedLock<async> lock;
         pd_error(x, "%s: couldn't write %s file '%s':\n%s",
-                 classname(x), (bank ? "bank" : "program"), s->s_name, e.what());
+                 classname(x), presetName(type), data->path.c_str(), e.what());
+        data->success = false;
+    }
+}
+
+template<t_preset type>
+static void vstplugin_preset_write_done(t_preset_data *data){
+    // command finished
+    data->owner->x_command = -1;
+    // notify
+    t_atom a;
+    SETFLOAT(&a, data->success);
+    static const char *names[] = { "program_write", "bank_write", "preset_save" };
+    outlet_anything(data->owner->x_messout, gensym(names[type]), 1, &a);
+}
+
+template<t_preset type>
+static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg async){
+    if (!x->check_plugin()) return;
+    // get the full path here because it's relatively cheap,
+    // otherwise we would have to lock Pd in the NRT thread
+    // (like we do in vstplugin_preset_read)
+    char path[MAXPDSTRING];
+    canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
+    if (async){
+        auto data = new t_preset_data();
+        data->owner = x;
+        data->path = path;
+        x->x_command = t_workqueue::get()->push(data, vstplugin_preset_write_do<type, true>,
+                                 vstplugin_preset_write_done<type>);
+    } else {
+        t_preset_data data;
+        data.owner = x;
+        data.path = path;
+        vstplugin_preset_write_do<type, false>(&data);
+        vstplugin_preset_write_done<type>(&data);
     }
 }
 
@@ -2130,8 +2226,11 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     int index = vstplugin_preset_index(x, argc, argv);
     if (index < 0) return;
 
-    vstplugin_preset_read<false>(x, gensym(info.presets[index].path.c_str()));
-    x->x_preset = gensym(info.presets[index].name.c_str());
+    auto& preset = info.presets[index];
+    bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
+
+    vstplugin_preset_read<PRESET>(x, gensym(preset.path.c_str()), async);
+    x->x_preset = gensym(preset.name.c_str());
 }
 
 
@@ -2166,9 +2265,13 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
             newPreset = true;
         }
     }
+
     if (index >= 0 && vstplugin_preset_writeable(x, index)){
-        vstplugin_preset_write<false>(x, gensym(info.presets[index].path.c_str()));
-        x->x_preset = gensym(info.presets[index].name.c_str());
+        auto& preset = info.presets[index];
+        bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
+
+        vstplugin_preset_write<PRESET>(x, gensym(preset.path.c_str()), async);
+        x->x_preset = gensym(preset.name.c_str());
         if (newPreset){
             vstplugin_preset_notify(x);
         }
@@ -2740,15 +2843,15 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_rename, gensym("preset_rename"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_delete, gensym("preset_delete"), A_GIMME, A_NULL);
     // read/write fx programs
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<false>, gensym("program_data_set"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<false>, gensym("program_data_get"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<false>, gensym("program_read"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<false>, gensym("program_write"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<PROGRAM>, gensym("program_data_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<PROGRAM>, gensym("program_data_get"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<PROGRAM>, gensym("program_read"), A_SYMBOL, A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<PROGRAM>, gensym("program_write"), A_SYMBOL, A_DEFFLOAT, A_NULL);
     // read/write fx banks
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<true>, gensym("bank_data_set"), A_GIMME, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<true>, gensym("bank_data_get"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<true>, gensym("bank_read"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<true>, gensym("bank_write"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_set<BANK>, gensym("bank_data_set"), A_GIMME, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<BANK>, gensym("bank_data_get"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<BANK>, gensym("bank_read"), A_SYMBOL, A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<BANK>, gensym("bank_write"), A_SYMBOL, A_DEFFLOAT, A_NULL);
     // private messages
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
 

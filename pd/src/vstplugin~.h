@@ -21,6 +21,7 @@ using namespace vst;
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <fcntl.h>
 
 enum PdLogLevel {
     PD_FATAL = -3,
@@ -47,6 +48,10 @@ struct t_plugin_data : t_command_data<t_plugin_data> {
     bool editor;
     IPlugin::ptr plugin;
 };
+
+struct t_preset_data : t_command_data<t_preset_data> {
+    std::string path;
+    bool success;
 };
 
 struct t_search_data : t_command_data<t_search_data> {
