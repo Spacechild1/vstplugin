@@ -2174,6 +2174,19 @@ static int vstplugin_preset_index(t_vstplugin *x, int argc, t_atom *argv, bool l
                 int index = argv->a_w.w_float;
                 if (index >= 0 && index < x->x_plugin->info().numPresets()){
                     return index;
+                } else if (index == -1){
+                    // current preset
+                    if (x->x_preset){
+                        index = x->x_plugin->info().findPreset(x->x_preset->s_name);
+                        if (index >= 0){
+                            return index;
+                        } else {
+                            pd_error(x, "%s: couldn't find (current) preset '%s'!",
+                                     classname(x), x->x_preset->s_name);
+                        }
+                    } else {
+                        pd_error(x, "%s: no current preset!", classname(x));
+                    }
                 } else {
                     pd_error(x, "%s: preset index %d out of range!", classname(x), index);
                 }
@@ -2198,16 +2211,8 @@ static int vstplugin_preset_index(t_vstplugin *x, int argc, t_atom *argv, bool l
             pd_error(x, "%s: bad atom type for preset!", classname(x));
             break;
         }
-    } else if (x->x_preset){
-        int index = x->x_plugin->info().findPreset(x->x_preset->s_name);
-        if (index >= 0){
-            return index;
-        } else {
-            pd_error(x, "%s: couldn't find (current) preset '%s'!",
-                     classname(x), x->x_preset->s_name);
-        }
     } else {
-        pd_error(x, "%s: no current preset!", classname(x));
+        pd_error(x, "%s: missing preset argument!", classname(x));
     }
     return -1;
 }
@@ -2224,11 +2229,15 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
     int index = vstplugin_preset_index(x, argc, argv);
-    if (index < 0) return;
+    if (index < 0){
+        t_atom a;
+        SETFLOAT(&a, 0);
+        outlet_anything(x->x_messout, gensym("preset_load"), 1, &a);
+        return;
+    }
 
     auto& preset = info.presets[index];
     bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
-
     vstplugin_preset_read<PRESET>(x, gensym(preset.path.c_str()), async);
     x->x_preset = gensym(preset.name.c_str());
 }
@@ -2251,6 +2260,12 @@ static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
     }
 }
 
+struct t_save_data : t_preset_data {
+    static void free(t_save_data *x){ delete x; }
+    std::string name;
+    bool newpreset;
+};
+
 static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
@@ -2270,60 +2285,136 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         auto& preset = info.presets[index];
         bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
 
-        vstplugin_preset_write<PRESET>(x, gensym(preset.path.c_str()), async);
-        x->x_preset = gensym(preset.name.c_str());
-        if (newPreset){
-            vstplugin_preset_notify(x);
+        auto save_done = [](t_save_data *data){
+            vstplugin_preset_write_done<PRESET>(data);
+
+            if (data->success){
+                // set preset
+                data->owner->x_preset = gensym(data->name.c_str());
+                if (data->newpreset){
+                    vstplugin_preset_notify(data->owner);
+                }
+            } else {
+                if (data->newpreset){
+                    // remove preset
+                    auto& info = data->owner->x_plugin->info();
+                    int index = info.findPreset(data->name);
+                    if (index >= 0){
+                        const_cast<PluginInfo&>(info).removePreset(index, false);
+                    } else {
+                        LOG_ERROR("preset removed");
+                    }
+                }
+            }
+        };
+
+        if (async){
+            auto data = new t_save_data();
+            data->owner = x;
+            data->path = preset.path;
+            data->name = preset.name;
+            data->newpreset = newPreset;
+            x->x_command = t_workqueue::get()->push(data,
+                                     vstplugin_preset_write_do<PRESET, true>,
+                                     save_done);
+        } else {
+            t_save_data data;
+            data.owner = x;
+            data.path = preset.path;
+            data.name = preset.name;
+            data.newpreset = newPreset;
+            vstplugin_preset_write_do<PRESET, false>(&data);
+            save_done(&data);
         }
+    } else {
+        t_atom a;
+        SETFLOAT(&a, 0);
+        outlet_anything(x->x_messout, gensym("preset_save"), 1, &a);
+        return;
     }
 }
 
+struct t_rename_data : t_command_data<t_rename_data> {
+    std::string from;
+    bool newpreset;
+};
+
 static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
-    // [preset] newname
-    if (!argc){
+
+    auto notify = [](t_vstplugin *x, bool result){
+        t_atom a;
+        SETFLOAT(&a, result);
+        outlet_anything(x->x_messout, gensym("preset_rename"), 1, &a);
+    };
+
+    // 1) preset
+    int index = vstplugin_preset_index(x, (argc > 1), argv);
+    if (index < 0){
+        notify(x, false);
         return;
     }
-    t_symbol *newname = atom_getsymbolarg((argc > 1), argc, argv);
+    // 2) new name
+    t_symbol *newname = atom_getsymbolarg(1, argc, argv);
     if (!(*newname->s_name)){
         pd_error(x, "%s: bad preset name %s!", classname(x), newname->s_name);
+        notify(x, false);
         return;
     }
-    int index = vstplugin_preset_index(x, (argc > 1), argv);
-    if (index < 0) return;
-
     // check if we rename the current preset
-    bool update = x->x_preset && x->x_preset->s_name == x->x_plugin->info().presets[index].name;
+    auto& info = x->x_plugin->info();
+    bool update = x->x_preset && (x->x_preset->s_name == info.presets[index].name);
 
     if (vstplugin_preset_writeable(x, index)){
-        if (const_cast<PluginInfo&>(x->x_plugin->info()).renamePreset(index, newname->s_name)){
+        // TODO: async version
+        // bool async = atom_getfloatarg(2, argc, argv); // optional 3rd argument
+        if (const_cast<PluginInfo&>(info).renamePreset(index, newname->s_name)){
             if (update){
                 x->x_preset = newname;
             }
+            notify(x, true);
             vstplugin_preset_notify(x);
+            return; // success
         } else {
             pd_error(x, "%s: couldn't rename preset!", classname(x));
         }
     }
+    notify(x, false);
 }
 
 static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
+
+    auto notify = [](t_vstplugin *x, bool result){
+        t_atom a;
+        SETFLOAT(&a, result);
+        outlet_anything(x->x_messout, gensym("preset_delete"), 1, &a);
+    };
+
     int index = vstplugin_preset_index(x, argc, argv);
-    if (index < 0) return;
+    if (index < 0){
+        notify(x, false);
+        return;
+    }
 
     // check if we delete the current preset
-    if (x->x_preset && x->x_preset->s_name == x->x_plugin->info().presets[index].name){
+    auto& info = x->x_plugin->info();
+    if (x->x_preset && (x->x_preset->s_name == info.presets[index].name)){
         x->x_preset = nullptr;
     }
 
     if (vstplugin_preset_writeable(x, index)){
-        if (const_cast<PluginInfo&>(x->x_plugin->info()).removePreset(index)){
+        // TODO: async version
+        // bool async = atom_getfloatarg(1, argc, argv); // optional 2rd argument
+        if (const_cast<PluginInfo&>(info).removePreset(index)){
+            notify(x, true);
             vstplugin_preset_notify(x);
+            return; // success
         } else {
             pd_error(x, "%s: couldn't delete preset!", classname(x));
         }
     }
+    notify(x, false);
 }
 
 /*---------------------------- t_vstplugin (internal methods) -------------------------------------*/
