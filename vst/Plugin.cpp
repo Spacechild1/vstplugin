@@ -1661,7 +1661,7 @@ int PluginInfo::numPresets() const {
 }
 
 void PluginInfo::sortPresets(bool userOnly){
-    Lock lock(mutex);
+    // don't lock! private method
     auto it1 = presets.begin();
     auto it2 = it1;
     if (userOnly){

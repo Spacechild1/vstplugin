@@ -2049,6 +2049,14 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
 }
 
 // write program/bank file (.FXP/.FXB)
+
+struct t_save_data : t_preset_data {
+    static void free(t_save_data *x){ delete x; }
+    std::string name;
+    PresetType type;
+    bool add;
+};
+
 template<t_preset type, bool async>
 static void vstplugin_preset_write_do(t_preset_data *data){
     auto x = data->owner;
@@ -2067,12 +2075,35 @@ static void vstplugin_preset_write_do(t_preset_data *data){
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
     }
+    if (type == PRESET){
+        auto y = (t_save_data *)data;
+        if (y->success && y->add){
+            auto& info = y->owner->x_plugin->info();
+            Preset preset;
+            preset.name = y->name;
+            preset.path = y->path;
+            preset.type = y->type;
+            const_cast<PluginInfo&>(info).addPreset(std::move(preset));
+        }
+    }
 }
+
+static void vstplugin_preset_notify(t_vstplugin *x);
 
 template<t_preset type>
 static void vstplugin_preset_write_done(t_preset_data *data){
     // command finished
     data->owner->x_command = -1;
+    if (type == PRESET){
+        if (data->success){
+            // set preset and notify
+            auto y = (t_save_data *)data;
+            y->owner->x_preset = gensym(y->name.c_str());
+            if (y->add){
+                vstplugin_preset_notify(y->owner);
+            }
+        }
+    }
     // notify
     t_atom a;
     SETFLOAT(&a, data->success);
@@ -2217,8 +2248,9 @@ static int vstplugin_preset_index(t_vstplugin *x, int argc, t_atom *argv, bool l
     return -1;
 }
 
-static bool vstplugin_preset_writeable(t_vstplugin *x, int index){
-    bool writeable = x->x_plugin->info().presets[index].type == PresetType::User;
+static bool vstplugin_preset_writeable(t_vstplugin *x, const PluginInfo& info, int index){
+    auto lock = info.lockGuard();
+    bool writeable = info.presets[index].type == PresetType::User;
     if (!writeable){
         pd_error(x, "%s: preset is not writeable!", classname(x));
     }
@@ -2236,10 +2268,14 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         return;
     }
 
+    info.lock();
     auto& preset = info.presets[index];
-    bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
-    vstplugin_preset_read<PRESET>(x, gensym(preset.path.c_str()), async);
     x->x_preset = gensym(preset.name.c_str());
+    auto path = gensym(preset.path.c_str());
+    info.unlock();
+
+    bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
+    vstplugin_preset_read<PRESET>(x, path, async);
 }
 
 
@@ -2260,38 +2296,6 @@ static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
     }
 }
 
-struct t_save_data : t_preset_data {
-    static void free(t_save_data *x){ delete x; }
-    std::string name;
-    PresetType type;
-    bool add;
-};
-
-template<bool async>
-static void vstplugin_preset_save_do(t_save_data *data){
-    vstplugin_preset_write_do<PRESET, async>(data);
-    if (data->success && data->add){
-        auto& info = data->owner->x_plugin->info();
-        // check if preset doesn't exist
-        Preset preset;
-        preset.name = data->name;
-        preset.path = data->path;
-        preset.type = data->type;
-        const_cast<PluginInfo&>(info).addPreset(std::move(preset));
-    }
-}
-
-static void vstplugin_preset_save_done(t_save_data *data){
-    vstplugin_preset_write_done<PRESET>(data);
-    if (data->success){
-        // set preset and notify
-        data->owner->x_preset = gensym(data->name.c_str());
-        if (data->add){
-            vstplugin_preset_notify(data->owner);
-        }
-    }
-}
-
 static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
@@ -2300,7 +2304,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     bool add = false;
     int index = vstplugin_preset_index(x, argc, argv, false);
     // preset at *index* must exist and be writeable
-    if (index >= 0 && argv->a_type == A_FLOAT && !vstplugin_preset_writeable(x, index)){
+    if (index >= 0 && argv->a_type == A_FLOAT && !vstplugin_preset_writeable(x, info, index)){
         t_atom a;
         SETFLOAT(&a, 0);
         outlet_anything(x->x_messout, gensym("preset_save"), 1, &a);
@@ -2319,7 +2323,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
             return;
         }
     } else {
-        preset = info.presets[index];
+        preset = info.preset(index);
     }
 
     bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
@@ -2331,8 +2335,8 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data->type = preset.type;
         data->add = add;
         x->x_command = t_workqueue::get()->push(data,
-                                 vstplugin_preset_save_do<true>,
-                                 vstplugin_preset_save_done);
+                                 vstplugin_preset_write_do<PRESET, true>,
+                                 vstplugin_preset_write_done<PRESET>);
     } else {
         t_save_data data;
         data.owner = x;
@@ -2340,14 +2344,16 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data.path = std::move(preset.path);
         data.type = preset.type;
         data.add = add;
-        vstplugin_preset_save_do<false>(&data);
-        vstplugin_preset_save_done(&data);
+        vstplugin_preset_write_do<PRESET, false>(&data);
+        vstplugin_preset_write_done<PRESET>(&data);
     }
 }
 
 struct t_rename_data : t_command_data<t_rename_data> {
-    std::string from;
-    bool newpreset;
+    int index;
+    t_symbol *newname;
+    bool update;
+    bool success;
 };
 
 static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
@@ -2374,24 +2380,62 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     }
     // check if we rename the current preset
     auto& info = x->x_plugin->info();
+    info.lock();
     bool update = x->x_preset && (x->x_preset->s_name == info.presets[index].name);
+    info.unlock();
 
-    if (vstplugin_preset_writeable(x, index)){
-        // TODO: async version
-        // bool async = atom_getfloatarg(2, argc, argv); // optional 3rd argument
-        if (const_cast<PluginInfo&>(info).renamePreset(index, newname->s_name)){
-            if (update){
-                x->x_preset = newname;
-            }
-            notify(x, true);
-            vstplugin_preset_notify(x);
-            return; // success
+    if (vstplugin_preset_writeable(x, info, index)){
+        bool async = atom_getfloatarg(2, argc, argv); // optional 3rd argument
+        if (async){
+            auto data = new t_rename_data();
+            data->owner = x;
+            data->index = index;
+            data->newname = newname;
+            data->update = update;
+            x->x_command = t_workqueue::get()->push(
+                data,
+                [](t_rename_data *data){
+                    auto& info = data->owner->x_plugin->info();
+                    data->success = const_cast<PluginInfo&>(info).renamePreset(data->index, data->newname->s_name);
+                },
+                [](t_rename_data *data){
+                    data->owner->x_command = -1;
+                    if (data->success){
+                        if (data->update){
+                            data->owner->x_preset = data->newname;
+                        }
+                        vstplugin_preset_notify(data->owner);
+                    } else {
+                        pd_error(data->owner, "%s: couldn't rename preset!", classname(data->owner));
+                    }
+                    // notify
+                    t_atom a;
+                    SETFLOAT(&a, data->success);
+                    outlet_anything(data->owner->x_messout, gensym("preset_rename"), 1, &a);
+                }
+            );
+            return; // done
         } else {
-            pd_error(x, "%s: couldn't rename preset!", classname(x));
+            if (const_cast<PluginInfo&>(info).renamePreset(index, newname->s_name)){
+                if (update){
+                    x->x_preset = newname;
+                }
+                vstplugin_preset_notify(x);
+                notify(x, true);
+                return; // success
+            } else {
+                pd_error(x, "%s: couldn't rename preset!", classname(x));
+            }
         }
     }
     notify(x, false);
 }
+
+struct t_delete_data : t_command_data<t_delete_data> {
+    int index;
+    bool current;
+    bool success;
+};
 
 static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
@@ -2410,19 +2454,51 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
 
     // check if we delete the current preset
     auto& info = x->x_plugin->info();
-    if (x->x_preset && (x->x_preset->s_name == info.presets[index].name)){
-        x->x_preset = nullptr;
-    }
+    info.lock();
+    bool current = x->x_preset && (x->x_preset->s_name == info.presets[index].name);
+    info.unlock();
 
-    if (vstplugin_preset_writeable(x, index)){
-        // TODO: async version
-        // bool async = atom_getfloatarg(1, argc, argv); // optional 2rd argument
-        if (const_cast<PluginInfo&>(info).removePreset(index)){
-            notify(x, true);
-            vstplugin_preset_notify(x);
-            return; // success
+    if (vstplugin_preset_writeable(x, info, index)){
+        bool async = atom_getfloatarg(1, argc, argv); // optional 2rd argument
+        if (async){
+            auto data = new t_delete_data();
+            data->owner = x;
+            data->index = index;
+            data->current = current;
+            x->x_command = t_workqueue::get()->push(
+                data,
+                [](t_delete_data *data){
+                    auto& info = data->owner->x_plugin->info();
+                    data->success = const_cast<PluginInfo&>(info).removePreset(data->index);
+                },
+                [](t_delete_data *data){
+                    data->owner->x_command = -1;
+                    if (data->success){
+                        if (data->current){
+                            data->owner->x_preset = nullptr;
+                        }
+                        vstplugin_preset_notify(data->owner);
+                    } else {
+                        pd_error(data->owner, "%s: couldn't rename preset!", classname(data->owner));
+                    }
+                    // notify
+                    t_atom a;
+                    SETFLOAT(&a, data->success);
+                    outlet_anything(data->owner->x_messout, gensym("preset_delete"), 1, &a);
+                }
+            );
+            return; // done
         } else {
-            pd_error(x, "%s: couldn't delete preset!", classname(x));
+            if (const_cast<PluginInfo&>(info).removePreset(index)){
+                if (current){
+                    x->x_preset = nullptr;
+                }
+                vstplugin_preset_notify(x);
+                notify(x, true);
+                return; // success
+            } else {
+                pd_error(x, "%s: couldn't delete preset!", classname(x));
+            }
         }
     }
     notify(x, false);
