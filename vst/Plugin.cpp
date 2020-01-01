@@ -1549,8 +1549,23 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
 #else
     switch (presetType){
     case PresetType::User:
+    {
         result = expandPath("~/.");
+        // VST directories might not exist yet
+        SharedLock rdlock(gFileLock);
+        if (!gDidCreateVstFolders){
+            rdlock.unlock();
+            Lock wrlock(gFileLock);
+            // LATER do some error handling
+        #if USE_VST2
+            createDirectory(result + "vst");
+        #endif
+        #if USE_VST3
+            createDirectory(result + "vst3");
+        #endif
+        }
         break;
+    }
     case PresetType::SharedFactory:
         result = "/usr/local/share/";
         break;
@@ -1637,6 +1652,7 @@ void PluginInfo::scanPresets(){
             }, false);
         }
     }
+    Lock lock(mutex); // lock only here!
     presets = std::move(results);
     sortPresets(false);
 #if 0
