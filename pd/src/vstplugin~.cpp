@@ -2263,74 +2263,85 @@ static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
 struct t_save_data : t_preset_data {
     static void free(t_save_data *x){ delete x; }
     std::string name;
-    bool newpreset;
+    PresetType type;
+    bool add;
 };
+
+template<bool async>
+static void vstplugin_preset_save_do(t_save_data *data){
+    vstplugin_preset_write_do<PRESET, async>(data);
+    if (data->success && data->add){
+        auto& info = data->owner->x_plugin->info();
+        // check if preset doesn't exist
+        Preset preset;
+        preset.name = data->name;
+        preset.path = data->path;
+        preset.type = data->type;
+        const_cast<PluginInfo&>(info).addPreset(std::move(preset));
+    }
+}
+
+static void vstplugin_preset_save_done(t_save_data *data){
+    vstplugin_preset_write_done<PRESET>(data);
+    if (data->success){
+        // set preset and notify
+        data->owner->x_preset = gensym(data->name.c_str());
+        if (data->add){
+            vstplugin_preset_notify(data->owner);
+        }
+    }
+}
 
 static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
-    bool newPreset = false;
     auto& info = x->x_plugin->info();
+    Preset preset;
+    bool add = false;
     int index = vstplugin_preset_index(x, argc, argv, false);
-    if (index < 0){
-        // if the preset couldn't be found and it's a (valid) symbol, make a new preset
-        t_symbol *sym = atom_getsymbolarg(0, argc, argv);
-        if (*sym->s_name){
-            index = const_cast<PluginInfo&>(info).addPreset(sym->s_name);
-            newPreset = true;
-        }
-    }
-
-    if (index >= 0 && vstplugin_preset_writeable(x, index)){
-        auto& preset = info.presets[index];
-        bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
-
-        auto save_done = [](t_save_data *data){
-            vstplugin_preset_write_done<PRESET>(data);
-
-            if (data->success){
-                // set preset
-                data->owner->x_preset = gensym(data->name.c_str());
-                if (data->newpreset){
-                    vstplugin_preset_notify(data->owner);
-                }
-            } else {
-                if (data->newpreset){
-                    // remove preset
-                    auto& info = data->owner->x_plugin->info();
-                    int index = info.findPreset(data->name);
-                    if (index >= 0){
-                        const_cast<PluginInfo&>(info).removePreset(index, false);
-                    } else {
-                        LOG_ERROR("preset removed");
-                    }
-                }
-            }
-        };
-
-        if (async){
-            auto data = new t_save_data();
-            data->owner = x;
-            data->path = preset.path;
-            data->name = preset.name;
-            data->newpreset = newPreset;
-            x->x_command = t_workqueue::get()->push(data,
-                                     vstplugin_preset_write_do<PRESET, true>,
-                                     save_done);
-        } else {
-            t_save_data data;
-            data.owner = x;
-            data.path = preset.path;
-            data.name = preset.name;
-            data.newpreset = newPreset;
-            vstplugin_preset_write_do<PRESET, false>(&data);
-            save_done(&data);
-        }
-    } else {
+    // preset at *index* must exist and be writeable
+    if (index >= 0 && argv->a_type == A_FLOAT && !vstplugin_preset_writeable(x, index)){
         t_atom a;
         SETFLOAT(&a, 0);
         outlet_anything(x->x_messout, gensym("preset_save"), 1, &a);
         return;
+    }
+    // if the preset *name* couldn't be found, make a new preset
+    if (index < 0){
+        t_symbol *name = atom_getsymbolarg(0, argc, argv);
+        if (*name->s_name){
+            preset = info.makePreset(name->s_name);
+            add = true;
+        } else {
+            t_atom a;
+            SETFLOAT(&a, 0);
+            outlet_anything(x->x_messout, gensym("preset_save"), 1, &a);
+            return;
+        }
+    } else {
+        preset = info.presets[index];
+    }
+
+    bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
+    if (async){
+        auto data = new t_save_data();
+        data->owner = x;
+        data->name = std::move(preset.name);
+        data->path = std::move(preset.path);
+        data->type = preset.type;
+        data->add = add;
+        x->x_command = t_workqueue::get()->push(data,
+                                 vstplugin_preset_save_do<true>,
+                                 vstplugin_preset_save_done);
+    } else {
+        t_save_data data;
+        data.owner = x;
+        data.name = std::move(preset.name);
+        data.path = std::move(preset.path);
+        data.type = preset.type;
+        data.add = add;
+        vstplugin_preset_save_do<false>(&data);
+        vstplugin_preset_save_done(&data);
     }
 }
 
