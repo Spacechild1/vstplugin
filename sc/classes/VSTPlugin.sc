@@ -128,7 +128,7 @@ VSTPluginDesc {
 			},
 			\linux,
 			{
-				var vst = if(type == \user, ".") ++ if(vst3, "vst3", "vst2");
+				var vst = if(type == \user, ".") ++ if(vst3, "vst3", "vst");
 				folder = switch(type,
 					\user, "~",
 					\sharedFactory, "/usr/local/share",
