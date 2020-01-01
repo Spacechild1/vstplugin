@@ -1358,7 +1358,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     }
     // On OSX we can only open the VST GUI on the main thread.
     // Instead of adding thread checks to EventLoop, we simply set "async" to false.
-#ifdef __APPLE__ && !HAVE_UI_THREAD
+#if defined(__APPLE__) && !HAVE_UI_THREAD
     if (editor && async){
         async = false;
     }
