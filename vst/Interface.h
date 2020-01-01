@@ -9,9 +9,8 @@
 
 // for SharedMutex
 #include <mutex>
-#ifndef __APPLE__
 #include <shared_mutex>
-#else
+#ifdef __APPLE__
 #include <pthread.h>
 #endif
 
@@ -48,12 +47,12 @@ using SharedMutex = std::shared_mutex;
 #else
 using SharedMutex = std::shared_timed_mutex;
 #endif
-#else
+#else // __APPLE__
 // older OSX versions (OSX 10.11 and below) don't have std:shared_mutex...
 class SharedMutex {
 public:
     SharedMutex() { pthread_rwlock_init(&rwlock_, nullptr); }
-    ~SharedMutex() { pthread_rwlock_destroy(&rwlock); }
+    ~SharedMutex() { pthread_rwlock_destroy(&rwlock_); }
     SharedMutex(const SharedMutex&) = delete;
     SharedMutex& operator==(const SharedMutex&) = delete;
     // exclusive
