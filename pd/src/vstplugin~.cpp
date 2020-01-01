@@ -1320,8 +1320,10 @@ static void vstplugin_open_do(t_open_data *x){
 static void vstplugin_open_done(t_open_data *x){
     if (x->owner->x_plugin){
         auto& info = x->owner->x_plugin->info();
+        // store key (mainly needed for preset change notification)
         x->owner->x_key = gensym(makeKey(info).c_str());
-        x->owner->x_path = x->path; // store path symbol (to avoid reopening the same plugin)
+        // store path symbol (to avoid reopening the same plugin)
+        x->owner->x_path = x->path;
         // receive events from plugin
         x->owner->x_plugin->setListener(x->owner->x_editor);
         // update Pd editor
@@ -1354,6 +1356,13 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             break;
         }
     }
+    // On OSX we can only open the VST GUI on the main thread.
+    // Instead of adding thread checks to EventLoop, we simply set "async" to false.
+#ifdef __APPLE__ && !HAVE_UI_THREAD
+    if (editor && async){
+        async = false;
+    }
+#endif
 
     if (!pathsym){
         pd_error(x, "%s: 'open' needs a symbol argument!", classname(x));
