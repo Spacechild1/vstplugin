@@ -17,13 +17,13 @@ Delete 17 7 0 10 -258113 -1 -1;
 #X obj 100 202 vsl 15 115 4 0 0 0 \$0-scroll \$0-scroll-bar empty 0
 -9 0 10 -262144 -1 -1 11400 0;
 #X obj 100 170 bng 15 250 50 0 \$0-scroll-page-up \$0-scroll-page-up
-« 3 6 0 14 -191407 -1 -1;
-#X obj 100 185 bng 15 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 5 6
+« 4 7 0 14 -191407 -1 -1;
+#X obj 100 185 bng 15 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 4 7
 0 14 -228856 -1 -1;
 #X obj 100 320 bng 15 250 50 0 \$0-scroll-down \$0-scroll-down ›
-5 6 0 14 -228856 -1 -1;
+4 7 0 14 -228856 -1 -1;
 #X obj 100 335 bng 15 250 50 0 \$0-scroll-page-down \$0-scroll-page-down
-» 3 6 0 14 -191407 -1 -1;
+» 4 7 0 14 -191407 -1 -1;
 #X obj 21 71 route open preset_change;
 #X obj 21 91 route 1;
 #X obj 21 112 symbol;
@@ -400,7 +400,7 @@ Delete 17 7 0 10 -258113 -1 -1;
 #X msg 47 157 preset_list \$1;
 #X msg 80 79 clear;
 #X obj 74 353 sel;
-#X obj 47 444 text set \$0-presets 1e+07;
+#X obj 47 444 text set \$0-presets 1e+007;
 #X obj 136 374 text define -k \$0-labels;
 #A set -1 -1 built-in programs \; 0 -1 user presets \; 1 -1 user factory presets
 \; 2 -1 shared factory presets \; 3 -1 global presets \;;
@@ -412,7 +412,7 @@ Delete 17 7 0 10 -258113 -1 -1;
 #X msg 64 179 program_list \$1;
 #X obj 135 250 list prepend -1;
 #X obj 47 227 route preset_info program_name;
-#X msg 89 331 1e+07;
+#X msg 89 331 1e+007;
 #X obj 47 248 list split 3;
 #X obj 47 274 list prepend;
 #X obj 127 79 s \$0-select;

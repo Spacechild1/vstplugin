@@ -61,7 +61,7 @@
 #X msg 252 147 clear;
 #X obj 47 35 text define \$0-info;
 #X obj 259 188 s \$0-info;
-#X obj 79 452 text set \$0-info 1e+07;
+#X obj 79 452 text set \$0-info 1e+007;
 #X msg 201 45 vis 1;
 #X obj 201 66 s pd-\$0-plugins;
 #X obj 201 23 r \$0-plugins-show;
@@ -328,7 +328,7 @@
 #X connect 30 2 28 0;
 #X connect 30 3 31 0;
 #X restore 217 181 pd \$0-filter-category;
-#X obj 57 221 text set \$0-filtered 1e+07;
+#X obj 57 221 text set \$0-filtered 1e+007;
 #X text 68 270 select first plugin;
 #N canvas 748 36 790 661 \$0-keyword 0;
 #X obj 37 37 inlet;
@@ -1417,18 +1417,18 @@ synth \, categories...), f 34;
 #X symbolatom 113 123 22 0 0 2 Keyword #0-filter-keyword-in #0-filter-keyword-out
 ;
 #X obj 104 205 loadbang;
-#X obj 156 156 bng 15 250 50 0 \$0-filter-type-minus \$0-dummy < 4
-8 0 14 -262144 -1 -1;
-#X obj 215 156 bng 15 250 50 0 \$0-filter-type-plus \$0-dummy > 4 8
-0 14 -262144 -1 -1;
-#X obj 433 123 bng 15 250 50 0 \$0-filter-vendor-minus \$0-dummy <
-4 8 0 14 -262144 -1 -1;
-#X obj 492 123 bng 15 250 50 0 \$0-filter-vendor-plus \$0-dummy > 4
-8 0 14 -262144 -1 -1;
+#X obj 156 156 bng 15 250 50 0 \$0-filter-type-minus \$0-dummy ‹
+4 7 0 14 -262144 -1 -1;
+#X obj 215 156 bng 15 250 50 0 \$0-filter-type-plus \$0-dummy › 4
+7 0 14 -262144 -1 -1;
+#X obj 433 123 bng 15 250 50 0 \$0-filter-vendor-minus \$0-dummy ‹
+4 7 0 14 -262144 -1 -1;
+#X obj 492 123 bng 15 250 50 0 \$0-filter-vendor-plus \$0-dummy ›
+4 7 0 14 -262144 -1 -1;
 #X obj 433 157 bng 15 250 50 0 \$0-filter-category-minus \$0-dummy
-< 4 8 0 14 -262144 -1 -1;
-#X obj 492 157 bng 15 250 50 0 \$0-filter-category-plus \$0-dummy >
-4 8 0 14 -262144 -1 -1;
+‹ 4 7 0 14 -262144 -1 -1;
+#X obj 492 157 bng 15 250 50 0 \$0-filter-category-plus \$0-dummy ›
+4 7 0 14 -262144 -1 -1;
 #X obj 259 123 cnv 15 170 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X symbolatom 259 123 28 0 0 2 Vendor #0-filter-vendor-label #0-filter-vendor-out
@@ -1467,13 +1467,13 @@ empty 38 8 0 10 -262144 -1 -1 0 256;
 #X obj 26 127 vsl 15 535 1209 0 0 0 \$0-scroll \$0-scroll-bar empty
 0 -9 0 10 -262144 -1 -1 53400 0;
 #X obj 26 95 bng 15 250 50 0 \$0-scroll-page-up \$0-scroll-page-up
-« 3 6 0 14 -191407 -1 -1;
-#X obj 26 110 bng 15 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 5 6 0
+« 4 7 0 14 -191407 -1 -1;
+#X obj 26 110 bng 15 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 4 7 0
 14 -228856 -1 -1;
-#X obj 26 665 bng 15 250 50 0 \$0-scroll-down \$0-scroll-down › 5
-6 0 14 -228856 -1 -1;
+#X obj 26 665 bng 15 250 50 0 \$0-scroll-down \$0-scroll-down › 4
+7 0 14 -228856 -1 -1;
 #X obj 26 680 bng 15 250 50 0 \$0-scroll-page-down \$0-scroll-page-down
-» 3 6 0 14 -191407 -1 -1;
+» 4 7 0 14 -191407 -1 -1;
 #X restore 100 260 pd \$0-plugins;
 #X obj 175 312 loadbang;
 #X obj 175 354 route symbol;
