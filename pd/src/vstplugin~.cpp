@@ -989,10 +989,6 @@ void t_vsteditor::set_pos(int x, int y){
 
 // search
 
-namespace vst {
-    bool stringCompare(const std::string& lhs, const std::string& rhs);
-}
-
 static void vstplugin_search_done(t_search_data *x){
     if (x->cancel){
         return; // !
@@ -1227,9 +1223,17 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
 
 // close
 
+struct t_close_data : t_command_data<t_close_data> {
+    IPlugin::ptr plugin;
+    bool uithread;
+};
+
 template<bool async>
-static void vstplugin_close_do(t_plugin_data *x){
-    if (x->plugin->getWindow()){
+static void vstplugin_close_do(t_close_data *x){
+    // we can't check for x->plugin->getWindow() because
+    // the plugin might have been opened on the UI thread
+    // but doesn't have an editor!
+    if (x->uithread){
         try {
             UIThread::destroy(std::move(x->plugin));
         } catch (const Error& e){
@@ -1251,14 +1255,17 @@ static void vstplugin_close(t_vstplugin *x){
         }
         // stop receiving events from plugin
         x->x_plugin->setListener(nullptr);
-        // make sure to release the plugin on the same thread where it was opened
+        // make sure to release the plugin on the same thread where it was opened!
+        // this is necessary to avoid crashes or deadlocks with certain plugins.
         if (x->x_async){
-            auto data = new t_plugin_data();
+            auto data = new t_close_data();
             data->plugin = std::move(x->x_plugin);
+            data->uithread = x->x_uithread;
             t_workqueue::get()->push(data, vstplugin_close_do<true>, nullptr);
         } else {
-            t_plugin_data data;
+            t_close_data data;
             data.plugin = std::move(x->x_plugin);
+            data.uithread = x->x_uithread;
             vstplugin_close_do<false>(&data);
         }
         x->x_plugin = nullptr;
@@ -1272,8 +1279,14 @@ static void vstplugin_close(t_vstplugin *x){
 
 // open
 
+struct t_open_data : t_command_data<t_open_data> {
+    t_symbol *path;
+    bool editor;
+    IPlugin::ptr plugin;
+};
+
 template<bool async>
-static void vstplugin_open_do(t_plugin_data *x){
+static void vstplugin_open_do(t_open_data *x){
     // get plugin info
     const PluginInfo *info = queryPlugin<async>(x->owner, x->path->s_name);
     if (!info){
@@ -1304,7 +1317,7 @@ static void vstplugin_open_do(t_plugin_data *x){
     }
 }
 
-static void vstplugin_open_done(t_plugin_data *x){
+static void vstplugin_open_done(t_open_data *x){
     if (x->owner->x_plugin){
         auto& info = x->owner->x_plugin->info();
         x->owner->x_key = gensym(makeKey(info).c_str());
@@ -1315,22 +1328,6 @@ static void vstplugin_open_done(t_plugin_data *x){
         x->owner->x_editor->setup();
         verbose(PD_DEBUG, "opened '%s'", info.name.c_str());
     }
-}
-
-static void vstplugin_open_done_notify(t_plugin_data *x){
-    vstplugin_open_done(x);
-    // command finished
-    x->owner->x_command = -1;
-    // output message
-    bool success = x->owner->x_plugin != nullptr;
-    t_atom a[2];
-    int n = 1;
-    SETFLOAT(&a[0], success);
-    if (success){
-        SETSYMBOL(&a[1], x->owner->x_key);
-        n++;
-    }
-    outlet_anything(x->owner->x_messout, gensym("open"), n, a);
 }
 
 static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
@@ -1380,22 +1377,40 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     }
     // close the old plugin
     vstplugin_close(x);
+
+    auto open_done = [](t_open_data *data){
+        vstplugin_open_done(data);
+        // command finished
+        data->owner->x_command = -1;
+        // output message
+        bool success = data->owner->x_plugin != nullptr;
+        t_atom a[2];
+        int n = 1;
+        SETFLOAT(&a[0], success);
+        if (success){
+            SETSYMBOL(&a[1], data->owner->x_key);
+            n++;
+        }
+        outlet_anything(data->owner->x_messout, gensym("open"), n, a);
+    };
+
     // open the new plugin
     if (async){
-        auto data = new t_plugin_data();
+        auto data = new t_open_data();
         data->owner = x;
         data->path = pathsym;
         data->editor = editor;
-        t_workqueue::get()->push(data, vstplugin_open_do<true>, vstplugin_open_done_notify);
+        t_workqueue::get()->push(data, vstplugin_open_do<true>, open_done);
     } else {
-        t_plugin_data data;
+        t_open_data data;
         data.owner = x;
         data.path = pathsym;
         data.editor = editor;
         vstplugin_open_do<false>(&data);
-        vstplugin_open_done_notify(&data);
+        open_done(&data);
     }
-    x->x_async = async; // remember
+    x->x_async = async; // remember *how* we openend the plugin
+    x->x_uithread = editor; // remember *where* we opened the plugin
 }
 
 static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
@@ -1554,20 +1569,22 @@ static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
 
 // reset the plugin
 
+struct t_reset_data : t_command_data<t_reset_data> {};
+
 static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     if (f){
         // async
-        auto data = new t_plugin_data();
+        auto data = new t_reset_data();
         data->owner = x;
         x->x_command = t_workqueue::get()->push(data,
-            [](t_plugin_data *x){
+            [](t_reset_data *x){
                 // protect against vstplugin_dsp() and vstplugin_save()
                 std::lock_guard<std::mutex> lock(x->owner->x_mutex);
                 x->owner->x_plugin->suspend();
                 x->owner->x_plugin->resume();
             },
-            [](t_plugin_data *x){
+            [](t_reset_data *x){
                 x->owner->x_command = -1;
                 outlet_anything(x->owner->x_messout,
                                 gensym("reset"), 0, nullptr);
@@ -1924,6 +1941,11 @@ static const char * presetName(t_preset type){
     static const char* names[] = { "program", "bank", "preset" };
     return names[type];
 }
+
+struct t_preset_data : t_command_data<t_preset_data> {
+    std::string path;
+    bool success;
+};
 
 // set program/bank data (list of bytes)
 template<t_preset type>
@@ -2667,7 +2689,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     // open plugin
     if (file){
-        t_plugin_data data;
+        t_open_data data;
         data.owner = this;
         data.path = file;
         data.editor = editor;

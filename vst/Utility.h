@@ -102,6 +102,9 @@ std::wstring widen(const std::string& s);
 std::string shorten(const std::wstring& s);
 #endif
 
+// lexicographical case-insensitive string comparison function
+bool stringCompare(const std::string& lhs, const std::string& rhs);
+
 std::string expandPath(const char *path);
 
 bool pathExists(const std::string& path);

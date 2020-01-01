@@ -34,7 +34,7 @@ enum PdLogLevel {
 class t_vsteditor;
 class t_vstplugin;
 
-// async commands
+// base class for async commands
 template<typename T>
 struct t_command_data {
     static void free(T *x){ delete x; }
@@ -43,24 +43,12 @@ struct t_command_data {
     t_vstplugin *owner = nullptr;
 };
 
-struct t_plugin_data : t_command_data<t_plugin_data> {
-    t_symbol *path;
-    bool editor;
-    IPlugin::ptr plugin;
-};
-
-struct t_preset_data : t_command_data<t_preset_data> {
-    std::string path;
-    bool success;
-};
-
 struct t_search_data : t_command_data<t_search_data> {
     std::vector<std::string> paths;
     std::vector<t_symbol *> plugins;
     bool parallel;
     bool update;
     std::atomic_bool cancel {false};
-
 };
 
 // vstplugin~ object (no virtual methods!)
@@ -92,6 +80,7 @@ class t_vstplugin {
     t_symbol *x_path = nullptr;
     t_symbol *x_preset = nullptr;
     bool x_async = false;
+    bool x_uithread = false;
     bool x_keep = false;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
