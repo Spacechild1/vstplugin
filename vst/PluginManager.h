@@ -7,7 +7,6 @@
 #include <unordered_set>
 #include <fstream>
 #include <sstream>
-#include <mutex>
 #include <algorithm>
 
 namespace vst {
@@ -30,14 +29,13 @@ class PluginManager {
     // (de)serialize
     // throws an Error exception on failure!
     void read(const std::string& path, bool update = true);
-    void write(const std::string& path);
+    void write(const std::string& path) const;
  private:
-    void doWrite(const std::string& path);
+    void doWrite(const std::string& path) const;
     std::unordered_map<std::string, IFactory::ptr> factories_;
     std::unordered_map<std::string, PluginInfo::const_ptr> plugins_;
     std::unordered_set<std::string> exceptions_;
-    using Lock = std::lock_guard<std::mutex>;
-    mutable std::mutex mutex_;
+    mutable SharedMutex mutex_;
 };
 
 // implementation
@@ -48,7 +46,7 @@ void PluginManager::addFactory(const std::string& path, IFactory::ptr factory) {
 }
 
 IFactory::const_ptr PluginManager::findFactory(const std::string& path) const {
-    Lock lock(mutex_);
+    SharedLock lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
         return factory->second;
@@ -63,7 +61,7 @@ void PluginManager::addException(const std::string &path){
 }
 
 bool PluginManager::isException(const std::string& path) const {
-    Lock lock(mutex_);
+    SharedLock lock(mutex_);
     return exceptions_.count(path) != 0;
 }
 
@@ -73,7 +71,7 @@ void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plug
 }
 
 PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
-    Lock lock(mutex_);
+    SharedLock lock(mutex_);
     auto desc = plugins_.find(key);
     if (desc != plugins_.end()){
         return desc->second;
@@ -165,12 +163,12 @@ void PluginManager::read(const std::string& path, bool update){
     LOG_DEBUG("done reading cache file");
 }
 
-void PluginManager::write(const std::string &path){
-    Lock lock(mutex_);
+void PluginManager::write(const std::string &path) const {
+    SharedLock lock(mutex_);
     doWrite(path);
 }
 
-void PluginManager::doWrite(const std::string& path){
+void PluginManager::doWrite(const std::string& path) const {
     LOG_DEBUG("writing cache file: " << path);
     File file(path, File::WRITE);
     if (!file.is_open()){
