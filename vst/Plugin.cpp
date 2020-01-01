@@ -1563,6 +1563,7 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
         #if USE_VST3
             createDirectory(result + "vst3");
         #endif
+            gDidCreateVstFolders = true;
         }
         break;
     }
