@@ -989,45 +989,49 @@ void t_vsteditor::set_pos(int x, int y){
 
 // search
 
-static void vstplugin_search_done(t_search_data *x){
-    if (x->cancel){
-        return; // !
+template<bool async>
+static void vstplugin_search_do(t_search_data *x){
+    for (auto& path : x->paths){
+        if (!x->cancel){
+            searchPlugins<async>(path, x->parallel, x); // async
+        } else {
+            break;
+        }
     }
-    verbose(PD_NORMAL, "search done");
     // sort plugin names alphabetically and case independent
     auto& plugins = x->plugins;
     std::sort(plugins.begin(), plugins.end(), [](const auto& lhs, const auto& rhs){
         return vst::stringCompare(lhs->s_name, rhs->s_name);
     });
-    for (auto& plugin : plugins){
-        t_atom msg;
-        SETSYMBOL(&msg, plugin);
-        outlet_anything(x->owner->x_messout, gensym("plugin"), 1, &msg);
-    }
-    outlet_anything(x->owner->x_messout, gensym("search_done"), 0, nullptr);
-    x->owner->x_search_data = nullptr; // !
-}
+    // remove duplicates
+    plugins.erase(std::unique(plugins.begin(), plugins.end()), plugins.end());
 
-static void vstplugin_dosearch(t_search_data *x){
-    for (auto& path : x->paths){
-        if (!x->cancel){
-            searchPlugins<true>(path, x->parallel, x); // async
-        } else {
-            break;
-        }
-    }
-
-    if (!x->cancel){
+    if (x->update && !x->cancel){
         writeIniFile(); // mutex protected
     } else {
         LOG_DEBUG("search cancelled!");
     }
 }
 
+static void vstplugin_search_done(t_search_data *x){
+    if (x->cancel){
+        return; // !
+    }
+    x->owner->x_search_data = nullptr; // !
+    verbose(PD_NORMAL, "search done");
+    for (auto& plugin : x->plugins){
+        t_atom msg;
+        SETSYMBOL(&msg, plugin);
+        outlet_anything(x->owner->x_messout, gensym("plugin"), 1, &msg);
+    }
+    outlet_anything(x->owner->x_messout, gensym("search_done"), 0, nullptr);
+}
+
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool async = false;
     bool parallel = true; // for now, always do a parallel search
     bool update = true; // update cache file
+    std::vector<std::string> paths;
 
     if (x->x_search_data){
         pd_error(x, "%s: already searching!", classname(x));
@@ -1050,45 +1054,35 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         }
     }
 
-    t_search_data data;
-    data.owner = x;
-    data.parallel = parallel;
-    data.update = update;
-
     if (argc > 0){
         while (argc--){
             auto sym = atom_getsymbol(argv++);
             char path[MAXPDSTRING];
             canvas_makefilename(x->x_canvas, sym->s_name, path, MAXPDSTRING);
-            if (async){
-                data.paths.emplace_back(path); // save for later
-            } else {
-                searchPlugins<false>(path, parallel, &data);
-            }
+            paths.emplace_back(path);
         }
     } else {
         // search in the default VST search paths if no user paths were provided
         for (auto& path : getDefaultSearchPaths()){
-            if (async){
-                data.paths.emplace_back(path); // save for later
-            } else {
-                searchPlugins<false>(path, parallel, &data);
-            }
+            paths.emplace_back(path);
         }
     }
 
     if (async){
-        auto cmd = new t_search_data();
-        cmd->owner = data.owner;
-        cmd->paths = std::move(data.paths);
-        cmd->parallel = data.parallel;
-        cmd->update = data.update;
-        x->x_search_data = cmd;
-        t_workqueue::get()->push(cmd, vstplugin_dosearch, vstplugin_search_done);
+        auto data = new t_search_data();
+        data->owner = x;
+        data->paths = std::move(paths);
+        data->parallel = parallel;
+        data->update = update;
+        x->x_search_data = data;
+        t_workqueue::get()->push(data, vstplugin_search_do<true>, vstplugin_search_done);
     } else {
-        if (update){
-            writeIniFile();
-        }
+        t_search_data data;
+        data.owner = x;
+        data.paths = std::move(paths);
+        data.parallel = parallel;
+        data.update = update;
+        vstplugin_search_do<false>(&data);
         vstplugin_search_done(&data);
     }
 }
