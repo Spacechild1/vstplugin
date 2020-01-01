@@ -6,6 +6,8 @@
 #include <iostream>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 
 // for intptr_t
 #ifdef _MSC_VER
@@ -177,6 +179,14 @@ class IPlugin {
 
 class IFactory;
 
+#if __cplusplus > 202402L // C++17
+using SharedMutex = std::shared_mutex;
+#else
+using SharedMutex = std::shared_timed_mutex;
+#endif
+using Lock = std::unique_lock<SharedMutex>;
+using SharedLock = std::shared_lock<SharedMutex>;
+
 enum class PresetType {
     User,
     UserFactory,
@@ -294,17 +304,23 @@ struct PluginInfo {
         return parameters.size();
     }
     // presets
-    PresetList presets;
-    int numPresets() const { return (int)presets.size(); }
     void scanPresets();
+    Preset preset(int index) const;
+    int numPresets() const;
     int findPreset(const std::string& name) const;
     Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
     int addPreset(Preset preset);
     bool removePreset(int index, bool del = true);
     bool renamePreset(int index, const std::string& newName);
     std::string getPresetFolder(PresetType type, bool create = false) const;
+    // don't access presets without lock!
+    SharedLock lockGuard() const { return SharedLock(mutex); }
+    void lock() const { mutex.lock_shared(); }
+    void unlock() const { mutex.unlock_shared(); }
+    PresetList presets;
 private:
     void sortPresets(bool userOnly = true);
+    mutable SharedMutex mutex;
     mutable bool didCreatePresetFolder = false;
     mutable std::string vendorBashed;
     mutable std::string nameBashed;

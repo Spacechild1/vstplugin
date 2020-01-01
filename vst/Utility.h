@@ -41,8 +41,6 @@
 #include <fstream>
 #include <atomic>
 #include <array>
-#include <mutex>
-#include <shared_mutex>
 
 	// log level: 0 (error), 1 (warning), 2 (verbose), 3 (debug)
 #ifndef LOGLEVEL
@@ -97,14 +95,6 @@
 #endif
 
 namespace vst {
-
-#if __cplusplus > 202402L // C++17
-using SharedMutex = std::shared_mutex;
-#else
-using SharedMutex = std::shared_timed_mutex;
-#endif
-using Lock = std::unique_lock<SharedMutex>;
-using SharedLock = std::shared_lock<SharedMutex>;
 
 #ifdef _WIN32
 std::wstring widen(const std::string& s);

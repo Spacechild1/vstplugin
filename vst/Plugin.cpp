@@ -1650,7 +1650,18 @@ bool stringCompare(const std::string& lhs, const std::string& rhs){
     );
 }
 
+Preset PluginInfo::preset(int index) const {
+    SharedLock lock(mutex);
+    return presets[index];
+}
+
+int PluginInfo::numPresets() const {
+    SharedLock lock(mutex);
+    return (int)presets.size();
+}
+
 void PluginInfo::sortPresets(bool userOnly){
+    Lock lock(mutex);
     auto it1 = presets.begin();
     auto it2 = it1;
     if (userOnly){
@@ -1665,6 +1676,7 @@ void PluginInfo::sortPresets(bool userOnly){
 }
 
 int PluginInfo::findPreset(const std::string &name) const {
+    SharedLock lock(mutex);
     for (int i = 0; i < presets.size(); ++i){
         if (presets[i].name == name){
             return i;
@@ -1674,6 +1686,7 @@ int PluginInfo::findPreset(const std::string &name) const {
 }
 
 bool PluginInfo::removePreset(int index, bool del){
+    Lock lock(mutex);
     if (index >= 0 && index < presets.size()
             && presets[index].type == PresetType::User
             && (!del || removeFile(presets[index].path))){
@@ -1684,6 +1697,7 @@ bool PluginInfo::removePreset(int index, bool del){
 }
 
 bool PluginInfo::renamePreset(int index, const std::string& newName){
+    Lock lock(mutex);
     if (index >= 0 && index < presets.size()
             && presets[index].type == PresetType::User){
         auto preset = makePreset(newName);
@@ -1720,6 +1734,7 @@ static std::string bashPath(std::string path){
 }
 
 int PluginInfo::addPreset(Preset preset) {
+    Lock lock(mutex);
     auto it = presets.begin();
     // insert lexicographically
     while (it != presets.end() && it->type == PresetType::User){
