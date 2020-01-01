@@ -168,7 +168,22 @@ var scdoc_sc_version = '3.10.0';
 <tr><td>name<td>preset name<tr><td>path<td>file path<tr><td>type<td>preset type (<code>user</code>, <code>userFactory</code>, <code>sharedFactory</code> or <code>global</code>)</table>
 
 <p>More entries might be added later.
-<p>The preset list is populated automatically and updated whenever you call <a href="./..\Classes/VSTPluginController.html#-savePreset">VSTPluginController: -savePreset</a>, <a href="./..\Classes/VSTPluginController.html#-deletePreset">VSTPluginController: -deletePreset</a> or <a href="./..\Classes/VSTPluginController.html#-renamePreset">VSTPluginController: -renamePreset</a>.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numPresets' href='./../Overviews/Methods.html#numPresets'>numPresets</a></h3>
+<p>The preset list is populated automatically and updated whenever you call <a href="./..\Classes/VSTPluginController.html#-savePreset">VSTPluginController: -savePreset</a>, <a href="./..\Classes/VSTPluginController.html#-deletePreset">VSTPluginController: -deletePreset</a> or <a href="./..\Classes/VSTPluginController.html#-renamePreset">VSTPluginController: -renamePreset</a>.
+<p>These are the standard VST3 preset paths:<table>
+<tr><td>Windows<td><table>
+<tr><td>user<td>%USERPROFILE%\Documents\VST3 Presets\[VENDOR]\[PLUGIN]<tr><td>user factory<td>%APPDATA%\VST3 Presets\[VENDOR]\[PLUGIN]<tr><td>shared factory<td>%PROGRAMDATA%\VST3 Presets\[VENDOR]\[PLUGIN]</table>
+
+<p><tr><td>OSX<td><table>
+<tr><td>user<td>~/Library/Audio/presets/[VENDOR]/[PLUGIN]<tr><td>shared factory<td>/Library/Audio/presets/[VENDOR]/[PLUGIN]</table>
+
+<p><tr><td>Linux<td><table>
+<tr><td>user<td>~/.vst3/presets/[VENDOR]/[PLUGIN]<tr><td>shared factory<td>/usr/local/share/vst3/presets/[VENDOR]/[PLUGIN]<tr><td>global<td>/usr/share/vst3/presets/[VENDOR]/[PLUGIN]</table>
+</table>
+<div class='note'><span class='notelabel'>NOTE:</span> Only the <em>user</em> preset paths are writeable.</div>
+<p>For VST2 plugins, the following (non-standard) paths are used:<table>
+<tr><td>Windows<td>%USERPROFILE%\Documents\VST2 Presets\[VENDOR]\[PLUGIN]<tr><td>OSX<td>~/Library/Audio/Presets/[VENDOR]/[PLUGIN]<tr><td>Linux<td>~/.vst/presets/[VENDOR]/[PLUGIN]</table>
+
+<p>Presets are searched in the following order: <em>user, userFactory, sharedFactory, global</em>. The folders are automatically scanned everytime you boot the Server and call <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numPresets' href='./../Overviews/Methods.html#numPresets'>numPresets</a></h3>
 <div class='method'>
 <p><h4>Returns:</h4>
 <div class='returnvalue'>

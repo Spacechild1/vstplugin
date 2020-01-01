@@ -737,40 +737,7 @@ note::The file/buffer IO itself is always performed asynchronously!::
 discussion::
 These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see link::Classes/VSTPluginDesc#-presets::).
 
-These are the standard VST3 preset paths:
-table::
-## Windows ||
-table::
-## user || %USERPROFILE%\Documents\VST3 Presets\[VENDOR]\[PLUGIN]
-## user factory || %APPDATA%\VST3 Presets\[VENDOR]\[PLUGIN]
-## shared factory || %PROGRAMDATA%\VST3 Presets\[VENDOR]\[PLUGIN]
-::
-## OSX ||
-table::
-## user || ~/Library/Audio/presets/[VENDOR]/[PLUGIN]
-## shared factory || /Library/Audio/presets/[VENDOR]/[PLUGIN]
-::
-## Linux ||
-table::
-## user || ~/.vst3/presets/[VENDOR]/[PLUGIN]
-## shared factory || /usr/local/share/vst3/presets/[VENDOR]/[PLUGIN]
-## global || /usr/share/vst3/presets/[VENDOR]/[PLUGIN]
-::
-::
-
-note::Only the emphasis::user:: preset paths are writeable.::
-
-For VST2 plugins, the following (non-standard) paths are used:
-
-table::
-## Windows || %USERPROFILE%\Documents\VST2 Presets\[VENDOR]\[PLUGIN]
-## OSX || ~/Library/Audio/Presets/[VENDOR]/[PLUGIN]
-## Linux || ~/.vst2/presets/[VENDOR]/[PLUGIN]
-::
-
-Presets are searched in the following order: emphasis::user, userFactory, sharedFactory, global::. The folders are automatically scanned everytime you boot the Server and call link::Classes/VSTPlugin#*search::.
-
-note::These methods currently only work with local Servers!::
+note::This only works with local Servers (for now)!::
 
 METHOD:: deletePreset
 delete a VST preset.

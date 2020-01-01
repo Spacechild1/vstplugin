@@ -588,22 +588,7 @@ SynthDef(\chorus, { arg bus=0;
 <p>an action which is called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>async<td class='argumentdesc'>
 <p>where to execute the plugin method, see <a href="#Realtime%20Safety">Realtime Safety</a>.<div class='note'><span class='notelabel'>NOTE:</span> The file/buffer IO itself is always performed asynchronously!</div></table><h4>Discussion:</h4>
 
-<p>These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see <a href="./..\Classes/VSTPluginDesc.html#-presets">VSTPluginDesc: -presets</a>).
-<p>These are the standard VST3 preset paths:<table>
-<tr><td>Windows<td><table>
-<tr><td>user<td>%USERPROFILE%\Documents\VST3 Presets\[VENDOR]\[PLUGIN]<tr><td>user factory<td>%APPDATA%\VST3 Presets\[VENDOR]\[PLUGIN]<tr><td>shared factory<td>%PROGRAMDATA%\VST3 Presets\[VENDOR]\[PLUGIN]</table>
-
-<p><tr><td>OSX<td><table>
-<tr><td>user<td>~/Library/Audio/presets/[VENDOR]/[PLUGIN]<tr><td>shared factory<td>/Library/Audio/presets/[VENDOR]/[PLUGIN]</table>
-
-<p><tr><td>Linux<td><table>
-<tr><td>user<td>~/.vst3/presets/[VENDOR]/[PLUGIN]<tr><td>shared factory<td>/usr/local/share/vst3/presets/[VENDOR]/[PLUGIN]<tr><td>global<td>/usr/share/vst3/presets/[VENDOR]/[PLUGIN]</table>
-</table>
-<div class='note'><span class='notelabel'>NOTE:</span> Only the <em>user</em> preset paths are writeable.</div>
-<p>For VST2 plugins, the following (non-standard) paths are used:<table>
-<tr><td>Windows<td>%USERPROFILE%\Documents\VST2 Presets\[VENDOR]\[PLUGIN]<tr><td>OSX<td>~/Library/Audio/Presets/[VENDOR]/[PLUGIN]<tr><td>Linux<td>~/.vst2/presets/[VENDOR]/[PLUGIN]</table>
-
-<p>Presets are searched in the following order: <em>user, userFactory, sharedFactory, global</em>. The folders are automatically scanned everytime you boot the Server and call <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>.<div class='note'><span class='notelabel'>NOTE:</span> These methods currently only work with local Servers!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-deletePreset' href='./../Overviews/Methods.html#deletePreset'>deletePreset</a>(<span class='argstr'>preset</span>)</h3>
+<p>These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see <a href="./..\Classes/VSTPluginDesc.html#-presets">VSTPluginDesc: -presets</a>).<div class='note'><span class='notelabel'>NOTE:</span> This only works with local Servers (for now)!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-deletePreset' href='./../Overviews/Methods.html#deletePreset'>deletePreset</a>(<span class='argstr'>preset</span>)</h3>
 <div class='method'>
 <p>delete a VST preset.<h4>Arguments:</h4>
 <table class='arguments'>

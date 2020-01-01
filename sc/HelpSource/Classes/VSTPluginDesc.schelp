@@ -137,6 +137,39 @@ More entries might be added later.
 
 The preset list is populated automatically and updated whenever you call link::Classes/VSTPluginController#-savePreset::, link::Classes/VSTPluginController#-deletePreset:: or link::Classes/VSTPluginController#-renamePreset::.
 
+These are the standard VST3 preset paths:
+table::
+## Windows ||
+table::
+## user || %USERPROFILE%\Documents\VST3 Presets\[VENDOR]\[PLUGIN]
+## user factory || %APPDATA%\VST3 Presets\[VENDOR]\[PLUGIN]
+## shared factory || %PROGRAMDATA%\VST3 Presets\[VENDOR]\[PLUGIN]
+::
+## OSX ||
+table::
+## user || ~/Library/Audio/presets/[VENDOR]/[PLUGIN]
+## shared factory || /Library/Audio/presets/[VENDOR]/[PLUGIN]
+::
+## Linux ||
+table::
+## user || ~/.vst3/presets/[VENDOR]/[PLUGIN]
+## shared factory || /usr/local/share/vst3/presets/[VENDOR]/[PLUGIN]
+## global || /usr/share/vst3/presets/[VENDOR]/[PLUGIN]
+::
+::
+
+note::Only the emphasis::user:: preset paths are writeable.::
+
+For VST2 plugins, the following (non-standard) paths are used:
+
+table::
+## Windows || %USERPROFILE%\Documents\VST2 Presets\[VENDOR]\[PLUGIN]
+## OSX || ~/Library/Audio/Presets/[VENDOR]/[PLUGIN]
+## Linux || ~/.vst/presets/[VENDOR]/[PLUGIN]
+::
+
+Presets are searched in the following order: emphasis::user, userFactory, sharedFactory, global::. The folders are automatically scanned everytime you boot the Server and call link::Classes/VSTPlugin#*search::.
+
 METHOD:: numPresets
 
 RETURNS:: the number of VST presets.

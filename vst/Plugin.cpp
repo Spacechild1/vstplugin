@@ -1558,7 +1558,7 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
     if (pluginType == PluginType::VST3){
         return result + "vst3/presets";
     } else {
-        return result + "vst2/presets";
+        return result + "vst/presets";
     }
 #endif
 }
