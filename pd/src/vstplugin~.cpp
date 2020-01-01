@@ -23,8 +23,10 @@ static void eventLoopTick(void *x){
 // because it might hang/crash Pd. (We don't know when the destructor is called exactly.)
 
 #ifdef PDINSTANCE
-std::unordered_map<t_pdinstance *, t_workqueue *> gWorkQueues;
-std::mutex gWorkQueueMutex;
+namespace {
+    std::unordered_map<t_pdinstance *, t_workqueue *> gWorkQueues;
+    std::mutex gWorkQueueMutex;
+}
 
 void t_workqueue::init(){
     std::lock_guard<std::mutex> lock(gWorkQueueMutex);
@@ -44,7 +46,7 @@ t_workqueue* t_workqueue::get(){
     }
 }
 #else
-t_workqueue* gWorkQueue;
+static t_workqueue* gWorkQueue;
 
 void t_workqueue::init(){
     gWorkQueue = new t_workqueue();
@@ -201,7 +203,7 @@ void t_workqueue::poll(){
 // substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
 static void substitute_whitespace(char *buf){
     for (char *c = buf; *c; c++){
-        if (*c == ' ') *c = 160;
+        if (*c == ' ') *c = (char)160;
     }
 }
 
@@ -219,7 +221,7 @@ static void bash_name(std::string& s){
 template<typename T>
 static bool fromHex(const std::string& s, T& u){
     try {
-        u = std::stoull(s, 0, 0);
+        u = std::stoull(s, nullptr, 0);
         return true;
     } catch (...){
         return false;
