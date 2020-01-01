@@ -236,28 +236,21 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     return factory;
 }
 
-static bool addFactory(const std::string& path, IFactory::ptr factory){
+static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1) {
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
         gPluginManager.addPlugin(plugin->path, plugin);
         gPluginManager.addPlugin(path, plugin);
     }
-    if (factory->valid()) {
-        gPluginManager.addFactory(path, factory);
-        for (int i = 0; i < factory->numPlugins(); ++i) {
-            auto plugin = factory->getPlugin(i);
-        #if 0
-            // search for presets
-            const_cast<PluginInfo&>(*plugin).scanPresets();
-        #endif
-            gPluginManager.addPlugin(makeKey(*plugin), plugin);
-        }
-        return true;
-    }
-    else {
-        gPluginManager.addException(path);
-        return false;
+    gPluginManager.addFactory(path, factory);
+    for (int i = 0; i < factory->numPlugins(); ++i) {
+        auto plugin = factory->getPlugin(i);
+    #if 0
+        // search for presets
+        const_cast<PluginInfo&>(*plugin).scanPresets();
+    #endif
+        gPluginManager.addPlugin(makeKey(*plugin), plugin);
     }
 }
 
@@ -309,12 +302,14 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
                 postResult(result.error);
             }
         });
-        if (addFactory(path, factory)){
+        if (factory->valid()){
+            addFactory(path, factory);
             return factory; // success
         }
     } catch (const Error& e){
         if (verbose) postResult(e);
     }
+    gPluginManager.addException(path);
     return nullptr;
 }
 
@@ -350,9 +345,11 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
                 }
             });
             // collect results
-            if (addFactory(path, factory)){
+            if (factory->valid()){
+                addFactory(path, factory);
                 return factory; // success
             } else {
+                gPluginManager.addException(path);
                 return nullptr;
             }
         };
@@ -364,6 +361,7 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
                 Print("probing %s... ", path.c_str());
                 postResult(e);
             }
+            gPluginManager.addException(path);
             return nullptr;
         };
     }
