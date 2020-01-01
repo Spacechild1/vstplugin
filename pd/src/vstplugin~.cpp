@@ -1273,6 +1273,8 @@ static void vstplugin_close(t_vstplugin *x){
         x->x_key = nullptr;
         x->x_path = nullptr;
         x->x_preset = nullptr;
+        // notify
+        outlet_anything(x->x_messout, gensym("close"), 0, nullptr);
     }
 }
 
