@@ -167,7 +167,7 @@ if (APPLE)
     add_definitions(-fno-objc-arc)
     list(APPEND VST_HEADERS "${VST}/WindowCocoa.h")
     list(APPEND VST_SRC "${VST}/WindowCocoa.mm")
-    list(APPEND VST_LIBS "-framework Cocoa")
+    list(APPEND VST_LIBS "-framework Cocoa" "-pthread")
 endif()
 
 # probe exe

@@ -6,8 +6,14 @@
 #include <iostream>
 #include <functional>
 #include <memory>
+
+// for SharedMutex
 #include <mutex>
+#ifndef __APPLE__
 #include <shared_mutex>
+#else
+#include <pthread.h>
+#endif
 
 // for intptr_t
 #ifdef _MSC_VER
@@ -35,6 +41,35 @@ const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 2;
 const int VERSION_BUGFIX = 1;
 const bool VERSION_BETA = false;
+
+#ifndef __APPLE__
+#if __cplusplus > 202402L // C++17
+using SharedMutex = std::shared_mutex;
+#else
+using SharedMutex = std::shared_timed_mutex;
+#endif
+#else
+// older OSX versions (OSX 10.11 and below) don't have std:shared_mutex...
+class SharedMutex {
+public:
+    SharedMutex() { pthread_rwlock_init(&rwlock_, nullptr); }
+    ~SharedMutex() { pthread_rwlock_destroy(&rwlock); }
+    SharedMutex(const SharedMutex&) = delete;
+    SharedMutex& operator==(const SharedMutex&) = delete;
+    // exclusive
+    void lock() { pthread_rwlock_wrlock(&rwlock_); }
+    bool try_lock() { return pthread_rwlock_trywrlock(&rwlock_) == 0; }
+    void unlock() { pthread_rwlock_unlock(&rwlock_); }
+    // shared
+    void lock_shared() { pthread_rwlock_rdlock(&rwlock_); }
+    bool try_lock_shared() { return pthread_rwlock_tryrdlock(&rwlock_) == 0; }
+    void unlock_shared() { pthread_rwlock_unlock(&rwlock_); }
+private:
+    pthread_rwlock_t rwlock_;
+};
+#endif
+using Lock = std::unique_lock<SharedMutex>;
+using SharedLock = std::shared_lock<SharedMutex>;
 
 struct MidiEvent {
     MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0, float _detune = 0){
@@ -178,14 +213,6 @@ class IPlugin {
 };
 
 class IFactory;
-
-#if __cplusplus > 202402L // C++17
-using SharedMutex = std::shared_mutex;
-#else
-using SharedMutex = std::shared_timed_mutex;
-#endif
-using Lock = std::unique_lock<SharedMutex>;
-using SharedLock = std::shared_lock<SharedMutex>;
 
 enum class PresetType {
     User,
