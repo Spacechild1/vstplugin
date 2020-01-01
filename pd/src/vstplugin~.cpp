@@ -255,10 +255,10 @@ static std::string getSettingsDir(){
 #endif
 }
 
-static std::mutex gFileMutex;
+static SharedMutex gFileLock;
 
 static void readIniFile(){
-    std::lock_guard<std::mutex> lock(gFileMutex);
+    SharedLock lock(gFileLock);
     try {
         gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
     } catch (const Error& e){
@@ -268,7 +268,7 @@ static void readIniFile(){
 }
 
 static void writeIniFile(){
-    std::lock_guard<std::mutex> lock(gFileMutex);
+    Lock lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){

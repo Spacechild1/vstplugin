@@ -1511,6 +1511,11 @@ void IFactory::probe(ProbeCallback callback){
 
 /*////////////////////// preset ///////////////////////*/
 
+static SharedMutex gFileLock;
+#if !defined(_WIN32) && !defined(__APPLE__)
+static bool gDidCreateVstFolders;
+#endif
+
 static std::string getPresetLocation(PresetType presetType, PluginType pluginType){
     std::string result;
 #if defined(_WIN32)
@@ -1775,8 +1780,11 @@ std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
         }
         auto pluginFolder = vendorFolder + "/" + nameBashed;
         // create folder(s) if necessary
+        SharedLock rdlock(mutex);
         if (create && !didCreatePresetFolder && type == PresetType::User){
             // LATER do some error handling
+            rdlock.unlock();
+            Lock wrlock(mutex);
             createDirectory(location);
             createDirectory(vendorFolder);
             createDirectory(pluginFolder);
