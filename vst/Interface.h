@@ -298,11 +298,11 @@ struct PluginInfo {
     int numPresets() const { return (int)presets.size(); }
     void scanPresets();
     int findPreset(const std::string& name) const;
-    int addPreset(const std::string& name);
+    Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
+    int addPreset(Preset preset);
     bool removePreset(int index, bool del = true);
     bool renamePreset(int index, const std::string& newName);
     std::string getPresetFolder(PresetType type, bool create = false) const;
-    std::string makePresetPath(const std::string& name, PresetType type = PresetType::User) const;
 private:
     void sortPresets(bool userOnly = true);
     mutable bool didCreatePresetFolder = false;
