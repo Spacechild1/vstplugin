@@ -206,7 +206,7 @@ VSTPluginGui : ObjectGui {
 					(item.type == \program).if {
 						model.program_(item.index);
 					} {
-						model.loadPreset(item.index);
+						model.loadPreset(item.index, async: true);
 					}
 				};
 				updateButtons.value;
@@ -232,14 +232,14 @@ VSTPluginGui : ObjectGui {
 			.action_({
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
-					model.savePreset(item.index);
+					model.savePreset(item.index, async: true);
 				} { "Save button bug".throw }
 			}).enabled_(false);
 			// "save as" button
 			saveas = Button.new.states_([["Save As"]])
 			.action_({ arg self;
 				textField.value(self, { arg name;
-					model.savePreset(name);
+					model.savePreset(name, async: true);
 				});
 			});
 			// "rename" button
@@ -265,7 +265,7 @@ VSTPluginGui : ObjectGui {
 			.action_({
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
-					model.loadPreset(item.index);
+					model.loadPreset(item.index, async: true);
 				} { "Reload button bug".throw }
 			}).enabled_(false);
 
