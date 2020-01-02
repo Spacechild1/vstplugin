@@ -30,10 +30,6 @@ typedef unsigned int uint32_t;
 #define HAVE_UI_THREAD 1
 #endif
 
-#ifndef HAVE_NRT_THREAD
-#define HAVE_NRT_THREAD 0
-#endif
-
 namespace vst {
 
 const int VERSION_MAJOR = 0;
