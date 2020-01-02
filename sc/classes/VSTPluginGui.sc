@@ -186,17 +186,28 @@ VSTPluginGui : ObjectGui {
 		model !? {
 			browse = Button.new
 			.states_([["Browse"]])
-			.maxWidth_(60)
 			.action_({this.prBrowse})
 			.toolTip_("Browse plugins");
 		};
 
 		layout = VLayout.new;
-		layout.add(HLayout(browse, header));
+		layout.add(HLayout([browse, stretch: 0], [header, stretch: 1]));
 
 		menu.if {
 			// build preset menu
-			presetMenu = PopUpMenu.new;
+			presetMenu = PopUpMenu.new
+			.maxWidth_(sliderWidth)
+			.action = { var self;
+				var item = self.item;
+				item.notNil.if {
+					(item.type == \program).if {
+						model.program_(item.index);
+					} {
+						model.loadPreset(item.index);
+					}
+				};
+				updateButtons.value;
+			};
 
 			textField = { arg parent, action, name;
 				var pos = parent.absoluteBounds.origin;
@@ -213,17 +224,19 @@ VSTPluginGui : ObjectGui {
 				.front;
 			};
 
-			save = Button.new.states_([["Save"]]).action_({
+			save = Button.new.states_([["Save"]])
+			.action_({
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.savePreset(item.index);
 				} { "Save button bug".throw }
-			}).maxWidth_(60).enabled_(false);
-			saveas = Button.new.states_([["Save As"]]).action_({ arg self;
+			}).enabled_(false);
+			saveas = Button.new.states_([["Save As"]])
+			.action_({ arg self;
 				textField.value(self, { arg name;
 					model.savePreset(name);
 				});
-			}).maxWidth_(60);
+			});
 			rename = Button.new.states_([["Rename"]]).action_({ arg self;
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
@@ -231,25 +244,13 @@ VSTPluginGui : ObjectGui {
 						model.renamePreset(item.index, name);
 					}, item.preset.name);
 				} { "Rename button bug".throw }
-			}).maxWidth_(60).enabled_(false);
+			}).enabled_(false);
 			delete = Button.new.states_([["Delete"]]).action_({
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.deletePreset(item.index);
 				} { "Delete button bug".throw }
-			}).maxWidth_(60).enabled_(false);
-
-			presetMenu.action = {
-				var item = presetMenu.item;
-				item.notNil.if {
-					(item.type == \program).if {
-						model.program_(item.index);
-					} {
-						model.loadPreset(item.index);
-					}
-				};
-				updateButtons.value;
-			};
+			}).enabled_(false);
 
 			updateButtons = {
 				var enable = false;
@@ -262,10 +263,10 @@ VSTPluginGui : ObjectGui {
 				delete.enabled_(enable);
 			};
 
-			(ncolumns > 1).if {
-				layout.add(HLayout(presetMenu, save, saveas, rename, delete, nil));
+			(ncolumns > 2).if {
+				layout.add(HLayout([presetMenu, stretch: 2], save, saveas, rename, delete, nil));
 			} {
-				layout.add(VLayout(presetMenu, HLayout(save, saveas, rename, delete, nil)));
+				layout.add(VLayout(HLayout(save, saveas, rename, delete, nil), presetMenu));
 			};
 
 			this.prUpdatePresets;
@@ -313,7 +314,7 @@ VSTPluginGui : ObjectGui {
 
 		// make the canvas (view) large enough to hold all its contents.
 		// somehow it can't figure out the necessary size itself...
-		minWidth = ((sliderWidth + 20) * ncolumns).max(240);
+		minWidth = ((sliderWidth + 20) * ncolumns).max(360);
 		minHeight = ((sliderHeight * 3 * nrows) + 120).max(140); // empirically
 		view.layout_(layout).fixedSize_(minWidth@minHeight);
 	}
@@ -504,7 +505,8 @@ VSTPluginGui : ObjectGui {
 		};
 
 		// update on every key input; the delay makes sure we really see the updated text.
-		stringFilter = TextField.new.addAction({ AppClock.sched(0, applyFilter) }, 'keyDownAction');
+		stringFilter = TextField.new.minWidth_(60)
+		.addAction({ AppClock.sched(0, applyFilter) }, 'keyDownAction');
 		typeFilter = PopUpMenu.new.items_(["All", "VST", "VSTi", "VST3", "VST3i"]).action_(applyFilter);
 		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 		categoryFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
@@ -513,7 +515,7 @@ VSTPluginGui : ObjectGui {
 		showSearch = { arg show;
 			show.if { status.stringColor_(Color.red); status.string_("searching..."); } { status.string_("") };
 		};
-		search = Button.new.states_([["Search"]]).maxWidth_(60)
+		search = Button.new.states_([["Search"]])
 		.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)")
 		.action_({
 			showSearch.(true);
@@ -521,7 +523,7 @@ VSTPluginGui : ObjectGui {
 				{ updatePlugins.value; }.defer;
 			});
 		});
-		dir = Button.new.states_([["Directory"]]).maxWidth_(60)
+		dir = Button.new.states_([["Directory"]])
 		.toolTip_("Search a directory for VST plugins")
 		.action_({
 			FileDialog.new({ arg d;
@@ -531,7 +533,7 @@ VSTPluginGui : ObjectGui {
 				});
 			}, nil, 2, 0, true, pluginPath);
 		});
-		file = Button.new.states_([["File"]]).maxWidth_(60)
+		file = Button.new.states_([["File"]])
 		.toolTip_("Open a VST plugin file")
 		.action_({
 			FileDialog.new({ arg p;
@@ -542,10 +544,10 @@ VSTPluginGui : ObjectGui {
 		});
 		editor = CheckBox.new(text: "Editor");
 
-		cancel = Button.new.states_([["Cancel"]]).maxWidth_(60);
-		cancel.action = { window.close };
-		ok = Button.new.states_([["OK"]]).maxWidth_(60);
-		ok.action = {
+		cancel = Button.new.states_([["Cancel"]])
+		.action = { window.close };
+		ok = Button.new.states_([["OK"]])
+		.action = {
 			key !? {
 				// open with key - not absPath!
 				model.open(key, editor: editor.value);
@@ -557,10 +559,10 @@ VSTPluginGui : ObjectGui {
 		window.layout_(VLayout(
 			browser,
 			HLayout(
-				[StaticText.new.string_("Filter:"), stretch: 0], [stringFilter, stretch: 1],
-				[StaticText.new.string_("Type"), stretch: 0], [typeFilter, stretch: 0], // doesn't need to grow!
-				[StaticText.new.string_("Vendor"), stretch: 0], [vendorFilter, stretch: 1],
-				[StaticText.new.string_("Category"), stretch: 0], [categoryFilter, stretch: 1]
+				[StaticText.new.string_("Find:"), stretch: 0], [stringFilter, stretch: 1],
+				[StaticText.new.string_("Type:"), stretch: 0], [typeFilter, stretch: 0], // doesn't need to grow!
+				[StaticText.new.string_("Vendor:"), stretch: 0], [vendorFilter, stretch: 1],
+				[StaticText.new.string_("Category:"), stretch: 0], [categoryFilter, stretch: 1]
 			),
 			status,
 			HLayout(search, dir, file, editor, nil, cancel, ok)
