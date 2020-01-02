@@ -1,4 +1,4 @@
-vstplugin v0.2.1
+vstplugin v0.3.0
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -19,8 +19,6 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 
 **NOTE:** 64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VSTPlugin.scx and vice versa.
 
-The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above (not released yet at the time of writing).
-
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
 Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues
@@ -29,15 +27,16 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
+* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above (not released yet at the time of writing).
+
+* On macOS, the SuperCollider/Supernova VST GUI only works on SuperCollider 3.11 and above (not released yet at the time of writing). Otherwise you get a warning if you try to open a plugin with "editor: true".
+
 * On Windows and Linux, the native GUI window runs in a dedicated UI thread, which means
 that GUI updates shouldn't have a noticable effect on audio performance.
 On MacOS, however, because of technical limitations the GUI must run on
 the main thread[^1] - which happens to be the audio thread in Pd...
 Until we've found a better solution, macOS users are adviced to keep native GUI
 windows closed in low-latency realtime situations to avoid audio hick-ups.
-
-* On SuperCollider, the VST GUI doesn't work (yet) on macOS, you get a warning if you try
-to open a plugin with "editor: true".
 
 * If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
 This only seems to happen if either the plugin *or* the host link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship
