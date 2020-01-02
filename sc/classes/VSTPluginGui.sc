@@ -15,8 +15,8 @@ VSTPluginGui : ObjectGui {
 	var <>menu;
 	// private
 	classvar pluginPath;
-	classvar minViewWidth = 340;
-	classvar minViewHeight = 140;
+	classvar defaultViewWidth = 400;
+	classvar defaultViewHeight = 400;
 	var server;
 	var presetMenu;
 	var updateButtons;
@@ -85,57 +85,49 @@ VSTPluginGui : ObjectGui {
 	prFree {
 		(this.closeOnFree ?? this.class.closeOnFree).if {
 			embedded.not.if {
-				view.parent.close;
+				view.close;
 				^this;
 			};
 		};
 		this.prClose;
 	}
 
-	guify { arg parent, bounds;
-		bounds.notNil.if {
+	guify { arg parent, bounds, params=true;
+		bounds !? {
 			bounds = bounds.asRect;
 		};
 		parent.isNil.if {
-			parent = Window(bounds: bounds, scroll: true);
-		} { parent = parent.asView };
+			bounds ?? {
+				params.if {
+					bounds = defaultViewWidth@defaultViewHeight;
+				}{
+					bounds = 10@10; // hack to expand automatically
+				};
+				bounds = bounds.asRect.center_(Window.availableBounds.center);
+			};
+			parent = Window(bounds: bounds).asView;
+		} {
+			bounds ?? {
+				params.if {
+					bounds = defaultViewWidth@defaultViewHeight;
+				} {
+					bounds = defaultViewWidth@100; // empirically
+				}
+			};
+			parent = View(parent, bounds);
+		};
 		// notify the GUI on close to release its dependencies!
-		parent.asView.addAction({ this.viewDidClose }, 'onClose');
+		parent.addAction({ this.viewDidClose }, 'onClose');
 		^parent
 	}
 
 	gui { arg parent, bounds, params=true;
-		var sliderWidth, sliderHeight, minWidth, minHeight, layout = this.guify(parent, bounds);
 		showParams = params;
-		parent.isNil.if {
-			view = View(layout, bounds).background_(this.background);
-			embedded = false;
-		} {
-			view = View.new(bounds: bounds);
-			ScrollView(layout, bounds)
-			.background_(this.background)
-			.hasHorizontalScroller_(true)
-			.autohidesScrollers_(true)
-			.canvas_(view);
-			embedded = true;
-		};
+		embedded = parent.notNil;
+		view = this.guify(parent, bounds, params);
 		this.prUpdateGui;
 		// window
-		parent.isNil.if {
-			bounds.isNil.if {
-				params.if {
-					sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
-					sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
-					minWidth = (sliderWidth + 20).max(minViewWidth + 2);
-					minHeight = ((sliderHeight * 3) * 4 + 122).max(minViewHeight + 2); // empirically
-					layout.setInnerExtent(minWidth, minHeight);
-				} {
-					// HACK: make it slightly larger to hide scrollbars
-					layout.setInnerExtent(minViewWidth + 2, minViewHeight + 2);
-				}
-			};
-			layout.front;
-		};
+		embedded.not.if { view.front };
 	}
 
 	viewDidClose {
@@ -146,7 +138,7 @@ VSTPluginGui : ObjectGui {
 
 	prUpdateGui {
 		var nparams=0, name, infoString, header, browse, nrows=0, ncolumns=0;
-		var layout, menuLayout, paramLayout, font, minWidth, minHeight, displayFont;
+		var layout, menuLayout, paramView, paramLayout, font, displayFont;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
@@ -158,7 +150,7 @@ VSTPluginGui : ObjectGui {
 		displayFont = Font.new(Font.defaultMonoFace, 10, usePointSize: true);
 		// get the max. display width in pixels (use an extra character for safety)
 		displayWidth = String.fill(displayWidth + 1, $0).bounds(displayFont).width;
-		// remove old GUI body or return if don't have a view ('gui' hasn't been called)
+		// remove old GUI body or return if we don't have a view ('gui' hasn't been called)
 		view.notNil.if { view.removeAll } { ^this };
 		info.notNil.if {
 			name = info.name;
@@ -176,7 +168,7 @@ VSTPluginGui : ObjectGui {
 		font = Font.new(*GUI.skin.fontSpecs).pointSize_(12);
 		// change window header
 		embedded.not.if {
-			view.parent.name_(name !? { "VSTPlugin (%)".format(name) } ?? { "VSTPlugin (empty)" });
+			view.name_(name !? { "VSTPlugin (%)".format(name) } ?? { "VSTPlugin (empty)" });
 		};
 
 		header = StaticText.new
@@ -296,7 +288,7 @@ VSTPluginGui : ObjectGui {
 		layout.add(menuLayout);
 
 		// build parameters
-		showParams.if {
+		(menu && showParams).if {
 			paramLayout = GridLayout.new.spacing_(12);
 			paramSliders = Array.new(nparams);
 			paramDisplays = Array.new(nparams);
@@ -327,17 +319,22 @@ VSTPluginGui : ObjectGui {
 				unit = VLayout.new(bar, slider).spacing_(5);
 				paramLayout.add(unit, row, col);
 			};
+			// don't expand grid:
 			paramLayout.setRowStretch(nrows, 1);
 			paramLayout.setColumnStretch(ncolumns, 1);
-			paramLayout.margins_([2, 12, 2, 2]);
-			layout.add(paramLayout);
-		} { layout.add(nil) };
+			// paramLayout.margins_([2, 12, 2, 2]);
 
-		// make the canvas (view) large enough to hold all its contents.
-		// somehow it can't figure out the necessary size itself...
-		minWidth = ((sliderWidth + 20) * ncolumns).max(minViewWidth);
-		minHeight = ((sliderHeight * 3 * nrows) + 120).max(minViewHeight); // empirically
-		view.layout_(layout).fixedSize_(minWidth@minHeight);
+			paramView = ScrollView.new
+			.hasHorizontalScroller_(true)
+			.hasVerticalScroller_(true)
+			.autohidesScrollers_(true)
+			.canvas_(View.new.layout_(paramLayout));
+
+			layout.add(paramView);
+		} {
+			layout.add(nil)
+		};
+		view.layout_(layout);
 	}
 
 	prParam { arg index, value, display;
