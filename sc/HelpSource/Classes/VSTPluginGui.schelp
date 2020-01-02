@@ -52,6 +52,8 @@ determines the size and position of the embedded GUI.
 ARGUMENT:: params
 Show/hide parameters. Set to code::false::, if you only want to show the preset manager!
 
+IMAGE::noparams.jpg::
+
 DISCUSSION::
 Usually, this is called indirectly by link::Classes/VSTPluginController#-gui::.
 
@@ -137,24 +139,23 @@ The emphasis::bounds:: argument determines the size and position of each subview
 (In link::Classes/FlowLayout::s the position is managed automatically,
 so it's enough to provide a link::Classes/Point:: instead of a link::Classes/Rect::.)
 
-If the plugin editor needs more space than emphasis::bounds::, scrollbars are shown automatically.
+IMAGE::embed.jpg::
 
 code::
 (
-// create a Window large enough to hold two VSTPluginGuis per row (see below).
+// create a Window with a FlowLayout
 ~view = Window.new(bounds: 850@450, scroll: true);
 ~view.view.decorator = FlowLayout(w.view.bounds);
 ~view.front;
 )
-// create 2 subviews next to each other:
-~fx1.gui(~view, 400@400);
-~fx2.gui(~view, 400@400);
-// the next GUI would go to a new row...
+// add 2 plugin GUIs
+~fx1.gui(~view); // default size
+~fx2.gui(~view, bounds:300@300); // custom size
 ::
 
 SUBSECTION:: Changing Models
 Here we use a emphasis::single:: VSTPluginGui instance to show different link::Classes/VSTPluginController::s.
-Say you have an FX chain with several link::Classes/VSTPlugin:: instances but you only need to see one at the time.
+Say you have an FX chain with several link::Classes/VSTPlugin:: instances, but you only need to see one at the time.
 
 code::
 // make an empty GUI
@@ -164,4 +165,4 @@ code::
 // show fx2
 ~gui.model_(~fx2);
 ::
-We could even build a link::Classes/PopUpMenu:: to change between link::Classes/VSTPluginController:: instances.
+You could even build a link::Classes/PopUpMenu:: to switch between link::Classes/VSTPluginController:: instances.
