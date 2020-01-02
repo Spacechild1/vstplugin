@@ -291,8 +291,12 @@ class PdScopedLock<true> {
 public:
     PdScopedLock() {
         sys_lock();
+        // LOG_DEBUG("sys_lock");
     }
-    ~PdScopedLock() { sys_unlock(); }
+    ~PdScopedLock() {
+        sys_unlock();
+        // LOG_DEBUG("sys_unlock");
+    }
 };
 
 // for asynchronous searching, we want to show the name of the plugin before
@@ -302,7 +306,7 @@ public:
 // NOTE: when probing plugins in parallel, we obviously can't do this, we have to
 // show the name and result at the same time. This is shouldn't be much of a problem
 // as there will be more activity.
-template<bool async = false>
+template<bool async>
 class PdLog {
 public:
     template <typename... T>
@@ -1186,7 +1190,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
 }
 
 // query a plugin by its key or file path and probe if necessary.
-template<bool async = false>
+template<bool async>
 static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
     // query plugin
     auto desc = gPluginManager.findPlugin(path);
@@ -1287,7 +1291,7 @@ static void vstplugin_open_do(t_open_data *x){
     const PluginInfo *info = queryPlugin<async>(x->owner, x->path->s_name);
     if (!info){
         PdScopedLock<async> lock;
-        pd_error(x->owner, "%s: can't load '%s'", classname(x->owner), x->path->s_name);
+        pd_error(x->owner, "%s: can't open '%s'", classname(x->owner), x->path->s_name);
         return;
     }
     // open the new VST plugin
@@ -1437,7 +1441,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     const PluginInfo *info = nullptr;
     if (argc > 0){ // some plugin
         auto path = atom_getsymbol(argv)->s_name;
-        if (!(info = queryPlugin(x, path))){
+        if (!(info = queryPlugin<false>(x, path))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
             return;
         }
@@ -1761,7 +1765,7 @@ static void vstplugin_param_list(t_vstplugin *x, t_symbol *s){
     const PluginInfo *info = nullptr;
     if (*s->s_name){
         auto path = s->s_name;
-        if (!(info = queryPlugin(x, path))){
+        if (!(info = queryPlugin<false>(x, path))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
             return;
         }
@@ -1914,7 +1918,7 @@ static void vstplugin_program_list(t_vstplugin *x,  t_symbol *s){
     bool local = false;
     if (*s->s_name){
         auto path = s->s_name;
-        if (!(info = queryPlugin(x, path))){
+        if (!(info = queryPlugin<false>(x, path))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
             return;
         }
@@ -2210,7 +2214,7 @@ static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
     const PluginInfo *info = nullptr;
     if (*s->s_name){
         auto path = s->s_name;
-        if (!(info = queryPlugin(x, path))){
+        if (!(info = queryPlugin<false>(x, path))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
             return;
         }

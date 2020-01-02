@@ -92,7 +92,6 @@ int getCount(const std::string& line);
 void PluginManager::read(const std::string& path, bool update){
     Lock lock(mutex_);
     bool outdated = false;
-    LOG_VERBOSE("reading cache file: " << path);
     File file(path);
     std::string line;
     while (getLine(file, line)){
@@ -160,7 +159,7 @@ void PluginManager::read(const std::string& path, bool update){
         }
         LOG_VERBOSE("updated cache file");
     }
-    LOG_DEBUG("done reading cache file");
+    LOG_DEBUG("read cache file " << path);
 }
 
 void PluginManager::write(const std::string &path) const {
@@ -169,7 +168,6 @@ void PluginManager::write(const std::string &path) const {
 }
 
 void PluginManager::doWrite(const std::string& path) const {
-    LOG_DEBUG("writing cache file: " << path);
     File file(path, File::WRITE);
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
@@ -221,6 +219,7 @@ void PluginManager::doWrite(const std::string& path) const {
     for (auto& e : exceptions_){
         file << e << "\n";
     }
+    LOG_DEBUG("wrote cache file: " << path);
 }
 
 } // vst

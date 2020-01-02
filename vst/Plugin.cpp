@@ -213,7 +213,7 @@ bool removeFile(const std::string& path){
 #else
     int result = remove(path.c_str());
     if (result != 0){
-        LOG_ERROR(strerror(errno));
+        LOG_ERROR(errorMessage(result));
         return false;
     } else {
         return true;
@@ -234,7 +234,7 @@ bool renameFile(const std::string& from, const std::string& to){
 #else
     int result = rename(from.c_str(), to.c_str());
     if (result != 0){
-        LOG_ERROR(strerror(errno));
+        LOG_ERROR(errorMessage(result));
         return false;
     } else {
         return true;
@@ -257,7 +257,9 @@ bool createDirectory(const std::string& dir){
             LOG_ERROR("chmod failed!");
         }
     } else {
-        LOG_ERROR(strerror(errno));
+    #if 0
+        LOG_ERROR(errorMessage(result));
+    #endif
     }
     return false;
 #endif
