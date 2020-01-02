@@ -15,7 +15,8 @@ VSTPluginGui : ObjectGui {
 	var <>menu;
 	// private
 	classvar pluginPath;
-	classvar presetPath;
+	classvar minViewWidth = 340;
+	classvar minViewHeight = 140;
 	var server;
 	var presetMenu;
 	var updateButtons;
@@ -104,7 +105,7 @@ VSTPluginGui : ObjectGui {
 	}
 
 	gui { arg parent, bounds, params=true;
-		var numRows, sliderWidth, layout = this.guify(parent, bounds);
+		var sliderWidth, sliderHeight, minWidth, minHeight, layout = this.guify(parent, bounds);
 		showParams = params;
 		parent.isNil.if {
 			view = View(layout, bounds).background_(this.background);
@@ -122,12 +123,15 @@ VSTPluginGui : ObjectGui {
 		// window
 		parent.isNil.if {
 			bounds.isNil.if {
-				numRows = this.numRows ?? this.class.numRows;
-				sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 				params.if {
-					layout.setInnerExtent(sliderWidth * 2, numRows * 40);
+					sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
+					sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
+					minWidth = (sliderWidth + 20).max(minViewWidth + 2);
+					minHeight = ((sliderHeight * 3) * 4 + 122).max(minViewHeight + 2); // empirically
+					layout.setInnerExtent(minWidth, minHeight);
 				} {
-					layout.setInnerExtent(sliderWidth * 1.5, 150);
+					// HACK: make it slightly larger to hide scrollbars
+					layout.setInnerExtent(minViewWidth + 2, minViewHeight + 2);
 				}
 			};
 			layout.front;
@@ -331,8 +335,8 @@ VSTPluginGui : ObjectGui {
 
 		// make the canvas (view) large enough to hold all its contents.
 		// somehow it can't figure out the necessary size itself...
-		minWidth = ((sliderWidth + 20) * ncolumns).max(360);
-		minHeight = ((sliderHeight * 3 * nrows) + 120).max(140); // empirically
+		minWidth = ((sliderWidth + 20) * ncolumns).max(minViewWidth);
+		minHeight = ((sliderHeight * 3 * nrows) + 120).max(minViewHeight); // empirically
 		view.layout_(layout).fixedSize_(minWidth@minHeight);
 	}
 
