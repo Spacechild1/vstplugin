@@ -343,9 +343,9 @@ public:
     }
     PdLog& flush(){
         auto str = ss_.str();
+        PdScopedLock<async> lock;
         if (!str.empty()){
             if (async){
-                PdScopedLock<async> lock;
                 post("%s", ss_.str().c_str());
             } else {
                 verbose(level_, "%s", ss_.str().c_str());
@@ -1203,7 +1203,7 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
                     "nor a valid file path", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(abspath))){
                 // finally probe plugin
-            if (probePlugin<false>(abspath)){
+            if (probePlugin<async>(abspath)){
                 desc = gPluginManager.findPlugin(abspath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
