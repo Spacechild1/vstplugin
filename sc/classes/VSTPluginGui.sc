@@ -142,13 +142,13 @@ VSTPluginGui : ObjectGui {
 
 	prUpdateGui {
 		var nparams=0, name, infoString, header, browse, nrows=0, ncolumns=0;
-		var layout, grid, font, minWidth, minHeight, displayFont, makePanel;
+		var layout, menuLayout, paramLayout, font, minWidth, minHeight, displayFont;
 		var numRows = this.numRows ?? this.class.numRows;
 		var sliderWidth = this.sliderWidth ?? this.class.sliderWidth;
 		var sliderHeight = this.sliderHeight ?? this.class.sliderHeight;
 		var displayWidth = this.displayWidth ?? this.class.displayWidth;
 		var menu = this.menu ?? this.class.menu;
-		var save, saveas, delete, rename, textField;
+		var save, saveas, delete, rename, reload, textField;
 		// displayWidth is measured in characters, so use a monospace font.
 		// use point size to adapt to different screen resolutions
 		displayFont = Font.new(Font.defaultMonoFace, 10, usePointSize: true);
@@ -191,13 +191,16 @@ VSTPluginGui : ObjectGui {
 		};
 
 		layout = VLayout.new;
-		layout.add(HLayout([browse, stretch: 0], [header, stretch: 1]));
+		// "Browse" button + plugin name spanning 4 cells + an expanding extra cell
+		menuLayout = GridLayout.new
+		.add(browse, 0, 0)
+		.addSpanning(header, 0, 1, 1, 4)
+		.setColumnStretch(4, 1);
 
 		menu.if {
 			// build preset menu
 			presetMenu = PopUpMenu.new
-			.maxWidth_(sliderWidth)
-			.action = { var self;
+			.action = { arg self;
 				var item = self.item;
 				item.notNil.if {
 					(item.type == \program).if {
@@ -224,6 +227,7 @@ VSTPluginGui : ObjectGui {
 				.front;
 			};
 
+			// "save" button
 			save = Button.new.states_([["Save"]])
 			.action_({
 				var item = presetMenu.item;
@@ -231,13 +235,16 @@ VSTPluginGui : ObjectGui {
 					model.savePreset(item.index);
 				} { "Save button bug".throw }
 			}).enabled_(false);
+			// "save as" button
 			saveas = Button.new.states_([["Save As"]])
 			.action_({ arg self;
 				textField.value(self, { arg name;
 					model.savePreset(name);
 				});
 			});
-			rename = Button.new.states_([["Rename"]]).action_({ arg self;
+			// "rename" button
+			rename = Button.new.states_([["Rename"]])
+			.action_({ arg self;
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					textField.value(self, { arg name;
@@ -245,11 +252,21 @@ VSTPluginGui : ObjectGui {
 					}, item.preset.name);
 				} { "Rename button bug".throw }
 			}).enabled_(false);
-			delete = Button.new.states_([["Delete"]]).action_({
+			// "delete" button
+			delete = Button.new.states_([["Delete"]])
+			.action_({
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.deletePreset(item.index);
 				} { "Delete button bug".throw }
+			}).enabled_(false);
+			// "reload" button
+			reload = Button.new.states_([["Reload"]])
+			.action_({
+				var item = presetMenu.item;
+				(item.notNil and: { item.type == \preset }).if {
+					model.loadPreset(item.index);
+				} { "Reload button bug".throw }
 			}).enabled_(false);
 
 			updateButtons = {
@@ -261,22 +278,22 @@ VSTPluginGui : ObjectGui {
 				save.enabled_(enable);
 				rename.enabled_(enable);
 				delete.enabled_(enable);
+				reload.enabled_(enable); // reloading built-in presets doesn't work with all plugins...
 			};
 
-			(ncolumns > 2).if {
-				layout.add(HLayout([presetMenu, stretch: 2], save, saveas, rename, delete, nil));
-			} {
-				layout.add(VLayout(HLayout(save, saveas, rename, delete, nil), presetMenu));
-			};
+			menuLayout.add(save, 1, 0).add(saveas, 1, 1).add(rename, 1, 2).add(delete, 1, 3)
+			.addSpanning(presetMenu, 2, 0, 1, 3).add(reload, 2, 3);
 
 			this.prUpdatePresets;
 		} {
 			presetMenu = nil; updateButtons = nil;
 		};
 
+		layout.add(menuLayout);
+
 		// build parameters
 		showParams.if {
-			grid = GridLayout.new.spacing_(12);
+			paramLayout = GridLayout.new.spacing_(12);
 			paramSliders = Array.new(nparams);
 			paramDisplays = Array.new(nparams);
 			nparams.do { arg i;
@@ -304,12 +321,12 @@ VSTPluginGui : ObjectGui {
 				bar = HLayout.new([name.align_(\left), stretch: 1], display.align_(\right)).spacing_(5);
 				label !? { bar.add(label) };
 				unit = VLayout.new(bar, slider).spacing_(5);
-				grid.add(unit, row, col);
+				paramLayout.add(unit, row, col);
 			};
-			grid.setRowStretch(nrows, 1);
-			grid.setColumnStretch(ncolumns, 1);
-			grid.margins_([2, 12, 2, 2]);
-			layout.add(grid);
+			paramLayout.setRowStretch(nrows, 1);
+			paramLayout.setColumnStretch(ncolumns, 1);
+			paramLayout.margins_([2, 12, 2, 2]);
+			layout.add(paramLayout);
 		} { layout.add(nil) };
 
 		// make the canvas (view) large enough to hold all its contents.
