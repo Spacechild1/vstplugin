@@ -327,19 +327,17 @@ struct PluginInfo {
     }
     // presets
     void scanPresets();
-    Preset preset(int index) const;
-    int numPresets() const;
+    int numPresets() const { return presets.size(); }
     int findPreset(const std::string& name) const;
     Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
     int addPreset(Preset preset);
     bool removePreset(int index, bool del = true);
     bool renamePreset(int index, const std::string& newName);
     std::string getPresetFolder(PresetType type, bool create = false) const;
-    // don't access presets without lock!
-    SharedLock lockGuard() const { return SharedLock(mutex); }
-    void lock() const { mutex.lock_shared(); }
-    void unlock() const { mutex.unlock_shared(); }
     PresetList presets;
+    // for thread-safety (if needed)
+    Lock writeLock() { return Lock(mutex); }
+    SharedLock readLock() const { return SharedLock(mutex); }
 private:
     void sortPresets(bool userOnly = true);
     mutable SharedMutex mutex;

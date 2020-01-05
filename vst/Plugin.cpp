@@ -1515,7 +1515,7 @@ void IFactory::probe(ProbeCallback callback){
 
 static SharedMutex gFileLock;
 #if !defined(_WIN32) && !defined(__APPLE__)
-static bool gDidCreateVstFolders;
+static bool gDidCreateVstFolders = false;
 #endif
 
 static std::string getPresetLocation(PresetType presetType, PluginType pluginType){
@@ -1655,7 +1655,6 @@ void PluginInfo::scanPresets(){
             }, false);
         }
     }
-    Lock lock(mutex); // lock only here!
     presets = std::move(results);
     sortPresets(false);
 #if 0
@@ -1674,16 +1673,6 @@ bool stringCompare(const std::string& lhs, const std::string& rhs){
     );
 }
 
-Preset PluginInfo::preset(int index) const {
-    SharedLock lock(mutex);
-    return presets[index];
-}
-
-int PluginInfo::numPresets() const {
-    SharedLock lock(mutex);
-    return (int)presets.size();
-}
-
 void PluginInfo::sortPresets(bool userOnly){
     // don't lock! private method
     auto it1 = presets.begin();
@@ -1700,7 +1689,6 @@ void PluginInfo::sortPresets(bool userOnly){
 }
 
 int PluginInfo::findPreset(const std::string &name) const {
-    SharedLock lock(mutex);
     for (int i = 0; i < presets.size(); ++i){
         if (presets[i].name == name){
             return i;
@@ -1710,7 +1698,6 @@ int PluginInfo::findPreset(const std::string &name) const {
 }
 
 bool PluginInfo::removePreset(int index, bool del){
-    Lock lock(mutex);
     if (index >= 0 && index < presets.size()
             && presets[index].type == PresetType::User
             && (!del || removeFile(presets[index].path))){
@@ -1722,11 +1709,10 @@ bool PluginInfo::removePreset(int index, bool del){
 
 bool PluginInfo::renamePreset(int index, const std::string& newName){
     // make preset before creating the lock!
-    auto preset = makePreset(newName);
-    if (!preset.name.empty()){
-        Lock lock(mutex);
-        if (index >= 0 && index < presets.size()
-                && presets[index].type == PresetType::User){
+    if (index >= 0 && index < presets.size()
+            && presets[index].type == PresetType::User){
+        auto preset = makePreset(newName);
+        if (!preset.name.empty()){
             if (renameFile(presets[index].path, preset.path)){
                 presets[index] = std::move(preset);
                 sortPresets();
@@ -1759,7 +1745,6 @@ static std::string bashPath(std::string path){
 }
 
 int PluginInfo::addPreset(Preset preset) {
-    Lock lock(mutex);
     auto it = presets.begin();
     // insert lexicographically
     while (it != presets.end() && it->type == PresetType::User){
@@ -1793,14 +1778,11 @@ Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
 std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
     auto location = getPresetLocation(type, type_);
     if (!location.empty()){
-        SharedLock rdlock(mutex);
         auto vendorFolder = location + "/" + bashPath(vendor);
         auto pluginFolder = vendorFolder + "/" + bashPath(name);
         // create folder(s) if necessary
         if (create && !didCreatePresetFolder && type == PresetType::User){
             // LATER do some error handling
-            rdlock.unlock();
-            Lock wrlock(mutex);
             createDirectory(location);
             createDirectory(vendorFolder);
             createDirectory(pluginFolder);
