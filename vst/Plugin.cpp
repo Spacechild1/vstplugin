@@ -1721,11 +1721,12 @@ bool PluginInfo::removePreset(int index, bool del){
 }
 
 bool PluginInfo::renamePreset(int index, const std::string& newName){
-    Lock lock(mutex);
-    if (index >= 0 && index < presets.size()
-            && presets[index].type == PresetType::User){
-        auto preset = makePreset(newName);
-        if (!preset.name.empty()){
+    // make preset before creating the lock!
+    auto preset = makePreset(newName);
+    if (!preset.name.empty()){
+        Lock lock(mutex);
+        if (index >= 0 && index < presets.size()
+                && presets[index].type == PresetType::User){
             if (renameFile(presets[index].path, preset.path)){
                 presets[index] = std::move(preset);
                 sortPresets();
