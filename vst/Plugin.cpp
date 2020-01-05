@@ -1790,18 +1790,8 @@ std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
     auto location = getPresetLocation(type, type_);
     if (!location.empty()){
         SharedLock rdlock(mutex);
-        // vendor and name components
-        if (nameBashed.empty()){
-            rdlock.unlock();
-            {
-                Lock wrlock(mutex);
-                vendorBashed = bashPath(vendor);
-                nameBashed = bashPath(name);
-            }
-            rdlock.lock();
-        }
-        auto vendorFolder = location + "/" + vendorBashed;
-        auto pluginFolder = vendorFolder + "/" + nameBashed;
+        auto vendorFolder = location + "/" + bashPath(vendor);
+        auto pluginFolder = vendorFolder + "/" + bashPath(name);
         // create folder(s) if necessary
         if (create && !didCreatePresetFolder && type == PresetType::User){
             // LATER do some error handling

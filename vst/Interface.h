@@ -344,8 +344,6 @@ private:
     void sortPresets(bool userOnly = true);
     mutable SharedMutex mutex;
     mutable bool didCreatePresetFolder = false;
-    mutable std::string vendorBashed;
-    mutable std::string nameBashed;
 public:
     // default programs
     std::vector<std::string> programs;
