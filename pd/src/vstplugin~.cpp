@@ -2191,7 +2191,6 @@ static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginInfo& info, int 
 #endif
     if (index >= 0 && index < info.numPresets()){
         auto& preset = info.presets[index];
-        LOG_DEBUG("preset " << preset.name << " " << index);
         int type = 0;
         switch (preset.type){
         case PresetType::User:
