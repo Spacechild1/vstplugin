@@ -1763,11 +1763,15 @@ int PluginInfo::addPreset(Preset preset) {
     auto it = presets.begin();
     // insert lexicographically
     while (it != presets.end() && it->type == PresetType::User){
+        if (preset.name == it->name){
+            // replace
+            *it = std::move(preset);
+            return (int)(it - presets.begin());
+        }
         if (stringCompare(preset.name, it->name)){
             break;
-        } else {
-            ++it;
         }
+        ++it;
     }
     int index = (int)(it - presets.begin()); // before reallocation!
     presets.insert(it, std::move(preset));
