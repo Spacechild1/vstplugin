@@ -1789,18 +1789,20 @@ Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
 std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
     auto location = getPresetLocation(type, type_);
     if (!location.empty()){
-        // vendor component
-        if (vendorBashed.empty()){
-            vendorBashed = bashPath(vendor);
+        SharedLock rdlock(mutex);
+        // vendor and name components
+        if (nameBashed.empty()){
+            rdlock.unlock();
+            {
+                Lock wrlock(mutex);
+                vendorBashed = bashPath(vendor);
+                nameBashed = bashPath(name);
+            }
+            rdlock.lock();
         }
         auto vendorFolder = location + "/" + vendorBashed;
-        // plugin name component
-        if (nameBashed.empty()){
-            nameBashed = bashPath(name);
-        }
         auto pluginFolder = vendorFolder + "/" + nameBashed;
         // create folder(s) if necessary
-        SharedLock rdlock(mutex);
         if (create && !didCreatePresetFolder && type == PresetType::User){
             // LATER do some error handling
             rdlock.unlock();
