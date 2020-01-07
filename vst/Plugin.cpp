@@ -397,6 +397,11 @@ static void swap_bytes(T& i){
 }
 
 namespace detail {
+// Check a file path or bundle for contained CPU architectures
+// If 'path' is a file, we throw an exception if it is not a library,
+// but if 'path' is a bundle (= directory), we ignore any non-library files
+// in the 'Contents' subfolder (so the resulting list might be empty).
+// However, we always throw exceptions when we encounter errors.
 std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
     std::vector<CpuArch> results;
     if (isDirectory(path)){
@@ -454,11 +459,13 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
                             results.push_back(CpuArch::unknown);
                             break;
                         }
-                        // check if this is really a DLL
-                        uint16_t flags;
-                        memcpy(&flags, &header[18], sizeof(flags));
-                        if (!(flags & IMAGE_FILE_DLL)){
-                            throw Error(Error::ModuleError, "not a DLL");
+                        // check if it is a DLL
+                        if (!bundle){
+                            uint16_t flags;
+                            memcpy(&flags, &header[18], sizeof(flags));
+                            if (!(flags & IMAGE_FILE_DLL)){
+                                throw Error(Error::ModuleError, "not a DLL");
+                            }
                         }
                     } else {
                         throw Error(Error::ModuleError, "bad PE signature");
@@ -507,7 +514,8 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
                 cpu_type_t cputype = read_uint32(f, swap);
                 uint32_t cpusubtype = read_uint32(f, swap); // ignored
                 uint32_t filetype = read_uint32(f, swap);
-                if (filetype != MH_DYLIB && filetype != MH_BUNDLE){
+                // check if it is a dylib or Mach-bundle
+                if (!bundle && filetype != MH_DYLIB && filetype != MH_BUNDLE){
                     throw Error(Error::ModuleError, "not a plugin");
                 }
                 return getCpuArch(cputype);
@@ -591,7 +599,8 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
                 if (BYTE_ORDER != byteorder){
                     swap_bytes(filetype);
                 }
-                if (filetype != ET_DYN){
+                // check if it is a shared object
+                if (!bundle && filetype != ET_DYN){
                     throw Error(Error::ModuleError, "not a shared object");
                 }
                 // read CPU architecture
