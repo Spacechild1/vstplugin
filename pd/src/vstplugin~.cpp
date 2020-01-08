@@ -1305,9 +1305,8 @@ static void vstplugin_open_do(t_open_data *x){
         if (plugin){
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             std::lock_guard<std::mutex> lock(x->owner->x_mutex);
-            x->owner->x_plugin = std::move(plugin);
-            // now setup plugin
-            x->owner->setup_plugin();
+            x->owner->setup_plugin<async>(*plugin);
+            x->plugin = std::move(plugin);
         }
     } catch (const Error& e) {
         // shouldn't happen...
@@ -1318,7 +1317,8 @@ static void vstplugin_open_do(t_open_data *x){
 }
 
 static void vstplugin_open_done(t_open_data *x){
-    if (x->owner->x_plugin){
+    if (x->plugin){
+        x->owner->x_plugin = std::move(x->plugin);
         auto& info = x->owner->x_plugin->info();
         // store key (mainly needed for preset change notification)
         x->owner->x_key = gensym(makeKey(info).c_str());
@@ -1389,8 +1389,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
 
     auto open_done = [](t_open_data *data){
         vstplugin_open_done(data);
-        // command finished
-        data->owner->x_command = -1;
         // output message
         bool success = data->owner->x_plugin != nullptr;
         t_atom a[2];
@@ -2566,30 +2564,34 @@ bool t_vstplugin::check_plugin(){
     return false;
 }
 
-void t_vstplugin::setup_plugin(){
-    x_plugin->suspend();
+template<bool async>
+void t_vstplugin::setup_plugin(IPlugin& plugin){
+    plugin.suspend();
     // check if precision is actually supported
     auto precision = x_precision;
-    if (!x_plugin->info().hasPrecision(precision)){
-        if (x_plugin->info().hasPrecision(ProcessPrecision::Single)){
+    if (!plugin.info().hasPrecision(precision)){
+        if (plugin.info().hasPrecision(ProcessPrecision::Single)){
+            PdScopedLock<async> lock;
             post("%s: '%s' doesn't support double precision, using single precision instead",
-                 classname(this), x_plugin->info().name.c_str());
+                 classname(this), plugin.info().name.c_str());
             precision = ProcessPrecision::Single;
-        } else if (x_plugin->info().hasPrecision(ProcessPrecision::Double)){
+        } else if (plugin.info().hasPrecision(ProcessPrecision::Double)){
+            PdScopedLock<async> lock;
             post("%s: '%s' doesn't support single precision, using double precision instead",
-                 classname(this), x_plugin->info().name.c_str());
+                 classname(this), plugin.info().name.c_str());
             precision = ProcessPrecision::Double;
         } else {
+            PdScopedLock<async> lock;
             post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(this), x_plugin->info().name.c_str());
+                classname(this), plugin.info().name.c_str());
         }
     }
-    x_plugin->setupProcessing(x_sr, x_blocksize, precision);
-    x_plugin->setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
+    plugin.setupProcessing(x_sr, x_blocksize, precision);
+    plugin.setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
                            x_sigauxinlets.size(), x_sigauxoutlets.size());
-    x_plugin->resume();
+    plugin.resume();
     if (x_bypass != Bypass::Off){
-        x_plugin->setBypass(x_bypass);
+        plugin.setBypass(x_bypass);
     }
 }
 
@@ -2937,7 +2939,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     std::lock_guard<std::mutex> lock(x->x_mutex);
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
-        x->setup_plugin();
+        x->setup_plugin<false>(*x->x_plugin);
     }
     x->x_blocksize = blocksize;
     x->x_sr = sr;

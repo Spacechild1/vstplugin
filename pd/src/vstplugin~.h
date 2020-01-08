@@ -96,7 +96,8 @@ class t_vstplugin {
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
-    void setup_plugin();
+    template<bool async>
+    void setup_plugin(IPlugin& plugin);
     int get_sample_offset();
 };
 
