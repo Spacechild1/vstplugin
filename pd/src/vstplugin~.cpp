@@ -722,9 +722,7 @@ static void vstparam_setup(){
 
 t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
     : e_owner(&owner){
-#if HAVE_UI_THREAD
     e_mainthread = std::this_thread::get_id();
-#endif
     if (gui){
         pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
         e_canvas = (t_canvas *)s__X.s_thing;
@@ -737,32 +735,20 @@ t_vsteditor::~t_vsteditor(){
     clock_free(e_clock);
 }
 
-// post outgoing event (thread-safe if needed)
+// post outgoing event (thread-safe)
 template<typename T, typename U>
 void t_vsteditor::post_event(T& queue, U&& event){
-#if HAVE_UI_THREAD
     bool mainthread = std::this_thread::get_id() == e_mainthread;
-#else
-    bool mainthread = true;
-#endif
     // prevent event scheduling from within the tick method to avoid
     // deadlocks or memory errors
     if (mainthread && e_tick){
         pd_error(e_owner, "%s: recursion detected", classname(e_owner));
         return;
     }
-#if HAVE_UI_THREAD
-    // we only need to lock for VST GUI editors
-    bool editor = window();
-    if (editor){
-        e_mutex.lock();
-    }
-#endif
+    // the event might come from the GUI thread, worker thread or audio thread
+    e_mutex.lock();
     queue.push_back(std::forward<U>(event));
-#if HAVE_UI_THREAD
-    if (editor){
-        e_mutex.unlock();
-    }
+    e_mutex.unlock();
 
     if (mainthread){
         clock_delay(e_clock, 0);
@@ -783,9 +769,6 @@ void t_vsteditor::post_event(T& queue, U&& event){
             sys_unlock();
         }
     }
-#else
-    clock_delay(e_clock, 0);
-#endif
 }
 
 // parameter automation notification might come from another thread (VST GUI editor).
@@ -806,18 +789,14 @@ void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
     x->e_tick = true; // prevent recursion
 
-#if HAVE_UI_THREAD
-    // we only need to lock for VST GUI editors
-    bool editor = x->window();
-    if (editor){
-        // it's more important not to block than flushing the queues on time
-        if (!x->e_mutex.try_lock()){
-            LOG_DEBUG("couldn't lock mutex");
-            x->e_tick = false;
-            return;
-        }
+    // we always need to lock
+    // it's more important not to block than flushing the queues on time
+    if (!x->e_mutex.try_lock()){
+        LOG_DEBUG("couldn't lock mutex");
+        x->e_tick = false;
+        return;
     }
-#endif
+
     // automated parameters:
     for (auto& param : x->e_automated){
         int index = param.first;
@@ -851,11 +830,8 @@ void t_vsteditor::tick(t_vsteditor *x){
         outlet_anything(outlet, gensym("midi"), n, msg.data());
     }
     x->e_sysex.clear();
-#if HAVE_UI_THREAD
-    if (editor){
-        x->e_mutex.unlock();
-    }
-#endif
+
+    x->e_mutex.unlock();
     x->e_tick = false;
 }
 
@@ -956,12 +932,10 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
 }
 
 void t_vsteditor::flush_queues(){
-#if HAVE_UI_THREAD
     bool expected = true;
     if (e_needclock.compare_exchange_strong(expected, false)){
         clock_delay(e_clock, 0);
     }
-#endif
 }
 
 void t_vsteditor::vis(bool v){
