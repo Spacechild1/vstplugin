@@ -189,17 +189,27 @@ void EventLoop::destroy(IPlugin::ptr plugin){
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin)
 {
+    // no maximize box if plugin view can't be resized
+    DWORD dwStyle = plugin.canResize() ? WS_OVERLAPPEDWINDOW : WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX;
     hwnd_ = CreateWindowW(
           VST_EDITOR_CLASS_NAME, L"Untitled",
-          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+          dwStyle, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, NULL, NULL
     );
     LOG_DEBUG("created Window");
     setTitle(plugin_->info().name);
+    // get window dimensions from plugin
     int left = 100, top = 100, right = 400, bottom = 400;
     plugin_->getEditorRect(left, top, right, bottom);
-    setGeometry(left, top, right, bottom);
-    LOG_DEBUG("size: " << (right - left) << ", " << (bottom - top));
+    RECT rc = { left, top, right, bottom };
+    // adjust window dimensions for borders and menu
+    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
+    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
+    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
+    AdjustWindowRectEx(&rc, style, fMenu, exStyle);
+    // set window dimensions
+    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+    // set user data
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
 }
 
@@ -243,9 +253,47 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
     }
     case WM_EDITOR_SIZE:
     {
-        RECT rc;
-        if (GetWindowRect(hWnd, &rc)){
-            window->setGeometry(rc.left, rc.top, wParam + rc.left, lParam + rc.top);
+        RECT rc, client;
+        if (GetWindowRect(hWnd, &rc) && GetClientRect(hWnd, &client)){
+            int w = wParam + (rc.right - rc.left) - (client.right - client.left);
+            int h = lParam + (rc.bottom - rc.top) - (client.bottom - client.top);
+            MoveWindow(hWnd, rc.left, rc.top, w, h, TRUE);
+        }
+        return true;
+    }
+    case WM_SIZING:
+    {
+        auto newRect = (RECT *)lParam;
+        RECT oldRect;
+        if (GetWindowRect(hWnd, &oldRect)){
+            if (window->plugin()->canResize()){
+                RECT clientRect;
+                if (GetClientRect(hWnd, &clientRect)){
+                    int dw = (oldRect.right - oldRect.left) - (clientRect.right - clientRect.left);
+                    int dh = (oldRect.bottom - oldRect.top) - (clientRect.bottom - clientRect.top);
+                    int width = (newRect->right - newRect->left) - dw;
+                    int height = (newRect->bottom - newRect->top) - dh;
+                #if 0
+                    // validate requested size
+                    window->plugin()->checkEditorSize(width, height);
+                    // TODO: adjust window size
+                #endif
+                    // resize editor
+                    window->plugin()->resizeEditor(width, height);
+                }
+            } else {
+                // bash to old size
+                *newRect = oldRect;
+            }
+        }
+        return true;
+    }
+    case WM_SIZE:
+    {
+        if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED){
+            int w = LOWORD(lParam);
+            int h = HIWORD(lParam);
+            window->plugin()->resizeEditor(w, h);
         }
         return true;
     }
@@ -265,19 +313,6 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
 
 void Window::setTitle(const std::string& title){
     SetWindowTextW(hwnd_, widen(title).c_str());
-}
-
-void Window::setGeometry(int left, int top, int right, int bottom){
-    RECT rc;
-    rc.left = left;
-    rc.top = top;
-    rc.right = right;
-    rc.bottom = bottom;
-    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
-    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
-    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
-    AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
 }
 
 void Window::open(){

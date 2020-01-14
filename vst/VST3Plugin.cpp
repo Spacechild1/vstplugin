@@ -1745,6 +1745,9 @@ bool VST3Plugin::hasEditor() const {
 
 tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
     LOG_DEBUG("resizeView");
+    if (window_){
+        window_->setSize(newSize->getWidth(), newSize->getHeight());
+    }
     return view->onSize(newSize);
 }
 
@@ -1837,6 +1840,44 @@ void VST3Plugin::updateEditor(){
             automationState->setAutomationState(automationState_);
         }
     }
+}
+
+void VST3Plugin::checkEditorSize(int &width, int &height) const {
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        ViewRect rect(0, 0, width, height);
+        if (view_->checkSizeConstraint(&rect) == kResultOk){
+            width = rect.getWidth();
+            height = rect.getHeight();
+        }
+    }
+}
+
+void VST3Plugin::resizeEditor(int width, int height) {
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    if (view_){
+        ViewRect rect;
+        if (view_->getSize(&rect) == kResultOk){
+            rect.right = rect.left + width;
+            rect.bottom = rect.top + height;
+            if (view_->onSize(&rect) != kResultOk){
+                LOG_ERROR("couldn't resize editor");
+            }
+        } else {
+            LOG_ERROR("couldn't get editor size");
+        }
+    }
+}
+
+bool VST3Plugin::canResize() const {
+    if (!view_){
+        view_ = controller_->createView("editor");
+    }
+    return view_ && (view_->canResize() == kResultTrue);
 }
 
 // VST3 only

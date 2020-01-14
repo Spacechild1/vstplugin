@@ -77,7 +77,6 @@ class Window : public IWindow {
     void doClose();
     static const UINT_PTR timerID = 0x375067f6;
     static void CALLBACK updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time);
-    void setGeometry(int left, int top, int right, int bottom);
     HWND hwnd_ = nullptr;
     IPlugin* plugin_ = nullptr;
 };
