@@ -1669,14 +1669,14 @@ void VST3Plugin::writeProgramFile(const std::string& path){
 }
 
 void VST3Plugin::writeProgramData(std::string& buffer){
-    std::array<ChunkListEntry, 2> entries;
+    std::vector<ChunkListEntry> entries;
     WriteStream stream;
     stream.writeChunkID(Vst::getChunkID(Vst::kHeader)); // header
     stream.writeInt32(Vst::kFormatVersion); // version
     stream.writeTUID(info().getUID()); // class ID
     stream.writeInt64(0); // skip offset
     // write data
-    auto writeData = [&](auto index, auto component, Vst::ChunkType type){
+    auto writeChunk = [&](auto& component, Vst::ChunkType type){
         ChunkListEntry entry;
         memcpy(entry.id, Vst::getChunkID(type), sizeof(Vst::ChunkID));
         stream.tell(&entry.offset);
@@ -1684,14 +1684,14 @@ void VST3Plugin::writeProgramData(std::string& buffer){
         if (component->getState(&stream) == kResultTrue){
             auto pos = stream.getPos();
             entry.size = pos - entry.offset;
-            entries[index] = entry;
+            entries.push_back(entry);
         } else {
             LOG_DEBUG("couldn't get state");
             // throw?
         }
     };
-    writeData(0, component_, Vst::kComponentState);
-    writeData(1, controller_, Vst::kControllerState);
+    writeChunk(component_, Vst::kComponentState);
+    writeChunk(controller_, Vst::kControllerState);
     // store list offset
     auto listOffset = stream.getPos();
     // write list
