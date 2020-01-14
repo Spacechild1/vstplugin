@@ -1611,14 +1611,40 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     TUID classID;
     stream.readTUID(classID);
     if (memcmp(classID, info().getUID(), sizeof(TUID)) != 0){
-    #if LOGLEVEL > 2
-        char buf[17] = {0};
-        memcpy(buf, classID, sizeof(TUID));
-        LOG_DEBUG("a: " << buf);
-        memcpy(buf, info().getUID(), sizeof(TUID));
-        LOG_DEBUG("b: " << buf);
+    #if 1
+        // HACK to allow loading presets of v0.3.0> which had
+        // the wrong class ID. This might go away in a later version.
+        // 1) reproduce the wrong serialization
+        char buf[33];
+        for (int i = 0; i < sizeof(TUID); ++i) {
+            // this code gave wrong results because of the missing uint8_t cast!
+            snprintf(buf + 2 * i, 3, "%02X", classID[i]);
+        }
+        buf[32] = 0;
+        // 2) deserialize
+        TUID wrongID;
+        for (int i = 0; i < sizeof(TUID); ++i) {
+            uint32_t temp;
+            sscanf(buf + 2 * i, "%02X", &temp);
+            wrongID[i] = temp;
+        }
+        // 3) compare again
+        if (memcmp(classID, wrongID, sizeof(TUID)) == 0) {
+            LOG_WARNING("This preset data has a wrong class ID from v0.3.0 or below.\n"
+                "Please save it to fix the problem.");
+        } else
     #endif
-        throw Error("wrong class ID");
+        {
+        #if LOGLEVEL > 2
+            fprintf(stdout, "preset: ");
+            for (int i = 0; i < 16; ++i) {
+                fprintf(stdout, "%02X", (uint8_t)classID[i]);
+            }
+            fprintf(stdout, "\nplugin: %s", info().uniqueID.c_str());
+            fflush(stdout);
+        #endif
+            throw Error("wrong class ID");
+        }
     }
     int64 offset;
     stream.readInt64(offset);
@@ -2062,7 +2088,8 @@ bool BaseStream::writeTUID(const TUID tuid){
     i += 8;
 #endif
     for (; i < (int)sizeof(TUID); ++i){
-        sprintf(buf + (i * 2), "%02X", tuid[i]);
+        // we have to cast to uint8_t!
+        sprintf(buf + 2 * i, "%02X", (uint8_t)tuid[i]);
     }
     write(buf, Vst::kClassIDSize, &bytesWritten);
     return bytesWritten == Vst::kClassIDSize;
@@ -2103,7 +2130,6 @@ bool BaseStream::readTUID(TUID tuid){
     if (bytesRead == Vst::kClassIDSize){
         buf[Vst::kClassIDSize] = 0;
         int i = 0;
-        LOG_DEBUG("start read tuid");
     #if COM_COMPATIBLE
         GUIDStruct guid;
         sscanf(buf, "%08x", &guid.data1);
@@ -2117,7 +2143,6 @@ bool BaseStream::readTUID(TUID tuid){
             sscanf(buf + i, "%02X", &temp);
             tuid[i / 2] = temp;
         }
-        LOG_DEBUG("end read tuid");
         return true;
     } else {
         return false;

@@ -1612,16 +1612,20 @@ void PluginInfo::setUniqueID(int _id){
     snprintf(buf, sizeof(buf), "%08X", _id);
     buf[8] = 0;
     uniqueID = buf;
+    id_.id = _id;
+
 }
 
 void PluginInfo::setUID(const char *uid){
     type_ = PluginType::VST3;
     char buf[33];
-    for (int i = 0; i < 16; ++i){
-        snprintf(buf + (i * 2), 3, "%02X", uid[i]);
+    for (int i = 0; i < sizeof(TUID); ++i){
+        // we have to cast to uint8_t!
+        sprintf(buf + 2 * i, "%02X", (uint8_t)uid[i]);
     }
     buf[32] = 0;
     uniqueID = buf;
+    memcpy(id_.uid, uid, 16);
 }
 
 static void conformPath(std::string& path){
@@ -2058,12 +2062,9 @@ void PluginInfo::deserialize(std::istream& file) {
                         sscanf(&value[0], "%08X", &id_.id);
                     } else if (value.size() == 32){
                         type_ = PluginType::VST3;
-                        const int n = value.size() / 2;
-                        for (int i = 0; i < n; ++i){
-                            char buf[3] = { 0 };
-                            memcpy(buf, &value[i * 2], 2);
+                        for (int i = 0; i < 16; ++i){
                             unsigned int temp;
-                            sscanf(buf, "%02x", &temp);
+                            sscanf(&value[i * 2], "%02X", &temp);
                             id_.uid[i] = temp;
                         }
                     } else {
