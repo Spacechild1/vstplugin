@@ -149,6 +149,7 @@ VSTPluginDesc {
 		preset.isNumber.if {
 			^presets[preset.asInteger];
 		} {
+			preset = preset.asString;
 			presets.do { arg p, i;
 				(p.name == preset).if { ^p };
 			};
@@ -161,8 +162,9 @@ VSTPluginDesc {
 				(p === preset).if { ^index }
 			}
 		} {
+			preset = preset.asString;
 			presets.do { arg p, index;
-				(p.name == name).if { ^index }
+				(p.name == preset).if { ^index }
 			}
 		};
 		^nil;

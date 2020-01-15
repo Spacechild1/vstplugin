@@ -385,10 +385,10 @@ VSTPluginController {
 					preset = preset.asInteger;
 					result = info.presets[preset];
 					result ?? {
-						^"preset index % out of range".format(preset).throw
+						"preset index % out of range".format(preset).error; ^this;
 					};
 					(result.type != \user).if {
-						^"preset % is not writeable!".throw
+						"preset % is not writeable!".format(preset).error; ^this;
 					};
 					name = result.name;
 				} {
@@ -419,11 +419,16 @@ VSTPluginController {
 			preset.isNil.if {
 				currentPreset.notNil.if {
 					index = info.prPresetIndex(currentPreset);
+					index ?? { ^"bug: couldn't find current preset".throw };
 				} { "no current preset".error; ^this };
 			} {
 				preset.isNumber.if {
 					index = preset.asInteger;
-				} { index = info.prPresetIndex(preset.asString) };
+				} {
+					// try to find by name
+					index = info.prPresetIndex(preset.asString);
+					index ?? { "couldn't find preset '%'".format(preset).error; ^this }
+				};
 			};
 			result = info.presets[index];
 			result.notNil.if {
@@ -434,7 +439,7 @@ VSTPluginController {
 					} { "couldn't load preset".error };
 					action.value(self, success);
 				}, async);
-			} { "couldn't find preset '%'".format(preset).error }
+			} { "preset index % out of range".format(preset).error };
 		} { "no plugin loaded".error }
 	}
 	deletePreset { arg preset;
@@ -448,7 +453,7 @@ VSTPluginController {
 			preset.isNil.if {
 				currentPreset.notNil.if {
 					(currentPreset.type != \user).if {
-						"current preset is not writeable!".error; ^this;
+						"current preset is not writeable!".error; ^false;
 					};
 					preset = currentPreset.name;
 					current = true;
@@ -473,7 +478,7 @@ VSTPluginController {
 			preset.isNil.if {
 				currentPreset.notNil.if {
 					(currentPreset.type != \user).if {
-						"current preset is not writeable!".error; ^this;
+						"current preset is not writeable!".error; ^false;
 					};
 					preset = currentPreset.name;
 				} { "no current preset".error; ^false };
@@ -492,7 +497,7 @@ VSTPluginController {
 			this.sendMsg('/program_set', number);
 			this.prQueryParams;
 		} {
-			^"program number % out of range".format(number).throw;
+			"program number % out of range".format(number).error;
 		};
 	}
 	programMsg { arg number;
