@@ -266,7 +266,7 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
         auto newRect = (RECT *)lParam;
         RECT oldRect;
         if (GetWindowRect(hWnd, &oldRect)){
-            if (window->plugin()->canResize()){
+            if (window && window->plugin()->canResize()){
                 RECT clientRect;
                 if (GetClientRect(hWnd, &clientRect)){
                     int dw = (oldRect.right - oldRect.left) - (clientRect.right - clientRect.left);
@@ -293,7 +293,9 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
         if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED){
             int w = LOWORD(lParam);
             int h = HIWORD(lParam);
-            window->plugin()->resizeEditor(w, h);
+            if (window) {
+                window->plugin()->resizeEditor(w, h);
+            }
         }
         return true;
     }
