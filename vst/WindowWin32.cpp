@@ -278,8 +278,7 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
                     window->plugin()->checkEditorSize(width, height);
                     // TODO: adjust window size
                 #endif
-                    // resize editor
-                    window->plugin()->resizeEditor(width, height);
+                    // editor is resized by WM_SIZE (see below)
                 }
             } else {
                 // bash to old size
