@@ -116,7 +116,7 @@ class VST2Plugin final : public IPlugin {
     bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
     void updateEditor() override;
     void checkEditorSize(int &width, int &height) const override;
-    void resizeEditor(int width, int height);
+    void resizeEditor(int width, int height) override;
     bool canResize() const override;
 
     void setWindow(IWindow::ptr window) override {

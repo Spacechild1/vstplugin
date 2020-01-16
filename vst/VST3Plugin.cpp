@@ -1640,7 +1640,7 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             for (int i = 0; i < 16; ++i) {
                 fprintf(stdout, "%02X", (uint8_t)classID[i]);
             }
-            fprintf(stdout, "\nplugin: %s", info().uniqueID.c_str());
+            fprintf(stdout, "\nplugin: %s\n", info().uniqueID.c_str());
             fflush(stdout);
         #endif
             throw Error("wrong class ID");
