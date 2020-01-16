@@ -70,13 +70,16 @@ class Window : public IWindow {
     void doOpen();
     void doClose();
     void doUpdate();
+    void onConfigure(int x, int y, int width, int height);
  private:
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;
     bool mapped_ = false;
-    int x_ = 100;
-    int y_ = 100;
+    int x_;
+    int y_;
+    int width_;
+    int height_;
 };
 
 } // X11

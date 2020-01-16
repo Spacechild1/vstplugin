@@ -50,16 +50,16 @@ EventLoop::EventLoop() {
         LOG_WARNING("XInitThreads failed!");
     }
     display_ = XOpenDisplay(NULL);
-	if (!display_){
+    if (!display_){
         throw Error("X11: couldn't open display!");
-	}
+    }
 #if 0
     // root_ = DefaultRootWindow(display_);
 #else
     // for some reason, the "real" root window doesn't receive
     // client messages, so I have to create a dummy window instead...
-	root_ = XCreateSimpleWindow(display_, DefaultRootWindow(display_),
-				0, 0, 1, 1, 1, 0, 0);
+    root_ = XCreateSimpleWindow(display_, DefaultRootWindow(display_),
+                0, 0, 1, 1, 1, 0, 0);
 #endif
     LOG_DEBUG("created X11 root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
@@ -106,10 +106,9 @@ void EventLoop::run(){
     XEvent event;
     LOG_DEBUG("X11: start event loop");
     while (true){
-	    XNextEvent(display_, &event);
-        // LOG_DEBUG("got event: " << event.type);
-	    if (event.type == ClientMessage){
-			auto& msg = event.xclient;
+        XNextEvent(display_, &event);
+        if (event.type == ClientMessage){
+            auto& msg = event.xclient;
             auto type = msg.message_type;
             if (type == wmProtocols){
                 if ((Atom)msg.data.l[0] == wmDelete){
@@ -149,7 +148,7 @@ void EventLoop::run(){
                 if (it != pluginMap_.end()){
                     static_cast<Window *>(it->second->getWindow())->doOpen();
                 } else {
-                    LOG_ERROR("bug wmOpenEditor: " << msg.window);   
+                    LOG_ERROR("bug wmOpenEditor: " << msg.window);
                 }
             } else if (type == wmCloseEditor){
                 LOG_DEBUG("wmCloseEditor");
@@ -157,7 +156,7 @@ void EventLoop::run(){
                 if (it != pluginMap_.end()){
                     static_cast<Window *>(it->second->getWindow())->doClose();
                 } else {
-                    LOG_ERROR("bug wmCloseEditor: " << msg.window);   
+                    LOG_ERROR("bug wmCloseEditor: " << msg.window);
                 }
             } else if (type == wmUpdatePlugins){
                 for (auto& it : pluginMap_){
@@ -172,11 +171,23 @@ void EventLoop::run(){
                 LOG_DEBUG("wmQuit");
                 LOG_DEBUG("X11: quit event loop");
                 break; // quit event loop
-			} else {
+            } else {
                 LOG_DEBUG("X11: unknown client message");
-			}
-		}
-	}
+            }
+        } else if (event.type == ConfigureNotify){
+            XConfigureEvent& xce = event.xconfigure;
+            LOG_DEBUG("ConfigureNotify");
+            auto it = pluginMap_.find(xce.window);
+            if (it != pluginMap_.end()){
+                static_cast<Window *>(it->second->getWindow())->onConfigure(
+                            xce.x, xce.y, xce.width, xce.height);
+            } else {
+                LOG_ERROR("bug ConfigureNotify: " << xce.window);
+            }
+        } else {
+            // LOG_DEBUG("got event: " << event.type);
+        }
+    }
 }
 
 void EventLoop::updatePlugins(){
@@ -263,25 +274,44 @@ void EventLoop::destroy(IPlugin::ptr plugin){
 Window::Window(Display& display, IPlugin& plugin)
     : display_(&display), plugin_(&plugin)
 {
+    // get window coordinates
     int left = 100, top = 100, right = 400, bottom = 400;
     plugin_->getEditorRect(left, top, right, bottom);
+    x_ = left;
+    y_ = top;
+    width_ = right - left;
+    height_ = bottom - top;
+    // create window
     int s = DefaultScreen(display_);
-	window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
-				x_, y_, right-left, bottom-top,
-				1, BlackPixel(display_, s), WhitePixel(display_, s));
-#if 0
-    XSelectInput(display_, window_, 0xffff);
-#endif
-		// intercept request to delete window when being closed
+    window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
+                x_, y_, width_, height_,
+                1, BlackPixel(display_, s), WhitePixel(display_, s));
+    // receive configure events
+    XSelectInput(display_, window_, StructureNotifyMask);
+    // intercept request to delete window when being closed
     XSetWMProtocols(display_, window_, &wmDelete, 1);
-
+    // disable resizing
+    if (!plugin_->canResize()){
+        LOG_DEBUG("can't resize");
+        XSizeHints *hints = XAllocSizeHints();
+        if (hints){
+            hints->flags = PMinSize | PMaxSize;
+            hints->max_width = hints->min_width = width_;
+            hints->min_height = hints->max_height = height_;
+            XSetWMNormalHints(display_, window_, hints);
+            XFree(hints);
+        }
+    } else {
+        LOG_DEBUG("can resize");
+    }
+    // set window class hint
     XClassHint *ch = XAllocClassHint();
     if (ch){
-		ch->res_name = (char *)"VST Editor";
-		ch->res_class = (char *)"VST Editor Window";
-		XSetClassHint(display_, window_, ch);
-		XFree(ch);
-	}
+        ch->res_name = (char *)"VST Editor";
+        ch->res_class = (char *)"VST Editor Window";
+        XSetClassHint(display_, window_, ch);
+        XFree(ch);
+    }
     LOG_DEBUG("X11: created Window " << window_);
     setTitle(plugin_->info().name);
 }
@@ -293,9 +323,9 @@ Window::~Window(){
 }
 
 void Window::setTitle(const std::string& title){
-	XStoreName(display_, window_, title.c_str());
-	XSetIconName(display_, window_, title.c_str());
-	XFlush(display_);
+    XStoreName(display_, window_, title.c_str());
+    XSetIconName(display_, window_, title.c_str());
+    XFlush(display_);
     LOG_DEBUG("Window::setTitle: " << title);
 }
 
@@ -320,9 +350,11 @@ void Window::close(){
 void Window::doClose(){
     if (mapped_){
         plugin_->closeEditor();
+    #if 0
         ::Window child;
         XTranslateCoordinates(display_, window_, DefaultRootWindow(display_), 0, 0, &x_, &y_, &child);
         LOG_DEBUG("stored position: " << x_ << ", " << y_);
+    #endif
         XUnmapWindow(display_, window_);
         mapped_ = false;
     }
@@ -342,6 +374,19 @@ void Window::doUpdate(){
     if (mapped_){
         plugin_->updateEditor();
     }
+}
+
+void Window::onConfigure(int x, int y, int width, int height){
+    if (width_ != width || height_ != height){
+        if (plugin_->canResize()){
+            plugin_->resizeEditor(width, height);
+        }
+        width_ = width;
+        height_ = height;
+    }
+    // always store position!
+    x_ = x;
+    y_ = y;
 }
 
 } // X11
