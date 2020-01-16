@@ -208,7 +208,7 @@ void Window::doOpen(){
         
         plugin_->openEditor(getHandle());
 
-        timer_ = [NSTimer scheduledTimerWithTimeInterval:5
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(UIThread::updateInterval * 0.001)
                     target:window
                     selector:@selector(updateEditor)
                     userInfo:nil
