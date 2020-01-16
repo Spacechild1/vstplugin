@@ -19,6 +19,22 @@
     return YES;
 }
 
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
+    LOG_DEBUG("window will resize");
+    return frameSize;
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+    // LATER verify size
+    vst::IWindow *owner = [self owner];
+    // get content size from frame size
+    NSRect contentRect = [self contentRectForFrameRect:[self frame]];
+    // resize editor
+    static_cast<vst::Cocoa::Window *>(owner)->plugin().resizeEditor(
+        contentRect.size.width, contentRect.size.height);
+    LOG_DEBUG("window did resize");
+}
+
 - (void)windowDidMiniaturize:(NSNotification *)notification {
     LOG_DEBUG("window miniaturized");
 }
@@ -192,14 +208,20 @@ void Window::doOpen(){
     LOG_DEBUG("try create Window");
     
     NSRect frame = NSMakeRect(0, 0, 200, 200);
+    NSUInteger style = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask;
+    if (canResize_ || plugin_->canResize()) {
+        style |= NSResizableWindowMask;
+        canResize_ = true;
+        LOG_DEBUG("can resize");
+    }
     CocoaEditorWindow *window = [[CocoaEditorWindow alloc] initWithContentRect:frame
-                styleMask:(NSTitledWindowMask | NSClosableWindowMask 
-                | NSMiniaturizableWindowMask) 
+                styleMask:style
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
         [window setOwner:this];
         window_ = window;
+        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:window];
         
         setTitle(plugin_->info().name);
         int left = 100, top = 100, right = 400, bottom = 400;
@@ -233,6 +255,7 @@ void Window::close(){
 // to be called on the main thread
 void Window::onClose(){
     if (window_){
+        [[NSNotificationCenter defaultCenter] removeObserver:window_ name:NSWindowDidResizeNotification object:window_];
         [timer_ invalidate];
         plugin_->closeEditor();
         origin_ = [window_ frame].origin;
