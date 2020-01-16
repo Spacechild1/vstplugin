@@ -106,10 +106,14 @@ VST3Factory::VST3Factory(const std::string& path)
     : path_(path) {}
 
 VST3Factory::~VST3Factory(){
+    factory_ = nullptr;
+#if 0
+    // this crashes on macOS when called during program termination
     if (module_ && !module_->exit()){
         // don't throw!
         LOG_ERROR("couldn't exit module");
     }
+#endif
     // LOG_DEBUG("freed VST3 module " << path_);
 }
 
