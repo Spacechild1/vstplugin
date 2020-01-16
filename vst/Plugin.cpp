@@ -1136,13 +1136,14 @@ class ModuleSO : public IModule {
         dlclose(handle_);
     #endif
     }
+    // NOTE: actually, init() and exit() should be mandatory but some plugins don't care...
     bool init() override {
         auto fn = getFnPtr<InitFunc>("ModuleEntry");
-        return (!fn || fn(handle_)); // init is mandatory
+        return (!fn || fn(handle_)); // init is optional
     }
     bool exit() override {
         auto fn = getFnPtr<ExitFunc>("ModuleExit");
-        return (!fn || fn()); // exit is mandatory
+        return (!fn || fn()); // exit is optional
     }
     void * doGetFnPtr(const char *name) const override {
         return dlsym(handle_, name);
