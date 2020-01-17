@@ -1,4 +1,4 @@
-vstplugin v0.3.0
+vstplugin v0.3.1
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -27,6 +27,9 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
+* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts (and vice verca) because of a mistake in the code. This has been fixed in vstplugin v0.3.1.
+You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format.
+
 * The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above (not released yet at the time of writing).
 
 * On macOS, the SuperCollider/Supernova VST GUI only works on SuperCollider 3.11 and above (not released yet at the time of writing). Otherwise you get a warning if you try to open a plugin with "editor: true".
@@ -35,7 +38,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 that GUI updates shouldn't have a noticable effect on audio performance.
 On MacOS, however, because of technical limitations the GUI must run on
 the main thread[^1] - which happens to be the audio thread in Pd...
-Until we've found a better solution, macOS users are adviced to keep native GUI
+Until we've found a better solution, Pd users on macOS are adviced to keep native GUI
 windows closed in low-latency realtime situations to avoid audio hick-ups.
 
 * If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
