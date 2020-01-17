@@ -27,8 +27,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
-* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts (and vice verca) because of a mistake in the code. This has been fixed in vstplugin v0.3.1.
-You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format.
+* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa because of a mistake in the (de)serialization of VST3 plugin IDs. This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format. But first make sure to clear the plugin cache and do a new search to update the plugin IDs.
 
 * The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above (not released yet at the time of writing).
 
