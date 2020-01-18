@@ -377,7 +377,7 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
 }
 
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
-    : factory_(std::move(f)), info_(std::move(desc))
+    : info_(std::move(desc))
 {
     memset(&context_, 0, sizeof(context_));
     context_.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kContTimeValid
@@ -390,7 +390,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     context_.timeSigDenominator = 4;
 
     // are we probing?
-    auto info = !info_ ? std::make_shared<PluginInfo>(factory_) : nullptr;
+    auto info = !info_ ? std::make_shared<PluginInfo>(f) : nullptr;
     TUID uid;
     PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
@@ -416,9 +416,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         } else {
             throw Error(Error::PluginError, "Couldn't get class info!");
         }
-    }
-    if (info){
-        LOG_DEBUG("creating " << info->name);
     }
     // create component
     if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){

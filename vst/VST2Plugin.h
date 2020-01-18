@@ -171,7 +171,6 @@ class VST2Plugin final : public IPlugin {
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
-    IFactory::const_ptr factory_; // just to ensure lifetime
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;

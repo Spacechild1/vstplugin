@@ -217,7 +217,7 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
 VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc)
-    : plugin_(plugin), factory_(std::move(f)), info_(std::move(desc))
+    : plugin_(plugin), info_(std::move(desc))
 {
     memset(&timeInfo_, 0, sizeof(timeInfo_));
     timeInfo_.sampleRate = 44100;
@@ -240,9 +240,22 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     // are we probing?
     if (!info_){
         // create and fill plugin info
-        auto info = std::make_shared<PluginInfo>(factory_);
+        auto info = std::make_shared<PluginInfo>(f);
         info->setUniqueID(plugin_->uniqueID);
         info->name = getPluginName();
+        if (info->name.empty()){
+            // get from file path
+            auto& path = info->path;
+            auto sep = path.find_last_of("\\/");
+            auto dot = path.find_last_of('.');
+            if (sep == std::string::npos){
+                sep = -1;
+            }
+            if (dot == std::string::npos){
+                dot = path.size();
+            }
+            info->name = path.substr(sep + 1, dot - sep - 1);
+        }
         info->vendor = getPluginVendor();
         info->category = getPluginCategory();
         info->version = getPluginVersion();
@@ -1200,21 +1213,7 @@ bool VST2Plugin::canResize() const { return false; }
 std::string VST2Plugin::getPluginName() const {
     char buf[256] = { 0 };
     dispatch(effGetEffectName, 0, 0, buf);
-    if (buf[0] != 0){
-        return buf;
-    } else {
-        // get from file path
-        auto path = factory_->path();
-        auto sep = path.find_last_of("\\/");
-        auto dot = path.find_last_of('.');
-        if (sep == std::string::npos){
-            sep = -1;
-        }
-        if (dot == std::string::npos){
-            dot = path.size();
-        }
-        return path.substr(sep + 1, dot - sep - 1);
-    }
+    return buf;
 }
 
 std::string VST2Plugin::getPluginVendor() const {

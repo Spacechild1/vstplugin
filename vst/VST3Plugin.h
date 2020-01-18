@@ -302,7 +302,6 @@ class VST3Plugin final :
     IPtr<Vst::IEditController> controller_;
     mutable IPlugView *view_ = nullptr;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
-    IFactory::const_ptr factory_;
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
