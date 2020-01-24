@@ -1005,23 +1005,25 @@ namespace UIThread {
 #endif
 }
 
-void setThreadLowPriority(){
+void setThreadPriority(ThreadPriority p){
 #ifdef _WIN32
     auto thread = GetCurrentThread();
-    // lower the thread priority
-    if (SetThreadPriority(thread, THREAD_PRIORITY_LOWEST)){
+    // set the thread priority
+    if (SetThreadPriority(thread, (p == ThreadPriority::High) ?
+                          THREAD_PRIORITY_HIGHEST : THREAD_PRIORITY_LOWEST)){
         // disable priority boost
-        if (!SetThreadPriorityBoost(thread, TRUE)){
+        if (!SetThreadPriorityBoost(thread, (p == ThreadPriority::High) ? FALSE : TRUE)){
             LOG_WARNING("couldn't disable thread priority boost");
         }
     } else {
         LOG_WARNING("couldn't set thread priority");
     }
 #else
-    // low priority
+    // set priority
+    // high priority value taken from Pd, see s_inter.c
     struct sched_param param;
-    param.sched_priority = 0;
-    if (pthread_setschedparam(pthread_self(), SCHED_OTHER, &param) != 0){
+    param.sched_priority = (p == ThreadPriority::High) ? sched_get_priority_max(SCHED_FIFO) - 7 : 0;
+    if (pthread_setschedparam(pthread_self(), (p == ThreadPriority::High) ? SCHED_FIFO : SCHED_OTHER, &param) != 0){
         LOG_WARNING("couldn't set thread priority");
     }
 #endif

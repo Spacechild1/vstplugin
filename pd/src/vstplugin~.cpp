@@ -57,17 +57,13 @@ t_workqueue* t_workqueue::get(){
 }
 #endif
 
-namespace vst {
-    void setThreadLowPriority();
-}
-
 t_workqueue::t_workqueue(){
 #ifdef PDINSTANCE
     w_instance = pd_this;
 #endif
 
     w_thread = std::thread([this]{
-        vst::setThreadLowPriority();
+        vst::setThreadPriority(ThreadPriority::Low);
 
         std::unique_lock<std::mutex> lock(w_mutex);
     #ifdef PDINSTANCE

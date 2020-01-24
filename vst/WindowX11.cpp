@@ -5,9 +5,6 @@
 
 namespace vst {
 
-// Plugin.cpp
-void setThreadLowPriority();
-
 namespace X11 {
 
 namespace  {
@@ -101,7 +98,7 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::run(){
-    setThreadLowPriority();
+    setThreadPriority(ThreadPriority::Low);
 
     XEvent event;
     LOG_DEBUG("X11: start event loop");

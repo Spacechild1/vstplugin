@@ -154,6 +154,15 @@ protected:
 
 //--------------------------------------------------------------------------------------------------------
 
+enum class ThreadPriority {
+    Low,
+    High
+};
+
+void setThreadPriority(ThreadPriority p);
+
+//--------------------------------------------------------------------------------------------------------
+
 template<typename T, size_t N>
 class LockfreeFifo {
  public:

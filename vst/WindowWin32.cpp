@@ -10,7 +10,6 @@ namespace vst {
 
 // Plugin.cpp
 std::wstring widen(const std::string& s);
-void setThreadLowPriority();
 
 namespace Win32 {
     
@@ -39,7 +38,7 @@ EventLoop& EventLoop::instance(){
 }
 
 DWORD EventLoop::run(void *user){
-    setThreadLowPriority();
+    setThreadPriority(ThreadPriority::Low);
 
     auto obj = (EventLoop *)user;
     MSG msg;
