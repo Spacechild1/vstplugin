@@ -13,7 +13,7 @@
 #elif defined(__APPLE__)
   // macOS doesn't support unnamed pthread semaphores,
   // so we use Mach semaphores instead
-  #include <dispatch/semaphore.h>
+  #include <dispatch/dispatch.h>
 #else
   // unnamed pthread semaphore
   #include <semaphore.h>

@@ -56,7 +56,7 @@ void Event::wait(){
 #elif defined(__APPLE__)
     dispatch_semaphore_wait(sem_, DISPATCH_TIME_FOREVER);
 #else
-    sem_wait(&event_);
+    sem_wait(&sem_);
 #endif
 #else // USE_PLATFORM_EVENT
     std::unique_lock<std::mutex> lock(mutex_);
