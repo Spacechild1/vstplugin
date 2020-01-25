@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
+#include "ThreadedPlugin.h"
 
 using namespace vst;
 
@@ -82,6 +83,7 @@ class t_vstplugin {
     bool x_async = false;
     bool x_uithread = false;
     bool x_keep = false;
+    bool x_threaded = false;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
     int x_command = -1;

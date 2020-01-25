@@ -1277,6 +1277,10 @@ static void vstplugin_open_do(t_open_data *x){
             plugin = info->create();
         }
         if (plugin){
+            if (x->owner->x_threaded){
+                // wrap plugin in ThreadedPlugin adapter
+                plugin = std::make_unique<ThreadedPlugin>(std::move(plugin));
+            }
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             std::lock_guard<std::mutex> lock(x->owner->x_mutex);
             x->owner->setup_plugin<async>(*plugin);
@@ -1560,10 +1564,17 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
         data->owner = x;
         x->x_command = t_workqueue::get()->push(data,
             [](t_reset_data *x){
+                auto& plugin = x->owner->x_plugin;
                 // protect against vstplugin_dsp() and vstplugin_save()
                 std::lock_guard<std::mutex> lock(x->owner->x_mutex);
-                x->owner->x_plugin->suspend();
-                x->owner->x_plugin->resume();
+                if (x->owner->x_threaded){
+                    static_cast<ThreadedPlugin&>(*plugin).lock();
+                }
+                plugin->suspend();
+                plugin->resume();
+                if (x->owner->x_threaded){
+                    static_cast<ThreadedPlugin&>(*plugin).unlock();
+                }
             },
             [](t_reset_data *x){
                 x->owner->x_command = -1;
@@ -2004,6 +2015,9 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     }
     sys_close(fd);
     // sys_bashfilename(path, path);
+    if (async && x->x_threaded){
+        static_cast<ThreadedPlugin&>(*x->x_plugin).lock();
+    }
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
         std::lock_guard<std::mutex> lock(x->x_mutex);
@@ -2017,6 +2031,9 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         pd_error(x, "%s: couldn't read %s file '%s':\n%s",
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
+    }
+    if (async && x->x_threaded){
+        static_cast<ThreadedPlugin&>(*x->x_plugin).unlock();
     }
 }
 
@@ -2063,6 +2080,9 @@ struct t_save_data : t_preset_data {
 template<t_preset type, bool async>
 static void vstplugin_preset_write_do(t_preset_data *data){
     auto x = data->owner;
+    if (async && x->x_threaded){
+        static_cast<ThreadedPlugin&>(*x->x_plugin).lock();
+    }
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
         std::lock_guard<std::mutex> lock(x->x_mutex);
@@ -2077,6 +2097,9 @@ static void vstplugin_preset_write_do(t_preset_data *data){
         pd_error(x, "%s: couldn't write %s file '%s':\n%s",
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
+    }
+    if (async && x->x_threaded){
+        static_cast<ThreadedPlugin&>(*x->x_plugin).unlock();
     }
 }
 
@@ -2540,6 +2563,9 @@ bool t_vstplugin::check_plugin(){
 
 template<bool async>
 void t_vstplugin::setup_plugin(IPlugin& plugin){
+    if (x_threaded){
+        static_cast<ThreadedPlugin&>(plugin).lock();
+    }
     plugin.suspend();
     // check if precision is actually supported
     auto precision = x_precision;
@@ -2567,6 +2593,9 @@ void t_vstplugin::setup_plugin(IPlugin& plugin){
     if (x_bypass != Bypass::Off){
         plugin.setBypass(x_bypass);
     }
+    if (x_threaded){
+        static_cast<ThreadedPlugin&>(plugin).unlock();
+    }
 }
 
 int t_vstplugin::get_sample_offset(){
@@ -2581,6 +2610,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool keep = false; // remember plugin + state?
+    bool threaded = false;
     // precision (defaults to Pd's precision)
     ProcessPrecision precision = (PD_FLOATSIZE == 64) ?
                 ProcessPrecision::Double : ProcessPrecision::Single;
@@ -2593,7 +2623,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             if (!strcmp(flag, "-n")){
                 gui = false;
             } else if (!strcmp(flag, "-k")){
-                keep = true;
+                x_keep = true;
             } else if (!strcmp(flag, "-e")){
                 editor = true;
             } else if (!strcmp(flag, "-sp")){
@@ -2602,6 +2632,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 precision = ProcessPrecision::Double;
             } else if (!strcmp(flag, "-s")){
                 search = true;
+            } else if (!strcmp(flag, "-t")){
+                x_threaded = true;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
@@ -2627,7 +2659,6 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int auxin = atom_getfloatarg(2, argc, argv);
     int auxout = atom_getfloatarg(3, argc, argv);
 
-    x_keep = keep;
     x_precision = precision;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
