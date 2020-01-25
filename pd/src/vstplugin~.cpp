@@ -1279,7 +1279,7 @@ static void vstplugin_open_do(t_open_data *x){
         if (plugin){
             if (x->owner->x_threaded){
                 // wrap plugin in ThreadedPlugin adapter
-                plugin = std::make_unique<ThreadedPlugin>(std::move(plugin));
+                plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
             }
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             std::lock_guard<std::mutex> lock(x->owner->x_mutex);
@@ -1567,14 +1567,10 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
                 auto& plugin = x->owner->x_plugin;
                 // protect against vstplugin_dsp() and vstplugin_save()
                 std::lock_guard<std::mutex> lock(x->owner->x_mutex);
-                if (x->owner->x_threaded){
-                    static_cast<ThreadedPlugin&>(*plugin).lock();
-                }
+                plugin->lock(); // threaded plugin
                 plugin->suspend();
                 plugin->resume();
-                if (x->owner->x_threaded){
-                    static_cast<ThreadedPlugin&>(*plugin).unlock();
-                }
+                plugin->unlock(); // threaded plugin
             },
             [](t_reset_data *x){
                 x->owner->x_command = -1;
@@ -2015,9 +2011,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     }
     sys_close(fd);
     // sys_bashfilename(path, path);
-    if (async && x->x_threaded){
-        static_cast<ThreadedPlugin&>(*x->x_plugin).lock();
-    }
+    x->x_plugin->lock();
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
         std::lock_guard<std::mutex> lock(x->x_mutex);
@@ -2032,9 +2026,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
     }
-    if (async && x->x_threaded){
-        static_cast<ThreadedPlugin&>(*x->x_plugin).unlock();
-    }
+    x->x_plugin->unlock();
 }
 
 template<t_preset type>
@@ -2080,9 +2072,7 @@ struct t_save_data : t_preset_data {
 template<t_preset type, bool async>
 static void vstplugin_preset_write_do(t_preset_data *data){
     auto x = data->owner;
-    if (async && x->x_threaded){
-        static_cast<ThreadedPlugin&>(*x->x_plugin).lock();
-    }
+    x->x_plugin->lock();
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
         std::lock_guard<std::mutex> lock(x->x_mutex);
@@ -2098,9 +2088,7 @@ static void vstplugin_preset_write_do(t_preset_data *data){
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
     }
-    if (async && x->x_threaded){
-        static_cast<ThreadedPlugin&>(*x->x_plugin).unlock();
-    }
+    x->x_plugin->unlock();
 }
 
 static void vstplugin_preset_notify(t_vstplugin *x);
@@ -2563,9 +2551,7 @@ bool t_vstplugin::check_plugin(){
 
 template<bool async>
 void t_vstplugin::setup_plugin(IPlugin& plugin){
-    if (x_threaded){
-        static_cast<ThreadedPlugin&>(plugin).lock();
-    }
+    plugin.lock();
     plugin.suspend();
     // check if precision is actually supported
     auto precision = x_precision;
@@ -2593,9 +2579,7 @@ void t_vstplugin::setup_plugin(IPlugin& plugin){
     if (x_bypass != Bypass::Off){
         plugin.setBypass(x_bypass);
     }
-    if (x_threaded){
-        static_cast<ThreadedPlugin&>(plugin).unlock();
-    }
+    plugin.unlock();
 }
 
 int t_vstplugin::get_sample_offset(){

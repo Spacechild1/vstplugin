@@ -3,7 +3,6 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
-#include "ThreadedPlugin.h"
 
 using namespace vst;
 

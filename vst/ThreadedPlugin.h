@@ -22,8 +22,6 @@
   #include <condition_variable>
 #endif
 
-#include <atomic>
-
 namespace vst {
 
 class Event {
@@ -53,8 +51,8 @@ class ThreadedPlugin final : public IPlugin {
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
 
-    void lock();
-    void unlock();
+    void lock() override;
+    void unlock() override;
 
     PluginType getType() const override {
         return plugin_->getType();

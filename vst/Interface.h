@@ -118,11 +118,16 @@ class IPlugin {
     using ptr = std::unique_ptr<IPlugin>;
     using const_ptr = std::unique_ptr<const IPlugin>;
 
-    virtual PluginType getType() const = 0;
+    // wrap the plugin in a ThreadedPlugin adapter
+    static IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
 
     virtual ~IPlugin(){}
 
+    virtual PluginType getType() const = 0;
     virtual const PluginInfo& info() const = 0;
+
+    virtual void lock() {}
+    virtual void unlock() {}
 
     template<typename T>
     struct ProcessData {
