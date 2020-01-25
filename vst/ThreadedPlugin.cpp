@@ -5,7 +5,6 @@
 #include <assert.h>
 #include <thread>
 #include <condition_variable>
-#include <atomic>
 
 namespace vst {
 
@@ -65,12 +64,53 @@ void Event::wait(){
 #endif
 }
 
+// simple spin lock
+static const size_t CACHELINE_SIZE = 64;
+
+class alignas(CACHELINE_SIZE) SpinLock {
+    // pad and align to prevent false sharing
+    std::atomic_bool locked_{false};
+    char pad_[CACHELINE_SIZE - sizeof(locked_)];
+public:
+    SpinLock(){
+        static_assert(sizeof(SpinLock) == CACHELINE_SIZE, "");
+    }
+    void lock() {
+        // only try to modify the shared state if the lock seems to be available.
+        // this should prevent unnecessary cache invalidation.
+        do {
+            while (locked_.load(std::memory_order_relaxed)){
+            #if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+                _mm_pause();
+            #elif defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
+                __yield();
+            #else
+                // fallback
+                std::this_thread::sleep_for(std::chrono::microseconds(0));
+            #endif
+            }
+        } while (locked_.exchange(true, std::memory_order_acquire));
+    }
+    void unlock() {
+        locked_.store(false, std::memory_order_release);
+    }
+};
+
 /*/////////////////// DSPThreadPool /////////////////////////*/
+
+// Don't try to join threads in the destructor
+// because it might hang/crash the app on exit.
+// We need to figure out why...
+#ifndef THREADPOOL_JOIN
+#define THREADPOOL_JOIN 0
+#endif
 
 class DSPThreadPool {
  public:
     static void init();
-    static DSPThreadPool& instance(){ return *instance_; }
+    // We don't use a static instance in the instance() method
+    // to make *accessing* the instance as fast as possible.
+    static DSPThreadPool& instance(){ return instance_; }
 
     DSPThreadPool();
     ~DSPThreadPool();
@@ -87,41 +127,28 @@ class DSPThreadPool {
     std::vector<std::thread> threads_;
     std::condition_variable condition_;
     std::atomic_bool running_;
-    // simple spin lock
-    class SpinLock {
-        std::atomic_flag locked_ = ATOMIC_FLAG_INIT;
-        char pad[64 - sizeof(locked_)]; // prevent false sharing
-    public:
-        void lock() {
-            while (locked_.test_and_set(std::memory_order_acquire)) { ; }
-        }
-        void unlock() {
-            locked_.clear(std::memory_order_release);
-        }
-    };
     SpinLock pushLock_;
     SpinLock popLock_;
-    // Just leak the instance and don't run the destructor
-    // because it might hang/crash the app on exit.
-    // We need to figure out why...
-    // Also, we don't use a static instance in the instance() method
-    // to make *accessing* the instance as fast as possible.
-    static DSPThreadPool *instance_;
+    static DSPThreadPool instance_;
     static std::mutex initMutex_;
+    static bool initialized_;
+    void run();
 };
 
-DSPThreadPool* DSPThreadPool::instance_ = nullptr;
+DSPThreadPool DSPThreadPool::instance_{};
 std::mutex DSPThreadPool::initMutex_{};
+bool DSPThreadPool::initialized_ = false;
 
 // thread-safe initialization
 void DSPThreadPool::init(){
     std::lock_guard<std::mutex> lock(initMutex_);
-    if (!instance_){
-        instance_ = new DSPThreadPool();
+    if (!initialized_){
+        instance_.run();
+        initialized_ = true;
     }
 }
 
-DSPThreadPool::DSPThreadPool(){
+void DSPThreadPool::run(){
     running_ = true;
     //  number of available hardware threads minus one (= the main audio thread)
     int numThreads = std::max<int>(std::thread::hardware_concurrency() - 1, 1);
@@ -153,13 +180,23 @@ DSPThreadPool::DSPThreadPool(){
                 }
             }
         });
+    #if !THREADPOOL_JOIN
+        thread.detach();
+    #endif
         threads_.push_back(std::move(thread));
     }
 }
 
+DSPThreadPool::DSPThreadPool() {
+    LOG_DEBUG("Align of DSPThreadPool: " << alignof(*this));
+    LOG_DEBUG("DSPThreadPool address: " << this);
+    LOG_DEBUG("pushLock address: " << &pushLock_);
+    LOG_DEBUG("popLock address: " << &popLock_);
+}
+
 DSPThreadPool::~DSPThreadPool(){
-    // Not actually called... see note above
-    // There's also an edge case where a thread might experience a spurious wakeup
+#if THREADPOOL_JOIN
+    // There's an edge case where a thread might experience a spurious wakeup
     // and the following code runs right between testing "running_" and waiting on
     // the condition variable, but we just ignore this for now.
     running_ = false;
@@ -169,6 +206,7 @@ DSPThreadPool::~DSPThreadPool(){
             thread.join();
         }
     }
+#endif
 }
 
 bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
@@ -180,6 +218,10 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
 }
 
 /*////////////////////// ThreadedPlugin ///////////////////////*/
+
+IPlugin::ptr IPlugin::makeThreadedPlugin(IPlugin::ptr plugin){
+    return std::make_unique<ThreadedPlugin>(std::move(plugin));
+}
 
 ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
     : plugin_(std::move(plugin)) {
@@ -337,13 +379,13 @@ void ThreadedPlugin::threadFunction(int numSamples){
         ProcessData<T> data;
         data.numSamples = numSamples;
         data.input = (const T **)input_.data();
-        data.numInputs = input_.size();
+        data.numInputs = (int)input_.size();
         data.auxInput = (const T **)auxInput_.data();
-        data.numAuxInputs = auxInput_.size();
+        data.numAuxInputs = (int)auxInput_.size();
         data.output = (T **)output_.data();
-        data.numOutputs = output_.size();
+        data.numOutputs = (int)output_.size();
         data.auxOutput = (T **)auxOutput_.data();
-        data.numAuxOutputs = auxOutput_.size();
+        data.numAuxOutputs = (int)auxOutput_.size();
 
         plugin_->process(data);
         mutex_.unlock();
