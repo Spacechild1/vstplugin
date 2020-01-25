@@ -6,6 +6,17 @@
 #include <thread>
 #include <condition_variable>
 
+// Intel
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+  #define CPU_INTEL
+  #include <immintrin.h>
+#endif
+// ARM
+#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
+  #define CPU_ARM
+  #include <intrinsics.h>
+#endif
+
 namespace vst {
 
 Event::Event() {
@@ -80,12 +91,11 @@ public:
         // this should prevent unnecessary cache invalidation.
         do {
             while (locked_.load(std::memory_order_relaxed)){
-            #if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+            #if defined(CPU_INTEL)
                 _mm_pause();
-            #elif defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
+            #elif defined(CPU_ARM)
                 __yield();
-            #else
-                // fallback
+            #else // fallback
                 std::this_thread::sleep_for(std::chrono::microseconds(0));
             #endif
             }
