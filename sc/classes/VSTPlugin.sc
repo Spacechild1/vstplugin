@@ -393,8 +393,8 @@ VSTPlugin : MultiOutUGen {
 			pluginDict[Server.default] = IdentityDictionary.new;
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0;
-		var flags = 0; // not used (yet)
+	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0, threaded=false;
+		var flags = threaded.asBoolean.asInteger; // 1: multi-threaded
 		input = input.asArray;
 		auxInput = auxInput.asArray;
 		params = params.asArray;

@@ -64,7 +64,7 @@ namespace SearchFlags {
     const int verbose = 2;
     const int save = 4;
     const int parallel = 8;
-};
+}
 
 struct InfoCmdData : CmdData {
     static InfoCmdData* create(World* world, const char* path, bool async = false);
@@ -112,7 +112,8 @@ public:
 
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
-    bool check(bool loud = true);
+    bool check(bool loud = true) const;
+    bool isThreaded() const;
     bool suspended() const { return suspended_; }
     void resume() { suspended_ = false; }
     using ScopedLock = std::unique_lock<std::mutex>;
@@ -191,6 +192,8 @@ class VSTPlugin : public SCUnit {
     friend struct PluginCmdData;
     static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
     static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
+    // flags
+    static const uint32 Multithreaded = 1;
 public:
     VSTPlugin();
     ~VSTPlugin();
@@ -200,7 +203,7 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int getFlags() const { return (int)in0(1); } // not used (yet)
+    bool hasFlag(uint32 flag) const { return (uint32)in0(1) & flag; }
     int getBypass() const { return (int)in0(2); }
     int numInChannels() const { return (int)in0(3); }
     int numAuxInChannels() const {

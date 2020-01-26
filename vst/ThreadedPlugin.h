@@ -12,7 +12,7 @@
   #include <windows.h>
 #elif defined(__APPLE__)
   // macOS doesn't support unnamed pthread semaphores,
-  // so we use Mach semaphores instead
+  // so we use GCD semaphores instead
   #include <dispatch/dispatch.h>
 #else
   // unnamed pthread semaphore

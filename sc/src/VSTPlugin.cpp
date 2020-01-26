@@ -1000,7 +1000,7 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
     }
 }
 
-bool VSTPluginDelegate::check(bool loud) {
+bool VSTPluginDelegate::check(bool loud) const {
     if (!plugin_){
         if (loud){
             LOG_WARNING("VSTPlugin: no plugin loaded!");
@@ -1014,6 +1014,10 @@ bool VSTPluginDelegate::check(bool loud) {
         return false;
     }
     return true;
+}
+
+bool VSTPluginDelegate::isThreaded() const {
+    return owner_->hasFlag(VSTPlugin::Multithreaded);
 }
 
 VSTPluginDelegate::ScopedLock VSTPluginDelegate::scopedLock(){
@@ -1084,19 +1088,31 @@ bool cmdOpen(World *world, void* cmdData) {
             else {
                 plugin = info->create();
             }
-            auto owner = data->owner;
-            plugin->suspend();
-            // we only access immutable members of owner!
-            if (plugin->info().hasPrecision(ProcessPrecision::Single)) {
-                plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
+            if (plugin){
+                auto owner = data->owner;
+                if (owner->isThreaded()){
+                #ifndef SUPERNOVA
+                    // wrap plugin in ThreadedPlugin adapter
+                    plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
+                #else
+                    LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
+                #endif
+                }
+                plugin->lock(); // for threaded plugin
+                plugin->suspend();
+                // we only access immutable members of owner!
+                if (plugin->info().hasPrecision(ProcessPrecision::Single)) {
+                    plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
+                }
+                else {
+                    LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
+                }
+                plugin->setNumSpeakers(owner->numInChannels(), owner->numOutChannels(),
+                                       owner->numAuxInChannels(), owner->numAuxOutChannels());
+                plugin->resume();
+                plugin->unlock(); // for threaded plugin
+                data->plugin = std::move(plugin);
             }
-            else {
-                LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
-            }
-            plugin->setNumSpeakers(owner->numInChannels(), owner->numOutChannels(),
-                                   owner->numAuxInChannels(), owner->numAuxOutChannels());
-            plugin->resume();
-            data->plugin = std::move(plugin);
         }
         catch (const Error & e) {
             LOG_ERROR(e.what());
@@ -1193,8 +1209,10 @@ void VSTPluginDelegate::reset(bool async) {
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
                     auto lock = data->owner->scopedLock();
+                    data->owner->plugin()->lock(); // for threaded plugin
                     data->owner->plugin()->suspend();
                     data->owner->plugin()->resume();
+                    data->owner->plugin()->unlock(); // for threaded plugin
                     return true; // continue
                 },
                 [](World *world, void *cmdData){
@@ -1402,10 +1420,12 @@ bool cmdReadPreset(World* world, void* cmdData) {
             if (async){
                 // load preset now
                 auto lock = data->owner->scopedLock();
+                plugin->lock(); // for threaded plugin
                 if (bank)
                     plugin->readBankFile(data->path);
                 else
                     plugin->readProgramFile(data->path);
+                plugin->unlock(); // for threaded plugin
             } else {
                 // load preset later in RT thread
                 vst::File file(data->path);
@@ -1426,10 +1446,12 @@ bool cmdReadPreset(World* world, void* cmdData) {
             if (async){
                 // load preset now
                 auto lock = data->owner->scopedLock();
+                plugin->lock(); // for threaded plugin
                 if (bank)
                     plugin->readBankData(presetData);
                 else
                     plugin->readProgramData(presetData);
+                plugin->unlock(); // for threaded plugin
             } else {
                 // load preset later in RT thread
                 buffer = std::move(presetData);
@@ -1439,6 +1461,9 @@ bool cmdReadPreset(World* world, void* cmdData) {
     catch (const Error& e) {
         Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
+        if (async){
+            plugin->unlock(); // for threaded plugin
+        }
     }
     data->flags = result;
     return true;
@@ -1510,10 +1535,12 @@ bool cmdWritePreset(World *world, void *cmdData){
             if (async){
                 // get and write preset data
                 auto lock = data->owner->scopedLock();
+                plugin->lock(); // for threaded plugin
                 if (bank)
                     plugin->writeBankFile(data->path);
                 else
                     plugin->writeProgramFile(data->path);
+                plugin->unlock(); // for threaded plugin
             } else {
                 // write data to file
                 vst::File file(data->path, File::WRITE);
@@ -1529,10 +1556,12 @@ bool cmdWritePreset(World *world, void *cmdData){
             if (async){
                 // get preset data
                 auto lock = data->owner->scopedLock();
+                plugin->lock(); // for threaded plugin
                 if (bank)
                     plugin->writeBankData(presetData);
                 else
                     plugin->writeProgramData(presetData);
+                plugin->unlock(); // for threaded plugin
             } else {
                 // move preset data
                 presetData = std::move(buffer);
@@ -1545,6 +1574,9 @@ bool cmdWritePreset(World *world, void *cmdData){
     catch (const Error & e) {
         Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
+        if (async){
+            plugin->unlock(); // for threaded plugin
+        }
     }
     data->flags = result;
     return true;
@@ -1648,7 +1680,9 @@ void VSTPluginDelegate::canDo(const char *what) {
 
 bool cmdVendorSpecific(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
+    data->owner->plugin()->lock(); // for threaded plugin
     auto result = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
+    data->owner->plugin()->unlock(); // for threaded plugin
     data->index = result; // save result
     return true;
 }
