@@ -100,6 +100,7 @@ t_workqueue::t_workqueue(){
                 perform(item);
                 queue_lock.lock();
             }
+            queue_lock.unlock();
             if (w_running){
                 // wait for more
                 w_cond.wait(lock);
