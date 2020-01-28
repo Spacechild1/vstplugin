@@ -733,6 +733,9 @@ t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
 }
 
 t_vsteditor::~t_vsteditor(){
+    if (e_canvas){
+        pd_free((t_pd *)e_canvas);
+    }
     clock_free(e_clock);
 }
 
