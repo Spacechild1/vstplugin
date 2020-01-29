@@ -66,6 +66,9 @@ By default, the project is built in release mode. You can change `CMAKE_BUILD_TY
 
 If you only want to build either the Pd or Supercollider version, simply set the 'PD' or 'SC' variable to 'OFF'.
 
+When compiling with GCC on Linux we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is 'OFF'.
+You might want to turn it on ('-DSTATIC_LIBS=ON') if you want to share the binaries with other people because they might not have the required library versions installed on their system.
+
 #### Prerequisites:
 
 ##### VST SDK:
@@ -101,7 +104,7 @@ Get the SuperCollider source code (e.g. https://github.com/supercollider/superco
 `SC_INCLUDEDIR` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
 
 With `-DSC_INSTALLDIR="/path/to/my/extensions"` you can choose the installation directory, which would typically be your SuperCollider extensions folder.
-	
+
 Set 'SUPERNOVA' to 'ON' if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
 However, this might be fixed in the next minor SC release.
 
