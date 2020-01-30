@@ -4,6 +4,7 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
+#include "Sync.h"
 #include "rt_shared_ptr.hpp"
 
 using namespace vst;

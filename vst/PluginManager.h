@@ -2,6 +2,7 @@
 
 #include "Interface.h"
 #include "Utility.h"
+#include "Sync.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -41,12 +42,12 @@ class PluginManager {
 // implementation
 
 void PluginManager::addFactory(const std::string& path, IFactory::ptr factory) {
-    Lock lock(mutex_);
+    WriteLock lock(mutex_);
     factories_[path] = std::move(factory);
 }
 
 IFactory::const_ptr PluginManager::findFactory(const std::string& path) const {
-    SharedLock lock(mutex_);
+    ReadLock lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
         return factory->second;
@@ -56,22 +57,22 @@ IFactory::const_ptr PluginManager::findFactory(const std::string& path) const {
 }
 
 void PluginManager::addException(const std::string &path){
-    Lock lock(mutex_);
+    WriteLock lock(mutex_);
     exceptions_.insert(path);
 }
 
 bool PluginManager::isException(const std::string& path) const {
-    SharedLock lock(mutex_);
+    ReadLock lock(mutex_);
     return exceptions_.count(path) != 0;
 }
 
 void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
-    Lock lock(mutex_);
+    WriteLock lock(mutex_);
     plugins_[key] = std::move(plugin);
 }
 
 PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
-    SharedLock lock(mutex_);
+    ReadLock lock(mutex_);
     auto desc = plugins_.find(key);
     if (desc != plugins_.end()){
         return desc->second;
@@ -80,7 +81,7 @@ PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
 }
 
 void PluginManager::clear() {
-    Lock lock(mutex_);
+    WriteLock lock(mutex_);
     factories_.clear();
     plugins_.clear();
     exceptions_.clear();
@@ -90,7 +91,7 @@ bool getLine(std::istream& stream, std::string& line);
 int getCount(const std::string& line);
 
 void PluginManager::read(const std::string& path, bool update){
-    Lock lock(mutex_);
+    ReadLock lock(mutex_);
     bool outdated = false;
     File file(path);
     std::string line;
@@ -163,7 +164,7 @@ void PluginManager::read(const std::string& path, bool update){
 }
 
 void PluginManager::write(const std::string &path) const {
-    SharedLock lock(mutex_);
+    WriteLock lock(mutex_);
     doWrite(path);
 }
 

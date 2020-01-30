@@ -255,7 +255,7 @@ static std::string getSettingsDir(){
 static SharedMutex gFileLock;
 
 static void readIniFile(){
-    SharedLock lock(gFileLock);
+    ReadLock lock(gFileLock);
     try {
         gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
     } catch (const Error& e){
@@ -265,7 +265,7 @@ static void readIniFile(){
 }
 
 static void writeIniFile(){
-    Lock lock(gFileLock);
+    WriteLock lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){

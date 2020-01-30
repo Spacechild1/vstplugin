@@ -1,4 +1,5 @@
 #include "Interface.h"
+#include "Sync.h"
 #include "Utility.h"
 #if USE_VST2
  #include "VST2Plugin.h"
@@ -16,7 +17,6 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <deque>
 #include <algorithm>
 
 #ifdef _WIN32
@@ -1582,10 +1582,10 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
     {
         result = expandPath("~/.");
         // VST directories might not exist yet
-        SharedLock rdlock(gFileLock);
+        ReadLock rdlock(gFileLock);
         if (!gDidCreateVstFolders){
             rdlock.unlock();
-            Lock wrlock(gFileLock);
+            WriteLock wrlock(gFileLock);
             // LATER do some error handling
         #if USE_VST2
             createDirectory(result + "vst");
@@ -1619,6 +1619,8 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
 PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
     : path(factory->path()), factory_(factory) {}
 
+PluginInfo::~PluginInfo(){}
+
 IPlugin::ptr PluginInfo::create() const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     return factory ? factory->create(name) : nullptr;
@@ -1649,6 +1651,14 @@ void PluginInfo::setUID(const char *uid){
     memcpy(id_.uid, uid, 16);
 }
 #endif
+
+WriteLock PluginInfo::writeLock(){
+    return WriteLock(*mutex);
+}
+
+ReadLock PluginInfo::readLock() const {
+    return ReadLock(*mutex);
+}
 
 static void conformPath(std::string& path){
     // replace backslashes

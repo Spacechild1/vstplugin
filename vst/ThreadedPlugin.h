@@ -1,50 +1,9 @@
 #pragma once
 
 #include "Interface.h"
-
-#ifndef USE_PLATFORM_EVENT
-#define USE_PLATFORM_EVENT 1
-#endif
-
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-  // Windows Event
-  #include <windows.h>
-#elif defined(__APPLE__)
-  // macOS doesn't support unnamed pthread semaphores,
-  // so we use GCD semaphores instead
-  #include <dispatch/dispatch.h>
-#else
-  // unnamed pthread semaphore
-  #include <semaphore.h>
-#endif
-#else // C++11 condition_variable
-  #include <condition_variable>
-#endif
+#include "Sync.h"
 
 namespace vst {
-
-class Event {
- public:
-    Event();
-    ~Event();
-    void signal();
-    void wait();
- private:
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    HANDLE event_;
-#elif defined(__APPLE__)
-    dispatch_semaphore_t sem_;
-#else // pthreads
-    sem_t sem_;
-#endif
-#else // USE_PLATFORM_EVENT
-    std::condition_variable condition_;
-    std::mutex mutex_;
-    bool state_ = false;
-#endif
-};
 
 class ThreadedPlugin final : public IPlugin {
  public:
@@ -174,7 +133,7 @@ class ThreadedPlugin final : public IPlugin {
     void threadFunction(int numSamples);
     // data
     IPlugin::ptr plugin_;
-    mutable std::mutex mutex_;
+    mutable SharedMutex mutex_;
     bool locked_ = false;
     Event event_;
     // commands

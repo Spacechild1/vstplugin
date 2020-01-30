@@ -7,12 +7,7 @@
 #include <functional>
 #include <memory>
 
-// for SharedMutex
 #include <mutex>
-#include <shared_mutex>
-#ifdef __APPLE__
-#include <pthread.h>
-#endif
 
 // for intptr_t
 #ifdef _MSC_VER
@@ -39,34 +34,9 @@ const int VERSION_PRERELEASE = 0;
 
 std::string getVersionString();
 
-#ifndef __APPLE__
-#if __cplusplus > 202402L // C++17
-using SharedMutex = std::shared_mutex;
-#else
-using SharedMutex = std::shared_timed_mutex;
-#endif
-#else // __APPLE__
-// older OSX versions (OSX 10.11 and below) don't have std:shared_mutex...
-class SharedMutex {
-public:
-    SharedMutex() { pthread_rwlock_init(&rwlock_, nullptr); }
-    ~SharedMutex() { pthread_rwlock_destroy(&rwlock_); }
-    SharedMutex(const SharedMutex&) = delete;
-    SharedMutex& operator==(const SharedMutex&) = delete;
-    // exclusive
-    void lock() { pthread_rwlock_wrlock(&rwlock_); }
-    bool try_lock() { return pthread_rwlock_trywrlock(&rwlock_) == 0; }
-    void unlock() { pthread_rwlock_unlock(&rwlock_); }
-    // shared
-    void lock_shared() { pthread_rwlock_rdlock(&rwlock_); }
-    bool try_lock_shared() { return pthread_rwlock_tryrdlock(&rwlock_) == 0; }
-    void unlock_shared() { pthread_rwlock_unlock(&rwlock_); }
-private:
-    pthread_rwlock_t rwlock_;
-};
-#endif
-using Lock = std::unique_lock<SharedMutex>;
-using SharedLock = std::shared_lock<SharedMutex>;
+class SharedMutex;
+class WriteLock;
+class ReadLock;
 
 struct MidiEvent {
     MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0, float _detune = 0){
@@ -242,6 +212,7 @@ struct PluginInfo {
 
     PluginInfo() = default;
     PluginInfo(const std::shared_ptr<const IFactory>& factory);
+    ~PluginInfo();
     void setFactory(const std::shared_ptr<const IFactory>& factory){
         factory_ = factory;
     }
@@ -350,11 +321,11 @@ struct PluginInfo {
     std::string getPresetFolder(PresetType type, bool create = false) const;
     PresetList presets;
     // for thread-safety (if needed)
-    Lock writeLock() { return Lock(mutex); }
-    SharedLock readLock() const { return SharedLock(mutex); }
+    WriteLock writeLock();
+    ReadLock readLock() const;
 private:
     void sortPresets(bool userOnly = true);
-    mutable SharedMutex mutex;
+    mutable std::unique_ptr<SharedMutex> mutex;
     mutable bool didCreatePresetFolder = false;
 public:
     // default programs
