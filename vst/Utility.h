@@ -102,6 +102,8 @@ std::wstring widen(const std::string& s);
 std::string shorten(const std::wstring& s);
 #endif
 
+std::string getTmpDirectory();
+
 // lexicographical case-insensitive string comparison function
 bool stringCompare(const std::string& lhs, const std::string& rhs);
 
