@@ -10,7 +10,6 @@
 using namespace vst;
 
 #include <thread>
-#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -117,8 +116,7 @@ public:
     bool isThreaded() const;
     bool suspended() const { return suspended_; }
     void resume() { suspended_ = false; }
-    using ScopedLock = std::unique_lock<std::mutex>;
-    ScopedLock scopedLock();
+    WriteLock scopedLock();
     bool tryLock();
     void unlock();
     void open(const char* path, bool gui);
@@ -185,7 +183,7 @@ private:
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
-    std::mutex mutex_;
+    SharedMutex mutex_;
 };
 
 class VSTPlugin : public SCUnit {

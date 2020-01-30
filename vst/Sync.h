@@ -129,6 +129,16 @@ private:
 };
 #endif
 
+class LockGuard {
+    SharedMutex& mutex_;
+ public:
+    LockGuard(SharedMutex& mutex)
+        : mutex_(mutex){ mutex_.lock(); }
+    ~LockGuard(){ mutex_.unlock(); }
+    LockGuard(const LockGuard&) = delete;
+    LockGuard& operator=(const LockGuard&) = delete;
+};
+
 template<bool write>
 class BaseLock {
  protected:

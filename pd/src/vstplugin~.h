@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
+#include "Sync.h"
 
 using namespace vst;
 
@@ -73,7 +74,7 @@ class t_vstplugin {
     std::vector<char> x_auxinbuf;
     std::vector<char> x_outbuf;
     std::vector<char> x_auxoutbuf;
-    std::mutex x_mutex;
+    SharedMutex x_mutex;
     // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_key = nullptr;
@@ -165,7 +166,7 @@ class t_vsteditor : public IPluginListener {
     std::vector<t_vstparam> e_params;
     // outgoing messages:
     t_clock *e_clock;
-    std::mutex e_mutex;
+    SharedMutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
     std::vector<std::pair<int, float>> e_automated;

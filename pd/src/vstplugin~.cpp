@@ -1282,7 +1282,7 @@ static void vstplugin_open_do(t_open_data *x){
                 plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
             }
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
-            std::lock_guard<std::mutex> lock(x->owner->x_mutex);
+            LockGuard lock(x->owner->x_mutex);
             x->owner->setup_plugin<async>(*plugin);
             x->plugin = std::move(plugin);
         }
@@ -1566,7 +1566,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
                 // protect against vstplugin_dsp() and vstplugin_save()
-                std::lock_guard<std::mutex> lock(x->owner->x_mutex);
+                LockGuard lock(x->owner->x_mutex);
                 plugin->lock(); // threaded plugin
                 plugin->suspend();
                 plugin->resume();
@@ -2014,7 +2014,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     x->x_plugin->lock();
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
-        std::lock_guard<std::mutex> lock(x->x_mutex);
+        LockGuard lock(x->x_mutex);
         if (type == BANK)
             x->x_plugin->readBankFile(path);
         else
@@ -2075,7 +2075,7 @@ static void vstplugin_preset_write_do(t_preset_data *data){
     x->x_plugin->lock();
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
-        std::lock_guard<std::mutex> lock(x->x_mutex);
+        LockGuard lock(x->x_mutex);
         if (type == BANK)
             x->x_plugin->writeBankFile(data->path);
         else
@@ -2888,7 +2888,7 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
         // protect against concurrent vstplugin_open_do()
-        std::lock_guard<std::mutex> lock(x->x_mutex);
+        LockGuard lock(x->x_mutex);
         // 1) plugin
         if (x->x_editor->vst_gui()){
             binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
@@ -2926,7 +2926,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     t_float sr = sp[0]->s_sr;
     dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)blocksize);
     // protect against concurrent vstplugin_open_do()
-    std::lock_guard<std::mutex> lock(x->x_mutex);
+    LockGuard lock(x->x_mutex);
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->setup_plugin<false>(*x->x_plugin);

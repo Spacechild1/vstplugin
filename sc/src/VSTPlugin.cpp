@@ -1020,8 +1020,8 @@ bool VSTPluginDelegate::isThreaded() const {
     return owner_->hasFlag(VSTPlugin::Multithreaded);
 }
 
-VSTPluginDelegate::ScopedLock VSTPluginDelegate::scopedLock(){
-    return ScopedLock(mutex_);
+WriteLock VSTPluginDelegate::scopedLock(){
+    return WriteLock(mutex_);
 }
 
 bool VSTPluginDelegate::tryLock() {
