@@ -54,7 +54,7 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
+    - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
