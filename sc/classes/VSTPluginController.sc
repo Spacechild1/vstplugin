@@ -220,10 +220,11 @@ VSTPluginController {
 				this.prClear;
 				this.prMakeOscFunc({arg msg;
 					loaded = msg[3].asBoolean;
-					window = msg[4].asBoolean;
 					loaded.if {
 						theInfo.notNil.if {
+							window = msg[4].asBoolean;
 							info = theInfo; // now set 'info' property
+							info.addDependant(this);
 							paramCache = Array.fill(theInfo.numParameters, [0, nil]);
 							program = 0;
 							// copy default program names (might change later when loading banks)
@@ -240,7 +241,7 @@ VSTPluginController {
 						"couldn't open '%'".format(path).error;
 					};
 					action.value(this, loaded);
-					theInfo.addDependant(this);
+					loading = false;
 					this.changed('/open', path, loaded);
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
