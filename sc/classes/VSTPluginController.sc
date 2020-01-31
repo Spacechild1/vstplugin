@@ -19,6 +19,7 @@ VSTPluginController {
 	var <programNames;
 	var currentPreset;
 	var window;
+	var loading;
 	var browser;
 
 	*initClass {
@@ -126,6 +127,7 @@ VSTPluginController {
 		wait = waitTime;
 		info = theInfo;
 		loaded = false;
+		loading = false;
 		window = false;
 		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
@@ -210,6 +212,11 @@ VSTPluginController {
 		browser.front;
 	}
 	open { arg path, editor=false, verbose=false, action;
+		loading.if {
+			"already opening!".error;
+			^this;
+		};
+		loading = true;
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
 			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
@@ -240,9 +247,9 @@ VSTPluginController {
 						// shouldn't happen because /open is only sent if the plugin has been successfully probed
 						"couldn't open '%'".format(path).error;
 					};
-					action.value(this, loaded);
 					loading = false;
 					this.changed('/open', path, loaded);
+					action.value(this, loaded);
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
 				this.sendMsg('/open', theInfo.key, editor.asInteger);
