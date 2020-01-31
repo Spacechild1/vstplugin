@@ -112,7 +112,7 @@ public:
 
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
-    bool check();
+    bool check(bool loud = true);
     bool suspended() const { return suspended_; }
     void resume() { suspended_ = false; }
     using ScopedLock = std::unique_lock<std::mutex>;

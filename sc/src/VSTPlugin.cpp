@@ -1000,13 +1000,17 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
     }
 }
 
-bool VSTPluginDelegate::check() {
+bool VSTPluginDelegate::check(bool loud) {
     if (!plugin_){
-        LOG_WARNING("VSTPlugin: no plugin loaded!");
+        if (loud){
+            LOG_WARNING("VSTPlugin: no plugin loaded!");
+        }
         return false;
     }
     if (suspended_){
-        LOG_WARNING("VSTPlugin: temporarily suspended!");
+        if (loud){
+            LOG_WARNING("VSTPlugin: temporarily suspended!");
+        }
         return false;
     }
     return true;
@@ -1249,7 +1253,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
 }
 
 void VSTPluginDelegate::queryParams(int32 index, int32 count) {
-    if (check()) {
+    if (check(false)) {
         int32 nparam = plugin_->info().numParameters();
         if (index >= 0 && index < nparam) {
             count = std::min<int32>(count, nparam - index);
@@ -1356,7 +1360,7 @@ void VSTPluginDelegate::setProgramName(const char *name) {
 }
 
 void VSTPluginDelegate::queryPrograms(int32 index, int32 count) {
-    if (check()) {
+    if (check(false)) {
         int32 nprogram = plugin_->info().numPrograms();
         if (index >= 0 && index < nprogram) {
             count = std::min<int32>(count, nprogram - index);
