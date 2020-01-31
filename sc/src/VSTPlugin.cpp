@@ -1110,11 +1110,13 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
     LOG_DEBUG("open");
     if (isLoading_) {
         LOG_WARNING("already loading!");
+        sendMsg("/vst_open", 0);
         return;
     }
     close();
     if (plugin_) {
         LOG_ERROR("ERROR: couldn't close current plugin!");
+        sendMsg("/vst_open", 0);
         return;
     }
 
@@ -1128,6 +1130,8 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
         });
         editor_ = gui;
         isLoading_ = true;
+    } else {
+        sendMsg("/vst_open", 0);
     }
 }
 
