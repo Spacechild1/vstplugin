@@ -1134,7 +1134,8 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
     // move the plugin even if alive() returns false (so it will be properly released in close())
     plugin_ = std::move(cmd.plugin);
     if (!alive()) {
-        LOG_WARNING("VSTPlugin: freed during background task");
+        LOG_WARNING("VSTPlugin: freed while opening a plugin");
+        return; // !
     }
     if (plugin_){
         if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
