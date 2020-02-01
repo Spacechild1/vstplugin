@@ -238,6 +238,7 @@ void EventLoop::notify(){
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_.joinable()){
+        std::unique_lock<std::mutex> lock(lock_);
         LOG_DEBUG("create plugin in UI thread");
         data_.info = &info;
         data_.plugin = nullptr;
@@ -259,6 +260,7 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
 
 void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_.joinable()){
+        std::unique_lock<std::mutex> lock(lock_);
         data_.plugin = std::move(plugin);
         // notify thread
         if (!sendClientEvent(root_, wmDestroyPlugin)){

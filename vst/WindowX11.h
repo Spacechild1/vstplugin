@@ -41,6 +41,7 @@ class EventLoop {
     Display *display_ = nullptr;
     ::Window root_;
     std::thread thread_;
+    std::mutex lock_;
     std::mutex mutex_;
     std::condition_variable cond_;
     bool ready_ = false;
