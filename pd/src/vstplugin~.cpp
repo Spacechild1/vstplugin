@@ -2673,6 +2673,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         data.editor = editor;
         vstplugin_open_do<false>(&data);
         vstplugin_open_done(&data);
+        x_uithread = editor; // !
         x_path = file; // HACK: set symbol for vstplugin_loadbang
     }
 
