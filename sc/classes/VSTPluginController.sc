@@ -16,11 +16,12 @@ VSTPluginController {
 	// private
 	var oscFuncs;
 	var <paramCache; // only for dependants
-	var <programNames;
-	var currentPreset;
-	var window;
-	var loading;
-	var browser;
+	var <programNames; // only for dependants
+	var currentPreset; // the current preset
+	var window; // do we have a VST editor?
+	var loading; // are we currently loading a plugin?
+	var browser; // handle to currently opened browser
+	var didQuery; // do we need to query parameters?
 
 	*initClass {
 		Class.initClassTree(Event);
@@ -129,6 +130,7 @@ VSTPluginController {
 		loaded = false;
 		loading = false;
 		window = false;
+		didQuery = false;
 		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
 		// parameter changed:
@@ -236,7 +238,10 @@ VSTPluginController {
 							program = 0;
 							// copy default program names (might change later when loading banks)
 							programNames = theInfo.programs.collect(_.name);
-							this.prQueryParams;
+							// only query parameters if we have dependants!
+							(this.dependants.size > 0).if {
+								this.prQueryParams;
+							};
 							// post info if wanted
 							verbose.if { theInfo.print };
 						} {
@@ -265,7 +270,15 @@ VSTPluginController {
 	}
 	prClear {
 		info !? { info.removeDependant(this) };
-		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; program = nil; currentPreset = nil;
+		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; didQuery = false;
+		program = nil; currentPreset = nil;
+	}
+	addDependant { arg dependant;
+		// only query parameters for the first dependant!
+		(info.notNil && didQuery.not).if {
+			this.prQueryParams;
+		};
+		super.addDependant(dependant);
 	}
 	update { arg who, what ... args;
 		((who === info) and: { what == '/presets' }).if {
@@ -776,6 +789,7 @@ VSTPluginController {
 	}
 	prQueryParams { arg wait;
 		this.prQuery(wait, this.numParameters, '/param_query');
+		didQuery = true;
 	}
 	prQueryPrograms { arg wait;
 		this.prQuery(wait, this.numPrograms, '/program_query');
