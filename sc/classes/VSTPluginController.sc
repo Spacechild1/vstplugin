@@ -800,6 +800,8 @@ VSTPluginController {
 // mimicks MIDIOut
 VSTPluginMIDIProxy {
 	var <>owner;
+	// dummy variable for backwards compatibility with \midi Event type (use \vst_midi instead!)
+	var <>uid;
 
 	*new { arg theOwner;
 		^super.new.owner_(theOwner);
