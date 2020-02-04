@@ -275,7 +275,7 @@ VSTPluginController {
 	}
 	addDependant { arg dependant;
 		// only query parameters for the first dependant!
-		(info.notNil && didQuery.not).if {
+		(loaded && didQuery.not).if {
 			this.prQueryParams;
 		};
 		super.addDependant(dependant);
