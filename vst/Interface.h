@@ -34,7 +34,7 @@ namespace vst {
 
 const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 3;
-const int VERSION_BUGFIX = 1;
+const int VERSION_BUGFIX = 2;
 const bool VERSION_BETA = false;
 
 #ifndef __APPLE__
