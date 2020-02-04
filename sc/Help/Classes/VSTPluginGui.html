@@ -96,7 +96,8 @@ var scdoc_sc_version = '3.10.0';
 <tr><td class='argumentname'>parent<td class='argumentdesc'>
 <p>If parent is <code>nil</code>, the GUI will be displayed in a new top level <a href="./..\Classes/Window.html">Window</a>, otherwise it is embedded in the given parent (see <a href="#Embedding">Embedding</a>).<tr><td class='argumentname'>bounds<td class='argumentdesc'>
 <p>If parent is <code>nil</code>, this will set the window geometry, otherwise it determines the size and position of the embedded GUI.<tr><td class='argumentname'>params<td class='argumentdesc'>
-<p>Show/hide parameters. Set to <code>false</code>, if you only want to show the preset manager!</table><h4>Discussion:</h4>
+<p>Show/hide parameters. Set to <code>false</code>, if you only want to show the preset manager!<div class='image'><img src='noparams.jpg'/></div>
+</table><h4>Discussion:</h4>
 
 <p>Usually, this is called indirectly by <a href="./..\Classes/VSTPluginController.html#-gui">VSTPluginController: -gui</a>.
 <p>Occasionally you might want to call it directly, e.g. to create an initially empty view where you can set the <a href="#-model">-model</a> later.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-model' href='./../Overviews/Methods.html#model'>model</a></h3>
@@ -169,25 +170,24 @@ SynthDef.new(\insert, {arg bus = 0;
 <h3><a class='anchor' name='Embedding'>Embedding</a></h3>
 
 <p>It's possible to embed several VSTPluginGui instances within a single view.
-<p>The <em>bounds</em> argument determines the size and position of each subview. (In <a href="./..\Classes/FlowLayout.html">FlowLayout</a>s the position is managed automatically, so it's enough to provide a <a href="./..\Classes/Point.html">Point</a> instead of a <a href="./..\Classes/Rect.html">Rect</a>.)
-<p>If the plugin editor needs more space than <em>bounds</em>, scrollbars are shown automatically.<textarea class='editor'>(
-// create a Window large enough to hold two VSTPluginGuis per row (see below).
+<p>The <em>bounds</em> argument determines the size and position of each subview. (In <a href="./..\Classes/FlowLayout.html">FlowLayout</a>s the position is managed automatically, so it's enough to provide a <a href="./..\Classes/Point.html">Point</a> instead of a <a href="./..\Classes/Rect.html">Rect</a>.)<div class='image'><img src='embed.jpg'/></div>
+<textarea class='editor'>(
+// create a Window with a FlowLayout
 ~view = Window.new(bounds: 850@450, scroll: true);
 ~view.view.decorator = FlowLayout(w.view.bounds);
 ~view.front;
 )
-// create 2 subviews next to each other:
-~fx1.gui(~view, 400@400);
-~fx2.gui(~view, 400@400);
-// the next GUI would go to a new row...</textarea>
+// add 2 plugin GUIs
+~fx1.gui(~view); // default size
+~fx2.gui(~view, bounds:300@300); // custom size</textarea>
 <h3><a class='anchor' name='Changing%20Models'>Changing Models</a></h3>
 
-<p>Here we use a <em>single</em> VSTPluginGui instance to show different <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>s. Say you have an FX chain with several <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instances but you only need to see one at the time.<textarea class='editor'>// make an empty GUI
+<p>Here we use a <em>single</em> VSTPluginGui instance to show different <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>s. Say you have an FX chain with several <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instances, but you only need to see one at the time.<textarea class='editor'>// make an empty GUI
 ~gui = VSTPluginGui.new.gui;
 // show fx1
 ~gui.model_(~fx1);
 // show fx2
 ~gui.model_(~fx2);</textarea>
 
-<p>We could even build a <a href="./..\Classes/PopUpMenu.html">PopUpMenu</a> to change between <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a> instances.<div class='doclink'>helpfile source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/HelpSource/Classes/VSTPluginGui.schelp'>C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\HelpSource\Classes\VSTPluginGui.schelp</a><br>link::Classes/VSTPluginGui::<br></div></div><script src='./../editor.js' type='text/javascript'></script>
+<p>You could even build a <a href="./..\Classes/PopUpMenu.html">PopUpMenu</a> to switch between <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a> instances.<div class='doclink'>helpfile source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/HelpSource/Classes/VSTPluginGui.schelp'>C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\HelpSource\Classes\VSTPluginGui.schelp</a><br>link::Classes/VSTPluginGui::<br></div></div><script src='./../editor.js' type='text/javascript'></script>
 </body></html>
