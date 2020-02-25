@@ -306,7 +306,7 @@ SynthDef(\insert, { arg bus, f;
 
 <p>The default value for <code>\midicmd</code> is <code>\noteOn</code>, with <code>\noteOff</code> commands being scheduled automatically. Other possible values are <code>\noteOff</code>, <code>\control</code>, <code>\bend</code>, <code>\touch</code>, <code>\polyTouch</code>, <code>\program</code>, <code>\allNotesOff</code> and <code>\sysex</code>. The commands correspond to the methods listed in <a href="./..\Classes/VSTPluginMIDIProxy.html">VSTPluginMIDIProxy</a> and <a href="./..\Classes/MIDIOut.html">MIDIOut</a>.
 <p>See <a href="#VST%20Instruments">VST Instruments</a> for examples.</dl>
-<h3><a class='anchor' name='Realtime%20Safety'>Realtime Safety</a></h3>
+<div class='note'><span class='notelabel'>NOTE:</span> You can play Pbinds of type <code>\vst_midi</code> and <code>\vst_set</code> in parallel with <a href="./..\Classes/Ppar.html">Ppar</a>.</div><h3><a class='anchor' name='Realtime%20Safety'>Realtime Safety</a></h3>
 
 <p>VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread. Some methods, like <a href="#-reset">-reset</a> or <a href="#-readProgram">-readProgram</a>, offer two options via the <code>async</code> parameter:
 <p><code>async: false</code> means that the plugin method is simply called on the RT thread. Depending on the plugin, this might be just fine - or block the Server. You have to test yourself.

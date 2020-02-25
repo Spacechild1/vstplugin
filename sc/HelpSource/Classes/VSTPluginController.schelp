@@ -258,6 +258,10 @@ The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff::
 See link::#VST Instruments:: for examples.
 ::
 
+note::
+You can play Pbinds of type code::\vst_midi:: and code::\vst_set:: in parallel with link::Classes/Ppar::.
+::
+
 subsection:: Realtime Safety
 
 VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
