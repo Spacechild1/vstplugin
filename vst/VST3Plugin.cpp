@@ -2330,13 +2330,18 @@ HostAttribute::HostAttribute(HostAttribute&& other){
     type = other.type;
     size = other.size;
     v = other.v;
+    // leave other empty
     other.size = 0;
-    other.v.b = nullptr;
+    other.v.b = nullptr; // works for strings as well
 }
 
 HostAttribute::~HostAttribute(){
     if (size > 0){
-        delete[] v.b;
+        if (type == kString){
+            delete[] v.s;
+        } else if (type == kBinary){
+            delete[] v.b;
+        }
     }
 }
 
@@ -2402,7 +2407,7 @@ tresult PLUGIN_API HostAttributeList::setBinary (AttrID aid, const void* data, u
 
 tresult PLUGIN_API HostAttributeList::getBinary (AttrID aid, const void*& data, uint32& size){
     auto attr = find(aid);
-    if (attr && attr->type == HostAttribute::kString){
+    if (attr && attr->type == HostAttribute::kBinary){
         data = attr->v.b;
         size = attr->size;
         return kResultTrue;
@@ -2441,6 +2446,9 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
     if (!attributes_){
         attributes_.reset(new HostAttributeList);
     }
+#if LOGLEVEL > 2
+    attributes_->print();
+#endif
     return attributes_.get();
 }
 
