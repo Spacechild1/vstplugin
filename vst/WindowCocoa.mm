@@ -204,9 +204,7 @@ void Window::doOpen(){
         [window_ makeKeyAndOrderFront:nil];
         return;
     }
-    
-    LOG_DEBUG("try create Window");
-    
+
     NSRect frame = NSMakeRect(0, 0, 200, 200);
     NSUInteger style = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask;
     if (canResize_ || plugin_->canResize()) {
@@ -225,10 +223,18 @@ void Window::doOpen(){
         
         setTitle(plugin_->info().name);
         int left = 100, top = 100, right = 400, bottom = 400;
-        plugin_->getEditorRect(left, top, right, bottom);
-        setFrame(origin_.x, origin_.y, right - left, bottom - top);
+        bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
+        if (gotEditorRect){
+            setFrame(origin_.x, origin_.y, right - left, bottom - top);
+        }
         
         plugin_->openEditor(getHandle());
+
+        // HACK for plugins which don't report the window size without the editor being opened
+        if (!gotEditorRect){
+            plugin_->getEditorRect(left, top, right, bottom);
+            setFrame(origin_.x, origin_.y, right - left, bottom - top);
+        }
 
         timer_ = [NSTimer scheduledTimerWithTimeInterval:(UIThread::updateInterval * 0.001)
                     target:window
@@ -238,6 +244,7 @@ void Window::doOpen(){
 
         [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
+        LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
     }
 }
 

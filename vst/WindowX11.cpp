@@ -278,16 +278,23 @@ Window::Window(Display& display, IPlugin& plugin)
 {
     // get window coordinates
     int left = 100, top = 100, right = 400, bottom = 400;
-    plugin_->getEditorRect(left, top, right, bottom);
+    bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
+    // create window
+    int s = DefaultScreen(display_);
+    window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
+                left, top, right - left, bottom - top,
+                1, BlackPixel(display_, s), WhitePixel(display_, s));
+    if (!gotEditorRect){
+        // HACK for plugins which don't report the window size without the editor being opened
+        LOG_DEBUG("couldn't get editor rect!");
+        plugin_->openEditor((void *)window_);
+        plugin_->getEditorRect(left, top, right, bottom);
+        plugin_->closeEditor();
+    }
     x_ = left;
     y_ = top;
     width_ = right - left;
     height_ = bottom - top;
-    // create window
-    int s = DefaultScreen(display_);
-    window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
-                x_, y_, width_, height_,
-                1, BlackPixel(display_, s), WhitePixel(display_, s));
     // receive configure events
     XSelectInput(display_, window_, StructureNotifyMask);
     // intercept request to delete window when being closed

@@ -200,7 +200,14 @@ Window::Window(IPlugin& plugin)
     setTitle(plugin_->info().name);
     // get window dimensions from plugin
     int left = 100, top = 100, right = 400, bottom = 400;
-    plugin_->getEditorRect(left, top, right, bottom);
+    if (!plugin_->getEditorRect(left, top, right, bottom)){
+        // HACK for plugins which don't report the window size without the editor being opened
+        LOG_DEBUG("couldn't get editor rect!");
+        plugin_->openEditor(hwnd_);
+        plugin_->getEditorRect(left, top, right, bottom);
+        plugin_->closeEditor();
+    }
+    LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
     RECT rc = { left, top, right, bottom };
     // adjust window dimensions for borders and menu
     const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
