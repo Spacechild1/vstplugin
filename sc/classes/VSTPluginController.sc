@@ -258,7 +258,12 @@ VSTPluginController {
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
 				this.sendMsg('/open', theInfo.key, editor.asInteger);
-			} { "couldn't open '%'".format(path).error; };
+			} {
+				"couldn't open '%'".format(path).error;
+				// just notify failure, but keep old plugin (if present)
+				loading = false;
+				action.value(this, false);
+			};
 		});
 	}
 	openMsg { arg path, editor=false;
@@ -271,7 +276,7 @@ VSTPluginController {
 	prClear {
 		info !? { info.removeDependant(this) };
 		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; didQuery = false;
-		program = nil; currentPreset = nil;
+		program = nil; currentPreset = nil; loading = false;
 	}
 	addDependant { arg dependant;
 		// only query parameters for the first dependant!
