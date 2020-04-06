@@ -380,7 +380,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     : info_(std::move(desc))
 {
     memset(&context_, 0, sizeof(context_));
-    context_.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kContTimeValid
+    context_.state = Vst::ProcessContext::kContTimeValid
             | Vst::ProcessContext::kProjectTimeMusicValid | Vst::ProcessContext::kBarPositionValid
             | Vst::ProcessContext::kCycleValid | Vst::ProcessContext::kTempoValid
             | Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kClockValid

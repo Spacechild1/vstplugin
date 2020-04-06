@@ -1397,24 +1397,24 @@ void VST2Plugin::preProcess(int nsamples){
 }
 
 void VST2Plugin::postProcess(int nsamples){
-        // clear midi events
+    // clear midi events
     midiQueue_.clear();
-        // clear sysex events
+    // clear sysex events
     for (auto& sysex : sysexQueue_){
         free(sysex.sysexDump);
     }
     sysexQueue_.clear();
-        // 'clear' VstEvents array
+    // 'clear' VstEvents array
     vstEvents_->numEvents = 0;
 
-        // advance time (if playing):
+    // advance time (if playing):
     if (timeInfo_.flags & kVstTransportPlaying){
         timeInfo_.samplePos += nsamples; // sample position
         double delta = (double)nsamples / timeInfo_.sampleRate;
         timeInfo_.nanoSeconds += delta * 1e-009; // system time in nanoseconds
         timeInfo_.ppqPos += delta * timeInfo_.tempo / 60.0;
     }
-        // clear flag
+    // clear flag
     timeInfo_.flags &= ~kVstTransportChanged;
 }
 
