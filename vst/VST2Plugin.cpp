@@ -224,15 +224,16 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     timeInfo_.tempo = 120;
     timeInfo_.timeSigNumerator = 4;
     timeInfo_.timeSigDenominator = 4;
+    timeInfo_.smpteFrameRate = kVstSmpte60fps; // just pick any
     timeInfo_.flags = kVstNanosValid | kVstPpqPosValid | kVstTempoValid
-            | kVstBarsValid | kVstCyclePosValid | kVstTimeSigValid | kVstClockValid
-            | kVstTransportChanged;
+            | kVstBarsValid | kVstCyclePosValid | kVstTimeSigValid
+            | kVstClockValid | kVstSmpteValid | kVstTransportChanged;
 
-        // create VstEvents structure holding VstEvent pointers
+    // create VstEvents structure holding VstEvent pointers
     vstEvents_ = (VstEvents *)malloc(sizeof(VstEvents) + DEFAULT_EVENT_QUEUE_SIZE * sizeof(VstEvent *));
     memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
     vstEventBufferSize_ = DEFAULT_EVENT_QUEUE_SIZE;
-        // pre-allocate midi queue
+    // pre-allocate midi queue
     midiQueue_.reserve(DEFAULT_EVENT_QUEUE_SIZE);
 
     plugin_->user = this;
@@ -1339,20 +1340,21 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
     }
 #endif
     if (flags & kVstSmpteValid){
-        if (!vstTimeWarned_){
-            LOG_WARNING("SMPTE not supported (yet)!");
-            vstTimeWarned_ = true;
-        }
+        double frames = timeInfo_.samplePos / timeInfo_.sampleRate / 60.0; // our SMPTE frame rate is 60 fps
+        double fract = frames - static_cast<int64_t>(frames);
+        timeInfo_.smpteOffset = fract * 80; // subframes are 1/80 of a frame
     }
     if (flags & kVstClockValid){
-            // samples to nearest midi clock
-        double clocks = timeInfo_.ppqPos * 24.0;
-        double fract = clocks - (long long)clocks;
+        // samples to nearest midi clock
+        double clockTicks = timeInfo_.ppqPos * 24.0;
+        double fract = clockTicks - (int64_t)clockTicks;
+        // get offset to nearest tick -> can be negative!
         if (fract > 0.5){
             fract -= 1.0;
         }
         if (timeInfo_.tempo > 0){
-            timeInfo_.samplesToNextClock = fract / 24.0 * 60.0 / timeInfo_.tempo * timeInfo_.sampleRate;
+            double samplesPerClock = (2.5 / timeInfo_.tempo) * timeInfo_.sampleRate; // 60.0 / 24.0 = 2.5
+            timeInfo_.samplesToNextClock = fract * samplesPerClock;
         } else {
             timeInfo_.samplesToNextClock = 0;
         }
@@ -1404,9 +1406,9 @@ void VST2Plugin::postProcess(int nsamples){
         // advance time (if playing):
     if (timeInfo_.flags & kVstTransportPlaying){
         timeInfo_.samplePos += nsamples; // sample position
-        double sec = (double)nsamples / timeInfo_.sampleRate;
-        timeInfo_.nanoSeconds += sec * 1e-009; // system time in nanoseconds
-        timeInfo_.ppqPos += sec / 60.0 * timeInfo_.tempo;
+        double delta = (double)nsamples / timeInfo_.sampleRate;
+        timeInfo_.nanoSeconds += delta * 1e-009; // system time in nanoseconds
+        timeInfo_.ppqPos += delta * timeInfo_.tempo / 60.0;
     }
         // clear flag
     timeInfo_.flags &= ~kVstTransportChanged;

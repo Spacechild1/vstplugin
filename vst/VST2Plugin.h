@@ -187,7 +187,6 @@ class VST2Plugin final : public IPlugin {
     std::vector<VstMidiSysexEvent> sysexQueue_;
     VstEvents *vstEvents_; // VstEvents is basically an array of VstEvent pointers
     int vstEventBufferSize_ = 0;
-    bool vstTimeWarned_ = false;
     bool editor_ = false;
 };
 

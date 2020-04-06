@@ -383,11 +383,13 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     context_.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kContTimeValid
             | Vst::ProcessContext::kProjectTimeMusicValid | Vst::ProcessContext::kBarPositionValid
             | Vst::ProcessContext::kCycleValid | Vst::ProcessContext::kTempoValid
-            | Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kClockValid;
+            | Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kClockValid
+            | Vst::ProcessContext::kSmpteValid;
     context_.sampleRate = 1;
     context_.tempo = 120;
     context_.timeSigNumerator = 4;
     context_.timeSigDenominator = 4;
+    context_.frameRate.framesPerSecond = 60; // just pick one
 
     // are we probing?
     auto info = !info_ ? std::make_shared<PluginInfo>(f) : nullptr;
@@ -705,6 +707,7 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     // update project time in samples (assumes the tempo is valid for the whole project)
     double time = context_.projectTimeMusic / context_.tempo * 60.f;
     context_.projectTimeSamples = time * sampleRate;
+    context_.continousTimeSamples = time * sampleRate;
 }
 
 void VST3Plugin::process(ProcessData<float>& data){
@@ -1016,13 +1019,31 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     // update time info
     context_.continousTimeSamples += data.numSamples;
     context_.projectTimeSamples += data.numSamples;
+    double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
     // advance project time in bars
-    double sec = data.numSamples / context_.sampleRate;
-    double numBeats = sec * context_.tempo / 60.0;
-    context_.projectTimeMusic += numBeats;
+    double delta = data.numSamples / context_.sampleRate;
+    double beats = delta * context_.tempo / 60.0;
+    context_.projectTimeMusic += beats;
     // bar start: simply round project time (in bars) down to bar length
     double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
     context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
+    // SMPTE offset
+    double smpteFrames = projectTimeSeconds / context_.frameRate.framesPerSecond;
+    double smpteFrameFract = smpteFrames - static_cast<int64_t>(smpteFrames);
+    context_.smpteOffsetSubframes = smpteFrameFract * 80; // subframes are 1/80 of a frame
+    // MIDI clock offset
+    double clockTicks = context_.projectTimeMusic * 24.0;
+    double clockTickFract = clockTicks - static_cast<int64_t>(clockTicks);
+    // get offset to nearest tick -> can be negative!
+    if (clockTickFract > 0.5){
+        clockTickFract -= 1.0;
+    }
+    if (context_.tempo > 0){
+        double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate; // 60.0 / 24.0 = 2.5
+        context_.samplesToNextClock = clockTickFract * samplesPerClock;
+    } else {
+        context_.samplesToNextClock = 0;
+    }
 }
 
 #define norm2midi(x) (static_cast<uint8_t>((x) * 127.f) & 127)
