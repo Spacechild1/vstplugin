@@ -35,7 +35,9 @@ namespace vst {
 const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 3;
 const int VERSION_BUGFIX = 2;
-const bool VERSION_BETA = false;
+const int VERSION_PRERELEASE = 0;
+
+std::string getVersionString();
 
 #ifndef __APPLE__
 #if __cplusplus > 202402L // C++17

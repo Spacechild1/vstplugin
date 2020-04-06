@@ -3046,8 +3046,7 @@ EXPORT void vstplugin_tilde_setup(void){
     clock_delay(eventLoopClock, 0);
 #endif
 
-    post("vstplugin~ v%d.%d.%d%s", VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX,
-         VERSION_BETA ? " (beta)" : "");
+    post("vstplugin~ %s", getVersionString().c_str());
 #ifdef __APPLE__
     post("WARNING: on macOS, the VST GUI must run on the audio thread - use with care!");
 #endif

@@ -2442,8 +2442,7 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
 
-    Print("VSTPlugin v%d.%d.%d%s\n",
-          VERSION_MAJOR, VERSION_MINOR, VERSION_BUGFIX, VERSION_BETA ? " (beta)" : "");
+    Print("VSTPlugin %s", getVersionString().c_str());
     // read cached plugin info
     readIniFile();
 }

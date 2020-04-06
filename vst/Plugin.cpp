@@ -57,6 +57,18 @@ namespace fs = std::experimental::filesystem;
 
 namespace vst {
 
+std::string getVersionString(){
+    std::stringstream ss;
+    ss << VERSION_MAJOR << "." << VERSION_MINOR;
+    if (VERSION_BUGFIX > 0){
+        ss << "." << VERSION_BUGFIX;
+    }
+    if (VERSION_PRERELEASE > 0){
+        ss << "-pre" << VERSION_PRERELEASE;
+    }
+    return ss.str();
+}
+
 // forward declarations to avoid including the header files
 // (creates troubles with Cocoa)
 #ifdef _WIN32
