@@ -1016,33 +1016,35 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     handleEvents();
     handleOutputParameterChanges();
 
-    // update time info
-    context_.continousTimeSamples += data.numSamples;
-    context_.projectTimeSamples += data.numSamples;
-    double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
-    // advance project time in bars
-    double delta = data.numSamples / context_.sampleRate;
-    double beats = delta * context_.tempo / 60.0;
-    context_.projectTimeMusic += beats;
-    // bar start: simply round project time (in bars) down to bar length
-    double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
-    context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
-    // SMPTE offset
-    double smpteFrames = projectTimeSeconds / context_.frameRate.framesPerSecond;
-    double smpteFrameFract = smpteFrames - static_cast<int64_t>(smpteFrames);
-    context_.smpteOffsetSubframes = smpteFrameFract * 80; // subframes are 1/80 of a frame
-    // MIDI clock offset
-    double clockTicks = context_.projectTimeMusic * 24.0;
-    double clockTickFract = clockTicks - static_cast<int64_t>(clockTicks);
-    // get offset to nearest tick -> can be negative!
-    if (clockTickFract > 0.5){
-        clockTickFract -= 1.0;
-    }
-    if (context_.tempo > 0){
-        double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate; // 60.0 / 24.0 = 2.5
-        context_.samplesToNextClock = clockTickFract * samplesPerClock;
-    } else {
-        context_.samplesToNextClock = 0;
+    // update time info (if playing)
+    if (context_.state & Vst::ProcessContext::kPlaying){
+        context_.continousTimeSamples += data.numSamples;
+        context_.projectTimeSamples += data.numSamples;
+        double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
+        // advance project time in bars
+        double delta = data.numSamples / context_.sampleRate;
+        double beats = delta * context_.tempo / 60.0;
+        context_.projectTimeMusic += beats;
+        // bar start: simply round project time (in bars) down to bar length
+        double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
+        context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
+        // SMPTE offset
+        double smpteFrames = projectTimeSeconds / context_.frameRate.framesPerSecond;
+        double smpteFrameFract = smpteFrames - static_cast<int64_t>(smpteFrames);
+        context_.smpteOffsetSubframes = smpteFrameFract * 80; // subframes are 1/80 of a frame
+        // MIDI clock offset
+        double clockTicks = context_.projectTimeMusic * 24.0;
+        double clockTickFract = clockTicks - static_cast<int64_t>(clockTicks);
+        // get offset to nearest tick -> can be negative!
+        if (clockTickFract > 0.5){
+            clockTickFract -= 1.0;
+        }
+        if (context_.tempo > 0){
+            double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate; // 60.0 / 24.0 = 2.5
+            context_.samplesToNextClock = clockTickFract * samplesPerClock;
+        } else {
+            context_.samplesToNextClock = 0;
+        }
     }
 }
 
