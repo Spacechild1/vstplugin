@@ -1314,35 +1314,39 @@ void VST2Plugin::parameterAutomated(int index, float value){
     }
 }
 
+#if 0
+#define DEBUG_TIME_INFO(x) DO_LOG("plugin wants " << x)
+#else
+#define DEBUG_TIME_INFO(x)
+#endif
+
 VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
     double beatsPerBar = (double)timeInfo_.timeSigNumerator / (double)timeInfo_.timeSigDenominator * 4.0;
         // starting position of current bar in beats (e.g. 4.0 for 4.25 in case of 4/4)
     timeInfo_.barStartPos = std::floor(timeInfo_.ppqPos / beatsPerBar) * beatsPerBar;
-#if 0
-    LOG_DEBUG("request: " << flags);
     if (flags & kVstNanosValid){
-        LOG_DEBUG("want system time" << timeInfo_.nanoSeconds * 1e009);
+        DEBUG_TIME_INFO("system time");
     }
     if (flags & kVstPpqPosValid){
-        LOG_DEBUG("want quarter notes " << timeInfo_.ppqPos);
+        DEBUG_TIME_INFO("quarter notes");
     }
     if (flags & kVstTempoValid){
-        LOG_DEBUG("want tempo");
+        DEBUG_TIME_INFO("tempo");
     }
     if (flags & kVstBarsValid){
-        LOG_DEBUG("want bar start pos " << timeInfo_.barStartPos);
+        DEBUG_TIME_INFO("bar start pos");
     }
     if (flags & kVstCyclePosValid){
-        LOG_DEBUG("want cycle pos");
+        DEBUG_TIME_INFO("cycle pos");
     }
     if (flags & kVstTimeSigValid){
-        LOG_DEBUG("want time signature");
+        DEBUG_TIME_INFO("time signature");
     }
-#endif
     if (flags & kVstSmpteValid){
         double frames = timeInfo_.samplePos / timeInfo_.sampleRate / 60.0; // our SMPTE frame rate is 60 fps
         double fract = frames - static_cast<int64_t>(frames);
         timeInfo_.smpteOffset = fract * 80; // subframes are 1/80 of a frame
+        DEBUG_TIME_INFO("SMPTE offset");
     }
     if (flags & kVstClockValid){
         // samples to nearest midi clock
@@ -1358,7 +1362,7 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
         } else {
             timeInfo_.samplesToNextClock = 0;
         }
-        LOG_DEBUG("want MIDI clock");
+        DEBUG_TIME_INFO("MIDI clock offset");
     }
     return &timeInfo_;
 }
