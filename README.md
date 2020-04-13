@@ -66,8 +66,10 @@ By default, the project is built in release mode. You can change `CMAKE_BUILD_TY
 
 If you only want to build either the Pd or Supercollider version, simply set the 'PD' or 'SC' variable to 'OFF'.
 
-When compiling with GCC on Linux we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is 'OFF'.
-You might want to turn it on ('-DSTATIC_LIBS=ON') if you want to share the binaries with other people because they might not have the required library versions installed on their system.
+When compiling with GCC on Linux we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is 'ON'.
+
+Static linking helps if you want to share the binaries with other people because they might not have the required library versions installed on their system.
+Dynamic linking, on the other hand, is preferred when destributing via system package managers like "apt" because they will handle the dependencies.
 
 #### Prerequisites:
 
