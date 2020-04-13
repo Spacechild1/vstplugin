@@ -248,14 +248,18 @@ struct PluginInfo {
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file);
+#if USE_VST2
     void setUniqueID(int _id); // VST2
     int getUniqueID() const {
         return id_.id;
     }
+#endif
+#if USE_VST3
     void setUID(const char *uid); // VST3
     const char* getUID() const {
         return id_.uid;
     }
+#endif
     PluginType type() const { return type_; }
     // info data
     std::string uniqueID;

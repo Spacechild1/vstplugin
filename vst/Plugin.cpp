@@ -1618,6 +1618,7 @@ IPlugin::ptr PluginInfo::create() const {
     return factory ? factory->create(name) : nullptr;
 }
 
+#if USE_VST2
 void PluginInfo::setUniqueID(int _id){
     type_ = PluginType::VST2;
     char buf[9];
@@ -1626,9 +1627,10 @@ void PluginInfo::setUniqueID(int _id){
     buf[8] = 0;
     uniqueID = buf;
     id_.id = _id;
-
 }
+#endif
 
+#if USE_VST3
 void PluginInfo::setUID(const char *uid){
     type_ = PluginType::VST3;
     char buf[33];
@@ -1640,6 +1642,7 @@ void PluginInfo::setUID(const char *uid){
     uniqueID = buf;
     memcpy(id_.uid, uid, 16);
 }
+#endif
 
 static void conformPath(std::string& path){
     // replace backslashes
