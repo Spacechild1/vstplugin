@@ -64,12 +64,12 @@ This project is built with CMake, supported compilers are GCC, Clang and MSVC.
 
 By default, the project is built in release mode. You can change `CMAKE_BUILD_TYPE` from `RELEASE` to `DEBUG` if you want a debug build, for example.
 
-If you only want to build either the Pd or Supercollider version, simply set the 'PD' or 'SC' variable to 'OFF'.
+If you only want to only build the Pd or Supercollider version, simply set the 'SC' resp. 'PD' variable to 'OFF'.
 
-When compiling with GCC on Linux we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is 'ON'.
+When compiling with GCC on Linux or MinGW, we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is 'ON'.
 
 Static linking helps if you want to share the binaries with other people because they might not have the required library versions installed on their system.
-Dynamic linking, on the other hand, is preferred when destributing via system package managers like "apt" because they will handle the dependencies.
+Dynamic linking, on the other hand, is preferred for destributing via system package managers like "apt".
 
 #### Prerequisites:
 
@@ -84,7 +84,7 @@ Use at your own risk!
 
 For VST3 support, get the Steinberg VST3 SDK and copy it into /vst.
 Actually, you only need vst/VST_SDK/VST3_SDK/pluginterfaces/
-(If you have git installed, run .git-ci/get_vst3.sh)
+(If you have git installed, run ./.git-ci/get_vst3.sh)
 
 The default setting is to build with both VST2 and VST3 support.
 If you only want to support a specific version, you can set the 'VST2' and 'VST3' variables in the CMake project.
