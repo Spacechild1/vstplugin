@@ -272,7 +272,7 @@ SynthDef(\insert, { arg bus, f;
 // open the VST editor window
 ~fx.editor;</textarea>
 
-<p>On Windows and Linux this will run a native window on the Server (in a seperate thread).<div class='note'><span class='notelabel'>NOTE:</span> Unfortunately, this is not possible (yet) on macOS for technical reasons.</div><li>a generic Qt GUI which can be opened in a new Window or embedded into existing views:<textarea class='editor'>// load a plugin
+<p>This will run a native window on the Server (in a seperate thread).<div class='note'><span class='notelabel'>NOTE:</span> On macOS this only works in SuperCollider 3.11 or above!</div><li>a generic Qt GUI which can be opened in a new Window or embedded into existing views:<textarea class='editor'>// load a plugin
 ~fx.open("/path/to/plugin");
 // create a Window with the plugin GUI
 ~fx.gui;</textarea>
@@ -350,7 +350,7 @@ SynthDef(\chorus, { arg bus=0;
 )
 ~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'</textarea>
 <tr><td class='argumentname'>editor<td class='argumentdesc'>
-<p>request the VST plugin editor.<div class='note'><span class='notelabel'>NOTE:</span> This is not supported (yet) on macOS and for VST3 plugins!</div><tr><td class='argumentname'>verbose<td class='argumentdesc'>
+<p>request the VST plugin editor.<div class='note'><span class='notelabel'>NOTE:</span> On macOS this only works with SuperCollider 3.11 and above!</div><tr><td class='argumentname'>verbose<td class='argumentdesc'>
 <p>post the plugin info to the console if loaded successfully.<tr><td class='argumentname'>action<td class='argumentdesc'>
 <p>an action to be called with <code>this</code> and a Boolean (success/fail).</table><h4>Discussion:</h4>
 
@@ -376,7 +376,7 @@ SynthDef(\chorus, { arg bus=0;
 <div class='method'>
 <p>shows/hide the VST editor window.<h4>Discussion:</h4>
 
-<p>The plugin has to be opened with <em>editor</em> set to <code>true</code>.<div class='note'><span class='notelabel'>NOTE:</span> This is not supported (yet) on macOS!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-gui' href='./../Overviews/Methods.html#gui'>gui</a>(<span class='argstr'>parent</span>, <span class='argstr'>bounds</span>, <span class='argstr'>params: true</span>)</h3>
+<p>The plugin has to be opened with <em>editor</em> set to <code>true</code>.<div class='note'><span class='notelabel'>NOTE:</span> On macOS this only works on SuperCollider 3.11 and above!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-gui' href='./../Overviews/Methods.html#gui'>gui</a>(<span class='argstr'>parent</span>, <span class='argstr'>bounds</span>, <span class='argstr'>params: true</span>)</h3>
 <div class='method'>
 <p>creates a generic Qt GUI (see <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a>).<h4>Arguments:</h4>
 <table class='arguments'>
