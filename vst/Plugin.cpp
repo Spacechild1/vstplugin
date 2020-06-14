@@ -24,6 +24,10 @@
 # include <process.h>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
+// IMAGE_FILE_MACHINE_ARM64 is only defined on Windows 8.1 and above
+#ifndef IMAGE_FILE_MACHINE_ARM64
+ #define IMAGE_FILE_MACHINE_ARM64 0xaa64
+#endif
 #else
 // just because of Clang on macOS not shipping <experimental/filesystem>...
 # include <dirent.h>
