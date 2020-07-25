@@ -59,7 +59,7 @@ void Event::wait(){
 #endif
 #else // USE_PLATFORM_EVENT
     std::unique_lock<std::mutex> lock(mutex_);
-    condition_.wait(lock, [](){ return state_; });
+    condition_.wait(lock, [this](){ return state_; });
     state_ = false;
 #endif
 }
