@@ -127,7 +127,8 @@ void PluginManager::read(const std::string& path, bool update){
                         factories_[desc->path] = factory;
                     } catch (const Error& e){
                         // this probably happens when the plugin has been (re)moved
-                        LOG_ERROR("couldn't load '" << desc->name << "': " << e.what());
+                        LOG_ERROR("couldn't load '" << desc->name <<
+                                  "' (" << desc->path << "): " << e.what());
                         outdated = true; // we need to update the cache
                         continue; // skip plugin
                     }
