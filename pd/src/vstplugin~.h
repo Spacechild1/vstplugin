@@ -84,7 +84,6 @@ class t_vstplugin {
     bool x_uithread = false;
     bool x_keep = false;
     int x_commands = 0;
-    bool x_threaded = false;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
     double x_lastdsptime = 0;

@@ -1240,6 +1240,7 @@ static void vstplugin_close(t_vstplugin *x){
 struct t_open_data : t_command_data<t_open_data> {
     t_symbol *path;
     bool editor;
+    bool threaded;
     IPlugin::ptr plugin;
 };
 
@@ -1261,7 +1262,7 @@ static void vstplugin_open_do(t_open_data *x){
             plugin = info->create();
         }
         if (plugin){
-            if (x->owner->x_threaded){
+            if (x->threaded){
                 // wrap plugin in ThreadedPlugin adapter
                 plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
             }
@@ -1298,6 +1299,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     t_symbol *pathsym = nullptr;
     bool editor = false;
     bool async = false;
+    bool threaded = false;
     // parse arguments
     while (argc && argv->a_type == A_SYMBOL){
         auto sym = argv->a_w.w_symbol;
@@ -1305,6 +1307,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             const char *flag = sym->s_name;
             if (!strcmp(flag, "-e")){
                 editor = true;
+            } else if (!strcmp(flag, "-t")){
+                threaded = true;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
@@ -1369,6 +1373,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data->owner = x;
         data->path = pathsym;
         data->editor = editor;
+        data->threaded = threaded;
         t_workqueue::get()->push(x, data, vstplugin_open_do<true>, open_done);
     } else {
         t_open_data data;
@@ -2604,7 +2609,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             } else if (!strcmp(flag, "-s")){
                 search = true;
             } else if (!strcmp(flag, "-t")){
-                x_threaded = true;
+                threaded = true;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
@@ -2669,6 +2674,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         data.owner = this;
         data.path = file;
         data.editor = editor;
+        data.threaded = threaded;
         vstplugin_open_do<false>(&data);
         vstplugin_open_done(&data);
         x_uithread = editor; // !
