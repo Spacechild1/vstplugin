@@ -1,4 +1,3 @@
-#N struct 1005-button float x float y float id;
 #N canvas 495 126 765 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
@@ -858,14 +857,14 @@ freezing Pd for an indeterminate amount of time., f 56;
 #X f 14;
 #X text 392 488 search + info;
 #N canvas 261 35 548 714 open 0;
-#X obj 62 530 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X obj 62 558 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 62 551 openpanel;
-#X obj 27 189 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X obj 62 579 openpanel;
+#X obj 27 217 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 27 209 openpanel;
-#X obj 27 648 t a;
-#X msg 27 254 open -e \$1;
+#X obj 27 237 openpanel;
+#X obj 27 676 t a;
+#X msg 27 282 open -e \$1;
 #N canvas 582 228 451 307 editor 0;
 #X text 10 120 on MacOS \, however \, because of technical limitations
 the GUI must run on the main thread - which happens to be the audio
@@ -886,68 +885,71 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 322 273 pd editor;
+#X restore 322 301 pd editor;
 #X f 10;
-#X text 108 182 by default \, a generic Pd editor is created \, use
+#X text 108 210 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
-#X obj 27 672 outlet;
-#X text 152 273 more info about the editor:;
-#X text 161 415 VST3 plug-in keys get a '.vst3' extension to distinguish
+#X obj 27 700 outlet;
+#X text 152 301 more info about the editor:;
+#X text 161 443 VST3 plug-in keys get a '.vst3' extension to distinguish
 them from VST2 plugins of the same name.;
-#X text 162 441 generally \, keys can only be used after a search (see
+#X text 162 469 generally \, keys can only be used after a search (see
 the 'search' method) or if the plug-in has already been opened by its
 file path., f 49;
-#X obj 106 215 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 106 243 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 114 220 NOTE: on macOS \, the VST editor is highly experimental
+#X text 114 248 NOTE: on macOS \, the VST editor is highly experimental
 and runs on the audio thread! see the README for more information.
 , f 44;
-#X text 145 334 plug-ins can be opened in 2 ways:;
-#X symbolatom 47 423 16 0 0 0 - - -;
-#X obj 46 380 s \$0-msg;
-#X text 141 623 opening by file path doesn't work if the module contains
+#X text 145 362 plug-ins can be opened in 2 ways:;
+#X symbolatom 47 451 16 0 0 0 - - -;
+#X obj 46 408 s \$0-msg;
+#X text 141 651 opening by file path doesn't work if the module contains
 several plug-ins (shell plug-ins or certain VST3 plug-ins)!;
-#X text 140 651 also \, keys are always platform independent while
+#X text 140 679 also \, keys are always platform independent while
 file names may be different (e.g. containing an architecture string
 like 'x64'), f 60;
-#X text 81 530 file path;
-#X msg 46 359 search -a;
-#X text 162 376 the key is the plug-in name with whitespace substituted
+#X text 81 558 file path;
+#X msg 46 387 search -a;
+#X text 162 404 the key is the plug-in name with whitespace substituted
 by underscores \, so that the symbol can be easily typed in Pd (e.g.
 'Awesome Reverb' becomes 'Awesome_Reverb').;
-#X text 162 578 for VST2 plug-ins the extension (.dll \, .so \, .vst)
+#X text 162 606 for VST2 plug-ins the extension (.dll \, .so \, .vst)
 can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
 , f 58;
-#X text 162 526 both absolute and relative paths are allowed. relative
+#X text 162 554 both absolute and relative paths are allowed. relative
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 58
 ;
-#X text 157 148 on success and;
-#X text 22 147 outputs;
-#X msg 251 148 open 0;
-#X text 299 148 on failure;
-#X msg 74 147 open 1 <key>;
-#X obj 47 465 pack s f;
-#X obj 92 443 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X text 157 176 on success and;
+#X text 22 175 outputs;
+#X msg 251 176 open 0;
+#X text 299 176 on failure;
+#X msg 74 175 open 1 <key>;
+#X obj 47 493 pack s f;
+#X obj 92 471 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 47 489 open \$1 \$2;
-#X obj 62 596 pack s f;
-#X obj 107 574 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X msg 47 517 open \$1 \$2;
+#X obj 62 624 pack s f;
+#X obj 107 602 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 62 622 open \$1 \$2;
-#X symbolatom 37 233 10 0 0 0 - - -;
-#X text 22 83 async:;
-#X text 50 100 0: load synchronously (default);
-#X text 147 358 a) by KEY:;
-#X text 142 506 b) by FILE NAME:;
-#X text 44 335 1) search;
-#X text 44 402 2) open by key;
+#X msg 62 650 open \$1 \$2;
+#X symbolatom 37 261 10 0 0 0 - - -;
+#X text 22 115 async:;
+#X text 50 132 0: load synchronously (default);
+#X text 147 386 a) by KEY:;
+#X text 142 534 b) by FILE NAME:;
+#X text 44 363 1) search;
+#X text 44 430 2) open by key;
 #X text 19 43 -e: use the VST editor;
-#X text 23 64 key/path: plugin key or file path (see below);
-#X text 50 116 1: load asynchronously;
-#X obj 18 19 cnv 20 220 20 empty empty empty 20 12 0 14 -228856 -66577
+#X text 23 96 key/path: plugin key or file path (see below);
+#X text 50 148 1: load asynchronously;
+#X obj 18 19 cnv 20 240 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
-#X text 24 21 arguments: [-e] key/path [async];
+#X text 20 60 -t: process plugin in a seperate thread to utilize more
+CPU cores., f 67;
+#X text 44 75 NOTE: this introduces a delay of 1 block.;
+#X text 24 21 arguments: [-e] [-t] key/path [async];
 #X connect 0 0 1 0;
 #X connect 1 0 32 0;
 #X connect 2 0 3 0;

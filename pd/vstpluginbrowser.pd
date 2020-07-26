@@ -1,3 +1,4 @@
+#N struct 1004-button float x float y float id;
 #N canvas 531 96 431 481 10;
 #X obj 107 127 bng 15 250 50 0 \$0-plugins-show empty show plug-ins
 18 7 0 10 -257985 -1 -1;
@@ -9,46 +10,55 @@
 18 7 0 10 -262144 -1 -1;
 #X obj 107 228 tgl 15 0 \$0-editor \$0-editor editor 18 7 0 10 -262144
 -1 -1 0 1;
-#X obj 101 101 cnv 15 178 20 empty empty vstpluginbrowser 5 10 0 14
+#X obj 101 101 cnv 15 184 20 empty empty vstpluginbrowser 5 10 0 14
 -228856 -99865 0;
-#X obj 226 228 bng 15 250 50 0 \$0-open empty open 18 7 0 10 -4034
+#X obj 236 208 bng 15 250 50 0 \$0-open empty open 18 7 0 10 -4034
 -1 -1;
-#X symbolatom 107 208 26 0 0 0 - #0-path #0-path-out;
+#X symbolatom 107 208 20 0 0 0 - #0-path #0-path-out;
 #N canvas 241 280 450 376 \$0-open 0;
-#X obj 51 261 outlet;
+#X obj 51 318 outlet;
 #X obj 211 8 r \$0-file;
-#X obj 53 5 r \$0-open;
+#X obj 51 5 r \$0-open;
 #X obj 211 29 openpanel;
-#X obj 51 172 list prepend;
-#X obj 51 239 list trim;
+#X obj 51 147 list prepend;
+#X obj 51 296 list trim;
 #X obj 120 99 sel 1 0;
-#X msg 120 123 open -e;
-#X msg 139 145 open;
-#X obj 121 7 r \$0-path-out;
+#X obj 120 7 r \$0-path-out;
 #X obj 51 67 symbol;
 #X obj 120 28 route bang;
 #X msg 120 50 symbol;
 #X obj 211 50 s \$0-path;
-#X obj 51 217 list append;
-#X obj 114 195 r \$0-async;
+#X obj 51 248 list append;
+#X obj 114 226 r \$0-async;
 #X obj 120 77 r \$0-editor;
+#X msg 120 123 -e;
+#X obj 51 202 list prepend;
+#X obj 151 152 sel 1 0;
+#X msg 151 176 -t;
+#X obj 151 130 r \$0-threaded;
+#X obj 51 273 list prepend open;
 #X connect 1 0 3 0;
-#X connect 2 0 10 0;
-#X connect 3 0 13 0;
-#X connect 4 0 14 0;
+#X connect 2 0 8 0;
+#X connect 3 0 11 0;
+#X connect 4 0 16 0;
 #X connect 5 0 0 0;
-#X connect 6 0 7 0;
-#X connect 6 1 8 0;
-#X connect 7 0 4 1;
-#X connect 8 0 4 1;
-#X connect 9 0 11 0;
-#X connect 10 0 4 0;
-#X connect 11 0 12 0;
-#X connect 11 1 10 1;
-#X connect 12 0 10 1;
-#X connect 14 0 5 0;
-#X connect 15 0 14 1;
-#X connect 16 0 6 0;
+#X connect 6 0 15 0;
+#X connect 6 1 4 1;
+#X connect 7 0 9 0;
+#X connect 8 0 4 0;
+#X connect 9 0 10 0;
+#X connect 9 1 8 1;
+#X connect 10 0 8 1;
+#X connect 12 0 20 0;
+#X connect 13 0 12 1;
+#X connect 14 0 6 0;
+#X connect 15 0 4 1;
+#X connect 16 0 12 0;
+#X connect 17 0 18 0;
+#X connect 17 1 16 1;
+#X connect 18 0 16 1;
+#X connect 19 0 17 0;
+#X connect 20 0 5 0;
 #X restore 99 306 pd \$0-open;
 #X obj 99 348 outlet;
 #N canvas 742 179 684 612 \$0-search 0;
@@ -1498,7 +1508,7 @@
 #X obj 147 275 s \$0-filter-vendor;
 #X obj 175 156 nbx 3 15 0 4 0 0 \$0-filter-type \$0-filter-type-nbx
 empty 38 8 0 10 -262144 -1 -1 0 256;
-#X obj 452 157 nbx 3 15 0 37 0 0 \$0-filter-category \$0-filter-category-nbx
+#X obj 452 157 nbx 3 15 0 22 0 0 \$0-filter-category \$0-filter-category-nbx
 empty 38 8 0 10 -262144 -1 -1 0 256;
 #X obj 452 123 nbx 3 15 0 32 0 0 \$0-filter-vendor \$0-filter-vendor-nbx
 empty 38 8 0 10 -262144 -1 -1 0 256;
@@ -1513,10 +1523,70 @@ empty 38 8 0 10 -262144 -1 -1 0 256;
 #X coords 0 -1 1 1 415 80 2 100 100;
 #X restore 26 15 pd \$0-filter;
 #N canvas 354 119 450 300 \$0-plugin-list 0;
+#X scalar 1004-button 0 0 0 \;;
+#X scalar 1004-button 0 15 1 \;;
+#X scalar 1004-button 0 30 2 \;;
+#X scalar 1004-button 0 45 3 \;;
+#X scalar 1004-button 0 60 4 \;;
+#X scalar 1004-button 0 75 5 \;;
+#X scalar 1004-button 0 90 6 \;;
+#X scalar 1004-button 0 105 7 \;;
+#X scalar 1004-button 0 120 8 \;;
+#X scalar 1004-button 0 135 9 \;;
+#X scalar 1004-button 0 150 10 \;;
+#X scalar 1004-button 0 165 11 \;;
+#X scalar 1004-button 0 180 12 \;;
+#X scalar 1004-button 0 195 13 \;;
+#X scalar 1004-button 0 210 14 \;;
+#X scalar 1004-button 0 225 15 \;;
+#X scalar 1004-button 0 240 16 \;;
+#X scalar 1004-button 0 255 17 \;;
+#X scalar 1004-button 0 270 18 \;;
+#X scalar 1004-button 0 285 19 \;;
+#X obj 1 1 cnv 1 398 13 empty 1004-label-0 AAS_Player (Applied\\\ Acoustics\\\ Systems)
+10 8 0 12 -166441 -1 0;
+#X obj 1 16 cnv 1 398 13 empty 1004-label-1 AAS_Player.vst3 (Applied\\\ Acoustics\\\ Systems)
+10 8 0 12 -262144 -1 0;
+#X obj 1 31 cnv 1 398 13 empty 1004-label-2 Absynth_5 (Native\\\ Instruments\\\ Software\\\ Synthesis\\\ GmbH)
+10 8 0 12 -262144 -1 0;
+#X obj 1 46 cnv 1 398 13 empty 1004-label-3 ADelay.vst3 (Steinberg\\\ Media\\\ Technologies)
+10 8 0 12 -262144 -1 0;
+#X obj 1 61 cnv 1 398 13 empty 1004-label-4 AGain_SideChain_VST3.vst3 (Steinberg\\\ Media\\\ Technologies)
+10 8 0 12 -262144 -1 0;
+#X obj 1 76 cnv 1 398 13 empty 1004-label-5 AGain_VST3.vst3 (Steinberg\\\ Media\\\ Technologies)
+10 8 0 12 -262144 -1 0;
+#X obj 1 91 cnv 1 398 13 empty 1004-label-6 AGainSimple_VST3.vst3 (Steinberg\\\ Media\\\ Technologies)
+10 8 0 12 -262144 -1 0;
+#X obj 1 106 cnv 1 398 13 empty 1004-label-7 AllRADecoder (IEM) 10
+8 0 12 -262144 -1 0;
+#X obj 1 121 cnv 1 398 13 empty 1004-label-8 Ambience (Magnus\\\ @\\\ Smartelectron:x)
+10 8 0 12 -262144 -1 0;
+#X obj 1 136 cnv 1 398 13 empty 1004-label-9 ambix_binaural_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 151 cnv 1 398 13 empty 1004-label-10 ambix_converter_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 166 cnv 1 398 13 empty 1004-label-11 ambix_decoder_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 181 cnv 1 398 13 empty 1004-label-12 ambix_directional_loudness_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 196 cnv 1 398 13 empty 1004-label-13 ambix_encoder_i2_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 211 cnv 1 398 13 empty 1004-label-14 ambix_encoder_i4_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 226 cnv 1 398 13 empty 1004-label-15 ambix_encoder_i6_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 241 cnv 1 398 13 empty 1004-label-16 ambix_encoder_i8_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 256 cnv 1 398 13 empty 1004-label-17 ambix_encoder_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 271 cnv 1 398 13 empty 1004-label-18 ambix_maxre_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
+#X obj 1 286 cnv 1 398 13 empty 1004-label-19 ambix_mirror_o3 (kronlachner)
+10 8 0 12 -262144 -1 0;
 #X coords 0 0 400 300 400 300 2 0 0;
 #X restore 41 95 pd \$0-plugin-list;
-#X obj 26 127 vsl 15 235 0 0 0 0 \$0-scroll \$0-scroll-bar empty 0
--9 0 10 -262144 -1 -1 23400 0;
+#X obj 26 127 vsl 15 235 226 0 0 0 \$0-scroll \$0-scroll-bar empty
+0 -9 0 10 -262144 -1 -1 23400 0;
 #X obj 26 95 bng 15 250 50 0 \$0-scroll-page-up \$0-scroll-page-up
 « 4 7 0 14 -191407 -1 -1;
 #X obj 26 110 bng 15 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 4 7 0
@@ -1536,7 +1606,7 @@ empty 38 8 0 10 -262144 -1 -1 0 256;
 #X obj 99 327 t a a;
 #X obj 175 333 list append \$1;
 #X obj 125 395 s \$1;
-#X obj 169 228 tgl 15 0 \$0-async \$0-async async 18 7 0 10 -262144
+#X obj 236 228 tgl 15 0 \$0-async \$0-async async 18 7 0 10 -262144
 -1 -1 1 1;
 #X obj 271 260 loadbang;
 #X msg 271 281 1;
@@ -1548,6 +1618,9 @@ empty 38 8 0 10 -262144 -1 -1 0 256;
 #X obj 301 432 s \$0-height;
 #X msg 301 410 20;
 #X text 328 411 LATER allow to change it dynamically;
+#X obj 165 228 tgl 15 0 \$0-threaded \$0-threaded threaded 18 7 0 10
+-262144 -1 -1 0 1;
+#X obj 352 343 s \$0-threaded;
 #X connect 8 0 16 0;
 #X connect 12 0 17 0;
 #X connect 13 0 14 0;
@@ -1562,6 +1635,7 @@ empty 38 8 0 10 -262144 -1 -1 0 256;
 #X connect 20 0 28 0;
 #X connect 21 0 22 0;
 #X connect 23 0 24 0;
+#X connect 23 0 31 0;
 #X connect 26 0 25 0;
 #X connect 28 0 27 0;
-#X coords 0 -1 1 1 180 150 2 100 100;
+#X coords 0 -1 1 1 186 150 2 100 100;
