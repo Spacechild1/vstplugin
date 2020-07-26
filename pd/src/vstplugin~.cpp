@@ -19,19 +19,24 @@ static void eventLoopTick(void *x){
 
 /*---------------------- work queue ----------------------------*/
 
-// we use raw pointers instead of std::unique_pointer to avoid calling the destructor,
-// because it might hang/crash Pd. (We don't know when the destructor is called exactly.)
+// there's a deadlock bug in the windows runtime library which would cause
+// the process to hang if trying to join a thread in a static object destructor.
+#ifdef _WIN32
+# define WORK_QUEUE_JOIN 0
+#else
+# define WORK_QUEUE_JOIN 1
+#endif
 
 #ifdef PDINSTANCE
 namespace {
-    std::unordered_map<t_pdinstance *, t_workqueue *> gWorkQueues;
+    std::unordered_map<t_pdinstance *, std::unique_ptr<t_workqueue>> gWorkQueues;
     std::mutex gWorkQueueMutex;
 }
 
 void t_workqueue::init(){
     std::lock_guard<std::mutex> lock(gWorkQueueMutex);
     if (!gWorkQueues.count(pd_this)){
-        gWorkQueues[pd_this] = new t_workqueue();
+        gWorkQueues[pd_this] = std::make_unique<t_workqueue>();
     } else {
         error("t_workqueue already initialized for this instance!");
     }
@@ -40,20 +45,20 @@ void t_workqueue::init(){
 t_workqueue* t_workqueue::get(){
     auto it = gWorkQueues.find(pd_this);
     if (it != gWorkQueues.end()){
-        return it->second;
+        return it->second.get();
     } else {
         return nullptr;
     }
 }
 #else
-static t_workqueue* gWorkQueue;
+static std::unique_ptr<t_workqueue> gWorkQueue;
 
 void t_workqueue::init(){
-    gWorkQueue = new t_workqueue();
+    gWorkQueue = std::make_unique<t_workqueue>();
 }
 
 t_workqueue* t_workqueue::get(){
-    return gWorkQueue;
+    return gWorkQueue.get();
 }
 #endif
 
@@ -63,56 +68,45 @@ t_workqueue::t_workqueue(){
 #endif
 
     w_thread = std::thread([this]{
+        LOG_DEBUG("worker thread started");
+
         vst::setThreadPriority(ThreadPriority::Low);
 
-        std::unique_lock<std::mutex> lock(w_mutex);
     #ifdef PDINSTANCE
         pd_setinstance(w_instance);
     #endif
 
-        auto perform = [this, &lock](t_item& item){
-            lock.unlock();
-            if (item.workfn){
-                item.workfn(item.data);
-            }
-            while (!w_rt_queue.push(item)){
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-            lock.lock();
-        };
+        std::unique_lock<std::mutex> lock(w_mutex);
 
-        while (true) {
-            // first perform lockfree FIFO
+        while (w_running) {
+            w_cond.wait(lock);
+
             t_item item;
             while (w_nrt_queue.pop(item)){
-                perform(item);
-            }
-            // now perform blocking FIFO
-            std::unique_lock<std::mutex> queue_lock(w_queue_mutex);
-            while (!w_nrt_queue2.empty()){
-                item = w_nrt_queue2.front();
-                w_nrt_queue2.pop_front();
-                queue_lock.unlock();
-                perform(item);
-                queue_lock.lock();
-            }
-            queue_lock.unlock();
-            if (w_running){
-                // wait for more
-                w_cond.wait(lock);
-            } else {
-                break;
+                if (item.workfn){
+                    item.workfn(item.data);
+                }
+                while (!w_rt_queue.push(item)){
+                    // unlock to avoid dead-locks, e.g. if the RT thread blocks on cancel().
+                    lock.unlock();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    lock.lock();
+                }
             }
         }
         LOG_DEBUG("worker thread finished");
     });
+
+#if !WORK_QUEUE_JOIN
+    w_thread.detach();
+#endif
 
     w_clock = clock_new(this, (t_method)clockmethod);
     clock_delay(w_clock, 0);
 }
 
 t_workqueue::~t_workqueue(){
-    // not actually called... see note above
+#if WORK_QUEUE_JOIN
     {
         std::lock_guard<std::mutex> lock(w_mutex);
         w_running = false;
@@ -123,6 +117,7 @@ t_workqueue::~t_workqueue(){
     }
     LOG_DEBUG("worker thread joined");
     // don't free clock
+#endif
 }
 
 void t_workqueue::clockmethod(t_workqueue *w){
@@ -130,24 +125,23 @@ void t_workqueue::clockmethod(t_workqueue *w){
     clock_delay(w->w_clock, 1); // must not be zero!
 }
 
-int t_workqueue::dopush(void *data, t_fun<void> workfn,
-                      t_fun<void> cb, t_fun<void> cleanup){
+void t_workqueue::dopush(void *owner, void *data, t_fun<void> workfn,
+                        t_fun<void> cb, t_fun<void> cleanup){
     t_item item;
+    item.owner = owner;
     item.data = data;
     item.workfn = workfn;
     item.cb = cb;
     item.cleanup = cleanup;
-    item.id = w_counter++;
-    if (!w_nrt_queue.push(item)){
-        // push to other (blocking) queue
-        std::lock_guard<std::mutex> lock(w_queue_mutex);
-        w_nrt_queue2.push_back(item);
+    while (!w_nrt_queue.push(item)){
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        post("vstplugin~: work queue blocked!");
     }
     w_cond.notify_all();
-    return item.id;
 }
 
-void t_workqueue::cancel(int id){
+// cancel all running commands belonging to owner
+void t_workqueue::cancel(void *owner){
     std::lock_guard<std::mutex> lock(w_mutex);
     int read, write;
     // NRT queue
@@ -155,29 +149,19 @@ void t_workqueue::cancel(int id){
     write = w_nrt_queue.writePos();
     while (read != write){
         auto& data = w_nrt_queue.data()[read++];
-        if (data.id == id){
+        if (data.owner == owner){
             data.workfn = nullptr;
             data.cb = nullptr;
-            return;
         }
         read %= w_nrt_queue.capacity();
-    }
-    // blocking NRT queue
-    for (auto& data : w_nrt_queue2){
-        if (data.id == id){
-            data.workfn = nullptr;
-            data.cb = nullptr;
-            return;
-        }
     }
     // RT queue
     read = w_rt_queue.readPos();
     write = w_rt_queue.writePos();
     while (read != write){
         auto& data = w_rt_queue.data()[read++];
-        if (data.id == id){
+        if (data.owner == owner){
             data.cb = nullptr;
-            return;
         }
         read %= w_rt_queue.capacity();
     }
@@ -1053,7 +1037,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         data->parallel = parallel;
         data->update = update;
         x->x_search_data = data;
-        t_workqueue::get()->push(data, vstplugin_search_do<true>, vstplugin_search_done);
+        t_workqueue::get()->push(x, data, vstplugin_search_do<true>, vstplugin_search_done);
     } else {
         t_search_data data;
         data.owner = x;
@@ -1220,7 +1204,7 @@ static void vstplugin_close_do(t_close_data *x){
 
 static void vstplugin_close(t_vstplugin *x){
     if (x->x_plugin){
-        if (x->x_command >= 0){
+        if (x->x_commands > 0){
             pd_error(x, "%s: can't close plugin - temporarily suspended!",
                      classname(x));
             return;
@@ -1233,7 +1217,7 @@ static void vstplugin_close(t_vstplugin *x){
             auto data = new t_close_data();
             data->plugin = std::move(x->x_plugin);
             data->uithread = x->x_uithread;
-            t_workqueue::get()->push(data, vstplugin_close_do<true>, nullptr);
+            t_workqueue::get()->push(x, data, vstplugin_close_do<true>, nullptr);
         } else {
             t_close_data data;
             data.plugin = std::move(x->x_plugin);
@@ -1357,7 +1341,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
     // don't open while async command is running
-    if (x->x_command >= 0){
+    if (x->x_commands > 0){
         pd_error(x, "%s: can't open plugin - temporarily suspended!",
                  classname(x));
         return;
@@ -1385,7 +1369,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data->owner = x;
         data->path = pathsym;
         data->editor = editor;
-        t_workqueue::get()->push(data, vstplugin_open_do<true>, open_done);
+        t_workqueue::get()->push(x, data, vstplugin_open_do<true>, open_done);
     } else {
         t_open_data data;
         data.owner = x;
@@ -1562,7 +1546,8 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
         // async
         auto data = new t_reset_data();
         data->owner = x;
-        x->x_command = t_workqueue::get()->push(data,
+        x->x_commands++;
+        t_workqueue::get()->push(x, data,
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
                 // protect against vstplugin_dsp() and vstplugin_save()
@@ -1573,7 +1558,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
                 plugin->unlock(); // threaded plugin
             },
             [](t_reset_data *x){
-                x->owner->x_command = -1;
+                x->owner->x_commands--;
                 outlet_anything(x->owner->x_messout,
                                 gensym("reset"), 0, nullptr);
             }
@@ -2032,7 +2017,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
 template<t_preset type>
 static void vstplugin_preset_read_done(t_preset_data *data){
     // command finished
-    data->owner->x_command = -1;
+    data->owner->x_commands--;
     // *now* update
     data->owner->x_editor->update();
     // notify
@@ -2049,7 +2034,8 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
         auto data = new t_preset_data();
         data->owner = x;
         data->path = s->s_name;
-        x->x_command = t_workqueue::get()->push(data, vstplugin_preset_read_do<type, true>,
+        x->x_commands++;
+        t_workqueue::get()->push(x, data, vstplugin_preset_read_do<type, true>,
                                  vstplugin_preset_read_done<type>);
     } else {
         t_preset_data data;
@@ -2096,7 +2082,7 @@ static void vstplugin_preset_notify(t_vstplugin *x);
 template<t_preset type>
 static void vstplugin_preset_write_done(t_preset_data *data){
     // command finished
-    data->owner->x_command = -1;
+    data->owner->x_commands--;
     if (type == PRESET){
         if (data->success){
             auto y = (t_save_data *)data;
@@ -2139,7 +2125,8 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg async
         auto data = new t_preset_data();
         data->owner = x;
         data->path = path;
-        x->x_command = t_workqueue::get()->push(data, vstplugin_preset_write_do<type, true>,
+        x->x_commands++;
+        t_workqueue::get()->push(x, data, vstplugin_preset_write_do<type, true>,
                                  vstplugin_preset_write_done<type>);
     } else {
         t_preset_data data;
@@ -2387,7 +2374,8 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data->path = std::move(preset.path);
         data->type = preset.type;
         data->add = add;
-        x->x_command = t_workqueue::get()->push(data,
+        x->x_commands++;
+        t_workqueue::get()->push(x, data,
                                  vstplugin_preset_write_do<PRESET, true>,
                                  vstplugin_preset_write_done<PRESET>);
     } else {
@@ -2538,7 +2526,7 @@ void t_vstplugin::set_param(int index, const char *s, bool automated){
 
 bool t_vstplugin::check_plugin(){
     if (x_plugin){
-        if (x_command < 0){
+        if (x_commands == 0){
             return true;
         } else {
             pd_error(this, "%s: temporarily suspended!", classname(this));
@@ -2593,7 +2581,6 @@ int t_vstplugin::get_sample_offset(){
 t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
-    bool keep = false; // remember plugin + state?
     bool threaded = false;
     // precision (defaults to Pd's precision)
     ProcessPrecision precision = (PD_FLOATSIZE == 64) ?
@@ -2708,8 +2695,8 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
     vstplugin_search_stop(this);
-    if (x_command >= 0){
-        t_workqueue::get()->cancel(x_command);
+    if (x_commands > 0){
+        t_workqueue::get()->cancel(this);
     }
     LOG_DEBUG("vstplugin free");
 
@@ -2815,7 +2802,7 @@ static t_int *vstplugin_perform(t_int *w){
             }
         }
         // if async command is running, try to lock the mutex or bypass on failure
-        if (x->x_command >= 0){
+        if (x->x_commands > 0){
             if (!(doit = x->x_mutex.try_lock())){
                 LOG_DEBUG("couldn't lock mutex");
             }
@@ -2827,7 +2814,7 @@ static t_int *vstplugin_perform(t_int *w){
         } else { // single precision
             vstplugin_doperform<float>(x, n);
         }
-        if (x->x_command >= 0){
+        if (x->x_commands > 0){
             x->x_mutex.unlock();
         }
     } else {

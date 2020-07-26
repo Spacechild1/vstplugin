@@ -59,7 +59,7 @@ class t_vstplugin {
 
     t_vstplugin(int argc, t_atom *argv);
     ~t_vstplugin();
-        // Pd
+    // Pd
     t_object x_obj;
     t_sample x_f = 0;
     t_outlet *x_messout; // message outlet
@@ -83,10 +83,10 @@ class t_vstplugin {
     bool x_async = false;
     bool x_uithread = false;
     bool x_keep = false;
+    int x_commands = 0;
     bool x_threaded = false;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
-    int x_command = -1;
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
 #ifdef PDINSTANCE
@@ -188,33 +188,30 @@ class t_workqueue {
     t_workqueue();
     ~t_workqueue();
     template<typename T, typename Fn1, typename Fn2>
-    int push(T *data, Fn1 workfn, Fn2 cb){
-        return dopush(data, t_fun<void>(t_fun<T>(workfn)),
-                    t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
+    void push(void *owner, T *data, Fn1 workfn, Fn2 cb){
+        dopush(owner, data, t_fun<void>(t_fun<T>(workfn)),
+               t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
     }
-    void cancel(int id);
+    void cancel(void *owner);
     void poll();
  private:
     struct t_item {
+        void *owner;
         void *data;
         t_fun<void> workfn;
         t_fun<void> cb;
         t_fun<void> cleanup;
-        int id;
     };
-    int dopush(void *data, t_fun<void> workfn,
-             t_fun<void> cb, t_fun<void> cleanup);
+    void dopush(void *owner, void *data, t_fun<void> workfn,
+               t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
     LockfreeFifo<t_item, 1024> w_nrt_queue;
-    std::deque<t_item> w_nrt_queue2;
-    std::mutex w_queue_mutex;
     // queue from NRT to RT
     LockfreeFifo<t_item, 1024> w_rt_queue;
     // worker thread
     std::thread w_thread;
     std::mutex w_mutex;
     std::condition_variable w_cond;
-    int w_counter = 0;
     bool w_running = true;
     // polling
     t_clock *w_clock = nullptr;
