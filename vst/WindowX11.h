@@ -1,12 +1,12 @@
 #pragma once
 
 #include "Interface.h"
+#include "Sync.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <thread>
 #include <mutex>
-#include <condition_variable>
 #include <atomic>
 #include <unordered_map>
 
@@ -26,8 +26,10 @@ class EventLoop {
 
     IPlugin::ptr create(const PluginInfo& info);
     void destroy(IPlugin::ptr plugin);
-    bool postClientEvent(::Window window, Atom atom, long data1 = 0, long data2 = 0);
-    bool sendClientEvent(::Window, Atom atom, long data1 = 0, long data2 = 0);
+    bool postClientEvent(::Window window, Atom atom,
+                         const char *data = nullptr, size_t size = 0);
+    bool sendClientEvent(::Window, Atom atom,
+                         const char *data = nullptr, size_t size = 0);
     std::thread::id threadID(){ return thread_.get_id(); }
  private:
     struct PluginData {
@@ -41,11 +43,8 @@ class EventLoop {
     Display *display_ = nullptr;
     ::Window root_;
     std::thread thread_;
-    std::mutex lock_;
     std::mutex mutex_;
-    std::condition_variable cond_;
-    bool ready_ = false;
-    PluginData data_; // we can't send 64bit pointers with X11 client messages...
+    Event event_;
     std::unordered_map<::Window, IPlugin *> pluginMap_;
     std::thread timerThread_;
     std::atomic<bool> timerThreadRunning_{true};

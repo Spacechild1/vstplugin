@@ -119,25 +119,29 @@ void EventLoop::run(){
                 }
             } else if (type == wmCreatePlugin){
                 LOG_DEBUG("wmCreatePlugin");
+                PluginData *data;
                 try {
-                    auto plugin = data_.info->create();
+                    memcpy(&data, msg.data.b, sizeof(data));
+                    auto plugin = data->info->create();
                     if (plugin->info().hasEditor()){
                         auto window = std::make_unique<Window>(*display_, *plugin);
                         pluginMap_[(::Window)window->getHandle()] = plugin.get();
                         plugin->setWindow(std::move(window));
                     }
-                    data_.plugin = std::move(plugin);
+                    data->plugin = std::move(plugin);
                 } catch (const Error& e){
-                    data_.err = e;
+                    data->err = e;
                 }
                 notify();
             } else if (type == wmDestroyPlugin){
                 LOG_DEBUG("wmDestroyPlugin");
-                auto window = data_.plugin->getWindow();
+                PluginData *data;
+                memcpy(&data, msg.data.b, sizeof(data));
+                auto window = data->plugin->getWindow();
                 if (window){
                     pluginMap_.erase((::Window)window->getHandle());
                 }
-                data_.plugin = nullptr;
+                data->plugin = nullptr;
                 notify();
             } else if (type == wmOpenEditor){
                 LOG_DEBUG("wmOpenEditor");
@@ -195,15 +199,15 @@ void EventLoop::updatePlugins(){
     }
 }
 
-bool EventLoop::postClientEvent(::Window window, Atom atom, long data1, long data2){
+bool EventLoop::postClientEvent(::Window window, Atom atom,
+                                const char *data, size_t size){
     XClientMessageEvent event;
     memset(&event, 0, sizeof(XClientMessageEvent));
     event.type = ClientMessage;
     event.window = window;
     event.message_type = atom;
-    event.format = 32;
-    event.data.l[0] = data1;
-    event.data.l[1] = data2;
+    event.format = 8;
+    memcpy(event.data.b, data, size);
     if (XSendEvent(display_, window, 0, 0, (XEvent*)&event) != 0){
         if (XFlush(display_) != 0){
             return true;
@@ -212,12 +216,12 @@ bool EventLoop::postClientEvent(::Window window, Atom atom, long data1, long dat
     return false;
 }
 
-bool EventLoop::sendClientEvent(::Window window, Atom atom, long data1, long data2){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = false;
-    if (postClientEvent(window, atom, data1, data2)){
+bool EventLoop::sendClientEvent(::Window window, Atom atom,
+                                const char *data, size_t size){
+    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent access
+    if (postClientEvent(window, atom, data, size)){
         LOG_DEBUG("waiting...");
-        cond_.wait(lock, [&]{return ready_; });
+        event_.wait();
         LOG_DEBUG("done");
         return true;
     } else {
@@ -226,26 +230,22 @@ bool EventLoop::sendClientEvent(::Window window, Atom atom, long data1, long dat
 }
 
 void EventLoop::notify(){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = true;
-    lock.unlock();
     LOG_DEBUG("notify");
-    cond_.notify_one();
+    event_.signal();
 }
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
     if (thread_.joinable()){
-        std::unique_lock<std::mutex> lock(lock_);
         LOG_DEBUG("create plugin in UI thread");
-        data_.info = &info;
-        data_.plugin = nullptr;
+        PluginData data, *ptr = &data;
+        data.info = &info;
         // notify thread
-        if (sendClientEvent(root_, wmCreatePlugin)){
-            if (data_.plugin){
+        if (sendClientEvent(root_, wmCreatePlugin, (char *)&ptr, sizeof(ptr))){
+            if (data.plugin){
                 LOG_DEBUG("done");
-                return std::move(data_.plugin);
+                return std::move(data.plugin);
             } else {
-                throw data_.err;
+                throw data.err;
             }
         } else {
             throw Error("X11: couldn't post to thread!");
@@ -257,10 +257,10 @@ IPlugin::ptr EventLoop::create(const PluginInfo& info){
 
 void EventLoop::destroy(IPlugin::ptr plugin){
     if (thread_.joinable()){
-        std::unique_lock<std::mutex> lock(lock_);
-        data_.plugin = std::move(plugin);
+        PluginData data, *ptr = &data;
+        data.plugin = std::move(plugin);
         // notify thread
-        if (!sendClientEvent(root_, wmDestroyPlugin)){
+        if (!sendClientEvent(root_, wmDestroyPlugin, (char *)&ptr, sizeof(ptr))){
             throw Error("X11: couldn't post to thread!");
         }
     } else {
