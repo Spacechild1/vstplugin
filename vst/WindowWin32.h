@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Interface.h"
+#include "Sync.h"
 
 #include <windows.h>
-#include <condition_variable>
 #include <mutex>
 
 namespace vst {
@@ -47,8 +47,7 @@ class EventLoop {
     HANDLE thread_;
     DWORD threadID_;
     std::mutex mutex_;
-    std::condition_variable cond_;
-    bool ready_ = false;
+    Event event_;
 };
 
 } // UIThread

@@ -108,9 +108,8 @@ EventLoop::EventLoop(){
     if (!thread_){
         throw Error("couldn't create UI thread!");
     };
-    std::unique_lock<std::mutex> lock(mutex_);
     // wait for thread to create message queue
-    cond_.wait(lock, [&](){ return ready_; });
+    event_.wait();
     LOG_DEBUG("message queue created");
 }
 
@@ -131,11 +130,10 @@ bool EventLoop::postMessage(UINT msg, void *data){
 }
 
 bool EventLoop::sendMessage(UINT msg, void *data){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = false;
+    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
     if (postMessage(msg, data)){
         LOG_DEBUG("waiting...");
-        cond_.wait(lock, [&]{return ready_; });
+        event_.wait();
         LOG_DEBUG("done");
         return true;
     } else {
@@ -144,10 +142,7 @@ bool EventLoop::sendMessage(UINT msg, void *data){
 }
 
 void EventLoop::notify(){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = true;
-    lock.unlock();
-    cond_.notify_one();
+    event_.signal();
 }
 
 IPlugin::ptr EventLoop::create(const PluginInfo& info){
