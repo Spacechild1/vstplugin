@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <fstream>
+#include <cstdlib>
 #include <sstream>
 #include <algorithm>
 
@@ -92,17 +93,30 @@ int getCount(const std::string& line);
 
 void PluginManager::read(const std::string& path, bool update){
     ReadLock lock(mutex_);
+    int versionMajor = 0, versionMinor = 0, versionBugfix = 0;
     bool outdated = false;
     File file(path);
     std::string line;
     while (getLine(file, line)){
-        if (line == "[plugins]"){
+        if (line == "[version]"){
+            std::getline(file, line);
+            char *pos = (char *)line.c_str();
+            if (*pos){
+                versionMajor = std::strtol(pos, &pos, 10);
+                if (*pos++ == '.'){
+                    versionMinor = std::strtol(pos, &pos, 10);
+                    if (*pos++ == '.'){
+                        versionBugfix = std::strtol(pos, &pos, 10);
+                    }
+                }
+            }
+        } else if (line == "[plugins]"){
             std::getline(file, line);
             int numPlugins = getCount(line);
             while (numPlugins--){
                 // deserialize plugin
                 auto desc = std::make_shared<PluginInfo>();
-                desc->deserialize(file);
+                desc->deserialize(file, versionMajor, versionMinor, versionBugfix);
                 // collect keys
                 std::vector<std::string> keys;
                 while (getLine(file, line)){
@@ -161,7 +175,8 @@ void PluginManager::read(const std::string& path, bool update){
         }
         LOG_VERBOSE("updated cache file");
     }
-    LOG_DEBUG("read cache file " << path);
+    LOG_DEBUG("read cache file " << path << " v" << versionMajor
+              << "." << versionMinor << "." << versionBugfix);
 }
 
 void PluginManager::write(const std::string &path) const {
@@ -198,7 +213,9 @@ void PluginManager::doWrite(const std::string& path) const {
         return false;
     };
 #endif
-
+    // write version number
+    file << "[version]\n";
+    file << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_BUGFIX << "\n";
     // serialize plugins
     file << "[plugins]\n";
     file << "n=" << pluginMap.size() << "\n";

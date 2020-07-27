@@ -247,7 +247,7 @@ VSTPluginDesc {
 		^false;
 	}
 	// private methods
-	*prParse { arg stream;
+	*prParse { arg stream, versionMajor, versionMinor, versionBugfix;
 		var info = VSTPluginDesc.new;
 		var parameters, indexMap, programs, keys;
 		var line, key, value, onset, n, f, flags, plugin = false;
@@ -257,6 +257,10 @@ VSTPluginDesc {
 				{ (c - 48) << (i * 4); }
 			}
 		};
+		var future = versionMajor.notNil.if {
+			(versionMajor > VSTPlugin.versionMajor) ||
+			((versionMajor == VSTPlugin.versionMajor) && (versionMinor > VSTPlugin.versionMinor))
+		} { false };
 		// default values:
 		info.numAuxInputs = 0;
 		info.numAuxOutputs = 0;
@@ -316,7 +320,11 @@ VSTPluginDesc {
 				{
 					// plugin
 					plugin.not.if {
-						^Error("plugin info: bad data (%)".format(line)).throw;
+						future.if {
+							"VSTPluginDesc: bad data (%)".format(line).warn;
+						} {
+							^Error("VSTPluginDesc: bad data (%)".format(line)).throw;
+						}
 					};
 					#key, value = VSTPlugin.prParseKeyValuePair(line);
 					switch(key,
@@ -343,6 +351,13 @@ VSTPluginDesc {
 							info.midiOutput = flags[5];
 							info.sysexInput = flags[6];
 							info.sysexOutput = flags[7];
+						},
+						{
+							future.if {
+								"VSTPluginDesc: unknown key (%)".format(key).warn;
+							} {
+								^Error("VSTPluginDesc: unknown key (%)".format(key)).throw;
+							}
 						}
 					);
 				},
@@ -378,6 +393,9 @@ VSTPluginDesc {
 
 VSTPlugin : MultiOutUGen {
 	// class members
+	classvar <versionMajor=0;
+	classvar <versionMinor=3;
+	classvar <versionBugfix=3;
 	classvar pluginDict;
 	classvar <platformExtension;
 	// instance members
@@ -666,16 +684,21 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseIni { arg stream;
 		var results, onset, line, n, indices, last = 0;
-		// skip header
+		var major = 0, minor = 0, bugfix = 0;
+		// get version
 		line = this.prGetLine(stream, true);
+		(line == "[version]").if {
+			#major, minor, bugfix = this.prGetLine(stream).split($.).collect(_.asInteger);
+			line = this.prGetLine(stream, true);
+		};
 		(line != "[plugins]").if { ^Error("missing [plugins] header").throw };
 		// get number of plugins
 		line = this.prGetLine(stream, true);
 		n = this.prParseCount(line);
 		results = Array.newClear(n);
-		// now serialize plugins
+		// now deserialize plugins
 		n.do { arg i;
-			results[i] = VSTPluginDesc.prParse(stream).scanPresets;
+			results[i] = VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
 		};
 		^results;
 	}

@@ -223,7 +223,8 @@ struct PluginInfo {
     IPlugin::ptr create() const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
-    void deserialize(std::istream& file);
+    void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,
+                     int versionMinor = VERSION_MINOR, int versionBugfix = VERSION_BUGFIX);
 #if USE_VST2
     void setUniqueID(int _id); // VST2
     int getUniqueID() const {

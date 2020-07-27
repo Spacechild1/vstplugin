@@ -1788,9 +1788,12 @@ int getCount(const std::string& line){
     }
 }
 
-void PluginInfo::deserialize(std::istream& file) {
+void PluginInfo::deserialize(std::istream& file, int versionMajor,
+                             int versionMinor, int versionBugfix) {
     // first check for sections, then for keys!
     bool start = false;
+    bool future = (versionMajor > VERSION_MAJOR) ||
+                  (versionMajor == VERSION_MAJOR && versionMinor > VERSION_MINOR);
     std::string line;
     while (getLine(file, line)){
         if (line == "[plugin]"){
@@ -1884,8 +1887,11 @@ void PluginInfo::deserialize(std::istream& file) {
             #endif
                 MATCH("flags", flags); // hex
                 else {
-                    LOG_WARNING("unknown key: " << key);
-                    // throw Error("unknown key: " + key);
+                    if (future){
+                        LOG_WARNING("unknown key: " << key);
+                    } else {
+                        throw Error("unknown key: " + key);
+                    }
                 }
             }
             #undef MATCH
@@ -1899,7 +1905,11 @@ void PluginInfo::deserialize(std::istream& file) {
                 throw Error("unknown error: " + std::string(e.what()));
             }
         } else {
-            throw Error("bad data: " + line);
+            if (future){
+                LOG_WARNING("bad data: " << line);
+            } else {
+                throw Error("bad data: " + line);
+            }
         }
     }
 }
