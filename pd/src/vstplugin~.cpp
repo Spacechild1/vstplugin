@@ -1557,10 +1557,8 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
                 auto& plugin = x->owner->x_plugin;
                 // protect against vstplugin_dsp() and vstplugin_save()
                 LockGuard lock(x->owner->x_mutex);
-                plugin->lock(); // threaded plugin
                 plugin->suspend();
                 plugin->resume();
-                plugin->unlock(); // threaded plugin
             },
             [](t_reset_data *x){
                 x->owner->x_commands--;
@@ -2001,7 +1999,6 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     }
     sys_close(fd);
     // sys_bashfilename(path, path);
-    x->x_plugin->lock();
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
         LockGuard lock(x->x_mutex);
@@ -2016,7 +2013,6 @@ static void vstplugin_preset_read_do(t_preset_data *data){
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
     }
-    x->x_plugin->unlock();
 }
 
 template<t_preset type>
@@ -2063,7 +2059,6 @@ struct t_save_data : t_preset_data {
 template<t_preset type, bool async>
 static void vstplugin_preset_write_do(t_preset_data *data){
     auto x = data->owner;
-    x->x_plugin->lock();
     try {
         // protect against vstplugin_dsp() and vstplugin_save()
         LockGuard lock(x->x_mutex);
@@ -2079,7 +2074,6 @@ static void vstplugin_preset_write_do(t_preset_data *data){
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
     }
-    x->x_plugin->unlock();
 }
 
 static void vstplugin_preset_notify(t_vstplugin *x);
@@ -2544,7 +2538,6 @@ bool t_vstplugin::check_plugin(){
 
 template<bool async>
 void t_vstplugin::setup_plugin(IPlugin& plugin){
-    plugin.lock();
     plugin.suspend();
     // check if precision is actually supported
     auto precision = x_precision;
@@ -2572,7 +2565,6 @@ void t_vstplugin::setup_plugin(IPlugin& plugin){
     if (x_bypass != Bypass::Off){
         plugin.setBypass(x_bypass);
     }
-    plugin.unlock();
 }
 
 int t_vstplugin::get_sample_offset(){

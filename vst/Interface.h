@@ -96,9 +96,6 @@ class IPlugin {
     virtual PluginType getType() const = 0;
     virtual const PluginInfo& info() const = 0;
 
-    virtual void lock() {}
-    virtual void unlock() {}
-
     template<typename T>
     struct ProcessData {
         const T **input = nullptr;

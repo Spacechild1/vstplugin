@@ -100,31 +100,17 @@ ThreadedPlugin::~ThreadedPlugin() {
     event_.wait();
 }
 
-void ThreadedPlugin::lock() {
-    mutex_.lock();
-    locked_ = true;
-}
-
-void ThreadedPlugin::unlock() {
-    mutex_.unlock();
-    locked_ = false;
-}
-
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
     plugin_->setListener(std::move(listener));
 }
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
-    // always called in locked state!
-    if (locked_){
-        plugin_->setupProcessing(sampleRate, maxBlockSize, precision);
-        if (maxBlockSize != blockSize_ || precision != precision_){
-            blockSize_ = maxBlockSize;
-            precision_ = precision;
-            updateBuffer();
-        }
-    } else {
-        throw Error("bug in ThreadedPlugin::setNumSpeakers");
+    LockGuard lock(mutex_);
+    plugin_->setupProcessing(sampleRate, maxBlockSize, precision);
+    if (maxBlockSize != blockSize_ || precision != precision_){
+        blockSize_ = maxBlockSize;
+        precision_ = precision;
+        updateBuffer();
     }
 }
 
@@ -162,12 +148,6 @@ void ThreadedPlugin::dispatchCommands() {
         case Command::SetParamString:
             plugin_->setParameter(command.paramString.index,
                                   command.paramString.string, command.paramString.offset);
-            break;
-        case Command::Suspend:
-            plugin_->suspend();
-            break;
-        case Command::Resume:
-            plugin_->resume();
             break;
         case Command::SetBypass:
             plugin_->setBypass(command.bypass);
@@ -211,22 +191,6 @@ void ThreadedPlugin::dispatchCommands() {
             break;
         case Command::SetProgram:
             plugin_->setProgram(command.i);
-            break;
-        case Command::ReadProgramData:
-            try {
-                plugin_->readProgramData(data_[!current_]);
-            } catch (const Error& e){
-                // how shall we handle exceptions?
-                LOG_ERROR(e.what());
-            }
-            break;
-        case Command::ReadBankData:
-            try {
-                plugin_->readBankData(data_[!current_]);
-            } catch (const Error& e){
-                // how shall we handle exceptions?
-                LOG_ERROR(e.what());
-            }
             break;
         default:
             LOG_ERROR("bug: unknown command in ThreadedPlugin");
@@ -312,7 +276,7 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
         for (int i = 0; i < data.numAuxOutputs; ++i){
             std::fill(auxOutput[i], auxOutput[i] + data.numSamples, 0);
         }
-        event_.signal(); // !
+        event_.signal(); // so that the next call to event_.wait() doesn't block!
     }
 }
 
@@ -325,25 +289,13 @@ void ThreadedPlugin::process(ProcessData<double>& data) {
 }
 
 void ThreadedPlugin::suspend() {
-    if (locked_){
-        // called asynchronously
-        plugin_->suspend();
-    } else {
-        // LATER improve
-        WriteLock lock(mutex_);
-        plugin_->suspend();
-    }
+    LockGuard lock(mutex_);
+    plugin_->suspend();
 }
 
 void ThreadedPlugin::resume() {
-    if (locked_){
-        // called asynchronously
-        plugin_->resume();
-    } else {
-        // LATER improve
-        WriteLock lock(mutex_);
-        plugin_->resume();
-    }
+    LockGuard lock(mutex_);
+    plugin_->resume();
 }
 
 void ThreadedPlugin::setBypass(Bypass state) {
@@ -353,18 +305,14 @@ void ThreadedPlugin::setBypass(Bypass state) {
 }
 
 void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
-    // always called in locked state!
-    if (locked_){
-        plugin_->setNumSpeakers(in, out, auxIn, auxOut);
-        // floatData and doubleData have the same layout
-        input_.resize(in);
-        auxInput_.resize(auxIn);
-        output_.resize(out);
-        auxOutput_.resize(auxOut);
-        updateBuffer();
-    } else {
-        throw Error("bug in ThreadedPlugin::setNumSpeakers");
-    }
+    LockGuard lock(mutex_);
+    plugin_->setNumSpeakers(in, out, auxIn, auxOut);
+    // floatData and doubleData have the same layout
+    input_.resize(in);
+    auxInput_.resize(auxIn);
+    output_.resize(out);
+    auxOutput_.resize(auxOut);
+    updateBuffer();
 }
 
 void ThreadedPlugin::setTempoBPM(double tempo) {
@@ -492,8 +440,7 @@ void ThreadedPlugin::setProgram(int program) {
 }
 
 void ThreadedPlugin::setProgramName(const std::string& name) {
-    // LATER improve
-    WriteLock lock(mutex_);
+    LockGuard lock(mutex_);
     plugin_->setProgramName(name);
 }
 
@@ -503,13 +450,13 @@ int ThreadedPlugin::getProgram() const {
 
 std::string ThreadedPlugin::getProgramName() const {
     // LATER improve
-    WriteLock lock(mutex_);
+    LockGuard lock(mutex_);
     return plugin_->getProgramName();
 }
 
 std::string ThreadedPlugin::getProgramNameIndexed(int index) const {
     // LATER improve
-    WriteLock lock(mutex_);
+    LockGuard lock(mutex_);
     return plugin_->getProgramNameIndexed(index);
 }
 
@@ -527,13 +474,8 @@ void ThreadedPlugin::readProgramFile(const std::string& path) {
 }
 
 void ThreadedPlugin::readProgramData(const char *data, size_t size) {
-    if (locked_){
-        // called asynchronously
-        plugin_->readProgramData(data, size);
-    } else {
-        data_[current_].assign(data, size);
-        pushCommand({Command::ReadProgramData});
-    }
+    LockGuard lock(mutex_);
+    plugin_->readProgramData(data, size);
 }
 
 void ThreadedPlugin::writeProgramFile(const std::string& path) {
@@ -547,14 +489,8 @@ void ThreadedPlugin::writeProgramFile(const std::string& path) {
 }
 
 void ThreadedPlugin::writeProgramData(std::string& buffer) {
-    if (locked_){
-        // called asynchronously
-        plugin_->writeProgramData(buffer);
-    } else {
-        // just lock
-        WriteLock lock(mutex_);
-        plugin_->writeProgramData(buffer);
-    }
+    LockGuard lock(mutex_);
+    plugin_->writeProgramData(buffer);
 }
 
 void ThreadedPlugin::readBankFile(const std::string& path) {
@@ -571,13 +507,8 @@ void ThreadedPlugin::readBankFile(const std::string& path) {
 }
 
 void ThreadedPlugin::readBankData(const char *data, size_t size) {
-    if (locked_){
-        // called asynchronously
-        plugin_->readBankData(data, size);
-    } else {
-        data_[current_].assign(data, size);
-        pushCommand({Command::ReadBankData});
-    }
+    LockGuard lock(mutex_);
+    plugin_->readBankData(data, size);
 }
 
 void ThreadedPlugin::writeBankFile(const std::string& path) {
@@ -591,25 +522,13 @@ void ThreadedPlugin::writeBankFile(const std::string& path) {
 }
 
 void ThreadedPlugin::writeBankData(std::string& buffer) {
-    if (locked_){
-        // called asynchronously
-        plugin_->writeBankData(buffer);
-    } else {
-        // just lock
-        WriteLock lock(mutex_);
-        plugin_->writeBankData(buffer);
-    }
+    LockGuard lock(mutex_);
+    plugin_->writeBankData(buffer);
 }
 
 intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, float opt) {
-    if (locked_){
-        // called asynchronously
-        return plugin_->vendorSpecific(index, value, p, opt);
-    } else {
-        // LATER improve
-        WriteLock lock(mutex_);
-        return plugin_->vendorSpecific(index, value, p, opt);
-    }
+    LockGuard lock(mutex_);
+    return plugin_->vendorSpecific(index, value, p, opt);
 }
 
 } // vst

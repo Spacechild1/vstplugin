@@ -43,9 +43,6 @@ class ThreadedPlugin final : public IPlugin {
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
 
-    void lock() override;
-    void unlock() override;
-
     PluginType getType() const override {
         return plugin_->getType();
     }
@@ -168,7 +165,6 @@ class ThreadedPlugin final : public IPlugin {
     DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
     mutable SharedMutex mutex_;
-    bool locked_ = false;
     Event event_;
     // commands
     struct Command {
@@ -176,8 +172,6 @@ class ThreadedPlugin final : public IPlugin {
         enum Type {
             SetParamValue,
             SetParamString,
-            Suspend,
-            Resume,
             SetBypass,
             SetTempo,
             SetTimeSignature,
@@ -191,9 +185,7 @@ class ThreadedPlugin final : public IPlugin {
             SetTransportPosition,
             SendMidi,
             SendSysex,
-            SetProgram,
-            ReadProgramData,
-            ReadBankData
+            SetProgram
         } type;
         Command() = default;
         Command(Command::Type _type) : type(_type){}
@@ -231,7 +223,6 @@ class ThreadedPlugin final : public IPlugin {
     }
     std::vector<Command> commands_[2];
     int current_ = 0;
-    std::string data_[2];
     // buffer
     int blockSize_ = 0;
     ProcessPrecision precision_ = ProcessPrecision::Single;
