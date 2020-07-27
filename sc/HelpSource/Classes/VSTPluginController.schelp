@@ -352,6 +352,11 @@ post the plugin info to the console if loaded successfully.
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
+ARGUMENT:: threaded
+process the plugin in a seperate worker thread to utilize more CPU cores.
+note::This option is ignored for Supernova which already offers multiprocessing with ParGroup.::
+note::Multiprocessing introduces a delay of 1 block!::
+
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
 

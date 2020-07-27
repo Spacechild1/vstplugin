@@ -393,15 +393,14 @@ VSTPlugin : MultiOutUGen {
 			pluginDict[Server.default] = IdentityDictionary.new;
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0, threaded=false;
-		var flags = threaded.asBoolean.asInteger; // 1: multi-threaded
+	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0;
 		input = input.asArray;
 		auxInput = auxInput.asArray;
 		params = params.asArray;
 		params.size.odd.if {
 			^Error("'params': expecting pairs of param index/name + value").throw;
 		};
-		^this.multiNewList([\audio, id, info, numOut, numAuxOut, flags, bypass, input.size]
+		^this.multiNewList([\audio, id, info, numOut, numAuxOut, 0, bypass, input.size]
 			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }

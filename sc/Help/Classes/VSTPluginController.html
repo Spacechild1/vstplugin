@@ -324,7 +324,7 @@ SynthDef(\insert, { arg bus, f;
 
 <p>Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).</div><h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
 <div id='inheritedclassmets'></div><h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-open' href='./../Overviews/Methods.html#open'>open</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>verbose: false</span>, <span class='argstr'>action</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-open' href='./../Overviews/Methods.html#open'>open</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>verbose: false</span>, <span class='argstr'>action</span>, <span class='argstr'>threaded: false</span>)</h3>
 <div class='method'>
 <p>open a VST plugin.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -352,7 +352,9 @@ SynthDef(\chorus, { arg bus=0;
 <tr><td class='argumentname'>editor<td class='argumentdesc'>
 <p>request the VST plugin editor.<div class='note'><span class='notelabel'>NOTE:</span> On macOS this only works with SuperCollider 3.11 and above!</div><tr><td class='argumentname'>verbose<td class='argumentdesc'>
 <p>post the plugin info to the console if loaded successfully.<tr><td class='argumentname'>action<td class='argumentdesc'>
-<p>an action to be called with <code>this</code> and a Boolean (success/fail).</table><h4>Discussion:</h4>
+<p>an action to be called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>threaded<td class='argumentdesc'>
+<p>process the plugin in a seperate worker thread to utilize more CPU cores.<div class='note'><span class='notelabel'>NOTE:</span> This option is ignored for Supernova which already offers multiprocessing with ParGroup.</div>
+<p><div class='note'><span class='notelabel'>NOTE:</span> Multiprocessing introduces a delay of 1 block!</div></table><h4>Discussion:</h4>
 
 <p>This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-openMsg' href='./../Overviews/Methods.html#openMsg'>openMsg</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>)</h3>
 <div class='method'>

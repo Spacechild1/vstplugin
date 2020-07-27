@@ -213,12 +213,18 @@ VSTPluginController {
 		};
 		browser.front;
 	}
-	open { arg path, editor=false, verbose=false, action;
+	open { arg path, editor=false, verbose=false, action, threaded=false;
 		loading.if {
 			"already opening!".error;
 			^this;
 		};
 		loading = true;
+		// threaded is not supported for Supernova
+		threaded.if {
+			Server.program.find("supernova").notNil.if {
+				"multiprocessing option not supported for Supernova; use ParGroup instead.".warn;
+			}
+		};
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
 			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
@@ -257,7 +263,7 @@ VSTPluginController {
 					action.value(this, loaded);
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
-				this.sendMsg('/open', theInfo.key, editor.asInteger);
+				this.sendMsg('/open', theInfo.key, editor.asInteger, threaded.asInteger);
 			} {
 				"couldn't open '%'".format(path).error;
 				// just notify failure, but keep old plugin (if present)
