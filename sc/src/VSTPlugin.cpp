@@ -73,18 +73,18 @@ bool CmdData::alive() const {
     return b;
 }
 
-// InfoCmdData
-InfoCmdData* InfoCmdData::create(World* world, const char* path, bool async) {
-    auto data = CmdData::create<InfoCmdData>(world);
+PresetCmdData* PresetCmdData::create(World* world, const char* path, bool async) {
+    auto len = strlen(path) + 1;
+    auto data = CmdData::create<PresetCmdData>(world, len);
     if (data) {
-        snprintf(data->path, sizeof(data->path), "%s", path);
+        memcpy(data->path, path, len);
         data->async = async;
     }
     return data;
 }
 
-InfoCmdData* InfoCmdData::create(World* world, int bufnum, bool async) {
-    auto data = CmdData::create<InfoCmdData>(world);
+PresetCmdData* PresetCmdData::create(World* world, int bufnum, bool async) {
+    auto data = CmdData::create<PresetCmdData>(world);
     if (data) {
         data->bufnum = bufnum;
         data->path[0] = '\0';
@@ -93,8 +93,8 @@ InfoCmdData* InfoCmdData::create(World* world, int bufnum, bool async) {
     return data;
 }
 
-bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+bool PresetCmdData::nrtFree(World* inWorld, void* cmdData) {
+    auto data = (PresetCmdData*)cmdData;
     // this is potentially dangerous because NRTFree internally uses free()
     // while BufFreeCmd::Stage4() uses free_aligned().
     // On the other hand, the client is supposed to pass an *unused* bufnum,
@@ -108,17 +108,12 @@ bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
     return true;
 }
 
-// PluginCmdData
-PluginCmdData* PluginCmdData::create(World *world, const char* path) {
-    size_t size = path ? (strlen(path) + 1) : 0; // keep trailing '\0'!
-    auto cmdData = CmdData::create<PluginCmdData>(world, size);
-    if (cmdData) {
-        if (path) {
-            memcpy(cmdData->buf, path, size);
-        }
-        cmdData->size = size;
-    }
-    return cmdData;
+bool SearchCmdData::nrtFree(World *world, void *cmdData){
+    // see PresetCmdData::nrtFree
+    auto data = (SearchCmdData*)cmdData;
+    if (data->freeData)
+        NRTFree(data->freeData);
+    return true;
 }
 
 // Encode a string as a list of floats.
@@ -1016,10 +1011,6 @@ bool VSTPluginDelegate::check(bool loud) const {
     return true;
 }
 
-bool VSTPluginDelegate::isThreaded() const {
-    return owner_->hasFlag(VSTPlugin::Multithreaded);
-}
-
 WriteLock VSTPluginDelegate::scopedLock(){
     return WriteLock(mutex_);
 }
@@ -1043,19 +1034,19 @@ void VSTPluginDelegate::close() {
             // will be closed by the command's cleanup function
             return;
         }
-        auto cmdData = PluginCmdData::create(world());
+        auto cmdData = CmdData::create<CloseCmdData>(world());
         if (!cmdData) {
             return;
         }
         // unset listener!
         plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
-        cmdData->value = editor_;
+        cmdData->editor = editor_;
         // don't set owner!
         doCmd<false>(cmdData, [](World *world, void* inData) {
-            auto data = (PluginCmdData*)inData;
+            auto data = (CloseCmdData*)inData;
             try {
-                if (data->value) {
+                if (data->editor) {
                     UIThread::destroy(std::move(data->plugin));
                 }
                 else {
@@ -1074,15 +1065,13 @@ void VSTPluginDelegate::close() {
 bool cmdOpen(World *world, void* cmdData) {
     LOG_DEBUG("cmdOpen");
     // initialize GUI backend (if needed)
-    auto data = (PluginCmdData *)cmdData;
-    data->threadID = std::this_thread::get_id();
+    auto data = (OpenCmdData *)cmdData;
     // create plugin in main thread
-    auto info = queryPlugin(data->buf);
+    auto info = queryPlugin(data->path);
     if (info) {
         try {
             IPlugin::ptr plugin;
-            bool editor = data->value;
-            if (editor) {
+            if (data->editor) {
                 plugin = UIThread::create(*info);
             }
             else {
@@ -1090,7 +1079,7 @@ bool cmdOpen(World *world, void* cmdData) {
             }
             if (plugin){
                 auto owner = data->owner;
-                if (owner->isThreaded()){
+                if (data->threaded){
                 #ifndef SUPERNOVA
                     // wrap plugin in ThreadedPlugin adapter
                     plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
@@ -1122,7 +1111,7 @@ bool cmdOpen(World *world, void* cmdData) {
 }
 
 // try to open the plugin in the NRT thread with an asynchronous command
-void VSTPluginDelegate::open(const char *path, bool gui) {
+void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
     LOG_DEBUG("open");
     if (isLoading_) {
         LOG_WARNING("already loading!");
@@ -1136,15 +1125,19 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
         return;
     }
 
-    auto cmdData = PluginCmdData::create(world(), path);
+    auto len = strlen(path) + 1;
+    auto cmdData = CmdData::create<OpenCmdData>(world(), len);
     if (cmdData) {
-        cmdData->value = gui;
+        memcpy(cmdData->path, path, len);
+        cmdData->editor = editor;
+        cmdData->threaded = threaded;
+
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
-            auto data = (PluginCmdData*)cmdData;
+            auto data = (OpenCmdData*)cmdData;
             data->owner->doneOpen(*data); // alive() checked in doneOpen!
             return false; // done
         });
-        editor_ = gui;
+        editor_ = editor;
         isLoading_ = true;
     } else {
         sendMsg("/vst_open", 0);
@@ -1152,7 +1145,7 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
 }
 
 // "/open" command succeeded/failed - called in the RT thread
-void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
+void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     LOG_DEBUG("doneOpen");
     isLoading_ = false;
     // move the plugin even if alive() returns false (so it will be properly released in close())
@@ -1166,7 +1159,7 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
             Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 
                 plugin_->info().name.c_str());
         }
-        LOG_DEBUG("opened " << cmd.buf);
+        LOG_DEBUG("opened " << cmd.path);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
         // update data
@@ -1175,20 +1168,20 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
         float data[] = { 1.f, static_cast<float>(plugin_->getWindow() != nullptr) };
         sendMsg("/vst_open", 2, data);
     } else {
-        LOG_WARNING("VSTPlugin: couldn't open " << cmd.buf);
+        LOG_WARNING("VSTPlugin: couldn't open " << cmd.path);
         sendMsg("/vst_open", 0);
     }
 }
 
 void VSTPluginDelegate::showEditor(bool show) {
     if (plugin_ && plugin_->getWindow()) {
-        auto cmdData = PluginCmdData::create(world());
+        auto cmdData = CmdData::create<PluginCmdData>(world());
         if (cmdData) {
-            cmdData->value = show;
+            cmdData->i = show;
             doCmd(cmdData, [](World * inWorld, void* inData) {
                 auto data = (PluginCmdData*)inData;
                 auto window = data->owner->plugin()->getWindow();
-                if (data->value) {
+                if (data->i) {
                     window->open();
                 }
                 else {
@@ -1205,7 +1198,7 @@ void VSTPluginDelegate::reset(bool async) {
         if (async) {
             // reset in the NRT thread
             suspended_ = true; // suspend
-            doCmd(PluginCmdData::create(world()),
+            doCmd(CmdData::create<PluginCmdData>(world()),
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
                     auto lock = data->owner->scopedLock();
@@ -1409,7 +1402,7 @@ void VSTPluginDelegate::queryPrograms(int32 index, int32 count) {
 
 template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+    auto data = (PresetCmdData*)cmdData;
     auto plugin = data->owner->plugin();
     auto& buffer = data->buffer;
     bool async = data->async;
@@ -1465,19 +1458,19 @@ bool cmdReadPreset(World* world, void* cmdData) {
             plugin->unlock(); // for threaded plugin
         }
     }
-    data->flags = result;
+    data->result = result;
     return true;
 }
 
 template<bool bank>
 bool cmdReadPresetDone(World *world, void *cmdData){
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (PresetCmdData *)cmdData;
     if (!data->alive()) return false;
     auto owner = data->owner;
 
     if (data->async){
         data->owner->resume();
-    } else if (data->flags) {
+    } else if (data->result) {
         // read preset data
         try {
             if (bank)
@@ -1486,17 +1479,17 @@ bool cmdReadPresetDone(World *world, void *cmdData){
                 owner->plugin()->readProgramData(data->buffer);
         } catch (const Error& e){
             Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
-            data->flags = 0;
+            data->result = 0;
         }
     }
 
     if (bank) {
-        owner->sendMsg("/vst_bank_read", data->flags);
+        owner->sendMsg("/vst_bank_read", data->result);
         // a bank change also sets the current program number!
         owner->sendMsg("/vst_program_index", owner->plugin()->getProgram());
     }
     else {
-        owner->sendMsg("/vst_program_read", data->flags);
+        owner->sendMsg("/vst_program_read", data->result);
     }
     // the program name has most likely changed
     owner->sendCurrentProgramName();
@@ -1510,8 +1503,8 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
         if (async){
             suspended_ = true;
         }
-        doCmd(InfoCmdData::create(world(), dest, async),
-            cmdReadPreset<bank>, cmdReadPresetDone<bank>, InfoCmdData::nrtFree);
+        doCmd(PresetCmdData::create(world(), dest, async),
+            cmdReadPreset<bank>, cmdReadPresetDone<bank>, PresetCmdData::nrtFree);
     } else {
         if (bank) {
             sendMsg("/vst_bank_read", 0);
@@ -1524,7 +1517,7 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
 
 template<bool bank>
 bool cmdWritePreset(World *world, void *cmdData){
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (PresetCmdData *)cmdData;
     auto plugin = data->owner->plugin();
     auto& buffer = data->buffer;
     bool async = data->async;
@@ -1578,13 +1571,13 @@ bool cmdWritePreset(World *world, void *cmdData){
             plugin->unlock(); // for threaded plugin
         }
     }
-    data->flags = result;
+    data->result = result;
     return true;
 }
 
 template<bool bank>
 bool cmdWritePresetDone(World *world, void *cmdData){
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (PresetCmdData *)cmdData;
     if (!data->alive()) return true; // will just free data
     if (data->async){
         data->owner->resume();
@@ -1592,14 +1585,14 @@ bool cmdWritePresetDone(World *world, void *cmdData){
     if (data->bufnum >= 0){
         syncBuffer(world, data->bufnum);
     }
-    data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
+    data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->result);
     return true; // continue
 }
 
 template<bool bank, typename T>
 void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
-        auto data = InfoCmdData::create(world(), dest, async);
+        auto data = PresetCmdData::create(world(), dest, async);
         if (async){
             suspended_ = true;
         } else {
@@ -1614,7 +1607,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
                 goto fail;
             }
         }
-        doCmd(data, cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
+        doCmd(data, cmdWritePreset<bank>, cmdWritePresetDone<bank>, PresetCmdData::nrtFree);
     } else {
     fail:
         if (bank) {
@@ -1822,9 +1815,10 @@ void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
 
 void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     const char *path = args->gets();
-    auto gui = args->geti();
+    auto editor = args->geti();
+    auto threaded = args->geti();
     if (path) {
-        unit->delegate().open(path, gui);
+        unit->delegate().open(path, editor, threaded);
     }
     else {
         LOG_WARNING("vst_open: expecting string argument!");
@@ -2145,7 +2139,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 
 // recursively search directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (SearchCmdData *)cmdData;
     std::vector<PluginInfo::const_ptr> plugins;
     bool useDefault = data->flags & SearchFlags::useDefault;
     bool verbose = data->flags & SearchFlags::verbose;
@@ -2218,7 +2212,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 }
 
 bool cmdSearchDone(World *inWorld, void *cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+    auto data = (SearchCmdData*)cmdData;
     if (data->bufnum >= 0)
         syncBuffer(inWorld, data->bufnum);
     gSearching = false;
@@ -2261,7 +2255,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
         }
     }
 
-    auto data = CmdData::create<InfoCmdData>(inWorld, pathLen);
+    SearchCmdData *data = CmdData::create<SearchCmdData>(inWorld, pathLen);
     if (data) {
         data->flags = flags;
         data->bufnum = bufnum; // negative bufnum: don't write search result
@@ -2281,8 +2275,8 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             ptr += len;
         }
         // LOG_DEBUG("start search");
-        DoAsynchronousCommand(inWorld, replyAddr, "vst_search",
-            data, cmdSearch, cmdSearchDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_search", data,
+            cmdSearch, cmdSearchDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
         gSearching = true;
     }
 }
@@ -2293,12 +2287,12 @@ void vst_search_stop(World* inWorld, void* inUserData, struct sc_msg_iter*args, 
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
     if (!gSearching) {
-        auto data = CmdData::create<InfoCmdData>(inWorld);
+        auto data = CmdData::create<PluginCmdData>(inWorld);
         if (data) {
-            data->flags = args->geti(); // 1 = remove cache file
+            data->i = args->geti(); // 1 = remove cache file
             DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
                 // unloading plugins might crash, so we make sure we *first* delete the cache file
-                int flags = static_cast<InfoCmdData*>(data)->flags;
+                int flags = static_cast<PluginCmdData*>(data)->i;
                 if (flags & 1) {
                     // remove cache file
                     removeFile(getSettingsDir() + "/" SETTINGS_FILE);
@@ -2315,7 +2309,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 
 // query plugin info
 bool cmdProbe(World *inWorld, void *cmdData) {
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (SearchCmdData *)cmdData;
     auto desc = queryPlugin(data->buf);
     // write info to file or buffer
     if (desc){
@@ -2346,7 +2340,7 @@ bool cmdProbe(World *inWorld, void *cmdData) {
 }
 
 bool cmdProbeDone(World* inWorld, void* cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+    auto data = (SearchCmdData*)cmdData;
     if (data->bufnum >= 0)
         syncBuffer(inWorld, data->bufnum);
     // LOG_DEBUG("probe done!");
@@ -2365,7 +2359,7 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     auto path = args->gets(); // plugin path
     auto size = strlen(path) + 1;
 
-    auto data = CmdData::create<InfoCmdData>(inWorld, size);
+    auto data = CmdData::create<SearchCmdData>(inWorld);
     if (data) {
         // temp file or buffer to store the plugin info
         if (args->nextTag() == 's') {
@@ -2385,7 +2379,7 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         memcpy(data->buf, path, size); // store plugin path
 
         DoAsynchronousCommand(inWorld, replyAddr, "vst_probe",
-            data, cmdProbe, cmdProbeDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
+            data, cmdProbe, cmdProbeDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
     }
 }
 

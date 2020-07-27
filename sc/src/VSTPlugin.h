@@ -30,25 +30,25 @@ struct CmdData {
     bool alive() const;
 };
 
-struct PluginCmdData : CmdData {
-    // for asynchronous commands
-    static PluginCmdData* create(World *world, const char* path = 0);
-    // data
-    void* freeData = nullptr;
+struct CloseCmdData : CmdData {
     IPlugin::ptr plugin;
-    std::thread::id threadID;
-    // generic int value
-    int value = 0;
-    // flexible array for RT memory
-    int size = 0;
-    char buf[1];
+    bool editor;
 };
 
-struct ParamCmdData : CmdData {
-    int index;
-    float value;
-    // flexible array
-    char display[1];
+struct OpenCmdData : CmdData {
+    IPlugin::ptr plugin;
+    bool editor;
+    bool threaded;
+    // flexible array for RT memory
+    int size = 0;
+    char path[1];
+};
+
+struct PluginCmdData : CmdData {
+    union {
+        int i;
+        float f;
+    };
 };
 
 struct VendorCmdData : CmdData {
@@ -59,6 +59,19 @@ struct VendorCmdData : CmdData {
     char data[1];
 };
 
+struct PresetCmdData : CmdData {
+    static PresetCmdData* create(World* world, const char* path, bool async = false);
+    static PresetCmdData* create(World* world, int bufnum, bool async = false);
+    static bool nrtFree(World* world, void* cmdData);
+    std::string buffer;
+    int result = 0;
+    int32 bufnum = -1;
+    bool async = false;
+    void* freeData = nullptr;
+    // flexible array
+    char path[1];
+};
+
 namespace SearchFlags {
     const int useDefault = 1;
     const int verbose = 2;
@@ -66,14 +79,10 @@ namespace SearchFlags {
     const int parallel = 8;
 }
 
-struct InfoCmdData : CmdData {
-    static InfoCmdData* create(World* world, const char* path, bool async = false);
-    static InfoCmdData* create(World* world, int bufnum, bool async = false);
+struct SearchCmdData {
     static bool nrtFree(World* world, void* cmdData);
     int32 flags = 0;
     int32 bufnum = -1;
-    bool async = false;
-    std::string buffer;
     void* freeData = nullptr;
     char path[256];
     // flexible array
@@ -113,14 +122,13 @@ public:
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
     bool check(bool loud = true) const;
-    bool isThreaded() const;
     bool suspended() const { return suspended_; }
     void resume() { suspended_ = false; }
     WriteLock scopedLock();
     bool tryLock();
     void unlock();
-    void open(const char* path, bool gui);
-    void doneOpen(PluginCmdData& msg);
+    void open(const char* path, bool editor, bool threaded);
+    void doneOpen(OpenCmdData& msg);
     void close();
     void showEditor(bool show);
     void reset(bool async);
@@ -191,8 +199,6 @@ class VSTPlugin : public SCUnit {
     friend struct PluginCmdData;
     static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
     static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
-    // flags
-    static const uint32 Multithreaded = 1;
 public:
     VSTPlugin();
     ~VSTPlugin();
