@@ -1,83 +1,39 @@
 #include "ThreadedPlugin.h"
-#include "Utility.h"
 
 #include <string.h>
 #include <assert.h>
-#include <thread>
-#include <condition_variable>
-#include <mutex>
 
 namespace vst {
 
-
-
 /*/////////////////// DSPThreadPool /////////////////////////*/
 
-// Don't try to join threads in the destructor
-// because it might hang/crash the app on exit.
-// We need to figure out why...
-#ifndef THREADPOOL_JOIN
-#define THREADPOOL_JOIN 0
+// there's a deadlock bug in the windows runtime library which would cause
+// the process to hang if trying to join a thread in a static object destructor.
+#ifdef _WIN32
+# define DSPTHREADPOOL_JOIN 0
+#else
+# define DSPTHREADPOOL_JOIN 1
 #endif
 
-class DSPThreadPool {
- public:
-    static void init();
-    // We don't use a static instance in the instance() method
-    // to make *accessing* the instance as fast as possible.
-    static DSPThreadPool& instance(){ return instance_; }
+DSPThreadPool::DSPThreadPool() {
+#if 0
+    LOG_DEBUG("Align of DSPThreadPool: " << alignof(*this));
+    LOG_DEBUG("DSPThreadPool address: " << this);
+    LOG_DEBUG("pushLock address: " << &pushLock_);
+    LOG_DEBUG("popLock address: " << &popLock_);
+#endif
 
-    DSPThreadPool();
-    ~DSPThreadPool();
-
-    using Callback = void (*)(ThreadedPlugin *, int);
-    bool push(Callback cb, ThreadedPlugin *plugin, int numSamples);
- private:
-    struct Task {
-        Callback cb;
-        ThreadedPlugin *plugin;
-        int numSamples;
-    };
-    LockfreeFifo<Task, 1024> queue_;
-    std::vector<std::thread> threads_;
-    std::condition_variable condition_;
-    std::atomic_bool running_;
-    SpinLock pushLock_;
-    SpinLock popLock_;
-    static DSPThreadPool instance_;
-    static std::mutex initMutex_;
-    static bool initialized_;
-    void run();
-};
-
-DSPThreadPool DSPThreadPool::instance_{};
-std::mutex DSPThreadPool::initMutex_{};
-bool DSPThreadPool::initialized_ = false;
-
-// thread-safe initialization
-void DSPThreadPool::init(){
-    std::lock_guard<std::mutex> lock(initMutex_);
-    if (!initialized_){
-        instance_.run();
-        initialized_ = true;
-    }
-}
-
-void DSPThreadPool::run(){
     running_ = true;
+
     //  number of available hardware threads minus one (= the main audio thread)
     int numThreads = std::max<int>(std::thread::hardware_concurrency() - 1, 1);
     LOG_DEBUG("number of DSP helper threads: " << numThreads);
 
     for (int i = 0; i < numThreads; ++i){
-        std::thread thread([this](){
+        std::thread thread([this, i](){
             setThreadPriority(ThreadPriority::High);
-            // We don't really need the mutex (the queue is lock-free),
-            // but the interface of std::condition_variable requires it.
-            std::mutex dummyMutex;
-            std::unique_lock<std::mutex> dummyLock(dummyMutex);
-            // the loop:
-            while (true) {
+            // the loop
+            while (running_) {
                 Task task;
                 popLock_.lock();
                 while (queue_.pop(task)){
@@ -87,35 +43,29 @@ void DSPThreadPool::run(){
                     popLock_.lock();
                 }
                 popLock_.unlock();
-                if (running_){
-                    // wait for more
-                    condition_.wait(dummyLock);
-                } else {
-                    break;
-                }
+
+                // wait for more
+                event_.wait();
+
+                LOG_DEBUG("DSP thread " << i << " woke up");
             }
         });
-    #if !THREADPOOL_JOIN
+    #if !DSPTHREADPOOL_JOIN
         thread.detach();
     #endif
         threads_.push_back(std::move(thread));
     }
 }
 
-DSPThreadPool::DSPThreadPool() {
-    LOG_DEBUG("Align of DSPThreadPool: " << alignof(*this));
-    LOG_DEBUG("DSPThreadPool address: " << this);
-    LOG_DEBUG("pushLock address: " << &pushLock_);
-    LOG_DEBUG("popLock address: " << &popLock_);
-}
-
 DSPThreadPool::~DSPThreadPool(){
-#if THREADPOOL_JOIN
-    // There's an edge case where a thread might experience a spurious wakeup
-    // and the following code runs right between testing "running_" and waiting on
-    // the condition variable, but we just ignore this for now.
+#if DSPTHREADPOOL_JOIN
     running_ = false;
-    condition_.notify_all();
+
+    // signal N times to wake up all threads!
+    for (size_t i = 0; i < threads_.size(); ++i){
+        event_.signal();
+    }
+
     for (auto& thread : threads_){
         if (thread.joinable()){
             thread.join();
@@ -128,7 +78,8 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     pushLock_.lock();
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
-    condition_.notify_one();
+    LOG_DEBUG("DSPThreadPool::push");
+    event_.signal();
     return result;
 }
 
@@ -140,7 +91,7 @@ IPlugin::ptr IPlugin::makeThreadedPlugin(IPlugin::ptr plugin){
 
 ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
     : plugin_(std::move(plugin)) {
-    DSPThreadPool::init();
+    threadPool_ = &DSPThreadPool::instance(); // cache for performance
     event_.signal(); // so that the process routine doesn't wait the very first time
 }
 
@@ -155,8 +106,8 @@ void ThreadedPlugin::lock() {
 }
 
 void ThreadedPlugin::unlock() {
-    locked_ = false;
     mutex_.unlock();
+    locked_ = false;
 }
 
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
@@ -352,7 +303,7 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
     auto cb = [](ThreadedPlugin *plugin, int numSamples){
         plugin->threadFunction<T>(numSamples);
     };
-    if (!DSPThreadPool::instance().push(cb, this, data.numSamples)){
+    if (!threadPool_->push(cb, this, data.numSamples)){
         LOG_WARNING("couldn't push DSP task!");
         // skip processing and clear outputs
         for (int i = 0; i < data.numOutputs; ++i){

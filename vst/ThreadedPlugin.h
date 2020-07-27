@@ -2,8 +2,41 @@
 
 #include "Interface.h"
 #include "Sync.h"
+#include "Utility.h"
+
+#include <thread>
+#include <condition_variable>
+#include <mutex>
 
 namespace vst {
+
+class ThreadedPlugin;
+
+class DSPThreadPool {
+ public:
+    static DSPThreadPool& instance(){
+        static DSPThreadPool inst;
+        return inst;
+    }
+
+    DSPThreadPool();
+    ~DSPThreadPool();
+
+    using Callback = void (*)(ThreadedPlugin *, int);
+    bool push(Callback cb, ThreadedPlugin *plugin, int numSamples);
+ private:
+    struct Task {
+        Callback cb;
+        ThreadedPlugin *plugin;
+        int numSamples;
+    };
+    LockfreeFifo<Task, 1024> queue_;
+    std::vector<std::thread> threads_;
+    Event event_;
+    std::atomic<bool> running_;
+    SpinLock pushLock_;
+    SpinLock popLock_;
+};
 
 class ThreadedPlugin final : public IPlugin {
  public:
@@ -132,6 +165,7 @@ class ThreadedPlugin final : public IPlugin {
     template<typename T>
     void threadFunction(int numSamples);
     // data
+    DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
     mutable SharedMutex mutex_;
     bool locked_ = false;
