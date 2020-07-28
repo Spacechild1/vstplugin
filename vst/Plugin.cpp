@@ -70,46 +70,6 @@ std::string getVersionString(){
     return ss.str();
 }
 
-// forward declarations to avoid including the header files
-// (creates troubles with Cocoa)
-#ifdef _WIN32
-namespace Win32 {
-namespace UIThread {
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool checkThread();
-#else
-    void poll();
-#endif
-} // UIThread
-} // Win32
-#elif defined(__APPLE__)
-namespace Cocoa {
-namespace UIThread {
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool checkThread();
-#else
-    void poll();
-#endif
-} // UIThread
-} // Cocoa
-#elif defined(USE_X11)
-namespace X11 {
-namespace UIThread {
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool checkThread();
-#else
-    void poll();
-#endif
-} // UIThread
-} // X11
-#endif
-
 /*////////////////////// platform ///////////////////*/
 
 #ifdef _WIN32
@@ -748,54 +708,6 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
         }
     };
     searchDir(root);
-#endif
-}
-
-/*/////////// Message Loop //////////////////*/
-
-namespace UIThread {
-    IPlugin::ptr create(const PluginInfo &info){
-        IPlugin::ptr plugin;
-    #ifdef _WIN32
-        plugin = Win32::UIThread::create(info);
-    #elif defined(__APPLE__)
-        plugin = Cocoa::UIThread::create(info);
-    #elif defined(USE_X11)
-        plugin = X11::UIThread::create(info);
-    #endif
-        return plugin;
-    }
-
-    void destroy(IPlugin::ptr plugin){
-    #ifdef _WIN32
-        Win32::UIThread::destroy(std::move(plugin));
-    #elif defined(__APPLE__)
-        Cocoa::UIThread::destroy(std::move(plugin));
-    #elif defined(USE_X11)
-        X11::UIThread::destroy(std::move(plugin));
-    #endif
-    }
-
-#if HAVE_UI_THREAD
-    bool checkThread(){
-    #ifdef _WIN32
-        return Win32::UIThread::checkThread();
-    #elif defined(__APPLE__)
-        return Cocoa::UIThread::checkThread();
-    #elif defined(USE_X11)
-        return X11::UIThread::checkThread();
-    #endif
-    }
-#else
-    void poll(){
-    #ifdef _WIN32
-        Win32::UIThread::poll();
-    #elif defined(__APPLE__)
-        Cocoa::UIThread::poll();
-    #elif defined(USE_X11)
-        X11::UIThread::poll();
-    #endif
-    }
 #endif
 }
 

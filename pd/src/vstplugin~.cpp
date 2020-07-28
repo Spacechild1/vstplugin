@@ -1190,16 +1190,13 @@ static void vstplugin_close_do(t_close_data *x){
     // the plugin might have been opened on the UI thread
     // but doesn't have an editor!
     if (x->uithread){
-        try {
-            UIThread::destroy(std::move(x->plugin));
-        } catch (const Error& e){
-            PdScopedLock<async> lock;
-            pd_error(x, "%s: couldn't close plugin: %s",
-                     classname(x), e.what());
-        }
-    } else {
-        x->plugin = nullptr; // we want to release it here!
+        // synchronous!
+        UIThread::call_sync([](void *y){
+            static_cast<t_close_data *>(y)->plugin = nullptr;
+        }, x);
     }
+    // if not destructed already
+    x->plugin = nullptr;
 }
 
 static void vstplugin_close(t_vstplugin *x){
@@ -1256,8 +1253,41 @@ static void vstplugin_open_do(t_open_data *x){
     // open the new VST plugin
     try {
         IPlugin::ptr plugin;
+
         if (x->editor){
-            plugin = UIThread::create(*info);
+            struct PluginData {
+                const PluginInfo *info;
+                IPlugin::ptr plugin;
+                Error error;
+            } data;
+            data.info = info;
+
+            LOG_DEBUG("create plugin in UI thread");
+            bool ok = UIThread::call_sync([](void *y){
+                auto d = (PluginData *)y;
+                try {
+                    auto p = d->info->create();
+                    if (p->info().hasEditor()){
+                        auto window = IWindow::create(*p);
+                        p->setWindow(std::move(window));
+                    }
+                    d->plugin = std::move(p);
+                } catch (const Error& e){
+                    d->error = e;
+                }
+            }, &data);
+            if (ok){
+                if (data.plugin){
+                    LOG_DEBUG("done");
+                    plugin = std::move(data.plugin);
+                } else {
+                    throw data.error;
+                }
+            } else {
+                // couldn't dispatch to UI thread (probably not available).
+                // create plugin without window
+                plugin = info->create();
+            }
         } else {
             plugin = info->create();
         }
@@ -3037,6 +3067,7 @@ EXPORT void vstplugin_tilde_setup(void){
     // read cached plugin info
     readIniFile();
 
+    UIThread::setup();
 #if !HAVE_UI_THREAD
     eventLoopClock = clock_new(0, (t_method)eventLoopTick);
     clock_delay(eventLoopClock, 0);

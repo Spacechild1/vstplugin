@@ -501,6 +501,8 @@ class IWindow {
     using ptr = std::unique_ptr<IWindow>;
     using const_ptr = std::unique_ptr<const IWindow>;
 
+    static IWindow::ptr create(IPlugin& plugin);
+
     virtual ~IWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
@@ -515,13 +517,19 @@ class IWindow {
 };
 
 namespace UIThread {
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool checkThread();
-#else
+    void setup();
+
+#if !HAVE_UI_THREAD
     void poll();
 #endif
+
+    bool check();
+
+    using Callback = void (*)(void *);
+
+    bool call_sync(Callback cb, void *user);
+
+    bool call_async(Callback cb, void *user);
 }
 
 } // vst

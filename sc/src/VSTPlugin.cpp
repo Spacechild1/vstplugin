@@ -1045,17 +1045,14 @@ void VSTPluginDelegate::close() {
         // don't set owner!
         doCmd<false>(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
-            try {
-                if (data->editor) {
-                    UIThread::destroy(std::move(data->plugin));
-                }
-                else {
-                    data->plugin = nullptr; // destruct
-                }
+            if (data->editor) {
+                // synchronous!
+                UIThread::call_sync([](void *y){
+                    static_cast<CloseCmdData *>(y)->plugin = nullptr;
+                }, data);
             }
-            catch (const Error & e) {
-                LOG_ERROR("ERROR: couldn't close plugin: " << e.what());
-            }
+            // if not destructed
+            data->plugin = nullptr;
             return false; // done
         });
         plugin_ = nullptr;
@@ -1071,8 +1068,42 @@ bool cmdOpen(World *world, void* cmdData) {
     if (info) {
         try {
             IPlugin::ptr plugin;
+
             if (data->editor) {
-                plugin = UIThread::create(*info);
+                struct PluginData {
+                    const PluginInfo *info;
+                    IPlugin::ptr plugin;
+                    Error error;
+                } data;
+                data.info = info;
+
+                LOG_DEBUG("create plugin in UI thread");
+                bool ok = UIThread::call_sync([](void *y){
+                    auto d = (PluginData *)y;
+                    try {
+                        auto p = d->info->create();
+                        if (p->info().hasEditor()){
+                            auto window = IWindow::create(*p);
+                            p->setWindow(std::move(window));
+                        }
+                        d->plugin = std::move(p);
+                    } catch (const Error& e){
+                        d->error = e;
+                    }
+                }, &data);
+
+                if (ok){
+                    if (data.plugin){
+                        LOG_DEBUG("done");
+                        plugin = std::move(data.plugin);
+                    } else {
+                        throw data.error;
+                    }
+                } else {
+                    // couldn't dispatch to UI thread (probably not available).
+                    // create plugin without window
+                    plugin = info->create();
+                }
             }
             else {
                 plugin = info->create();
@@ -2449,6 +2480,8 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_search_stop);
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
+
+    UIThread::setup();
 
     Print("VSTPlugin %s", getVersionString().c_str());
     // read cached plugin info

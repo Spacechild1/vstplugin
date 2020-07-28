@@ -8,29 +8,30 @@
 
 namespace vst {
 
-// Plugin.cpp
-std::wstring widen(const std::string& s);
-
-namespace Win32 {
-    
 namespace UIThread {
+
+void setup(){}
+
+bool check(){
+    return Win32::EventLoop::instance().checkThread();
+}
 
 #if !HAVE_UI_THREAD
 #error "HAVE_UI_THREAD must be defined for Windows!"
 // void poll(){}
 #endif
 
-IPlugin::ptr create(const PluginInfo& info){
-    return EventLoop::instance().create(info);
+bool call_sync(Callback cb, void *user){
+    return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
 }
 
-void destroy(IPlugin::ptr plugin){
-    EventLoop::instance().destroy(std::move(plugin));
+bool call_async(Callback cb, void *user){
+    return Win32::EventLoop::instance().postMessage(Win32::WM_CALL, (void *)cb, user);
 }
 
-bool checkThread(){
-    return GetCurrentThreadId() == GetThreadId(EventLoop::instance().threadHandle());
-}
+} // UIThread
+
+namespace Win32 {
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -54,27 +55,12 @@ DWORD EventLoop::run(void *user){
             break;
         }
         switch (msg.message){
-        case WM_CREATE_PLUGIN:
+        case WM_CALL:
         {
             LOG_DEBUG("WM_CREATE_PLUGIN");
-            auto data = (PluginData *)msg.wParam;
-            try {
-                auto plugin = data->info->create();
-                if (plugin->info().hasEditor()){
-                    plugin->setWindow(std::make_unique<Window>(*plugin));
-                }
-                data->plugin = std::move(plugin);
-            } catch (const Error& e){
-                data->err = e;
-            }
-            obj->notify();
-            break;
-        }
-        case WM_DESTROY_PLUGIN:
-        {
-            LOG_DEBUG("WM_DESTROY_PLUGIN");
-            auto data = (PluginData *)msg.wParam;
-            data->plugin = nullptr;
+            auto cb = (UIThread::Callback)msg.wParam;
+            auto data = (void *)msg.lParam;
+            cb(data);
             obj->notify();
             break;
         }
@@ -125,13 +111,17 @@ EventLoop::~EventLoop(){
     }
 }
 
-bool EventLoop::postMessage(UINT msg, void *data){
-    return PostThreadMessage(threadID_, msg, (WPARAM)data, 0);
+bool EventLoop::checkThread() {
+    return GetCurrentThreadId() == threadID_;
 }
 
-bool EventLoop::sendMessage(UINT msg, void *data){
+bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
+    return PostThreadMessage(threadID_, msg, (WPARAM)data1, (LPARAM)data2);
+}
+
+bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
     std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
-    if (postMessage(msg, data)){
+    if (postMessage(msg, data1, data2)){
         LOG_DEBUG("waiting...");
         event_.wait();
         LOG_DEBUG("done");
@@ -144,41 +134,6 @@ bool EventLoop::sendMessage(UINT msg, void *data){
 void EventLoop::notify(){
     event_.signal();
 }
-
-IPlugin::ptr EventLoop::create(const PluginInfo& info){
-    if (thread_){
-        LOG_DEBUG("create plugin in UI thread");
-        PluginData data;
-        data.info = &info;
-        // notify thread
-        if (sendMessage(WM_CREATE_PLUGIN, &data)){
-            if (data.plugin){
-                return std::move(data.plugin);
-            } else {
-                throw data.err;
-            }
-        } else {
-            throw Error("couldn't post to thread!");
-        }
-    } else {
-        throw Error("no UI thread!");
-    }
-}
-
-void EventLoop::destroy(IPlugin::ptr plugin){
-    if (thread_){
-        PluginData data;
-        data.plugin = std::move(plugin);
-        // notify thread
-        if (!sendMessage(WM_DESTROY_PLUGIN, &data)){
-            throw Error("couldn't post to thread!");
-        }
-    } else {
-        throw Error("no UI thread!");
-    }
-}
-
-} // UIThread
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin)
@@ -325,7 +280,7 @@ void Window::doOpen(){
     ShowWindow(hwnd_, SW_RESTORE);
     BringWindowToTop(hwnd_);
     plugin_->openEditor(getHandle());
-    SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
+    SetTimer(hwnd_, timerID, EventLoop::updateInterval, &updateEditor);
 }
 
 void Window::close(){
@@ -351,4 +306,9 @@ void Window::update(){
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 } // Win32
+
+IWindow::ptr IWindow::create(IPlugin &plugin){
+    return std::make_unique<Win32::Window>(plugin);
+}
+
 } // vst

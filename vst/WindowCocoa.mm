@@ -52,42 +52,67 @@
 @end
 
 namespace vst {
-namespace Cocoa {
 
 namespace UIThread {
 
-#if HAVE_UI_THREAD
-bool checkThread(){
+void setup(){
+#if !HAVE_UI_THREAD
+    if (check()){
+        // create NSApplication in this thread (= main thread)
+        // check if someone already created NSApp (just out of curiousity)
+        if (NSApp != nullptr){
+            LOG_WARNING("NSApp already initialized!");
+            return;
+        }
+        // NSApp will automatically point to the NSApplication singleton
+        [NSApplication sharedApplication];
+        LOG_DEBUG("init cocoa event loop (polling)");
+    } else {
+        // we don't run on the main thread and expect the host app to create
+        // the event loop (the EventLoop constructor will warn us otherwise).
+    }
+#endif
+}
+
+bool check(){
     return [NSThread isMainThread];
 }
-#else
+
+#if !HAVE_UI_THREAD
 void poll(){
-    NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
-    while (true) {
-        NSEvent *event = [NSApp
-            nextEventMatchingMask:NSAnyEventMask
-            untilDate:[[NSDate alloc] init]
-            inMode:NSDefaultRunLoopMode
-            dequeue:YES];
-        if (event){
-            [NSApp sendEvent:event];
-            [NSApp updateWindows];
-            // LOG_DEBUG("got event: " << [event type]);
-        } else {
-            break;
+    // only on the main thread!
+    if (check()){
+        NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
+        while (true) {
+            NSEvent *event = [NSApp
+                nextEventMatchingMask:NSAnyEventMask
+                untilDate:[[NSDate alloc] init]
+                inMode:NSDefaultRunLoopMode
+                dequeue:YES];
+            if (event){
+                [NSApp sendEvent:event];
+                [NSApp updateWindows];
+                // LOG_DEBUG("got event: " << [event type]);
+            } else {
+                break;
+            }
         }
+        [pool release];
     }
-    [pool release];
 }
 #endif
 
-IPlugin::ptr create(const PluginInfo& info){
-    return EventLoop::instance().create(info);
+bool call_sync(Callback cb, void *user){
+    return Cocoa::EventLoop::instance().call_sync(cb, user);
 }
 
-void destroy(IPlugin::ptr plugin){
-    EventLoop::instance().destroy(std::move(plugin));
+bool call_async(Callback cb, void *user){
+    return Cocoa::EventLoop::instance().call_async(cb, user);
 }
+
+} // UIThread
+
+namespace Cocoa {
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -98,79 +123,46 @@ EventLoop::EventLoop(){
     // transform process into foreground application
     ProcessSerialNumber psn = {0, kCurrentProcess};
     TransformProcessType(&psn, kProcessTransformToForegroundApplication);
-#if HAVE_UI_THREAD
     // we must access NSApp only once in the beginning (why?)
     haveNSApp_ = (NSApp != nullptr);
+#if HAVE_UI_THREAD
     if (haveNSApp_){
         LOG_DEBUG("init cocoa event loop");
     } else {
         LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
     }
-#else
-    // create NSApplication in this thread (= main thread) 
-    // check if someone already created NSApp (just out of curiousity)
-    if (NSApp != nullptr){
-        LOG_WARNING("NSApp already initialized!");
-        return;
-    }
-        // NSApp will automatically point to the NSApplication singleton
-    [NSApplication sharedApplication];
-    LOG_DEBUG("init cocoa event loop (polling)");
 #endif
 }
 
 EventLoop::~EventLoop(){}
 
-IPlugin::ptr EventLoop::create(const PluginInfo& info){
-    auto doCreate = [&](){
-        auto plugin = info.create();
-        if (info.hasEditor()){
-            plugin->setWindow(std::make_unique<Window>(*plugin));
-        }
-        return plugin;
-    };
-#if HAVE_UI_THREAD
+bool EventLoop::call_sync(UIThread::Callback cb, void *user){
     if (haveNSApp_){
-        auto queue = dispatch_get_main_queue();
-        __block IPlugin* plugin;
-        __block Error err;
-        LOG_DEBUG("dispatching...");
-        dispatch_sync(queue, ^{
-            try {
-                plugin = doCreate().release();
-            } catch (const Error& e){
-                err = e;
-            }
-        });
-        LOG_DEBUG("done!");
-        if (plugin){
-            return IPlugin::ptr(plugin);
+        if (UIThread::check()){
+            cb(user); // we're on the main thread
         } else {
-            throw err;
+            auto queue = dispatch_get_main_queue();
+            dispatch_sync_f(queue, user, cb);
         }
+        return true;
     } else {
-        return info.create(); // create without window in this thread
+        return false;
     }
-#else
-    return doCreate();
-#endif
 }
 
-void EventLoop::destroy(IPlugin::ptr plugin){
-#if HAVE_UI_THREAD
+bool EventLoop::call_async(UIThread::Callback cb, void *user){
     if (haveNSApp_){
-        auto queue = dispatch_get_main_queue();
-        __block IPlugin* p = plugin.release();
-        LOG_DEBUG("dispatching...");
-        dispatch_sync(queue, ^{ delete p; });
-        LOG_DEBUG("done!");
-        return;
+        if (UIThread::check()){
+            cb(user); // we're on the main thread
+        } else {
+            auto queue = dispatch_get_main_queue();
+            dispatch_async_f(queue, user, cb);
+        }
+        return true;
+    } else {
+        return false;
     }
-#endif
-    // plugin destroyed
 }
-
-} // UIThread
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin) {
@@ -236,7 +228,7 @@ void Window::doOpen(){
             setFrame(origin_.x, origin_.y, right - left, bottom - top);
         }
 
-        timer_ = [NSTimer scheduledTimerWithTimeInterval:(UIThread::updateInterval * 0.001)
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(EventLoop::updateInterval * 0.001)
                     target:window
                     selector:@selector(updateEditor)
                     userInfo:nil
@@ -328,4 +320,9 @@ void Window::setSize(int w, int h){
 }
 
 } // Cocoa
+
+IWindow::ptr IWindow::create(IPlugin &plugin){
+    return std::make_unique<Cocoa::Window>(plugin);
+}
+
 } // vst

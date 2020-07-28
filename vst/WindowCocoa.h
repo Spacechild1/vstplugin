@@ -22,28 +22,22 @@
 
 namespace vst {
 namespace Cocoa {
-    
-namespace UIThread {
-
-const int updateInterval = 30;
 
 class EventLoop {
  public:
+    static const int updateInterval = 30;
+
     static EventLoop& instance();
 
     EventLoop();
     ~EventLoop();
 
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool postMessage();
+    bool call_sync(UIThread::Callback cb, void *user);
+
+    bool call_async(UIThread::Callback cb, void *user);
  private:
     bool haveNSApp_ = false;
-#endif
 };
-
-} // UIThread
 
 class Window : public IWindow {
  public:

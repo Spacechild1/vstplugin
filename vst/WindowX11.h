@@ -13,30 +13,31 @@
 namespace vst {
 namespace X11 {
 
-namespace UIThread {
-
-const int updateInterval = 30;
+class Window;
 
 class EventLoop {
  public:
+    static const int updateInterval = 30;
+
     static EventLoop& instance();
 
     EventLoop();
     ~EventLoop();
 
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
+    bool call_sync(UIThread::Callback cb, void *user);
+    bool call_async(UIThread::Callback cb, void *user);
+
     bool postClientEvent(::Window window, Atom atom,
                          const char *data = nullptr, size_t size = 0);
     bool sendClientEvent(::Window, Atom atom,
                          const char *data = nullptr, size_t size = 0);
-    std::thread::id threadID(){ return thread_.get_id(); }
+
+    bool checkThread();
+    Display *getDisplay() { return display_; }
+
+    void registerWindow(Window& w);
+    void unregisterWindow(Window& w);
  private:
-    struct PluginData {
-        const PluginInfo* info;
-        IPlugin::ptr plugin;
-        Error err;
-    };
     void run();
     void notify();
     void updatePlugins();
@@ -50,8 +51,6 @@ class EventLoop {
     std::atomic<bool> timerThreadRunning_{true};
 };
 
-} // UIThread
-
 class Window : public IWindow {
  public:
     Window(Display &display, IPlugin& plugin);
@@ -60,6 +59,8 @@ class Window : public IWindow {
     void* getHandle() override {
         return (void*)window_;
     }
+
+    IPlugin* getPlugin() { return plugin_; }
 
     void setTitle(const std::string& title) override;
 

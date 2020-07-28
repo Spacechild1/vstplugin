@@ -10,36 +10,27 @@ namespace vst {
 namespace Win32 {
 
 enum Message {
-    WM_CREATE_PLUGIN = WM_USER + 100,
-    WM_DESTROY_PLUGIN,
+    WM_CALL = WM_USER + 100,
     WM_OPEN_EDITOR,
     WM_CLOSE_EDITOR,
     WM_EDITOR_POS,
     WM_EDITOR_SIZE
 };
 
-namespace UIThread {
-
-const int updateInterval = 30;
-
 class EventLoop {
  public:
+    static  const int updateInterval = 30;
+
     static EventLoop& instance();
 
     EventLoop();
     ~EventLoop();
 
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-    bool postMessage(UINT msg, void *data = nullptr); // non-blocking
-    bool sendMessage(UINT msg, void *data = nullptr); // blocking
-    HANDLE threadHandle() { return thread_; }
+    bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
+    bool sendMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // blocking
+
+    bool checkThread();
  private:
-    struct PluginData {
-        const PluginInfo* info;
-        IPlugin::ptr plugin;
-        Error err;
-    };
     static DWORD WINAPI run(void *user);
     LRESULT WINAPI procedure(HWND hWnd, UINT Msg,
                         WPARAM wParam, LPARAM lParam);
@@ -49,8 +40,6 @@ class EventLoop {
     std::mutex mutex_;
     Event event_;
 };
-
-} // UIThread
 
 class Window : public IWindow {
  public:

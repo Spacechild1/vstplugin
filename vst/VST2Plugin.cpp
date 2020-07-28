@@ -1537,7 +1537,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterGetCurrentProcessLevel:
         DEBUG_HOSTCODE("audioMasterGetCurrentProcessLevel");
     #if HAVE_UI_THREAD
-        if (UIThread::checkThread()){
+        if (UIThread::check()){
             return kVstProcessLevelUser;
         } else
     #endif
