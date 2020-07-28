@@ -41,6 +41,7 @@
 #include <fstream>
 #include <atomic>
 #include <array>
+#include <vector>
 
 	// log level: 0 (error), 1 (warning), 2 (verbose), 3 (debug)
 #ifndef LOGLEVEL
@@ -129,7 +130,27 @@ std::string fileBaseName(const std::string& path);
 
 std::string errorMessage(int err);
 
-//--------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------
+
+enum class CpuArch {
+    unknown,
+    amd64,
+    i386,
+    arm,
+    aarch64,
+    ppc,
+    ppc64
+};
+
+CpuArch getHostCpuArchitecture();
+
+const char * getCpuArchString(CpuArch arch);
+
+std::vector<CpuArch> getCpuArchitectures(const std::string& path);
+
+void printCpuArchitectures(const std::string& path);
+
+//--------------------------------------------------------------------------------------
 
 // cross platform fstream, taking UTF-8 file paths.
 // will become obsolete when we can switch the whole project to C++17
@@ -154,8 +175,7 @@ protected:
     std::string path_;
 };
 
-//--------------------------------------------------------------------------------------------------------
-
+//----------------------------------------------------------------------------------------
 enum class ThreadPriority {
     Low,
     High
@@ -163,7 +183,7 @@ enum class ThreadPriority {
 
 void setThreadPriority(ThreadPriority p);
 
-//--------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
 
 template<typename T, size_t N>
 class LockfreeFifo {

@@ -110,8 +110,12 @@ endif()
 
 # VST
 set(VST "${CMAKE_SOURCE_DIR}/vst")
-set(VST_HEADERS "${VST}/Interface.h" "${VST}/Utility.h" "${VST}/PluginManager.h" "${VST}/ThreadedPlugin.h")
-set(VST_SRC "${VST}/Plugin.cpp" "${VST}/ThreadedPlugin.cpp" "${VST}/Sync.cpp" "${VST}/Utility.cpp")
+set(VST_HEADERS "${VST}/Interface.h" "${VST}/Utility.h"
+    "${VST}/PluginManager.h" "${VST}/ThreadedPlugin.h")
+set(VST_SRC "${VST}/PluginInfo.cpp" "${VST}/PluginManager.cpp"
+    "${VST}/CpuArch.cpp" "${VST}/Loader.cpp" "${VST}/Module.cpp"
+    "${VST}/Search.cpp" "${VST}/Sync.cpp" "${VST}/Utility.cpp"
+    "${VST}/ThreadedPlugin.cpp")
 set(VST_LIBS)
 
 # VST2 SDK:
