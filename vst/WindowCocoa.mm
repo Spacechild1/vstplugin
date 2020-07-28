@@ -181,13 +181,9 @@ Window::~Window(){
 
 void Window::open(){
     LOG_DEBUG("show window");
-#if HAVE_UI_THREAD
-    dispatch_async(dispatch_get_main_queue(), ^{
-        doOpen();
-    });
-#else
-    doOpen();
-#endif
+    UIThread::callAsync([](void *x){
+        static_cast<Window *>(x)->doOpen();
+    }, this);
 }
 
 // to be called on the main thread
@@ -242,13 +238,9 @@ void Window::doOpen(){
 
 void Window::close(){
     LOG_DEBUG("hide window");
-#if HAVE_UI_THREAD
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [window_ performClose:nil];
-    });
-#else
-    [window_ performClose:nil];
-#endif
+    UIThread::callAsync([](void *x){
+        [static_cast<Window *>(x)->window_ performClose:nil];
+    }, this);
 }
 
 // to be called on the main thread
