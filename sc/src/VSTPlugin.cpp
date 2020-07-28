@@ -1047,7 +1047,7 @@ void VSTPluginDelegate::close() {
             auto data = (CloseCmdData*)inData;
             if (data->editor) {
                 // synchronous!
-                UIThread::call_sync([](void *y){
+                UIThread::callSync([](void *y){
                     static_cast<CloseCmdData *>(y)->plugin = nullptr;
                 }, data);
             }
@@ -1078,7 +1078,7 @@ bool cmdOpen(World *world, void* cmdData) {
                 data.info = info;
 
                 LOG_DEBUG("create plugin in UI thread");
-                bool ok = UIThread::call_sync([](void *y){
+                bool ok = UIThread::callSync([](void *y){
                     auto d = (PluginData *)y;
                     try {
                         auto p = d->info->create();

@@ -523,13 +523,13 @@ namespace UIThread {
     void poll();
 #endif
 
-    bool check();
+    bool isCurrentThread();
 
     using Callback = void (*)(void *);
 
-    bool call_sync(Callback cb, void *user);
+    bool callSync(Callback cb, void *user);
 
-    bool call_async(Callback cb, void *user);
+    bool callAsync(Callback cb, void *user);
 }
 
 } // vst

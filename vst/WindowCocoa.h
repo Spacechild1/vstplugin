@@ -32,9 +32,9 @@ class EventLoop {
     EventLoop();
     ~EventLoop();
 
-    bool call_sync(UIThread::Callback cb, void *user);
+    bool callSync(UIThread::Callback cb, void *user);
 
-    bool call_async(UIThread::Callback cb, void *user);
+    bool callAsync(UIThread::Callback cb, void *user);
  private:
     bool haveNSApp_ = false;
 };

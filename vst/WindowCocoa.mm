@@ -57,7 +57,7 @@ namespace UIThread {
 
 void setup(){
 #if !HAVE_UI_THREAD
-    if (check()){
+    if (isCurrentThread()){
         // create NSApplication in this thread (= main thread)
         // check if someone already created NSApp (just out of curiousity)
         if (NSApp != nullptr){
@@ -74,14 +74,14 @@ void setup(){
 #endif
 }
 
-bool check(){
+bool isCurrentThread(){
     return [NSThread isMainThread];
 }
 
 #if !HAVE_UI_THREAD
 void poll(){
     // only on the main thread!
-    if (check()){
+    if (isCurrentThread()){
         NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
         while (true) {
             NSEvent *event = [NSApp
@@ -102,12 +102,12 @@ void poll(){
 }
 #endif
 
-bool call_sync(Callback cb, void *user){
-    return Cocoa::EventLoop::instance().call_sync(cb, user);
+bool callSync(Callback cb, void *user){
+    return Cocoa::EventLoop::instance().callSync(cb, user);
 }
 
-bool call_async(Callback cb, void *user){
-    return Cocoa::EventLoop::instance().call_async(cb, user);
+bool callAsync(Callback cb, void *user){
+    return Cocoa::EventLoop::instance().callAsync(cb, user);
 }
 
 } // UIThread
@@ -136,9 +136,9 @@ EventLoop::EventLoop(){
 
 EventLoop::~EventLoop(){}
 
-bool EventLoop::call_sync(UIThread::Callback cb, void *user){
+bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (haveNSApp_){
-        if (UIThread::check()){
+        if (UIThread::isCurrentThread()){
             cb(user); // we're on the main thread
         } else {
             auto queue = dispatch_get_main_queue();
@@ -150,9 +150,9 @@ bool EventLoop::call_sync(UIThread::Callback cb, void *user){
     }
 }
 
-bool EventLoop::call_async(UIThread::Callback cb, void *user){
+bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     if (haveNSApp_){
-        if (UIThread::check()){
+        if (UIThread::isCurrentThread()){
             cb(user); // we're on the main thread
         } else {
             auto queue = dispatch_get_main_queue();

@@ -1191,7 +1191,7 @@ static void vstplugin_close_do(t_close_data *x){
     // but doesn't have an editor!
     if (x->uithread){
         // synchronous!
-        UIThread::call_sync([](void *y){
+        UIThread::callSync([](void *y){
             static_cast<t_close_data *>(y)->plugin = nullptr;
         }, x);
     }
@@ -1263,7 +1263,7 @@ static void vstplugin_open_do(t_open_data *x){
             data.info = info;
 
             LOG_DEBUG("create plugin in UI thread");
-            bool ok = UIThread::call_sync([](void *y){
+            bool ok = UIThread::callSync([](void *y){
                 auto d = (PluginData *)y;
                 try {
                     auto p = d->info->create();

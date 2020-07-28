@@ -9,7 +9,7 @@ namespace UIThread {
 
 void setup(){}
 
-bool check(){
+bool isCurrentThread(){
     return X11::EventLoop::instance().checkThread();
 }
 
