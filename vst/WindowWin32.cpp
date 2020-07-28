@@ -21,11 +21,11 @@ bool isCurrentThread(){
 // void poll(){}
 #endif
 
-bool call_sync(Callback cb, void *user){
+bool callSync(Callback cb, void *user){
     return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
 }
 
-bool call_async(Callback cb, void *user){
+bool callAsync(Callback cb, void *user){
     return Win32::EventLoop::instance().postMessage(Win32::WM_CALL, (void *)cb, user);
 }
 

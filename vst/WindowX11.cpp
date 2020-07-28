@@ -18,12 +18,12 @@ bool isCurrentThread(){
 // void poll(){}
 #endif
 
-bool call_sync(Callback cb, void *user){
-    return X11::EventLoop::instance().call_sync(cb, user);
+bool callSync(Callback cb, void *user){
+    return X11::EventLoop::instance().callSync(cb, user);
 }
 
-bool call_async(Callback cb, void *user){
-    return X11::EventLoop::instance().call_async(cb, user);
+bool callAsync(Callback cb, void *user){
+    return X11::EventLoop::instance().callAsync(cb, user);
 }
 
 } // UIThread
@@ -184,14 +184,14 @@ void EventLoop::updatePlugins(){
     }
 }
 
-bool EventLoop::call_sync(UIThread::Callback cb, void *user){
+bool EventLoop::callSync(UIThread::Callback cb, void *user){
     char buf[sizeof(cb) + sizeof(user)];
     memcpy(buf, &cb, sizeof(cb));
     memcpy(buf + sizeof(cb), &user, sizeof(user));
     return sendClientEvent(root_, wmCall, buf, sizeof(buf));
 }
 
-bool EventLoop::call_async(UIThread::Callback cb, void *user){
+bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     char buf[sizeof(cb) + sizeof(user)];
     memcpy(buf, &cb, sizeof(cb));
     memcpy(buf + sizeof(cb), &user, sizeof(user));
