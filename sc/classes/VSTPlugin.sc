@@ -339,6 +339,8 @@ VSTPluginDesc {
 						\outputs, { info.numOutputs = value.asInteger },
 						\auxinputs, { info.numAuxInputs = value.asInteger },
 						\auxoutputs, { info.numAuxOutputs = value.asInteger },
+						\pgmchange, {}, // ignore
+						\bypass, {}, // ignore
 						\flags,
 						{
 							f = hex2int.(value);
