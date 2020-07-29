@@ -546,8 +546,8 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
             if (category != "Shell"){
                 break; // done!
             }
-#if USE_VST2
         } else if (line == "[shell]"){
+        #if USE_VST2
             shellPlugins.clear();
             std::getline(file, line);
             int n = getCount(line);
@@ -558,14 +558,14 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                 shell.id = std::stol(line.substr(pos + 1));
                 shellPlugins.push_back(std::move(shell));
             }
+        #endif
             break; // done!
-#endif
         } else if (start){
             std::string key;
             std::string value;
             getKeyValuePair(line, key, value);
 
-        #define MATCH(name, field) else if (name == key) parseArg(field, value);
+        #define MATCH(name, field) else if (name == key) { parseArg(field, value); }
         #define IGNORE(name) else if (name == key) {}
             try {
                 if (key == "id"){
@@ -610,8 +610,6 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     }
                 }
             }
-        #undef MATCH
-        #undef IGNORE
             catch (const std::invalid_argument& e) {
                 throw Error("invalid argument for key '" + key + "': " + value);
             }
