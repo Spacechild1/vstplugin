@@ -38,13 +38,13 @@ if (WIN32 OR MINGW)
     endif()
     set(APPDATA $ENV{APPDATA})
     set(LOCALAPPDATA $ENV{LOCALAPPDATA})
-    if (MINGW)
-        # For MinGW, CMake thinks that "C:/" is a relative path, so we have to bash it to "/c/"...
-        # For simplicity, I just assume that program files are on the C drive. A CMake guru should fix this!
-        string(REPLACE "C:\\" "/c/" PROGRAMFILES ${PROGRAMFILES})
-        string(REPLACE "C:\\" "/c/" APPDATA ${APPDATA})
-        string(REPLACE "C:\\" "/c/" APPDATA ${LOCALAPPDATA})
-    endif()
+#    if (MINGW)
+#        # For MinGW, CMake thinks that "C:/" is a relative path, so we have to bash it to "/c/"...
+#        # For simplicity, I just assume that program files are on the C drive. A CMake guru should fix this!
+#        string(REPLACE "C:\\" "/c/" PROGRAMFILES ${PROGRAMFILES})
+#        string(REPLACE "C:\\" "/c/" APPDATA ${APPDATA})
+#        string(REPLACE "C:\\" "/c/" APPDATA ${LOCALAPPDATA})
+#    endif()
 endif()
 
 # logging
@@ -108,25 +108,12 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-# VST
-set(VST "${CMAKE_SOURCE_DIR}/vst")
-set(VST_HEADERS "${VST}/Interface.h" "${VST}/Utility.h"
-    "${VST}/PluginManager.h" "${VST}/ThreadedPlugin.h")
-set(VST_SRC "${VST}/PluginInfo.cpp" "${VST}/PluginManager.cpp"
-    "${VST}/CpuArch.cpp" "${VST}/Loader.cpp" "${VST}/Module.cpp"
-    "${VST}/Search.cpp" "${VST}/Sync.cpp" "${VST}/Utility.cpp"
-    "${VST}/ThreadedPlugin.cpp")
-set(VST_LIBS)
-
-# VST2 SDK:
+# VST2 SDK
 option(VST2 "Enable VST2.x plug-ins" ON)
 if (VST2)
-    set(VST2DIR "${VST}/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
+    set(VST2DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
     add_definitions(-DUSE_VST2=1)
-    list(APPEND VST_HEADERS "${VST}/VST2Plugin.h")
-    list(APPEND VST_SRC "${VST}/VST2Plugin.cpp")
     message(STATUS "VST2DIR: ${VST2DIR}")
-    include_directories(${VST2DIR}/pluginterfaces/vst2.x)
 endif()
 option(FST "Use FST instead of the official VST2 SDK")
 if (FST)
@@ -137,33 +124,24 @@ endif()
 # VST3 SDK
 option(VST3 "Enable VST3 plug-ins" ON)
 if (VST3)
-    set(VST3DIR "${VST}/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
+    set(VST3DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
     add_definitions(-DUSE_VST3=1)
-    list(APPEND VST_HEADERS "${VST}/VST3Plugin.h")
-    list(APPEND VST_SRC "${VST}/VST3Plugin.cpp")
-    include_directories(${VST3DIR})
-    include_directories(${VST3DIR}/pluginterfaces)
-    include_directories(${VST3DIR}/pluginterfaces/base)
-    include_directories(${VST3DIR}/pluginterfaces/vst)
-    include_directories(${VST3DIR}/pluginterfaces/gui)
     message(STATUS "VST3DIR: ${VST3DIR}")
 endif()
 
+# vst library
 include_directories(vst)
+set(VST "vst")
+set(VST_LIBS ${VST})
 
-# platform specific VST sources and linker flags
+# platform specific linker flags
 if (LINUX)
-    add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1)
-    list(APPEND VST_HEADERS "${VST}/WindowX11.h")
-    list(APPEND VST_SRC "${VST}/WindowX11.cpp")
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11" "-pthread")
     if(STATIC_LIBS)
         list(APPEND VST_LIBS "-static-libstdc++" "-static-libgcc")
     endif()
-endif()
-if (MINGW OR WIN32)
-    list(APPEND VST_HEADERS "${VST}/WindowWin32.h")
-    list(APPEND VST_SRC "${VST}/WindowWin32.cpp")
+    add_definitions("-fPIC")
+    set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 endif()
 if (MINGW)
     list(APPEND VST_LIBS "-lstdc++fs")
@@ -174,16 +152,15 @@ if (MINGW)
     endif()
 endif()
 if (APPLE)
-    add_definitions(-fno-objc-arc)
-    list(APPEND VST_HEADERS "${VST}/WindowCocoa.h")
-    list(APPEND VST_SRC "${VST}/WindowCocoa.mm")
     list(APPEND VST_LIBS "-framework Cocoa" "-lpthread")
 endif()
 
+add_subdirectory(vst)
+
 # probe exe
 set(PROBE "probe")
-add_executable(${PROBE} "${VST}/${PROBE}.cpp") # probe exe
-target_sources(${PROBE} PUBLIC ${VST_HEADERS} ${VST_SRC})
+add_executable(${PROBE} "vst/${PROBE}.cpp") # probe exe
+target_sources(${PROBE} PUBLIC ${SRC})
 target_link_libraries(${PROBE} ${VST_LIBS})
 set_target_properties(${PROBE} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
@@ -195,13 +172,13 @@ endif()
 set(PROBE_PATH $<TARGET_FILE:${PROBE}>)
 
 # vstplugin~
-option(PD "build [vstplugin~]" ON)
+option(PD "build Pd external" ON)
 if (PD)
     add_subdirectory(pd)
 endif()
 
 # VSTPlugin
-option(SC "build 'VSTPlugin'" ON)
+option(SC "build SC plugin" ON)
 if (SC)
     add_subdirectory(sc)
 endif()

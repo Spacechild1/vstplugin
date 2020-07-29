@@ -42,13 +42,13 @@ endif()
 message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 # the UGen
-add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
+add_library(${PROJECT} MODULE ${SRC})
 target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog)
 target_link_libraries(${PROJECT} ${VST_LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
 if(SUPERNOVA)
-    add_library(${PROJECT}_supernova MODULE ${SRC} ${VST_SRC})
+    add_library(${PROJECT}_supernova MODULE ${SRC})
     target_compile_definitions(${PROJECT}_supernova PUBLIC -DSUPERNOVA=1)
     target_link_libraries(${PROJECT}_supernova ${VST_LIBS})
     set_target_properties(${PROJECT}_supernova PROPERTIES LINK_FLAGS_RELEASE -s)

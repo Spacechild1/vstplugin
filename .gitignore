@@ -2,6 +2,7 @@
 test**
 vst/VST_SDK**
 build**
+install**
 *.qbs*
 *.vs
 *.pd_darwin
