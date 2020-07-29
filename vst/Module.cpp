@@ -10,6 +10,8 @@
 # include <dlfcn.h>
 #endif
 
+#include <sstream>
+
 /*///////////// IModule //////////////*/
 
 // from VST3_SDK/pluginterfaces/base/fplatform.h
