@@ -8,11 +8,13 @@ VSTPluginController {
 	var <info;
 	var <midi;
 	var <program;
+	var <latency;
 	var <>wait;
 	// callbacks
 	var <>parameterAutomated;
 	var <>midiReceived;
 	var <>sysexReceived;
+	var <>latencyChanged;
 	// private
 	var oscFuncs;
 	var <paramCache; // only for dependants
@@ -172,6 +174,11 @@ VSTPluginController {
 			value = msg[4].asFloat;
 			parameterAutomated.value(index, value);
 		}, '/vst_auto'));
+		// latency changed:
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			var nsamples = msg[3].asInteger;
+			latencyChanged.value(nsamples);
+		}, '/vst_latency'));
 		// MIDI received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			// convert to integers and pass as args to action
@@ -238,6 +245,7 @@ VSTPluginController {
 					loaded.if {
 						theInfo.notNil.if {
 							window = msg[4].asBoolean;
+							latency = msg[5].asInteger;
 							info = theInfo; // now set 'info' property
 							info.addDependant(this);
 							paramCache = Array.fill(theInfo.numParameters, [0, nil]);
@@ -261,6 +269,8 @@ VSTPluginController {
 					loading = false;
 					this.changed('/open', path, loaded);
 					action.value(this, loaded);
+					// report latency
+					latency.notNil.if { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
 				this.sendMsg('/open', theInfo.key, editor.asInteger, threaded.asInteger);
@@ -281,7 +291,8 @@ VSTPluginController {
 	}
 	prClear {
 		info !? { info.removeDependant(this) };
-		loaded = false; window = false; info = nil;	paramCache = nil; programNames = nil; didQuery = false;
+		loaded = false; window = false; latency = nil; info = nil;
+		paramCache = nil; programNames = nil; didQuery = false;
 		program = nil; currentPreset = nil; loading = false;
 	}
 	addDependant { arg dependant;

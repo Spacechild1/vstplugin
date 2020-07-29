@@ -102,6 +102,10 @@ class VSTPluginDelegate :
 {
     friend class VSTPlugin;
 public:
+    enum {
+        LatencyChange = -1
+    };
+
     VSTPluginDelegate(VSTPlugin& owner);
     ~VSTPluginDelegate();
 
@@ -116,6 +120,7 @@ public:
     int32 numAuxOutChannels() const { return numAuxOutChannels_; }
 
     void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
 
@@ -170,6 +175,7 @@ public:
     void sendCurrentProgramName();
     void sendParameter(int32 index, float value); // unchecked
     void sendParameterAutomated(int32 index, float value); // unchecked
+    void sendLatencyChange(int nsamples);
     // perform sequenced command
     template<bool owner = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
@@ -178,6 +184,7 @@ private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
     bool editor_ = false;
+    bool threaded_ = false;
     bool isLoading_ = false;
     World* world_ = nullptr;
     // cache (for cmdOpen)
@@ -269,11 +276,11 @@ private:
 
     // threading
     struct ParamChange {
-        int index;
+        int index; // negative value for other events
         float value;
     };
     LockfreeFifo<ParamChange, 16> paramQueue_;
-    std::mutex paramQueueMutex_; // for writers
+    SharedMutex paramQueueMutex_; // for writers
 };
 
 

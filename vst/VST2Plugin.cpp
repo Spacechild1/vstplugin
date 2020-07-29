@@ -219,6 +219,9 @@ IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
 VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc)
     : plugin_(plugin), info_(std::move(desc))
 {
+    plugin_->user = this;
+    latency_ = plugin->initialDelay;
+
     memset(&timeInfo_, 0, sizeof(timeInfo_));
     timeInfo_.sampleRate = 44100;
     timeInfo_.tempo = 120;
@@ -236,8 +239,8 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
     // pre-allocate midi queue
     midiQueue_.reserve(DEFAULT_EVENT_QUEUE_SIZE);
 
-    plugin_->user = this;
     dispatch(effOpen);
+
     // are we probing?
     if (!info_){
         // create and fill plugin info
@@ -688,6 +691,10 @@ void VST2Plugin::setNumSpeakers(int in, int out, int auxin, int auxout){
     if (!input || !output){
         LOG_DEBUG("(effGetSpeakerArrangement not supported)");
     }
+}
+
+int VST2Plugin::getLatencySamples(){
+    return plugin_->initialDelay;
 }
 
 void VST2Plugin::setTempoBPM(double tempo){
@@ -1368,6 +1375,14 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
 }
 
 void VST2Plugin::preProcess(int nsamples){
+        // check latency
+    if (plugin_->initialDelay != latency_){
+        auto listener = listener_.lock();
+        if (listener){
+            listener->latencyChanged(plugin_->initialDelay);
+        }
+        latency_ = plugin_->initialDelay;
+    }
         // send MIDI events:
     int numEvents = vstEvents_->numEvents;
         // resize buffer if needed

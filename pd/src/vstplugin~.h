@@ -82,6 +82,7 @@ class t_vstplugin {
     t_symbol *x_preset = nullptr;
     bool x_async = false;
     bool x_uithread = false;
+    bool x_threaded = false;
     bool x_keep = false;
     int x_commands = 0;
     Bypass x_bypass = Bypass::Off;
@@ -93,7 +94,7 @@ class t_vstplugin {
 #endif
     // search
     t_search_data * x_search_data = nullptr;
-    // methods
+    // helper methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
@@ -120,6 +121,10 @@ class t_vstparam {
 // VST editor
 class t_vsteditor : public IPluginListener {
  public:
+    enum {
+        LatencyChange = -1
+    };
+
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
     // setup the generic Pd editor
@@ -142,11 +147,12 @@ class t_vsteditor : public IPluginListener {
         return e_owner->x_plugin ? e_owner->x_plugin->getWindow() : nullptr;
     }
     void set_pos(int x, int y);
- private:
     // plugin callbacks
     void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
+private:
     // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
         if (e_canvas) pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
@@ -168,7 +174,11 @@ class t_vsteditor : public IPluginListener {
     SharedMutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
-    std::vector<std::pair<int, float>> e_automated;
+    struct param_change {
+        int index; // negative value for other events
+        float value;
+    };
+    std::vector<param_change> e_automated; // negative
     std::vector<MidiEvent> e_midi;
     std::vector<SysexEvent> e_sysex;
     bool e_tick = false;

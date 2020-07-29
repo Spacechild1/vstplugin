@@ -761,7 +761,12 @@ void t_vsteditor::post_event(T& queue, U&& event){
 
 // parameter automation notification might come from another thread (VST GUI editor).
 void t_vsteditor::parameterAutomated(int index, float value){
-    post_event(e_automated, std::make_pair(index, value));
+    post_event(e_automated, param_change{index, value});
+}
+
+// latency change notification might come from another thread
+void t_vsteditor::latencyChanged(int nsamples){
+    post_event(e_automated, param_change{LatencyChange, (float)nsamples});
 }
 
 // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
@@ -786,16 +791,24 @@ void t_vsteditor::tick(t_vsteditor *x){
     }
 
     // automated parameters:
-    for (auto& param : x->e_automated){
-        int index = param.first;
-        float value = param.second;
-        // update the generic GUI
-        x->param_changed(index, value);
-        // send message
-        t_atom msg[2];
-        SETFLOAT(&msg[0], index);
-        SETFLOAT(&msg[1], value);
-        outlet_anything(outlet, gensym("param_automated"), 2, msg);
+    for (auto& p : x->e_automated){
+        if (p.index >= 0){
+            // update the generic GUI
+            x->param_changed(p.index, p.value);
+            // send message
+            t_atom msg[2];
+            SETFLOAT(&msg[0], p.index);
+            SETFLOAT(&msg[1], p.value);
+            outlet_anything(outlet, gensym("param_automated"), 2, msg);
+        } else if (p.index == LatencyChange){
+            t_atom a;
+            int latency = p.value;
+            if (x->e_owner->x_threaded){
+                latency += x->e_owner->x_blocksize;
+            }
+            SETFLOAT(&a, latency);
+            outlet_anything(outlet, gensym("latency"), 1, &a);
+        }
     }
     x->e_automated.clear();
     // midi events:
@@ -1326,6 +1339,14 @@ static void vstplugin_open_done(t_open_data *x){
         // update Pd editor
         x->owner->x_editor->setup();
         verbose(PD_DEBUG, "opened '%s'", info.name.c_str());
+        // report initial latency
+        t_atom a;
+        int latency = x->owner->x_plugin->getLatencySamples();
+        if (x->owner->x_threaded){
+            latency += x->owner->x_blocksize;
+        }
+        SETFLOAT(&a, latency);
+        outlet_anything(x->owner->x_messout, gensym("latency"), 1, &a);
     }
 }
 
@@ -1413,6 +1434,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     }
     x->x_async = async; // remember *how* we openend the plugin
     x->x_uithread = editor; // remember *where* we opened the plugin
+    x->x_threaded = threaded;
 }
 
 static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
@@ -2698,6 +2720,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         vstplugin_open_do<false>(&data);
         vstplugin_open_done(&data);
         x_uithread = editor; // !
+        x_threaded = threaded;
         x_path = file; // HACK: set symbol for vstplugin_loadbang
     }
 
@@ -2943,6 +2966,10 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->setup_plugin<false>(*x->x_plugin);
+        if (x->x_threaded && blocksize != x->x_blocksize){
+            // queue(!) latency change notification
+            x->x_editor->latencyChanged(x->x_plugin->getLatencySamples());
+        }
     }
     x->x_blocksize = blocksize;
     x->x_sr = sr;

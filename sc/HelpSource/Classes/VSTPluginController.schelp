@@ -414,6 +414,14 @@ returns:: the (static) plugin description (see link::Classes/VSTPluginDesc::).
 METHOD:: loaded
 returns:: whether a plugin is currently loaded.
 
+METHOD:: latency
+returns:: the current processing latency in samples.
+
+NOTE:: The reported value includes the additional latency caused by multithreading (see the code::threaded:: argument in link::#-open::).::
+
+METHOD:: latencyChanged
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin's processing latency changes. The function receives the new latency as its only argument. See also link::#-latency::.
+
 METHOD:: reset
 METHOD:: resetMsg
 reset the plugin state.
@@ -585,7 +593,7 @@ code::
 ::
 
 METHOD:: parameterAutomated
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when parameters are automated from the VST editor.
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when parameters are automated in the VST editor.
 
 discussion::
 The action receives the parameter index and value. This can be helpful if you want to know the index of a parameter in the editor.

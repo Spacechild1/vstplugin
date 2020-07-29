@@ -56,6 +56,7 @@ class IPluginListener {
     using ptr = std::shared_ptr<IPluginListener>;
     virtual ~IPluginListener(){}
     virtual void parameterAutomated(int index, float value) = 0;
+    virtual void latencyChanged(int nsamples) = 0;
     virtual void midiEvent(const MidiEvent& event) = 0;
     virtual void sysexEvent(const SysexEvent& event) = 0;
 };
@@ -111,6 +112,7 @@ class IPlugin {
     virtual void resume() = 0;
     virtual void setBypass(Bypass state) = 0;
     virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
+    virtual int getLatencySamples() = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;
 

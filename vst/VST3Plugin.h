@@ -210,9 +210,10 @@ class VST3Plugin final :
     void resume() override;
     void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
+    int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override {
-        listener_ = std::move(listener);
+        listener_ = listener;
     }
 
     void setTempoBPM(double tempo) override;

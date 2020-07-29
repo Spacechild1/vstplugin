@@ -666,6 +666,14 @@ tresult VST3Plugin::restartComponent(int32 flags){
     PRINT_FLAG(Vst::kPrefetchableSupportChanged)
     PRINT_FLAG(Vst::kRoutingInfoChanged)
 #undef PRINT_FLAG
+
+    if (flags & Vst::kLatencyChanged){
+        auto listener = listener_.lock();
+        if (listener){
+            listener->latencyChanged(processor_->getLatencySamples());
+        }
+    }
+
     return kResultOk;
 }
 
@@ -1283,6 +1291,10 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
               << ", auxin " << numInputChannels_[Aux]
               << ", out " << numOutputChannels_[Main]
               << ", auxout " << numOutputChannels_[Aux]);
+}
+
+int VST3Plugin::getLatencySamples() {
+    return processor_->getLatencySamples();
 }
 
 void VST3Plugin::setTempoBPM(double tempo){

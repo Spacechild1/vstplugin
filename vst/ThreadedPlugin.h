@@ -58,6 +58,9 @@ class ThreadedPlugin final : public IPlugin {
     void resume() override;
     void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
+    int getLatencySamples() override {
+        return plugin_->getLatencySamples();
+    }
 
     void setListener(IPluginListener::ptr listener) override;
 

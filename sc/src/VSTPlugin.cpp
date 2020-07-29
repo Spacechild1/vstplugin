@@ -875,7 +875,11 @@ void VSTPlugin::next(int inNumSamples) {
         // send parameter automation notification posted from the GUI thread [or NRT thread]
         ParamChange p;
         while (paramQueue_.pop(p)){
-            delegate_->sendParameterAutomated(p.index, p.value);
+            if (p.index >= 0){
+                delegate_->sendParameterAutomated(p.index, p.value);
+            } else if (p.index == VSTPluginDelegate::LatencyChange){
+                delegate_->sendLatencyChange(p.value);
+            }
         }
         if (delegate_->suspended()){
             delegate_->unlock();
@@ -947,8 +951,21 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         }
     } else {
         // from GUI thread [or NRT thread] - push to queue
-        std::unique_lock<std::mutex> writerLock(owner_->paramQueueMutex_);
+        LockGuard lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(index, value))){
+            LOG_DEBUG("param queue overflow");
+        }
+    }
+}
+
+void VSTPluginDelegate::latencyChanged(int nsamples){
+    // RT thread
+    if (std::this_thread::get_id() == rtThreadID_) {
+        sendLatencyChange(nsamples);
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
+        LockGuard lock(owner_->paramQueueMutex_);
+        if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
             LOG_DEBUG("param queue overflow");
         }
     }
@@ -1154,6 +1171,7 @@ void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
             return false; // done
         });
         editor_ = editor;
+        threaded_ = threaded;
         isLoading_ = true;
     } else {
         sendMsg("/vst_open", 0);
@@ -1180,9 +1198,14 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
         plugin_->setListener(shared_from_this());
         // update data
         owner_->update();
-        // success, window
-        float data[] = { 1.f, static_cast<float>(plugin_->getWindow() != nullptr) };
-        sendMsg("/vst_open", 2, data);
+        // success, window, initial latency
+        bool haveWindow = plugin_->getWindow() != nullptr;
+        int latency = plugin_->getLatencySamples();
+        if (threaded_) {
+            latency += bufferSize_;
+        }
+        float data[3] = { 1.f, (float)haveWindow, (float)latency };
+        sendMsg("/vst_open", 3, data);
     } else {
         LOG_WARNING("VSTPlugin: couldn't open " << cmd.path);
         sendMsg("/vst_open", 0);
@@ -1755,6 +1778,13 @@ void VSTPluginDelegate::sendParameterAutomated(int32 index, float value) {
     sendParameter(index, value);
     float buf[2] = { (float)index, value };
     sendMsg("/vst_auto", 2, buf);
+}
+
+void VSTPluginDelegate::sendLatencyChange(int nsamples){
+    if (threaded_){
+        nsamples += bufferSize_;
+    }
+    sendMsg("/vst_latency", (float)nsamples);
 }
 
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
