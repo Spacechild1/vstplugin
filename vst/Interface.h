@@ -21,10 +21,6 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
-#ifndef HAVE_UI_THREAD
-#define HAVE_UI_THREAD 1
-#endif
-
 namespace vst {
 
 const int VERSION_MAJOR = 0;
@@ -519,9 +515,7 @@ class IWindow {
 namespace UIThread {
     void setup();
 
-#if !HAVE_UI_THREAD
     void poll();
-#endif
 
     bool isCurrentThread();
 

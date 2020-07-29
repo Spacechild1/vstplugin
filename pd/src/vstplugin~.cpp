@@ -4,18 +4,22 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
-#if !HAVE_UI_THREAD
-#ifndef PDINSTANCE
-# define EVENT_LOOP_POLL_INT 20 // time between polls in ms
+// only try to poll event loop for macOS Pd standalone version
+#if defined(__APPLE__) && !defined(PDINSTANCE)
+#define POLL_EVENT_LOOP 1
+#else
+#define POLL_EVENT_LOOP 0
+#endif
+
+#if POLL_EVENT_LOOP
+#define EVENT_LOOP_POLL_INT 20 // time between polls in ms
+
 static t_clock *eventLoopClock = nullptr;
 static void eventLoopTick(void *x){
     UIThread::poll();
     clock_delay(eventLoopClock, EVENT_LOOP_POLL_INT);
 }
-#else
-#error "HAVE_UI_THREAD must be 1 when compiling with PDINSTANCE. On macOS, you must run an event loop *on the main thread* if you want to use the VST GUI editor; on Windows and Linux, vstplugin~ will automatically create its own event loop."
-#endif // PDINSTANCE
-#endif // HAVE_UI_THREAD
+#endif
 
 /*---------------------- work queue ----------------------------*/
 
@@ -3061,8 +3065,9 @@ EXPORT void vstplugin_tilde_setup(void){
     // read cached plugin info
     readIniFile();
 
+#if POLL_EVENT_LOOP
     UIThread::setup();
-#if !HAVE_UI_THREAD
+
     eventLoopClock = clock_new(0, (t_method)eventLoopTick);
     clock_delay(eventLoopClock, 0);
 #endif

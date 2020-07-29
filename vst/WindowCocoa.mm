@@ -56,7 +56,6 @@ namespace vst {
 namespace UIThread {
 
 void setup(){
-#if !HAVE_UI_THREAD
     if (isCurrentThread()){
         // create NSApplication in this thread (= main thread)
         // check if someone already created NSApp (just out of curiousity)
@@ -71,14 +70,12 @@ void setup(){
         // we don't run on the main thread and expect the host app to create
         // the event loop (the EventLoop constructor will warn us otherwise).
     }
-#endif
 }
 
 bool isCurrentThread(){
     return [NSThread isMainThread];
 }
 
-#if !HAVE_UI_THREAD
 void poll(){
     // only on the main thread!
     if (isCurrentThread()){
@@ -100,7 +97,6 @@ void poll(){
         [pool release];
     }
 }
-#endif
 
 bool callSync(Callback cb, void *user){
     return Cocoa::EventLoop::instance().callSync(cb, user);
@@ -125,13 +121,9 @@ EventLoop::EventLoop(){
     TransformProcessType(&psn, kProcessTransformToForegroundApplication);
     // we must access NSApp only once in the beginning (why?)
     haveNSApp_ = (NSApp != nullptr);
-#if HAVE_UI_THREAD
-    if (haveNSApp_){
-        LOG_DEBUG("init cocoa event loop");
-    } else {
+    if (!haveNSApp_){
         LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
     }
-#endif
 }
 
 EventLoop::~EventLoop(){}

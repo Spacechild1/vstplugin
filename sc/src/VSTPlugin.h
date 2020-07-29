@@ -268,14 +268,12 @@ private:
     Bypass bypass_ = Bypass::Off;
 
     // threading
-#if HAVE_UI_THREAD
     struct ParamChange {
         int index;
         float value;
     };
     LockfreeFifo<ParamChange, 16> paramQueue_;
     std::mutex paramQueueMutex_; // for writers
-#endif
 };
 
 

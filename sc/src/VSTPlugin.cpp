@@ -872,13 +872,11 @@ void VSTPlugin::next(int inNumSamples) {
         data.numSamples = inNumSamples;
         plugin->process(data);
 
-    #if HAVE_UI_THREAD
         // send parameter automation notification posted from the GUI thread [or NRT thread]
         ParamChange p;
         while (paramQueue_.pop(p)){
             delegate_->sendParameterAutomated(p.index, p.value);
         }
-    #endif
         if (delegate_->suspended()){
             delegate_->unlock();
         }
@@ -947,25 +945,18 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         if (paramSet_) {
             sendParameterAutomated(index, value);
         }
-    }
-#if HAVE_UI_THREAD
-    // from GUI thread [or NRT thread] - push to queue
-    else {
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
         std::unique_lock<std::mutex> writerLock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
         }
     }
-#endif
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
-#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
-#else
-    {
-#endif
         float buf[3];
         // we don't want negative values here
         buf[0] = (unsigned char)midi.data[0];
@@ -976,12 +967,8 @@ void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
 }
 
 void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
-#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
-#else
-    {
-#endif
         if ((sysex.size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
             LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
@@ -2481,7 +2468,7 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
 
-    UIThread::setup();
+    // UIThread::setup();
 
     Print("VSTPlugin %s", getVersionString().c_str());
     // read cached plugin info

@@ -16,10 +16,7 @@ bool isCurrentThread(){
     return Win32::EventLoop::instance().checkThread();
 }
 
-#if !HAVE_UI_THREAD
-#error "HAVE_UI_THREAD must be defined for Windows!"
-// void poll(){}
-#endif
+void poll(){}
 
 bool callSync(Callback cb, void *user){
     return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);

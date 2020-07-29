@@ -13,10 +13,7 @@ bool isCurrentThread(){
     return X11::EventLoop::instance().checkThread();
 }
 
-#if !HAVE_UI_THREAD
-#error "HAVE_UI_THREAD must be defined for X11!"
-// void poll(){}
-#endif
+void poll(){}
 
 bool callSync(Callback cb, void *user){
     return X11::EventLoop::instance().callSync(cb, user);
