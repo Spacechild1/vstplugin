@@ -7,13 +7,14 @@
  #include "VST3Plugin.h"
 #endif
 
-// for probing (and dlopen)
+// for probing
 #ifdef _WIN32
 # include <Windows.h>
 #else
 # include <unistd.h>
 # include <stdio.h>
 # include <dlfcn.h>
+# include <sys/wait.h>
 #endif
 
 #include <thread>

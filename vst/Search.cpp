@@ -15,6 +15,7 @@ namespace fs = std::experimental::filesystem;
 #endif
 
 #include <unordered_set>
+#include <cstring>
 
 namespace vst {
 
