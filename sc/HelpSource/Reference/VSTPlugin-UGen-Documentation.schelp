@@ -219,6 +219,7 @@ definitionlist:: ## Arguments: ||
 table::
 ## strong::string:: || plugin name or path.
 ## strong::int:: || request VST GUI editor yes(1)|no(0)
+## strong::int:: || request multithreading yes(1)|no(0)
 ::
 ::
 
@@ -227,8 +228,9 @@ definitionlist:: ## /vst_open ||
 table::
 ## strong::int:: || node ID
 ## strong::int:: || UGen index
-## strong::int:: || success yes(1)|no(0)
-## strong::int:: || GUI editor yes(1)|no(0)
+## strong::int/float:: || success yes(1)|no(0)
+## strong::int/float:: || GUI editor yes(1)|no(0)
+## strong::int/float:: || initial latency in samples
 ::
 ::
 
@@ -714,6 +716,18 @@ table::
 
 This message is always accompanied by link::/vst_param::.
 
+subsection:: /vst_latency
+
+The plugin's processing latency has changed. This includes the additional latency caused by multithreading (see link::#/open::).
+
+definitionlist:: ## Arguments ||
+table::
+## strong::int:: || node ID
+## strong::int:: || UGen index
+## strong::int:: || the new latency.
+::
+::
+
 subsection:: /vst_midi
 
 The plugin has sent a MIDI message.
@@ -795,6 +809,12 @@ n=<number of programs>\n
 <program name #1>\n
 ...
 <program name #N-1>\n
+[shell]\n
+n=<number of shell plugins>
+<name #0> <id #0>\n
+<name #1> <id #1>\n
+...
+<name #N-1> <id #N-1>\n
 [keys]\n
 n=<number of keys>\n
 <key #0>\n
@@ -802,6 +822,8 @@ n=<number of keys>\n
 ...
 <key #N-1>\n
 ::
+
+The teletype::[shell]:: section is only relevant for VST 2.x shell plugins. It is used for communicating the list of subplugins between the probe child process and the main process.
 
 teletype::flags:: is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
 table::
