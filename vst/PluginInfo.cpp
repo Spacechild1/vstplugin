@@ -564,7 +564,9 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
             std::string key;
             std::string value;
             getKeyValuePair(line, key, value);
-            #define MATCH(name, field) else if (name == key) parseArg(field, value)
+
+        #define MATCH(name, field) else if (name == key) parseArg(field, value);
+        #define IGNORE(name) else if (name == key) {}
             try {
                 if (key == "id"){
                     if (value.size() == 8){
@@ -582,21 +584,24 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     }
                     uniqueID = value;
                 }
-                MATCH("path", path);
-                MATCH("name", name);
-                MATCH("vendor", vendor);
-                MATCH("category", category);
-                MATCH("version", version);
-                MATCH("sdkversion", sdkVersion);
-                MATCH("inputs", numInputs);
-                MATCH("auxinputs", numAuxInputs);
-                MATCH("outputs", numOutputs);
-                MATCH("auxoutputs", numAuxOutputs);
+                MATCH("path", path)
+                MATCH("name", name)
+                MATCH("vendor", vendor)
+                MATCH("category", category)
+                MATCH("version", version)
+                MATCH("sdkversion", sdkVersion)
+                MATCH("inputs", numInputs)
+                MATCH("auxinputs", numAuxInputs)
+                MATCH("outputs", numOutputs)
+                MATCH("auxoutputs", numAuxOutputs)
             #if USE_VST3
-                MATCH("pgmchange", programChange);
-                MATCH("bypass", bypass);
+                MATCH("pgmchange", programChange)
+                MATCH("bypass", bypass)
+            #else
+                IGNORE("pgmchange")
+                IGNORE("bypass")
             #endif
-                MATCH("flags", flags); // hex
+                MATCH("flags", flags) // hex
                 else {
                     if (future){
                         LOG_WARNING("unknown key: " << key);
@@ -605,7 +610,8 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     }
                 }
             }
-            #undef MATCH
+        #undef MATCH
+        #undef IGNORE
             catch (const std::invalid_argument& e) {
                 throw Error("invalid argument for key '" + key + "': " + value);
             }
