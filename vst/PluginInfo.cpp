@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <cstring>
 
 namespace vst {
 
