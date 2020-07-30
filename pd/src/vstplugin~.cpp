@@ -2060,10 +2060,12 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     }
 }
 
-template<t_preset type>
+template<t_preset type, bool async>
 static void vstplugin_preset_read_done(t_preset_data *data){
-    // command finished
-    data->owner->x_commands--;
+    if (async){
+        // command finished
+        data->owner->x_commands--;
+    }
     // *now* update
     data->owner->x_editor->update();
     // notify
@@ -2082,13 +2084,13 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
         data->path = s->s_name;
         x->x_commands++;
         t_workqueue::get()->push(x, data, vstplugin_preset_read_do<type, true>,
-                                 vstplugin_preset_read_done<type>);
+                                 vstplugin_preset_read_done<type, true>);
     } else {
         t_preset_data data;
         data.owner = x;
         data.path = s->s_name;
         vstplugin_preset_read_do<type, false>(&data);
-        vstplugin_preset_read_done<type>(&data);
+        vstplugin_preset_read_done<type, false>(&data);
     }
 }
 
@@ -2123,10 +2125,12 @@ static void vstplugin_preset_write_do(t_preset_data *data){
 
 static void vstplugin_preset_notify(t_vstplugin *x);
 
-template<t_preset type>
+template<t_preset type, bool async>
 static void vstplugin_preset_write_done(t_preset_data *data){
-    // command finished
-    data->owner->x_commands--;
+    if (async){
+        // command finished
+        data->owner->x_commands--;
+    }
     if (type == PRESET){
         if (data->success){
             auto y = (t_save_data *)data;
@@ -2171,13 +2175,13 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg async
         data->path = path;
         x->x_commands++;
         t_workqueue::get()->push(x, data, vstplugin_preset_write_do<type, true>,
-                                 vstplugin_preset_write_done<type>);
+                                 vstplugin_preset_write_done<type, true>);
     } else {
         t_preset_data data;
         data.owner = x;
         data.path = path;
         vstplugin_preset_write_do<type, false>(&data);
-        vstplugin_preset_write_done<type>(&data);
+        vstplugin_preset_write_done<type, false>(&data);
     }
 }
 
@@ -2421,7 +2425,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         x->x_commands++;
         t_workqueue::get()->push(x, data,
                                  vstplugin_preset_write_do<PRESET, true>,
-                                 vstplugin_preset_write_done<PRESET>);
+                                 vstplugin_preset_write_done<PRESET, true>);
     } else {
         t_save_data data;
         data.owner = x;
@@ -2433,7 +2437,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         wrlock.unlock(); // to avoid deadlock in vstplugin_preset_write_done
     #endif
         vstplugin_preset_write_do<PRESET, false>(&data);
-        vstplugin_preset_write_done<PRESET>(&data);
+        vstplugin_preset_write_done<PRESET, false>(&data);
     }
 }
 
@@ -2572,6 +2576,8 @@ bool t_vstplugin::check_plugin(){
     if (x_plugin){
         if (x_commands == 0){
             return true;
+        } else if (x_commands < 0){
+            bug("t_vstplugin::check_plugin()");
         } else {
             pd_error(this, "%s: temporarily suspended!", classname(this));
         }
