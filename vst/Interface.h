@@ -212,7 +212,7 @@ struct PluginInfo {
     void operator =(const PluginInfo&) = delete;
     // create new instances
     // throws an Error exception on failure!
-    IPlugin::ptr create(bool threaded = false) const;
+    IPlugin::ptr create(bool editor, bool threaded) const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,

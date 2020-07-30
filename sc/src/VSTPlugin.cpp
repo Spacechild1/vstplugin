@@ -1087,12 +1087,7 @@ bool cmdOpen(World *world, void* cmdData) {
                 bool ok = UIThread::callSync([](void *y){
                     auto d = (PluginData *)y;
                     try {
-                        auto p = d->info->create(d->threaded);
-                        if (p->info().hasEditor()){
-                            auto window = IWindow::create(*p);
-                            p->setWindow(std::move(window));
-                        }
-                        d->plugin = std::move(p);
+                        d->plugin = d->info->create(true, d->threaded);
                     } catch (const Error& e){
                         d->error = e;
                     }
@@ -1108,11 +1103,11 @@ bool cmdOpen(World *world, void* cmdData) {
                 } else {
                     // couldn't dispatch to UI thread (probably not available).
                     // create plugin without window
-                    plugin = info->create(data->threaded);
+                    plugin = info->create(false, data->threaded);
                 }
             }
             else {
-                plugin = info->create(data->threaded);
+                plugin = info->create(false, data->threaded);
             }
             if (plugin){
                 auto owner = data->owner;

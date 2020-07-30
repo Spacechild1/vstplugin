@@ -103,17 +103,22 @@ PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
 
 PluginInfo::~PluginInfo(){}
 
-IPlugin::ptr PluginInfo::create(bool threaded) const {
+IPlugin::ptr PluginInfo::create(bool editor, bool threaded) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     if (!factory){
         return nullptr;
     }
     auto plugin = factory->create(name);
     if (threaded){
-        return std::make_unique<ThreadedPlugin>(std::move(plugin));
-    } else {
-        return plugin;
+        plugin = std::make_unique<ThreadedPlugin>(std::move(plugin));
     }
+
+    if (editor && plugin->info().hasEditor()){
+        auto window = IWindow::create(*plugin);
+        plugin->setWindow(std::move(window));
+    }
+
+    return plugin;
 }
 
 #if USE_VST2
