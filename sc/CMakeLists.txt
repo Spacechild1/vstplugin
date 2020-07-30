@@ -56,12 +56,18 @@ endif()
 
 # installation
 add_dependencies(${PROJECT} ${PROBE})
+if (APPLE)
+    add_dependencies(${PROJECT} ${PROBE32})
+endif()
 
 install(TARGETS ${PROJECT} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 if (SUPERNOVA)
     install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
 install(PROGRAMS "${PROBE_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+if (APPLE)
+    install(PROGRAMS "${PROBE32_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+endif()
 install(DIRECTORY classes DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
 install(DIRECTORY Help DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
 install(DIRECTORY HelpSource DESTINATION "${SC_INSTALLDIR}/${PROJECT}")

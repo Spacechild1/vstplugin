@@ -152,8 +152,7 @@ add_subdirectory(vst)
 
 # probe exe
 set(PROBE "probe")
-add_executable(${PROBE} "vst/${PROBE}.cpp") # probe exe
-target_sources(${PROBE} PUBLIC ${SRC})
+add_executable(${PROBE} "vst/${PROBE}.cpp" ${SRC}) # probe exe
 target_link_libraries(${PROBE} ${VST_LIBS})
 set_target_properties(${PROBE} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
@@ -163,6 +162,17 @@ endif()
 # up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.
 set(PROBE_PATH $<TARGET_FILE:${PROBE}>)
+
+# on macOS we can directly build the 32-bit version of 'probe'
+if (APPLE)
+    set(PROBE32 "probe_i386")
+    add_executable(${PROBE32} "vst/${PROBE}.cpp" ${SRC})
+    target_compile_options(${PROBE32} PUBLIC "-arch i386")
+    target_link_libraries(${PROBE32} ${VST_LIBS})
+    set_target_properties(${PROBE32} PROPERTIES LINK_FLAGS_RELEASE -s)
+    # see above
+    set(PROBE32_PATH $<TARGET_FILE:${PROBE32}>)
+endif()
 
 # vstplugin~
 option(PD "build Pd external" ON)

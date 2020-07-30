@@ -86,9 +86,15 @@ endif()
 
 # installation
 add_dependencies(${PROJECT} ${PROBE})
+if (APPLE)
+    add_dependencies(${PROJECT} ${PROBE32})
+endif()
 
 install(TARGETS ${PROJECT} DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 install(PROGRAMS "${PROBE_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+if (APPLE)
+    install(PROGRAMS "${PROBE32_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+endif()
 install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
     "vstpresetbrowser.pd" "vstpresetbrowser-help.pd" "../README.md" "../LICENSE.txt"
      DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
