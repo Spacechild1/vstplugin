@@ -21,6 +21,14 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
+#ifndef USE_VST2
+#define USE_VST2 1
+#endif
+
+#ifndef USE_VST3
+#define USE_VST3 1
+#endif
+
 namespace vst {
 
 const int VERSION_MAJOR = 0;
