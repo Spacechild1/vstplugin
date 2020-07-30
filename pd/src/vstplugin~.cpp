@@ -1253,9 +1253,11 @@ static void vstplugin_close(t_vstplugin *x){
 
 struct t_open_data : t_command_data<t_open_data> {
     t_symbol *path;
+    const PluginInfo *info;
+    IPlugin::ptr plugin;
+    Error error;
     bool editor;
     bool threaded;
-    IPlugin::ptr plugin;
 };
 
 template<bool async>
@@ -1269,47 +1271,36 @@ static void vstplugin_open_do(t_open_data *x){
     }
     // open the new VST plugin
     try {
-        IPlugin::ptr plugin;
-
         if (x->editor){
-            struct PluginData {
-                const PluginInfo *info;
-                bool threaded;
-                IPlugin::ptr plugin;
-                Error error;
-            } data;
-            data.info = info;
-            data.threaded = x->threaded;
-
+            x->info = info;
             LOG_DEBUG("create plugin in UI thread");
             bool ok = UIThread::callSync([](void *y){
-                auto d = (PluginData *)y;
+                auto d = (t_open_data *)y;
                 try {
                     d->plugin = d->info->create(true, d->threaded);
                 } catch (const Error& e){
                     d->error = e;
                 }
-            }, &data);
+            }, x);
+
             if (ok){
-                if (data.plugin){
+                if (x->plugin){
                     LOG_DEBUG("done");
-                    plugin = std::move(data.plugin);
                 } else {
-                    throw data.error;
+                    throw x->error;
                 }
             } else {
                 // couldn't dispatch to UI thread (probably not available).
                 // create plugin without window
-                plugin = info->create(false, x->threaded);
+                x->plugin = info->create(false, x->threaded);
             }
         } else {
-            plugin = info->create(false, x->threaded);
+            x->plugin = info->create(false, x->threaded);
         }
-        if (plugin){
+        if (x->plugin){
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             LockGuard lock(x->owner->x_mutex);
-            x->owner->setup_plugin<async>(*plugin);
-            x->plugin = std::move(plugin);
+            x->owner->setup_plugin<async>(*x->plugin);
         }
     } catch (const Error& e) {
         // shouldn't happen...

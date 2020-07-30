@@ -1071,58 +1071,46 @@ bool cmdOpen(World *world, void* cmdData) {
     auto info = queryPlugin(data->path);
     if (info) {
         try {
-            IPlugin::ptr plugin;
-
             if (data->editor) {
-                struct PluginData {
-                    const PluginInfo *info;
-                    bool threaded;
-                    IPlugin::ptr plugin;
-                    Error error;
-                } pd;
-                pd.info = info;
-                pd.threaded = data->threaded;
-
+                data->info = info;
                 LOG_DEBUG("create plugin in UI thread");
                 bool ok = UIThread::callSync([](void *y){
-                    auto d = (PluginData *)y;
+                    auto d = (OpenCmdData *)y;
                     try {
                         d->plugin = d->info->create(true, d->threaded);
                     } catch (const Error& e){
                         d->error = e;
                     }
-                }, &pd);
+                }, data);
 
                 if (ok){
-                    if (pd.plugin){
+                    if (data->plugin){
                         LOG_DEBUG("done");
-                        plugin = std::move(pd.plugin);
                     } else {
-                        throw pd.error;
+                        throw data->error;
                     }
                 } else {
                     // couldn't dispatch to UI thread (probably not available).
                     // create plugin without window
-                    plugin = info->create(false, data->threaded);
+                    data->plugin = info->create(false, data->threaded);
                 }
             }
             else {
-                plugin = info->create(false, data->threaded);
+                data->plugin = info->create(false, data->threaded);
             }
-            if (plugin){
-                auto owner = data->owner;
-                plugin->suspend();
+            if (data->plugin){
                 // we only access immutable members of owner!
-                if (plugin->info().hasPrecision(ProcessPrecision::Single)) {
-                    plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
+                if (info->hasPrecision(ProcessPrecision::Single)) {
+                    data->plugin->setupProcessing(data->owner->sampleRate(),
+                                                  data->owner->bufferSize(), ProcessPrecision::Single);
                 }
                 else {
-                    LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
+                    LOG_WARNING("VSTPlugin: plugin '" << info->name <<
+                                "' doesn't support single precision processing - bypassing!");
                 }
-                plugin->setNumSpeakers(owner->numInChannels(), owner->numOutChannels(),
-                                       owner->numAuxInChannels(), owner->numAuxOutChannels());
-                plugin->resume();
-                data->plugin = std::move(plugin);
+                data->plugin->setNumSpeakers(data->owner->numInChannels(), data->owner->numOutChannels(),
+                                             data->owner->numAuxInChannels(), data->owner->numAuxOutChannels());
+                data->plugin->resume();
             }
         }
         catch (const Error & e) {

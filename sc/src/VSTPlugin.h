@@ -36,7 +36,9 @@ struct CloseCmdData : CmdData {
 };
 
 struct OpenCmdData : CmdData {
+    const PluginInfo *info;
     IPlugin::ptr plugin;
+    Error error;
     bool editor;
     bool threaded;
     // flexible array for RT memory
