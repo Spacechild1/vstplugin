@@ -54,7 +54,8 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
+    - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
+      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
@@ -75,7 +76,8 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
+      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
@@ -99,7 +101,9 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
+      -DPD_INCLUDEDIR="/c/Program Files (x86)/pd/src" -DPD_BINDIR="/c/Program Files (x86)/pd/bin"
+      -DPD_INSTALLDIR=$(pwd) -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
@@ -123,7 +127,9 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_EXTENSION=".m_amd64" -DPD_INSTALLDIR=$(pwd)
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DPD_EXTENSION=".m_amd64"
+      -DPD_INCLUDEDIR="/c/Program Files/pd/src" -DPD_BINDIR="/c/Program Files/pd/bin"
+      -DPD_INSTALLDIR=$(pwd) -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
