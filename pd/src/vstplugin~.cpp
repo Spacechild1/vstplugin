@@ -4,13 +4,6 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
-// only try to poll event loop for macOS Pd standalone version
-#if defined(__APPLE__) && !defined(PDINSTANCE)
-#define POLL_EVENT_LOOP 1
-#else
-#define POLL_EVENT_LOOP 0
-#endif
-
 #if POLL_EVENT_LOOP
 #define EVENT_LOOP_POLL_INT 20 // time between polls in ms
 
@@ -19,6 +12,21 @@ static void eventLoopTick(void *x){
     UIThread::poll();
     clock_delay(eventLoopClock, EVENT_LOOP_POLL_INT);
 }
+
+// only called from main thread!
+static void initEventLoop(){
+    static bool done = false;
+    if (!done){
+        UIThread::setup();
+
+        eventLoopClock = clock_new(0, (t_method)eventLoopTick);
+        clock_delay(eventLoopClock, 0);
+
+        done = true;
+    }
+}
+#else
+static void initEventLoop() {}
 #endif
 
 /*---------------------- work queue ----------------------------*/
@@ -1400,6 +1408,9 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     };
 
     // open the new plugin
+    if (editor){
+        initEventLoop();
+    }
     if (async){
         auto data = new t_open_data();
         data->owner = x;
@@ -2696,6 +2707,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     // open plugin
     if (file){
+        if (editor){
+            initEventLoop();
+        }
         t_open_data data;
         data.owner = this;
         data.path = file;
@@ -3075,13 +3089,6 @@ EXPORT void vstplugin_tilde_setup(void){
 
     // read cached plugin info
     readIniFile();
-
-#if POLL_EVENT_LOOP
-    UIThread::setup();
-
-    eventLoopClock = clock_new(0, (t_method)eventLoopTick);
-    clock_delay(eventLoopClock, 0);
-#endif
 
     post("vstplugin~ %s", getVersionString().c_str());
 #ifdef __APPLE__

@@ -24,6 +24,13 @@ using namespace vst;
 #include <condition_variable>
 #include <fcntl.h>
 
+// only try to poll event loop for macOS Pd standalone version
+#if defined(__APPLE__) && !defined(PDINSTANCE)
+#define POLL_EVENT_LOOP 1
+#else
+#define POLL_EVENT_LOOP 0
+#endif
+
 enum PdLogLevel {
     PD_FATAL = -3,
     PD_ERROR,
