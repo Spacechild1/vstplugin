@@ -1,6 +1,7 @@
 #include "Interface.h"
 #include "Utility.h"
 #include "Sync.h"
+#include "ThreadedPlugin.h"
 
 #include <algorithm>
 #include <sstream>
@@ -102,9 +103,17 @@ PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
 
 PluginInfo::~PluginInfo(){}
 
-IPlugin::ptr PluginInfo::create() const {
+IPlugin::ptr PluginInfo::create(bool threaded) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
-    return factory ? factory->create(name) : nullptr;
+    if (!factory){
+        return nullptr;
+    }
+    auto plugin = factory->create(name);
+    if (threaded){
+        return std::make_unique<ThreadedPlugin>(std::move(plugin));
+    } else {
+        return plugin;
+    }
 }
 
 #if USE_VST2

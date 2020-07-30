@@ -85,9 +85,6 @@ class IPlugin {
     using ptr = std::unique_ptr<IPlugin>;
     using const_ptr = std::unique_ptr<const IPlugin>;
 
-    // wrap the plugin in a ThreadedPlugin adapter
-    static IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
-
     virtual ~IPlugin(){}
 
     virtual PluginType getType() const = 0;
@@ -215,7 +212,7 @@ struct PluginInfo {
     void operator =(const PluginInfo&) = delete;
     // create new instances
     // throws an Error exception on failure!
-    IPlugin::ptr create() const;
+    IPlugin::ptr create(bool threaded = false) const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,
@@ -466,7 +463,10 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual void addPlugin(PluginInfo::ptr desc) = 0;
     virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
     virtual int numPlugins() const = 0;
-    void probe(ProbeCallback callback);
+
+    void probe(ProbeCallback callback){
+        probeAsync()(std::move(callback));
+    }
     virtual ProbeFuture probeAsync() = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin

@@ -1076,16 +1076,18 @@ bool cmdOpen(World *world, void* cmdData) {
             if (data->editor) {
                 struct PluginData {
                     const PluginInfo *info;
+                    bool threaded;
                     IPlugin::ptr plugin;
                     Error error;
-                } data;
-                data.info = info;
+                } pd;
+                pd.info = info;
+                pd.threaded = data->threaded;
 
                 LOG_DEBUG("create plugin in UI thread");
                 bool ok = UIThread::callSync([](void *y){
                     auto d = (PluginData *)y;
                     try {
-                        auto p = d->info->create();
+                        auto p = d->info->create(d->threaded);
                         if (p->info().hasEditor()){
                             auto window = IWindow::create(*p);
                             p->setWindow(std::move(window));
@@ -1094,34 +1096,26 @@ bool cmdOpen(World *world, void* cmdData) {
                     } catch (const Error& e){
                         d->error = e;
                     }
-                }, &data);
+                }, &pd);
 
                 if (ok){
-                    if (data.plugin){
+                    if (pd.plugin){
                         LOG_DEBUG("done");
-                        plugin = std::move(data.plugin);
+                        plugin = std::move(pd.plugin);
                     } else {
-                        throw data.error;
+                        throw pd.error;
                     }
                 } else {
                     // couldn't dispatch to UI thread (probably not available).
                     // create plugin without window
-                    plugin = info->create();
+                    plugin = info->create(data->threaded);
                 }
             }
             else {
-                plugin = info->create();
+                plugin = info->create(data->threaded);
             }
             if (plugin){
                 auto owner = data->owner;
-                if (data->threaded){
-                #ifndef SUPERNOVA
-                    // wrap plugin in ThreadedPlugin adapter
-                    plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
-                #else
-                    LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
-                #endif
-                }
                 plugin->suspend();
                 // we only access immutable members of owner!
                 if (plugin->info().hasPrecision(ProcessPrecision::Single)) {
@@ -1157,6 +1151,13 @@ void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
         sendMsg("/vst_open", 0);
         return;
     }
+
+#ifdef SUPERNOVA
+    if (threaded){
+        LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
+        threaded = false;
+    }
+#endif
 
     auto len = strlen(path) + 1;
     auto cmdData = CmdData::create<OpenCmdData>(world(), len);

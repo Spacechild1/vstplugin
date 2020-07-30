@@ -85,10 +85,6 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
 
 /*////////////////////// ThreadedPlugin ///////////////////////*/
 
-IPlugin::ptr IPlugin::makeThreadedPlugin(IPlugin::ptr plugin){
-    return std::make_unique<ThreadedPlugin>(std::move(plugin));
-}
-
 ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
     : plugin_(std::move(plugin)) {
     threadPool_ = &DSPThreadPool::instance(); // cache for performance

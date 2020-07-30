@@ -1274,16 +1274,18 @@ static void vstplugin_open_do(t_open_data *x){
         if (x->editor){
             struct PluginData {
                 const PluginInfo *info;
+                bool threaded;
                 IPlugin::ptr plugin;
                 Error error;
             } data;
             data.info = info;
+            data.threaded = x->threaded;
 
             LOG_DEBUG("create plugin in UI thread");
             bool ok = UIThread::callSync([](void *y){
                 auto d = (PluginData *)y;
                 try {
-                    auto p = d->info->create();
+                    auto p = d->info->create(d->threaded);
                     if (p->info().hasEditor()){
                         auto window = IWindow::create(*p);
                         p->setWindow(std::move(window));
@@ -1303,16 +1305,12 @@ static void vstplugin_open_do(t_open_data *x){
             } else {
                 // couldn't dispatch to UI thread (probably not available).
                 // create plugin without window
-                plugin = info->create();
+                plugin = info->create(x->threaded);
             }
         } else {
-            plugin = info->create();
+            plugin = info->create(x->threaded);
         }
         if (plugin){
-            if (x->threaded){
-                // wrap plugin in ThreadedPlugin adapter
-                plugin = IPlugin::makeThreadedPlugin(std::move(plugin));
-            }
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             LockGuard lock(x->owner->x_mutex);
             x->owner->setup_plugin<async>(*plugin);

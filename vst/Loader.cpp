@@ -412,8 +412,4 @@ std::vector<PluginInfo::ptr> IFactory::probePlugins(
     return results;
 }
 
-void IFactory::probe(ProbeCallback callback){
-    probeAsync()(std::move(callback));
-}
-
 } // vst
