@@ -47,7 +47,7 @@ struct SysexEvent {
     SysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
         : data(_data), size(_size), delta(_delta){}
     const char *data;
-    size_t size;
+    int size;
     int delta;
 };
 
@@ -470,6 +470,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual ProbeFuture probeAsync() = 0;
     virtual bool isProbed() const = 0;
     virtual bool valid() const = 0; // contains at least one valid plugin
+
     virtual std::string path() const = 0;
     // create a new plugin instance
     // throws an Error on failure!

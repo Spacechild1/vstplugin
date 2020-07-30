@@ -206,8 +206,8 @@ class ThreadedPlugin final : public IPlugin {
             // param string
             struct {
                 int index;
-                char* string;
                 int offset;
+                char* string;
             } paramString;
             // time signature
             struct {
