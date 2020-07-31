@@ -85,15 +85,15 @@ else()
 endif()
 
 # installation
-add_dependencies(${PROJECT} ${PROBE})
+add_dependencies(${PROJECT} ${HOST})
 if (APPLE)
-    add_dependencies(${PROJECT} ${PROBE32})
+    add_dependencies(${PROJECT} ${HOST32})
 endif()
 
 install(TARGETS ${PROJECT} DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
-install(PROGRAMS "${PROBE_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+install(PROGRAMS "${HOST_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 if (APPLE)
-    install(PROGRAMS "${PROBE32_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+    install(PROGRAMS "${HOST32_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 endif()
 install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
     "vstpresetbrowser.pd" "vstpresetbrowser-help.pd" "../README.md" "../LICENSE.txt"

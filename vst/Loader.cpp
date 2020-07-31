@@ -123,7 +123,7 @@ public:
     }
 };
 
-// should probe.exe inherit file handles and print to stdout/stderr?
+// should host.exe inherit file handles and print to stdout/stderr?
 #define PROBE_LOG 0
 
 // probe a plugin in a seperate process and return the info in a file
@@ -132,7 +132,7 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
     // put the information we already have (might be overriden)
     desc->name = name;
     desc->path = path();
-    // we pass the shell plugin ID instead of the name to probe.exe
+    // we pass the shell plugin ID instead of the name to host.exe
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
     // create temp file path
     std::stringstream ss;
@@ -140,12 +140,12 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
     std::string tmpPath = getTmpDirectory() + ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
 #ifdef _WIN32
-    // get full path to probe exe
-    std::wstring probePath = getModuleDirectory() + L"\\probe.exe";
-    /// LOG_DEBUG("probe path: " << shorten(probePath));
+    // get full path to host exe
+    std::wstring hostPath = getModuleDirectory() + L"\\host.exe";
+    /// LOG_DEBUG("host path: " << shorten(hostPath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::stringstream cmdLineStream;
-    cmdLineStream << "probe.exe "
+    cmdLineStream << "host.exe probe "
             << "\"" << path() << "\" "
             << "\"" << pluginName << "\" "
             << "\"" << tmpPath + "\"";
@@ -156,20 +156,20 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    if (!CreateProcessW(probePath.c_str(), &cmdLine[0], NULL, NULL,
+    if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL,
                         PROBE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi)){
         auto err = GetLastError();
         std::stringstream ss;
-        ss << "couldn't open probe process (" << errorMessage(err) << ")";
+        ss << "couldn't open host process (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
     auto wait = [pi](){
         if (WaitForSingleObject(pi.hProcess, INFINITE) != 0){
-            throw Error(Error::SystemError, "couldn't wait for probe process!");
+            throw Error(Error::SystemError, "couldn't wait for host process!");
         }
         DWORD code = -1;
         if (!GetExitCodeProcess(pi.hProcess, &code)){
-            throw Error(Error::SystemError, "couldn't retrieve exit code for probe process!");
+            throw Error(Error::SystemError, "couldn't retrieve exit code for host process!");
         }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -177,20 +177,19 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
     };
 #else // Unix
     Dl_info dlinfo;
-    // get full path to probe exe
+    // get full path to host exe
     // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
         throw Error(Error::SystemError, "couldn't get module path!");
     }
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');
-    std::string probePath = modulePath.substr(0, end) + "/probe";
+    std::string hostPath = modulePath.substr(0, end) + "/host";
     // fork
     pid_t pid = fork();
     if (pid == -1) {
         throw Error(Error::SystemError, "fork() failed!");
-    }
-    else if (pid == 0) {
+    } else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
         // we must not quote arguments to exec!
     #if !PROBE_LOG
@@ -201,13 +200,14 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
         fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
-        if (execl(probePath.c_str(), "probe", path().c_str(), pluginName.c_str(), tmpPath.c_str(), nullptr) < 0) {
+        if (execl(hostPath.c_str(), "host", path().c_str(), "probe",
+                  pluginName.c_str(), tmpPath.c_str(), nullptr) < 0){
             // write error to temp file
             int err = errno;
             File file(tmpPath, File::WRITE);
             if (file.is_open()){
                 file << static_cast<int>(Error::SystemError) << "\n";
-                file << "couldn't open probe process (" << errorMessage(err) << ")\n";
+                file << "couldn't open host process (" << errorMessage(err) << ")\n";
             }
         }
         std::exit(EXIT_FAILURE);
@@ -236,7 +236,7 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
                 desc->deserialize(file);
             }
             else {
-                result.error = Error(Error::SystemError, "couldn't read temp file!");
+                result.error = Error(Error::SystemError, "couldn't read tempfile!");
             }
         }
         else if (ret == EXIT_FAILURE) {

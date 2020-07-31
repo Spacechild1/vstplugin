@@ -150,28 +150,28 @@ endif()
 
 add_subdirectory(vst)
 
-# probe exe
-set(PROBE "probe")
-add_executable(${PROBE} "vst/${PROBE}.cpp" ${SRC}) # probe exe
-target_link_libraries(${PROBE} ${VST_LIBS})
-set_target_properties(${PROBE} PROPERTIES LINK_FLAGS_RELEASE -s)
+# host exe
+set(HOST "host")
+add_executable(${HOST} "vst/${HOST}.cpp" ${SRC}) # HOST exe
+target_link_libraries(${HOST} ${VST_LIBS})
+set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
     # -municode for wmain and -mwindows to hide console window
-    target_link_libraries(${PROBE} -municode)
+    target_link_libraries(${HOST} -municode)
 endif()
 # up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.
-set(PROBE_PATH $<TARGET_FILE:${PROBE}>)
+set(HOST_PATH $<TARGET_FILE:${HOST}>)
 
-# on macOS we can directly build the 32-bit version of 'probe'
+# on macOS we can directly build the 32-bit version of 'HOST'
 if (APPLE)
-    set(PROBE32 "probe_i386")
-    add_executable(${PROBE32} "vst/${PROBE}.cpp" ${SRC})
-    target_compile_options(${PROBE32} PUBLIC "-arch i386")
-    target_link_libraries(${PROBE32} ${VST_LIBS})
-    set_target_properties(${PROBE32} PROPERTIES LINK_FLAGS_RELEASE -s)
+    set(HOST32 "HOST_i386")
+    add_executable(${HOST32} "vst/${HOST}.cpp" ${SRC})
+    target_compile_options(${HOST32} PUBLIC "-arch i386")
+    target_link_libraries(${HOST32} ${VST_LIBS})
+    set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
     # see above
-    set(PROBE32_PATH $<TARGET_FILE:${PROBE32}>)
+    set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
 endif()
 
 # vstplugin~
