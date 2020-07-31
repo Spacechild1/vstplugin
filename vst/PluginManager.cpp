@@ -81,7 +81,7 @@ void PluginManager::read(const std::string& path, bool update){
             int numPlugins = getCount(line);
             while (numPlugins--){
                 // deserialize plugin
-                auto desc = std::make_shared<PluginInfo>();
+                auto desc = std::make_shared<PluginInfo>(nullptr);
                 desc->deserialize(file, versionMajor, versionMinor, versionBugfix);
                 // collect keys
                 std::vector<std::string> keys;
@@ -101,19 +101,19 @@ void PluginManager::read(const std::string& path, bool update){
                 desc->scanPresets();
                 // load the factory (if not loaded already) to verify that the plugin still exists
                 IFactory::ptr factory;
-                if (!factories_.count(desc->path)){
+                if (!factories_.count(desc->path())){
                     try {
-                        factory = IFactory::load(desc->path);
-                        factories_[desc->path] = factory;
+                        factory = IFactory::load(desc->path());
+                        factories_[desc->path()] = factory;
                     } catch (const Error& e){
                         // this probably happens when the plugin has been (re)moved
                         LOG_ERROR("couldn't load '" << desc->name <<
-                                  "' (" << desc->path << "): " << e.what());
+                                  "' (" << desc->path() << "): " << e.what());
                         outdated = true; // we need to update the cache
                         continue; // skip plugin
                     }
                 } else {
-                    factory = factories_[desc->path];
+                    factory = factories_[desc->path()];
                 }
                 factory->addPlugin(desc);
                 desc->setFactory(factory);

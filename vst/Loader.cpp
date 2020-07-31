@@ -131,7 +131,6 @@ IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int s
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     // put the information we already have (might be overriden)
     desc->name = name;
-    desc->path = path();
     // we pass the shell plugin ID instead of the name to host.exe
     std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
     // create temp file path

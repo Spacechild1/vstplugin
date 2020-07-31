@@ -98,10 +98,22 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
 
 /*///////////////////// PluginInfo /////////////////////*/
 
-PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
-    : path(factory->path()), factory_(factory) {}
+PluginInfo::PluginInfo(std::shared_ptr<const IFactory> f){
+    if (f){
+        setFactory(std::move(f));
+    }
+    // might be later overriden by deserialize()!
+    cpuArch = cpuArchToString(getHostCpuArchitecture());
+}
 
 PluginInfo::~PluginInfo(){}
+
+void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
+    if (path_.empty()){
+        path_ = factory->path();
+    }
+    factory_ = std::move(factory);
+}
 
 IPlugin::ptr PluginInfo::create(bool editor, bool threaded) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
@@ -376,9 +388,9 @@ static std::string bashString(std::string name){
 
 void PluginInfo::serialize(std::ostream& file) const {
     file << "[plugin]\n";
+    file << "path=" << path() << "\n";
     file << "arch=" << cpuArch << "\n";
     file << "id=" << uniqueID << "\n";
-    file << "path=" << path << "\n";
     file << "name=" << name << "\n";
     file << "vendor=" << vendor << "\n";
     file << "category=" << category << "\n";
@@ -599,7 +611,7 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     }
                     uniqueID = value;
                 }
-                MATCH("path", path)
+                MATCH("path", path_)
                 MATCH("arch", cpuArch)
                 MATCH("name", name)
                 MATCH("vendor", vendor)

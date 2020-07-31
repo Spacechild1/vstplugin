@@ -437,8 +437,8 @@ static IFactory::ptr loadFactory(const std::string& path){
 static std::string makeKey(const PluginInfo& desc){
     std::string key;
     auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
-    if (desc.path.find(ext, onset) != std::string::npos){
+    auto onset = std::max<size_t>(0, desc.path().size() - strlen(ext));
+    if (desc.path().find(ext, onset) != std::string::npos){
         key = desc.name + ext;
     } else {
         key = desc.name;
@@ -450,7 +450,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path, plugin);
+        gPluginManager.addPlugin(plugin->path(), plugin);
         gPluginManager.addPlugin(path, plugin);
     }
     gPluginManager.addFactory(path, factory);
@@ -1488,7 +1488,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         if (!x->check_plugin()) return;
         info = &x->x_plugin->info();
     }
-    sendInfo(x, "path", info->path);
+    sendInfo(x, "path", info->path());
     sendInfo(x, "name", info->name);
     sendInfo(x, "vendor", info->vendor);
     sendInfo(x, "category", info->category);
@@ -1568,7 +1568,7 @@ static void vstplugin_print(t_vstplugin *x){
     auto& info = x->x_plugin->info();
     post("~~~ VST plugin info ~~~");
     post("name: %s", info.name.c_str());
-    post("path: %s", info.path.c_str());
+    post("path: %s", info.path().c_str());
     post("vendor: %s", info.vendor.c_str());
     post("category: %s", info.category.c_str());
     post("version: %s", info.version.c_str());

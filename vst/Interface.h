@@ -213,14 +213,13 @@ struct PluginInfo {
     using ptr = std::shared_ptr<PluginInfo>;
     using const_ptr = std::shared_ptr<const PluginInfo>;
 
-    PluginInfo() = default;
-    PluginInfo(const std::shared_ptr<const IFactory>& factory);
+    PluginInfo(std::shared_ptr<const IFactory> f);
     ~PluginInfo();
-    void setFactory(const std::shared_ptr<const IFactory>& factory){
-        factory_ = factory;
-    }
     PluginInfo(const PluginInfo&) = delete;
     void operator =(const PluginInfo&) = delete;
+
+    void setFactory(std::shared_ptr<const IFactory> factory);
+    const std::string& path() const { return path_; }
     // create new instances
     // throws an Error exception on failure!
     IPlugin::ptr create(bool editor, bool threaded) const;
@@ -244,7 +243,6 @@ struct PluginInfo {
     // info data
     std::string cpuArch;
     std::string uniqueID;
-    std::string path;
     std::string name;
     std::string vendor;
     std::string category;
@@ -328,11 +326,6 @@ struct PluginInfo {
     // for thread-safety (if needed)
     WriteLock writeLock();
     ReadLock readLock() const;
-private:
-    void sortPresets(bool userOnly = true);
-    mutable std::unique_ptr<SharedMutex> mutex;
-    mutable bool didCreatePresetFolder = false;
-public:
     // default programs
     std::vector<std::string> programs;
     int numPrograms() const {
@@ -392,6 +385,7 @@ public:
 #endif
  private:
     std::weak_ptr<const IFactory> factory_;
+    std::string path_;
     // param name to param index
     std::unordered_map<std::string, int> paramMap_;
 #if USE_VST3
@@ -406,6 +400,10 @@ public:
         int32_t id;
     };
     ID id_;
+    // helper methods
+    void sortPresets(bool userOnly = true);
+    mutable std::unique_ptr<SharedMutex> mutex;
+    mutable bool didCreatePresetFolder = false;
 };
 
 class IModule {

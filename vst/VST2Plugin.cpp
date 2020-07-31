@@ -258,7 +258,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
         info->name = getPluginName();
         if (info->name.empty()){
             // get from file path
-            auto& path = info->path;
+            auto& path = info->path();
             auto sep = path.find_last_of("\\/");
             auto dot = path.find_last_of('.');
             if (sep == std::string::npos){
