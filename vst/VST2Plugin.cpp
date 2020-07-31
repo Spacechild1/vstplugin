@@ -120,6 +120,15 @@ PluginInfo::const_ptr VST2Factory::getPlugin(int index) const {
     }
 }
 
+PluginInfo::const_ptr VST2Factory::findPlugin(const std::string& name) const {
+    auto it = pluginMap_.find(name);
+    if (it != pluginMap_.end()){
+        return it->second;
+    } else {
+        return nullptr;
+    }
+}
+
 int VST2Factory::numPlugins() const {
     return plugins_.size();
 }

@@ -73,6 +73,7 @@ class VST3Factory : public IFactory {
     // get a list of all available plugins
     void addPlugin(PluginInfo::ptr desc) override;
     PluginInfo::const_ptr getPlugin(int index) const override;
+    PluginInfo::const_ptr findPlugin(const std::string &name) const override;
     int numPlugins() const override;
     // probe plugins (in a seperate process)
     ProbeFuture probeAsync() override;

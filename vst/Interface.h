@@ -473,6 +473,7 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
     virtual ~IFactory(){}
     virtual void addPlugin(PluginInfo::ptr desc) = 0;
     virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
+    virtual PluginInfo::const_ptr findPlugin(const std::string& name) const = 0;
     virtual int numPlugins() const = 0;
 
     void probe(ProbeCallback callback){
