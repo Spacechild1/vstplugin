@@ -103,7 +103,7 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 /*/////////////////////// VST3Factory /////////////////////////*/
 
 VST3Factory::VST3Factory(const std::string& path)
-    : path_(path) {}
+    : PluginFactory(path) {}
 
 VST3Factory::~VST3Factory(){
     factory_ = nullptr;
@@ -115,34 +115,6 @@ VST3Factory::~VST3Factory(){
     }
 #endif
     // LOG_DEBUG("freed VST3 module " << path_);
-}
-
-void VST3Factory::addPlugin(PluginInfo::ptr desc){
-    if (!pluginMap_.count(desc->name)){
-        plugins_.push_back(desc);
-        pluginMap_[desc->name] = desc;
-    }
-}
-
-PluginInfo::const_ptr VST3Factory::getPlugin(int index) const {
-    if (index >= 0 && index < (int)plugins_.size()){
-        return plugins_[index];
-    } else {
-        return nullptr;
-    }
-}
-
-PluginInfo::const_ptr VST3Factory::findPlugin(const std::string& name) const {
-    auto it = pluginMap_.find(name);
-    if (it != pluginMap_.end()){
-        return it->second;
-    } else {
-        return nullptr;
-    }
-}
-
-int VST3Factory::numPlugins() const {
-    return plugins_.size();
 }
 
 IFactory::ProbeFuture VST3Factory::probeAsync() {

@@ -1,6 +1,7 @@
 #pragma once
 #include "Interface.h"
 #include "Utility.h"
+#include "PluginFactory.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
@@ -66,37 +67,18 @@ uint32 PLUGIN_API release()override { return BaseClass::release (); }
 
 namespace vst {
 
-class VST3Factory : public IFactory {
+class VST3Factory final : public PluginFactory {
  public:
     VST3Factory(const std::string& path);
     ~VST3Factory();
-    // get a list of all available plugins
-    void addPlugin(PluginInfo::ptr desc) override;
-    PluginInfo::const_ptr getPlugin(int index) const override;
-    PluginInfo::const_ptr findPlugin(const std::string &name) const override;
-    int numPlugins() const override;
     // probe plugins (in a seperate process)
     ProbeFuture probeAsync() override;
-    bool isProbed() const override {
-        return !plugins_.empty();
-    }
-    bool valid() const override {
-        return plugins_.size() > 0;
-    }
-    std::string path() const override {
-        return path_;
-    }
     // create a new plugin instance
     IPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
     void doLoad();
-    std::string path_;
-    std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
-    // probed plugins:
-    std::vector<PluginInfo::ptr> plugins_;
-    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
     // factory plugins:
     std::vector<std::string> pluginList_;
     mutable std::unordered_map<std::string, int> pluginIndexMap_;

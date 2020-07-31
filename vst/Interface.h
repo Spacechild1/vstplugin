@@ -454,10 +454,11 @@ struct ProbeResult {
     Error error;
     int index = 0;
     int total = 0;
+    // methods
     bool valid() const { return error.code() == Error::NoError; }
 };
 
-class IFactory : public std::enable_shared_from_this<IFactory> {
+class IFactory {
  public:
     using ptr = std::shared_ptr<IFactory>;
     using const_ptr = std::shared_ptr<const IFactory>;
@@ -479,19 +480,13 @@ class IFactory : public std::enable_shared_from_this<IFactory> {
         probeAsync()(std::move(callback));
     }
     virtual ProbeFuture probeAsync() = 0;
-    virtual bool isProbed() const = 0;
-    virtual bool valid() const = 0; // contains at least one valid plugin
 
-    virtual std::string path() const = 0;
+    bool valid() const { return numPlugins() > 0; }
+
+    virtual const std::string& path() const = 0;
     // create a new plugin instance
     // throws an Error on failure!
     virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
- protected:
-    using ProbeResultFuture = std::function<ProbeResult()>;
-    ProbeResultFuture probePlugin(const std::string& name, int shellPluginID = 0);
-    using ProbeList = std::vector<std::pair<std::string, int>>;
-    std::vector<PluginInfo::ptr> probePlugins(const ProbeList& pluginList,
-            ProbeCallback callback);
 };
 
 // recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path.

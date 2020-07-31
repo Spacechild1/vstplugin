@@ -1,8 +1,9 @@
 cmake_minimum_required (VERSION 2.8)
 
 set(SRC "Interface.h" "Utility.h" "PluginManager.h" "ThreadedPlugin.h"
-    "PluginInfo.cpp" "PluginManager.cpp" "ThreadedPlugin.cpp" "Sync.cpp"
-    "CpuArch.cpp" "Loader.cpp" "Module.cpp" "Search.cpp"  "Utility.cpp")
+    "PluginInfo.cpp" "PluginManager.cpp" "ThreadedPlugin.cpp"
+    "CpuArch.cpp" "PluginFactory.h" "PluginFactory.cpp" "Search.cpp"
+    "Module.cpp" "Utility.cpp" "Sync.cpp")
 
 # VST2 SDK
 if (VST2)

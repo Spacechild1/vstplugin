@@ -99,38 +99,10 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 VstInt32 VST2Factory::shellPluginID = 0;
 
 VST2Factory::VST2Factory(const std::string& path)
-    : path_(path) {}
+    : PluginFactory(path) {}
 
 VST2Factory::~VST2Factory(){
     // LOG_DEBUG("freed VST2 module " << path_);
-}
-
-void VST2Factory::addPlugin(PluginInfo::ptr desc){
-    if (!pluginMap_.count(desc->name)){
-        plugins_.push_back(desc);
-        pluginMap_[desc->name] = desc;
-    }
-}
-
-PluginInfo::const_ptr VST2Factory::getPlugin(int index) const {
-    if (index >= 0 && index < (int)plugins_.size()){
-        return plugins_[index];
-    } else {
-        return nullptr;
-    }
-}
-
-PluginInfo::const_ptr VST2Factory::findPlugin(const std::string& name) const {
-    auto it = pluginMap_.find(name);
-    if (it != pluginMap_.end()){
-        return it->second;
-    } else {
-        return nullptr;
-    }
-}
-
-int VST2Factory::numPlugins() const {
-    return plugins_.size();
 }
 
 IFactory::ProbeFuture VST2Factory::probeAsync() {

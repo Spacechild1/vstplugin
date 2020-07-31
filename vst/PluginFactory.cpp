@@ -1,4 +1,4 @@
-#include "Interface.h"
+#include "PluginFactory.h"
 #include "Utility.h"
 #if USE_VST2
  #include "VST2Plugin.h"
@@ -123,11 +123,41 @@ public:
     }
 };
 
+/*/////////////////////////// PluginFactory ////////////////////////*/
+
+void PluginFactory::addPlugin(PluginInfo::ptr desc){
+    if (!pluginMap_.count(desc->name)){
+        plugins_.push_back(desc);
+        pluginMap_[desc->name] = desc;
+    }
+}
+
+PluginInfo::const_ptr PluginFactory::getPlugin(int index) const {
+    if (index >= 0 && index < (int)plugins_.size()){
+        return plugins_[index];
+    } else {
+        return nullptr;
+    }
+}
+
+PluginInfo::const_ptr PluginFactory::findPlugin(const std::string& name) const {
+    auto it = pluginMap_.find(name);
+    if (it != pluginMap_.end()){
+        return it->second;
+    } else {
+        return nullptr;
+    }
+}
+
+int PluginFactory::numPlugins() const {
+    return plugins_.size();
+}
+
 // should host.exe inherit file handles and print to stdout/stderr?
 #define PROBE_LOG 0
 
 // probe a plugin in a seperate process and return the info in a file
-IFactory::ProbeResultFuture IFactory::probePlugin(const std::string& name, int shellPluginID) {
+PluginFactory::ProbeResultFuture PluginFactory::probePlugin(const std::string& name, int shellPluginID) {
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     // put the information we already have (might be overriden)
     desc->name = name;
@@ -282,7 +312,7 @@ static std::mutex gLogMutex;
 #define DEBUG_THREAD(x)
 #endif
 
-std::vector<PluginInfo::ptr> IFactory::probePlugins(
+std::vector<PluginInfo::ptr> PluginFactory::probePlugins(
         const ProbeList& pluginList, ProbeCallback callback){
     // shell plugin!
     int numPlugins = pluginList.size();

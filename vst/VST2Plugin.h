@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Interface.h"
+#include "PluginFactory.h"
 
 #if USE_FST
 #include "fst.h"
@@ -12,38 +13,20 @@
 
 namespace vst {
 
-class VST2Factory : public IFactory {
+class VST2Factory final : public PluginFactory {
  public:
     static VstInt32 shellPluginID;
 
     VST2Factory(const std::string& path);
     ~VST2Factory();
-    // get a list of all available plugins
-    void addPlugin(PluginInfo::ptr desc) override;
-    PluginInfo::const_ptr getPlugin(int index) const override;
-    PluginInfo::const_ptr findPlugin(const std::string &name) const override;
-    int numPlugins() const override;
     // probe plugins (in a seperate process)
     ProbeFuture probeAsync() override;
-    bool isProbed() const override {
-        return !plugins_.empty();
-    }
-    bool valid() const override {
-        return numPlugins() > 0;
-    }
-    std::string path() const override {
-        return path_;
-    }
     // create a new plugin instance
     IPlugin::ptr create(const std::string& name, bool probe = false) const override;
  private:
     void doLoad();
     using EntryPoint = AEffect *(*)(audioMasterCallback);
-    std::string path_;
-    std::unique_ptr<IModule> module_;
     EntryPoint entry_;
-    std::vector<PluginInfo::ptr> plugins_;
-    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
 };
 
 //-----------------------------------------------------------------------------
