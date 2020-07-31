@@ -754,7 +754,7 @@ void VSTPlugin::next(int inNumSamples) {
     }
 
     if (process) {
-        auto vst3 = plugin->getType() == PluginType::VST3;
+        auto vst3 = plugin->info().type() == PluginType::VST3;
 
         // check bypass state
         Bypass bypass = Bypass::Off;

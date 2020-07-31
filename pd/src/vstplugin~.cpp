@@ -2615,7 +2615,7 @@ static t_class *vstplugin_class;
 void t_vstplugin::set_param(int index, float value, bool automated){
     if (index >= 0 && index < x_plugin->info().numParameters()){
         value = std::max(0.f, std::min(1.f, value));
-        int offset = x_plugin->getType() == PluginType::VST3 ? get_sample_offset() : 0;
+        int offset = x_plugin->info().type() == PluginType::VST3 ? get_sample_offset() : 0;
         x_plugin->setParameter(index, value, offset);
         x_editor->param_changed(index, value, automated);
     } else {
@@ -2625,7 +2625,7 @@ void t_vstplugin::set_param(int index, float value, bool automated){
 
 void t_vstplugin::set_param(int index, const char *s, bool automated){
     if (index >= 0 && index < x_plugin->info().numParameters()){
-        int offset = x_plugin->getType() == PluginType::VST3 ? get_sample_offset() : 0;
+        int offset = x_plugin->info().type() == PluginType::VST3 ? get_sample_offset() : 0;
         if (!x_plugin->setParameter(index, s, offset)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
         }

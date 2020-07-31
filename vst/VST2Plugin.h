@@ -56,8 +56,6 @@ class VST2Plugin final : public IPlugin {
     VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST2Plugin();
 
-    PluginType getType() const override { return PluginType::VST2; }
-
     const PluginInfo& info() const override { return *info_; }
 
     int canDo(const char *what) const override;

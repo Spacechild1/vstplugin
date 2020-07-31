@@ -199,8 +199,6 @@ class VST3Plugin final :
     // IPlugFrame
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
 
-    PluginType getType() const override { return PluginType::VST3; }
-
     const PluginInfo& info() const override { return *info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;

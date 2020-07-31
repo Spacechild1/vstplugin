@@ -44,10 +44,6 @@ class ThreadedPlugin final : public DeferredPlugin {
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
 
-    PluginType getType() const override {
-        return plugin_->getType();
-    }
-
     const PluginInfo& info() const override {
         return plugin_->info();
     }
