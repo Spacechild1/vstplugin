@@ -242,6 +242,7 @@ struct PluginInfo {
 #endif
     PluginType type() const { return type_; }
     // info data
+    std::string cpuArch;
     std::string uniqueID;
     std::string path;
     std::string name;

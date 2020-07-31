@@ -144,7 +144,9 @@ enum class CpuArch {
 
 CpuArch getHostCpuArchitecture();
 
-const char * getCpuArchString(CpuArch arch);
+const char * cpuArchToString(CpuArch arch);
+
+CpuArch cpuArchFromString(const std::string& name);
 
 std::vector<CpuArch> getCpuArchitectures(const std::string& path);
 

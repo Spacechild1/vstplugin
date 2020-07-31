@@ -376,6 +376,7 @@ static std::string bashString(std::string name){
 
 void PluginInfo::serialize(std::ostream& file) const {
     file << "[plugin]\n";
+    file << "arch=" << cpuArch << "\n";
     file << "id=" << uniqueID << "\n";
     file << "path=" << path << "\n";
     file << "name=" << name << "\n";
@@ -599,6 +600,7 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     uniqueID = value;
                 }
                 MATCH("path", path)
+                MATCH("arch", cpuArch)
                 MATCH("name", name)
                 MATCH("vendor", vendor)
                 MATCH("category", category)
