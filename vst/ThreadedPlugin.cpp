@@ -311,128 +311,16 @@ void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
     updateBuffer();
 }
 
-void ThreadedPlugin::setTempoBPM(double tempo) {
-    Command command(Command::SetTempo);
-    command.f = tempo;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTimeSignature(int numerator, int denominator) {
-    Command command(Command::SetTransportPosition);
-    command.timeSig.num = numerator;
-    command.timeSig.denom = denominator;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportPlaying(bool play) {
-    Command command(Command::SetTransportPosition);
-    command.b = play;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportRecording(bool record) {
-    Command command(Command::SetTransportRecording);
-    command.b = record;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportAutomationWriting(bool writing) {
-    Command command(Command::SetTransportAutomationWriting);
-    command.b = writing;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportAutomationReading(bool reading) {
-    Command command(Command::SetTransportAutomationReading);
-    command.b = reading;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportCycleActive(bool active) {
-    Command command(Command::SetTransportCycleActive);
-    command.b = active;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportCycleStart(double beat) {
-    Command command(Command::SetTransportCycleStart);
-    command.f = beat;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportCycleEnd(double beat) {
-    Command command(Command::SetTransportCycleEnd);
-    command.f = beat;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportPosition(double beat) {
-    Command command(Command::SetTransportPosition);
-    command.f = beat;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::sendMidiEvent(const MidiEvent& event) {
-    Command command(Command::SendMidi);
-    auto& midi = command.midi;
-    memcpy(midi.data, event.data, sizeof(event.data));
-    midi.delta = event.delta;
-    midi.detune = event.detune;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::sendSysexEvent(const SysexEvent& event) {
-    // copy data (LATER improve)
-    auto data = (char *)malloc(event.size);
-    memcpy(data, event.data, event.size);
-
-    Command command(Command::SendSysex);
-    auto& sysex = command.sysex;
-    sysex.data = data;
-    sysex.size = event.size;
-    sysex.delta = event.delta;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setParameter(int index, float value, int sampleOffset) {
-    Command command(Command::SetParamValue);
-    auto& param = command.paramValue;
-    param.index = index;
-    param.value = value;
-    param.offset = sampleOffset;
-    pushCommand(command);
-}
-
-bool ThreadedPlugin::setParameter(int index, const std::string& str, int sampleOffset) {
-    // copy string (LATER improve)
-    auto buf = (char *)malloc(str.size() + 1);
-    memcpy(buf, str.data(), str.size() + 1);
-
-    Command command(Command::SetParamString);
-    auto& param = command.paramString;
-    param.index = index;
-    param.string = buf;
-    param.offset = sampleOffset;
-    pushCommand(command);
-
-    return true; // what shall we do?
-}
-
 float ThreadedPlugin::getParameter(int index) const {
     // this should be threadsafe, but we might read an old value.
     // we can't set a parameter and immediately retrieve it,
     // instead we need one block of delay.
     return plugin_->getParameter(index);
 }
+
 std::string ThreadedPlugin::getParameterString(int index) const {
     // see above
     return plugin_->getParameterString(index);
-}
-
-void ThreadedPlugin::setProgram(int program) {
-    Command command(Command::SetProgram);
-    command.i = program;
-    pushCommand(command);
 }
 
 void ThreadedPlugin::setProgramName(const std::string& name) {

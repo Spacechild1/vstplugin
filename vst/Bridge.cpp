@@ -43,79 +43,6 @@ void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
 
 }
 
-void PluginClient::setTempoBPM(double tempo){
-    if (tempo > 0) {
-
-    } else {
-        LOG_WARNING("setTempoBPM: tempo must be greater than 0!");
-    }
-}
-
-void PluginClient::setTimeSignature(int numerator, int denominator){
-    if (numerator > 0 && denominator > 0){
-
-    } else {
-        LOG_WARNING("setTimeSignature: bad time signature!");
-    }
-}
-
-void PluginClient::setTransportPlaying(bool play){
-
-}
-
-void PluginClient::setTransportRecording(bool record){
-
-}
-
-void PluginClient::setTransportAutomationWriting(bool writing){
-
-}
-
-void PluginClient::setTransportAutomationReading(bool reading){
-
-}
-
-void PluginClient::setTransportCycleActive(bool active){
-
-}
-
-void PluginClient::setTransportCycleStart(double beat){
-
-}
-
-void PluginClient::setTransportCycleEnd(double beat){
-
-}
-
-void PluginClient::setTransportPosition(double beat){
-
-}
-
-void PluginClient::sendMidiEvent(const MidiEvent &event){
-
-}
-
-void PluginClient::sendSysexEvent(const SysexEvent &event){
-
-}
-
-void PluginClient::setParameter(int index, float value, int sampleOffset){
-    if (index >= 0 && index < numParameters()){
-
-    } else {
-        LOG_WARNING("parameter index out of range!");
-    }
-}
-
-bool PluginClient::setParameter(int index, const std::string &str, int sampleOffset){
-    if (index >= 0 && index < numParameters()){
-        return true;
-    } else {
-        LOG_WARNING("parameter index out of range!");
-        return false;
-    }
-}
-
 float PluginClient::getParameter(int index) const {
     if (index >= 0 && index < numParameters()){
         return 0;
@@ -131,14 +58,6 @@ std::string PluginClient::getParameterString(int index) const {
     } else {
         LOG_WARNING("parameter index out of range!");
         return "";
-    }
-}
-
-void PluginClient::setProgram(int program){
-    if (program >= 0 && program < numPrograms()){
-
-    } else {
-        LOG_WARNING("program number out of range!");
     }
 }
 

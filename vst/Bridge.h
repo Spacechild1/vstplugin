@@ -1,10 +1,11 @@
 #pragma once
 
 #include "Interface.h"
+#include "DeferredPlugin.h"
 
 namespace vst {
 
-class PluginClient : public IPlugin {
+class PluginClient final : public DeferredPlugin {
  public:
     PluginType getType() const override;
 
@@ -25,27 +26,11 @@ class PluginClient : public IPlugin {
 
     void setListener(IPluginListener::ptr listener) override;
 
-    void setTempoBPM(double tempo) override;
-    void setTimeSignature(int numerator, int denominator) override;
-    void setTransportPlaying(bool play) override;
-    void setTransportRecording(bool record) override;
-    void setTransportAutomationWriting(bool writing) override;
-    void setTransportAutomationReading(bool reading) override;
-    void setTransportCycleActive(bool active) override;
-    void setTransportCycleStart(double beat) override;
-    void setTransportCycleEnd(double beat) override;
-    void setTransportPosition(double beat) override;
     double getTransportPosition() const override;
 
-    void sendMidiEvent(const MidiEvent& event) override;
-    void sendSysexEvent(const SysexEvent& event) override;
-
-    void setParameter(int index, float value, int sampleOffset = 0) override;
-    bool setParameter(int index, const std::string& str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
-    void setProgram(int index) override;
     void setProgramName(const std::string& name) override;
     int getProgram() const override;
     std::string getProgramName() const override;
@@ -99,6 +84,7 @@ class PluginClient : public IPlugin {
 
     int numParameters() const { return info_->numParameters(); }
     int numPrograms() const { return info_->numPrograms(); }
+    void pushCommand(const Command& cmd) override {}
 };
 
 class WindowClient : public IWindow {

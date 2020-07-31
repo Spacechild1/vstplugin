@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "Sync.h"
 #include "Utility.h"
+#include "DeferredPlugin.h"
 
 #include <thread>
 #include <condition_variable>
@@ -38,7 +39,7 @@ class DSPThreadPool {
     SpinLock popLock_;
 };
 
-class ThreadedPlugin final : public IPlugin {
+class ThreadedPlugin final : public DeferredPlugin {
  public:
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
@@ -64,29 +65,13 @@ class ThreadedPlugin final : public IPlugin {
 
     void setListener(IPluginListener::ptr listener) override;
 
-    void setTempoBPM(double tempo) override;
-    void setTimeSignature(int numerator, int denominator) override;
-    void setTransportPlaying(bool play) override;
-    void setTransportRecording(bool record) override;
-    void setTransportAutomationWriting(bool writing) override;
-    void setTransportAutomationReading(bool reading) override;
-    void setTransportCycleActive(bool active) override;
-    void setTransportCycleStart(double beat) override;
-    void setTransportCycleEnd(double beat) override;
-    void setTransportPosition(double beat) override;
     double getTransportPosition() const override {
         return plugin_->getTransportPosition();
     }
 
-    void sendMidiEvent(const MidiEvent& event) override;
-    void sendSysexEvent(const SysexEvent& event) override;
-
-    void setParameter(int index, float value, int sampleOffset = 0) override;
-    bool setParameter(int index, const std::string& str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
-    void setProgram(int program) override;
     void setProgramName(const std::string& name) override;
     int getProgram() const override;
     std::string getProgramName() const override;
@@ -170,58 +155,7 @@ class ThreadedPlugin final : public IPlugin {
     mutable SharedMutex mutex_;
     Event event_;
     // commands
-    struct Command {
-        // type
-        enum Type {
-            SetParamValue,
-            SetParamString,
-            SetBypass,
-            SetTempo,
-            SetTimeSignature,
-            SetTransportPlaying,
-            SetTransportRecording,
-            SetTransportAutomationWriting,
-            SetTransportAutomationReading,
-            SetTransportCycleActive,
-            SetTransportCycleStart,
-            SetTransportCycleEnd,
-            SetTransportPosition,
-            SendMidi,
-            SendSysex,
-            SetProgram
-        } type;
-        Command() = default;
-        Command(Command::Type _type) : type(_type){}
-        // data
-        union {
-            bool b;
-            int i;
-            float f;
-            // param value
-            struct {
-                int index;
-                float value;
-                int offset;
-            } paramValue;
-            // param string
-            struct {
-                int index;
-                int offset;
-                char* string;
-            } paramString;
-            // time signature
-            struct {
-                int num;
-                int denom;
-            } timeSig;
-            // bypass
-            Bypass bypass;
-            // midi
-            MidiEvent midi;
-            SysexEvent sysex;
-        };
-    };
-    void pushCommand(const Command& command){
+    void pushCommand(const Command& command) override {
         commands_[current_].push_back(command);
     }
     std::vector<Command> commands_[2];
