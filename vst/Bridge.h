@@ -7,9 +7,8 @@ namespace vst {
 
 class PluginClient final : public DeferredPlugin {
  public:
-    PluginType getType() const override;
 
-    PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc);
+    PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox);
     ~PluginClient();
 
     const PluginInfo& info() const override {
@@ -23,8 +22,11 @@ class PluginClient final : public DeferredPlugin {
     void resume() override;
     void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
+    int getLatencySamples() override;
 
-    void setListener(IPluginListener::ptr listener) override;
+    void setListener(IPluginListener::ptr listener) override {
+        listener_ = listener;
+    }
 
     double getTransportPosition() const override;
 
@@ -54,9 +56,11 @@ class PluginClient final : public DeferredPlugin {
 
     void openEditor(void *window) override;
     void closeEditor() override;
-    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override {
-        return false;
-    }
+    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    void updateEditor() override;
+    void checkEditorSize(int& width, int& height) const override;
+    void resizeEditor(int width, int height) override;
+    bool canResize() const override;
 
     void setWindow(std::unique_ptr<IWindow> window) override {
         window_ = std::move(window);
@@ -89,7 +93,7 @@ class PluginClient final : public DeferredPlugin {
 
 class WindowClient : public IWindow {
  public:
-    WindowClient();
+    WindowClient(PluginClient &plugin);
     ~WindowClient();
 
     void* getHandle() override; // get system-specific handle to the window
@@ -101,6 +105,8 @@ class WindowClient : public IWindow {
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
     void update() override;
+ private:
+    PluginClient *plugin_;
 };
 
-} //
+} // vst

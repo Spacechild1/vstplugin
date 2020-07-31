@@ -5,7 +5,24 @@ namespace vst {
 
 /*/////////////////////// PluginClient /////////////////////////////*/
 
-PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc)
+#define FORBIDDEN_METHOD(name) throw Error(Error::PluginError, "PluginClient: must not call " name "()");
+
+#define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging");
+
+IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
+                               bool editor, bool sandbox){
+    auto info = factory->findPlugin(name); // should never fail
+    if (!info){
+        throw Error(Error::PluginError, "couldn't find subplugin");
+    }
+    auto plugin = std::make_unique<PluginClient>(factory, info, sandbox);
+    if (editor){
+        plugin->setWindow(std::make_unique<WindowClient>(*plugin));
+    }
+    return plugin;
+}
+
+PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox)
     : factory_(std::move(f)), info_(std::move(desc))
 {
 
@@ -41,6 +58,14 @@ void PluginClient::setBypass(Bypass state){
 
 void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
 
+}
+
+int PluginClient::getLatencySamples(){
+    return 0;
+}
+
+double PluginClient::getTransportPosition() const {
+    return 0;
 }
 
 float PluginClient::getParameter(int index) const {
@@ -108,22 +133,42 @@ void PluginClient::writeBankData(std::string& buffer){
 }
 
 void PluginClient::openEditor(void * window){
-
+    FORBIDDEN_METHOD("openEditor")
 }
 
 void PluginClient::closeEditor(){
+    FORBIDDEN_METHOD("closeEditor")
+}
 
+bool PluginClient::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+    FORBIDDEN_METHOD("getEditorRect")
+}
+
+void PluginClient::updateEditor() {
+    FORBIDDEN_METHOD("updateEditor")
+}
+
+void PluginClient::checkEditorSize(int& width, int& height) const {
+    FORBIDDEN_METHOD("checkEditorSize")
+}
+
+void PluginClient::resizeEditor(int width, int height) {
+    FORBIDDEN_METHOD("resizeEditor")
+}
+
+bool PluginClient::canResize() const {
+    FORBIDDEN_METHOD("canResize")
 }
 
 // VST2 only
 
 int PluginClient::canDo(const char *what) const {
-    LOG_WARNING("canDo() not supported with bit bridging");
+    UNSUPPORTED_METHOD("canDo")
     return 0;
 }
 
 intptr_t PluginClient::vendorSpecific(int index, intptr_t value, void *p, float opt){
-    LOG_WARNING("vendorSpecific() not supported with bit bridging");
+    UNSUPPORTED_METHOD("vendorSpecific");
     return 0;
 }
 
@@ -160,7 +205,9 @@ void PluginClient::endMessage(){
 
 /*///////////////////// WindowClient ////////////////////*/
 
-WindowClient::WindowClient(){
+WindowClient::WindowClient(PluginClient& plugin)
+    : plugin_(&plugin)
+{
 
 }
 
