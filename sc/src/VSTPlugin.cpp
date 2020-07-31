@@ -2484,7 +2484,7 @@ PluginLoad(VSTPlugin) {
 
     // UIThread::setup();
 
-    Print("VSTPlugin %s", getVersionString().c_str());
+    Print("VSTPlugin %s\n", getVersionString().c_str());
     // read cached plugin info
     readIniFile();
 }
