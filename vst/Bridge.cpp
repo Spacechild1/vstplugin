@@ -10,7 +10,8 @@ namespace vst {
 #define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging");
 
 IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
-                               bool editor, bool sandbox){
+                               bool editor, bool sandbox)
+{
     auto info = factory->findPlugin(name); // should never fail
     if (!info){
         throw Error(Error::PluginError, "couldn't find subplugin");

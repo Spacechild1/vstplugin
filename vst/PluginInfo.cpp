@@ -1,7 +1,6 @@
 #include "Interface.h"
 #include "Utility.h"
 #include "Sync.h"
-#include "ThreadedPlugin.h"
 
 #include <algorithm>
 #include <sstream>
@@ -115,19 +114,36 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     factory_ = std::move(factory);
 }
 
-IPlugin::ptr PluginInfo::create(bool editor, bool threaded) const {
+IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
+
+IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
+                               bool editor, bool sandbox);
+
+IPlugin::ptr PluginInfo::create(bool editor, bool threaded, bool sandbox) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     if (!factory){
         return nullptr;
     }
-    auto plugin = factory->create(name);
-    if (threaded){
-        plugin = std::make_unique<ThreadedPlugin>(std::move(plugin));
+    IPlugin::ptr plugin;
+
+#if USE_BRIDGE
+    bool bridge = cpuArchFromString(cpuArch) != getHostCpuArchitecture();
+#else
+    bool bridge = false;
+#endif
+
+    if (bridge || sandbox){
+        plugin = makeBridgedPlugin(factory, name, editor, sandbox);
+    } else {
+        plugin = factory->create(name);
+        if (editor && plugin->info().hasEditor()){
+            auto window = IWindow::create(*plugin);
+            plugin->setWindow(std::move(window));
+        }
     }
 
-    if (editor && plugin->info().hasEditor()){
-        auto window = IWindow::create(*plugin);
-        plugin->setWindow(std::move(window));
+    if (threaded){
+        plugin = makeThreadedPlugin(std::move(plugin));
     }
 
     return plugin;
