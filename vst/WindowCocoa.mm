@@ -111,17 +111,19 @@ bool callAsync(Callback cb, void *user){
 namespace Cocoa {
 
 EventLoop& EventLoop::instance(){
-    static EventLoop thread;
-    return thread;
+    static EventLoop e;
+    return e;
 }
 
 EventLoop::EventLoop(){
-    // transform process into foreground application
-    ProcessSerialNumber psn = {0, kCurrentProcess};
-    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
     // we must access NSApp only once in the beginning (why?)
     haveNSApp_ = (NSApp != nullptr);
-    if (!haveNSApp_){
+    if (haveNSApp_){
+        // transform process into foreground application
+        ProcessSerialNumber psn = {0, kCurrentProcess};
+        TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+        LOG_DEBUG("init cocoa event loop");
+    } else {
         LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
     }
 }
