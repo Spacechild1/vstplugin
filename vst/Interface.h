@@ -29,6 +29,10 @@ typedef unsigned int uint32_t;
 #define USE_VST3 1
 #endif
 
+#ifndef USE_BRIDGE
+#define USE_BRIDGE 0
+#endif
+
 namespace vst {
 
 const int VERSION_MAJOR = 0;

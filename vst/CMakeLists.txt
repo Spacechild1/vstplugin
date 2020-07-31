@@ -20,6 +20,11 @@ if (VST3)
     list(APPEND SRC "VST3Plugin.h" "VST3Plugin.cpp")
 endif()
 
+# bit bridging
+if (BRIDGE)
+    list(APPEND SRC "Bridge.h" "Bridge.cpp")
+endif()
+
 # platform specific VST sources and defines
 if (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1)

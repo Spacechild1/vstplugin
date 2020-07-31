@@ -122,6 +122,12 @@ if (VST3)
     message(STATUS "VST3DIR: ${VST3DIR}")
 endif()
 
+# bit bridging
+option(BRIDGE "Enable bit briding" ON)
+if (BRIDGE)
+    add_definitions(-DUSE_BRIDGE=1)
+endif()
+
 # vst library
 include_directories(vst)
 set(VST "vst")
