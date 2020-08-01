@@ -69,19 +69,19 @@ namespace vst {
 
 class VST3Factory final : public PluginFactory {
  public:
-    VST3Factory(const std::string& path);
+    VST3Factory(const std::string& path, bool probe);
     ~VST3Factory();
-    // probe plugins (in a seperate process)
-    ProbeFuture probeAsync() override;
+    // probe a single plugin
+    PluginInfo::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
-    IPlugin::ptr create(const std::string& name, bool probe = false) const override;
+    IPlugin::ptr create(const std::string& name) const override;
  private:
     void doLoad();
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
-    // factory plugins:
-    std::vector<std::string> pluginList_;
-    mutable std::unordered_map<std::string, int> pluginIndexMap_;
+    // subplugins
+    PluginInfo::SubPluginList subPlugins_;
+    std::unordered_map<std::string, int> subPluginMap_;
 };
 
 //----------------------------------------------------------------------
@@ -183,6 +183,7 @@ class VST3Plugin final :
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
 
     const PluginInfo& info() const override { return *info_; }
+    PluginInfo::const_ptr getInfo() const { return info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;

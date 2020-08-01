@@ -1,5 +1,6 @@
 #include "Interface.h"
 #include "Utility.h"
+
 #include <stdlib.h>
 
 using namespace vst;
@@ -29,17 +30,17 @@ int bridge(const std::string& path){
     return EXIT_FAILURE;
 }
 
-int probe(const std::string& pluginPath, const std::string& pluginName,
+int probe(const std::string& pluginPath, int pluginIndex,
           const std::string& filePath)
 {
-    LOG_DEBUG("probing " << pluginPath << " " << pluginName);
+    LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
-        auto factory = vst::IFactory::load(pluginPath);
-        auto plugin = factory->create(pluginName, true);
+        auto factory = vst::IFactory::load(pluginPath, true);
+        auto desc = factory->probePlugin(pluginIndex);
         if (!filePath.empty()) {
             vst::File file(filePath, File::WRITE);
             if (file.is_open()) {
-                plugin->info().serialize(file);
+                desc->serialize(file);
             } else {
                 LOG_ERROR("ERROR: couldn't write info file " << filePath);
             }
@@ -69,15 +70,20 @@ int main(int argc, const char *argv[]) {
         argv += 2;
         if (verb == "probe" && argc > 0){
             std::string path = shorten(argv[0]);
-            std::string name = argc > 1 ? shorten(argv[1]) : "";
+            int index;
+            try {
+                index = std::stol(shorten(argv[1]), 0, 0);
+            } catch (...){
+                index = -1; // non-numeric argument
+            }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
-            return probe(path, name, file);
+            return probe(path, index, file);
         } else if (verb == "bridge" && argc > 0){
             return bridge(shorten(argv[0]));
         }
     }
     LOG_ERROR("usage:");
-    LOG_ERROR("  probe <plugin_path> [<plugin_name|shell_id>] [<file_path>]");
+    LOG_ERROR("  probe <plugin_path> [<id>] [<file_path>]");
     LOG_ERROR("  bridge <shared_mem_path>");
     return EXIT_FAILURE;
 }

@@ -13,18 +13,21 @@
 
 namespace vst {
 
+class VST2Plugin;
+
 class VST2Factory final : public PluginFactory {
  public:
     static VstInt32 shellPluginID;
 
-    VST2Factory(const std::string& path);
+    VST2Factory(const std::string& path, bool probe);
     ~VST2Factory();
-    // probe plugins (in a seperate process)
-    ProbeFuture probeAsync() override;
+    // probe a single plugin
+    PluginInfo::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
-    IPlugin::ptr create(const std::string& name, bool probe = false) const override;
+    IPlugin::ptr create(const std::string& name) const override;
  private:
     void doLoad();
+    std::unique_ptr<VST2Plugin> doCreate(PluginInfo::const_ptr desc) const;
     using EntryPoint = AEffect *(*)(audioMasterCallback);
     EntryPoint entry_;
 };
@@ -41,6 +44,7 @@ class VST2Plugin final : public IPlugin {
     ~VST2Plugin();
 
     const PluginInfo& info() const override { return *info_; }
+    PluginInfo::const_ptr getInfo() const { return info_; }
 
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;

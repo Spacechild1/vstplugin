@@ -13,6 +13,8 @@ class PluginFactory :
         : path_(path){}
     virtual ~PluginFactory(){}
 
+    ProbeFuture probeAsync() override;
+
     void addPlugin(PluginInfo::ptr desc) override;
     PluginInfo::const_ptr getPlugin(int index) const override;
     PluginInfo::const_ptr findPlugin(const std::string& name) const override;
@@ -21,16 +23,15 @@ class PluginFactory :
     const std::string& path() const override { return path_; }
  protected:
     using ProbeResultFuture = std::function<ProbeResult()>;
-    ProbeResultFuture probePlugin(const std::string& name, int shellPluginID = 0);
-    using ProbeList = std::vector<std::pair<std::string, int>>;
-    std::vector<PluginInfo::ptr> probePlugins(const ProbeList& pluginList,
-            ProbeCallback callback);
+    ProbeResultFuture doProbePlugin();
+    ProbeResultFuture doProbePlugin(const PluginInfo::SubPlugin& subplugin);
+    std::vector<PluginInfo::ptr> doProbePlugins(
+            const PluginInfo::SubPluginList& pluginList, ProbeCallback callback);
     // data
     std::string path_;
     std::unique_ptr<IModule> module_;
     std::vector<PluginInfo::ptr> plugins_;
     std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
-
 };
 
 } // vst

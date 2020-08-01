@@ -239,6 +239,13 @@ struct PluginInfo {
         return id_.uid;
     }
 #endif
+    struct SubPlugin {
+        std::string name;
+        int id;
+    };
+    using SubPluginList = std::vector<SubPlugin>;
+    SubPluginList subPlugins;
+
     PluginType type() const { return type_; }
     // info data
     std::string cpuArch;
@@ -375,14 +382,6 @@ struct PluginInfo {
         SysexOutput = 1 << 7
     };
     uint32_t flags = 0;
-#if USE_VST2
-    // shell plugin
-    struct ShellPlugin {
-        std::string name;
-        int id;
-    };
-    std::vector<ShellPlugin> shellPlugins;
-#endif
  private:
     std::weak_ptr<const IFactory> factory_;
     std::string path_;
@@ -468,7 +467,7 @@ class IFactory {
 
     // expects an absolute path to the actual plugin file with or without extension
     // throws an Error exception on failure!
-    static IFactory::ptr load(const std::string& path);
+    static IFactory::ptr load(const std::string& path, bool probe = false);
 
     virtual ~IFactory(){}
     virtual void addPlugin(PluginInfo::ptr desc) = 0;
@@ -480,13 +479,14 @@ class IFactory {
         probeAsync()(std::move(callback));
     }
     virtual ProbeFuture probeAsync() = 0;
+    virtual PluginInfo::const_ptr probePlugin(int id) const = 0;
 
     bool valid() const { return numPlugins() > 0; }
 
     virtual const std::string& path() const = 0;
     // create a new plugin instance
     // throws an Error on failure!
-    virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
+    virtual IPlugin::ptr create(const std::string& name) const = 0;
 };
 
 // recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path.

@@ -102,8 +102,13 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 
 /*/////////////////////// VST3Factory /////////////////////////*/
 
-VST3Factory::VST3Factory(const std::string& path)
-    : PluginFactory(path) {}
+VST3Factory::VST3Factory(const std::string& path, bool probe)
+    : PluginFactory(path)
+{
+    if (probe){
+        doLoad();
+    }
+}
 
 VST3Factory::~VST3Factory(){
     factory_ = nullptr;
@@ -115,42 +120,6 @@ VST3Factory::~VST3Factory(){
     }
 #endif
     // LOG_DEBUG("freed VST3 module " << path_);
-}
-
-IFactory::ProbeFuture VST3Factory::probeAsync() {
-    doLoad(); // lazy loading
-
-    if (pluginList_.empty()){
-        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
-    }
-    plugins_.clear();
-    pluginMap_.clear();
-    auto self(shared_from_this());
-    if (pluginList_.size() > 1){
-        return [this, self=std::move(self)](ProbeCallback callback){
-            ProbeList pluginList;
-            for (auto& name : pluginList_){
-                pluginList.emplace_back(name, 0);
-            }
-            plugins_ = probePlugins(pluginList, callback);
-            for (auto& desc : plugins_) {
-                pluginMap_[desc->name] = desc;
-            }
-        };
-    } else {
-        auto f = probePlugin(pluginList_[0]);
-        return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
-            auto result = f();
-            if (result.valid()) {
-                plugins_ = { result.plugin };
-                pluginMap_[result.plugin->name] = result.plugin;
-            }
-            /// LOG_DEBUG("probed plugin " << result.plugin->name);
-            if (callback){
-                callback(result);
-            }
-        };
-    }
 }
 
 void VST3Factory::doLoad(){
@@ -181,15 +150,15 @@ void VST3Factory::doLoad(){
         // map plugin names to indices
         auto numPlugins = factory_->countClasses();
         /// LOG_DEBUG("module contains " << numPlugins << " classes");
-        pluginList_.clear();
-        pluginIndexMap_.clear();
+        subPlugins_.clear();
+        subPluginMap_.clear();
         for (int i = 0; i < numPlugins; ++i){
             PClassInfo ci;
             if (factory_->getClassInfo(i, &ci) == kResultTrue){
                 /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
                 if (!strcmp(ci.category, kVstAudioEffectClass)){
-                    pluginList_.push_back(ci.name);
-                    pluginIndexMap_[ci.name] = i;
+                    subPlugins_.push_back(PluginInfo::SubPlugin { ci.name, i });
+                    subPluginMap_[ci.name] = i;
                 }
             } else {
                 throw Error(Error::ModuleError, "Couldn't get class info!");
@@ -200,21 +169,49 @@ void VST3Factory::doLoad(){
     }
 }
 
-std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe) const {
+std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name) const {
     const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
 
-    PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
-    if (!probe){
-        if (plugins_.empty()){
-            throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
-        }
-        auto it = pluginMap_.find(name);
-        if (it == pluginMap_.end()){
-            throw Error(Error::ModuleError, "Can't find (sub)plugin '" + name + "'");
-        }
-        desc = it->second;
+    if (plugins_.empty()){
+        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
     }
-    return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], shared_from_this(), desc);
+    // find plugin desc
+    auto it = pluginMap_.find(name);
+    if (it == pluginMap_.end()){
+        throw Error(Error::ModuleError, "Can't find (sub)plugin '" + name + "'");
+    }
+    auto desc = it->second;
+    // find plugin index
+    auto it2 = subPluginMap_.find(name);
+    if (it2 == subPluginMap_.end()){
+        throw Error(Error::ModuleError, "Can't find index for (sub)plugin '" + name + "'");
+    }
+    auto index = it2->second;
+
+    return std::make_unique<VST3Plugin>(factory_, index, shared_from_this(), desc);
+}
+
+PluginInfo::const_ptr VST3Factory::probePlugin(int id) const {
+    const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
+
+    if (subPlugins_.empty()){
+        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
+    }
+
+    // if the module contains a single plugin, we don't have to enumerate subplugins!
+    if (id < 0){
+        if (subPlugins_.size() > 1){
+            // only write list of subplugins
+            auto desc = std::make_shared<PluginInfo>(nullptr);
+            desc->subPlugins = subPlugins_;
+            return desc;
+        } else {
+            id = subPlugins_[0].id; // grab the first (and only) plugin
+        }
+    }
+    // create (sub)plugin
+    auto plugin = std::make_unique<VST3Plugin>(factory_, id, shared_from_this(), nullptr);
+    return plugin->getInfo();
 }
 
 /*///////////////////// ParamValueQeue /////////////////////*/

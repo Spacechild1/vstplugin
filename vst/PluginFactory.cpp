@@ -64,7 +64,7 @@ extern "C" {
 
 /*///////////////////// IFactory ////////////////////////*/
 
-IFactory::ptr IFactory::load(const std::string& path){
+IFactory::ptr IFactory::load(const std::string& path, bool probe){
 #ifdef _WIN32
     const char *ext = ".dll";
 #elif defined(__APPLE__)
@@ -83,7 +83,7 @@ IFactory::ptr IFactory::load(const std::string& path){
             // TODO try bridging
             throw Error(Error::ModuleError, "Wrong CPU architecture");
         }
-        return std::make_shared<VST3Factory>(path);
+        return std::make_shared<VST3Factory>(path, probe);
     #else
         throw Error(Error::ModuleError, "VST3 plug-ins not supported");
     #endif
@@ -101,7 +101,7 @@ IFactory::ptr IFactory::load(const std::string& path){
             // TODO try bridging
             throw Error(Error::ModuleError, "Wrong CPU architecture");
         }
-        return std::make_shared<VST2Factory>(realPath);
+        return std::make_shared<VST2Factory>(realPath, probe);
     #else
         throw Error(Error::ModuleError, "VST2 plug-ins not supported");
     #endif
@@ -124,6 +124,29 @@ public:
 };
 
 /*/////////////////////////// PluginFactory ////////////////////////*/
+
+IFactory::ProbeFuture PluginFactory::probeAsync() {
+    plugins_.clear();
+    pluginMap_.clear();
+    auto f = doProbePlugin();
+    auto self = shared_from_this();
+    return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
+        auto result = f(); // call future
+        if (result.plugin->subPlugins.empty()){
+            if (result.valid()) {
+                plugins_ = { result.plugin };
+            }
+            if (callback){
+                callback(result);
+            }
+        } else {
+            plugins_ = doProbePlugins(result.plugin->subPlugins, callback);
+        }
+        for (auto& desc : plugins_) {
+            pluginMap_[desc->name] = desc;
+        }
+    };
+}
 
 void PluginFactory::addPlugin(PluginInfo::ptr desc){
     if (!pluginMap_.count(desc->name)){
@@ -156,13 +179,23 @@ int PluginFactory::numPlugins() const {
 // should host.exe inherit file handles and print to stdout/stderr?
 #define PROBE_LOG 0
 
+PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(){
+    return doProbePlugin(PluginInfo::SubPlugin { "", -1 });
+}
+
 // probe a plugin in a seperate process and return the info in a file
-PluginFactory::ProbeResultFuture PluginFactory::probePlugin(const std::string& name, int shellPluginID) {
+PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
+        const PluginInfo::SubPlugin& sub)
+{
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
-    // put the information we already have (might be overriden)
-    desc->name = name;
-    // we pass the shell plugin ID instead of the name to host.exe
-    std::string pluginName = shellPluginID ? std::to_string(shellPluginID) : name;
+    desc->name = sub.name; // necessary for error reporting, will be overriden later
+    // turn id into string
+    char idString[12];
+    if (sub.id >= 0){
+        snprintf(idString, sizeof(idString), "0x%X", sub.id);
+    } else {
+        sprintf(idString, "_");
+    }
     // create temp file path
     std::stringstream ss;
     ss << "/vst_" << desc.get(); // desc address should be unique as long as PluginInfos are retained.
@@ -175,9 +208,9 @@ PluginFactory::ProbeResultFuture PluginFactory::probePlugin(const std::string& n
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::stringstream cmdLineStream;
     cmdLineStream << "host.exe probe "
-            << "\"" << path() << "\" "
-            << "\"" << pluginName << "\" "
-            << "\"" << tmpPath + "\"";
+            << "\"" << path() << "\" " << idString
+            << " \"" << tmpPath + "\"";
+    // LOG_DEBUG(cmdLineStream.str());
     auto cmdLine = widen(cmdLineStream.str());
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
@@ -230,7 +263,7 @@ PluginFactory::ProbeResultFuture PluginFactory::probePlugin(const std::string& n
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         if (execl(hostPath.c_str(), "host", path().c_str(), "probe",
-                  pluginName.c_str(), tmpPath.c_str(), nullptr) < 0){
+                  idString, tmpPath.c_str(), nullptr) < 0){
             // write error to temp file
             int err = errno;
             File file(tmpPath, File::WRITE);
@@ -312,9 +345,8 @@ static std::mutex gLogMutex;
 #define DEBUG_THREAD(x)
 #endif
 
-std::vector<PluginInfo::ptr> PluginFactory::probePlugins(
-        const ProbeList& pluginList, ProbeCallback callback){
-    // shell plugin!
+std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
+        const PluginInfo::SubPluginList& pluginList, ProbeCallback callback){
     int numPlugins = pluginList.size();
     std::vector<PluginInfo::ptr> results;
 #ifdef PLUGIN_LIMIT
@@ -329,11 +361,10 @@ std::vector<PluginInfo::ptr> PluginFactory::probePlugins(
         // probe the next n plugins
         int n = std::min<int>(numPlugins - i, PROBE_FUTURES);
         for (int j = 0; j < n; ++j, ++i){
-            auto& name = pluginList[i].first;
-            auto& id = pluginList[i].second;
-            /// LOG_DEBUG("probing '" << name << "'");
+            auto& sub = pluginList[i];
+            /// LOG_DEBUG("probing '" << sub.name << "'");
             try {
-                futures.emplace_back(i, probePlugin(name, id));
+                futures.emplace_back(i, doProbePlugin(sub));
             } catch (const Error& e){
                 // return error future
                 futures.emplace_back(i, [=](){
@@ -372,15 +403,14 @@ std::vector<PluginInfo::ptr> PluginFactory::probePlugins(
         DEBUG_THREAD("worker thread " << i << " started");
         std::unique_lock<std::mutex> lock(mutex);
         while (head < numPlugins){
-            auto& name = pluginList[head].first;
-            auto& id = pluginList[head].second;
+            auto& sub = pluginList[head];
             head++;
             lock.unlock();
 
-            DEBUG_THREAD("thread " << i << ": probing '" << name << "'");
+            DEBUG_THREAD("thread " << i << ": probing '" << sub.name << "'");
             ProbeResult result;
             try {
-                result = probePlugin(name, id)(); // call future
+                result = doProbePlugin(sub)(); // call future
             } catch (const Error& e){
                 DEBUG_THREAD("probe error " << e.what());
                 result.error = e;
@@ -388,7 +418,7 @@ std::vector<PluginInfo::ptr> PluginFactory::probePlugins(
 
             lock.lock();
             probeResults.push_back(result);
-            DEBUG_THREAD("thread " << i << ": probed " << name);
+            DEBUG_THREAD("thread " << i << ": probed " << sub.name);
             cond.notify_one();
         }
         DEBUG_THREAD("worker thread " << i << " finished");

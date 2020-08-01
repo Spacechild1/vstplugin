@@ -98,39 +98,16 @@ const size_t fxBankHeaderSize = 156;    // 8 * VstInt32 + 124 empty characters
 
 VstInt32 VST2Factory::shellPluginID = 0;
 
-VST2Factory::VST2Factory(const std::string& path)
-    : PluginFactory(path) {}
+VST2Factory::VST2Factory(const std::string& path, bool probe)
+    : PluginFactory(path)
+{
+    if (probe){
+        doLoad();
+    }
+}
 
 VST2Factory::~VST2Factory(){
     // LOG_DEBUG("freed VST2 module " << path_);
-}
-
-IFactory::ProbeFuture VST2Factory::probeAsync() {
-    plugins_.clear();
-    pluginMap_.clear();
-    auto f = probePlugin(""); // don't need a name
-    /// LOG_DEBUG("got probePlugin future");
-    auto self = shared_from_this();
-    return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
-        auto result = f(); // call future
-        if (result.plugin->shellPlugins.empty()){
-            if (result.valid()) {
-                plugins_ = { result.plugin };
-            }
-            if (callback){
-                callback(result);
-            }
-        } else {
-            ProbeList pluginList;
-            for (auto& shell : result.plugin->shellPlugins){
-                pluginList.emplace_back(shell.name, shell.id);
-            }
-            plugins_ = probePlugins(pluginList, callback);
-        }
-        for (auto& desc : plugins_) {
-            pluginMap_[desc->name] = desc;
-        }
-    };
 }
 
 void VST2Factory::doLoad(){
@@ -154,31 +131,37 @@ void VST2Factory::doLoad(){
     }
 }
 
-IPlugin::ptr VST2Factory::create(const std::string& name, bool probe) const {
+IPlugin::ptr VST2Factory::create(const std::string &name) const {
     const_cast<VST2Factory *>(this)->doLoad(); // lazy loading
 
-    PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
-    if (!probe){
-        if (plugins_.empty()){
-            throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
-        }
-        auto it = pluginMap_.find(name);
-        if (it == pluginMap_.end()){
-            throw Error(Error::ModuleError, "can't find (sub)plugin '" + name + "'");
-        }
-        desc = it->second;
-        // only for shell plugins:
-        // set (global) current plugin ID (used in hostCallback)
-        shellPluginID = desc->getUniqueID();
+    if (plugins_.empty()){
+        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
+    }
+    auto it = pluginMap_.find(name);
+    if (it == pluginMap_.end()){
+        throw Error(Error::ModuleError, "can't find (sub)plugin '" + name + "'");
+    }
+    PluginInfo::ptr desc = it->second;
+    // only for shell plugins:
+    // set (global) current plugin ID (used in hostCallback)
+    shellPluginID = desc->getUniqueID();
+
+    return doCreate(desc);
+}
+
+PluginInfo::const_ptr VST2Factory::probePlugin(int id) const {
+    const_cast<VST2Factory *>(this)->doLoad(); // lazy loading
+
+    if (id > 0){
+        shellPluginID = id;
     } else {
-        // when probing, shell plugin ID is passed as string
-        try {
-            shellPluginID = std::stol(name);
-        } catch (...){
-            shellPluginID = 0;
-        }
+        shellPluginID = 0;
     }
 
+    return doCreate(nullptr)->getInfo();
+}
+
+std::unique_ptr<VST2Plugin> VST2Factory::doCreate(PluginInfo::const_ptr desc) const {
     AEffect *plugin = entry_(&VST2Plugin::hostCallback);
     shellPluginID = 0; // just to be sure
 
@@ -277,8 +260,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginInfo::const
             char name[256] = { 0 };
             while ((nextID = dispatch(effShellGetNextPlugin, 0, 0, name))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
-                PluginInfo::ShellPlugin shellPlugin { name, nextID };
-                info->shellPlugins.push_back(std::move(shellPlugin));
+                info->subPlugins.push_back(PluginInfo::SubPlugin { name, nextID });
             }
         }
         info_ = info;
