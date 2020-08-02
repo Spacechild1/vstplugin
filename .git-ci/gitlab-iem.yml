@@ -63,6 +63,7 @@ variables:
     - make -C build install/strip VERBOSE=1
 
 .build:linux_i386: &build_linux_i386
+  allow_failure: true
   extends: .build:linux
   image: registry.git.iem.at/devtools/docker/debiancross:i386
   variables:
