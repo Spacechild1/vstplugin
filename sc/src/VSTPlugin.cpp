@@ -2303,9 +2303,9 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             ptr += len;
         }
         // LOG_DEBUG("start search");
+        gSearching = true; // before command dispatching! -> NRT mode
         DoAsynchronousCommand(inWorld, replyAddr, "vst_search", data,
             cmdSearch, cmdSearchDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
-        gSearching = true;
     }
 }
 
