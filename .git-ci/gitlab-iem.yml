@@ -48,7 +48,8 @@ variables:
   variables:
     pd_extension: pd_linux
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends git wget make cmake puredata-dev puredata
+    - apt-get update && apt-get install -y --no-install-recommends make cmake
+      gcc-multilib g++-multilib puredata-dev puredata
     - export PD=/usr/bin/pd
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
@@ -56,8 +57,9 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DPD_EXTENSION=${pd_extension}
-      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
+    - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
+      -DSTATIC_LIBS=ON -DPD_EXTENSION=${pd_extension} -DPD_INSTALLDIR=$(pwd)
+      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
