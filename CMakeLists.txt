@@ -4,6 +4,10 @@ set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
 project(${PROJECT})
 
+if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+	set(MARCH64 TRUE)
+endif()
+
 if(UNIX AND NOT APPLE AND NOT MINGW)
 	set(LINUX TRUE)
 endif()
@@ -31,7 +35,7 @@ set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install director
 if (WIN32 OR MINGW)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
     set(_pf_x86 "ProgramFiles(x86)")
-    if (DEFINED ENV{${_pf_x86}} AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    if (DEFINED ENV{${_pf_x86}} AND NOT MARCH64)
         set(PROGRAMFILES $ENV{${_pf_x86}})
     else()
         set(PROGRAMFILES $ENV{PROGRAMFILES})
@@ -123,7 +127,7 @@ if (VST3)
 endif()
 
 # bit bridging
-option(BRIDGE "Enable bit briding" ON)
+option(BRIDGE "Enable bit-bridging" ON)
 if (BRIDGE)
     add_definitions(-DUSE_BRIDGE=1)
 endif()
@@ -169,15 +173,24 @@ endif()
 # so we export the output file path and install it as a file.
 set(HOST_PATH $<TARGET_FILE:${HOST}>)
 
-# on macOS we can directly build the 32-bit version of 'HOST'
-if (APPLE)
-    set(HOST32 "HOST_i386")
-    add_executable(${HOST32} "vst/${HOST}.cpp" ${SRC})
-    target_compile_options(${HOST32} PUBLIC "-arch i386")
-    target_link_libraries(${HOST32} ${VST_LIBS})
-    set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
-    # see above
-    set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
+if (BRIDGE)
+    # on 64-bit macOS and Linux we can directly build the 32-bit version of 'HOST'.
+    # we assume that the architecture is Intel. LATER add a check for ARM!
+    if (MARCH64 AND (APPLE OR LINUX))
+        set(HOST32 "HOST_i386")
+        add_executable(${HOST32} "vst/${HOST}.cpp" ${SRC})
+        if (APPLE AND CMAKE_COMPILER_IS_CLANG)
+            target_compile_options(${HOST32} PUBLIC "-arch i386")
+            target_link_options(${HOST32} PUBLIC "-arch i386")
+        else() # LINUX
+            target_compile_options(${HOST32} PUBLIC "-m32")
+            target_link_options(${HOST32} PUBLIC "-m32")
+        endif()
+        target_link_libraries(${HOST32} ${VST_LIBS})
+        set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
+        # see above
+        set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
+    endif()
 endif()
 
 # vstplugin~

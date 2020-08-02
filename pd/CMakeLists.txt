@@ -86,13 +86,13 @@ endif()
 
 # installation
 add_dependencies(${PROJECT} ${HOST})
-if (APPLE)
+if (HOST32)
     add_dependencies(${PROJECT} ${HOST32})
 endif()
 
 install(TARGETS ${PROJECT} DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 install(PROGRAMS "${HOST_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
-if (APPLE)
+if (HOST32)
     install(PROGRAMS "${HOST32_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 endif()
 install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"

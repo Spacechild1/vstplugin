@@ -56,7 +56,7 @@ endif()
 
 # installation
 add_dependencies(${PROJECT} ${HOST})
-if (APPLE)
+if (HOST32)
     add_dependencies(${PROJECT} ${HOST32})
 endif()
 
@@ -65,7 +65,7 @@ if (SUPERNOVA)
     install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
 install(PROGRAMS "${HOST_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
-if (APPLE)
+if (HOST32)
     install(PROGRAMS "${HOST32_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
 install(DIRECTORY classes DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
