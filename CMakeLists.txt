@@ -176,10 +176,10 @@ set(HOST_PATH $<TARGET_FILE:${HOST}>)
 if (BRIDGE)
     # on 64-bit macOS and Linux we can directly build the 32-bit version of 'HOST'.
     # we assume that the architecture is Intel. LATER add a check for ARM!
-    if (MARCH64 AND (APPLE OR LINUX))
+    if (MARCH64 AND APPLE)
         set(HOST32 "HOST_i386")
         add_executable(${HOST32} "vst/${HOST}.cpp" ${SRC})
-        if (APPLE AND CMAKE_COMPILER_IS_CLANG)
+        if (CMAKE_COMPILER_IS_CLANG)
             target_compile_options(${HOST32} PUBLIC "-arch i386")
             target_link_options(${HOST32} PUBLIC "-arch i386")
         else() # LINUX

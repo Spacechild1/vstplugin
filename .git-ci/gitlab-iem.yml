@@ -49,7 +49,7 @@ variables:
     pd_extension: pd_linux
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends make cmake
-      gcc-multilib g++-multilib puredata-dev puredata
+      puredata-dev puredata
     - export PD=/usr/bin/pd
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
