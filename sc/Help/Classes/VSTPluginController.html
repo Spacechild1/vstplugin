@@ -891,11 +891,9 @@ SynthDef.new(\my_instrument, { arg out;
     var sig = VSTPlugin.ar(nil, 2, id: \vsti);
     sig = VSTPlugin.ar(sig, 2, id: \fx);
     Out.ar(out, sig);
-}).add;
+}).add; // don't use .store!
 
 // 1) create the VST Synths in the language
-
-SynthDescLib.global.at(\my_instrument).def.children[1].id;
 
 // make two Synths
 
