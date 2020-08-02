@@ -2,6 +2,8 @@
 
 #include "Interface.h"
 
+#include <cstring>
+
 namespace vst {
 
 class DeferredPlugin : public IPlugin {
