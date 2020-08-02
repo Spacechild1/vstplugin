@@ -132,7 +132,6 @@ endif()
 
 # vst library
 include_directories(vst)
-set(VST_LIBS)
 
 # platform specific linker flags
 if (LINUX)
@@ -155,20 +154,19 @@ if (APPLE)
     list(APPEND VST_LIBS "-framework Cocoa" "-lpthread")
 endif()
 
+set(VST "vst")
+set(LIBS ${VST} ${VST_LIBS})
 if (HOST32)
     set(VST32 "vst32")
-    set(VST32_LIBS ${VST_LIBS} ${VST32})
+    set(LIBS32 ${VST32} ${VST_LIBS})
 endif()
-# after VST32!
-set(VST "vst")
-list(APPEND VST_LIBS ${VST})
 
 add_subdirectory(vst)
 
 # host exe
 set(HOST "host")
 add_executable(${HOST} "vst/${HOST}.cpp") # HOST exe
-target_link_libraries(${HOST} ${VST_LIBS})
+target_link_libraries(${HOST} ${LIBS})
 set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
     # -municode for wmain and -mwindows to hide console window
@@ -178,12 +176,11 @@ endif()
 # so we export the output file path and install it as a file.
 set(HOST_PATH $<TARGET_FILE:${HOST}>)
 
-# host32 exe
 if (HOST32)
     add_executable(${HOST32} "vst/${HOST}.cpp")
     target_compile_options(${HOST32} PUBLIC "-m32")
     target_link_options(${HOST32} PUBLIC "-m32")
-    target_link_libraries(${HOST32} ${VST32_LIBS})
+    target_link_libraries(${HOST32} ${LIBS32})
     set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
     # see above
     set(HOST32_PATH $<TARGET_FILE:${HOST32}>)

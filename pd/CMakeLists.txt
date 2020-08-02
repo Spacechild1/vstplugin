@@ -67,7 +67,7 @@ endif()
 # the Pd external
 add_library(${PROJECT} MODULE ${SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
-target_link_libraries(${PROJECT} ${VST_LIBS})
+target_link_libraries(${PROJECT} ${LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
 # platform specific definitions and options
