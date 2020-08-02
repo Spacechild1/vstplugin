@@ -2244,10 +2244,10 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     // temp file or buffer to store the search results
     if (args->nextTag() == 's') {
         filename = args->gets();
-    }
-    else {
+    } else {
         bufnum = args->geti();
-        if (bufnum >= inWorld->mNumSndBufs) {
+        // negative bufnum allowed (= don't write result)!
+        if (bufnum >= (int)inWorld->mNumSndBufs) {
             LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
             return;
         }
@@ -2273,9 +2273,8 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
         data->bufnum = bufnum; // negative bufnum: don't write search result
         if (filename) {
             snprintf(data->path, sizeof(data->path), "%s", filename);
-        }
-        else {
-            data->path[0] = '\0';
+        } else {
+            data->path[0] = '\0'; // empty path: use buffer
         }
         // now copy search paths into a single buffer (separated by '\0')
         data->size = pathLen;
@@ -2368,24 +2367,30 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         LOG_ERROR("first argument to 'vst_probe' must be a string (plugin path)!");
         return;
     }
+    int32 bufnum = -1;
+    const char* filename = nullptr;
     auto path = args->gets(); // plugin path
     auto size = strlen(path) + 1;
+    // temp file or buffer to store the probe result
+    if (args->nextTag() == 's') {
+        filename = args->gets();
+    } else {
+        bufnum = args->geti();
+        // negative bufnum allowed (= don't write result)!
+        if (bufnum >= (int)inWorld->mNumSndBufs) {
+            LOG_ERROR("vst_probe: bufnum " << bufnum << " out of range");
+            return;
+        }
+    }
 
     auto data = CmdData::create<SearchCmdData>(inWorld);
     if (data) {
+        data->bufnum = bufnum;
         // temp file or buffer to store the plugin info
-        if (args->nextTag() == 's') {
-            auto filename = args->gets();
+        if (filename) {
             snprintf(data->path, sizeof(data->path), "%s", filename);
-        }
-        else {
-            auto bufnum = args->geti();
-            if (bufnum >= inWorld->mNumSndBufs) {
-                LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
-                return;
-            }
-            data->bufnum = bufnum; // negative bufnum: don't write probe result
-            data->path[0] = '\0';
+        } else {
+            data->path[0] = '\0'; // empty path: use buffer
         }
 
         memcpy(data->buf, path, size); // store plugin path
