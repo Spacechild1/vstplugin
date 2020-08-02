@@ -42,13 +42,6 @@ if (WIN32 OR MINGW)
     endif()
     set(APPDATA $ENV{APPDATA})
     set(LOCALAPPDATA $ENV{LOCALAPPDATA})
-#    if (MINGW)
-#        # For MinGW, CMake thinks that "C:/" is a relative path, so we have to bash it to "/c/"...
-#        # For simplicity, I just assume that program files are on the C drive. A CMake guru should fix this!
-#        string(REPLACE "C:\\" "/c/" PROGRAMFILES ${PROGRAMFILES})
-#        string(REPLACE "C:\\" "/c/" APPDATA ${APPDATA})
-#        string(REPLACE "C:\\" "/c/" APPDATA ${LOCALAPPDATA})
-#    endif()
 endif()
 
 # logging
@@ -130,12 +123,16 @@ endif()
 option(BRIDGE "Enable bit-bridging" ON)
 if (BRIDGE)
     add_definitions(-DUSE_BRIDGE=1)
+    if (MARCH64 AND APPLE)
+        # on 64-bit macOS we can directly build the 32-bit version of 'HOST'.
+        # we assume that the architecture is Intel. LATER add a check for ARM!
+        set(HOST32 "host_i386")
+    endif()
 endif()
 
 # vst library
 include_directories(vst)
-set(VST "vst")
-set(VST_LIBS ${VST})
+set(VST_LIBS)
 
 # platform specific linker flags
 if (LINUX)
@@ -158,11 +155,19 @@ if (APPLE)
     list(APPEND VST_LIBS "-framework Cocoa" "-lpthread")
 endif()
 
+if (HOST32)
+    set(VST32 "vst32")
+    set(VST32_LIBS ${VST_LIBS} ${VST32})
+endif()
+# after VST32!
+set(VST "vst")
+list(APPEND VST_LIBS ${VST})
+
 add_subdirectory(vst)
 
 # host exe
 set(HOST "host")
-add_executable(${HOST} "vst/${HOST}.cpp" ${SRC}) # HOST exe
+add_executable(${HOST} "vst/${HOST}.cpp") # HOST exe
 target_link_libraries(${HOST} ${VST_LIBS})
 set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
@@ -173,24 +178,15 @@ endif()
 # so we export the output file path and install it as a file.
 set(HOST_PATH $<TARGET_FILE:${HOST}>)
 
-if (BRIDGE)
-    # on 64-bit macOS and Linux we can directly build the 32-bit version of 'HOST'.
-    # we assume that the architecture is Intel. LATER add a check for ARM!
-    if (MARCH64 AND APPLE)
-        set(HOST32 "HOST_i386")
-        add_executable(${HOST32} "vst/${HOST}.cpp" ${SRC})
-        if (CMAKE_COMPILER_IS_CLANG)
-            target_compile_options(${HOST32} PUBLIC "-arch i386")
-            target_link_options(${HOST32} PUBLIC "-arch i386")
-        else() # LINUX
-            target_compile_options(${HOST32} PUBLIC "-m32")
-            target_link_options(${HOST32} PUBLIC "-m32")
-        endif()
-        target_link_libraries(${HOST32} ${VST_LIBS})
-        set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
-        # see above
-        set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
-    endif()
+# host32 exe
+if (HOST32)
+    add_executable(${HOST32} "vst/${HOST}.cpp")
+    target_compile_options(${HOST32} PUBLIC "-m32")
+    target_link_options(${HOST32} PUBLIC "-m32")
+    target_link_libraries(${HOST32} ${VST32_LIBS})
+    set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
+    # see above
+    set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
 endif()
 
 # vstplugin~
