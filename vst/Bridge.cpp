@@ -18,9 +18,10 @@ IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& n
     }
     auto plugin = std::make_unique<PluginClient>(factory, info, sandbox);
     if (editor){
-        plugin->setWindow(std::make_unique<WindowClient>(*plugin));
+        auto window = std::make_unique<WindowClient>(*plugin);
+        plugin->setWindow(std::move(window));
     }
-    return plugin;
+    return std::move(plugin); // Clang bug
 }
 
 PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox)

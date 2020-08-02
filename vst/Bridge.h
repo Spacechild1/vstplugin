@@ -9,7 +9,7 @@ class PluginClient final : public DeferredPlugin {
  public:
 
     PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox);
-    ~PluginClient();
+    virtual ~PluginClient();
 
     const PluginInfo& info() const override {
         return *info_;
@@ -70,16 +70,16 @@ class PluginClient final : public DeferredPlugin {
     }
 
     // VST2 only
-    int canDo(const char *what) const;
-    intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt);
+    int canDo(const char *what) const override;
+    intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
     // VST3 only
-    void beginMessage();
-    void addInt(const char* id, int64_t value);
-    void addFloat(const char* id, double value);
-    void addString(const char* id, const char *value);
-    void addString(const char* id, const std::string& value);
-    void addBinary(const char* id, const char *data, size_t size);
-    void endMessage();
+    void beginMessage() override;
+    void addInt(const char* id, int64_t value) override;
+    void addFloat(const char* id, double value) override;
+    void addString(const char* id, const char *value) override;
+    void addString(const char* id, const std::string& value) override;
+    void addBinary(const char* id, const char *data, size_t size) override;
+    void endMessage() override;
  protected:
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginInfo::const_ptr info_;
