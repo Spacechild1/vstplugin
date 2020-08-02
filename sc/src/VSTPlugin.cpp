@@ -77,6 +77,7 @@ PresetCmdData* PresetCmdData::create(World* world, const char* path, bool async)
     auto len = strlen(path) + 1;
     auto data = CmdData::create<PresetCmdData>(world, len);
     if (data) {
+        data->bufnum = -1;
         memcpy(data->path, path, len);
         data->async = async;
     }
@@ -2025,7 +2026,11 @@ void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().readPreset<false>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().readPreset<false>(buf, async);
+        } else {
+            LOG_ERROR("vst_program_read: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -2038,7 +2043,11 @@ void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().writePreset<false>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().writePreset<false>(buf, async);
+        } else {
+            LOG_ERROR("vst_program_write: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -2051,7 +2060,11 @@ void vst_bank_read(VSTPlugin* unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().readPreset<true>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().readPreset<true>(buf, async);
+        } else {
+            LOG_ERROR("vst_bank_read: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -2064,7 +2077,11 @@ void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().writePreset<true>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().writePreset<true>(buf, async);
+        } else {
+            LOG_ERROR("vst_bank_write: bufnum " << buf << " out of range");
+        }
     }
 }
 
