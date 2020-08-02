@@ -322,7 +322,7 @@ SynthDef(\insert, { arg bus, f;
 <p>the <a href="./..\Classes/Synth.html">Synth</a> containing the <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> you want to control.<tr><td class='argumentname'>id<td class='argumentdesc'>
 <p>a symbol or number which uniquely identifies the <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> within the <a href="./..\Classes/SynthDef.html">SynthDef</a>.
 <p>If this is <code>nil</code>, VSTPluginController will take the first instance it can find. This implies that you don't need an <em>id</em> if there's only a single VSTPlugin in the SynthDef.<tr><td class='argumentname'>synthDef<td class='argumentdesc'>
-<p>the synth's <a href="./..\Classes/SynthDef.html">SynthDef</a>. This is only needed in case the SynthDef hasn't been added to the global <a href="./..\Classes/SynthDescLib.html">SynthDescLib</a>, e.g. with <a href="./..\Classes/SynthDef.html#-add">SynthDef: -add</a>. Otherwise it can be automatically deduced from the <em>synth</em> argument.<tr><td class='argumentname'>wait<td class='argumentdesc'>
+<p>the synth's <a href="./..\Classes/SynthDef.html">SynthDef</a>. This is only needed in case the SynthDef hasn't been added to the global <a href="./..\Classes/SynthDescLib.html">SynthDescLib</a>, e.g. with <a href="./..\Classes/SynthDef.html#-add">SynthDef: -add</a>. Otherwise it can be automatically deduced from the <em>synth</em> argument.<div class='note'><span class='notelabel'>NOTE:</span> <a href="./..\Classes/SynthDef.html#-store">SynthDef: -store</a> (needed for NRT synthesis) accidentally removes some extra data from the SynthDef, so the deduction doesn't always work (e.g. when using the <code>id</code> argument). In this case you must pass the original SynthDef explicitly.</div><tr><td class='argumentname'>wait<td class='argumentdesc'>
 <p>see <a href="#-wait">-wait</a>.</table><h4>Discussion:</h4>
 
 <p>Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).</div><h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
@@ -884,16 +884,19 @@ p = Pbind(
 p.stop;</textarea>
 <h3><a class='anchor' name='Non-Realtime%20Synthesis'>Non-Realtime Synthesis</a></h3>
 
-<p>Many methods of VSTPluginController have a corresponding <em>*Msg</em> version returning a Server message which can be added to a <a href="./..\Classes/Score.html">Score</a> for non-realtime synthesis.<div class='note'><span class='notelabel'>NOTE:</span> Using these messages in a realtime context is not recommended because the Client state may not always be updated correctly.</div>
+<p>Many methods of VSTPluginController have a corresponding <em>*Msg</em> version, returning a Server message which can be added to a <a href="./..\Classes/Score.html">Score</a> for non-realtime synthesis.
 <p>The following code snippet will create a short soundfile with two random melodies played by VST instruments; it can be executed in a single block.<textarea class='editor'>(
-// SynthDef for playing the VSTi
-SynthDef.new(\my_instrument, { arg out;
+// 1) SynthDef for playing the VSTi
+
+/* NOTE: We have to use SynthDef.store, so that the subprocess can find the SynthDef. Unfortunately, SynthDef.store accidentally removes some extra data, so we must pass the original SynthDef explicitly! */
+
+~def = SynthDef.new(\my_instrument, { arg out;
     var sig = VSTPlugin.ar(nil, 2, id: \vsti);
     sig = VSTPlugin.ar(sig, 2, id: \fx);
     Out.ar(out, sig);
-}).add; // don't use .store!
+}).store;
 
-// 1) create the VST Synths in the language
+// 2) create the VST Synths in the language
 
 // make two Synths
 
@@ -901,13 +904,13 @@ SynthDef.new(\my_instrument, { arg out;
 ~synth2 = Synth.basicNew(\my_instrument);
 
 // get handles to the plugin controllers
-~vsti1 = VSTPluginController(~synth1, \vsti);
-~fx1 = VSTPluginController(~synth1, \fx);
+~vsti1 = VSTPluginController(~synth1, \vsti, ~def);
+~fx1 = VSTPluginController(~synth1, \fx, ~def);
 
-~vsti2 = VSTPluginController(~synth2, \vsti);
-~fx2 = VSTPluginController(~synth2, \fx);
+~vsti2 = VSTPluginController(~synth2, \vsti, ~def);
+~fx2 = VSTPluginController(~synth2, \fx, ~def);
 
-// 2) create the score:
+// 3) create the score:
 
 ~score = Score.new;
 
@@ -956,13 +959,12 @@ SynthDef.new(\my_instrument, { arg out;
 ~score.sort; // important!
 ~score.add([~score.endTime + 1, [0]]);
 
-// 3) render stereo aiff file
+// 4) render stereo aiff file
 
 ~score.recordNRT("~/nrt_test".standardizePath, "~/nrt_test.aiff".standardizePath,
     options: ServerOptions.new.numOutputBusChannels_(2));
 
-// 4) save the Score to a file
-
+// or save the Score to a file
 ~score.saveToFile("~/nrt_test.txt".standardizePath);
 )</textarea>
 

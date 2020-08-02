@@ -291,8 +291,9 @@ If this is code::nil::, VSTPluginController will take the first instance it can 
 This implies that you don't need an emphasis::id:: if there's only a single VSTPlugin in the SynthDef.
 
 ARGUMENT:: synthDef
-the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::.
-Otherwise it can be automatically deduced from the emphasis::synth:: argument.
+the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::. Otherwise it can be automatically deduced from the emphasis::synth:: argument.
+
+note::link::Classes/SynthDef#-store:: (needed for NRT synthesis) accidentally removes some extra data from the SynthDef, so the deduction doesn't always work (e.g. when using the code::id:: argument). In this case you must pass the original SynthDef explicitly.::
 
 ARGUMENT:: wait
 see link::#-wait::.
@@ -1086,23 +1087,24 @@ p.stop;
 
 Subsection:: Non-Realtime Synthesis
 
-Many methods of VSTPluginController have a corresponding emphasis::*Msg:: version
+Many methods of VSTPluginController have a corresponding emphasis::*Msg:: version,
 returning a Server message which can be added to a link::Classes/Score:: for non-realtime synthesis.
-
-note::Using these messages in a realtime context is not recommended because the Client state may not always be updated correctly.::
 
 The following code snippet will create a short soundfile with two random melodies played by VST instruments;
 it can be executed in a single block.
 code::
 (
-// SynthDef for playing the VSTi
-SynthDef.new(\my_instrument, { arg out;
+// 1) SynthDef for playing the VSTi
+
+/* NOTE: We have to use SynthDef.store, so that the subprocess can find the SynthDef. Unfortunately, SynthDef.store accidentally removes some extra data, so we must pass the original SynthDef explicitly! */
+
+~def = SynthDef.new(\my_instrument, { arg out;
 	var sig = VSTPlugin.ar(nil, 2, id: \vsti);
 	sig = VSTPlugin.ar(sig, 2, id: \fx);
 	Out.ar(out, sig);
-}).add; // don't use .store!
+}).store;
 
-// 1) create the VST Synths in the language
+// 2) create the VST Synths in the language
 
 // make two Synths
 
@@ -1110,13 +1112,13 @@ SynthDef.new(\my_instrument, { arg out;
 ~synth2 = Synth.basicNew(\my_instrument);
 
 // get handles to the plugin controllers
-~vsti1 = VSTPluginController(~synth1, \vsti);
-~fx1 = VSTPluginController(~synth1, \fx);
+~vsti1 = VSTPluginController(~synth1, \vsti, ~def);
+~fx1 = VSTPluginController(~synth1, \fx, ~def);
 
-~vsti2 = VSTPluginController(~synth2, \vsti);
-~fx2 = VSTPluginController(~synth2, \fx);
+~vsti2 = VSTPluginController(~synth2, \vsti, ~def);
+~fx2 = VSTPluginController(~synth2, \fx, ~def);
 
-// 2) create the score:
+// 3) create the score:
 
 ~score = Score.new;
 
@@ -1165,13 +1167,12 @@ SynthDef.new(\my_instrument, { arg out;
 ~score.sort; // important!
 ~score.add([~score.endTime + 1, [0]]);
 
-// 3) render stereo aiff file
+// 4) render stereo aiff file
 
 ~score.recordNRT("~/nrt_test".standardizePath, "~/nrt_test.aiff".standardizePath,
 	options: ServerOptions.new.numOutputBusChannels_(2));
 
-// 4) save the Score to a file
-
+// or save the Score to a file
 ~score.saveToFile("~/nrt_test.txt".standardizePath);
 )
 ::
