@@ -887,32 +887,27 @@ p.stop;</textarea>
 <p>Many methods of VSTPluginController have a corresponding <em>*Msg</em> version returning a Server message which can be added to a <a href="./..\Classes/Score.html">Score</a> for non-realtime synthesis.<div class='note'><span class='notelabel'>NOTE:</span> Using these messages in a realtime context is not recommended because the Client state may not always be updated correctly.</div>
 <p>The following code snippet will create a short soundfile with two random melodies played by VST instruments; it can be executed in a single block.<textarea class='editor'>(
 // SynthDef for playing the VSTi
-SynthDef.new(\vsti, { arg out;
-    Out.ar(out, VSTPlugin.ar(nil,  numOut: 2));
-}).store;
+SynthDef.new(\my_instrument, { arg out;
+    var sig = VSTPlugin.ar(nil, 2, id: \vsti);
+    sig = VSTPlugin.ar(sig, 2, id: \fx);
+    Out.ar(out, sig);
+}).add;
 
-// custom event type for sending MIDI messages
-Event.addEventType(\vsti, {
-    var pitch = ~midinote.value;
-    var velo = (~amp.value * 127).clip(0, 127).asInteger;
-    var delta = ~sustain.value;
-    // 'schedBundle' is the most low level method in the default Event type;
-    // it is overwritten in Pbind-asScore so that bundles are added to the
-    // Score (instead of sending them to the Server).
-    ~schedBundle.value(0, 0, nil, ~vsti.midi.noteOnMsg(0, pitch, velo));
-    ~schedBundle.value(delta, 0, nil, ~vsti.midi.noteOffMsg(0, pitch, velo));
-});
+// 1) create the VST Synths in the language
 
-// helper function for recording a Pbind to a Score
-~render = { arg score, vsti, pbind, start, dur;
-    var list = pbind.asScore(dur, start, (vsti: vsti)).score;
-    score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
-};
+SynthDescLib.global.at(\my_instrument).def.children[1].id;
 
-// 1) create the synths and controllers in the language:
+// make two Synths
 
-~fx1 = VSTPluginController(Synth.basicNew(\vsti));
-~fx2 = VSTPluginController(Synth.basicNew(\vsti));
+~synth1 = Synth.basicNew(\my_instrument);
+~synth2 = Synth.basicNew(\my_instrument);
+
+// get handles to the plugin controllers
+~vsti1 = VSTPluginController(~synth1, \vsti);
+~fx1 = VSTPluginController(~synth1, \fx);
+
+~vsti2 = VSTPluginController(~synth2, \vsti);
+~fx2 = VSTPluginController(~synth2, \fx);
 
 // 2) create the score:
 
@@ -922,28 +917,42 @@ Event.addEventType(\vsti, {
 // ~score.add([0.0, VSTPlugin.searchMsg(["/my/plugin/directory"], useDefault: false, verbose: true)]); // use custom search path
 
 // create the synths:
-~score.add([0.0, ~fx1.synth.newMsg]);
-~score.add([0.0, ~fx2.synth.newMsg]);
+~score.add([0.0, ~synth1.newMsg]);
+~score.add([0.0, ~synth2.newMsg]);
 
-// load VSTi plugins (a little bit after creating the synth!)
-~score.add([0.01, ~fx1.openMsg("Dexed")]);
-~score.add([0.01, ~fx2.openMsg("Dexed")]);
+// load VSTi plugins
+~score.add([0.0, ~vsti1.openMsg("Dexed")]);
+~score.add([0.0, ~vsti2.openMsg("Dexed")]);
 
-// choose FX programs
-~score.add([0.01, ~fx1.programMsg(0)]);
-~score.add([0.01, ~fx2.programMsg(1)]);
+// choose programs
+~score.add([0.0, ~vsti1.programMsg(0)]);
+~score.add([0.0, ~vsti2.programMsg(1)]);
 
+// load FX
+~score.add([0.0, ~fx1.openMsg("GDelay")]);
+~score.add([0.0, ~fx2.openMsg("GChorus")]);
+
+// set some FX params
+~score.add([0.0, ~fx1.setMsg(0, 0.2)]); // delay time
+~score.add([0.0, ~fx1.setMsg(1, 0.5)]); // delay feedback
+~score.add([0.0, ~fx2.setMsg(0, 0.9)]); // chorus depth
 // make a random melody
 ~melody = Pbind(
-    \type, \vsti,
+    \type, \vst_midi,
     \dur, Prand(#[0.125, 0.25, 0.5, 1], inf),
     \legato, 1,
     \amp, Pexprand(0.5, 1.0, inf),
     \midinote, Pwhite(48, 72, inf)
 );
 
-~render.(~score, ~fx1, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
-~render.(~score, ~fx2, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
+// helper function for recording a Pbind to a Score
+~render = { arg score, vsti, pbind, start, dur;
+    var list = pbind.asScore(dur, start, (vst: vsti)).score;
+    score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
+};
+
+~render.(~score, ~vsti1, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
+~render.(~score, ~vsti2, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
 
 // end
 ~score.sort; // important!
