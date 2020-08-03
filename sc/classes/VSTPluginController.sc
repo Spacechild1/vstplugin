@@ -2,14 +2,14 @@ VSTPluginController {
 	// class var
 	const oscPacketSize = 1600; // safe max. OSC packet size
 	// public
-	var <synth;
-	var <synthIndex;
+	var <>synth;
+	var <>synthIndex;
+	var <>info;
+	var <>wait;
 	var <loaded;
-	var <info;
 	var <midi;
 	var <program;
 	var <latency;
-	var <>wait;
 	// callbacks
 	var <>parameterAutomated;
 	var <>midiReceived;
@@ -105,30 +105,42 @@ VSTPluginController {
 		^VSTPluginGui;
 	}
 	*new { arg synth, id, synthDef, wait= -1;
-		var synthIndex, desc;
-		// if the synthDef is nil, we try to get it from the global SynthDescLib
-		synthDef.isNil.if {
-			desc = SynthDescLib.global.at(synth.defName);
-			desc.isNil.if { ^"couldn't find synthDef in global SynthDescLib!".throw };
-			synthDef = desc.def;
-		};
-		// walk the list of UGens and get the VSTPlugin instance which matches the given ID.
-		// if 'id' is nil, pick the first instance. throw an error if no VSTPlugin is found.
-		synthDef.children.do { arg ugen, index;
-			(ugen.class == VSTPlugin).if {
-				(id.isNil || (ugen.id == id)).if {
-					^super.new.init(synth, index, wait, ugen.info);
-				}
+		var plugins, desc, info;
+		// if the synthDef is nil, we try to get the metadata from the global SynthDescLib
+		plugins = this.prFindPlugins(synth, synthDef);
+		id.notNil.if {
+			// try to find VSTPlugin with given ID
+			id = id.asSymbol; // !
+			desc = plugins[id];
+			desc ?? { ^"SynthDef '%' doesn't contain a VSTPlugin with ID '%'!".format(synth.defName, id).throw; };
+		} {
+			// otherwise just get the first (and only) plugin
+			(plugins.size > 1).if {
+				^"SynthDef '%' contains more than 1 VSTPlugin - please use the 'id' argument!".format(synth.defName).throw;
 			};
+			desc = plugins.asArray[0];
 		};
-		id.isNil.if {^"synth doesn't contain a VSTPlugin!".throw;}
-		{^"synth doesn't contain a VSTPlugin with ID '%'".format(id).throw;}
+		info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
+		^super.new.init(synth, desc.index, wait, info);
 	}
-	init { arg theSynth, theIndex, waitTime, theInfo;
-		synth = theSynth;
-		synthIndex = theIndex;
-		wait = waitTime;
-		info = theInfo;
+	*prFindPlugins { arg synth, synthDef;
+		var desc, metadata, plugins;
+		synthDef.notNil.if {
+			metadata = synthDef.metadata;
+		} {
+			desc = SynthDescLib.global.at(synth.defName);
+			desc.isNil.if { ^"couldn't find SynthDef '%' in global SynthDescLib!".format(synth.defName).throw };
+			metadata = desc.metadata; // take metadata from SynthDesc, not SynthDef (SC bug)!
+		};
+		plugins = metadata[\vstplugins];
+		(plugins.size == 0).if { ^"SynthDef '%' doesn't contain a VSTPlugin!".format(synth.defName).throw; };
+		^plugins;
+	}
+	init { arg synth, index, wait, info;
+		this.synth = synth;
+		this.synthIndex = index;
+		this.info = info;
+		this.wait = wait;
 		loaded = false;
 		loading = false;
 		window = false;

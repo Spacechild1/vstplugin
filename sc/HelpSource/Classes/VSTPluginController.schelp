@@ -287,13 +287,10 @@ the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to c
 ARGUMENT:: id
 a symbol or number which uniquely identifies the link::Classes/VSTPlugin:: within the link::Classes/SynthDef::.
 
-If this is code::nil::, VSTPluginController will take the first instance it can find.
-This implies that you don't need an emphasis::id:: if there's only a single VSTPlugin in the SynthDef.
+note::If this is the only VSTPlugin instance in the SynthDef, the code::id:: argument can be omitted.::
 
 ARGUMENT:: synthDef
-the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::. Otherwise it can be automatically deduced from the emphasis::synth:: argument.
-
-note::link::Classes/SynthDef#-store:: (needed for NRT synthesis) accidentally removes some extra data from the SynthDef, so the deduction doesn't always work (e.g. when using the code::id:: argument). In this case you must pass the original SynthDef explicitly.::
+the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add:: or with link::Classes/SynthDef#-store::. Otherwise it can be automatically deduced from the emphasis::synth:: argument.
 
 ARGUMENT:: wait
 see link::#-wait::.
@@ -331,7 +328,7 @@ code::
 
 note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).::
 
-- If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor omitted.
+- If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefore omitted.
 code::
 VSTPlugin.search;
 (
@@ -1096,13 +1093,11 @@ code::
 (
 // 1) SynthDef for playing the VSTi
 
-/* NOTE: We have to use SynthDef.store, so that the subprocess can find the SynthDef. Unfortunately, SynthDef.store accidentally removes some extra data, so we must pass the original SynthDef explicitly! */
-
-~def = SynthDef.new(\my_instrument, { arg out;
+SynthDef.new(\my_instrument, { arg out;
 	var sig = VSTPlugin.ar(nil, 2, id: \vsti);
 	sig = VSTPlugin.ar(sig, 2, id: \fx);
 	Out.ar(out, sig);
-}).store;
+}).store; // so that the subprocess can find the SynthDef!
 
 // 2) create the VST Synths in the language
 
@@ -1112,11 +1107,11 @@ code::
 ~synth2 = Synth.basicNew(\my_instrument);
 
 // get handles to the plugin controllers
-~vsti1 = VSTPluginController(~synth1, \vsti, ~def);
-~fx1 = VSTPluginController(~synth1, \fx, ~def);
+~vsti1 = VSTPluginController(~synth1, \vsti);
+~fx1 = VSTPluginController(~synth1, \fx);
 
-~vsti2 = VSTPluginController(~synth2, \vsti, ~def);
-~fx2 = VSTPluginController(~synth2, \fx, ~def);
+~vsti2 = VSTPluginController(~synth2, \vsti);
+~fx2 = VSTPluginController(~synth2, \fx);
 
 // 3) create the score:
 

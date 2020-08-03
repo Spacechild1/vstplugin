@@ -401,8 +401,10 @@ VSTPlugin : MultiOutUGen {
 	classvar pluginDict;
 	classvar <platformExtension;
 	// instance members
-	var <id;
-	var <info;
+	var <>id;
+	var <>info;
+	var <>didInit;
+	var <>desc;
 	// class methods
 	*initClass {
 		StartUp.add {
@@ -729,11 +731,12 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg theID, theInfo, numOut, numAuxOut, flags, bypass ... args;
+	init { arg id, info, numOut, numAuxOut, flags, bypass ... args;
 		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, sym, offset=0;
 		// store id and info (both optional)
-		id = theID;
-		info = theInfo;
+		this.id = id !? { id.asSymbol }; // !
+		this.info = info;
+		this.didInit = true; // so we know that init() has been called!
 		// main inputs
 		numInputs = args[offset];
 		(numInputs > 0).if {
@@ -778,5 +781,51 @@ VSTPlugin : MultiOutUGen {
 		inputs = [numOut, flags, bypass, numInputs] ++ inputArray
 		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
 		^this.initOutputs(numOut + numAuxOut, rate)
+	}
+	synthIndex_ { arg index;
+		var metadata;
+		synthIndex = index;
+		// Whenever the synth index is set while building the UGen graph, we update the metadata.
+		// We also have to check that 'init' has been called, so we don't accidentally write wrong
+		// metadata, e.g. because 'info' and 'id' appear to be 'nil'.
+		// For example, 'SynthDef.store' reconstructs the UGens from disk without calling 'init' at all!
+		// Also, 'SynthDef.new' indirectly calls 'synthIndex_' (via 'UGen.addToSynth') before calling 'init'.
+		(this.didInit.asBoolean && UGen.buildSynthDef.notNil).if {
+			// NOTE: synthIndex_ might be called several times during UGen graph constructions!
+			this.desc.isNil.if {
+				// first time: make plugin description
+				this.desc = ( index: index );
+				this.info !? { this.desc[\key] = this.info.key };
+				// make sure metadata data exists
+				metadata = this.synthDef.metadata[\vstplugins];
+				metadata ?? {
+					metadata = ();
+					this.synthDef.metadata[\vstplugins] = metadata;
+				};
+				// There can only be a single VSTPlugin without ID. In this case, the metadata will contain
+				// a (single) item at the pseudo key 'false', see VSTPluginController.prFindPlugins.
+				this.id.notNil.if {
+					// check for VSTPlugin without ID
+					metadata.at(false).notNil.if {
+						^Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
+					};
+					// check for duplicate ID
+					metadata.at(this.id).notNil.if {
+						^Error("SynthDef '%': duplicate VSTPlugin ID '%'".format(this.synthDef.name, this.id)).throw;
+					};
+					metadata.put(this.id, this.desc);
+				} {
+					// metadata must not contain other VSTPlugins!
+					(metadata.size > 0).if {
+						^Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
+					};
+					metadata.put(false, this.desc);
+				};
+				// "set synthIndex % for %".format(index, this.id).postln;
+			} {
+				// called subsequently: simply update index
+				this.desc.index = index;
+			}
+		}
 	}
 }
