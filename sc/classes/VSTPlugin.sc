@@ -422,6 +422,10 @@ VSTPlugin : MultiOutUGen {
 		params.size.odd.if {
 			^Error("'params': expecting pairs of param index/name + value").throw;
 		};
+		(info.notNil && info.class != VSTPluginDesc).if {
+			// get plugin from default server
+			info = VSTPlugin.plugins[info.asSymbol];
+		};
 		^this.multiNewList([\audio, id, info, numOut, numAuxOut, 0, bypass, input.size]
 			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
 	}

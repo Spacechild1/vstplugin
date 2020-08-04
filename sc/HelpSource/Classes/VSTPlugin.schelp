@@ -84,12 +84,14 @@ SynthDef(\test, { arg bus;
 ARGUMENT:: info
 An optional link::Classes/VSTPluginDesc:: instance; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
 
+Alternatively, you can provide a plugin emphasis::key:: as a Symbol, in which case the VSTPluginDesc will be taken from the default Server's plugin dictionary.
+
 If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices
 code::
 (
 SynthDef(\chorus, { arg bus;
-	var plugin = VSTPlugin.plugins['GChorus'];
-	var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: plugin);
+	// 'GChorus' is a shortcut for VSTPlugin.plugins['GChorus']
+	var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: 'GChorus');
 	ReplaceOut.ar(bus, sig);
 }).add;
 )

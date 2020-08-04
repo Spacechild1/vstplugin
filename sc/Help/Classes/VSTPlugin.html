@@ -113,10 +113,11 @@ SynthDef(\test, { arg bus;
 )</textarea>
 <tr><td class='argumentname'>info<td class='argumentdesc'>
 <p>An optional <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance; the plugin must have been successfully probed (e.g. with <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>).
+<p>Alternatively, you can provide a plugin <em>key</em> as a Symbol, in which case the VSTPluginDesc will be taken from the default Server's plugin dictionary.
 <p>If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices<textarea class='editor'>(
 SynthDef(\chorus, { arg bus;
-    var plugin = VSTPlugin.plugins['GChorus'];
-    var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: plugin);
+    // 'GChorus' is a shortcut for VSTPlugin.plugins['GChorus']
+    var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: 'GChorus');
     ReplaceOut.ar(bus, sig);
 }).add;
 )</textarea>
