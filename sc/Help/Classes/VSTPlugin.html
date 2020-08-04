@@ -107,7 +107,7 @@ SynthDef(\test, { arg bus;
 )
 // 2) get Event with VSTPluginControllers mapped to IDs
 (
-~fx = VSTPluginController.multi(Synth(\test));
+~fx = VSTPluginController.collect(Synth(\test));
 ~fx.eq.open("myEQ");
 ~fx.chorus.open("myChorus");
 )</textarea>

@@ -30,7 +30,7 @@ var scdoc_sc_version = '3.11.0';
 <ul class='toc'></ul><li class='toc2'><a href='#Realtime%20Safety'>Realtime Safety</a></li>
 <ul class='toc'></ul></ul><li class='toc1'><a href='#classmethods'>Class methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#*new'>new</a> </li>
-<li class='toc3'><a href='#*multi'>multi</a> </li>
+<li class='toc3'><a href='#*collect'>collect</a> </li>
 <li class='toc2'><a href='#Inherited%20class%20methods'>Inherited class methods</a></li>
 </ul><li class='toc1'><a href='#instancemethods'>Instance methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#-open'>open</a> </li>
@@ -197,7 +197,7 @@ SynthDef(\insert2, { arg bus;
 )
 // or:
 (
-~fx = VSTPluginController.multi(~synth); // creates a VSTPluginController for each VSTPlugin ID
+~fx = VSTPluginController.collect(~synth); // creates a VSTPluginController for each VSTPlugin ID
 ~fx.eq.open("myEq");
 ~fx.chorus.open("myChorus");
 )
@@ -332,17 +332,15 @@ SynthDef(\insert, { arg bus, f;
 <p>the synth's <a href="./..\Classes/SynthDef.html">SynthDef</a>. You can omit this argument if the SynthDef has been added to the global <a href="./..\Classes/SynthDescLib.html">SynthDescLib</a>, e.g. with <a href="./..\Classes/SynthDef.html#-add">SynthDef: -add</a> or <a href="./..\Classes/SynthDef.html#-store">SynthDef: -store</a>. In this case, the SynthDef will be automatically deduced from the <em>synth</em> argument.<tr><td class='argumentname'>wait<td class='argumentdesc'>
 <p>the default wait time, see <a href="#-wait">-wait</a>.</table><h4>Discussion:</h4>
 
-<p>Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).</div><h3 class='method-code'><span class='method-prefix'>VSTPluginController.</span><a class='method-name' name='*multi' href='./../Overviews/Methods.html#multi'>multi</a>(<span class='argstr'>synth</span>, <span class='argstr'>ids</span>, <span class='argstr'>synthDef</span>, <span class='argstr'>wait: -1</span>)</h3>
+<p>Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).</div><h3 class='method-code'><span class='method-prefix'>VSTPluginController.</span><a class='method-name' name='*collect' href='./../Overviews/Methods.html#collect'>collect</a>(<span class='argstr'>synth</span>, <span class='argstr'>ids</span>, <span class='argstr'>synthDef</span>, <span class='argstr'>wait: -1</span>)</h3>
 <div class='method'>
-<p>Create several VSTPluginControllers and put them in an Event. Otherwise works the same as <a href="#-new">-new</a>.<h4>Arguments:</h4>
+<p>Same as <a href="#-new">-new</a>, but returns an <a href="./..\Classes/Event.html">Event</a> of VSTPluginControllers, with IDs used as keys. This is useful if you have a SynthDef containing several VSTPlugin instances.<h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>synth<td class='argumentdesc'>
 <p>the Synth, see <a href="#-new">-new</a><tr><td class='argumentname'>ids<td class='argumentdesc'>
-<p>an Array of IDs referring to <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instances in the <a href="./..\Classes/SynthDef.html">SynthDef</a>, or <code>nil</code> (= get all).<tr><td class='argumentname'>synthDef<td class='argumentdesc'>
+<p>an Array of IDs referring to <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instances in the <a href="./..\Classes/SynthDef.html">SynthDef</a>, or <code>nil</code> (= collect all).<tr><td class='argumentname'>synthDef<td class='argumentdesc'>
 <p>the SynthDef (optional), see <a href="#-new">-new</a><tr><td class='argumentname'>wait<td class='argumentdesc'>
-<p>the default wait time, see <a href="#-wait">-wait</a>.</table><h4>Returns:</h4>
-<div class='returnvalue'>
-<p>an <a href="./..\Classes/Event.html">Event</a> of VSTPluginControllers with IDs used as keys.</div><h4>Discussion:</h4>
+<p>the default wait time, see <a href="#-wait">-wait</a>.</table><h4>Discussion:</h4>
 <textarea class='editor'>(
 SynthDef.new(\test, { arg bus = 0;
     var sig = VSTPlugin.ar(nil, 2, id: \vsti);
@@ -351,9 +349,9 @@ SynthDef.new(\test, { arg bus = 0;
 }).add;
 )
 
-~fx = VSTPluginController.multi(Synth(\test), [\vsti, \fx]);
+~fx = VSTPluginController.collect(Synth(\test), [\vsti, \fx]);
 // or
-~fx = VSTPluginController.multi(Synth(\test));
+~fx = VSTPluginController.collect(Synth(\test));
 
 (
 ~fx.vsti.open("myVSTi");
@@ -801,7 +799,7 @@ SynthDef.new(\insert2, { arg bus, bypass1=0, bypass2=0;
 // insert into the FX bus
 ~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
-~fx = VSTPluginController.multi(~synth);
+~fx = VSTPluginController.collect(~synth);
 )
 
 // open plugins
@@ -936,7 +934,7 @@ SynthDef.new(\my_instrument, { arg out;
 ~synth = { Synth.basicNew(\my_instrument) } ! 2;
 
 // get handles to the plugin controllers
-~vst = ~synth.collect { |x| VSTPluginController.multi(x) };
+~vst = ~synth.collect { |x| VSTPluginController.collect(x) };
 
 // 3) create the score:
 

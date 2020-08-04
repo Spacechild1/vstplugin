@@ -66,7 +66,7 @@ SynthDef(\insert2, { arg bus;
 )
 // or:
 (
-~fx = VSTPluginController.multi(~synth); // creates a VSTPluginController for each VSTPlugin ID
+~fx = VSTPluginController.collect(~synth); // creates a VSTPluginController for each VSTPlugin ID
 ~fx.eq.open("myEq");
 ~fx.chorus.open("myChorus");
 )
@@ -305,23 +305,21 @@ the default wait time, see link::#-wait::.
 DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
-METHOD:: multi
-Create several VSTPluginControllers and put them in an Event. Otherwise works the same as link::#-new::.
+METHOD:: collect
+Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginControllers, with IDs used as keys.
+This is useful if you have a SynthDef containing several VSTPlugin instances.
 
 ARGUMENT:: synth
 the Synth, see link::#-new::
 
 ARGUMENT:: ids
-an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Classes/SynthDef::, or code::nil:: (= get all).
+an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Classes/SynthDef::, or code::nil:: (= collect all).
 
 ARGUMENT:: synthDef
 the SynthDef (optional), see link::#-new::
 
 ARGUMENT:: wait
 the default wait time, see link::#-wait::.
-
-RETURNS::
-an link::Classes/Event:: of VSTPluginControllers with IDs used as keys.
 
 DISCUSSION::
 code::
@@ -333,9 +331,9 @@ SynthDef.new(\test, { arg bus = 0;
 }).add;
 )
 
-~fx = VSTPluginController.multi(Synth(\test), [\vsti, \fx]);
+~fx = VSTPluginController.collect(Synth(\test), [\vsti, \fx]);
 // or
-~fx = VSTPluginController.multi(Synth(\test));
+~fx = VSTPluginController.collect(Synth(\test));
 
 (
 ~fx.vsti.open("myVSTi");
@@ -987,7 +985,7 @@ SynthDef.new(\insert2, { arg bus, bypass1=0, bypass2=0;
 // insert into the FX bus
 ~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
-~fx = VSTPluginController.multi(~synth);
+~fx = VSTPluginController.collect(~synth);
 )
 
 // open plugins
@@ -1150,7 +1148,7 @@ SynthDef.new(\my_instrument, { arg out;
 ~synth = { Synth.basicNew(\my_instrument) } ! 2;
 
 // get handles to the plugin controllers
-~vst = ~synth.collect { |x| VSTPluginController.multi(x) };
+~vst = ~synth.collect { |x| VSTPluginController.collect(x) };
 
 // 3) create the score:
 
