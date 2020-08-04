@@ -123,6 +123,32 @@ VSTPluginController {
 		info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
 		^super.new.init(synth, desc.index, wait, info);
 	}
+	*multiNew { arg synth, ids, synthDef, wait= -1;
+		var result = ();
+		var makeOne = { arg desc;
+			var info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
+			super.new.init(synth, desc.index, wait, info);
+		};
+		var plugins = this.prFindPlugins(synth, synthDef);
+		ids.notNil.if {
+			ids.do { arg key;
+				var value;
+				key = key.asSymbol; // !
+				value = plugins.at(key);
+				value.notNil.if {
+					result.put(key, makeOne.(value));
+				} { "can't find VSTPlugin with ID %".format(key).warn; }
+			}
+		} {
+			// empty Array or nil -> get all plugins, except those without ID
+			plugins.pairsDo { arg key, value;
+				(key.class == Symbol).if {
+					result.put(key, makeOne.(value));
+				} { "ignoring VSTPlugin without ID".warn; }
+			}
+		};
+		^result;
+	}
 	*prFindPlugins { arg synth, synthDef;
 		var desc, metadata, plugins;
 		synthDef.notNil.if {
