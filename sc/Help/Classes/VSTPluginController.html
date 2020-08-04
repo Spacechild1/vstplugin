@@ -30,6 +30,7 @@ var scdoc_sc_version = '3.11.0';
 <ul class='toc'></ul><li class='toc2'><a href='#Realtime%20Safety'>Realtime Safety</a></li>
 <ul class='toc'></ul></ul><li class='toc1'><a href='#classmethods'>Class methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#*new'>new</a> </li>
+<li class='toc3'><a href='#*multi'>multi</a> </li>
 <li class='toc2'><a href='#Inherited%20class%20methods'>Inherited class methods</a></li>
 </ul><li class='toc1'><a href='#instancemethods'>Instance methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#-open'>open</a> </li>
@@ -188,10 +189,17 @@ SynthDef(\insert2, { arg bus;
 )
 // create the synth:
 ~synth = Synth(\insert2, [\bus, 0]);
-(
+
 // get handles to the VSTPlugins:
+(
 ~eq = VSTPluginController(~synth, \eq).open("myEQ");
 ~chorus = VSTPluginController(~synth, \chorus).open("myChorus");
+)
+// or:
+(
+~fx = VSTPluginController.multi(~synth); // creates a VSTPluginController for each VSTPlugin ID
+~fx.eq.open("myEq");
+~fx.chorus.open("myChorus");
 )
 // etc.</textarea>
 <h3><a class='anchor' name='Parameter%20Automation'>Parameter Automation</a></h3>
@@ -320,11 +328,38 @@ SynthDef(\insert, { arg bus, f;
 <table class='arguments'>
 <tr><td class='argumentname'>synth<td class='argumentdesc'>
 <p>the <a href="./..\Classes/Synth.html">Synth</a> containing the <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> you want to control.<tr><td class='argumentname'>id<td class='argumentdesc'>
-<p>a symbol or number which uniquely identifies the <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> within the <a href="./..\Classes/SynthDef.html">SynthDef</a>.<div class='note'><span class='notelabel'>NOTE:</span> If this is the only VSTPlugin instance in the SynthDef, the <code>id</code> argument can be omitted.</div><tr><td class='argumentname'>synthDef<td class='argumentdesc'>
-<p>the synth's <a href="./..\Classes/SynthDef.html">SynthDef</a>. This is only needed in case the SynthDef hasn't been added to the global <a href="./..\Classes/SynthDescLib.html">SynthDescLib</a>, e.g. with <a href="./..\Classes/SynthDef.html#-add">SynthDef: -add</a> or with <a href="./..\Classes/SynthDef.html#-store">SynthDef: -store</a>. Otherwise it can be automatically deduced from the <em>synth</em> argument.<tr><td class='argumentname'>wait<td class='argumentdesc'>
-<p>see <a href="#-wait">-wait</a>.</table><h4>Discussion:</h4>
+<p>a Symbol which uniquely identifies the <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> in the <a href="./..\Classes/SynthDef.html">SynthDef</a>.<div class='note'><span class='notelabel'>NOTE:</span> If this is the only VSTPlugin instance in the SynthDef, the <code>id</code> argument can be omitted.</div><tr><td class='argumentname'>synthDef<td class='argumentdesc'>
+<p>the synth's <a href="./..\Classes/SynthDef.html">SynthDef</a>. You can omit this argument if the SynthDef has been added to the global <a href="./..\Classes/SynthDescLib.html">SynthDescLib</a>, e.g. with <a href="./..\Classes/SynthDef.html#-add">SynthDef: -add</a> or <a href="./..\Classes/SynthDef.html#-store">SynthDef: -store</a>. In this case, the SynthDef will be automatically deduced from the <em>synth</em> argument.<tr><td class='argumentname'>wait<td class='argumentdesc'>
+<p>the default wait time, see <a href="#-wait">-wait</a>.</table><h4>Discussion:</h4>
 
-<p>Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).</div><h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
+<p>Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).</div><h3 class='method-code'><span class='method-prefix'>VSTPluginController.</span><a class='method-name' name='*multi' href='./../Overviews/Methods.html#multi'>multi</a>(<span class='argstr'>synth</span>, <span class='argstr'>ids</span>, <span class='argstr'>synthDef</span>, <span class='argstr'>wait: -1</span>)</h3>
+<div class='method'>
+<p>Create several VSTPluginControllers and put them in an Event. Otherwise works the same as <a href="#-new">-new</a>.<h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>synth<td class='argumentdesc'>
+<p>the Synth, see <a href="#-new">-new</a><tr><td class='argumentname'>ids<td class='argumentdesc'>
+<p>an Array of IDs referring to <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instances in the <a href="./..\Classes/SynthDef.html">SynthDef</a>, or <code>nil</code> (= get all).<tr><td class='argumentname'>synthDef<td class='argumentdesc'>
+<p>the SynthDef (optional), see <a href="#-new">-new</a><tr><td class='argumentname'>wait<td class='argumentdesc'>
+<p>the default wait time, see <a href="#-wait">-wait</a>.</table><h4>Returns:</h4>
+<div class='returnvalue'>
+<p>an <a href="./..\Classes/Event.html">Event</a> of VSTPluginControllers with IDs used as keys.</div><h4>Discussion:</h4>
+<textarea class='editor'>(
+SynthDef.new(\test, { arg bus = 0;
+    var sig = VSTPlugin.ar(nil, 2, id: \vsti);
+    sig = VSTPlugin.ar(sig, 2, id: \fx);
+    Out.ar(bus, sig);
+}).add;
+)
+
+~fx = VSTPluginController.multi(Synth(\test), [\vsti, \fx]);
+// or
+~fx = VSTPluginController.multi(Synth(\test));
+
+(
+~fx.vsti.open("myVSTi");
+~fx.fx.open("myFX");
+)</textarea>
+</div><h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
 <div id='inheritedclassmets'></div><h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-open' href='./../Overviews/Methods.html#open'>open</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>verbose: false</span>, <span class='argstr'>action</span>, <span class='argstr'>threaded: false</span>)</h3>
 <div class='method'>
@@ -390,6 +425,7 @@ SynthDef(\chorus, { arg bus=0;
 <p>show/hide parameters. Set to <code>false</code>, if you only need to show the preset manager!</table><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>a new <a href="./..\Classes/VSTPluginGui.html">VSTPluginGui</a> instance.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a> = value</h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>the (static) plugin description (see <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loaded' href='./../Overviews/Methods.html#loaded'>loaded</a></h3>
@@ -411,9 +447,11 @@ SynthDef(\chorus, { arg bus=0;
 
 <p>Generally, <em>reset</em> might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line.
 <p>If this is a problem you can try to reset it asynchronously (in the non-realtime thread).<div class='warning'><span class='warninglabel'>WARNING:</span> Some plugins crash when being reset in the non-realtime thread, so use with care!</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synth' href='./../Overviews/Methods.html#synth'>synth</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synth' href='./../Overviews/Methods.html#synth'>synth</a> = value</h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>the <a href="./..\Classes/Synth.html">Synth</a> containing the currently controlled <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instance.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synthIndex' href='./../Overviews/Methods.html#synthIndex'>synthIndex</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synthIndex' href='./../Overviews/Methods.html#synthIndex'>synthIndex</a> = value</h3>
 <div class='method'><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>the index of the <a href="./..\Classes/VSTPlugin.html">VSTPlugin</a> instance within the <a href="./..\Classes/Synth.html">Synth</a>.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-wait' href='./../Overviews/Methods.html#wait'>wait</a></h3>
@@ -728,7 +766,7 @@ SynthDef(\test, {arg out = 0;
 // play test signal on FX bus
 ~test = Synth(\test, [\out, ~fxBus]);
 // send FX bus to output
-SynthDef(\output, {arg in = 0, out = 0;
+SynthDef(\output, { arg in = 0, out = 0;
     Out.ar(out, In.ar(in, 2))
 }).play(~test, [\in, ~fxBus, \out, 0], addAction: \addAfter);
 )
@@ -751,7 +789,7 @@ SynthDef(\output, {arg in = 0, out = 0;
 
 <p>You can also create fixed FX chains by using several VSTPlugins inside a SynthDef:<textarea class='editor'>(
 // an insert FX with two plugins hardcoded in series:
-SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
+SynthDef.new(\insert2, { arg bus, bypass1=0, bypass2=0;
     var sig = In.ar(bus, 2);
     sig = VSTPlugin.ar(sig, 2, bypass1, id: \fx1);
     sig = VSTPlugin.ar(sig, 2, bypass2, id: \fx2);
@@ -763,13 +801,12 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 // insert into the FX bus
 ~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
-~fx1 = VSTPluginController(~synth, \fx1);
-~fx2 = VSTPluginController(~synth, \fx2);
+~fx = VSTPluginController.multi(~synth);
 )
 
 // open plugins
-~fx1.browse;
-~fx2.browse;
+~fx.fx1.browse;
+~fx.fx2.browse;
 
 // bypass FX
 ~synth.set(\bypass1, 1);
@@ -852,7 +889,7 @@ p.stop;</textarea>
 
 <p>You can easily play VST instruments with a <a href="./..\Classes/Pbind.html">Pbind</a> of event type <code>\vst_midi</code>:<textarea class='editor'>// Cmd + .
 (
-SynthDef.new(\vsti, {arg out = 0;
+SynthDef.new(\vsti, { arg out = 0;
     // VST instruments usually don't have inputs
     Out.ar(out, VSTPlugin.ar(nil, 2));
 }).add;
@@ -895,17 +932,11 @@ SynthDef.new(\my_instrument, { arg out;
 
 // 2) create the VST Synths in the language
 
-// make two Synths
-
-~synth1 = Synth.basicNew(\my_instrument);
-~synth2 = Synth.basicNew(\my_instrument);
+// make 2 Synths:
+~synth = { Synth.basicNew(\my_instrument) } ! 2;
 
 // get handles to the plugin controllers
-~vsti1 = VSTPluginController(~synth1, \vsti);
-~fx1 = VSTPluginController(~synth1, \fx);
-
-~vsti2 = VSTPluginController(~synth2, \vsti);
-~fx2 = VSTPluginController(~synth2, \fx);
+~vst = ~synth.collect { |x| VSTPluginController.multi(x) };
 
 // 3) create the score:
 
@@ -915,25 +946,25 @@ SynthDef.new(\my_instrument, { arg out;
 // ~score.add([0.0, VSTPlugin.searchMsg(["/my/plugin/directory"], useDefault: false, verbose: true)]); // use custom search path
 
 // create the synths:
-~score.add([0.0, ~synth1.newMsg]);
-~score.add([0.0, ~synth2.newMsg]);
+~score.add([0.0, ~synth[0].newMsg]);
+~score.add([0.0, ~synth[1].newMsg]);
 
-// load VSTi plugins
-~score.add([0.0, ~vsti1.openMsg("Dexed")]);
-~score.add([0.0, ~vsti2.openMsg("Dexed")]);
+// open VSTi plugins
+~score.add([0.0, ~vst[0].vsti.openMsg("Dexed")]);
+~score.add([0.0, ~vst[1].vsti.openMsg("Dexed")]);
 
 // choose programs
-~score.add([0.0, ~vsti1.programMsg(0)]);
-~score.add([0.0, ~vsti2.programMsg(1)]);
+~score.add([0.0, ~vst[0].vsti.programMsg(0)]);
+~score.add([0.0, ~vst[1].vsti.programMsg(1)]);
 
-// load FX
-~score.add([0.0, ~fx1.openMsg("GDelay")]);
-~score.add([0.0, ~fx2.openMsg("GChorus")]);
+// open FX plugins
+~score.add([0.0, ~vst[0].fx.openMsg("GDelay")]);
+~score.add([0.0, ~vst[1].fx.openMsg("GChorus")]);
 
 // set some FX params
-~score.add([0.0, ~fx1.setMsg(0, 0.2)]); // delay time
-~score.add([0.0, ~fx1.setMsg(1, 0.5)]); // delay feedback
-~score.add([0.0, ~fx2.setMsg(0, 0.9)]); // chorus depth
+~score.add([0.0, ~vst[0].fx.setMsg(0, 0.2)]); // delay time
+~score.add([0.0, ~vst[0].fx.setMsg(1, 0.5)]); // delay feedback
+~score.add([0.0, ~vst[1].fx.setMsg(0, 0.9)]); // chorus depth
 // make a random melody
 ~melody = Pbind(
     \type, \vst_midi,
@@ -949,8 +980,8 @@ SynthDef.new(\my_instrument, { arg out;
     score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
 };
 
-~render.(~score, ~vsti1, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
-~render.(~score, ~vsti2, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
+~render.(~score, ~vst[0].vsti, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
+~render.(~score, ~vst[1].vsti, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
 
 // end
 ~score.sort; // important!

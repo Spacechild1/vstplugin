@@ -52,27 +52,33 @@ You can automate parameters with either control and audio rate UGens, but the la
 if the plugin actually supports sample accurate automation (some, but not all VST3 plugins).
 
 ARGUMENT:: id
-An optional number or symbol which uniquely identifies the UGen within a SynthDef so it can be found by link::Classes/VSTPluginController::.
-This is only necessary if there is more than one VSTPlugin instance in the SynthDef!
+A Symbol which uniquely identifies the UGen within the SynthDef, so it can be found by link::Classes/VSTPluginController::.
+
+note::If this is the only VSTPlugin instance in the SynthDef, the id argument can be omitted.::
+
 code::
 (
-// an EQ and Chorus in parallel:
-SynthDef(\test, { arg in, out;
-	var sig;
-	sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
+// two FX in parallel:
+SynthDef(\test, { arg bus;
+	var sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
 	sig = VSTPlugin.ar(sig, 2, id: \chorus);
-	Out.ar(out, sig);
+	ReplaceOut.ar(out, sig);
 }).add;
 )
-~synth = Synth(\test, [\in, ~in, \out, ~out]);
+
+// There are two ways to control individual plugins:
+// 1) get individual VSTPluginControllers
 (
-// this is how you get a handle to a specific plugin instance in the Synth:
-~eq = VSTPluginController.new(~synth, \eq);
-~chorus = VSTPluginController.new(~synth, \chorus);
+~synth = Synth(\test, [\in, ~in, \out, ~out]);
+~eq = VSTPluginController.new(~synth, \eq).open("myEQ");
+~chorus = VSTPluginController.new(~synth, \chorus).open("myChorus");
 )
-// load plugins, etc:
-~eq.open("...");
-~chorus.open("...");
+// 2) get Event with VSTPluginControllers mapped to IDs
+(
+~fx = VSTPluginController.multi(Synth(\test));
+~fx.eq.open("myEQ");
+~fx.chorus.open("myChorus");
+)
 ::
 
 ARGUMENT:: info

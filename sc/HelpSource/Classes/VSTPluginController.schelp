@@ -58,10 +58,17 @@ SynthDef(\insert2, { arg bus;
 )
 // create the synth:
 ~synth = Synth(\insert2, [\bus, 0]);
-(
+
 // get handles to the VSTPlugins:
+(
 ~eq = VSTPluginController(~synth, \eq).open("myEQ");
 ~chorus = VSTPluginController(~synth, \chorus).open("myChorus");
+)
+// or:
+(
+~fx = VSTPluginController.multi(~synth); // creates a VSTPluginController for each VSTPlugin ID
+~fx.eq.open("myEq");
+~fx.chorus.open("myChorus");
 )
 // etc.
 ::
@@ -276,7 +283,7 @@ Also, the plugin itself might be bypassed for a short time, but it will never bl
 
 CLASSMETHODS::
 
-PRIVATE:: guiClass, msg2string
+PRIVATE:: guiClass, msg2string, prFindPlugins
 
 METHOD:: new
 Create a new VSTPluginController.
@@ -285,18 +292,57 @@ ARGUMENT:: synth
 the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to control.
 
 ARGUMENT:: id
-a symbol or number which uniquely identifies the link::Classes/VSTPlugin:: within the link::Classes/SynthDef::.
+a Symbol which uniquely identifies the link::Classes/VSTPlugin:: in the link::Classes/SynthDef::.
 
 note::If this is the only VSTPlugin instance in the SynthDef, the code::id:: argument can be omitted.::
 
 ARGUMENT:: synthDef
-the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add:: or with link::Classes/SynthDef#-store::. Otherwise it can be automatically deduced from the emphasis::synth:: argument.
+the synth's link::Classes/SynthDef::. You can omit this argument if the SynthDef has been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add:: or link::Classes/SynthDef#-store::. In this case, the SynthDef will be automatically deduced from the emphasis::synth:: argument.
 
 ARGUMENT:: wait
-see link::#-wait::.
+the default wait time, see link::#-wait::.
 
 DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
+
+METHOD:: multi
+Create several VSTPluginControllers and put them in an Event. Otherwise works the same as link::#-new::.
+
+ARGUMENT:: synth
+the Synth, see link::#-new::
+
+ARGUMENT:: ids
+an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Classes/SynthDef::, or code::nil:: (= get all).
+
+ARGUMENT:: synthDef
+the SynthDef (optional), see link::#-new::
+
+ARGUMENT:: wait
+the default wait time, see link::#-wait::.
+
+RETURNS::
+an link::Classes/Event:: of VSTPluginControllers with IDs used as keys.
+
+DISCUSSION::
+code::
+(
+SynthDef.new(\test, { arg bus = 0;
+	var sig = VSTPlugin.ar(nil, 2, id: \vsti);
+	sig = VSTPlugin.ar(sig, 2, id: \fx);
+	Out.ar(bus, sig);
+}).add;
+)
+
+~fx = VSTPluginController.multi(Synth(\test), [\vsti, \fx]);
+// or
+~fx = VSTPluginController.multi(Synth(\test));
+
+(
+~fx.vsti.open("myVSTi");
+~fx.fx.open("myFX");
+)
+
+::
 
 INSTANCEMETHODS::
 
@@ -903,7 +949,7 @@ code::
 // play test signal on FX bus
 ~test = Synth(\test, [\out, ~fxBus]);
 // send FX bus to output
-SynthDef(\output, {arg in = 0, out = 0;
+SynthDef(\output, { arg in = 0, out = 0;
 	Out.ar(out, In.ar(in, 2))
 }).play(~test, [\in, ~fxBus, \out, 0], addAction: \addAfter);
 )
@@ -929,7 +975,7 @@ You can also create fixed FX chains by using several VSTPlugins inside a SynthDe
 code::
 (
 // an insert FX with two plugins hardcoded in series:
-SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
+SynthDef.new(\insert2, { arg bus, bypass1=0, bypass2=0;
 	var sig = In.ar(bus, 2);
 	sig = VSTPlugin.ar(sig, 2, bypass1, id: \fx1);
 	sig = VSTPlugin.ar(sig, 2, bypass2, id: \fx2);
@@ -941,13 +987,12 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 // insert into the FX bus
 ~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
-~fx1 = VSTPluginController(~synth, \fx1);
-~fx2 = VSTPluginController(~synth, \fx2);
+~fx = VSTPluginController.multi(~synth);
 )
 
 // open plugins
-~fx1.browse;
-~fx2.browse;
+~fx.fx1.browse;
+~fx.fx2.browse;
 
 // bypass FX
 ~synth.set(\bypass1, 1);
@@ -1051,7 +1096,7 @@ You can easily play VST instruments with a link::Classes/Pbind:: of event type c
 code::
 // Cmd + .
 (
-SynthDef.new(\vsti, {arg out = 0;
+SynthDef.new(\vsti, { arg out = 0;
 	// VST instruments usually don't have inputs
 	Out.ar(out, VSTPlugin.ar(nil, 2));
 }).add;
@@ -1101,17 +1146,11 @@ SynthDef.new(\my_instrument, { arg out;
 
 // 2) create the VST Synths in the language
 
-// make two Synths
-
-~synth1 = Synth.basicNew(\my_instrument);
-~synth2 = Synth.basicNew(\my_instrument);
+// make 2 Synths:
+~synth = { Synth.basicNew(\my_instrument) } ! 2;
 
 // get handles to the plugin controllers
-~vsti1 = VSTPluginController(~synth1, \vsti);
-~fx1 = VSTPluginController(~synth1, \fx);
-
-~vsti2 = VSTPluginController(~synth2, \vsti);
-~fx2 = VSTPluginController(~synth2, \fx);
+~vst = ~synth.collect { |x| VSTPluginController.multi(x) };
 
 // 3) create the score:
 
@@ -1121,25 +1160,25 @@ SynthDef.new(\my_instrument, { arg out;
 // ~score.add([0.0, VSTPlugin.searchMsg(["/my/plugin/directory"], useDefault: false, verbose: true)]); // use custom search path
 
 // create the synths:
-~score.add([0.0, ~synth1.newMsg]);
-~score.add([0.0, ~synth2.newMsg]);
+~score.add([0.0, ~synth[0].newMsg]);
+~score.add([0.0, ~synth[1].newMsg]);
 
-// load VSTi plugins
-~score.add([0.0, ~vsti1.openMsg("Dexed")]);
-~score.add([0.0, ~vsti2.openMsg("Dexed")]);
+// open VSTi plugins
+~score.add([0.0, ~vst[0].vsti.openMsg("Dexed")]);
+~score.add([0.0, ~vst[1].vsti.openMsg("Dexed")]);
 
 // choose programs
-~score.add([0.0, ~vsti1.programMsg(0)]);
-~score.add([0.0, ~vsti2.programMsg(1)]);
+~score.add([0.0, ~vst[0].vsti.programMsg(0)]);
+~score.add([0.0, ~vst[1].vsti.programMsg(1)]);
 
-// load FX
-~score.add([0.0, ~fx1.openMsg("GDelay")]);
-~score.add([0.0, ~fx2.openMsg("GChorus")]);
+// open FX plugins
+~score.add([0.0, ~vst[0].fx.openMsg("GDelay")]);
+~score.add([0.0, ~vst[1].fx.openMsg("GChorus")]);
 
 // set some FX params
-~score.add([0.0, ~fx1.setMsg(0, 0.2)]); // delay time
-~score.add([0.0, ~fx1.setMsg(1, 0.5)]); // delay feedback
-~score.add([0.0, ~fx2.setMsg(0, 0.9)]); // chorus depth
+~score.add([0.0, ~vst[0].fx.setMsg(0, 0.2)]); // delay time
+~score.add([0.0, ~vst[0].fx.setMsg(1, 0.5)]); // delay feedback
+~score.add([0.0, ~vst[1].fx.setMsg(0, 0.9)]); // chorus depth
 // make a random melody
 ~melody = Pbind(
 	\type, \vst_midi,
@@ -1155,8 +1194,8 @@ SynthDef.new(\my_instrument, { arg out;
 	score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
 };
 
-~render.(~score, ~vsti1, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
-~render.(~score, ~vsti2, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
+~render.(~score, ~vst[0].vsti, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
+~render.(~score, ~vst[1].vsti, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
 
 // end
 ~score.sort; // important!

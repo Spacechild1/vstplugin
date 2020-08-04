@@ -48,7 +48,8 @@ var scdoc_sc_version = '3.11.0';
 <ul class='toc'><li class='toc3'><a href='#-id'>id</a> </li>
 <li class='toc2'><a href='#Inherited%20instance%20methods'>Inherited instance methods</a></li>
 <li class='toc2'><a href='#Undocumented%20instance%20methods'>Undocumented instance methods</a></li>
-<ul class='toc'><li class='toc3'><a href='#-didInit'>didInit</a> </li>
+<ul class='toc'><li class='toc3'><a href='#-desc'>desc</a> </li>
+<li class='toc3'><a href='#-didInit'>didInit</a> </li>
 <li class='toc3'><a href='#-info'>info</a> </li>
 <li class='toc3'><a href='#-synthIndex'>synthIndex</a> </li>
 </ul></ul></ul></div><div id='menubar'></div>
@@ -88,24 +89,28 @@ SynthDef(\test, { arg in, p1, p2, idx;
 
 <p>You can set the index to a negative value to "unmap" the parameter.<div class='note'><span class='notelabel'>NOTE:</span> <em>params</em> overrides any automation of the same parameters by <a href="./..\Classes/VSTPluginController.html#-set">VSTPluginController: -set</a>, but it can itself be overriden with <a href="./..\Classes/VSTPluginController.html#-map">VSTPluginController: -map</a>.</div>
 <p>You can automate parameters with either control and audio rate UGens, but the latter is more CPU expensive and only makes sense if the plugin actually supports sample accurate automation (some, but not all VST3 plugins).<tr><td class='argumentname'>id<td class='argumentdesc'>
-<p>An optional number or symbol which uniquely identifies the UGen within a SynthDef so it can be found by <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>. This is only necessary if there is more than one VSTPlugin instance in the SynthDef!<textarea class='editor'>(
-// an EQ and Chorus in parallel:
-SynthDef(\test, { arg in, out;
-    var sig;
-    sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
+<p>A Symbol which uniquely identifies the UGen within the SynthDef, so it can be found by <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>.<div class='note'><span class='notelabel'>NOTE:</span> If this is the only VSTPlugin instance in the SynthDef, the id argument can be omitted.</div><textarea class='editor'>(
+// two FX in parallel:
+SynthDef(\test, { arg bus;
+    var sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
     sig = VSTPlugin.ar(sig, 2, id: \chorus);
-    Out.ar(out, sig);
+    ReplaceOut.ar(out, sig);
 }).add;
 )
-~synth = Synth(\test, [\in, ~in, \out, ~out]);
+
+// There are two ways to control individual plugins:
+// 1) get individual VSTPluginControllers
 (
-// this is how you get a handle to a specific plugin instance in the Synth:
-~eq = VSTPluginController.new(~synth, \eq);
-~chorus = VSTPluginController.new(~synth, \chorus);
+~synth = Synth(\test, [\in, ~in, \out, ~out]);
+~eq = VSTPluginController.new(~synth, \eq).open("myEQ");
+~chorus = VSTPluginController.new(~synth, \chorus).open("myChorus");
 )
-// load plugins, etc:
-~eq.open("...");
-~chorus.open("...");</textarea>
+// 2) get Event with VSTPluginControllers mapped to IDs
+(
+~fx = VSTPluginController.multi(Synth(\test));
+~fx.eq.open("myEQ");
+~fx.chorus.open("myChorus");
+)</textarea>
 <tr><td class='argumentname'>info<td class='argumentdesc'>
 <p>An optional <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance; the plugin must have been successfully probed (e.g. with <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>).
 <p>If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices<textarea class='editor'>(
@@ -285,6 +290,8 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <div class='method'>
 <p>the ID which uniquely identifies the plugin in a SynthDef. It should be a Symbol, a Number or <code>nil</code>.</div><h3><a class='anchor' name='Inherited%20instance%20methods'>Inherited instance methods</a></h3>
 <div id='inheritedinstmets'></div><h3><a class='anchor' name='Undocumented%20instance%20methods'>Undocumented instance methods</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-desc' href='./../Overviews/Methods.html#desc'>desc</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-desc' href='./../Overviews/Methods.html#desc'>desc</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-didInit' href='./../Overviews/Methods.html#didInit'>didInit</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-didInit' href='./../Overviews/Methods.html#didInit'>didInit</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>

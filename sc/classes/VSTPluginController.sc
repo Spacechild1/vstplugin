@@ -123,7 +123,7 @@ VSTPluginController {
 		info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
 		^super.new.init(synth, desc.index, wait, info);
 	}
-	*multiNew { arg synth, ids, synthDef, wait= -1;
+	*multi { arg synth, ids, synthDef, wait= -1;
 		var result = ();
 		var makeOne = { arg desc;
 			var info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
