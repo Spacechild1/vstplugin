@@ -122,7 +122,7 @@ code::
 
 subsection:: Preset Management
 
-Change built-in FX programs with link::#-program:::
+Select built-in FX programs with link::#-program:::
 
 code::
 // list available programs:
@@ -176,10 +176,6 @@ code::
 ::
 
 The data has the same binary format as the preset files. You can use these methods to build your own preset management!
-
-note::Many plugins have additional state beyond their parameter values,
-so you emphasis::have:: to use the program and bank methods above to fully save/restore them.
-::
 
 subsection:: GUI
 
@@ -643,7 +639,11 @@ The action receives the parameter index and value. This can be helpful if you wa
 note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
 In that case it is not possible to determine which parameter has been automated manually.::
 
-subsection:: Preset Management
+subsection:: Programs
+
+VST plugins often contain factory presets which are called emphasis::programs::.
+
+note::Some VST2 plugins allow to change the name and state of the built-in programs and save all programs as a emphasis::bank:: file (see link::#-writeBank::).::
 
 METHOD:: numPrograms
 returns:: the number of available built-in plugin programs.
@@ -652,25 +652,81 @@ METHOD:: program
 METHOD:: programMsg
 select a built-in program or get the current program number.
 
-DISCUSSION::
-use the setter to change between built-in programs.
-
 METHOD:: programName
 METHOD:: programNameMsg
 
 get/set the name of the current program (VST2 only).
 
+subsection:: Presets
+
+Simple preset management.
+
+Presets are stored at pre-defined file system locations, so they can be simply referred to by name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+note::Since the VST3 preset locations are actually standardized, any VST3 presets created with VSTPlugin should be available in other applications and vice versa.::
+
+warning::This only works with local Servers (for now)!::
+
+METHOD:: loadPreset
+METHOD:: savePreset
+load/save VST presets.
+
+ARGUMENT:: preset
+a preset Event, name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+You can create a new preset by passing a non-existing preset name to code::savePreset::.
+
+ARGUMENT:: action
+
+an action which is called with code::this:: and a Boolean (success/fail).
+
+ARGUMENT:: async
+
+where to execute the plugin method, see link::#Realtime Safety::.
+note::The file IO itself is always performed asynchronously!::
+
+METHOD:: deletePreset
+delete a VST preset.
+
+ARGUMENT:: preset
+the preset Event, name or index.
+
+RETURNS:: code::true:: on success or code::false:: on failure.
+
+METHOD:: renamePreset
+delete a VST preset.
+
+ARGUMENT:: preset
+the old preset Event, name or index
+
+ARGUMENT:: name
+the new preset name.
+
+RETURNS:: code::true:: on success or code::false:: on failure.
+
+METHOD:: preset
+
+RETURNS:: the current preset (Event) or code::nil:: (= no preset).
+
+subsection:: Preset Files
+
+Read/write VST2 code::.fxp/.fxb:: files or VST3 code::.vstpreset:: files.
+
+This is useful if you want to save your presets to a non-standard location, e.g. relative to your project.
+
+The preset files are in a standard format which is recogized by every decent DAW or VST host.
+This means you can freely exchange presets between different applications!
+
+
 METHOD:: readProgram
-METHOD:: readBank
 METHOD:: writeProgram
-METHOD:: writeBank
-read/write program/bank files.
+read/write program files.
 
 ARGUMENT:: path
 
 an absolute file path.
 
-The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for VST2 program files, emphasis::.fxb:: for VST2 bank files and emphasis::.vstpreset:: for VST3 preset files.
+The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for VST2 program files and emphasis::.vstpreset:: for VST3 preset files.
 
 ARGUMENT:: action
 
@@ -681,33 +737,46 @@ ARGUMENT:: async
 where to execute the plugin method, see link::#Realtime Safety::.
 note::The file/buffer IO itself is always performed asynchronously!::
 
-discussion::
-The program and bank files are in a standard format which is recogized by every decent DAW or VST host.
-This means you can freely exchange presets between different applications!
+METHOD:: writeBank
+METHOD:: readBank
 
-note::Preset banks are only supported by VST2 plugins::.
+same as above, but for VST2 emphasis::.fxb:: bank files.
 
 METHOD:: readProgramMsg
-METHOD:: readBankMsg
 METHOD:: writeProgramMsg
-METHOD:: writeBankMsg
+
+Create an OSC message for reading/writing a program file, or exchanging program data via a Buffer.
 
 ARGUMENT:: dest
-a) String: preset file to be read or written.
+table::
+## String || preset file to be read or written.
 
-b) link::Classes/Buffer:: or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
+## link::Classes/Buffer:: or Integer || exchange program data between a Client and a (remote) Server via a Buffer.
 
-code::read*Msg::: the Buffer should contain the preset data with each float representing a single byte;
+code::readProgramMsg::: the Buffer should contain the preset data with each float representing a single byte;
 it has to be allocated and freed by the Client.
 
-code::write*Msg::: the Buffer should be initially empty. The UGen will fill the Buffer
+code::writeProgramMsg::: the Buffer should be initially empty. The UGen will fill the Buffer
 on the Server, the Client can then read the data and free the Buffer.
 
-ARGUMENT:: async
+::
 
+ARGUMENT:: async
 see above.
 
-RETURNS:: the message for reading/writing a program/bank file or exchanging program/bank data via a Buffer.
+RETURNS:: the OSC message.
+
+METHOD:: readBankMsg
+METHOD:: writeBankMsg
+
+same as above, but for VST2 emphasis::.fxb:: bank files.
+
+
+subsection:: Preset Data
+
+Set/get the raw plugin state. This is useful if you want to build your own custom preset system.
+
+note::The emphasis::Bank:: methods only work with VST2 plugins.::
 
 METHOD:: setProgramData
 METHOD:: setBankData
@@ -721,7 +790,6 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-
 where to execute the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
@@ -736,8 +804,9 @@ ARGUMENT:: async
 see above.
 
 DISCUSSION::
+
 Internally, the program data is exchanged via temp files.
-note::This only works with a local Server!::
+warning::This only works with a local Server!::
 
 METHOD:: sendProgramData
 METHOD:: sendBankData
@@ -772,46 +841,11 @@ an action to pass the data.
 ARGUMENT:: async
 see above.
 
-discussion::
+DISCUSSION::
 Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above
 also work with remote Servers because the data is streamed via OSC messages. This means
 it is not 100% reliable when using UDP.
 
-METHOD:: loadPreset
-METHOD:: savePreset
-load/save VST presets.
-
-ARGUMENT:: preset
-the preset name or index (see link::Classes/VSTPluginDesc#-presets::). You can create a new preset by passing a non-existing preset name to code::savePreset::.
-
-ARGUMENT:: action
-
-an action which is called with code::this:: and a Boolean (success/fail).
-
-ARGUMENT:: async
-
-where to execute the plugin method, see link::#Realtime Safety::.
-note::The file/buffer IO itself is always performed asynchronously!::
-
-discussion::
-These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see link::Classes/VSTPluginDesc#-presets::).
-
-note::This only works with local Servers (for now)!::
-
-METHOD:: deletePreset
-delete a VST preset.
-
-ARGUMENT:: preset
-the preset name or index.
-
-METHOD:: renamePreset
-delete a VST preset.
-
-ARGUMENT:: preset
-the old preset name or index
-
-ARGUMENT:: name
-the new preset name.
 
 subsection:: MIDI
 
