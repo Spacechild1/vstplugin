@@ -743,7 +743,8 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
     auto plugin = delegate_->plugin();
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
-    if (process && delegate_->suspended()){
+    bool suspended = delegate_->suspended();
+    if (process && suspended){
         // if we're temporarily suspended, we have to grab the mutex.
         // we use a try_lock() and bypass on failure, so we don't block the whole Server.
         process = delegate_->tryLock();
@@ -882,7 +883,7 @@ void VSTPlugin::next(int inNumSamples) {
                 delegate_->sendLatencyChange(p.value);
             }
         }
-        if (delegate_->suspended()){
+        if (suspended){
             delegate_->unlock();
         }
     }
@@ -1239,6 +1240,7 @@ void VSTPluginDelegate::reset(bool async) {
         }
         else {
             // reset in the RT thread
+            auto lock = scopedLock(); // avoid concurrent read/writes
             plugin_->suspend();
             plugin_->resume();
         }
@@ -1432,41 +1434,28 @@ bool cmdReadPreset(World* world, void* cmdData) {
     try {
         if (data->bufnum < 0) {
             // from file
-            if (async){
-                // load preset now
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->readBankFile(data->path);
-                else
-                    plugin->readProgramFile(data->path);
-            } else {
-                // load preset later in RT thread
-                vst::File file(data->path);
-                if (!file.is_open()){
-                    throw Error("couldn't open file " + std::string(data->path));
-                }
-                file.seekg(0, std::ios_base::end);
-                buffer.resize(file.tellg());
-                file.seekg(0, std::ios_base::beg);
-                file.read(&buffer[0], buffer.size());
+            vst::File file(data->path);
+            if (!file.is_open()){
+                throw Error("couldn't open file " + std::string(data->path));
             }
+            file.seekg(0, std::ios_base::end);
+            buffer.resize(file.tellg());
+            file.seekg(0, std::ios_base::beg);
+            file.read(&buffer[0], buffer.size());
         }
         else {
             // from buffer
-            std::string presetData;
-            auto buf = World_GetNRTBuf(world, data->bufnum);
-            writeBuffer(buf, presetData);
-            if (async){
-                // load preset now
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->readBankData(presetData);
-                else
-                    plugin->readProgramData(presetData);
-            } else {
-                // load preset later in RT thread
-                buffer = std::move(presetData);
-            }
+            auto sndbuf = World_GetNRTBuf(world, data->bufnum);
+            writeBuffer(sndbuf, buffer);
+        }
+        if (async) {
+            // load preset now
+            // NOTE: we avoid readProgram() to minimize the critical section
+            auto lock = data->owner->scopedLock();
+            if (bank)
+                plugin->readBankData(buffer);
+            else
+                plugin->readProgramData(buffer);
         }
     }
     catch (const Error& e) {
@@ -1488,6 +1477,7 @@ bool cmdReadPresetDone(World *world, void *cmdData){
     } else if (data->result) {
         // read preset data
         try {
+            auto lock = data->owner->scopedLock(); // avoid concurrent read/write
             if (bank)
                 owner->plugin()->readBankData(data->buffer);
             else
@@ -1538,41 +1528,31 @@ bool cmdWritePreset(World *world, void *cmdData){
     bool async = data->async;
     bool result = true;
     try {
+        // NOTE: we avoid writeProgram() to minimize the critical section
+        if (async){
+            // try to move memory allocation *before* the lock,
+            // so we keep the critical section as short as possible.
+            buffer.reserve(1024);
+            // get and write preset data
+            auto lock = data->owner->scopedLock();
+            if (bank)
+                plugin->writeBankData(buffer);
+            else
+                plugin->writeProgramData(buffer);
+        }
         if (data->bufnum < 0) {
-            // to file
-            if (async){
-                // get and write preset data
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->writeBankFile(data->path);
-                else
-                    plugin->writeProgramFile(data->path);
-            } else {
-                // write data to file
-                vst::File file(data->path, File::WRITE);
-                if (!file.is_open()){
-                    throw Error("couldn't create file " + std::string(data->path));
-                }
-                file.write(buffer.data(), buffer.size());
+            // write data to file
+            vst::File file(data->path, File::WRITE);
+            if (!file.is_open()){
+                throw Error("couldn't create file " + std::string(data->path));
             }
+            file.write(buffer.data(), buffer.size());
         }
         else {
             // to buffer
-            std::string presetData;
-            if (async){
-                // get preset data
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->writeBankData(presetData);
-                else
-                    plugin->writeProgramData(presetData);
-            } else {
-                // move preset data
-                presetData = std::move(buffer);
-            }
-            auto buf = World_GetNRTBuf(world, data->bufnum);
-            data->freeData = buf->data; // to be freed in stage 4
-            allocReadBuffer(buf, presetData);
+            auto sndbuf = World_GetNRTBuf(world, data->bufnum);
+            data->freeData = sndbuf->data; // to be freed in stage 4
+            allocReadBuffer(sndbuf, buffer);
         }
     }
     catch (const Error & e) {
@@ -1605,6 +1585,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
             suspended_ = true;
         } else {
             try {
+                auto lock = scopedLock(); // avoid concurrent read/write
                 if (bank){
                     plugin_->writeBankData(data->buffer);
                 } else {

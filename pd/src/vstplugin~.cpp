@@ -1612,6 +1612,8 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
             }
         );
     } else {
+        // protect against concurrent reads/writes
+        LockGuard lock(x->x_mutex);
         x->x_plugin->suspend();
         x->x_plugin->resume();
         outlet_anything(x->x_messout, gensym("reset"), 0, nullptr);
@@ -1979,10 +1981,13 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     try {
-        if (type == BANK)
-            x->x_plugin->readBankData(buffer);
-        else
-            x->x_plugin->readProgramData(buffer);
+        {
+            LockGuard lock(x->x_mutex); // avoid concurrent reads/writes
+            if (type == BANK)
+                x->x_plugin->readBankData(buffer);
+            else
+                x->x_plugin->readProgramData(buffer);
+        }
         x->x_editor->update();
     } catch (const Error& e) {
         pd_error(x, "%s: couldn't set %s data: %s",
@@ -1996,10 +2001,13 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     try {
-        if (type == BANK)
-            x->x_plugin->writeBankData(buffer);
-        else
-            x->x_plugin->writeProgramData(buffer);
+        {
+            LockGuard lock(x->x_mutex); // avoid concurrent reads/writes
+            if (type == BANK)
+                x->x_plugin->writeBankData(buffer);
+            else
+                x->x_plugin->writeProgramData(buffer);
+        }
     } catch (const Error& e){
         pd_error(x, "%s: couldn't get %s data: %s",
                  classname(x), presetName(type), e.what());
@@ -2045,12 +2053,24 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     sys_close(fd);
     // sys_bashfilename(path, path);
     try {
-        // protect against vstplugin_dsp() and vstplugin_save()
-        LockGuard lock(x->x_mutex);
-        if (type == BANK)
-            x->x_plugin->readBankFile(path);
-        else
-            x->x_plugin->readProgramFile(path);
+        // NOTE: avoid readProgramFile() to minimize the critical section
+        std::string buffer;
+        vst::File file(path);
+        if (!file.is_open()){
+            throw Error("couldn't open file " + std::string(path));
+        }
+        file.seekg(0, std::ios_base::end);
+        buffer.resize(file.tellg());
+        file.seekg(0, std::ios_base::beg);
+        file.read(&buffer[0], buffer.size());
+        {
+            // protect against vstplugin_dsp() and vstplugin_save()
+            LockGuard lock(x->x_mutex);
+            if (type == BANK)
+                x->x_plugin->readBankData(buffer);
+            else
+                x->x_plugin->readProgramData(buffer);
+        }
         data->success = true;
     } catch (const Error& e) {
         PdScopedLock<async> lock;
@@ -2107,14 +2127,29 @@ template<t_preset type, bool async>
 static void vstplugin_preset_write_do(t_preset_data *data){
     auto x = data->owner;
     try {
-        // protect against vstplugin_dsp() and vstplugin_save()
-        LockGuard lock(x->x_mutex);
-        if (type == BANK)
-            x->x_plugin->writeBankFile(data->path);
-        else
-            x->x_plugin->writeProgramFile(data->path);
-        data->success = true;
+        // NOTE: we avoid writeProgram() to minimize the critical section
+        std::string buffer;
+        if (async){
+            // try to move memory allocation *before* the lock,
+            // so we keep the critical section as short as possible.
+            buffer.reserve(1024);
+        }
+        {
+            // protect against vstplugin_dsp() and vstplugin_save()
+            LockGuard lock(x->x_mutex);
+            if (type == BANK)
+                x->x_plugin->writeBankData(buffer);
+            else
+                x->x_plugin->writeProgramData(buffer);
+        }
+        // write data to file
+        vst::File file(data->path, File::WRITE);
+        if (!file.is_open()){
+            throw Error("couldn't create file " + std::string(data->path));
+        }
+        file.write(buffer.data(), buffer.size());
 
+        data->success = true;
     } catch (const Error& e){
         PdScopedLock<async> lock;
         pd_error(x, "%s: couldn't write %s file '%s':\n%s",
