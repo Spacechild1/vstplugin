@@ -499,7 +499,7 @@ VSTPluginController {
 			}, async);
 		} { "no plugin loaded".error }
 	}
-	loadPreset { arg preset, action, async=false;
+	loadPreset { arg preset, action, async=true;
 		var result;
 		synth.server.isLocal.not.if {
 			^"'%' only works with a local Server".format(thisMethod.name).throw;
@@ -619,7 +619,7 @@ VSTPluginController {
 	programNameMsg { arg name;
 		^this.makeMsg('/program_name', name);
 	}
-	readProgram { arg path, action, async=false;
+	readProgram { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -628,10 +628,10 @@ VSTPluginController {
 		}, '/vst_program_read').oneShot;
 		this.sendMsg('/program_read', path, async.asInteger);
 	}
-	readProgramMsg { arg dest, async=false;
+	readProgramMsg { arg dest, async=true;
 		^this.makeMsg('/program_read', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
-	readBank { arg path, action, async=false;
+	readBank { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -641,10 +641,10 @@ VSTPluginController {
 		}, '/vst_bank_read').oneShot;
 		this.sendMsg('/bank_read', path, async.asInteger);
 	}
-	readBankMsg { arg dest, async=false;
+	readBankMsg { arg dest, async=true;
 		^this.makeMsg('/bank_read', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
-	writeProgram { arg path, action, async=false;
+	writeProgram { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -652,10 +652,10 @@ VSTPluginController {
 		}, '/vst_program_write').oneShot;
 		this.sendMsg('/program_write', path, async.asInteger);
 	}
-	writeProgramMsg { arg dest, async=false;
+	writeProgramMsg { arg dest, async=true;
 		^this.makeMsg('/program_write', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
-	writeBank { arg path, action, async=false;
+	writeBank { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -663,16 +663,16 @@ VSTPluginController {
 		}, '/vst_bank_write').oneShot;
 		this.sendMsg('/bank_write', path, async.asInteger);
 	}
-	writeBankMsg { arg dest, async=false;
+	writeBankMsg { arg dest, async=true;
 		^this.makeMsg('/bank_write', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
-	setProgramData { arg data, action, async=false;
+	setProgramData { arg data, action, async=true;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		synth.server.isLocal.if {
 			this.prSetData(data, action, false, async);
 		} { ^"'%' only works with a local Server".format(thisMethod.name).throw };
 	}
-	setBankData { arg data, action, async=false;
+	setBankData { arg data, action, async=true;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		synth.server.isLocal.if {
 			this.prSetData(data, action, true, async);
@@ -692,12 +692,12 @@ VSTPluginController {
 			bank.if { this.readBank(path, cb, async) } { this.readProgram(path, cb, async) };
 		} { "Failed to write data".warn };
 	}
-	sendProgramData { arg data, wait, action, async=false;
+	sendProgramData { arg data, wait, action, async=true;
 		wait = wait ?? this.wait;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.prSendData(data, wait, action, false, async);
 	}
-	sendBankData { arg data, wait, action, async=false;
+	sendBankData { arg data, wait, action, async=true;
 		wait = wait ?? this.wait;
 		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
 		this.prSendData(data, wait, action, true, async);
@@ -724,10 +724,10 @@ VSTPluginController {
 			this.sendMsg("/"++sym++"_read", VSTPlugin.prMakeDest(buf), async);
 		});
 	}
-	getProgramData { arg action, async=false;
+	getProgramData { arg action, async=true;
 		this.prGetData(action, false, async);
 	}
-	getBankData { arg action, async=false;
+	getBankData { arg action, async=true;
 		this.prGetData(action, true, async);
 	}
 	prGetData { arg action, bank, async;
@@ -750,10 +750,10 @@ VSTPluginController {
 		// 1) ask plugin to write data file
 		bank.if { this.writeBank(path, cb, async) } { this.writeProgram(path, cb, async) };
 	}
-	receiveProgramData { arg wait, timeout=3, action, async=false;
+	receiveProgramData { arg wait, timeout=3, action, async=true;
 		this.prReceiveData(wait, timeout, action, false);
 	}
-	receiveBankData { arg wait, timeout=3, action, async=false;
+	receiveBankData { arg wait, timeout=3, action, async=true;
 		this.prReceiveData(wait, timeout, action, true);
 	}
 	prReceiveData { arg wait, timeout, action, bank, async;
