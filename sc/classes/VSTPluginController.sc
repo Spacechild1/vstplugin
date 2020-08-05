@@ -444,7 +444,10 @@ VSTPluginController {
 		^this.makeMsg('/unmap', *args);
 	}
 	// preset management
-	savePreset { arg preset, action, async=false;
+	preset {
+		^currentPreset;
+	}
+	savePreset { arg preset, action, async=true;
 		var result, name, path;
 		synth.server.isLocal.not.if {
 			^"'%' only works with a local Server".format(thisMethod.name).throw;
@@ -461,23 +464,30 @@ VSTPluginController {
 					name = currentPreset.name;
 				} { "no current preset".error; ^this };
 			} {
-				// 'preset' can be an index
-				preset.isNumber.if {
-					preset = preset.asInteger;
-					result = info.presets[preset];
-					result ?? {
-						"preset index % out of range".format(preset).error; ^this;
+				preset.isKindOf(Event).if {
+					(preset.type != \user).if {
+						"preset % is not writeable!".format(preset.name).error; ^this;
 					};
-					(result.type != \user).if {
-						"preset % is not writeable!".format(preset).error; ^this;
-					};
-					name = result.name;
+					name = preset.name;
 				} {
-					// or a string
-					name = preset.asString;
+					preset.isNumber.if {
+						// 'preset' can also be an index
+						result = info.presets[preset.asInteger];
+						result ?? {
+							"preset index % out of range".format(preset).error; ^this;
+						};
+						(result.type != \user).if {
+							"preset % is not writeable!".format(preset).error; ^this;
+						};
+						name = result.name;
+					} {
+						// or a (new) name
+						name = preset.asString;
+					}
 				}
 			};
 			path = info.presetPath(name);
+
 			this.writeProgram(path, { arg self, success;
 				var index;
 				success.if {
@@ -490,7 +500,7 @@ VSTPluginController {
 		} { "no plugin loaded".error }
 	}
 	loadPreset { arg preset, action, async=false;
-		var index, result;
+		var result;
 		synth.server.isLocal.not.if {
 			^"'%' only works with a local Server".format(thisMethod.name).throw;
 		};
@@ -499,32 +509,44 @@ VSTPluginController {
 			// if 'preset' is omitted, use the last preset (if possible)
 			preset.isNil.if {
 				currentPreset.notNil.if {
-					index = info.prPresetIndex(currentPreset);
-					index ?? { ^"bug: couldn't find current preset".throw };
+					result = currentPreset;
 				} { "no current preset".error; ^this };
 			} {
-				preset.isNumber.if {
-					index = preset.asInteger;
+				preset.isKindOf(Event).if {
+					result = preset;
 				} {
-					// try to find by name
-					index = info.prPresetIndex(preset.asString);
-					index ?? { "couldn't find preset '%'".format(preset).error; ^this }
-				};
+					preset.isNumber.if {
+						// 'preset' can also be an index
+						result = info.presets[preset.asInteger];
+						result ?? {
+							"preset index % out of range".format(preset).error; ^this;
+						};
+					} {
+						// or a name
+						result = info.findPreset(preset.asString);
+						result ?? {
+							"couldn't find preset '%'".format(preset).error; ^this;
+						};
+					}
+				}
 			};
-			result = info.presets[index];
-			result.notNil.if {
-				this.readProgram(result.path, { arg self, success;
-					success.if {
-						currentPreset = result;
-						this.changed('/preset_load', index);
-					} { "couldn't load preset".error };
-					action.value(self, success);
-				}, async);
-			} { "preset index % out of range".format(preset).error };
+			this.readProgram(result.path, { arg self, success;
+				var index;
+				success.if {
+					index = info.prPresetIndex(result);
+					index ?? {
+						"preset '%' has been removed!".format(result.name).error; ^this;
+					};
+					currentPreset = result;
+					this.changed('/preset_load', index);
+				} { "couldn't load preset".error };
+				action.value(self, success);
+			}, async);
 		} { "no plugin loaded".error }
 	}
 	deletePreset { arg preset;
 		var current = false;
+		var name = preset.isKindOf(Event).if { preset.name } { preset };
 		synth.server.isLocal.not.if {
 			^"'%' only works with a local Server".format(thisMethod.name).throw;
 		};
@@ -536,7 +558,7 @@ VSTPluginController {
 					(currentPreset.type != \user).if {
 						"current preset is not writeable!".error; ^false;
 					};
-					preset = currentPreset.name;
+					preset = currentPreset;
 					current = true;
 				} { "no current preset".error; ^false };
 			};
@@ -544,12 +566,13 @@ VSTPluginController {
 				current.if { currentPreset = nil };
 				^true;
 			} {
-				"couldn't delete preset '%'".format(preset).error;
+				"couldn't delete preset '%'".format(name).error;
 			}
 		} { "no plugin loaded".error };
 		^false;
 	}
 	renamePreset { arg preset, name;
+		var oldname = preset.isKindOf(Event).if { preset.name } { preset };
 		synth.server.isLocal.not.if {
 			^"'%' only works with a local Server".format(thisMethod.name).throw;
 		};
@@ -561,11 +584,11 @@ VSTPluginController {
 					(currentPreset.type != \user).if {
 						"current preset is not writeable!".error; ^false;
 					};
-					preset = currentPreset.name;
+					preset = currentPreset;
 				} { "no current preset".error; ^false };
 			};
 			info.renamePreset(preset, name).if { ^true } {
-				"couldn't rename preset '%'".format(preset).error;
+				"couldn't rename preset '%'".format(oldname).error;
 			}
 		} { "no plugin loaded".error };
 		^false;

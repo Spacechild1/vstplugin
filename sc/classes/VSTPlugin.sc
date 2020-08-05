@@ -157,17 +157,15 @@ VSTPluginDesc {
 		^nil; // not found
 	}
 	prPresetIndex { arg preset;
-		(preset.class == Event).if {
-			presets.do { arg p, index;
-				(p === preset).if { ^index }
-			}
+		preset.isKindOf(Event).if {
+			^presets.indexOf(preset);
 		} {
 			preset = preset.asString;
 			presets.do { arg p, index;
 				(p.name == preset).if { ^index }
-			}
-		};
-		^nil;
+			};
+			^nil;
+		}
 	}
 	prSortPresets { arg userOnly=true;
 		var temp = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
@@ -189,7 +187,7 @@ VSTPluginDesc {
 		});
 	}
 	addPreset { arg name, path;
-		var index = 0, preset = (name: name, path: path, type: \user);
+		var index = 0, preset = (name: name, path: path ?? { this.presetPath(name) }, type: \user);
 		presets.do { arg p, i;
 			(preset.type == p.type).if {
 				// check if preset exists
@@ -203,7 +201,7 @@ VSTPluginDesc {
 		^index;
 	}
 	deletePreset { arg preset;
-		var result = this.findPreset(preset);
+		var result = preset.isKindOf(Event).if { preset } { this.findPreset(preset) };
 		// can only remove user presets!
 		result.notNil.if {
 			(result.type == \user).if {
@@ -214,12 +212,12 @@ VSTPluginDesc {
 				} {
 					("couldn't delete preset file" + result.path).error;
 				}
-			} { "preset '%' is not writeable!".format(preset).error; }
+			} { "preset '%' is not writeable!".format(result.name).error; }
 		} {	"couldn't find preset '%'".format(preset).error	}
 		^false;
 	}
 	renamePreset { arg preset, name;
-		var result = this.findPreset(preset);
+		var result = preset.isKindOf(Event).if { preset } { this.findPreset(preset) };
 		var newPath = this.presetPath(name);
 		// can only rename user presets!
 		result.notNil.if {
@@ -242,7 +240,7 @@ VSTPluginDesc {
 					this.changed('/presets');
 					^true;
 				} { "preset '%' already exists!".format(name).error; }
-			} { "preset '%' not writeable!".format(preset).error }
+			} { "preset '%' not writeable!".format(result.name).error }
 		} {	"couldn't find preset '%'".format(preset).error	};
 		^false;
 	}
