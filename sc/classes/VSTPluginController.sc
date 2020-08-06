@@ -504,32 +504,8 @@ VSTPluginController {
 		synth.server.isLocal.not.if {
 			^"'%' only works with a local Server".format(thisMethod.name).throw;
 		};
-
-		info.notNil.if {
-			// if 'preset' is omitted, use the last preset (if possible)
-			preset.isNil.if {
-				currentPreset.notNil.if {
-					result = currentPreset;
-				} { "no current preset".error; ^this };
-			} {
-				preset.isKindOf(Event).if {
-					result = preset;
-				} {
-					preset.isNumber.if {
-						// 'preset' can also be an index
-						result = info.presets[preset.asInteger];
-						result ?? {
-							"preset index % out of range".format(preset).error; ^this;
-						};
-					} {
-						// or a name
-						result = info.findPreset(preset.asString);
-						result ?? {
-							"couldn't find preset '%'".format(preset).error; ^this;
-						};
-					}
-				}
-			};
+		try {
+			result = this.prGetPreset(preset);
 			this.readProgram(result.path, { arg self, success;
 				var index;
 				success.if {
@@ -542,7 +518,48 @@ VSTPluginController {
 				} { "couldn't load preset".error };
 				action.value(self, success);
 			}, async);
-		} { "no plugin loaded".error }
+		} { arg e;
+			e.errorString.postln; // or should we rather throw the Error?
+		}
+	}
+	loadPresetMsg { arg preset, async=true;
+		var result;
+		synth.server.isLocal.not.if {
+			^"'%' only works with a local Server".format(thisMethod.name).throw;
+		};
+		result = this.prGetPreset(preset); // throws on error
+		^this.readProgramMsg(result.path, async);
+	}
+	prGetPreset { arg preset;
+		var result;
+		info.isNil.if {
+			^Error("no plugin loaded").throw;
+		};
+		// if 'preset' is omitted, use the last preset (if possible)
+		preset.isNil.if {
+			currentPreset.notNil.if {
+				result = currentPreset;
+			} { ^Error("no current preset").throw };
+		} {
+			preset.isKindOf(Event).if {
+				result = preset;
+			} {
+				preset.isNumber.if {
+					// 'preset' can also be an index
+					result = info.presets[preset.asInteger];
+					result ?? {
+						^Error("preset index % out of range".format(preset)).throw;
+					};
+				} {
+					// or a name
+					result = info.findPreset(preset.asString);
+					result ?? {
+						^Error("couldn't find preset '%'".format(preset)).throw;
+					};
+				}
+			}
+		}
+		^result;
 	}
 	deletePreset { arg preset;
 		var current = false;
@@ -721,7 +738,7 @@ VSTPluginController {
 		}, "/vst_"++sym++"_read").oneShot;
 
 		buffer = Buffer.sendCollection(synth.server, data, wait: wait, action: { arg buf;
-			this.sendMsg("/"++sym++"_read", VSTPlugin.prMakeDest(buf), async);
+			this.sendMsg("/"++sym++"_read", VSTPlugin.prMakeDest(buf), async.asInteger);
 		});
 	}
 	getProgramData { arg action, async=true;
@@ -748,7 +765,7 @@ VSTPluginController {
 			action.value(data);
 		};
 		// 1) ask plugin to write data file
-		bank.if { this.writeBank(path, cb, async) } { this.writeProgram(path, cb, async) };
+		bank.if { this.writeBank(path, cb, async) } { this.writeProgram(path, cb, async.asInteger) };
 	}
 	receiveProgramData { arg wait, timeout=3, action, async=true;
 		this.prReceiveData(wait, timeout, action, false);

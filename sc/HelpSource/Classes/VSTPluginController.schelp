@@ -341,7 +341,7 @@ SynthDef.new(\test, { arg bus = 0;
 INSTANCEMETHODS::
 
 PRIVATE:: prFree, prClear, init, prQuery, prQueryParams, prQueryPrograms
-PRIVATE:: prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
+PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
 
 
 METHOD:: open
@@ -684,6 +684,17 @@ ARGUMENT:: async
 
 where to execute the plugin method, see link::#Realtime Safety::.
 note::The file IO itself is always performed asynchronously!::
+
+METHOD:: loadPresetMsg
+Create an OSC message for loading a preset. See also link::#-readProgramMsg::.
+
+note:: There is no equivalent code::savePresetMsg:: method because we wouldn't be able to update the preset list.::
+
+ARGUMENT:: preset
+a preset Event, name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+ARGUMENT:: async
+see above.
 
 METHOD:: deletePreset
 delete a VST preset.

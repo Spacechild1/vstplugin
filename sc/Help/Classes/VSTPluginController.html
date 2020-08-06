@@ -76,6 +76,7 @@ var scdoc_sc_version = '3.11.0';
 </ul><li class='toc2'><a href='#Presets'>Presets</a></li>
 <ul class='toc'><li class='toc3'><a href='#-loadPreset'>loadPreset</a> </li>
 <li class='toc3'><a href='#-savePreset'>savePreset</a> </li>
+<li class='toc3'><a href='#-loadPresetMsg'>loadPresetMsg</a> </li>
 <li class='toc3'><a href='#-deletePreset'>deletePreset</a> </li>
 <li class='toc3'><a href='#-renamePreset'>renamePreset</a> </li>
 <li class='toc3'><a href='#-preset'>preset</a> </li>
@@ -575,7 +576,13 @@ SynthDef(\chorus, { arg bus=0;
 <p>a preset Event, name or index (see <a href="./..\Classes/VSTPluginDesc.html#-presets">VSTPluginDesc: -presets</a>).
 <p>You can create a new preset by passing a non-existing preset name to <code>savePreset</code>.<tr><td class='argumentname'>action<td class='argumentdesc'>
 <p>an action which is called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>async<td class='argumentdesc'>
-<p>where to execute the plugin method, see <a href="#Realtime%20Safety">Realtime Safety</a>.<div class='note'><span class='notelabel'>NOTE:</span> The file IO itself is always performed asynchronously!</div></table></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-deletePreset' href='./../Overviews/Methods.html#deletePreset'>deletePreset</a>(<span class='argstr'>preset</span>)</h3>
+<p>where to execute the plugin method, see <a href="#Realtime%20Safety">Realtime Safety</a>.<div class='note'><span class='notelabel'>NOTE:</span> The file IO itself is always performed asynchronously!</div></table></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-loadPresetMsg' href='./../Overviews/Methods.html#loadPresetMsg'>loadPresetMsg</a>(<span class='argstr'>preset</span>, <span class='argstr'>async: true</span>)</h3>
+<div class='method'>
+<p>Create an OSC message for loading a preset. See also <a href="#-readProgramMsg">-readProgramMsg</a>.<div class='note'><span class='notelabel'>NOTE:</span> There is no equivalent <code>savePresetMsg</code> method because we wouldn't be able to update the preset list.</div><h4>Arguments:</h4>
+<table class='arguments'>
+<tr><td class='argumentname'>preset<td class='argumentdesc'>
+<p>a preset Event, name or index (see <a href="./..\Classes/VSTPluginDesc.html#-presets">VSTPluginDesc: -presets</a>).<tr><td class='argumentname'>async<td class='argumentdesc'>
+<p>see above.</table></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-deletePreset' href='./../Overviews/Methods.html#deletePreset'>deletePreset</a>(<span class='argstr'>preset</span>)</h3>
 <div class='method'>
 <p>delete a VST preset.<h4>Arguments:</h4>
 <table class='arguments'>
