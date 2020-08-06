@@ -6,7 +6,6 @@ VSTPluginController {
 	var <>synthIndex;
 	var <>info;
 	var <>wait;
-	var <loaded;
 	var <midi;
 	var <program;
 	var <latency;
@@ -167,7 +166,6 @@ VSTPluginController {
 		this.synthIndex = index;
 		this.info = info;
 		this.wait = wait;
-		loaded = false;
 		loading = false;
 		window = false;
 		didQuery = false;
@@ -239,6 +237,9 @@ VSTPluginController {
 		this.prClear;
 		this.changed('/free');
 	}
+	loaded {
+		^this.info.notNil;
+	}
 	editor { arg show=true;
 		window.if { this.sendMsg('/vis', show.asInteger); }
 		{ "no editor!".postln; };
@@ -274,32 +275,27 @@ VSTPluginController {
 		path ?? {
 			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
 		};
-		path.isString.if { path = path.standardizePath };
-		VSTPlugin.prGetInfo(synth.server, path, wait, { arg theInfo;
-			theInfo.notNil.if {
+		path.isString.if { path = path.standardizePath }; // or: path = path.asString.standardizePath ?
+		VSTPlugin.prGetInfo(synth.server, path, wait, { arg info;
+			info.notNil.if {
 				this.prClear;
 				this.prMakeOscFunc({arg msg;
-					loaded = msg[3].asBoolean;
+					var loaded = msg[3].asBoolean;
 					loaded.if {
-						theInfo.notNil.if {
-							window = msg[4].asBoolean;
-							latency = msg[5].asInteger;
-							info = theInfo; // now set 'info' property
-							info.addDependant(this);
-							paramCache = Array.fill(theInfo.numParameters, [0, nil]);
-							program = 0;
-							// copy default program names (might change later when loading banks)
-							programNames = theInfo.programs.collect(_.name);
-							// only query parameters if we have dependants!
-							(this.dependants.size > 0).if {
-								this.prQueryParams;
-							};
-							// post info if wanted
-							verbose.if { theInfo.print };
-						} {
-							"bug: got no info!".error; // shouldn't happen...
-							loaded = false; window = false;
+						window = msg[4].asBoolean;
+						latency = msg[5].asInteger;
+						this.info = info; // now set 'info' property
+						info.addDependant(this);
+						paramCache = Array.fill(info.numParameters, [0, nil]);
+						program = 0;
+						// copy default program names (might change later when loading banks)
+						programNames = info.programs.collect(_.name);
+						// only query parameters if we have dependants!
+						(this.dependants.size > 0).if {
+							this.prQueryParams;
 						};
+						// post info if wanted
+						verbose.if { info.print };
 					} {
 						// shouldn't happen because /open is only sent if the plugin has been successfully probed
 						"couldn't open '%'".format(path).error;
@@ -311,7 +307,7 @@ VSTPluginController {
 					latency.notNil.if { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
-				this.sendMsg('/open', theInfo.key, editor.asInteger, threaded.asInteger);
+				this.sendMsg('/open', info.key, editor.asInteger, threaded.asInteger);
 			} {
 				"couldn't open '%'".format(path).error;
 				// just notify failure, but keep old plugin (if present)
@@ -329,13 +325,13 @@ VSTPluginController {
 	}
 	prClear {
 		info !? { info.removeDependant(this) };
-		loaded = false; window = false; latency = nil; info = nil;
+		window = false; latency = nil; info = nil;
 		paramCache = nil; programNames = nil; didQuery = false;
 		program = nil; currentPreset = nil; loading = false;
 	}
 	addDependant { arg dependant;
 		// only query parameters for the first dependant!
-		(loaded && didQuery.not).if {
+		(this.loaded && didQuery.not).if {
 			this.prQueryParams;
 		};
 		super.addDependant(dependant);
@@ -726,7 +722,7 @@ VSTPluginController {
 		// maybe okay with tcp.
 		var buffer, sym;
 		wait = wait ?? this.wait;
-		loaded.not.if {"can't send data - no plugin loaded!".warn; ^nil };
+		this.loaded.not.if { "can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 
 		this.prMakeOscFunc({ arg msg;
@@ -780,7 +776,7 @@ VSTPluginController {
 		// maybe okay with tcp.
 		var address, sym;
 		wait = wait ?? this.wait;
-		loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
+		this.loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 		{
 			var buf = Buffer(synth.server); // get free Buffer
