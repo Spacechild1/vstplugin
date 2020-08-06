@@ -340,7 +340,7 @@ SynthDef.new(\test, { arg bus = 0;
 
 INSTANCEMETHODS::
 
-PRIVATE:: prFree, prClear, init, prQuery, prQueryParams, prQueryPrograms
+PRIVATE:: prFree, prCheckPlugin, prCheckLocal, prClear, init, prQuery, prQueryParams, prQueryPrograms
 PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
 
 

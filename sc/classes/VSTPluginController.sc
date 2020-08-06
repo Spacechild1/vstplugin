@@ -111,11 +111,13 @@ VSTPluginController {
 			// try to find VSTPlugin with given ID
 			id = id.asSymbol; // !
 			desc = plugins[id];
-			desc ?? { ^"SynthDef '%' doesn't contain a VSTPlugin with ID '%'!".format(synth.defName, id).throw; };
+			desc ?? {
+				MethodError("SynthDef '%' doesn't contain a VSTPlugin with ID '%'!".format(synth.defName, id), this).throw;
+			};
 		} {
 			// otherwise just get the first (and only) plugin
 			(plugins.size > 1).if {
-				^"SynthDef '%' contains more than 1 VSTPlugin - please use the 'id' argument!".format(synth.defName).throw;
+				MethodError("SynthDef '%' contains more than 1 VSTPlugin - please use the 'id' argument!".format(synth.defName), this).throw;
 			};
 			desc = plugins.asArray[0];
 		};
@@ -139,7 +141,7 @@ VSTPluginController {
 				} { "can't find VSTPlugin with ID %".format(key).warn; }
 			}
 		} {
-			// empty Array or nil -> get all plugins, except those without ID
+			// empty Array or nil -> get all plugins, except those without ID (shouldn't happen)
 			plugins.pairsDo { arg key, value;
 				(key.class == Symbol).if {
 					result.put(key, makeOne.(value));
@@ -154,11 +156,11 @@ VSTPluginController {
 			metadata = synthDef.metadata;
 		} {
 			desc = SynthDescLib.global.at(synth.defName);
-			desc.isNil.if { ^"couldn't find SynthDef '%' in global SynthDescLib!".format(synth.defName).throw };
+			desc.isNil.if { MethodError("couldn't find SynthDef '%' in global SynthDescLib!".format(synth.defName), this).throw };
 			metadata = desc.metadata; // take metadata from SynthDesc, not SynthDef (SC bug)!
 		};
 		plugins = metadata[\vstplugins];
-		(plugins.size == 0).if { ^"SynthDef '%' doesn't contain a VSTPlugin!".format(synth.defName).throw; };
+		(plugins.size == 0).if { MethodError("SynthDef '%' doesn't contain a VSTPlugin!".format(synth.defName), this).throw; };
 		^plugins;
 	}
 	init { arg synth, index, wait, info;
@@ -184,7 +186,7 @@ VSTPluginController {
 				paramCache[index] = [value, display];
 				// notify dependants
 				this.changed('/param', index, value, display);
-			} { ^"parameter index % out of range!".format(index).warn };
+			} { "parameter index % out of range!".format(index).warn };
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -237,6 +239,14 @@ VSTPluginController {
 		this.prClear;
 		this.changed('/free');
 	}
+	prCheckPlugin { arg method;
+		this.loaded.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
+	}
+	prCheckLocal { arg method;
+		synth.server.isLocal.not.if {
+			MethodError("'%' only works with a local Server".format(method.name), this).throw;
+		}
+	}
 	loaded {
 		^this.info.notNil;
 	}
@@ -273,7 +283,9 @@ VSTPluginController {
 		};
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
-			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
+			this.info !? { path = this.info.key } ?? {
+				MethodError("'path' is nil but VSTPlugin doesn't have a plugin info", this).throw;
+			}
 		};
 		path.isString.if { path = path.standardizePath }; // or: path = path.asString.standardizePath ?
 		VSTPlugin.prGetInfo(synth.server, path, wait, { arg info;
@@ -319,7 +331,9 @@ VSTPluginController {
 	openMsg { arg path, editor=false;
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
-			this.info !? { path = this.info.key } ?? { ^"'path' is nil but VSTPlugin doesn't have a plugin info".throw }
+			this.info !? { path = this.info.key } ?? {
+				MethodError("'path' is nil but VSTPlugin doesn't have a plugin info", this).throw;
+			}
 		};
 		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger);
 	}
@@ -445,97 +459,88 @@ VSTPluginController {
 	}
 	savePreset { arg preset, action, async=true;
 		var result, name, path;
-		synth.server.isLocal.not.if {
-			^"'%' only works with a local Server".format(thisMethod.name).throw;
-		};
+		this.prCheckLocal(thisMethod);
+		this.prCheckPlugin(thisMethod);
 
-		info.notNil.if {
-			File.mkdir(info.presetFolder); // make sure that the folder exists!
-			// if 'preset' is omitted, use the last preset (if possible)
-			preset.isNil.if {
-				currentPreset.notNil.if {
-					(currentPreset.type != \user).if {
-						"current preset is not writeable!".error; ^this;
-					};
-					name = currentPreset.name;
-				} { "no current preset".error; ^this };
+		File.mkdir(info.presetFolder); // make sure that the folder exists!
+		// if 'preset' is omitted, use the last preset (if possible)
+		preset.isNil.if {
+			currentPreset.notNil.if {
+				(currentPreset.type != \user).if {
+					MethodError("current preset is not writeable!", this).throw;
+				};
+				name = currentPreset.name;
+			} { MethodError("no current preset", this).throw };
+		} {
+			preset.isKindOf(Event).if {
+				(preset.type != \user).if {
+					MethodError("preset '%' is not writeable!".format(preset.name), this).throw;
+				};
+				name = preset.name;
 			} {
-				preset.isKindOf(Event).if {
-					(preset.type != \user).if {
-						"preset % is not writeable!".format(preset.name).error; ^this;
+				preset.isNumber.if {
+					// 'preset' can also be an index
+					result = info.presets[preset.asInteger];
+					result ?? {
+						MethodError("preset index % out of range!".format(preset), this).throw
 					};
-					name = preset.name;
+					(result.type != \user).if {
+						MethodError("preset % is not writeable!".format(preset), this).throw
+					};
+					name = result.name;
 				} {
-					preset.isNumber.if {
-						// 'preset' can also be an index
-						result = info.presets[preset.asInteger];
-						result ?? {
-							"preset index % out of range".format(preset).error; ^this;
-						};
-						(result.type != \user).if {
-							"preset % is not writeable!".format(preset).error; ^this;
-						};
-						name = result.name;
-					} {
-						// or a (new) name
-						name = preset.asString;
-					}
+					// or a (new) name
+					name = preset.asString;
 				}
-			};
-			path = info.presetPath(name);
+			}
+		};
+		path = info.presetPath(name);
 
-			this.writeProgram(path, { arg self, success;
-				var index;
-				success.if {
-					index = info.addPreset(name, path);
-					currentPreset = info.presets[index];
-					this.changed('/preset_save', index);
-				} { "couldn't save preset".error };
-				action.value(self, success);
-			}, async);
-		} { "no plugin loaded".error }
+		this.writeProgram(path, { arg self, success;
+			var index;
+			success.if {
+				index = info.addPreset(name, path);
+				currentPreset = info.presets[index];
+				this.changed('/preset_save', index);
+			} { "couldn't save preset '%'".format(name).error };
+			action.value(self, success);
+		}, async);
 	}
 	loadPreset { arg preset, action, async=true;
 		var result;
-		synth.server.isLocal.not.if {
-			^"'%' only works with a local Server".format(thisMethod.name).throw;
-		};
-		try {
-			result = this.prGetPreset(preset);
-			this.readProgram(result.path, { arg self, success;
-				var index;
-				success.if {
-					index = info.prPresetIndex(result);
-					index ?? {
-						"preset '%' has been removed!".format(result.name).error; ^this;
-					};
+		this.prCheckLocal(thisMethod);
+		this.prCheckPlugin(thisMethod);
+
+		result = this.prGetPreset(preset);
+		this.readProgram(result.path, { arg self, success;
+			var index;
+			success.if {
+				index = info.prPresetIndex(result);
+				index.notNil.if {
 					currentPreset = result;
 					this.changed('/preset_load', index);
-				} { "couldn't load preset".error };
-				action.value(self, success);
-			}, async);
-		} { arg e;
-			e.errorString.postln; // or should we rather throw the Error?
-		}
+				} {
+					"preset '%' has been removed!".format(result.name).error;
+				};
+			} { "couldn't load preset".error };
+			action.value(self, success);
+		}, async);
 	}
 	loadPresetMsg { arg preset, async=true;
 		var result;
-		synth.server.isLocal.not.if {
-			^"'%' only works with a local Server".format(thisMethod.name).throw;
-		};
+		this.prCheckLocal(thisMethod);
+		this.prCheckPlugin(thisMethod);
+
 		result = this.prGetPreset(preset); // throws on error
 		^this.readProgramMsg(result.path, async);
 	}
 	prGetPreset { arg preset;
 		var result;
-		info.isNil.if {
-			^Error("no plugin loaded").throw;
-		};
 		// if 'preset' is omitted, use the last preset (if possible)
 		preset.isNil.if {
 			currentPreset.notNil.if {
 				result = currentPreset;
-			} { ^Error("no current preset").throw };
+			} { MethodError("no current preset", this).throw };
 		} {
 			preset.isKindOf(Event).if {
 				result = preset;
@@ -544,13 +549,13 @@ VSTPluginController {
 					// 'preset' can also be an index
 					result = info.presets[preset.asInteger];
 					result ?? {
-						^Error("preset index % out of range".format(preset)).throw;
+						MethodError("preset index % out of range".format(preset), this).throw;
 					};
 				} {
 					// or a name
 					result = info.findPreset(preset.asString);
 					result ?? {
-						^Error("couldn't find preset '%'".format(preset)).throw;
+						MethodError("couldn't find preset '%'".format(preset), this).throw;
 					};
 				}
 			}
@@ -560,51 +565,36 @@ VSTPluginController {
 	deletePreset { arg preset;
 		var current = false;
 		var name = preset.isKindOf(Event).if { preset.name } { preset };
-		synth.server.isLocal.not.if {
-			^"'%' only works with a local Server".format(thisMethod.name).throw;
-		};
+		this.prCheckLocal(thisMethod);
+		this.prCheckPlugin(thisMethod);
 
-		info.notNil.if {
-			// if 'preset' is omitted, use the last preset (if possible)
-			preset.isNil.if {
-				currentPreset.notNil.if {
-					(currentPreset.type != \user).if {
-						"current preset is not writeable!".error; ^false;
-					};
-					preset = currentPreset;
-					current = true;
-				} { "no current preset".error; ^false };
-			};
-			info.deletePreset(preset).if {
-				current.if { currentPreset = nil };
-				^true;
-			} {
-				"couldn't delete preset '%'".format(name).error;
-			}
-		} { "no plugin loaded".error };
+		// if 'preset' is omitted, use the last preset (if possible)
+		preset.isNil.if {
+			currentPreset.notNil.if {
+				preset = currentPreset;
+				current = true;
+			} { MethodError("no current preset", this).throw };
+		};
+		info.deletePreset(preset).if {
+			current.if { currentPreset = nil };
+			^true;
+		}
 		^false;
 	}
 	renamePreset { arg preset, name;
 		var oldname = preset.isKindOf(Event).if { preset.name } { preset };
-		synth.server.isLocal.not.if {
-			^"'%' only works with a local Server".format(thisMethod.name).throw;
-		};
+		this.prCheckLocal(thisMethod);
+		this.prCheckPlugin(thisMethod);
 
-		info.notNil.if {
-			// if 'preset' is omitted, use the last preset (if possible)
-			preset.isNil.if {
-				currentPreset.notNil.if {
-					(currentPreset.type != \user).if {
-						"current preset is not writeable!".error; ^false;
-					};
-					preset = currentPreset;
-				} { "no current preset".error; ^false };
-			};
-			info.renamePreset(preset, name).if { ^true } {
-				"couldn't rename preset '%'".format(oldname).error;
-			}
-		} { "no plugin loaded".error };
-		^false;
+		// if 'preset' is omitted, use the last preset (if possible)
+		preset.isNil.if {
+			currentPreset.notNil.if {
+				preset = currentPreset;
+			} { MethodError("no current preset", this).throw };
+		};
+		info.renamePreset(preset, name).if { ^true } {
+			"couldn't rename preset '%'".format(oldname).error; ^false;
+		}
 	}
 	numPrograms {
 		^(info !? (_.numPrograms) ?? 0);
@@ -614,7 +604,7 @@ VSTPluginController {
 			this.sendMsg('/program_set', number);
 			this.prQueryParams;
 		} {
-			"program number % out of range".format(number).error;
+			MethodError("program number % out of range".format(number), this).throw;
 		};
 	}
 	programMsg { arg number;
@@ -680,16 +670,14 @@ VSTPluginController {
 		^this.makeMsg('/bank_write', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
 	setProgramData { arg data, action, async=true;
-		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
-		synth.server.isLocal.if {
-			this.prSetData(data, action, false, async);
-		} { ^"'%' only works with a local Server".format(thisMethod.name).throw };
+		this.prCheckLocal(thisMethod);
+		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
+		this.prSetData(data, action, false, async);
 	}
 	setBankData { arg data, action, async=true;
-		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
-		synth.server.isLocal.if {
-			this.prSetData(data, action, true, async);
-		} { ^"'%' only works with a local Server".format(thisMethod.name).throw; };
+		this.prCheckLocal(thisMethod);
+		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
+		this.prSetData(data, action, true, async);
 	}
 	prSetData { arg data, action, bank, async;
 		try {
@@ -703,16 +691,16 @@ VSTPluginController {
 			File.use(path, "wb", { arg file; file.write(data) });
 			// 2) ask plugin to read data file
 			bank.if { this.readBank(path, cb, async) } { this.readProgram(path, cb, async) };
-		} { "Failed to write data".warn };
+		} { MethodError("Failed to write data", this).throw };
 	}
 	sendProgramData { arg data, wait, action, async=true;
 		wait = wait ?? this.wait;
-		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSendData(data, wait, action, false, async);
 	}
 	sendBankData { arg data, wait, action, async=true;
 		wait = wait ?? this.wait;
-		(data.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSendData(data, wait, action, true, async);
 	}
 	prSendData { arg data, wait, action, bank, async;
@@ -721,8 +709,8 @@ VSTPluginController {
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
 		var buffer, sym;
+		this.prCheckPlugin(thisMethod);
 		wait = wait ?? this.wait;
-		this.loaded.not.if { "can't send data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 
 		this.prMakeOscFunc({ arg msg;
@@ -738,9 +726,11 @@ VSTPluginController {
 		});
 	}
 	getProgramData { arg action, async=true;
+		this.prCheckLocal(thisMethod);
 		this.prGetData(action, false, async);
 	}
 	getBankData { arg action, async=true;
+		this.prCheckLocal(thisMethod);
 		this.prGetData(action, true, async);
 	}
 	prGetData { arg action, bank, async;
@@ -756,7 +746,7 @@ VSTPluginController {
 					});
 				} { "Failed to read data".error };
 				File.delete(path).not.if { ("Could not delete data file:" + path).warn };
-			} { "Could not get data".warn };
+			} { "Couldn't read data file".warn };
 			// done (on fail, data is nil)
 			action.value(data);
 		};
@@ -775,8 +765,8 @@ VSTPluginController {
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
 		var address, sym;
+		this.prCheckPlugin(thisMethod);
 		wait = wait ?? this.wait;
-		this.loaded.not.if {"can't receive data - no plugin loaded!".warn; ^nil };
 		sym = bank.if {'bank' } {'program'};
 		{
 			var buf = Buffer(synth.server); // get free Buffer
@@ -811,7 +801,7 @@ VSTPluginController {
 		synth.server.listSendMsg(this.sendSysexMsg(msg));
 	}
 	sendSysexMsg { arg msg;
-		(msg.class != Int8Array).if {^"'%' expects Int8Array!".format(thisMethod.name).throw};
+		(msg.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw };
 		(msg.size > oscPacketSize).if {
 			"sending sysex data larger than % bytes is risky".format(oscPacketSize).warn;
 		};

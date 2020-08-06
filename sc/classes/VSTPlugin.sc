@@ -265,7 +265,7 @@ VSTPluginDesc {
 		info.presets = [];
 		{
 			line = VSTPlugin.prGetLine(stream, true);
-			line ?? { ^Error("EOF reached").throw };
+			line ?? { Error("EOF reached").throw };
 			// line.postln;
 			switch(line,
 				"[plugin]", { plugin = true; },
@@ -319,9 +319,9 @@ VSTPluginDesc {
 					// plugin
 					plugin.not.if {
 						future.if {
-							"VSTPluginDesc: bad data (%)".format(line).warn;
+							"VSTPluginDesc: unknown data in .ini file (%)".format(line).warn;
 						} {
-							^Error("VSTPluginDesc: bad data (%)".format(line)).throw;
+							Error("bad data (%)".format(line)).throw;
 						}
 					};
 					#key, value = VSTPlugin.prParseKeyValuePair(line);
@@ -354,9 +354,9 @@ VSTPluginDesc {
 						},
 						{
 							future.if {
-								"VSTPluginDesc: unknown key (%)".format(key).warn;
+								"VSTPluginDesc: unknown key '%' in .ini file".format(key).warn;
 							} {
-								^Error("VSTPluginDesc: unknown key (%)".format(key)).throw;
+								Error("bad key '%'".format(key)).throw;
 							}
 						}
 					);
@@ -418,7 +418,7 @@ VSTPlugin : MultiOutUGen {
 		auxInput = auxInput.asArray;
 		params = params.asArray;
 		params.size.odd.if {
-			^Error("'params': expecting pairs of param index/name + value").throw;
+			MethodError("'params' must be pairs of param index/name + value", this).throw;
 		};
 		(info.notNil && info.class != VSTPluginDesc).if {
 			// get plugin from default server
@@ -480,7 +480,7 @@ VSTPlugin : MultiOutUGen {
 	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, parallel=true, dest=nil;
 		var flags = 0;
 		dir.isString.if { dir = [dir] };
-		(dir.isNil or: dir.isArray).not.if { ^"bad type for 'dir' argument!".throw };
+		(dir.isNil or: dir.isArray).not.if { MethodError("bad type % for 'dir' argument!".format(dir.class), this).throw };
 		dir = dir.collect({ arg p; p.asString.standardizePath});
 		// make flags
 		[useDefault, verbose, save, parallel].do { arg value, bit;
@@ -654,7 +654,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseCount { arg line;
 		var onset = line.find("=");
-		onset ?? { Error("plugin info: bad data (expecting 'n=<number>')").throw; };
+		onset ?? { Error("expecting 'n=<number>'").throw; };
 		^line[(onset+1)..].asInteger; // will eat whitespace and stop at newline
 	}
 	*prTrim { arg str;
@@ -680,7 +680,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*prParseKeyValuePair { arg line;
 		var key, value, split = line.find("=");
-		split ?? { Error("plugin info: bad data (expecting 'key=value')").throw; };
+		split ?? { Error("expecting 'key=value'").throw; };
 		key = line[0..(split-1)];
 		split = split + 1;
 		(split < line.size).if {
@@ -697,7 +697,7 @@ VSTPlugin : MultiOutUGen {
 			#major, minor, bugfix = this.prGetLine(stream).split($.).collect(_.asInteger);
 			line = this.prGetLine(stream, true);
 		};
-		(line != "[plugins]").if { ^Error("missing [plugins] header").throw };
+		(line != "[plugins]").if { Error("missing [plugins] header").throw };
 		// get number of plugins
 		line = this.prGetLine(stream, true);
 		n = this.prParseCount(line);
@@ -727,7 +727,7 @@ VSTPlugin : MultiOutUGen {
 			};
 			dest = dest.asUGenInput;
 			dest.isNumber.if { ^dest.asInteger }; // bufnum
-			^"bad type for 'dest' argument (%)!".throw;
+			Error("bad type '%' for 'dest' argument!".format(dest.class)).throw;
 		}
 		^-1; // invalid bufnum: don't write results
 	}
@@ -743,10 +743,10 @@ VSTPlugin : MultiOutUGen {
 		numInputs = args[offset];
 		(numInputs > 0).if {
 			inputArray = args[(offset+1)..(offset+numInputs)];
-			(inputArray.size != numInputs).if { Error("bug: input array size mismatch!").throw };
+			(inputArray.size != numInputs).if { MethodError("bug: input array size mismatch!", this).throw };
 			inputArray.do { arg item, i;
 				(item.rate != \audio).if {
-					Error("input % (%) is not audio rate".format(i, item)).throw;
+					MethodError("input % (%) is not audio rate".format(i, item), this).throw;
 				};
 			};
 		};
@@ -755,27 +755,27 @@ VSTPlugin : MultiOutUGen {
 		numParams = args[offset];
 		(numParams > 0).if {
 			paramArray = args[(offset+1)..(offset+(numParams*2))];
-			(paramArray.size != (numParams*2)).if { Error("bug: param array size mismatch!").throw };
+			(paramArray.size != (numParams*2)).if { MethodError("bug: param array size mismatch!", this).throw };
 		};
 		offset = offset + 1 + (numParams*2);
 		// aux inputs
 		numAuxInputs = args[offset];
 		(numAuxInputs > 0).if {
 			auxInputArray = args[(offset+1)..(offset+numAuxInputs)];
-			(auxInputArray.size != numAuxInputs).if { Error("bug: aux input array size mismatch!").throw };
+			(auxInputArray.size != numAuxInputs).if { MethodError("bug: aux input array size mismatch!", this).throw };
 			auxInputArray.do { arg item, i;
 				(item.rate != \audio).if {
-					Error("aux input % (%) is not audio rate".format(i, item)).throw;
+					MethodError("aux input % (%) is not audio rate".format(i, item), this).throw;
 				};
 			};
 		};
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
 			param.isNumber.not.if {
-				info ?? { ^Error("can't resolve parameter '%' without info".format(param)).throw; };
+				info ?? { MethodError("can't resolve parameter '%' without info".format(param), this).throw; };
 				sym = param.asSymbol;
 				param = info.findParamIndex(sym);
-				param ?? { ^Error("Bad parameter '%' for plugin '%'".format(sym, info.name)).throw; };
+				param ?? { MethodError("unknown parameter '%' for plugin '%'".format(sym, info.name), this).throw; };
 				paramArray[i] = param;
 			};
 		};
@@ -809,17 +809,17 @@ VSTPlugin : MultiOutUGen {
 				this.id.notNil.if {
 					// check for VSTPlugin without ID
 					metadata.at(false).notNil.if {
-						^Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
+						Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
 					};
 					// check for duplicate ID
 					metadata.at(this.id).notNil.if {
-						^Error("SynthDef '%': duplicate VSTPlugin ID '%'".format(this.synthDef.name, this.id)).throw;
+						Error("SynthDef '%' contains duplicate VSTPlugin ID '%'".format(this.synthDef.name, this.id)).throw;
 					};
 					metadata.put(this.id, this.desc);
 				} {
 					// metadata must not contain other VSTPlugins!
 					(metadata.size > 0).if {
-						^Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
+						Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
 					};
 					metadata.put(false, this.desc);
 				};

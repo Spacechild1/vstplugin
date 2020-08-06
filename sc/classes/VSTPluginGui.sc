@@ -229,7 +229,7 @@ VSTPluginGui : ObjectGui {
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.savePreset(item.index, async: true);
-				} { "Save button bug".throw }
+				} { Error("Save button bug").throw }
 			}).enabled_(false);
 			// "save as" button
 			saveas = Button.new.states_([["Save As"]])
@@ -246,7 +246,7 @@ VSTPluginGui : ObjectGui {
 					textField.value(self, { arg name;
 						model.renamePreset(item.index, name);
 					}, item.preset.name);
-				} { "Rename button bug".throw }
+				} { Error("Rename button bug").throw }
 			}).enabled_(false);
 			// "delete" button
 			delete = Button.new.states_([["Delete"]])
@@ -254,7 +254,7 @@ VSTPluginGui : ObjectGui {
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.deletePreset(item.index);
-				} { "Delete button bug".throw }
+				} { Error("Delete button bug").throw }
 			}).enabled_(false);
 			// "reload" button
 			reload = Button.new.states_([["Reload"]])
@@ -262,7 +262,7 @@ VSTPluginGui : ObjectGui {
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.loadPreset(item.index, async: true);
-				} { "Reload button bug".throw }
+				} { Error("Reload button bug").throw }
 			}).enabled_(false);
 
 			updateButtons = {
