@@ -64,11 +64,15 @@ const std::string& getBundleBinaryPath(){
 }
 
 #ifdef _WIN32
-#ifdef _WIN64 // 64 bit
-#define PROGRAMFILES "%ProgramFiles%\\"
-#else // 32 bit
-#define PROGRAMFILES "%ProgramFiles(x86)%\\"
-#endif
+# if USE_BRIDGE
+   #define PROGRAMFILES(x) "%ProgramFiles(x86)%\\" x, "%ProgramW6432%\\" x
+# else // USE_BRIDGE
+#  ifdef _WIN64 // 64 bit
+#   define PROGRAMFILES(x) "%ProgramFiles%\\" x
+#  else // 32 bit
+#   define PROGRAMFILES(x) "%ProgramFiles(x86)%\\" x
+#  endif
+# endif // USE_BRIDGE
 #endif // WIN32
 
 static std::vector<const char *> defaultSearchPaths = {
@@ -80,8 +84,8 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif
     // Windows
 #ifdef _WIN32
-    PROGRAMFILES "VSTPlugins", PROGRAMFILES "Steinberg\\VSTPlugins",
-    PROGRAMFILES "Common Files\\VST2", PROGRAMFILES "Common Files\\Steinberg\\VST2"
+    PROGRAMFILES("VSTPlugins"), PROGRAMFILES("Steinberg\\VSTPlugins"),
+    PROGRAMFILES("Common Files\\VST2"), PROGRAMFILES("Common Files\\Steinberg\\VST2")
 #endif
     // Linux
 #ifdef __linux__
@@ -99,7 +103,7 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif
     // Windows
 #ifdef _WIN32
-    PROGRAMFILES "Common Files\\VST3"
+    PROGRAMFILES("Common Files\\VST3")
 #endif
     // Linux
 #ifdef __linux__
