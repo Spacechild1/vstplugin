@@ -31,24 +31,27 @@ namespace vst {
 
 static HINSTANCE hInstance = 0;
 
-static std::wstring getModuleDirectory(){
-    wchar_t wpath[MAX_PATH+1];
-    if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
-        wchar_t *ptr = wpath;
-        int pos = 0;
-        while (*ptr){
-            if (*ptr == '\\'){
-                pos = (ptr - wpath);
+static const std::wstring& getModuleDirectory(){
+    static std::wstring dir = [](){
+        wchar_t wpath[MAX_PATH+1];
+        if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
+            wchar_t *ptr = wpath;
+            int pos = 0;
+            while (*ptr){
+                if (*ptr == '\\'){
+                    pos = (ptr - wpath);
+                }
+                ++ptr;
             }
-            ++ptr;
+            wpath[pos] = 0;
+            // LOG_DEBUG("dll directory: " << shorten(wpath));
+            return std::wstring(wpath);
+        } else {
+            LOG_ERROR("getModuleDirectory: GetModuleFileNameW() failed!");
+            return std::wstring();
         }
-        wpath[pos] = 0;
-        // LOG_DEBUG("dll directory: " << shorten(wpath));
-        return std::wstring(wpath);
-    } else {
-        LOG_ERROR("couldn't get module file name");
-        return std::wstring();
-    }
+    }();
+    return dir;
 }
 
 extern "C" {
@@ -60,7 +63,39 @@ extern "C" {
     }
 }
 
+#else // Linux, macOS
+
+const std::string& getModuleDirectory(){
+    static std::string dir = [](){
+        // hack: obtain library info through a function pointer (vst::search)
+        Dl_info dlinfo;
+        if (!dladdr((void *)search, &dlinfo)) {
+            throw Error(Error::SystemError, "getModuleDirectory: dladdr() failed!");
+        }
+        std::string path = dlinfo.dli_fname;
+        auto end = path.find_last_of('/');
+        return path.substr(0, end);
+    }();
+    return dir;
+}
+
 #endif // WIN32
+
+std::string getHostApp(CpuArch arch){
+    if (arch == getHostCpuArchitecture()){
+    #ifdef _WIN32
+        return "host.exe";
+    #else
+        return "host";
+    #endif
+    } else {
+        std::string host = std::string("host_") + cpuArchToString(arch);
+    #ifdef _WIN32
+        host += ".exe";
+    #endif
+        return host;
+    }
+}
 
 /*///////////////////// IFactory ////////////////////////*/
 
@@ -221,25 +256,14 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     ss << "/vst_" << desc.get(); // desc address should be unique as long as PluginInfos are retained.
     std::string tmpPath = getTmpDirectory() + ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
-    const char *hostApp;
-    if (arch_ == getHostCpuArchitecture()){
-        hostApp = "host";
-    } else {
-        if (arch_ == CpuArch::amd64){
-            hostApp = "host_amd64";
-        } else if (arch_ == CpuArch::i386){
-            hostApp = "host_i386";
-        } else {
-            hostApp = "unknown"; // dummy
-        }
-    }
+    std::string hostApp = getHostApp(arch_);
 #ifdef _WIN32
     // get absolute path to host app
-    std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp) + L".exe";
+    std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::stringstream cmdLineStream;
-    cmdLineStream << hostApp << ".exe probe "
+    cmdLineStream << hostApp << " probe "
             << "\"" << path() << "\" " << idString
             << " \"" << tmpPath + "\"";
     // LOG_DEBUG(cmdLineStream.str());
@@ -254,7 +278,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                         PROBE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi)){
         auto err = GetLastError();
         std::stringstream ss;
-        ss << "couldn't open host process (" << errorMessage(err) << ")";
+        ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
     auto wait = [pi](){
@@ -270,15 +294,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         return code;
     };
 #else // Unix
-    Dl_info dlinfo;
-    // get full path to host app
-    // hack: obtain library info through a function pointer (vst::search)
-    if (!dladdr((void *)search, &dlinfo)) {
-        throw Error(Error::SystemError, "couldn't get module path!");
-    }
-    std::string modulePath = dlinfo.dli_fname;
-    auto end = modulePath.find_last_of('/');
-    std::string hostPath = modulePath.substr(0, end + 1) + hostApp;
+    // get absolute path to host app
+    std::string hostPath = getModuleDirectory() + "/" + hostApp;
     // fork
     pid_t pid = fork();
     if (pid == -1) {
@@ -294,14 +311,15 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
-        if (execl(hostPath.c_str(), hostApp, path().c_str(), "probe",
+        if (execl(hostPath.c_str(), hostApp.c_str(), path().c_str(), "probe",
                   idString, tmpPath.c_str(), nullptr) < 0){
             // write error to temp file
             int err = errno;
             File file(tmpPath, File::WRITE);
             if (file.is_open()){
                 file << static_cast<int>(Error::SystemError) << "\n";
-                file << "couldn't open host process (" << errorMessage(err) << ")\n";
+                file << "couldn't open host process " << hostApp
+                     << " (" << errorMessage(err) << ")\n";
             }
         }
         std::exit(EXIT_FAILURE);
