@@ -15,7 +15,7 @@ PRIVATE:: prParse, prBashPath
 
 INSTANCEMETHODS::
 
-PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets
+PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets, hasEditor, isSynth
 
 METHOD:: key
 
@@ -73,11 +73,11 @@ METHOD:: numAuxOutputs
 
 number of auxiliary audio outputs (VST3 only)
 
-METHOD:: hasEditor
+METHOD:: editor
 
 whether the plugin has a VST GUI editor
 
-METHOD:: isSynth
+METHOD:: synth
 
 whether the plugin is a VST instrument
 

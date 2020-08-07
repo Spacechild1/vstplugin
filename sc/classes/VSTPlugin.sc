@@ -16,8 +16,8 @@ VSTPluginDesc {
 	var <>programs;
 	var <>presets;
 	// flags
-	var <>hasEditor;
-	var <>isSynth;
+	var <>editor;
+	var <>synth;
 	var <>singlePrecision;
 	var <>doublePrecision;
 	var <>midiInput;
@@ -27,6 +27,15 @@ VSTPluginDesc {
 	var <>bridged;
 	// private fields
 	var <>prParamIndexMap;
+	// legacy methods
+	isSynth {
+		this.deprecated(thisMethod, this.class.findMethod(\synth));
+		^this.synth;
+	}
+	hasEditor {
+		this.deprecated(thisMethod, this.class.findMethod(\editor));
+		^this.editor;
+	}
 	// public methods
 	numParameters { ^parameters.size; }
 	numPrograms { ^programs.size; }
@@ -345,8 +354,8 @@ VSTPluginDesc {
 						{
 							f = hex2int.(value);
 							flags = Array.fill(9, {arg i; ((f >> i) & 1).asBoolean });
-							info.hasEditor = flags[0];
-							info.isSynth = flags[1];
+							info.editor = flags[0];
+							info.synth = flags[1];
 							info.singlePrecision = flags[2];
 							info.doublePrecision = flags[3];
 							info.midiInput = flags[4];
@@ -370,7 +379,7 @@ VSTPluginDesc {
 	prToString { arg sep = $\n;
 		var s = "name: %".format(this.name) ++ sep
 		++ "type: %%%".format(this.sdkVersion,
-			this.isSynth.if { " (synth)" } { "" }, this.bridged.if { " [bridged]" } { "" }) ++ sep
+			this.synth.if { " (synth)" } { "" }, this.bridged.if { " [bridged]" } { "" }) ++ sep
 		++ "path: %".format(this.path) ++ sep
 		++ "vendor: %".format(this.vendor) ++ sep
 		++ "category: %".format(this.category) ++ sep
@@ -382,7 +391,7 @@ VSTPluginDesc {
 		++ "parameters: %".format(this.numParameters) ++ sep
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "presets: %".format(this.numPresets) ++ sep
-		++ "editor: %".format(this.hasEditor) ++ sep
+		++ "editor: %".format(this.editor) ++ sep
 		// ++ "single precision: %".format(this.singlePrecision) ++ sep
 		// ++ "double precision: %".format(this.doublePrecision) ++ sep
 		++ "MIDI input: %".format(this.midiInput) ++ sep
@@ -472,6 +481,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*reset { arg server;
 		this.deprecated(thisMethod, this.class.findMethod(\clear));
+		this.clear(server);
 	}
 	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
 		server = server ?? Server.default;
