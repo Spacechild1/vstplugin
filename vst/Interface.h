@@ -460,6 +460,8 @@ struct ProbeResult {
     bool valid() const { return error.code() == Error::NoError; }
 };
 
+enum class CpuArch;
+
 class IFactory {
  public:
     using ptr = std::shared_ptr<IFactory>;
@@ -487,6 +489,7 @@ class IFactory {
     bool valid() const { return numPlugins() > 0; }
 
     virtual const std::string& path() const = 0;
+    virtual CpuArch arch() const = 0;
     // create a new plugin instance
     // throws an Error on failure!
     virtual IPlugin::ptr create(const std::string& name) const = 0;

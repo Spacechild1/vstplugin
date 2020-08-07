@@ -109,6 +109,9 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     if (path_.empty()){
         path_ = factory->path();
     }
+    if (factory->arch() != getHostCpuArchitecture()){
+        flags |= Bridged;
+    }
     factory_ = std::move(factory);
 }
 
@@ -577,7 +580,7 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
             while (n-- && std::getline(file, line)){
                 programs.push_back(std::move(line));
             }
-            return; // done!
+            goto done;
         } else if (line == "[subplugins]"){
             // get list of subplugins (only when probing)
             subPlugins.clear();
@@ -591,7 +594,7 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                 // LOG_DEBUG("got subplugin " << sub.name << " " << sub.id);
                 subPlugins.push_back(std::move(sub));
             }
-            return; // done!
+            goto done;
         } else if (start){
             std::string key;
             std::string value;
@@ -658,6 +661,12 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                 throw Error("bad data: " + line);
             }
         }
+    }
+done:
+    // restore "Bridge" flag
+    auto factory = factory_.lock();
+    if (factory && factory->arch() != getHostCpuArchitecture()){
+        flags |= Bridged;
     }
 }
 

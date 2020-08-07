@@ -125,6 +125,36 @@ public:
 
 /*/////////////////////////// PluginFactory ////////////////////////*/
 
+PluginFactory::PluginFactory(const std::string &path)
+    : path_(path)
+{
+    auto archs = getCpuArchitectures(path);
+    auto hostArch = getHostCpuArchitecture();
+
+    auto hasArch = [&archs](CpuArch arch){
+        return std::find(archs.begin(), archs.end(), arch) != archs.end();
+    };
+
+    if (hasArch(hostArch)){
+        arch_ = hostArch;
+    } else {
+    #if USE_BRIDGE
+        // We only bridge between 32-bit and 64-bit Intel.
+        // LATER also bridge between ARM and Intel on Apple.
+        if (hostArch == CpuArch::amd64 && hasArch(CpuArch::i386)){
+            arch_ = CpuArch::i386;
+        } else if (hostArch == CpuArch::i386 && hasArch(CpuArch::amd64)){
+            arch_ = CpuArch::amd64;
+        } else {
+            throw Error(Error::ModuleError, "Can't bridge CPU architecture");
+        }
+        LOG_DEBUG("created bridged plugin factory " << path);
+    #else
+        throw Error(Error::ModuleError, "Wrong CPU architecture");
+    #endif
+    }
+}
+
 IFactory::ProbeFuture PluginFactory::probeAsync() {
     plugins_.clear();
     pluginMap_.clear();
