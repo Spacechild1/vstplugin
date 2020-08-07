@@ -1504,6 +1504,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     sendInfo(x, "midiout", info->midiOutput());
     sendInfo(x, "sysexin", info->sysexInput());
     sendInfo(x, "sysexout", info->sysexOutput());
+    sendInfo(x, "bridged", info->bridged());
 }
 
 // query plugin for capabilities
@@ -1564,6 +1565,9 @@ static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
     post("~~~ VST plugin info ~~~");
+    if (info.bridged()){
+        post("[bridged]");
+    }
     post("name: %s", info.name.c_str());
     post("path: %s", info.path().c_str());
     post("vendor: %s", info.vendor.c_str());
