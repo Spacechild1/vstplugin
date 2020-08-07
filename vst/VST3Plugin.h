@@ -265,7 +265,6 @@ class VST3Plugin final :
      int getNumPrograms() const;
      bool hasEditor() const;
      bool hasPrecision(ProcessPrecision precision) const;
-     bool isSynth() const;
      bool hasTail() const;
      int getTailSize() const;
      bool hasBypass() const;

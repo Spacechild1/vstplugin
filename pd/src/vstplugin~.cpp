@@ -1496,8 +1496,8 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     sendInfo(x, "auxinputs", info->numAuxInputs);
     sendInfo(x, "auxoutputs", info->numAuxOutputs);
     sendInfo(x, "id", ("0x"+info->uniqueID));
-    sendInfo(x, "editor", info->hasEditor());
-    sendInfo(x, "synth", info->isSynth());
+    sendInfo(x, "editor", info->editor());
+    sendInfo(x, "synth", info->synth());
     sendInfo(x, "single", info->singlePrecision());
     sendInfo(x, "double", info->doublePrecision());
     sendInfo(x, "midiin", info->midiInput());
@@ -1567,7 +1567,7 @@ static void vstplugin_print(t_vstplugin *x){
     post("---");
     post("name: %s", info.name.c_str());
     post("type: %s%s%s", info.sdkVersion.c_str(),
-         info.isSynth() ? " (synth)" : "",
+         info.synth() ? " (synth)" : "",
          info.bridged() ? " [bridged] " : "");
     post("version: %s", info.version.c_str());
     post("path: %s", info.path().c_str());
@@ -1584,7 +1584,7 @@ static void vstplugin_print(t_vstplugin *x){
     post("parameters: %d", info.numParameters());
     post("programs: %d", info.numPrograms());
     post("presets: %d", info.numPresets());
-    post("editor: %s", info.hasEditor() ? "yes" : "no");
+    post("editor: %s", info.editor() ? "yes" : "no");
     post("single precision: %s", info.singlePrecision() ? "yes" : "no");
     post("double precision: %s", info.doublePrecision() ? "yes" : "no");
     post("midi input: %s", info.midiInput() ? "yes" : "no");

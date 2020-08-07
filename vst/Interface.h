@@ -337,10 +337,10 @@ struct PluginInfo {
     int numPrograms() const {
         return programs.size();
     }
-    bool hasEditor() const {
+    bool editor() const {
         return flags & HasEditor;
     }
-    bool isSynth() const {
+    bool synth() const {
         return flags & IsSynth;
     }
     bool singlePrecision() const {

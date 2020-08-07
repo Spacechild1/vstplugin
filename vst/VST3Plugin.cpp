@@ -1179,14 +1179,6 @@ int VST3Plugin::getNumAuxOutputs() const {
     return info_->numAuxOutputs;
 }
 
-bool VST3Plugin::isSynth() const {
-    if (info_){
-        return info_->isSynth();
-    } else {
-        return false;
-    }
-}
-
 bool VST3Plugin::hasTail() const {
     return getTailSize() != 0;
 }

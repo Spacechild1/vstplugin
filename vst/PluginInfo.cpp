@@ -131,7 +131,7 @@ IPlugin::ptr PluginInfo::create(bool editor, bool threaded, bool sandbox) const 
         plugin = makeBridgedPlugin(factory, name, editor, sandbox);
     } else {
         plugin = factory->create(name);
-        if (editor && plugin->info().hasEditor()){
+        if (editor && plugin->info().editor()){
             auto window = IWindow::create(*plugin);
             plugin->setWindow(std::move(window));
         }
