@@ -78,11 +78,6 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
         if (!pathExists(path)){
             throw Error(Error::ModuleError, "No such file");
         }
-        auto arch = getCpuArchitectures(path);
-        if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
-            // TODO try bridging
-            throw Error(Error::ModuleError, "Wrong CPU architecture");
-        }
         return std::make_shared<VST3Factory>(path, probe);
     #else
         throw Error(Error::ModuleError, "VST3 plug-ins not supported");
@@ -95,11 +90,6 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
         }
         if (!pathExists(realPath)){
             throw Error(Error::ModuleError, "No such file");
-        }
-        auto arch = getCpuArchitectures(realPath);
-        if (std::find(arch.begin(), arch.end(), getHostCpuArchitecture()) == arch.end()){
-            // TODO try bridging
-            throw Error(Error::ModuleError, "Wrong CPU architecture");
         }
         return std::make_shared<VST2Factory>(realPath, probe);
     #else
@@ -231,13 +221,25 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     ss << "/vst_" << desc.get(); // desc address should be unique as long as PluginInfos are retained.
     std::string tmpPath = getTmpDirectory() + ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
+    const char *hostApp;
+    if (arch_ == getHostCpuArchitecture()){
+        hostApp = "host";
+    } else {
+        if (arch_ == CpuArch::amd64){
+            hostApp = "host_amd64";
+        } else if (arch_ == CpuArch::i386){
+            hostApp = "host_i386";
+        } else {
+            hostApp = "unknown"; // dummy
+        }
+    }
 #ifdef _WIN32
-    // get full path to host exe
-    std::wstring hostPath = getModuleDirectory() + L"\\host.exe";
+    // get absolute path to host app
+    std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp) + L".exe";
     /// LOG_DEBUG("host path: " << shorten(hostPath));
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::stringstream cmdLineStream;
-    cmdLineStream << "host.exe probe "
+    cmdLineStream << hostApp << ".exe probe "
             << "\"" << path() << "\" " << idString
             << " \"" << tmpPath + "\"";
     // LOG_DEBUG(cmdLineStream.str());
@@ -269,14 +271,14 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     };
 #else // Unix
     Dl_info dlinfo;
-    // get full path to host exe
+    // get full path to host app
     // hack: obtain library info through a function pointer (vst::search)
     if (!dladdr((void *)search, &dlinfo)) {
         throw Error(Error::SystemError, "couldn't get module path!");
     }
     std::string modulePath = dlinfo.dli_fname;
     auto end = modulePath.find_last_of('/');
-    std::string hostPath = modulePath.substr(0, end) + "/host";
+    std::string hostPath = modulePath.substr(0, end + 1) + hostApp;
     // fork
     pid_t pid = fork();
     if (pid == -1) {
@@ -292,7 +294,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
-        if (execl(hostPath.c_str(), "host", path().c_str(), "probe",
+        if (execl(hostPath.c_str(), hostApp, path().c_str(), "probe",
                   idString, tmpPath.c_str(), nullptr) < 0){
             // write error to temp file
             int err = errno;
