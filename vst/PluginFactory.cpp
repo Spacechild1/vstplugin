@@ -164,18 +164,54 @@ PluginFactory::PluginFactory(const std::string &path)
         arch_ = hostArch;
     } else {
     #if USE_BRIDGE
-        // We only bridge between 32-bit and 64-bit Intel.
-        // LATER also bridge between ARM and Intel on Apple.
-        if (hostArch == CpuArch::amd64 && hasArch(CpuArch::i386)){
+        // On Windows and Linux, we only bridge between 32-bit and 64-bit Intel.
+        // On macOS we also bridge between 64-bit ARM and 64-bit Intel for upcoming
+        // ARM MacBooks (2020).
+        // It's possible to selectively enable/disable certain bridge types simply
+        // by omitting the corresponding "host_" app. E.g. macOS 10.15+ builds would
+        // ship without "host_i386", because the OS doesn't run 32-bit apps anymore.
+        // Similarly, Intel builds for the upcoming ARM MacBooks would ship "host_aarch64".
+        // Finally, we can ship 64-bit Intel builds on Linux without "host_i386"
+        // (because it's a big hassle) and ask people to compile it themselves if they need it.
+        auto canBridge = [&](auto arch){
+            if (hasArch(arch)){
+                // check if host app exists
+            #ifdef _WIN32
+                auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
+            #else
+                auto path = getModuleDirectory() + "/" + getHostApp(arch);
+            #endif
+                return pathExists(path);
+            }
+            return false;
+        };
+
+        if (hostArch == CpuArch::amd64 && canBridge(CpuArch::i386)){
             arch_ = CpuArch::i386;
-        } else if (hostArch == CpuArch::i386 && hasArch(CpuArch::amd64)){
+        } else if (hostArch == CpuArch::i386 && canBridge(CpuArch::amd64)){
             arch_ = CpuArch::amd64;
+        #ifdef __APPLE__
+        } else if (hostArch == CpuArch::aarch64 && canBridge(CpuArch::amd64)){
+            arch_ = CpuArch::amd64;
+        } else if (hostArch == CpuArch::amd64 && canBridge(CpuArch::aarch64)){
+            arch_ = CpuArch::aarch64;
+        #endif
         } else {
-            throw Error(Error::ModuleError, "Can't bridge CPU architecture");
+            if (archs.size() > 1){
+                throw Error(Error::ModuleError, "Can't bridge CPU architectures");
+            } else {
+                throw Error(Error::ModuleError, "Can't bridge CPU architecture "
+                            + std::string(cpuArchToString(archs.front())));
+            }
         }
         LOG_DEBUG("created bridged plugin factory " << path);
     #else
-        throw Error(Error::ModuleError, "Wrong CPU architecture");
+        if (archs.size() > 1){
+            throw Error(Error::ModuleError, "Unsupported CPU architectures");
+        } else {
+            throw Error(Error::ModuleError, "Unsupported CPU architecture "
+                        + std::string(cpuArchToString(archs.front())));
+        }
     #endif
     }
 }
