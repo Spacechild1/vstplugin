@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "Sync.h"
 
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -30,7 +31,11 @@ class PluginManager {
  private:
     void doWrite(const std::string& path) const;
     std::unordered_map<std::string, IFactory::ptr> factories_;
-    std::unordered_map<std::string, PluginInfo::const_ptr> plugins_;
+    enum {
+        NATIVE = 0,
+        BRIDGED = 1
+    };
+    std::array<std::unordered_map<std::string, PluginInfo::const_ptr>, 2> plugins_;
     std::unordered_set<std::string> exceptions_;
     mutable SharedMutex mutex_;
 };
