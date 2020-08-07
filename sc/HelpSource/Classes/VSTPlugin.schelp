@@ -11,7 +11,7 @@ VSTPlugin also has class methods to scan a Server for plugins and cache the info
 
 CLASSMETHODS::
 
-PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension, reset
+PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prAddPlugin, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension, reset
 
 METHOD:: ar
 create a UGen instance.

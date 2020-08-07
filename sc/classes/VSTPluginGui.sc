@@ -481,7 +481,9 @@ VSTPluginGui : ObjectGui {
 				ok;
 			});
 			items = filteredPlugins.collect({ arg item;
-				"% (%)".format(item.key, item.vendor); // rather use key instead of name
+				var vendor = (item.vendor.size > 0).if { item.vendor } { "unknown" };
+				var bridged = item.bridged.if { "[bridged]" } { "" };
+				"% (%) %".format(item.key, vendor, bridged); // rather use key instead of name
 			});
 			browser.toolTip_(nil);
 			browser.items = items;

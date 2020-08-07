@@ -12,6 +12,10 @@ VSTPluginDesc {
 	var <>numOutputs;
 	var <>numAuxInputs;
 	var <>numAuxOutputs;
+	var <>parameters;
+	var <>programs;
+	var <>presets;
+	// flags
 	var <>hasEditor;
 	var <>isSynth;
 	var <>singlePrecision;
@@ -20,9 +24,7 @@ VSTPluginDesc {
 	var <>midiOutput;
 	var <>sysexInput;
 	var <>sysexOutput;
-	var <>parameters;
-	var <>programs;
-	var <>presets;
+	var <>bridged;
 	// private fields
 	var <>prParamIndexMap;
 	// public methods
@@ -342,7 +344,7 @@ VSTPluginDesc {
 						\flags,
 						{
 							f = hex2int.(value);
-							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
+							flags = Array.fill(9, {arg i; ((f >> i) & 1).asBoolean });
 							info.hasEditor = flags[0];
 							info.isSynth = flags[1];
 							info.singlePrecision = flags[2];
@@ -351,6 +353,7 @@ VSTPluginDesc {
 							info.midiOutput = flags[5];
 							info.sysexInput = flags[6];
 							info.sysexOutput = flags[7];
+							info.bridged = flags[8];
 						},
 						{
 							future.if {
@@ -508,7 +511,7 @@ VSTPlugin : MultiOutUGen {
 			stream.notNil.if {
 				this.prParseIni(stream).do { arg info;
 					// store under key
-					dict[info.key] = info;
+					this.prAddPlugin(dict, info.key, info);
 				};
 			};
 			action.value;
@@ -529,7 +532,7 @@ VSTPlugin : MultiOutUGen {
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
 					this.prParseIni(CollStream.new(string)).do { arg info;
 						// store under key
-						dict[info.key] = info;
+						this.prAddPlugin(dict, info.key, info);
 					};
 					buf.free;
 					action.value; // done
@@ -575,10 +578,12 @@ VSTPlugin : MultiOutUGen {
 				stream.notNil.if {
 					info = VSTPluginDesc.prParse(stream).scanPresets;
 					// store under key
-					dict[info.key] = info;
+					this.prAddPlugin(dict, info.key, info);
 					// also store under resolved path and custom key
-					dict[path.asSymbol] = info;
-					key !? { dict[key.asSymbol] = info };
+					this.prAddPlugin(dict, path, info);
+					key !? {
+						this.prAddPlugin(dict, key, info);
+					}
 				};
 			};
 			// done (on fail, info is nil)
@@ -602,10 +607,12 @@ VSTPlugin : MultiOutUGen {
 					(string.size > 0).if {
 						info = VSTPluginDesc.prParse(CollStream.new(string)).scanPresets;
 						// store under key
-						dict[info.key] = info;
+						this.prAddPlugin(dict, info.key, info);
 						// also store under resolved path and custom key
-						dict[path.asSymbol] = info;
-						key !? { dict[key.asSymbol] = info };
+						this.prAddPlugin(dict, path, info);
+						key !? {
+							this.prAddPlugin(dict, key, info);
+						}
 					};
 					buf.free;
 					action.value(info); // done
@@ -634,11 +641,19 @@ VSTPlugin : MultiOutUGen {
 		};
 		stream.notNil.if {
 			this.prParseIni(stream).do { arg info;
-				// store under key
-				dict[info.key] = info;
+				this.prAddPlugin(dict, info.key, info);
 			};
 		};
 		^dict;
+	}
+	*prAddPlugin { arg dict, key, info;
+		key = key.asSymbol;
+		// we prefer non-bridged plugins, so we don't overwrite
+		// an existing non-bridged plugin with a new bridged plugin.
+		dict[key] !? { arg item;
+			(item.bridged.not && info.bridged).if { ^this; }
+		};
+		dict[key] = info;
 	}
 	*prGetLine { arg stream, skip=false;
 		var pos, line;
