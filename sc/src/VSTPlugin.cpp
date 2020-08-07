@@ -185,16 +185,11 @@ static void writeIniFile(){
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const PluginInfo& desc) {
-    std::string key;
-    auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path().size() - strlen(ext));
-    if (desc.path().find(ext, onset) != std::string::npos) {
-        key = desc.name + ext;
+    if (desc.type() == PluginType::VST3){
+        return desc.name + ".vst3";
+    } else {
+        return desc.name;
     }
-    else {
-        key = desc.name;
-    }
-    return key;
 }
 
 void serializePlugin(std::ostream& os, const PluginInfo& desc) {

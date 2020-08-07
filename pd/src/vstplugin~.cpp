@@ -435,15 +435,11 @@ static IFactory::ptr loadFactory(const std::string& path){
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const PluginInfo& desc){
-    std::string key;
-    auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path().size() - strlen(ext));
-    if (desc.path().find(ext, onset) != std::string::npos){
-        key = desc.name + ext;
+    if (desc.type() == PluginType::VST3){
+        return desc.name + ".vst3";
     } else {
-        key = desc.name;
+        return desc.name;
     }
-    return key;
 }
 
 static void addFactory(const std::string& path, IFactory::ptr factory){
@@ -454,6 +450,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
         gPluginManager.addPlugin(path, plugin);
     }
     gPluginManager.addFactory(path, factory);
+    // add plugins
     for (int i = 0; i < factory->numPlugins(); ++i){
         auto plugin = factory->getPlugin(i);
         // also map bashed parameter names
@@ -465,7 +462,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
         }
         // search for presets
         const_cast<PluginInfo&>(*plugin).scanPresets();
-        // add plugin info
+        // add plugin
         auto key = makeKey(*plugin);
         gPluginManager.addPlugin(key, plugin);
         bash_name(key); // also add bashed version!
@@ -1214,7 +1211,7 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
             verbose(PD_DEBUG, "'%s' is neither an existing plugin name "
                     "nor a valid file path", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(abspath))){
-                // finally probe plugin
+            // finally probe plugin
             if (probePlugin<async>(abspath)){
                 desc = gPluginManager.findPlugin(abspath);
                 // findPlugin() fails if the module contains several plugins,
