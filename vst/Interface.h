@@ -248,7 +248,6 @@ struct PluginInfo {
 
     PluginType type() const { return type_; }
     // info data
-    std::string cpuArch;
     std::string uniqueID;
     std::string name;
     std::string vendor;
@@ -370,6 +369,9 @@ struct PluginInfo {
     bool sysexOutput() const {
         return flags & SysexOutput;
     }
+    bool bridged() const {
+        return flags & Bridged;
+    }
     // flags
     enum Flags {
         HasEditor = 1 << 0,
@@ -379,7 +381,8 @@ struct PluginInfo {
         MidiInput = 1 << 4,
         MidiOutput = 1 << 5,
         SysexInput = 1 << 6,
-        SysexOutput = 1 << 7
+        SysexOutput = 1 << 7,
+        Bridged = 1 << 8
     };
     uint32_t flags = 0;
  private:

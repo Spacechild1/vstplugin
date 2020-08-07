@@ -101,8 +101,6 @@ PluginInfo::PluginInfo(std::shared_ptr<const IFactory> f){
     if (f){
         setFactory(std::move(f));
     }
-    // might be later overriden by deserialize()!
-    cpuArch = cpuArchToString(getHostCpuArchitecture());
 }
 
 PluginInfo::~PluginInfo(){}
@@ -126,13 +124,7 @@ IPlugin::ptr PluginInfo::create(bool editor, bool threaded, bool sandbox) const 
     }
     IPlugin::ptr plugin;
 
-#if USE_BRIDGE
-    bool bridge = cpuArchFromString(cpuArch) != getHostCpuArchitecture();
-#else
-    bool bridge = false;
-#endif
-
-    if (bridge || sandbox){
+    if (bridged() || sandbox){
         plugin = makeBridgedPlugin(factory, name, editor, sandbox);
     } else {
         plugin = factory->create(name);
@@ -415,7 +407,6 @@ void PluginInfo::serialize(std::ostream& file) const {
     }
     file << "[plugin]\n";
     file << "path=" << path() << "\n";
-    file << "arch=" << cpuArch << "\n";
     file << "id=" << uniqueID << "\n";
     file << "name=" << name << "\n";
     file << "vendor=" << vendor << "\n";
@@ -626,7 +617,6 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     uniqueID = value;
                 }
                 MATCH("path", path_)
-                MATCH("arch", cpuArch)
                 MATCH("name", name)
                 MATCH("vendor", vendor)
                 MATCH("category", category)
