@@ -126,10 +126,13 @@ IPlugin::ptr PluginInfo::create(bool editor, bool threaded, bool sandbox) const 
         return nullptr;
     }
     IPlugin::ptr plugin;
-
+#if USE_BRIDGE
     if (bridged() || sandbox){
         plugin = makeBridgedPlugin(factory, name, editor, sandbox);
-    } else {
+    }
+    else
+#endif
+    {
         plugin = factory->create(name);
         if (editor && plugin->info().editor()){
             auto window = IWindow::create(*plugin);
