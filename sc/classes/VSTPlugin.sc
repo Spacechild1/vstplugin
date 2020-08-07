@@ -52,7 +52,7 @@ VSTPluginDesc {
 			"presets (%):".format(this.numPresets).postln;
 			this.printPresets;
 		};
-		"".postln;
+		"---".postln;
 	}
 	printParameters {
 		this.parameters.do { arg param, i;
@@ -369,11 +369,12 @@ VSTPluginDesc {
 	}
 	prToString { arg sep = $\n;
 		var s = "name: %".format(this.name) ++ sep
+		++ "type: %%%".format(this.sdkVersion,
+			this.isSynth.if { " (synth)" } { "" }, this.bridged.if { " [bridged]" } { "" }) ++ sep
 		++ "path: %".format(this.path) ++ sep
 		++ "vendor: %".format(this.vendor) ++ sep
 		++ "category: %".format(this.category) ++ sep
 		++ "version: %".format(this.version) ++ sep
-		++ "SDK version: %".format(this.sdkVersion) ++ sep
 		++ "input channels: %".format(this.numInputs) ++ sep
 		++ ((this.numAuxInputs > 0).if { "aux input channels: %".format(this.numAuxInputs) ++ sep } {""})
 		++ "output channels: %".format(this.numOutputs) ++ sep
@@ -381,14 +382,13 @@ VSTPluginDesc {
 		++ "parameters: %".format(this.numParameters) ++ sep
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "presets: %".format(this.numPresets) ++ sep
-		++ "MIDI input: %".format(this.midiInput) ++ sep
-		++ "MIDI output: %".format(this.midiOutput) ++ sep
-		// ++ "sysex input: %".format(this.sysexInput) ++ sep
-		// ++ "sysex output: %".format(this.sysexOutput) ++ sep
-		++ "synth: %".format(this.isSynth) ++ sep
 		++ "editor: %".format(this.hasEditor) ++ sep
 		// ++ "single precision: %".format(this.singlePrecision) ++ sep
-		// ++ "double precision: %".format(this.doublePrecision)
+		// ++ "double precision: %".format(this.doublePrecision) ++ sep
+		++ "MIDI input: %".format(this.midiInput) ++ sep
+		++ "MIDI output: %".format(this.midiOutput)
+		// ++ "sysex input: %".format(this.sysexInput) ++ sep
+		// ++ "sysex output: %".format(this.sysexOutput) ++ sep
 		;
 		^s;
 	}

@@ -1564,15 +1564,15 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
-    post("~~~ VST plugin info ~~~");
-    if (info.bridged()){
-        post("[bridged]");
-    }
+    post("---");
     post("name: %s", info.name.c_str());
+    post("type: %s%s%s", info.sdkVersion.c_str(),
+         info.isSynth() ? " (synth)" : "",
+         info.bridged() ? " [bridged] " : "");
+    post("version: %s", info.version.c_str());
     post("path: %s", info.path().c_str());
     post("vendor: %s", info.vendor.c_str());
     post("category: %s", info.category.c_str());
-    post("version: %s", info.version.c_str());
     post("input channels: %d", info.numInputs);
     post("output channels: %d", info.numOutputs);
     if (info.numAuxInputs > 0){
@@ -1581,15 +1581,15 @@ static void vstplugin_print(t_vstplugin *x){
     if (info.numAuxOutputs > 0){
         post("aux output channels: %d", info.numAuxOutputs);
     }
+    post("parameters: %d", info.numParameters());
+    post("programs: %d", info.numPrograms());
+    post("presets: %d", info.numPresets());
+    post("editor: %s", info.hasEditor() ? "yes" : "no");
     post("single precision: %s", info.singlePrecision() ? "yes" : "no");
     post("double precision: %s", info.doublePrecision() ? "yes" : "no");
-    post("editor: %s", info.hasEditor() ? "yes" : "no");
-    post("number of parameters: %d", info.numParameters());
-    post("number of programs: %d", info.numPrograms());
-    post("synth: %s", info.isSynth() ? "yes" : "no");
     post("midi input: %s", info.midiInput() ? "yes" : "no");
     post("midi output: %s", info.midiOutput() ? "yes" : "no");
-    post("");
+    post("---");
 }
 
 // bypass the plugin
