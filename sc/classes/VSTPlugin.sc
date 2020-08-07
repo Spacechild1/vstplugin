@@ -58,6 +58,7 @@ VSTPluginDesc {
 			"".postln;
 			"programs (%):".format(this.numPrograms).postln;
 			this.printPrograms;
+			"".postln;
 			"presets (%):".format(this.numPresets).postln;
 			this.printPresets;
 		};
@@ -291,9 +292,10 @@ VSTPluginDesc {
 						line = VSTPlugin.prGetLine(stream);
 						#name, label = line.split($,);
 						parameters[i] = (
-							name: VSTPlugin.prTrim(name),
-							label: VSTPlugin.prTrim(label)
-							// more info later
+							name: name.stripWhiteSpace,
+							label: label.stripWhiteSpace
+							// id (ignore)
+							// more info later...
 						);
 					};
 					info.parameters = parameters;
@@ -682,27 +684,6 @@ VSTPlugin : MultiOutUGen {
 		onset ?? { Error("expecting 'n=<number>'").throw; };
 		^line[(onset+1)..].asInteger; // will eat whitespace and stop at newline
 	}
-	*prTrim { arg str;
-		var start, end;
-		var isWhiteSpace = { arg c; (c == $ ) || (c == $\t) };
-		(str.size == 0).if { ^str };
-		start = block { arg break;
-			str.do { arg c, i;
-				isWhiteSpace.(c).not.if {
-					break.value(i);
-				}
-			}
-			^""; // all white space
-		};
-		end = block { arg break;
-			str.reverseDo { arg c, i;
-				isWhiteSpace.(c).not.if {
-					break.value(str.size - i - 1);
-				}
-			}
-		};
-		^str[start..end]; // start and end can be both nil
-	}
 	*prParseKeyValuePair { arg line;
 		var key, value, split = line.find("=");
 		split ?? { Error("expecting 'key=value'").throw; };
@@ -711,7 +692,7 @@ VSTPlugin : MultiOutUGen {
 		(split < line.size).if {
 			value = line[split..];
 		} { value = "" };
-		^[this.prTrim(key).asSymbol, this.prTrim(value)];
+		^[key.stripWhiteSpace.asSymbol, value.stripWhiteSpace ];
 	}
 	*prParseIni { arg stream;
 		var results, onset, line, n, indices, last = 0;
