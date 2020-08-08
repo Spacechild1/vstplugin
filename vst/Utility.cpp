@@ -15,6 +15,7 @@ namespace fs = std::experimental::filesystem;
 # endif
 # include <pthread.h>
 #endif
+
 #include <sstream>
 
 namespace vst {

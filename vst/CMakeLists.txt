@@ -23,7 +23,8 @@ endif()
 
 # bit bridging
 if (BRIDGE)
-    list(APPEND SRC "Bridge.h" "Bridge.cpp")
+    list(APPEND SRC "Bridge.h" "Bridge.cpp"
+        "SharedMemory.h" "SharedMemory.cpp")
 endif()
 
 # platform specific VST sources and defines
