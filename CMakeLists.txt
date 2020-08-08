@@ -98,6 +98,9 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
+# include dependencies
+include_directories(deps)
+
 # VST2 SDK
 option(VST2 "Enable VST2.x plug-ins" ON)
 if (VST2)
