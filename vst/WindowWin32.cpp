@@ -36,7 +36,7 @@ EventLoop& EventLoop::instance(){
 }
 
 DWORD EventLoop::run(void *user){
-    setThreadPriority(ThreadPriority::Low);
+    setThreadPriority(Priority::Low);
 
     auto obj = (EventLoop *)user;
     MSG msg;

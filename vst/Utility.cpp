@@ -234,14 +234,25 @@ std::string errorMessage(int err){
     return ss.str();
 }
 
-void setThreadPriority(ThreadPriority p){
+void setProcessPriority(Priority p){
+#ifdef _WIN32
+    auto priorityClass = (p == Priority::High) ?
+                HIGH_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS;
+    if (!SetPriorityClass(GetCurrentProcess(), priorityClass)){
+        LOG_WARNING("couldn't set process priority");
+    }
+#endif
+}
+
+void setThreadPriority(Priority p){
 #ifdef _WIN32
     auto thread = GetCurrentThread();
     // set the thread priority
-    if (SetThreadPriority(thread, (p == ThreadPriority::High) ?
-                          THREAD_PRIORITY_HIGHEST : THREAD_PRIORITY_LOWEST)){
+    auto threadPriority = (p == Priority::High) ?
+                THREAD_PRIORITY_HIGHEST : THREAD_PRIORITY_LOWEST;
+    if (SetThreadPriority(thread, threadPriority)){
         // disable priority boost
-        if (!SetThreadPriorityBoost(thread, (p == ThreadPriority::High) ? FALSE : TRUE)){
+        if (!SetThreadPriorityBoost(thread, (p != Priority::High))){
             LOG_WARNING("couldn't disable thread priority boost");
         }
     } else {
@@ -250,9 +261,11 @@ void setThreadPriority(ThreadPriority p){
 #else
     // set priority
     // high priority value taken from Pd, see s_inter.c
+    auto policy = (p == Priority::High) ? SCHED_FIFO : SCHED_OTHER;
     struct sched_param param;
-    param.sched_priority = (p == ThreadPriority::High) ? sched_get_priority_max(SCHED_FIFO) - 7 : 0;
-    if (pthread_setschedparam(pthread_self(), (p == ThreadPriority::High) ? SCHED_FIFO : SCHED_OTHER, &param) != 0){
+    param.sched_priority = (p == Priority::High) ?
+                sched_get_priority_max(SCHED_FIFO) - 7 : 0;
+    if (pthread_setschedparam(pthread_self(), policy, &param) != 0){
         LOG_WARNING("couldn't set thread priority");
     }
 #endif

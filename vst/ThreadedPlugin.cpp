@@ -31,7 +31,7 @@ DSPThreadPool::DSPThreadPool() {
 
     for (int i = 0; i < numThreads; ++i){
         std::thread thread([this, i](){
-            setThreadPriority(ThreadPriority::High);
+            setThreadPriority(Priority::High);
             // the loop
             while (running_) {
                 Task task;

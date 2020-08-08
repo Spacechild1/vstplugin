@@ -33,6 +33,9 @@ int bridge(const std::string& path){
 int probe(const std::string& pluginPath, int pluginIndex,
           const std::string& filePath)
 {
+    setProcessPriority(Priority::Low);
+    setThreadPriority(Priority::Low);
+
     LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
         auto factory = vst::IFactory::load(pluginPath, true);

@@ -178,12 +178,14 @@ protected:
 };
 
 //----------------------------------------------------------------------------------------
-enum class ThreadPriority {
+enum class Priority {
     Low,
     High
 };
 
-void setThreadPriority(ThreadPriority p);
+void setProcessPriority(Priority p);
+
+void setThreadPriority(Priority p);
 
 //-----------------------------------------------------------------------------------------
 

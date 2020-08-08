@@ -97,7 +97,7 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::run(){
-    setThreadPriority(ThreadPriority::Low);
+    setPriority(Priority::Low);
 
     XEvent event;
     LOG_DEBUG("X11: start event loop");

@@ -82,7 +82,7 @@ t_workqueue::t_workqueue(){
     w_thread = std::thread([this]{
         LOG_DEBUG("worker thread started");
 
-        vst::setThreadPriority(ThreadPriority::Low);
+        vst::setThreadPriority(Priority::Low);
 
     #ifdef PDINSTANCE
         pd_setinstance(w_instance);
