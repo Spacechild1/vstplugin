@@ -160,14 +160,21 @@ void server_benchmark(ShmInterface& shm){
     plf::nanotimer timer;
     timer.start();
 
+    {
+        auto t1 = timer.get_elapsed_us();
+        auto t2 = timer.get_elapsed_us();
+        LOG_VERBOSE("server: empty interval: " << (t2 - t1) << " us");
+    }
+
+
     for (int i = 0; i < TEST_BENCHMARK_COUNT; ++i){
         auto t1 = timer.get_elapsed_us();
         channel.clear();
         // post message
         auto msg = "test";
         channel.addMessage(msg, strlen(msg) + 1);
-        channel.post();
         auto t2 = timer.get_elapsed_us();
+        channel.post();
         // wait for reply
         channel.waitReply();
         auto t3 = timer.get_elapsed_us();
@@ -178,6 +185,8 @@ void server_benchmark(ShmInterface& shm){
 
         LOG_VERBOSE("server: full delta = " << (t4 - t1) << " us, "
                     << "wait delta = " << (t3 - t2) << " us");
+
+        sleep_ms(1);
     }
 }
 
