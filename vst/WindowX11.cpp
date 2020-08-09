@@ -97,7 +97,7 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::run(){
-    setPriority(Priority::Low);
+    setThreadPriority(Priority::Low);
 
     XEvent event;
     LOG_DEBUG("X11: start event loop");
@@ -174,7 +174,10 @@ void EventLoop::run(){
 }
 
 void EventLoop::updatePlugins(){
-    // this seems to be the easiest way to do it...
+    // X11 doesn't seem to have a timer API...
+
+    setThreadPriority(Priority::Low);
+
     while (timerThreadRunning_){
         postClientEvent(root_, wmUpdatePlugins);
         std::this_thread::sleep_for(std::chrono::milliseconds(updateInterval));
