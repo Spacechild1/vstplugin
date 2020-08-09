@@ -8,7 +8,7 @@
 
 namespace vst {
 
-class SharedMemoryChannel {
+class ShmChannel {
  public:
     // immutable data
     struct Header {
@@ -43,10 +43,10 @@ class SharedMemoryChannel {
 
     static const size_t alignment = 64;
 
-    SharedMemoryChannel() = default;
-    SharedMemoryChannel(Type type, int32_t size,
+    ShmChannel() = default;
+    ShmChannel(Type type, int32_t size,
                         const std::string& name);
-    ~SharedMemoryChannel();
+    ~ShmChannel();
 
     Type type() const { return type_; }
     int32_t size() const { return totalSize_; }
@@ -78,7 +78,8 @@ class SharedMemoryChannel {
     int32_t bufferSize_ = 0;
     std::string name_;
     std::array<void *, 2> events_;
-    Data *data_;
+    Header *header_ = nullptr;
+    Data *data_ = nullptr;
     uint32_t rdhead_ = 0;
     uint32_t wrhead_ = 0;
     // helper methods
@@ -87,7 +88,7 @@ class SharedMemoryChannel {
     void waitEvent(int which);
 };
 
-class SharedMemory {
+class ShmInterface {
  public:
     static const int32_t maxNumChannels = 60;
 
@@ -103,19 +104,19 @@ class SharedMemory {
     };
 
     // SharedMemory();
-    SharedMemory();
-    ~SharedMemory();
-    SharedMemory(const SharedMemory&) = delete;
-    SharedMemory(SharedMemory&&) = default;
-    SharedMemory& operator=(const SharedMemory&) = delete;
-    SharedMemory& operator=(SharedMemory&&) = default;
+    ShmInterface();
+    ~ShmInterface();
+    ShmInterface(const ShmInterface&) = delete;
+    ShmInterface(ShmInterface&&) = default;
+    ShmInterface& operator=(const ShmInterface&) = delete;
+    ShmInterface& operator=(ShmInterface&&) = default;
 
     // connect to existing shared memory interface
     void connect(const std::string& path);
     void disconnect();
 
     // create shared memory interface
-    void addChannel(SharedMemoryChannel::Type type,
+    void addChannel(ShmChannel::Type type,
                     const size_t size, const std::string& name);
     void create();
     void close();
@@ -127,14 +128,14 @@ class SharedMemory {
     int numChannels() const {
         return channels_.size();
     }
-    SharedMemoryChannel& getChannel(int i){
+    ShmChannel& getChannel(int i){
         return channels_[i];
     }
-    const SharedMemoryChannel& getChannel(int i) const {
+    const ShmChannel& getChannel(int i) const {
         return channels_[i];
     }
  private:
-    std::vector<SharedMemoryChannel> channels_;
+    std::vector<ShmChannel> channels_;
     bool owner_ = false;
     std::string path_;
 #ifdef _WIN32

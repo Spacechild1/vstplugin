@@ -24,7 +24,7 @@ endif()
 # bit bridging
 if (BRIDGE)
     list(APPEND SRC "Bridge.h" "Bridge.cpp"
-        "SharedMemory.h" "SharedMemory.cpp")
+        "ShmInterface.h" "ShmInterface.cpp")
 endif()
 
 # platform specific VST sources and defines

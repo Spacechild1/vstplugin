@@ -1,4 +1,4 @@
-#include "SharedMemory.h"
+#include "ShmInterface.h"
 #include "Interface.h"
 #include "Utility.h"
 
@@ -25,9 +25,9 @@ constexpr size_t align_to(size_t s, size_t alignment){
     return (s + mask) & ~mask;
 }
 
-/*/////////////// SharedMemoryChannel ////////////*/
+/*/////////////// ShmChannel ////////////*/
 
-SharedMemoryChannel::SharedMemoryChannel(Type type, int32_t size,
+ShmChannel::ShmChannel(Type type, int32_t size,
                                          const std::string& name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
 {
@@ -35,7 +35,7 @@ SharedMemoryChannel::SharedMemoryChannel(Type type, int32_t size,
     totalSize_ = align_to(total, alignment);
 }
 
-SharedMemoryChannel::~SharedMemoryChannel(){
+ShmChannel::~ShmChannel(){
     for (auto& event : events_){
         if (event){
         #if defined(_WIN32)
@@ -52,7 +52,7 @@ SharedMemoryChannel::~SharedMemoryChannel(){
     }
 }
 
-size_t SharedMemoryChannel::peekMessage() const {
+size_t ShmChannel::peekMessage() const {
     if (data_->size.load(std::memory_order_relaxed) > 0){
         auto msg = (Message *)&data_->data[rdhead_];
         return msg->size;
@@ -61,7 +61,7 @@ size_t SharedMemoryChannel::peekMessage() const {
     }
 }
 
-bool SharedMemoryChannel::readMessage(char * buffer, size_t& size) {
+bool ShmChannel::readMessage(char * buffer, size_t& size) {
     if (data_->size.load(std::memory_order_relaxed) > 0){
         auto msg = (Message *)&data_->data[rdhead_];
         if (msg->size > size){
@@ -96,7 +96,7 @@ bool SharedMemoryChannel::readMessage(char * buffer, size_t& size) {
     }
 }
 
-bool SharedMemoryChannel::writeMessage(const char *data, size_t size) {
+bool ShmChannel::writeMessage(const char *data, size_t size) {
     auto capacity = data_->capacity;
     // get actual message size (+ size field + alignment)
     auto msgsize = align_to(size + sizeof(Message::size), Message::alignment);
@@ -132,7 +132,7 @@ bool SharedMemoryChannel::writeMessage(const char *data, size_t size) {
     }
 }
 
-bool SharedMemoryChannel::addMessage(const char * data, size_t size) {
+bool ShmChannel::addMessage(const char * data, size_t size) {
     auto capacity = data_->capacity;
     // get actual message size (+ size field + alignment)
     auto msgsize = align_to(size + sizeof(Message::size), Message::alignment);
@@ -151,7 +151,7 @@ bool SharedMemoryChannel::addMessage(const char * data, size_t size) {
     }
 }
 
-bool SharedMemoryChannel::getMessage(const char *& buf, size_t& size) {
+bool ShmChannel::getMessage(const char *& buf, size_t& size) {
     if (data_->size.load(std::memory_order_relaxed) > 0){
         auto msg = (Message *)&data_->data[rdhead_];
 
@@ -168,82 +168,98 @@ bool SharedMemoryChannel::getMessage(const char *& buf, size_t& size) {
     }
 }
 
-void SharedMemoryChannel::clear(){
+void ShmChannel::clear(){
     data_->size = 0;
     rdhead_ = 0;
     wrhead_ = 0;
 }
 
-void SharedMemoryChannel::post(){
+void ShmChannel::post(){
     postEvent(0);
 }
 
-void SharedMemoryChannel::wait(){
+void ShmChannel::wait(){
     waitEvent(0);
 }
 
-void SharedMemoryChannel::postReply(){
+void ShmChannel::postReply(){
     postEvent(1);
 }
 
-void SharedMemoryChannel::waitReply(){
+void ShmChannel::waitReply(){
     waitEvent(1);
 }
 
-void SharedMemoryChannel::init(char *data){
-    auto header = reinterpret_cast<Header *>(data);
+void ShmChannel::init(char *data){
+    header_ = reinterpret_cast<Header *>(data);
     if (owner_){
-        header->size = totalSize_;
-        header->offset = sizeof(Header);
-        header->type = type_;
-        snprintf(header->name, sizeof(header->name), "%s", name_.c_str());
+        header_->size = totalSize_;
+        header_->offset = sizeof(Header);
+        header_->type = type_;
+        snprintf(header_->name, sizeof(header_->name), "%s", name_.c_str());
         // POSIX expects leading slash
-        snprintf(header->event1, sizeof(header->event1), "/vst_%p_sem1", this);
+        snprintf(header_->event1, sizeof(header_->event1), "/vst_%p_1", this);
         if (type_ == Request){
-            snprintf(header->event2, sizeof(header->event2), "/vst_%p_sem2", this);
+            snprintf(header_->event2, sizeof(header_->event2), "/vst_%p_2", this);
         } else {
-            header->event2[0] = '\0';
+            header_->event2[0] = '\0';
         }
+        LOG_DEBUG("create ShmChannel: name = " << name_
+                  << ", buffer size = " << bufferSize_
+                  << ", total size = " << totalSize_
+                  << ", start address = " << (void *)data);
     } else {
-        totalSize_ = header->size;
-        type_ = (Type)header->type;
-        name_ = header->name;
+        totalSize_ = header_->size;
+        type_ = (Type)header_->type;
+        name_ = header_->name;
+        LOG_DEBUG("open ShmChannel: name = " << name_
+                  << ", buffer size = " << bufferSize_
+                  << ", total size = " << totalSize_
+                  << ", start address = " << (void *)data);
     }
 
-    initEvent(0, header->event1);
+    initEvent(0, header_->event1);
     if (type_ == Request){
-        initEvent(1, header->event2);
+        initEvent(1, header_->event2);
     } else {
         events_[1] = nullptr;
     }
 
     if (owner_){
         // placement new
-        data_ = new (data + header->offset) Data();
+        data_ = new (data + header_->offset) Data();
         data_->capacity = bufferSize_;
     } else {
-        data_ = reinterpret_cast<Data *>(data + header->offset);
+        data_ = reinterpret_cast<Data *>(data + header_->offset);
     }
 }
 
-void SharedMemoryChannel::initEvent(int which, const char *data){
+void ShmChannel::initEvent(int which, const char *data){
+    // LOG_DEBUG("ShmChannel: init event " << which);
 #if defined(_WIN32)
     // named Event
     if (owner_){
         events_[which] = CreateEventA(0, 0, 0, data);
-        if (!events_[which]){
+        if (events_[which]){
+            if (GetLastError() != ERROR_ALREADY_EXISTS){
+                LOG_DEBUG("ShmChannel: created Event " << data);
+            } else {
+                throw Error(Error::SystemError,
+                            "CreateEvent() failed - already exists!");
+            }
+        } else {
             throw Error(Error::SystemError, "CreateEvent() failed with "
                         + std::to_string(GetLastError()));
         }
     } else {
         events_[which] = OpenEventA(EVENT_ALL_ACCESS, 0, data);
-        if (!events_[which]){
+        if (events_[which]){
+            LOG_DEBUG("ShmChannel: opened Event " << data);
+        } else {
             throw Error(Error::SystemError, "OpenEvent() failed with "
                         + std::to_string(GetLastError()));
         }
     }
-
-    LOG_DEBUG("SharedMemoryChannel: init Event " << data);
 #elif defined(__APPLE__)
     // named semaphore
     if (owner_){
@@ -254,7 +270,7 @@ void SharedMemoryChannel::initEvent(int which, const char *data){
         events_[which] = sem_open(data, 0, 0, 0, 0);
     }
     if (events_[which] == SEM_FAILED){
-        throw Error(Error::SystemError, "sem_init() failed with "
+        throw Error(Error::SystemError, "sem_open() failed with "
                     + std::string(strerror(errno)));
     }
 #else
@@ -270,34 +286,58 @@ void SharedMemoryChannel::initEvent(int which, const char *data){
 #endif
 }
 
-void SharedMemoryChannel::postEvent(int which){
+void ShmChannel::postEvent(int which){
+#if 0 && (defined(_WIN32) || defined(__APPLE__))
+    LOG_DEBUG("postEvent: "
+              << (which ? header_->event2 : header_->event1));
+#endif
 #ifdef _WIN32
-    SetEvent(events_[which]);
+    if (!SetEvent(events_[which])){
+        throw Error(Error::SystemError, "SetEvent() failed with "
+                    + std::to_string(GetLastError()));
+    }
 #else
-    sem_post((sem_t *)events_[which]);
+    if (sem_post((sem_t *)events_[which]) != 0){
+        throw Error(Error::SystemError, "sem_post() failed: "
+                    + std::string(strerror(errno)));
+    }
 #endif
 }
 
-void SharedMemoryChannel::waitEvent(int which){
+void ShmChannel::waitEvent(int which){
+#if 0 && (defined(_WIN32) || defined(__APPLE__))
+    LOG_DEBUG("waitEvent: "
+              << (which ? header_->event2 : header_->event1));
+#endif
 #ifdef _WIN32
-    WaitForSingleObject(events_[which], INFINITE);
+    auto result = WaitForSingleObject(events_[which], INFINITE);
+    if (result != WAIT_OBJECT_0){
+        if (result == WAIT_ABANDONED){
+            LOG_ERROR("WaitForSingleObject() failed! Event abandoned");
+        } else {
+            throw Error(Error::SystemError, "WaitForSingleObject() failed with "
+                        + std::to_string(GetLastError()));
+        }
+    }
 #else
-    sem_wait((sem_t *)events_[which]);
+    if (sem_wait((sem_t *)events_[which]) != 0){
+        throw Error(Error::SystemError, "sem_wait() failed: "
+                    + std::string(strerror(errno)));
+    }
 #endif
 }
 
+/*//////////////// ShmInterface //////////////////*/
 
-/*//////////////// SharedMemory //////////////////*/
+ShmInterface::ShmInterface(){}
 
-SharedMemory::SharedMemory(){}
-
-SharedMemory::~SharedMemory(){
+ShmInterface::~ShmInterface(){
     closeShm();
 }
 
-void SharedMemory::connect(const std::string &path){
+void ShmInterface::connect(const std::string &path){
     if (data_){
-        throw Error(Error::SystemError, "SharedMemory: already connected()!");
+        throw Error(Error::SystemError, "ShmInterface: already connected()!");
     }
 
     openShm(path, false);
@@ -310,37 +350,37 @@ void SharedMemory::connect(const std::string &path){
     }
 }
 
-void SharedMemory::disconnect(){
+void ShmInterface::disconnect(){
     if (data_){
         if (!owner_){
             closeShm();
         } else {
-            LOG_WARNING("SharedMemory: owner must not call disconnect()!");
+            LOG_WARNING("ShmInterface: owner must not call disconnect()!");
         }
 
     } else {
-        LOG_WARNING("SharedMemory::disconnect: not connected");
+        LOG_WARNING("ShmInterface::disconnect: not connected");
     }
 }
 
-void SharedMemory::addChannel(SharedMemoryChannel::Type type,
+void ShmInterface::addChannel(ShmChannel::Type type,
                               const size_t size,const std::string &name)
 {
     if (data_){
         throw Error(Error::SystemError,
-                    "SharedMemory: must not call addChannel() after create()!");
+                    "ShmInterface: must not call addChannel() after create()!");
     }
 
     if (channels_.size() == maxNumChannels){
         throw Error(Error::SystemError,
-                    "SharedMemory: max. number of channels reached!");
+                    "ShmInterface: max. number of channels reached!");
     }
     channels_.emplace_back(type, size, name);
 }
 
-void SharedMemory::create(){
+void ShmInterface::create(){
     if (data_){
-        throw Error(Error::SystemError, "SharedMemory: already created()!");
+        throw Error(Error::SystemError, "ShmInterface: already created()!");
     }
 
     char path[64];
@@ -349,9 +389,7 @@ void SharedMemory::create(){
 
     openShm(path, true);
 
-    char *ptr = data_;
-
-    auto header = reinterpret_cast<Header *>(ptr);
+    auto header = reinterpret_cast<Header *>(data_);
     memset(header, 0, sizeof(Header));
     header->size = size_;
     header->versionMajor = VERSION_MAJOR;
@@ -359,28 +397,28 @@ void SharedMemory::create(){
     header->versionBugfix = VERSION_BUGFIX;
     header->numChannels = channels_.size();
 
-    ptr += sizeof(Header);
+    char *ptr = data_ + sizeof(Header);
 
     for (size_t i = 0; i < channels_.size(); ++i){
         channels_[i].init(ptr);
-        header->channelOffset[i] = ptr - (char *)header;
+        header->channelOffset[i] = ptr - data_;
         ptr += channels_[i].size();
     }
 }
 
-void SharedMemory::close(){
+void ShmInterface::close(){
     if (data_){
         if (owner_){
             closeShm();
         } else {
-            LOG_WARNING("SharedMemory: only owner may call close()!");
+            LOG_WARNING("ShmInterface: only owner may call close()!");
         }
     } else {
-        LOG_WARNING("SharedMemory::close: not connected");
+        LOG_WARNING("ShmInterface::close: not connected");
     }
 }
 
-void SharedMemory::openShm(const std::string &path, bool create){
+void ShmInterface::openShm(const std::string &path, bool create){
     auto totalSize = sizeof(Header);
     for (auto& chn : channels_){
         totalSize += chn.size();
@@ -425,7 +463,7 @@ void SharedMemory::openShm(const std::string &path, bool create){
 
     // try to lock the file to physical memory
     if (create && !VirtualLock(data, totalSize)){
-        LOG_WARNING("SharedMemory: VirtualLock() failed with "
+        LOG_WARNING("ShmInterface: VirtualLock() failed with "
                     << GetLastError());
     }
 #else
@@ -463,7 +501,7 @@ void SharedMemory::openShm(const std::string &path, bool create){
 
     // try to lock the file to physical memory
     if (create && (mlock(data, totalSize) != 0)){
-        LOG_WARNING("SharedMemory: mlock() failed with "
+        LOG_WARNING("ShmInterface: mlock() failed with "
                     << strerror(errno));
     }
 #endif
@@ -484,7 +522,7 @@ void SharedMemory::openShm(const std::string &path, bool create){
     }
 }
 
-void SharedMemory::closeShm(){
+void ShmInterface::closeShm(){
 #ifdef _WIN32
     if (data_){
         UnmapViewOfFile(data_);
