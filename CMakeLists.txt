@@ -200,3 +200,9 @@ option(SC "build SC plugin" ON)
 if (SC)
     add_subdirectory(sc)
 endif()
+
+# testsuite
+option(TESTSUITE "build test suite" ON)
+if (TESTSUITE)
+    add_subdirectory(test)
+endif()
