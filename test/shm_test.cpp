@@ -91,6 +91,8 @@ void client_test_queue(ShmInterface& shm){
 
         channel.wait();
     }
+
+    sleep_ms(1);
 }
 
 void server_test_request(ShmInterface& shm){
@@ -142,6 +144,8 @@ void client_test_request(ShmInterface& shm){
     channel.clear();
     channel.addMessage(reply, strlen(reply) + 1);
     channel.postReply();
+
+    sleep_ms(1);
 }
 
 void server_benchmark(ShmInterface& shm){
@@ -158,7 +162,7 @@ void server_benchmark(ShmInterface& shm){
     {
         auto t1 = timer.get_elapsed_us();
         auto t2 = timer.get_elapsed_us();
-        LOG_VERBOSE("server: empty interval: " << (t2 - t1) << " us");
+        LOG_VERBOSE("server: empty delta = " << (t2 - t1) << " us");
     }
 
     double avg_outer = 0;
@@ -196,6 +200,8 @@ void server_benchmark(ShmInterface& shm){
                 << (avg_outer / TEST_BENCHMARK_COUNT) << " us");
     LOG_VERBOSE("server: average inner delta = "
                 << (avg_inner / TEST_BENCHMARK_COUNT) << " us");
+
+    sleep_ms(1);
 }
 
 void client_benchmark(ShmInterface& shm){
@@ -244,13 +250,18 @@ int server_run(){
         throw Error(Error::SystemError, "CreateProcess() failed!");
     }
 #else
+    // hack to get absolute app path
+    Dl_info dlinfo;
+    if (!dladdr((void *)server_run, &dlinfo)){
+        throw Error(Error::SystemError, "dladdr() failed");
+    }
     // fork
     pid_t pid = fork();
     if (pid == -1) {
         throw Error(Error::SystemError, "fork() failed!");
     } else if (pid == 0) {
         // child process
-        if (execlp(APPNAME, APPNAME, shm.path().c_str(), nullptr) < 0){
+        if (execl(dlinfo.dli_fname, APPNAME, shm.path().c_str(), nullptr) < 0){
             throw Error(Error::SystemError, "execl() failed!");
         }
     }
