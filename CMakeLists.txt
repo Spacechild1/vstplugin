@@ -131,6 +131,10 @@ if (BRIDGE)
         # we assume that the architecture is Intel. LATER add a check for ARM!
         set(HOST32 "host_i386")
     endif()
+    if (LINUX)
+        # for shm_open/shm_unlink
+        list(APPEND VST_LIBS "-lrt")
+    endif()
 endif()
 
 # vst library
