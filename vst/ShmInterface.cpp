@@ -334,6 +334,8 @@ void ShmInterface::connect(const std::string &path){
 
     auto header = reinterpret_cast<Header *>(data_);
 
+    // reserve so that channels don't move in memory!
+    channels_.reserve(header->numChannels);
     for (size_t i = 0; i < header->numChannels; ++i){
         channels_.emplace_back();
         channels_.back().init(data_ + header->channelOffset[i], *this, i);

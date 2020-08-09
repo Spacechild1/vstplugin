@@ -13,6 +13,7 @@
 # include <stdio.h>
 # include <dlfcn.h>
 # include <sys/wait.h>
+# include <dlfcn.h>
 #endif
 
 #include <cstring>
@@ -48,8 +49,7 @@ void server_test_queue(ShmInterface& shm){
        snprintf(buf, sizeof(buf), "msg %d", i+1);
        if (channel.writeMessage(buf, strlen(buf) + 1)){
            LOG_VERBOSE("server: write message " << buf);
-           // channel.post();
-           shm.getChannel(1).post();
+           channel.post();
        } else {
            LOG_ERROR("server: couldn't write message " << buf);
        }
@@ -59,8 +59,7 @@ void server_test_queue(ShmInterface& shm){
 
     const char *quit = "quit";
     channel.writeMessage(quit, strlen(quit) + 1);
-    // channel.post();
-    shm.getChannel(1).post();
+    channel.post();
 
     // wait for child to finish. we'd better properly synchronize.
     sleep_ms(500);
@@ -90,11 +89,7 @@ void client_test_queue(ShmInterface& shm){
             LOG_VERBOSE("client: waiting for message");
         }
 
-    #if 0
-        sleep_ms(1);
-    #else
         channel.wait();
-    #endif
     }
 }
 
@@ -166,7 +161,8 @@ void server_benchmark(ShmInterface& shm){
         LOG_VERBOSE("server: empty interval: " << (t2 - t1) << " us");
     }
 
-
+    double avg_outer = 0;
+    double avg_inner = 0;
     for (int i = 0; i < TEST_BENCHMARK_COUNT; ++i){
         auto t1 = timer.get_elapsed_us();
         channel.clear();
@@ -183,11 +179,23 @@ void server_benchmark(ShmInterface& shm){
         channel.getMessage(reply, replySize);
         auto t4 = timer.get_elapsed_us();
 
-        LOG_VERBOSE("server: full delta = " << (t4 - t1) << " us, "
-                    << "wait delta = " << (t3 - t2) << " us");
+        auto outer = t4 - t1;
+        auto inner = t3 - t2;
+        avg_outer += outer;
+        avg_inner += inner;
+        LOG_VERBOSE("server: full delta = " << outer << " us, "
+                    << "inner delta = " << inner << " us");
 
+    #if 1
+        // make sure that child process actually has to wake up
         sleep_ms(1);
+    #endif
     }
+    LOG_VERBOSE("---");
+    LOG_VERBOSE("server: average full delta = "
+                << (avg_outer / TEST_BENCHMARK_COUNT) << " us");
+    LOG_VERBOSE("server: average inner delta = "
+                << (avg_inner / TEST_BENCHMARK_COUNT) << " us");
 }
 
 void client_benchmark(ShmInterface& shm){
@@ -242,7 +250,7 @@ int server_run(){
         throw Error(Error::SystemError, "fork() failed!");
     } else if (pid == 0) {
         // child process
-        if (execl(APPNAME, APPNAME, shm.path().c_str(), nullptr) < 0){
+        if (execlp(APPNAME, APPNAME, shm.path().c_str(), nullptr) < 0){
             throw Error(Error::SystemError, "execl() failed!");
         }
     }
