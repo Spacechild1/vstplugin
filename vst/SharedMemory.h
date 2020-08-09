@@ -103,6 +103,7 @@ class SharedMemory {
     };
 
     // SharedMemory();
+    SharedMemory();
     ~SharedMemory();
     SharedMemory(const SharedMemory&) = delete;
     SharedMemory(SharedMemory&&) = default;

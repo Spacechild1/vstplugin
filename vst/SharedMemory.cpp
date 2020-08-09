@@ -187,7 +187,7 @@ void SharedMemoryChannel::postReply(){
 }
 
 void SharedMemoryChannel::waitReply(){
-    postEvent(1);
+    waitEvent(1);
 }
 
 void SharedMemoryChannel::init(char *data){
@@ -200,7 +200,7 @@ void SharedMemoryChannel::init(char *data){
         // POSIX expects leading slash
         snprintf(header->event1, sizeof(header->event1), "/vst_%p_sem1", this);
         if (type_ == Request){
-            snprintf(header->event1, sizeof(header->event1), "/vst_%p_sem2", this);
+            snprintf(header->event2, sizeof(header->event2), "/vst_%p_sem2", this);
         } else {
             header->event2[0] = '\0';
         }
@@ -229,11 +229,21 @@ void SharedMemoryChannel::init(char *data){
 void SharedMemoryChannel::initEvent(int which, const char *data){
 #if defined(_WIN32)
     // named Event
-    events_[which] = CreateEventA(0, 0, 0, data);
-    if (!events_[which]){
-        throw Error(Error::SystemError, "CreateEvent() failed with "
-                    + std::to_string(GetLastError()));
+    if (owner_){
+        events_[which] = CreateEventA(0, 0, 0, data);
+        if (!events_[which]){
+            throw Error(Error::SystemError, "CreateEvent() failed with "
+                        + std::to_string(GetLastError()));
+        }
+    } else {
+        events_[which] = OpenEventA(EVENT_ALL_ACCESS, 0, data);
+        if (!events_[which]){
+            throw Error(Error::SystemError, "OpenEvent() failed with "
+                        + std::to_string(GetLastError()));
+        }
     }
+
+    LOG_DEBUG("SharedMemoryChannel: init Event " << data);
 #elif defined(__APPLE__)
     // named semaphore
     if (owner_){
@@ -278,6 +288,8 @@ void SharedMemoryChannel::waitEvent(int which){
 
 
 /*//////////////// SharedMemory //////////////////*/
+
+SharedMemory::SharedMemory(){}
 
 SharedMemory::~SharedMemory(){
     closeShm();
