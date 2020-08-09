@@ -8,6 +8,8 @@
 
 namespace vst {
 
+class ShmInterface;
+
 class ShmChannel {
  public:
     // immutable data
@@ -70,7 +72,7 @@ class ShmChannel {
     void postReply();
     void waitReply();
 
-    void init(char *data);
+    void init(char *data, ShmInterface& shm, int num);
  private:
     bool owner_ = false;
     Type type_ = Queue;

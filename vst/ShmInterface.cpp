@@ -190,7 +190,7 @@ void ShmChannel::waitReply(){
     waitEvent(1);
 }
 
-void ShmChannel::init(char *data){
+void ShmChannel::init(char *data, ShmInterface& shm, int num){
     header_ = reinterpret_cast<Header *>(data);
     if (owner_){
         header_->size = totalSize_;
@@ -198,25 +198,23 @@ void ShmChannel::init(char *data){
         header_->type = type_;
         snprintf(header_->name, sizeof(header_->name), "%s", name_.c_str());
         // POSIX expects leading slash
-        snprintf(header_->event1, sizeof(header_->event1), "/vst_%p_1", this);
+        snprintf(header_->event1, sizeof(header_->event1),
+                 "/vst_shm_%p_%da", &shm, num);
         if (type_ == Request){
-            snprintf(header_->event2, sizeof(header_->event2), "/vst_%p_2", this);
+            snprintf(header_->event2, sizeof(header_->event2),
+                     "/vst_shm_%p_%db", &shm, num);
         } else {
             header_->event2[0] = '\0';
         }
-        LOG_DEBUG("create ShmChannel: name = " << name_
-                  << ", buffer size = " << bufferSize_
-                  << ", total size = " << totalSize_
-                  << ", start address = " << (void *)data);
     } else {
         totalSize_ = header_->size;
         type_ = (Type)header_->type;
         name_ = header_->name;
-        LOG_DEBUG("open ShmChannel: name = " << name_
-                  << ", buffer size = " << bufferSize_
-                  << ", total size = " << totalSize_
-                  << ", start address = " << (void *)data);
     }
+    LOG_DEBUG("init ShmChannel " << num << " (" << name_
+              << "): buffer size = " << bufferSize_
+              << ", total size = " << totalSize_
+              << ", start address = " << (void *)data);
 
     initEvent(0, header_->event1);
     if (type_ == Request){
@@ -287,10 +285,6 @@ void ShmChannel::initEvent(int which, const char *data){
 }
 
 void ShmChannel::postEvent(int which){
-#if 0 && (defined(_WIN32) || defined(__APPLE__))
-    LOG_DEBUG("postEvent: "
-              << (which ? header_->event2 : header_->event1));
-#endif
 #ifdef _WIN32
     if (!SetEvent(events_[which])){
         throw Error(Error::SystemError, "SetEvent() failed with "
@@ -305,10 +299,6 @@ void ShmChannel::postEvent(int which){
 }
 
 void ShmChannel::waitEvent(int which){
-#if 0 && (defined(_WIN32) || defined(__APPLE__))
-    LOG_DEBUG("waitEvent: "
-              << (which ? header_->event2 : header_->event1));
-#endif
 #ifdef _WIN32
     auto result = WaitForSingleObject(events_[which], INFINITE);
     if (result != WAIT_OBJECT_0){
@@ -346,7 +336,7 @@ void ShmInterface::connect(const std::string &path){
 
     for (size_t i = 0; i < header->numChannels; ++i){
         channels_.emplace_back();
-        channels_.back().init(data_ + header->channelOffset[i]);
+        channels_.back().init(data_ + header->channelOffset[i], *this, i);
     }
 }
 
@@ -400,7 +390,7 @@ void ShmInterface::create(){
     char *ptr = data_ + sizeof(Header);
 
     for (size_t i = 0; i < channels_.size(); ++i){
-        channels_[i].init(ptr);
+        channels_[i].init(ptr, *this, i);
         header->channelOffset[i] = ptr - data_;
         ptr += channels_[i].size();
     }
