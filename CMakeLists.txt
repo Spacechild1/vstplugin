@@ -125,12 +125,13 @@ if (BRIDGE)
     add_definitions(-DUSE_BRIDGE=1)
     if(APPLE OR LINUX)
         # Try to directly build the 32-bit (Intel) version of 'HOST' with -m32.
-        # This works on Linux and older macOS versions. On Linux we don't enable
-        # this by default because we would have to install lots of extra libs.
-        CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32)
-        if (HAS_CXX_M32)
-            option(BUILD_HOST32 "Build the 32-bit host app" APPLE)
-        endif()
+        # This works on Linux and older macOS versions.
+        # We don't enable this by default because on Linux we would have to install
+        # lots of extra libs and on macOS it won't work on newer OS versions (macOs 10.15+) anyway.
+        # (Maybe we can somehow detect the macOs version)?
+        #
+        # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
+        option(BUILD_HOST32 "Build the 32-bit host app" OFF)
     endif()
 endif()
 
