@@ -4,9 +4,8 @@ set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
 project(${PROJECT})
 
-if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-	set(MARCH64 TRUE)
-endif()
+include (CheckCCompilerFlag)
+include (CheckCXXCompilerFlag)
 
 if(UNIX AND NOT APPLE AND NOT MINGW)
 	set(LINUX TRUE)
@@ -35,7 +34,7 @@ set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install director
 if (WIN32 OR MINGW)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
     set(_pf_x86 "ProgramFiles(x86)")
-    if (DEFINED ENV{${_pf_x86}} AND NOT MARCH64)
+    if (DEFINED ENV{${_pf_x86}} AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
         set(PROGRAMFILES $ENV{${_pf_x86}})
     else()
         set(PROGRAMFILES $ENV{PROGRAMFILES})
@@ -54,9 +53,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_definitions(-fvisibility=hidden)
     # disable some warnings
     add_definitions(-Wno-unknown-pragmas -Wno-format-security)
-
-    include (CheckCCompilerFlag)
-    include (CheckCXXCompilerFlag)
 
     CHECK_CXX_COMPILER_FLAG(-msse HAS_CXX_SSE)
     if (HAS_CXX_SSE)
@@ -125,24 +121,26 @@ endif()
 # bit bridging
 option(BRIDGE "Enable bit-bridging" ON)
 if (BRIDGE)
+    message(STATUS "Enable bit-bridging")
     add_definitions(-DUSE_BRIDGE=1)
-    if (MARCH64 AND APPLE)
-        # on 64-bit macOS we can directly build the 32-bit version of 'HOST'.
-        # we assume that the architecture is Intel. LATER add a check for ARM!
-        set(HOST32 "host_i386")
-    endif()
-    if (LINUX)
-        # for shm_open/shm_unlink
-        list(APPEND VST_LIBS "-lrt")
+    if(APPLE OR LINUX)
+        # Try to directly build the 32-bit (Intel) version of 'HOST' with -m32.
+        # This works on Linux and older macOS versions. On Linux we don't enable
+        # this by default because we would have to install lots of extra libs.
+        CHECK_CXX_COMPILER_FLAG(-g HAS_CXX_M32)
+        if (HAS_CXX_M32)
+            option(BUILD_HOST32 "Build the 32-bit host program" APPLE)
+        endif()
     endif()
 endif()
-
-# vst library
-include_directories(vst)
 
 # platform specific linker flags
 if (LINUX)
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11" "-pthread")
+    if (BRIDGE)
+        # for shm_open/shm_unlink
+        list(APPEND VST_LIBS "-lrt")
+    endif()
     if(STATIC_LIBS)
         list(APPEND VST_LIBS "-static-libstdc++" "-static-libgcc")
     endif()
@@ -161,9 +159,12 @@ if (APPLE)
     list(APPEND VST_LIBS "-framework Cocoa" "-lpthread")
 endif()
 
+# vst library
+include_directories(vst)
+
 set(VST "vst")
 set(LIBS ${VST} ${VST_LIBS})
-if (HOST32)
+if (BUILD_HOST32)
     set(VST32 "vst32")
     set(LIBS32 ${VST32} ${VST_LIBS})
 endif()
@@ -183,7 +184,10 @@ endif()
 # so we export the output file path and install it as a file.
 set(HOST_PATH $<TARGET_FILE:${HOST}>)
 
-if (HOST32)
+if (BUILD_HOST32)
+    message(STATUS "Build 32-bit host program")
+    # is -m32 always Intel?
+    set(HOST32 "host_i386")
     add_executable(${HOST32} "vst/${HOST}.cpp")
     target_compile_options(${HOST32} PUBLIC "-m32")
     target_link_options(${HOST32} PUBLIC "-m32")
