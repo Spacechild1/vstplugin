@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>
 #include <array>
+#include <memory>
 
 namespace vst {
 
@@ -48,7 +49,11 @@ class ShmChannel {
     ShmChannel() = default;
     ShmChannel(Type type, int32_t size,
                         const std::string& name);
+    ShmChannel(const ShmChannel&) = delete;
+    ShmChannel(ShmChannel&&) = default;
     ~ShmChannel();
+    ShmChannel& operator=(const ShmChannel&) = delete;
+    ShmChannel& operator=(ShmChannel&&) = default;
 
     Type type() const { return type_; }
     int32_t size() const { return totalSize_; }
@@ -74,12 +79,15 @@ class ShmChannel {
 
     void init(char *data, ShmInterface& shm, int num);
  private:
+    struct HandleDeleter { void operator()(void *); };
+    using Handle = std::unique_ptr<void, HandleDeleter>;
+
     bool owner_ = false;
     Type type_ = Queue;
     int32_t totalSize_ = 0;
     int32_t bufferSize_ = 0;
     std::string name_;
-    std::array<void *, 2> events_;
+    std::array<Handle, 2> events_;
     Header *header_ = nullptr;
     Data *data_ = nullptr;
     uint32_t rdhead_ = 0;

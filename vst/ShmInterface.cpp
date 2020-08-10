@@ -27,6 +27,7 @@ constexpr size_t align_to(size_t s, size_t alignment){
 
 /*/////////////// ShmChannel ////////////*/
 
+
 ShmChannel::ShmChannel(Type type, int32_t size,
                                          const std::string& name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
@@ -35,21 +36,27 @@ ShmChannel::ShmChannel(Type type, int32_t size,
     totalSize_ = align_to(total, alignment);
 }
 
+void ShmChannel::HandleDeleter::operator ()(void *handle){
+#if defined(_WIN32)
+    // LOG_DEBUG("close event " << handle);
+    CloseHandle((HANDLE)handle);
+#elif defined(__APPLE__)
+    sem_close((sem_t *)handle);
+#endif
+}
+
 ShmChannel::~ShmChannel(){
-    for (auto& event : events_){
-        if (event){
-        #if defined(_WIN32)
-            CloseHandle((HANDLE)event);
-        #elif defined(__APPLE__)
-            sem_close((sem_t *)event);
-        #else
-            if (owner_){
-                // only close semaphore once!
-                sem_destroy((sem_t *)event);
+#if !defined(_WIN32) && !defined(__APPLE__)
+    // only destroy the semaphore once!
+    if (owner_){
+        for (auto& event : events_){
+            if (event){
+                sem_destroy((sem_t *)event.get());
             }
-        #endif
         }
     }
+#endif
+    // LOG_DEBUG("~ShmChannel");
 }
 
 size_t ShmChannel::peekMessage() const {
@@ -237,7 +244,7 @@ void ShmChannel::initEvent(int which, const char *data){
 #if defined(_WIN32)
     // named Event
     if (owner_){
-        events_[which] = CreateEventA(0, 0, 0, data);
+        events_[which].reset(CreateEventA(0, 0, 0, data));
         if (events_[which]){
             if (GetLastError() != ERROR_ALREADY_EXISTS){
                 LOG_DEBUG("ShmChannel: created Event " << data);
@@ -250,7 +257,7 @@ void ShmChannel::initEvent(int which, const char *data){
                         + std::to_string(GetLastError()));
         }
     } else {
-        events_[which] = OpenEventA(EVENT_ALL_ACCESS, 0, data);
+        events_[which].reset(OpenEventA(EVENT_ALL_ACCESS, 0, data));
         if (events_[which]){
             LOG_DEBUG("ShmChannel: opened Event " << data);
         } else {
@@ -258,14 +265,15 @@ void ShmChannel::initEvent(int which, const char *data){
                         + std::to_string(GetLastError()));
         }
     }
+    LOG_DEBUG("create event " << (void *)events_[which].get());
 #elif defined(__APPLE__)
     // named semaphore
     if (owner_){
         // create semaphore and return an error if it already exists
-        events_[which] = sem_open(data, O_CREAT | O_EXCL, 0755, 0);
+        events_[which].reset(sem_open(data, O_CREAT | O_EXCL, 0755, 0));
     } else {
         // open an existing semaphore
-        events_[which] = sem_open(data, 0, 0, 0, 0);
+        events_[which].reset(sem_open(data, 0, 0, 0, 0));
     }
     if (events_[which] == SEM_FAILED){
         throw Error(Error::SystemError, "sem_open() failed with "
@@ -273,10 +281,10 @@ void ShmChannel::initEvent(int which, const char *data){
     }
 #else
     // unnamed semaphore in shared memory segment
-    events_[which] = (void *)data;
+    events_[which].reset((void *)data);
     if (owner_){
         // only init the semaphore once!
-        if (sem_init((sem_t *)events_[which], 1, 0) != 0){
+        if (sem_init((sem_t *)events_[which].get(), 1, 0) != 0){
             throw Error(Error::SystemError, "sem_init() failed: "
                         + std::string(strerror(errno)));
         }
@@ -286,12 +294,12 @@ void ShmChannel::initEvent(int which, const char *data){
 
 void ShmChannel::postEvent(int which){
 #ifdef _WIN32
-    if (!SetEvent(events_[which])){
+    if (!SetEvent(events_[which].get())){
         throw Error(Error::SystemError, "SetEvent() failed with "
                     + std::to_string(GetLastError()));
     }
 #else
-    if (sem_post((sem_t *)events_[which]) != 0){
+    if (sem_post((sem_t *)events_[which].get()) != 0){
         throw Error(Error::SystemError, "sem_post() failed: "
                     + std::string(strerror(errno)));
     }
@@ -300,7 +308,7 @@ void ShmChannel::postEvent(int which){
 
 void ShmChannel::waitEvent(int which){
 #ifdef _WIN32
-    auto result = WaitForSingleObject(events_[which], INFINITE);
+    auto result = WaitForSingleObject(events_[which].get(), INFINITE);
     if (result != WAIT_OBJECT_0){
         if (result == WAIT_ABANDONED){
             LOG_ERROR("WaitForSingleObject() failed! Event abandoned");
@@ -310,7 +318,7 @@ void ShmChannel::waitEvent(int which){
         }
     }
 #else
-    if (sem_wait((sem_t *)events_[which]) != 0){
+    if (sem_wait((sem_t *)events_[which].get()) != 0){
         throw Error(Error::SystemError, "sem_wait() failed: "
                     + std::string(strerror(errno)));
     }
@@ -334,8 +342,7 @@ void ShmInterface::connect(const std::string &path){
 
     auto header = reinterpret_cast<Header *>(data_);
 
-    // reserve so that channels don't move in memory!
-    channels_.reserve(header->numChannels);
+    // channels_.reserve(header->numChannels);
     for (size_t i = 0; i < header->numChannels; ++i){
         channels_.emplace_back();
         channels_.back().init(data_ + header->channelOffset[i], *this, i);
