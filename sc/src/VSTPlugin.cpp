@@ -2480,8 +2480,6 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
 
-    // UIThread::setup();
-
     Print("VSTPlugin %s\n", getVersionString().c_str());
     // read cached plugin info
     readIniFile();

@@ -530,6 +530,13 @@ class IWindow {
 namespace UIThread {
     void setup();
 
+    // Run the event loop. This function must be called in the main thread.
+    // It blocks until the event loop finishes.
+    void run();
+    // Ask the event loop to stop and terminate the program.
+    // This function can be called from any thread.
+    void quit();
+    // Poll the event loop. This function must be called in the main thread.
     void poll();
 
     bool isCurrentThread();

@@ -55,6 +55,8 @@ namespace vst {
 
 namespace UIThread {
 
+static std::atomic_bool gRunning;
+
 void setup(){
     if (isCurrentThread()){
         // create NSApplication in this thread (= main thread)
@@ -70,6 +72,46 @@ void setup(){
         // we don't run on the main thread and expect the host app to create
         // the event loop (the EventLoop constructor will warn us otherwise).
     }
+}
+
+void run() {
+    // this doesn't work...
+    // [NSApp run];
+    // Kudos to https://www.cocoawithlove.com/2009/01/demystifying-nsapplication-by.html
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+
+    [NSApp finishLaunching];
+    gRunning = true;
+
+    while (gRunning) {
+        [pool release];
+        pool = [[NSAutoreleasePool alloc] init];
+        NSEvent* event = [NSApp nextEventMatchingMask:NSAnyEventMask
+                                            untilDate:[NSDate distantFuture]
+                                               inMode:NSDefaultRunLoopMode
+                                              dequeue:YES];
+        if (event) {
+            [NSApp sendEvent:event];
+            [NSApp updateWindows];
+        }
+    }
+    [pool release];
+}
+
+void quit() {
+    // break from event loop instead of [NSApp terminate:nil]
+    gRunning = false;
+    // send dummy event to wake up event loop
+    NSEvent* event = [NSEvent otherEventWithType:NSApplicationDefined
+                                        location:NSMakePoint(0, 0)
+                                   modifierFlags:0
+                                       timestamp:0
+                                    windowNumber:0
+                                         context:nil
+                                         subtype:0
+                                           data1:0
+                                           data2:0];
+    [NSApp postEvent:event atStart:NO];
 }
 
 bool isCurrentThread(){

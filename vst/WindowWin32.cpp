@@ -12,6 +12,10 @@ namespace UIThread {
 
 void setup(){}
 
+void run(){}
+
+void quit(){}
+
 bool isCurrentThread(){
     return Win32::EventLoop::instance().checkThread();
 }
