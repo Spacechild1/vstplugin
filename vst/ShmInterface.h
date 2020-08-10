@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 #include <atomic>
-#include <array>
 #include <memory>
 
 namespace vst {
@@ -87,15 +86,16 @@ class ShmChannel {
     int32_t totalSize_ = 0;
     int32_t bufferSize_ = 0;
     std::string name_;
-    std::array<Handle, 2> events_;
+    Handle eventA_;
+    Handle eventB_;
     Header *header_ = nullptr;
     Data *data_ = nullptr;
     uint32_t rdhead_ = 0;
     uint32_t wrhead_ = 0;
     // helper methods
-    void initEvent(int which, const char *data);
-    void postEvent(int which);
-    void waitEvent(int which);
+    void initEvent(Handle& event, const char *data);
+    void postEvent(void *event);
+    void waitEvent(void *event);
 };
 
 class ShmInterface {
