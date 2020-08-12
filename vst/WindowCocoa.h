@@ -46,8 +46,6 @@ class Window : public IWindow {
 
     void* getHandle() override;
 
-    void setTitle(const std::string& title) override;
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;

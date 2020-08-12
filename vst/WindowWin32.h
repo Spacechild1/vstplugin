@@ -52,7 +52,7 @@ class Window : public IWindow {
         return hwnd_;
     }
 
-    void setTitle(const std::string& title) override;
+    void setTitle(const std::string& title);
 
     void open() override;
     void close() override;

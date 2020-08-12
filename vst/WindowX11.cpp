@@ -299,7 +299,11 @@ Window::Window(Display& display, IPlugin& plugin)
         XFree(ch);
     }
     LOG_DEBUG("X11: created Window " << window_);
-    setTitle(plugin_->info().name);
+
+    // set window title
+    auto title = plugin_->info().name.c_str();
+    XStoreName(display_, window_, title);
+    XSetIconName(display_, window_, title);
 
     EventLoop::instance().registerWindow(*this);
 }
@@ -310,13 +314,6 @@ Window::~Window(){
     plugin_->closeEditor();
     XDestroyWindow(display_, window_);
     LOG_DEBUG("X11: destroyed Window");
-}
-
-void Window::setTitle(const std::string& title){
-    XStoreName(display_, window_, title.c_str());
-    XSetIconName(display_, window_, title.c_str());
-    XFlush(display_);
-    LOG_DEBUG("Window::setTitle: " << title);
 }
 
 void Window::open(){

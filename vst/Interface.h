@@ -518,8 +518,6 @@ class IWindow {
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
 
-    virtual void setTitle(const std::string& title) = 0;
-
     virtual void open() = 0;
     virtual void close() = 0;
     virtual void setPos(int x, int y) = 0;

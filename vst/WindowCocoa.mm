@@ -241,11 +241,15 @@ void Window::doOpen(){
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        [window setOwner:this];
         window_ = window;
-        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:window];
+        [window setOwner:this];
+        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:)
+                name:NSWindowDidResizeNotification object:window];
         
-        setTitle(plugin_->info().name);
+        // set window title
+        NSString *title = @(plugin_->info().name.c_str());
+        [window setTitle:title];
+
         int left = 100, top = 100, right = 400, bottom = 400;
         bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
         if (gotEditorRect){
@@ -296,13 +300,6 @@ void Window::updateEditor(){
 
 void * Window::getHandle(){
     return window_ ? [window_ contentView] : nullptr;
-}
-
-void Window::setTitle(const std::string& title){
-    if (window_){
-        NSString *name = @(title.c_str());
-        [window_ setTitle:name];
-    }
 }
 
 void Window::setFrame(int x, int y, int w, int h){

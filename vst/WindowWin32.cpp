@@ -147,7 +147,8 @@ Window::Window(IPlugin& plugin)
           NULL, NULL, NULL, NULL
     );
     LOG_DEBUG("created Window");
-    setTitle(plugin_->info().name);
+    // set window title
+    SetWindowTextW(hwnd_, widen(plugin.info().name).c_str());
     // get window dimensions from plugin
     int left = 100, top = 100, right = 400, bottom = 400;
     if (!plugin_->getEditorRect(left, top, right, bottom)){
@@ -267,10 +268,6 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
     } else {
         LOG_ERROR("bug GetWindowLongPtr");
     }
-}
-
-void Window::setTitle(const std::string& title){
-    SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
 void Window::open(){
