@@ -2,6 +2,7 @@
 
 #include "Interface.h"
 #include "DeferredPlugin.h"
+#include "PluginBridge.h"
 
 namespace vst {
 
@@ -97,8 +98,6 @@ class WindowClient : public IWindow {
     ~WindowClient();
 
     void* getHandle() override; // get system-specific handle to the window
-
-    void setTitle(const std::string& title) override;
 
     void open() override;
     void close() override;

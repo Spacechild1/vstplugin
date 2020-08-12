@@ -1,4 +1,4 @@
-#include "Bridge.h"
+#include "PluginClient.h"
 #include "Utility.h"
 
 namespace vst {
@@ -221,10 +221,6 @@ void* WindowClient::getHandle() {
     return nullptr;
 }
 
-void WindowClient::setTitle(const std::string& title){
-
-}
-
 void WindowClient::open(){
 
 }
@@ -242,7 +238,7 @@ void WindowClient::setSize(int w, int h){
 }
 
 void WindowClient::update(){
-
+    // ignore
 }
 
 } // vst
