@@ -1,5 +1,8 @@
 #include "Interface.h"
 #include "Utility.h"
+#if USE_BRIDGE
+#include "PluginServer.h"
+#endif
 
 #include <stdlib.h>
 
@@ -24,11 +27,6 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
 }
 
 } // namespace
-
-int bridge(const std::string& path){
-    LOG_VERBOSE("not implemented yet");
-    return EXIT_FAILURE;
-}
 
 int probe(const std::string& pluginPath, int pluginIndex,
           const std::string& filePath)
@@ -72,21 +70,51 @@ int main(int argc, const char *argv[]) {
         argc -= 2;
         argv += 2;
         if (verb == "probe" && argc > 0){
+            // args: <plugin_path> [<id>] [<file_path>]
             std::string path = shorten(argv[0]);
             int index;
             try {
-                index = std::stol(shorten(argv[1]), 0, 0);
+                index = std::stol(argv[1], 0, 0);
             } catch (...){
                 index = -1; // non-numeric argument
             }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
             return probe(path, index, file);
-        } else if (verb == "bridge" && argc > 0){
-            return bridge(shorten(argv[0]));
         }
+    #if USE_BRIDGE
+        else if (verb == "bridge" && argc >= 2){
+            // args: <pid> <shared_mem_path> [<plugin_path> <plugin_name>]
+            int pid = std::stod(argv[0]);
+            std::string shmPath = shorten(argv[1]);
+
+            try {
+                std::unique_ptr<PluginServer> server_;
+                if (argc > 3){
+                    // sandboxed plugin
+                    std::string pluginPath = shorten(argv[2]);
+                    std::string pluginName = shorten(argv[3]);
+                    server_ = std::make_unique<PluginServer>(pid, shmPath,
+                                                             pluginPath, pluginName);
+                } else {
+                    // shared plugin bridge
+                    server_ = std::make_unique<PluginServer>(pid, shmPath);
+                }
+                // run the server
+                server_->run();
+
+                return EXIT_SUCCESS;
+            } catch (const Error& e){
+                // LATER redirect stderr to parent stdin to get the error message
+                LOG_ERROR(e.what());
+                return EXIT_FAILURE;
+            }
+        }
+    #endif
     }
     LOG_ERROR("usage:");
     LOG_ERROR("  probe <plugin_path> [<id>] [<file_path>]");
-    LOG_ERROR("  bridge <shared_mem_path>");
+#if USE_BRIDGE
+    LOG_ERROR("  bridge <pid> <shared_mem_path> [<plugin_path> <plugin_name>]");
+#endif
     return EXIT_FAILURE;
 }

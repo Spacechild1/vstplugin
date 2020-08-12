@@ -207,7 +207,7 @@ struct Preset {
 
 using PresetList = std::vector<Preset>;
 
-struct PluginInfo {
+struct PluginInfo final {
     static const uint32_t NoParamID = 0xffffffff;
 
     using ptr = std::shared_ptr<PluginInfo>;

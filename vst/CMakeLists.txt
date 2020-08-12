@@ -23,7 +23,9 @@ endif()
 
 # bit bridging
 if (BRIDGE)
-    list(APPEND SRC "Bridge.h" "Bridge.cpp"
+    list(APPEND SRC "PluginBridge.h" "PluginBridge.cpp"
+        "PluginClient.h" "PluginClient.cpp"
+        "PluginServer.h" "PluginServer.cpp"
         "ShmInterface.h" "ShmInterface.cpp")
 endif()
 

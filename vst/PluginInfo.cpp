@@ -115,10 +115,14 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     factory_ = std::move(factory);
 }
 
+// ThreadedPlugin.cpp
 IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
 
+#if USE_BRIDGE
+// PluginClient.cpp
 IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
                                bool editor, bool sandbox);
+#endif
 
 IPlugin::ptr PluginInfo::create(bool editor, bool threaded, bool sandbox) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
