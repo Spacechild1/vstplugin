@@ -75,6 +75,7 @@ class alignas(CACHELINE_SIZE) SpinLock {
  public:
     SpinLock();
     void lock();
+    bool try_lock();
     void unlock();
  private:
     // pad and align to prevent false sharing
