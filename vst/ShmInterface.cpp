@@ -362,7 +362,7 @@ void ShmInterface::disconnect(){
 }
 
 void ShmInterface::addChannel(ShmChannel::Type type,
-                              const size_t size,const std::string &name)
+                              size_t size, const std::string &name)
 {
     if (data_){
         throw Error(Error::SystemError,

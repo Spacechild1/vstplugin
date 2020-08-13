@@ -127,7 +127,7 @@ class ShmInterface {
 
     // create shared memory interface
     void addChannel(ShmChannel::Type type,
-                    const size_t size, const std::string& name);
+                    size_t size, const std::string& name);
     void create();
     void close();
 

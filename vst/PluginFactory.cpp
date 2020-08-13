@@ -31,7 +31,7 @@ namespace vst {
 
 static HINSTANCE hInstance = 0;
 
-static const std::wstring& getModuleDirectory(){
+const std::wstring& getModuleDirectory(){
     static std::wstring dir = [](){
         wchar_t wpath[MAX_PATH+1];
         if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
@@ -297,6 +297,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     // get absolute path to host app
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
+    // arguments: host.exe probe <plugin_path> <plugin_id> <file_path>
     // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
     std::stringstream cmdLineStream;
     cmdLineStream << hostApp << " probe "
@@ -347,7 +348,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
-        if (execl(hostPath.c_str(), hostApp.c_str(), path().c_str(), "probe",
+        // arguments: host probe <plugin_path> <plugin_id> <file_path>
+        if (execl(hostPath.c_str(), hostApp.c_str(), "probe", path().c_str(),
                   idString, tmpPath.c_str(), nullptr) < 0){
             // write error to temp file
             int err = errno;
