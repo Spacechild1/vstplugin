@@ -8,7 +8,6 @@ namespace vst {
 
 class PluginClient final : public DeferredPlugin {
  public:
-
     PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox);
     virtual ~PluginClient();
 
@@ -25,9 +24,7 @@ class PluginClient final : public DeferredPlugin {
     void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
     int getLatencySamples() override;
 
-    void setListener(IPluginListener::ptr listener) override {
-        listener_ = listener;
-    }
+    void setListener(IPluginListener::ptr listener) override;
 
     double getTransportPosition() const override;
 
@@ -66,6 +63,7 @@ class PluginClient final : public DeferredPlugin {
     void setWindow(std::unique_ptr<IWindow> window) override {
         window_ = std::move(window);
     }
+
     IWindow* getWindow() const override {
         return window_.get();
     }
@@ -82,10 +80,14 @@ class PluginClient final : public DeferredPlugin {
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  protected:
+    using ID = PluginBridge::ID;
+
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
+    PluginBridge::ptr bridge_;
+    PluginBridge::ID id_;
 
     int numParameters() const { return info_->numParameters(); }
     int numPrograms() const { return info_->numPrograms(); }

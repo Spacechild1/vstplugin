@@ -2,13 +2,41 @@
 
 #include "Interface.h"
 #include "Utility.h"
-#include "Sync.h"
 
-#include <unordered_map>
+#include <sstream>
 
 namespace vst {
 
-SharedMutex gPluginBridgeMutex;
+/*//////////////////// RTChannel ////////////////////*/
+
+RTChannel::RTChannel(ShmChannel& channel)
+    : channel_(&channel), lock_(nullptr){}
+
+RTChannel::RTChannel(ShmChannel& channel, SpinLock& lock)
+    : channel_(&channel), lock_(&lock){}
+
+RTChannel::~RTChannel(){
+    if (lock_){
+        lock_->unlock();
+    }
+}
+
+bool RTChannel::addCommand(const char *data, size_t size){
+    return channel_->addMessage(data, size);
+}
+
+void RTChannel::send(){
+    channel_->post();
+    channel_->waitReply();
+}
+
+bool RTChannel::getReply(const char *&data, size_t& size){
+    return channel_->getMessage(data, size);
+}
+
+/*//////////////////// PluginBridge /////////////////*/
+
+std::mutex gPluginBridgeMutex;
 
 // use std::weak_ptr, so the bridge is automatically closed if it is not used
 std::unordered_map<CpuArch, std::weak_ptr<PluginBridge>> gPluginBridgeMap;
@@ -16,7 +44,7 @@ std::unordered_map<CpuArch, std::weak_ptr<PluginBridge>> gPluginBridgeMap;
 PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
     PluginBridge::ptr bridge;
 
-    LockGuard lock(gPluginBridgeMutex);
+    std::lock_guard<std::mutex> lock(gPluginBridgeMutex);
 
     auto it = gPluginBridgeMap.find(arch);
     if (it != gPluginBridgeMap.end()){
@@ -36,13 +64,264 @@ PluginBridge::ptr PluginBridge::create(CpuArch arch, const PluginInfo &desc){
     return std::make_shared<PluginBridge>(arch, &desc);
 }
 
+// PluginFactory.cpp
+#ifdef _WIN32
+const std::wstring& getModuleDirectory();
+#else
+const std::string& getModuleDirectory();
+#endif
+std::string getHostApp(CpuArch arch);
 
 PluginBridge::PluginBridge(CpuArch arch, const PluginInfo *desc){
-    // create process and setup shared memory interface
+    // setup shared memory interface
+    shm_.addChannel(ShmChannel::Queue, queueSize, "ui_snd");
+    shm_.addChannel(ShmChannel::Queue, queueSize, "ui_rcv");
+    if (desc){
+        // sandboxed
+        shm_.addChannel(ShmChannel::Request, requestSize, "rt");
+    } else {
+        // shared
+        for (int i = 0; i < maxNumThreads; ++i){
+            char buf[16];
+            snprintf(buf, sizeof(buf), "rt%d", i+1);
+            shm_.addChannel(ShmChannel::Request, requestSize, buf);
+        }
+        locks_ = std::make_unique<SpinLock[]>(maxNumThreads);
+    }
+    shm_.create();
+    // spawn host process
+    std::string hostApp = getHostApp(arch);
+#ifdef _WIN32
+    // get absolute path to host app
+    std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
+    /// LOG_DEBUG("host path: " << shorten(hostPath));
+    // arguments: host.exe bridge <parent_pid> <shm_path> [<plugin_path> <plugin_name>]
+    // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
+    std::stringstream cmdLineStream;
+    cmdLineStream << hostApp << " bridge " << GetCurrentProcessId() << "\"" << shm_.path() << "\"";
+    if (desc){
+        cmdLineStream << "\"" << desc->path() << "\" \"" << desc->name << "\"";
+    }
+    // LOG_DEBUG(cmdLineStream.str());
+    auto cmdLine = widen(cmdLineStream.str());
+
+    ZeroMemory(&pi_, sizeof(pi_));
+
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+
+    if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL,
+                        BRIDGE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi_)){
+        auto err = GetLastError();
+        std::stringstream ss;
+        ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
+        throw Error(Error::SystemError, ss.str());
+    }
+#else // Unix
+    // get absolute path to host app
+    std::string hostPath = getModuleDirectory() + "/" + hostApp;
+    // fork
+    pid_ = fork();
+    if (pid_ == -1) {
+        throw Error(Error::SystemError, "fork() failed!");
+    } else if (pid_ == 0) {
+        // child process: start new process with plugin path and temp file path as arguments.
+        // we must not quote arguments to exec!
+    #if !BRIDGE_LOG
+        // disable stdout and stderr
+        auto nullOut = fopen("/dev/null", "w");
+        fflush(stdout);
+        dup2(fileno(nullOut), STDOUT_FILENO);
+        fflush(stderr);
+        dup2(fileno(nullOut), STDERR_FILENO);
+    #endif
+        // arguments: host.exe bridge <parent_pid> <shm_path> [<plugin_path> <plugin_name>]
+        auto pid = std::to_string(getpid());
+        const char *argv[7] = { hostApp.c_str(), "bridge", pid.c_str(), shm_.path().c_str(), nullptr };
+        if (desc){
+            argv[4] = desc->path().c_str();
+            argv[5] = desc->name.c_str();
+            argv[6] = nullptr;
+        }
+        if (execv(hostPath.c_str(), (char* const *)argv) < 0){
+            // LATER redirect child stderr to parent stdin
+            LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
+        }
+        std::exit(EXIT_FAILURE);
+    }
+#endif
+    WatchDog::instance().registerProcess(shared_from_this());
 }
 
 PluginBridge::~PluginBridge(){
-    // send quit message and wait for process to finish
+    // send quit message
+    if (alive()){
+
+    }
+#ifdef _WIN32
+    CloseHandle(pi_.hProcess);
+    CloseHandle(pi_.hThread);
+#endif
+}
+
+void PluginBridge::checkStatus(){
+#ifdef _WIN32
+    DWORD res = WaitForSingleObject(pi_.hProcess, 0);
+    if (res == WAIT_TIMEOUT){
+        return; // still running
+    } else if (res == WAIT_OBJECT_0){
+        DWORD code = 0;
+        if (GetExitCodeProcess(pi_.hProcess, &code)){
+            if (code != EXIT_SUCCESS){
+                LOG_ERROR("host process crashed!");
+            }
+        } else {
+            LOG_ERROR("couldn't retrieve exit code for host process!");
+        }
+    } else {
+        LOG_ERROR("WaitForSingleObject() failed");
+    }
+#else
+    int code = -1;
+    int status = 0;
+    if (waitpid(pid_, &status, WNOHANG) == 0){
+        return; // still running
+    }
+    if (WIFEXITED(status)) {
+        code = WEXITSTATUS(status);
+        if (code != EXIT_SUCCESS){
+            LOG_ERROR("host process crashed!");
+        }
+    } else {
+        LOG_ERROR("couldn't get exit status");
+    }
+#endif
+
+    alive_ = false;
+
+    // notify waiting RT threads
+    for (int i = 2; i < shm_.numChannels(); ++i){
+        shm_.getChannel(i).postReply();
+    }
+}
+
+void PluginBridge::addUIClient(ID id, std::shared_ptr<IPluginListener> client){
+    LockGuard lock(clientMutex_);
+    clients_.emplace(id, client);
+}
+
+void PluginBridge::removeUIClient(ID id){
+    LockGuard lock(clientMutex_);
+    clients_.erase(id);
+}
+
+bool PluginBridge::postUIThread(const char *cmd, size_t size){
+    LockGuard lock(uiMutex_);
+    return shm_.getChannel(0).writeMessage(cmd, size);
+}
+
+bool PluginBridge::pollUIThread(char *buffer, size_t& size){
+    return shm_.getChannel(1).readMessage(buffer, size);
+}
+
+RTChannel PluginBridge::getChannel(){
+    if (locks_){
+        static std::atomic<uint32_t> counter{0}; // can safely overflow
+
+        uint32_t index;
+        for (;;){
+            // we take the current index and try to lock the
+            // corresponding spinlock. if the spinlock is already
+            // taken (another DSP thread trying to use the plugin bridge
+            // concurrently), we atomically increment the index and try again.
+            // if there's only a single DSP thread, we will only ever
+            // lock the first spinlock and the plugin server will only
+            // use a single thread as well.
+
+            // modulo is optimized to bitwise AND
+            // if maxNumThreads is power of 2!
+            index = counter.load(std::memory_order_acquire)
+                    % maxNumThreads;
+            if (locks_[index].try_lock()){
+                break;
+            }
+            ++counter; // atomic increment
+        }
+        return RTChannel(shm_.getChannel(index + 2), locks_[index]);
+    } else {
+        return RTChannel(shm_.getChannel(2));
+    }
+}
+
+/*/////////////////// WatchDog //////////////////////*/
+
+WatchDog& WatchDog::instance(){
+    static WatchDog watchDog;
+    return watchDog;
+}
+
+WatchDog::WatchDog(){
+    running_ = true;
+    thread_ = std::thread([this](){
+        vst::setThreadPriority(Priority::Low);
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        for (;;){
+            // periodically check all running processes
+            while (!processes_.empty()){
+                for (auto it = processes_.begin(); it != processes_.end();){
+                    auto process = it->lock();
+                    if (process){
+                        process->checkStatus();
+                        ++it;
+                    } else {
+                        // remove stale process
+                        it = processes_.erase(it);
+                    }
+                }
+
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                lock.lock();
+            }
+
+            // wait for a new process to be added
+            //
+            // NOTE: we have to put both the check and wait at the end,
+            // because the thread is created concurrently with the first item
+            // and 'running_' might be set to false during this_thread::sleep_for().
+            if (running_){
+                condition_.wait(lock);
+            } else {
+                break;
+            }
+        }
+    });
+#if !WATCHDOG_JOIN
+    thread_.detach();
+#endif
+}
+
+WatchDog::~WatchDog(){
+    processes_.clear();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        bool running_ = false;
+        condition_.notify_one();
+    }
+#if WATCHDOG_JOIN
+    thread_.join();
+#endif
+}
+
+void WatchDog::registerProcess(PluginBridge::ptr process){
+    std::lock_guard<std::mutex> lock(mutex_);
+    processes_.push_back(process);
+    // wake up if process list has been empty!
+    if (processes_.size() == 1){
+        condition_.notify_one();
+    }
 }
 
 } // vst

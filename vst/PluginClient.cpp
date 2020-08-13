@@ -27,11 +27,19 @@ IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& n
 PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox)
     : factory_(std::move(f)), info_(std::move(desc))
 {
+    static std::atomic<ID> nextID{0};
+    id_ = ++nextID; // atomic incremetn!
 
+    if (sandbox){
+        bridge_ = PluginBridge::create(f->arch(), *desc);
+    } else {
+        bridge_ = PluginBridge::getShared(f->arch());
+        // TODO open plugin
+    }
 }
 
 PluginClient::~PluginClient(){
-
+    bridge_->removeUIClient(id_);
 }
 
 void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
@@ -64,6 +72,11 @@ void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
 
 int PluginClient::getLatencySamples(){
     return 0;
+}
+
+void PluginClient::setListener(IPluginListener::ptr listener) {
+    listener_ = listener;
+    bridge_->addUIClient(id_, listener);
 }
 
 double PluginClient::getTransportPosition() const {
