@@ -729,11 +729,16 @@ t_vsteditor::~t_vsteditor(){
         pd_free((t_pd *)e_canvas);
     }
     clock_free(e_clock);
+    // prevent memleak with sysex events
+    for (auto& e : e_events){
+        if (e.type == t_event::Sysex){
+            delete e.sysex.data;
+        }
+    }
 }
 
 // post outgoing event (thread-safe)
-template<typename T, typename U>
-void t_vsteditor::post_event(T& queue, U&& event){
+void t_vsteditor::post_event(const t_event& event){
     bool mainthread = std::this_thread::get_id() == e_mainthread;
     // prevent event scheduling from within the tick method to avoid
     // deadlocks or memory errors
@@ -743,7 +748,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     }
     // the event might come from the GUI thread, worker thread or audio thread
     e_mutex.lock();
-    queue.push_back(std::forward<U>(event));
+    e_events.push_back(event);
     e_mutex.unlock();
 
     if (mainthread){
@@ -769,21 +774,36 @@ void t_vsteditor::post_event(T& queue, U&& event){
 
 // parameter automation notification might come from another thread (VST GUI editor).
 void t_vsteditor::parameterAutomated(int index, float value){
-    post_event(e_automated, param_change{index, value});
+    t_event e(t_event::Parameter);
+    e.param.index = index;
+    e.param.value = value;
+    post_event(e);
 }
 
 // latency change notification might come from another thread
 void t_vsteditor::latencyChanged(int nsamples){
-    post_event(e_automated, param_change{LatencyChange, (float)nsamples});
+    t_event e(t_event::Latency);
+    e.latency = nsamples;
+    post_event(e);
 }
 
 // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
 void t_vsteditor::midiEvent(const MidiEvent &event){
-    post_event(e_midi, event);
+    t_event e(t_event::Midi);
+    e.midi = event;
+    post_event(e);
 }
 
 void t_vsteditor::sysexEvent(const SysexEvent &event){
-    post_event(e_sysex, event);
+    // deep copy!
+    auto data = new char[event.size];
+    memcpy(data, event.data, event.size);
+
+    t_event e(t_event::Sysex);
+    e.sysex.data = data;
+    e.sysex.size = event.size;
+    e.sysex.delta = event.delta;
+    post_event(e);
 }
 
 void t_vsteditor::tick(t_vsteditor *x){
@@ -799,47 +819,56 @@ void t_vsteditor::tick(t_vsteditor *x){
     }
 
     // automated parameters:
-    for (auto& p : x->e_automated){
-        if (p.index >= 0){
-            // update the generic GUI
-            x->param_changed(p.index, p.value);
-            // send message
-            t_atom msg[2];
-            SETFLOAT(&msg[0], p.index);
-            SETFLOAT(&msg[1], p.value);
-            outlet_anything(outlet, gensym("param_automated"), 2, msg);
-        } else if (p.index == LatencyChange){
+    for (auto& e : x->e_events){
+        switch (e.type){
+        case t_event::Latency:
+        {
             t_atom a;
-            int latency = p.value;
+            int latency = e.latency;
             if (x->e_owner->x_threaded){
                 latency += x->e_owner->x_blocksize;
             }
             SETFLOAT(&a, latency);
             outlet_anything(outlet, gensym("latency"), 1, &a);
+            break;
+        }
+        case t_event::Parameter:
+        {
+            // update the generic GUI
+            x->param_changed(e.param.index, e.param.value);
+            // send message
+            t_atom msg[2];
+            SETFLOAT(&msg[0], e.param.index);
+            SETFLOAT(&msg[1], e.param.value);
+            outlet_anything(outlet, gensym("param_automated"), 2, msg);
+            break;
+        }
+        case t_event::Midi:
+        {
+            t_atom msg[3];
+            SETFLOAT(&msg[0], (unsigned char)e.midi.data[0]);
+            SETFLOAT(&msg[1], (unsigned char)e.midi.data[1]);
+            SETFLOAT(&msg[2], (unsigned char)e.midi.data[2]);
+            outlet_anything(outlet, gensym("midi"), 3, msg);
+            break;
+        }
+        case t_event::Sysex:
+        {
+            auto msg = new t_atom[e.sysex.size];
+            int n = e.sysex.size;
+            for (int i = 0; i < n; ++i){
+                SETFLOAT(&msg[i], (unsigned char)e.sysex.data[i]);
+            }
+            outlet_anything(outlet, gensym("sysex"), n, msg);
+            delete msg;
+            delete e.sysex.data; // free sysex data!
+            break;
+        }
+        default:
+            bug("t_vsteditor::tick");
         }
     }
-    x->e_automated.clear();
-    // midi events:
-    for (auto& midi : x->e_midi){
-        t_atom msg[3];
-        SETFLOAT(&msg[0], (unsigned char)midi.data[0]);
-        SETFLOAT(&msg[1], (unsigned char)midi.data[1]);
-        SETFLOAT(&msg[2], (unsigned char)midi.data[2]);
-        outlet_anything(outlet, gensym("midi"), 3, msg);
-    }
-    x->e_midi.clear();
-    // sysex events:
-    for (auto& sysex : x->e_sysex){
-        std::vector<t_atom> msg;
-        int n = sysex.size;
-        msg.resize(n);
-        for (int i = 0; i < n; ++i){
-            SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
-        }
-        outlet_anything(outlet, gensym("midi"), n, msg.data());
-    }
-    x->e_sysex.clear();
-
+    x->e_events.clear();
     x->e_mutex.unlock();
     x->e_tick = false;
 }
@@ -1515,10 +1544,10 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!getInt(0, index)) return;
     if (!getInt(1, value)) return;
     float opt = atom_getfloatarg(2, argc, argv);
-    char *data = nullptr;
     int size = argc - 3;
+    char *data = nullptr;
     if (size > 0){
-        data = (char *)getbytes(size);
+        data = new char[size];
         for (int i = 0, j = 3; i < size; ++i, ++j){
             data[i] = atom_getfloat(argv + j);
         }
@@ -1529,7 +1558,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
     outlet_anything(x->x_messout, gensym("vendor_method"), 2, msg);
     if (data){
-        freebytes(data, size);
+        delete data;
     }
 }
 
