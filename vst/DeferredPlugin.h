@@ -140,11 +140,16 @@ class DeferredPlugin : public IPlugin {
             SetTransportPosition,
             SendMidi,
             SendSysex,
-            SetProgram
-        } type;
+            SetProgram,
+            ParamAutomated,
+            LatencyChanged,
+            MidiReceived,
+            SysexReceived
+        };
         Command() = default;
         Command(Command::Type _type) : type(_type){}
         // data
+        Type type;
         union {
             bool b;
             int i;

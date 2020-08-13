@@ -39,7 +39,11 @@ class DSPThreadPool {
     SpinLock popLock_;
 };
 
-class ThreadedPlugin final : public DeferredPlugin {
+class ThreadedPlugin final :
+        public DeferredPlugin,
+        public IPluginListener,
+        std::enable_shared_from_this<IPluginListener>
+{
  public:
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
@@ -138,23 +142,36 @@ class ThreadedPlugin final : public DeferredPlugin {
     void endMessage() override {
         plugin_->endMessage();
     }
+
+    // IPluginListener
+    void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
+    void midiEvent(const MidiEvent& event) override;
+    void sysexEvent(const SysexEvent& event) override;
  private:
     void updateBuffer();
     template<typename T>
     void doProcess(ProcessData<T>& data);
     void dispatchCommands();
+    void sendEvents();
     template<typename T>
     void threadFunction(int numSamples);
     // data
     DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
+    std::weak_ptr<IPluginListener> listener_;
     mutable SharedMutex mutex_;
     Event event_;
-    // commands
+    std::thread::id rtThread_;
+    // commands/events
     void pushCommand(const Command& command) override {
         commands_[current_].push_back(command);
     }
+    void pushEvent(const Command& event){
+        events_[!current_].push_back(event);
+    }
     std::vector<Command> commands_[2];
+    std::vector<Command> events_[2];
     int current_ = 0;
     // buffer
     int blockSize_ = 0;

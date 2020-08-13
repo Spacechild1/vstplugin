@@ -101,7 +101,8 @@ ThreadedPlugin::~ThreadedPlugin() {
 }
 
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
-    plugin_->setListener(std::move(listener));
+    listener_ = listener;
+    plugin_->setListener(shared_from_this());
 }
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
@@ -204,6 +205,12 @@ void ThreadedPlugin::dispatchCommands() {
 template<typename T>
 void ThreadedPlugin::threadFunction(int numSamples){
     if (mutex_.try_lock()){
+        // set thread ID!
+        rtThread_ = std::this_thread::get_id();
+
+        // clear outgoing event queue!
+        events_[!current_].clear();
+
         dispatchCommands();
 
         ProcessData<T> data;
@@ -262,7 +269,7 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
     for (int i = 0; i < data.numAuxOutputs; ++i){
         std::copy(auxOutput[i], auxOutput[i] + data.numSamples, data.auxOutput[i]);
     }
-    // swap queue and notify DSP thread pool
+    // swap queues and notify DSP thread pool
     current_ = !current_;
     auto cb = [](ThreadedPlugin *plugin, int numSamples){
         plugin->threadFunction<T>(numSamples);
@@ -277,6 +284,34 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
             std::fill(auxOutput[i], auxOutput[i] + data.numSamples, 0);
         }
         event_.signal(); // so that the next call to event_.wait() doesn't block!
+    }
+
+    sendEvents();
+}
+
+void ThreadedPlugin::sendEvents(){
+    IPluginListener::ptr listener = listener_.lock();
+    if (listener){
+        for (auto& event : events_[current_]){
+            switch (event.type){
+            case Command::ParamAutomated:
+                listener->parameterAutomated(event.paramValue.index,
+                                             event.paramValue.value);
+                break;
+            case Command::LatencyChanged:
+                listener->latencyChanged(event.i);
+                break;
+            case Command::MidiReceived:
+                listener->midiEvent(event.midi);
+                break;
+            case Command::SysexReceived:
+                listener->sysexEvent(event.sysex);
+                delete event.sysex.data; // delete data!
+                break;
+            default:
+                break;
+            }
+        }
     }
 }
 
@@ -417,6 +452,61 @@ void ThreadedPlugin::writeBankData(std::string& buffer) {
 intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, float opt) {
     LockGuard lock(mutex_);
     return plugin_->vendorSpecific(index, value, p, opt);
+}
+
+void ThreadedPlugin::parameterAutomated(int index, float value) {
+    if (std::this_thread::get_id() == rtThread_){
+        Command e(Command::ParamAutomated);
+        e.paramValue.index = index;
+        e.paramValue.value = value;
+        pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = listener_.lock();
+        listener->parameterAutomated(index, value);
+    }
+}
+
+void ThreadedPlugin::latencyChanged(int nsamples) {
+    if (std::this_thread::get_id() == rtThread_){
+        Command e(Command::LatencyChanged);
+        e.i = nsamples;
+        pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = listener_.lock();
+        listener->latencyChanged(nsamples);
+    }
+}
+
+void ThreadedPlugin::midiEvent(const MidiEvent& event) {
+    if (std::this_thread::get_id() == rtThread_){
+        Command e(Command::MidiReceived);
+        e.midi = event;
+        pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = listener_.lock();
+        listener->midiEvent(event);
+    }
+}
+
+void ThreadedPlugin::sysexEvent(const SysexEvent& event) {
+    if (std::this_thread::get_id() == rtThread_){
+        // deep copy!
+        auto data = new char[event.size];
+        memcpy(data, event.data, event.size);
+
+        Command e(Command::SysexReceived);
+        e.sysex.data = data;
+        e.sysex.size = event.size;
+        e.sysex.delta = event.delta;
+        pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = listener_.lock();
+        listener->sysexEvent(event);
+    }
 }
 
 } // vst
