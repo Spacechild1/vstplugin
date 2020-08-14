@@ -47,11 +47,20 @@ class WriteLock;
 class ReadLock;
 
 struct MidiEvent {
-    MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0, float _detune = 0){
-        data[0] = status; data[1] = data1; data[2] = data2; delta = _delta; detune = _detune;
+    MidiEvent(char _status = 0, char _data1 = 0, char _data2 = 0,
+              int _delta = 0, float _detune = 0){
+        status = _status; data1 = _data1; data2 = _data2;
+        delta = _delta; detune = _detune;
     }
-    char data[3];
-    int delta;
+    union {
+        char data[4]; // explicit padding
+        struct {
+            char status;
+            char data1;
+            char data2;
+        };
+    };
+    int32_t delta;
     float detune;
 };
 
@@ -59,8 +68,8 @@ struct SysexEvent {
     SysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
         : data(_data), size(_size), delta(_delta){}
     const char *data;
-    int size;
-    int delta;
+    int32_t size;
+    int32_t delta;
 };
 
 class IPluginListener {
@@ -312,7 +321,7 @@ struct PluginInfo final {
             return it->second;
         }
         else {
-            return -1; // throw?
+            return -1; // not automatable
         }
     }
 #endif
