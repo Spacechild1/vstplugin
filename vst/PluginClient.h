@@ -15,12 +15,17 @@ class PluginClient final : public DeferredPlugin {
         return *info_;
     }
 
+    PluginBridge& bridge() {
+        return *bridge_;
+    }
+
+    uint32_t id() const { return id_; }
+
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;
     void process(ProcessData<double>& data) override;
     void suspend() override;
     void resume() override;
-    void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
     int getLatencySamples() override;
 
@@ -28,6 +33,8 @@ class PluginClient final : public DeferredPlugin {
 
     double getTransportPosition() const override;
 
+    void setParameter(int index, float value, int sampleOffset) override;
+    bool setParameter(int index, const std::string& str, int sampleOffset) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
@@ -42,15 +49,19 @@ class PluginClient final : public DeferredPlugin {
     void readProgramData(const std::string& buffer) {
         readProgramData(buffer.data(), buffer.size());
     }
-    void writeProgramFile(const std::string& path) override;
-    void writeProgramData(std::string& buffer) override;
     void readBankFile(const std::string& path) override;
     void readBankData(const char *data, size_t size) override;
     void readBankData(const std::string& buffer) {
         readBankData(buffer.data(), buffer.size());
     }
+    void sendData(Command::Type type, const char *data, size_t size);
+
+    void writeProgramFile(const std::string& path) override;
+    void writeProgramData(std::string& buffer) override;
     void writeBankFile(const std::string& path) override;
     void writeBankData(std::string& buffer) override;
+
+    void receiveData(Command::Type type, std::string& buffer);
 
     void openEditor(void *window) override;
     void closeEditor() override;
@@ -80,18 +91,33 @@ class PluginClient final : public DeferredPlugin {
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  protected:
-    using ID = PluginBridge::ID;
-
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginInfo::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     PluginBridge::ptr bridge_;
-    PluginBridge::ID id_;
+    uint32_t id_;
+    std::vector<Command> commands_;
+    // cache
+    struct Param {
+        float value;
+        std::string display;
+    };
+    std::unique_ptr<Param[]> paramCache_;
+    std::unique_ptr<std::string[]> programCache_;
+    int program_ = 0;
+    int latency_ = 0;
+    double transport_;
 
     int numParameters() const { return info_->numParameters(); }
     int numPrograms() const { return info_->numPrograms(); }
-    void pushCommand(const Command& cmd) override {}
+    void pushCommand(const Command& cmd) override {
+        commands_.push_back(cmd);
+    }
+    template<typename T>
+    void doProcess(ProcessData<T>& data);
+    void sendCommands(RTChannel& channel);
+    void receiveEvents(RTChannel& channel);
 };
 
 class WindowClient : public IWindow {
