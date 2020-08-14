@@ -553,6 +553,13 @@ namespace UIThread {
     bool callSync(Callback cb, void *user);
 
     bool callAsync(Callback cb, void *user);
+
+    using PollFunction = void (*)(void *);
+    using Handle = int32_t;
+
+    Handle addPollFunction(PollFunction fn, void *context);
+
+    void removePollFunction(Handle handle);
 }
 
 } // vst

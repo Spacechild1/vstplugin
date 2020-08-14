@@ -28,6 +28,14 @@ bool callAsync(Callback cb, void *user){
     return X11::EventLoop::instance().callAsync(cb, user);
 }
 
+int32_t addPollFunction(PollFunction fn, void *context){
+    return X11::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return X11::EventLoop::instance().removePollFunction(handle);
+}
+
 } // UIThread
 
 namespace X11 {
@@ -147,6 +155,7 @@ void EventLoop::run(){
                     LOG_ERROR("bug wmCloseEditor: " << msg.window);
                 }
             } else if (type == wmUpdatePlugins){
+                // update plugins
                 for (auto& it : pluginMap_){
                     auto plugin = it.second;
                     if (plugin){
@@ -154,6 +163,11 @@ void EventLoop::run(){
                     } else {
                         LOG_ERROR("bug wmUpdatePlugins: " << it.first);
                     }
+                }
+                // call poll functions
+                std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+                for (auto& it : pollFunctions_){
+                    it.second();
                 }
             } else if (type == wmQuit){
                 LOG_DEBUG("wmQuit");
@@ -231,6 +245,19 @@ bool EventLoop::sendClientEvent(::Window window, Atom atom,
     } else {
         return false;
     }
+}
+
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
 }
 
 bool EventLoop::checkThread(){

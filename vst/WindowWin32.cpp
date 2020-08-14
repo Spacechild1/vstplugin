@@ -30,6 +30,14 @@ bool callAsync(Callback cb, void *user){
     return Win32::EventLoop::instance().postMessage(Win32::WM_CALL, (void *)cb, user);
 }
 
+int32_t addPollFunction(PollFunction fn, void *context){
+    return Win32::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return Win32::EventLoop::instance().removePollFunction(handle);
+}
+
 } // UIThread
 
 namespace Win32 {
@@ -43,35 +51,44 @@ DWORD EventLoop::run(void *user){
     setThreadPriority(Priority::Low);
 
     auto obj = (EventLoop *)user;
-    MSG msg;
-    int ret;
     // force message queue creation
+    MSG msg;
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
     obj->notify();
     LOG_DEBUG("start message loop");
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
-        if (ret < 0){
-            // error
+
+    // setup timer
+    auto timer = SetTimer(0, 0, EventLoop::updateInterval, NULL);
+
+    for (;;){
+        if (GetMessage(&msg, NULL, 0, 0) < 0){
             LOG_ERROR("GetMessage: error");
             break;
         }
-        switch (msg.message){
-        case WM_CALL:
-        {
+
+        if (msg.message == WM_CALL){
             LOG_DEBUG("WM_CREATE_PLUGIN");
             auto cb = (UIThread::Callback)msg.wParam;
             auto data = (void *)msg.lParam;
             cb(data);
             obj->notify();
-            break;
-        }
-        default:
+        } else if ((msg.message == WM_TIMER) && (msg.hwnd == NULL)
+                   && (msg.wParam == timer)) {
+            // call poll functions
+            std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
+            for (auto& it : obj->pollFunctions_){
+                it.second();
+            }
+            // LOG_VERBOSE("call poll functions.");
+        } else {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
-            break;
         }
     }
     LOG_DEBUG("quit message loop");
+
+    KillTimer(NULL, timer);
+
     return 0;
 }
 
@@ -130,6 +147,19 @@ bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
     } else {
         return false;
     }
+}
+
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
 }
 
 void EventLoop::notify(){
@@ -265,6 +295,7 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
     auto window = (Window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     if (window){
         window->plugin_->updateEditor();
+        // LOG_DEBUG("update editor");
     } else {
         LOG_ERROR("bug GetWindowLongPtr");
     }

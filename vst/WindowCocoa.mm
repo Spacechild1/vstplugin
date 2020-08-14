@@ -148,6 +148,14 @@ bool callAsync(Callback cb, void *user){
     return Cocoa::EventLoop::instance().callAsync(cb, user);
 }
 
+int32_t addPollFunction(PollFunction fn, void *context){
+    return Cocoa::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return Cocoa::EventLoop::instance().removePollFunction(handle);
+}
+
 } // UIThread
 
 namespace Cocoa {
@@ -168,9 +176,44 @@ EventLoop::EventLoop(){
     } else {
         LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
     }
+
+    auto createTimer = [this](){
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
+                    target:nil
+                    selector:@selector(poll)
+                    userInfo:nil
+                    repeats:YES];
+    };
+
+    if (UIThread::isCurrentThread()){
+        createTimer();
+    } else {
+        auto queue = dispatch_get_main_queue();
+        dispatch_async(queue, createTimer);
+    }
 }
 
 EventLoop::~EventLoop(){}
+
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
+}
+
+void EventLoop::poll(){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    for (auto& it : pollFunctions_){
+        it.second();
+    }
+}
 
 bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (haveNSApp_){
