@@ -201,6 +201,4 @@ struct ShmNRTCommand {
     };
 };
 
-#define CommandSize(cmd, field) (sizeof((cmd).field) + (cmd).headerSize)
-
 } // vst

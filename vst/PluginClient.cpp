@@ -67,7 +67,7 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessP
     cmd.setup.precision = static_cast<uint32_t>(precision);
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(&cmd, CommandSize(cmd, setup));
+    chn.AddCommand(cmd, setup);
     chn.send();
 }
 
@@ -80,7 +80,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
         ShmCommand cmd(Command::SetPlugin);
         cmd.id = id();
 
-        channel.addCommand(&cmd, CommandSize(cmd, id));
+        channel.AddCommand(cmd, id);
     }
 
     // send commands (parameter changes, MIDI messages, etc.)
@@ -95,7 +95,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
         cmd.process.numAuxOutpus = data.numAuxOutputs;
         cmd.process.numSamples = data.numSamples;
 
-        channel.addCommand(&cmd, CommandSize(cmd, process));
+        channel.AddCommand(cmd, process);
     }
     // write audio data
     // since we have sent the number of channels in the "Process" command,
@@ -150,7 +150,7 @@ void PluginClient::suspend(){
     ShmNRTCommand cmd(Command::Suspend, id());
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(&cmd, CommandSize(cmd, empty));
+    chn.AddCommand(cmd, empty);
     chn.send();
 }
 
@@ -158,7 +158,7 @@ void PluginClient::resume(){
     ShmNRTCommand cmd(Command::Resume, id());
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(&cmd, CommandSize(cmd, empty));
+    chn.AddCommand(cmd, empty);
     chn.send();
 }
 
@@ -170,7 +170,7 @@ void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
     cmd.speakers.auxout = auxout;
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(&cmd, CommandSize(cmd, speakers));
+    chn.AddCommand(cmd, speakers);
     chn.send();
 }
 
@@ -255,13 +255,15 @@ void PluginClient::writeBankData(std::string& buffer){
 }
 
 void PluginClient::sendData(Command::Type type, const char *data, size_t size){
-    auto cmd = (ShmNRTCommand *)alloca(sizeof(ShmNRTCommand) + size);
+    auto totalSize = sizeof(ShmNRTCommand) + size;
+    auto cmd = (ShmNRTCommand *)alloca(totalSize);
     cmd->type = type;
     cmd->id = id();
+    cmd->buffer.size = size;
     memcpy(cmd->buffer.data, data, size);
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(cmd, CommandSize(*cmd, buffer) + size);
+    chn.addCommand(cmd, totalSize);
     chn.send();
 
     const ShmCommand *reply;
@@ -274,7 +276,7 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     ShmNRTCommand cmd(type, id());
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(&cmd, CommandSize(cmd, empty));
+    chn.AddCommand(cmd, empty);
     chn.send();
 
     const ShmCommand *reply;

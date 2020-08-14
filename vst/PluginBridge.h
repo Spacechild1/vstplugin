@@ -37,9 +37,10 @@ struct _Channel {
     _Channel(ShmChannel& channel, Mutex& mutex)
         : channel_(&channel), lock_(std::unique_lock<Mutex>(mutex)){}
 
-    bool addCommand(const void *data, size_t size){
-        return channel_->addMessage(static_cast<const char *>(data), size);
+    bool addCommand(const void* cmd, size_t size = 0){
+        return channel_->addMessage(static_cast<const char *>(cmd), size);
     }
+#define AddCommand(cmd, field) addCommand(&(cmd), (cmd).headerSize + sizeof((cmd).field))
 
     void send(){
         channel_->post();
