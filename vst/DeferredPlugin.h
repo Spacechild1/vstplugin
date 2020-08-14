@@ -35,7 +35,7 @@ class DeferredPlugin : public IPlugin {
 
     void setBypass(Bypass state) {
         Command command(Command::SetBypass);
-        command.bypass = state;
+        command.i = static_cast<int32_t>(state);
         pushCommand(command);
     }
 
@@ -69,7 +69,7 @@ class DeferredPlugin : public IPlugin {
 
     void setTempoBPM(double tempo) override {
         Command command(Command::SetTempo);
-        command.f = tempo;
+        command.d = tempo;
         pushCommand(command);
     }
 
@@ -112,19 +112,19 @@ class DeferredPlugin : public IPlugin {
 
     void setTransportCycleStart(double beat) override {
         Command command(Command::SetTransportCycleStart);
-        command.f = beat;
+        command.d = beat;
         pushCommand(command);
     }
 
     void setTransportCycleEnd(double beat) override {
         Command command(Command::SetTransportCycleEnd);
-        command.f = beat;
+        command.d = beat;
         pushCommand(command);
     }
 
     void setTransportPosition(double beat) override {
         Command command(Command::SetTransportPosition);
-        command.f = beat;
+        command.d = beat;
         pushCommand(command);
     }
  protected:

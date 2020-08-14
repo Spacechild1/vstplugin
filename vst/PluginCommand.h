@@ -25,16 +25,9 @@ struct Command {
         SendMidi,
         SendSysex,
         SetProgram,
-        // replies
-        ProgramNumber,
-        ProgramName,
-        ParameterState,
-        ReplyData,
-        TransportPosition,
         // audio
-        Process,
-        // set plugin
         SetPlugin,
+        Process,
         // NRT commands
         CreatePlugin,
         DestroyPlugin,
@@ -55,7 +48,11 @@ struct Command {
         WindowClose,
         WindowSetPos,
         WindowSetSize,
-        // events
+        // events/replies
+        PluginData,
+        ProgramNumber,
+        ProgramName,
+        ParameterUpdate,
         ParamAutomated,
         LatencyChanged,
         MidiReceived,
@@ -96,8 +93,6 @@ struct Command {
             int32_t num;
             int32_t denom;
         } timeSig;
-        // bypass
-        Bypass bypass;
         // midi
         MidiEvent midi;
         SysexEvent sysex;
@@ -106,9 +101,9 @@ struct Command {
 
 // additional commands/replies (for IPC over shared memory)
 // that are not covered by Command.
-struct ShmCommand {
-    ShmCommand() = default;
-    ShmCommand(Command::Type _type) : type(_type){}
+struct ShmRTCommand {
+    ShmRTCommand() = default;
+    ShmRTCommand(Command::Type _type) : type(_type){}
 
     static const size_t headerSize = 4;
 
@@ -117,8 +112,17 @@ struct ShmCommand {
     union {
         // no data
         struct {} empty;
+        // generic int
+        int32_t i;
         // just a plugin ID
         uint32_t id;
+        // flat string
+        char s[1];
+        // generic buffer (e.g. preset data)
+        struct {
+            int32_t size;
+            char data[1];
+        } buffer;
         // flat param string
         struct {
             int32_t offset;
@@ -127,28 +131,18 @@ struct ShmCommand {
         } paramString;
         // flat param state
         struct {
-            int32_t offset;
             int32_t index;
             float value;
             char display[1];
         } paramState;
-        // flat midi message
-        struct {
-            int32_t delta;
-            float detune;
-            char data[4];
-        } midi;
+        // midi message
+        MidiEvent midi;
         // flat sysex data
         struct {
             int32_t delta;
             int32_t size;
             char data[1];
         } sysex;
-        // flat generic data (e.g. program data, file path)
-        struct {
-            int32_t size;
-            char data[1];
-        } buffer;
         // process
         struct {
             uint8_t numInputs;
@@ -159,6 +153,8 @@ struct ShmCommand {
         } process;
     };
 };
+
+using ShmReply = ShmRTCommand;
 
 // NRT commands that are not send during process
 // and therefore need to carry the plugin ID
@@ -175,6 +171,11 @@ struct ShmNRTCommand {
     union {
         // no data
         struct {} empty;
+        // generic buffer (e.g. preset data or file path)
+        struct {
+            int32_t size;
+            char data[1];
+        } buffer;
         // setup processing
         struct {
             double sampleRate;
@@ -188,11 +189,6 @@ struct ShmNRTCommand {
             uint16_t auxin;
             uint16_t auxout;
         } speakers;
-        // generic buffer (e.g. preset data or file path)
-        struct {
-            int32_t size;
-            char data[1];
-        } buffer;
         // window
         struct {
             int32_t x;
@@ -202,7 +198,15 @@ struct ShmNRTCommand {
             int32_t width;
             int32_t height;
         } windowSize;
+        // UI
+        struct {
+            int32_t index;
+            float value;
+        } paramAutomated;
     };
 };
+
+#define CommandSize(Class, field, extra) \
+    (Class::headerSize + sizeof(Class::field) + extra)
 
 } // vst

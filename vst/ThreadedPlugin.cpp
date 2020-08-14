@@ -162,10 +162,10 @@ void ThreadedPlugin::dispatchCommands() {
             delete command.paramString.display; // !
             break;
         case Command::SetBypass:
-            plugin_->setBypass(command.bypass);
+            plugin_->setBypass(static_cast<Bypass>(command.i));
             break;
         case Command::SetTempo:
-            plugin_->setTempoBPM(command.f);
+            plugin_->setTempoBPM(command.d);
             break;
         case Command::SetTimeSignature:
             plugin_->setTimeSignature(command.timeSig.num, command.timeSig.denom);
@@ -186,13 +186,13 @@ void ThreadedPlugin::dispatchCommands() {
             plugin_->setTransportCycleActive(command.i);
             break;
         case Command::SetTransportCycleStart:
-            plugin_->setTransportCycleStart(command.f);
+            plugin_->setTransportCycleStart(command.d);
             break;
         case Command::SetTransportCycleEnd:
-            plugin_->setTransportCycleEnd(command.f);
+            plugin_->setTransportCycleEnd(command.d);
             break;
         case Command::SetTransportPosition:
-            plugin_->setTransportPosition(command.f);
+            plugin_->setTransportPosition(command.d);
             break;
         case Command::SendMidi:
             plugin_->sendMidiEvent(command.midi);
