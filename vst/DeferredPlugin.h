@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Interface.h"
+#include "PluginCommand.h"
 
 #include <cstring>
 
@@ -19,13 +20,13 @@ class DeferredPlugin : public IPlugin {
 
     bool setParameter(int index, const std::string& str, int sampleOffset) override {
         // copy string (LATER improve)
-        auto buf = (char *)malloc(str.size() + 1);
+        auto buf = new char[str.size() + 1];
         memcpy(buf, str.data(), str.size() + 1);
 
         Command command(Command::SetParamString);
         auto& param = command.paramString;
         param.index = index;
-        param.string = buf;
+        param.display = buf;
         param.offset = sampleOffset;
         pushCommand(command);
 
@@ -55,7 +56,7 @@ class DeferredPlugin : public IPlugin {
 
     void sendSysexEvent(const SysexEvent& event) override {
         // copy data (LATER improve)
-        auto data = (char *)malloc(event.size);
+        auto data = new char[event.size];
         memcpy(data, event.data, event.size);
 
         Command command(Command::SendSysex);
@@ -81,31 +82,31 @@ class DeferredPlugin : public IPlugin {
 
     void setTransportPlaying(bool play) override {
         Command command(Command::SetTransportPosition);
-        command.b = play;
+        command.i = play;
         pushCommand(command);
     }
 
     void setTransportRecording(bool record) override {
         Command command(Command::SetTransportRecording);
-        command.b = record;
+        command.i = record;
         pushCommand(command);
     }
 
     void setTransportAutomationWriting(bool writing) override {
         Command command(Command::SetTransportAutomationWriting);
-        command.b = writing;
+        command.i = writing;
         pushCommand(command);
     }
 
     void setTransportAutomationReading(bool reading) override {
         Command command(Command::SetTransportAutomationReading);
-        command.b = reading;
+        command.i = reading;
         pushCommand(command);
     }
 
     void setTransportCycleActive(bool active) override {
         Command command(Command::SetTransportCycleActive);
-        command.b = active;
+        command.i = active;
         pushCommand(command);
     }
 
@@ -127,64 +128,6 @@ class DeferredPlugin : public IPlugin {
         pushCommand(command);
     }
  protected:
-    // commands
-    struct Command {
-        // type
-        enum Type {
-            SetParamValue,
-            SetParamString,
-            SetBypass,
-            SetTempo,
-            SetTimeSignature,
-            SetTransportPlaying,
-            SetTransportRecording,
-            SetTransportAutomationWriting,
-            SetTransportAutomationReading,
-            SetTransportCycleActive,
-            SetTransportCycleStart,
-            SetTransportCycleEnd,
-            SetTransportPosition,
-            SendMidi,
-            SendSysex,
-            SetProgram,
-            ParamAutomated,
-            LatencyChanged,
-            MidiReceived,
-            SysexReceived
-        };
-        Command() = default;
-        Command(Command::Type _type) : type(_type){}
-        // data
-        Type type;
-        union {
-            bool b;
-            int i;
-            float f;
-            char *s;
-            // param value
-            struct {
-                int index;
-                float value;
-                int offset;
-            } paramValue;
-            // param string
-            struct {
-                int index;
-                int offset;
-                char* string;
-            } paramString;
-            // time signature
-            struct {
-                int num;
-                int denom;
-            } timeSig;
-            // bypass
-            Bypass bypass;
-            // midi
-            MidiEvent midi;
-            SysexEvent sysex;
-        };
-    };
     virtual void pushCommand(const Command& command) = 0;
 };
 

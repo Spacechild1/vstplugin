@@ -98,6 +98,16 @@ ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
 ThreadedPlugin::~ThreadedPlugin() {
     // wait for last processing to finish (ideally we shouldn't have to)
     event_.wait();
+    // avoid memleak with param string and sysex command
+    for (int i = 0; i < 2; ++i){
+        for (auto& cmd : commands_[i]){
+            if (cmd.type == Command::SetParamString){
+                delete cmd.paramString.display;
+            } else if (cmd.type == Command::SendSysex){
+                delete cmd.sysex.data;
+            }
+        }
+    }
 }
 
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
@@ -143,12 +153,13 @@ void ThreadedPlugin::dispatchCommands() {
     for (auto& command : commands_[!current_]){
         switch(command.type){
         case Command::SetParamValue:
-            plugin_->setParameter(command.paramValue.index,
-                                  command.paramValue.value, command.paramValue.offset);
+            plugin_->setParameter(command.paramValue.index, command.paramValue.value,
+                                  command.paramValue.offset);
             break;
         case Command::SetParamString:
-            plugin_->setParameter(command.paramString.index,
-                                  command.paramString.string, command.paramString.offset);
+            plugin_->setParameter(command.paramString.index, command.paramString.display,
+                                  command.paramString.offset);
+            delete command.paramString.display; // !
             break;
         case Command::SetBypass:
             plugin_->setBypass(command.bypass);
@@ -160,19 +171,19 @@ void ThreadedPlugin::dispatchCommands() {
             plugin_->setTimeSignature(command.timeSig.num, command.timeSig.denom);
             break;
         case Command::SetTransportPlaying:
-            plugin_->setTransportPlaying(command.b);
+            plugin_->setTransportPlaying(command.i);
             break;
         case Command::SetTransportRecording:
-            plugin_->setTransportRecording(command.b);
+            plugin_->setTransportRecording(command.i);
             break;
         case Command::SetTransportAutomationWriting:
-            plugin_->setTransportAutomationWriting(command.b);
+            plugin_->setTransportAutomationWriting(command.i);
             break;
         case Command::SetTransportAutomationReading:
-            plugin_->setTransportAutomationReading(command.b);
+            plugin_->setTransportAutomationReading(command.i);
             break;
         case Command::SetTransportCycleActive:
-            plugin_->setTransportCycleActive(command.b);
+            plugin_->setTransportCycleActive(command.i);
             break;
         case Command::SetTransportCycleStart:
             plugin_->setTransportCycleStart(command.f);
@@ -188,7 +199,7 @@ void ThreadedPlugin::dispatchCommands() {
             break;
         case Command::SendSysex:
             plugin_->sendSysexEvent(command.sysex);
-            free((void *)command.sysex.data);
+            delete command.sysex.data; // !
             break;
         case Command::SetProgram:
             plugin_->setProgram(command.i);
