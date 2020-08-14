@@ -586,8 +586,11 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     int numParams = controller_->getParameterCount();
     inputParamChanges_.setMaxNumParameters(numParams);
     outputParamChanges_.setMaxNumParameters(numParams);
-    paramCache_.resize(numParams);
+
+    // cache for automatable parameters
+    paramCache_.reset(new ParamState[getNumParameters()]);
     updateParamCache();
+
     LOG_DEBUG("program change: " << info_->programChange);
     LOG_DEBUG("bypass: " << info_->bypass);
 }
@@ -1526,7 +1529,8 @@ int VST3Plugin::getNumParameters() const {
 }
 
 void VST3Plugin::updateParamCache(){
-    for (int i = 0; i < (int)paramCache_.size(); ++i){
+    int n = getNumParameters();
+    for (int i = 0; i < n; ++i){
         auto id = info().getParamID(i);
         paramCache_[i].value = controller_->getParamNormalized(id);
         // we don't need to tell the GUI to update
@@ -1848,7 +1852,7 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 
 void VST3Plugin::updateEditor(){
     // automatable parameters
-    int n = paramCache_.size();
+    int n = getNumParameters();
     for (int i = 0; i < n; ++i){
         bool expected = true;
         if (paramCache_[i].changed.compare_exchange_strong(expected, false)){

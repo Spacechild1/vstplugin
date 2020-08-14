@@ -321,7 +321,7 @@ class VST3Plugin final :
         std::atomic<float> value;
         std::atomic<bool> changed;
     };
-    std::vector<ParamState> paramCache_;
+    std::unique_ptr<ParamState[]> paramCache_;
     struct ParamChange {
         ParamChange() : id(0), value(0) {}
         ParamChange(Vst::ParamID _id, Vst::ParamValue _value)
