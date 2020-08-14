@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Interface.h"
 #include "ShmInterface.h"
 #include "Sync.h"
 
@@ -62,7 +63,6 @@ using NRTChannel = _Channel<SharedMutex>;
 
 /*//////////////////////////// PluginBridge ///////////////////////////*/
 
-class IPluginListener;
 class ShmNRTCommand;
 
 class PluginBridge final
@@ -93,8 +93,6 @@ class PluginBridge final
 
     bool postUIThread(const ShmNRTCommand& cmd);
 
-    bool pollUIThread(ShmNRTCommand& cmd);
-
     RTChannel getRTChannel();
 
     NRTChannel getNRTChannel();
@@ -118,6 +116,9 @@ class PluginBridge final
     SharedMutex nrtMutex_;
     // unnecessary, as all IWindow methods should be called form the same thread
     // SharedMutex uiMutex_;
+    UIThread::Handle pollFunction_;
+
+    void pollUIThread();
 };
 
 /*/////////////////////////// WatchDog //////////////////////////////*/

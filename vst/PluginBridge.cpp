@@ -1,6 +1,5 @@
 #include "PluginBridge.h"
 
-#include "Interface.h"
 #include "Utility.h"
 #include "PluginCommand.h"
 
@@ -127,9 +126,15 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     }
 #endif
     WatchDog::instance().registerProcess(shared_from_this());
+
+    pollFunction_ = UIThread::addPollFunction([](void *x){
+        static_cast<PluginBridge *>(x)->pollUIThread();
+    }, this);
 }
 
 PluginBridge::~PluginBridge(){
+    UIThread::removePollFunction(pollFunction_);
+
     // send quit message
     if (alive()){
         ShmNRTCommand cmd(Command::Quit, 0);
@@ -201,9 +206,39 @@ bool PluginBridge::postUIThread(const ShmNRTCommand& cmd){
     return shm_.getChannel(0).writeMessage((const char *)&cmd, sizeof(cmd));
 }
 
-bool PluginBridge::pollUIThread(ShmNRTCommand& cmd){
+void PluginBridge::pollUIThread(){
+    auto& channel = shm_.getChannel(1);
+
+    ShmNRTCommand cmd;
     size_t size = sizeof(cmd);
-    return shm_.getChannel(1).readMessage((char *)&cmd, size);
+    // read all available events
+    while (channel.readMessage((char *)&cmd, size)){
+        // find client with matching ID
+        LockGuard lock(clientMutex_);
+        auto it = clients_.find(cmd.id);
+        if (it != clients_.end()){
+            auto listener = it->second.lock();
+            if (listener){
+                // dispatch events
+                switch (cmd.type){
+                case Command::ParamAutomated:
+                    listener->parameterAutomated(cmd.paramAutomated.index,
+                                                 cmd.paramAutomated.value);
+                    break;
+                default:
+                    // ignore other events for now
+                    break;
+                }
+            } else {
+                LOG_ERROR("PluginBridge::pollUIThread: plugin "
+                            << cmd.id << " is stale");
+            }
+        } else {
+            LOG_ERROR("PluginBridge::pollUIThread: plugin "
+                      << cmd.id << " doesn't exist (anymore)");
+        }
+        size = sizeof(cmd); // reset size!
+    }
 }
 
 RTChannel PluginBridge::getRTChannel(){
