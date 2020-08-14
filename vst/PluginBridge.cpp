@@ -7,33 +7,6 @@
 
 namespace vst {
 
-/*//////////////////// RTChannel ////////////////////*/
-
-RTChannel::RTChannel(ShmChannel& channel)
-    : channel_(&channel), lock_(nullptr){}
-
-RTChannel::RTChannel(ShmChannel& channel, SpinLock& lock)
-    : channel_(&channel), lock_(&lock){}
-
-RTChannel::~RTChannel(){
-    if (lock_){
-        lock_->unlock();
-    }
-}
-
-bool RTChannel::addCommand(const char *data, size_t size){
-    return channel_->addMessage(data, size);
-}
-
-void RTChannel::send(){
-    channel_->post();
-    channel_->waitReply();
-}
-
-bool RTChannel::getReply(const char *&data, size_t& size){
-    return channel_->getMessage(data, size);
-}
-
 /*//////////////////// PluginBridge /////////////////*/
 
 std::mutex gPluginBridgeMutex;
@@ -205,26 +178,26 @@ void PluginBridge::checkStatus(){
     }
 }
 
-void PluginBridge::addUIClient(ID id, std::shared_ptr<IPluginListener> client){
+void PluginBridge::addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client){
     LockGuard lock(clientMutex_);
     clients_.emplace(id, client);
 }
 
-void PluginBridge::removeUIClient(ID id){
+void PluginBridge::removeUIClient(uint32_t id){
     LockGuard lock(clientMutex_);
     clients_.erase(id);
 }
 
-bool PluginBridge::postUIThread(const char *cmd, size_t size){
-    LockGuard lock(uiMutex_);
-    return shm_.getChannel(0).writeMessage(cmd, size);
+bool PluginBridge::postUIThread(const void *cmd, size_t size){
+    // LockGuard lock(uiMutex_);
+    return shm_.getChannel(0).writeMessage((const char *)cmd, size);
 }
 
-bool PluginBridge::pollUIThread(char *buffer, size_t& size){
-    return shm_.getChannel(1).readMessage(buffer, size);
+bool PluginBridge::pollUIThread(void *buffer, size_t& size){
+    return shm_.getChannel(1).readMessage((char *)buffer, size);
 }
 
-RTChannel PluginBridge::getChannel(){
+RTChannel PluginBridge::getRTChannel(){
     if (locks_){
         static std::atomic<uint32_t> counter{0}; // can safely overflow
 
@@ -247,9 +220,17 @@ RTChannel PluginBridge::getChannel(){
             }
             ++counter; // atomic increment
         }
-        return RTChannel(shm_.getChannel(index + 2), locks_[index]);
+        return RTChannel(shm_.getChannel(index + 3), locks_[index]);
     } else {
         return RTChannel(shm_.getChannel(2));
+    }
+}
+
+NRTChannel PluginBridge::getNRTChannel(){
+    if (locks_){
+        return NRTChannel(shm_.getChannel(2), nrtMutex_);
+    } else {
+        return NRTChannel(shm_.getChannel(2));
     }
 }
 

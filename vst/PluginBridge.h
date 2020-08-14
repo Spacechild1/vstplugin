@@ -28,17 +28,38 @@ namespace vst {
 class PluginInfo;
 enum class CpuArch;
 
-struct RTChannel {
-    RTChannel(ShmChannel& channel);
-    RTChannel(ShmChannel& channel, SpinLock& lock);
-    ~RTChannel();
-    bool addCommand(const char *data, size_t size);
-    void send();
-    bool getReply(const char *&data, size_t& size);
+/*/////////////////////// RTChannel / NRTChannel ////////////////////////*/
+
+template<typename Mutex>
+struct _Channel {
+    _Channel(ShmChannel& channel)
+        : channel_(&channel){}
+    _Channel(ShmChannel& channel, Mutex& mutex)
+        : channel_(&channel), lock_(std::unique_lock<Mutex>(mutex)){}
+
+    bool addCommand(const void *data, size_t size){
+        return channel_->addMessage(static_cast<const char *>(data), size);
+    }
+
+    void send(){
+        channel_->post();
+        channel_->waitReply();
+    }
+
+    template<typename T>
+    bool getReply(const T *& reply){
+        size_t dummy;
+        return channel_->getMessage(*reinterpret_cast<const char **>(&reply), dummy);
+    }
  private:
     ShmChannel *channel_;
-    SpinLock *lock_;
+    std::unique_lock<Mutex> lock_;
 };
+
+using RTChannel = _Channel<SpinLock>;
+using NRTChannel = _Channel<SharedMutex>;
+
+/*//////////////////////////// PluginBridge ///////////////////////////*/
 
 class IPluginListener;
 
@@ -60,21 +81,22 @@ class PluginBridge final
 
     void checkStatus();
 
-    using ID = uint32_t;
+    void addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client);
 
-    void addUIClient(ID id, std::shared_ptr<IPluginListener> client);
+    void removeUIClient(uint32_t id);
 
-    void removeUIClient(ID id);
+    bool postUIThread(const void *cmd, size_t size);
 
-    bool postUIThread(const char *cmd, size_t size);
+    bool pollUIThread(void *buffer, size_t& size);
 
-    bool pollUIThread(char *buffer, size_t& size);
+    RTChannel getRTChannel();
 
-    RTChannel getChannel();
+    NRTChannel getNRTChannel();
  private:
     static const int maxNumThreads = 8;
     static const size_t queueSize = 1024;
-    static const size_t requestSize = 65536;
+    static const size_t nrtRequestSize = 1024;
+    static const size_t rtRequestSize = 65536;
 
     ShmInterface shm_;
     std::atomic_bool alive_{false};
@@ -84,10 +106,14 @@ class PluginBridge final
     pid_t pid_;
 #endif
     std::unique_ptr<SpinLock[]> locks_;
-    std::unordered_map<ID, std::weak_ptr<IPluginListener>> clients_;
+    std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;
     SharedMutex clientMutex_;
-    SharedMutex uiMutex_; // probably unnecessary
+    SharedMutex nrtMutex_;
+    // unnecessary, as all IWindow methods should be called form the same thread
+    // SharedMutex uiMutex_;
 };
+
+/*/////////////////////////// WatchDog //////////////////////////////*/
 
 // there's a deadlock bug in the windows runtime library which would cause
 // the process to hang if trying to join a thread in a static object destructor.
