@@ -53,15 +53,15 @@ PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
 
     if (!bridge){
         // create shared bridge
-        bridge = std::make_shared<PluginBridge>(arch, nullptr);
+        bridge = std::make_shared<PluginBridge>(arch, true);
         gPluginBridgeMap.emplace(arch, bridge);
     }
 
     return bridge;
 }
 
-PluginBridge::ptr PluginBridge::create(CpuArch arch, const PluginInfo &desc){
-    return std::make_shared<PluginBridge>(arch, &desc);
+PluginBridge::ptr PluginBridge::create(CpuArch arch){
+    return std::make_shared<PluginBridge>(arch, false);
 }
 
 // PluginFactory.cpp
@@ -72,36 +72,40 @@ const std::string& getModuleDirectory();
 #endif
 std::string getHostApp(CpuArch arch);
 
-PluginBridge::PluginBridge(CpuArch arch, const PluginInfo *desc){
+PluginBridge::PluginBridge(CpuArch arch, bool shared){
     // setup shared memory interface
+    // UI channels:
     shm_.addChannel(ShmChannel::Queue, queueSize, "ui_snd");
     shm_.addChannel(ShmChannel::Queue, queueSize, "ui_rcv");
-    if (desc){
-        // sandboxed
-        shm_.addChannel(ShmChannel::Request, requestSize, "rt");
-    } else {
-        // shared
+    if (shared){
+        // --- shared plugin bridge ---
+        // a single nrt channel followed by several rt channels
+        shm_.addChannel(ShmChannel::Request, nrtRequestSize, "nrt");
         for (int i = 0; i < maxNumThreads; ++i){
             char buf[16];
             snprintf(buf, sizeof(buf), "rt%d", i+1);
-            shm_.addChannel(ShmChannel::Request, requestSize, buf);
+            shm_.addChannel(ShmChannel::Request, rtRequestSize, buf);
         }
         locks_ = std::make_unique<SpinLock[]>(maxNumThreads);
+    } else {
+        // --- sandboxed plugin ---
+        // a single rt channel (which also doubles as the nrt channel)
+        shm_.addChannel(ShmChannel::Request, rtRequestSize, "rt");
     }
     shm_.create();
+
     // spawn host process
     std::string hostApp = getHostApp(arch);
 #ifdef _WIN32
     // get absolute path to host app
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
-    // arguments: host.exe bridge <parent_pid> <shm_path> [<plugin_path> <plugin_name>]
-    // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
+    // arguments: host.exe bridge <parent_pid> <shm_path>
+    // NOTE: on Windows we need to quote the arguments for _spawn to handle
+    // spaces in file names.
     std::stringstream cmdLineStream;
-    cmdLineStream << hostApp << " bridge " << GetCurrentProcessId() << "\"" << shm_.path() << "\"";
-    if (desc){
-        cmdLineStream << "\"" << desc->path() << "\" \"" << desc->name << "\"";
-    }
+    cmdLineStream << hostApp << " bridge "
+                  << GetCurrentProcessId() << "\"" << shm_.path() << "\"";
     // LOG_DEBUG(cmdLineStream.str());
     auto cmdLine = widen(cmdLineStream.str());
 
@@ -126,7 +130,7 @@ PluginBridge::PluginBridge(CpuArch arch, const PluginInfo *desc){
     if (pid_ == -1) {
         throw Error(Error::SystemError, "fork() failed!");
     } else if (pid_ == 0) {
-        // child process: start new process with plugin path and temp file path as arguments.
+        // child process: run host app
         // we must not quote arguments to exec!
     #if !BRIDGE_LOG
         // disable stdout and stderr
@@ -136,15 +140,10 @@ PluginBridge::PluginBridge(CpuArch arch, const PluginInfo *desc){
         fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
-        // arguments: host.exe bridge <parent_pid> <shm_path> [<plugin_path> <plugin_name>]
+        // arguments: host.exe bridge <parent_pid> <shm_path>
         auto pid = std::to_string(getpid());
-        const char *argv[7] = { hostApp.c_str(), "bridge", pid.c_str(), shm_.path().c_str(), nullptr };
-        if (desc){
-            argv[4] = desc->path().c_str();
-            argv[5] = desc->name.c_str();
-            argv[6] = nullptr;
-        }
-        if (execv(hostPath.c_str(), (char* const *)argv) < 0){
+        if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
+                  pid.c_str(), shm_.path().c_str()) < 0){
             // LATER redirect child stderr to parent stdin
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }

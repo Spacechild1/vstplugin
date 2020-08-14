@@ -58,6 +58,20 @@ int probe(const std::string& pluginPath, int pluginIndex,
     return EXIT_FAILURE;
 }
 
+int bridge(int pid, const std::string& path){
+    try {
+        // create and run server
+        auto server = std::make_unique<PluginServer>(pid, path);
+        server->run();
+
+        return EXIT_SUCCESS;
+    } catch (const Error& e){
+        // LATER redirect stderr to parent stdin to get the error message
+        LOG_ERROR(e.what());
+        return EXIT_FAILURE;
+    }
+}
+
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 #ifdef _WIN32
@@ -79,42 +93,23 @@ int main(int argc, const char *argv[]) {
                 index = -1; // non-numeric argument
             }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
+
             return probe(path, index, file);
         }
     #if USE_BRIDGE
         else if (verb == "bridge" && argc >= 2){
-            // args: <pid> <shared_mem_path> [<plugin_path> <plugin_name>]
+            // args: <pid> <shared_mem_path>
             int pid = std::stod(argv[0]);
             std::string shmPath = shorten(argv[1]);
 
-            try {
-                std::unique_ptr<PluginServer> server_;
-                if (argc > 3){
-                    // sandboxed plugin
-                    std::string pluginPath = shorten(argv[2]);
-                    std::string pluginName = shorten(argv[3]);
-                    server_ = std::make_unique<PluginServer>(pid, shmPath,
-                                                             pluginPath, pluginName);
-                } else {
-                    // shared plugin bridge
-                    server_ = std::make_unique<PluginServer>(pid, shmPath);
-                }
-                // run the server
-                server_->run();
-
-                return EXIT_SUCCESS;
-            } catch (const Error& e){
-                // LATER redirect stderr to parent stdin to get the error message
-                LOG_ERROR(e.what());
-                return EXIT_FAILURE;
-            }
+            return bridge(pid, shmPath);
         }
     #endif
     }
     LOG_ERROR("usage:");
     LOG_ERROR("  probe <plugin_path> [<id>] [<file_path>]");
 #if USE_BRIDGE
-    LOG_ERROR("  bridge <pid> <shared_mem_path> [<plugin_path> <plugin_name>]");
+    LOG_ERROR("  bridge <pid> <shared_mem_path>");
 #endif
     return EXIT_FAILURE;
 }

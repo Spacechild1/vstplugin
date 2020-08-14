@@ -9,15 +9,6 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     shm_->connect(shmPath);
 }
 
-PluginServer::PluginServer(int pid, const std::string& shmPath,
-                           const std::string& pluginPath,
-                           const std::string& pluginName)
-    : PluginServer(pid, shmPath)
-{
-    pluginPath_ = pluginPath;
-    pluginName_ = pluginName;
-}
-
 PluginServer::~PluginServer(){}
 
 void PluginServer::run(){

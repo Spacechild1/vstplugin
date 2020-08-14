@@ -48,9 +48,9 @@ class PluginBridge final
     using ptr = std::shared_ptr<PluginBridge>;
 
     static PluginBridge::ptr getShared(CpuArch arch);
-    static PluginBridge::ptr create(CpuArch arch, const PluginInfo& desc);
+    static PluginBridge::ptr create(CpuArch arch);
 
-    PluginBridge(CpuArch arch, const PluginInfo* desc);
+    PluginBridge(CpuArch arch, bool shared);
     PluginBridge(const PluginBridge&) = delete;
     ~PluginBridge();
 
