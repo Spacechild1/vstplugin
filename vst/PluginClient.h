@@ -117,7 +117,7 @@ class PluginClient final : public DeferredPlugin {
     template<typename T>
     void doProcess(ProcessData<T>& data);
     void sendCommands(RTChannel& channel);
-    void receiveEvents(RTChannel& channel);
+    void dispatchReply(const ShmReply &reply);
 };
 
 class WindowClient : public IWindow {

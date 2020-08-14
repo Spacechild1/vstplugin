@@ -11,7 +11,7 @@ namespace vst {
 
 #define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging");
 
-#define ShmCommandAlloca(type, extra) new(alloca(sizeof(ShmCommand) + extra))ShmCommand(type)
+#define ShmRTCommandAlloca(type, extra) new(alloca(sizeof(ShmRTCommand) + extra))ShmRTCommand(type)
 
 #define ShmNRTCommandAlloca(type, id, extra) new(alloca(sizeof(ShmNRTCommand) + extra))ShmNRTCommand(type, id)
 
@@ -98,7 +98,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
 
     // set plugin
     {
-        ShmCommand cmd(Command::SetPlugin);
+        ShmRTCommand cmd(Command::SetPlugin);
         cmd.id = id();
 
         channel.AddCommand(cmd, id);
@@ -109,7 +109,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
 
     // send process command
     {
-        ShmCommand cmd(Command::Process);
+        ShmRTCommand cmd(Command::Process);
         cmd.process.numInputs = data.numInputs;
         cmd.process.numOutputs = data.numOutputs;
         cmd.process.numAuxInputs = data.numAuxInputs;
@@ -147,16 +147,127 @@ void PluginClient::doProcess(ProcessData<T>& data){
     readBus(data.output, data.numOutputs);
     readBus(data.auxOutput, data.numAuxOutputs);
 
-    // get events (parameter changes, MIDI messages, etc.)
-    receiveEvents(channel);
+    // get replies (parameter changes, MIDI messages, etc.)
+    const ShmReply* reply;
+    while (channel.getReply(reply)){
+        dispatchReply(*reply);
+    }
 }
 
 void PluginClient::sendCommands(RTChannel& channel){
+    for (auto& cmd : commands_){
+        // we have to handle some commands specially:
+        switch (cmd.type){
+        case Command::SetParamValue:
+            channel.AddCommand(cmd, paramValue);
+            break;
+        case Command::SendMidi:
+            channel.AddCommand(cmd, midi);
+            break;
+        case Command::SetTimeSignature:
+            channel.AddCommand(cmd, timeSig);
+            break;
+        case Command::SetParamString:
+        {
+            auto displayLen = strlen(cmd.paramString.display) + 1;
+            auto cmdSize = CommandSize(ShmRTCommand, paramString, displayLen);
+            auto shmCmd = (ShmRTCommand *)alloca(cmdSize);
+            shmCmd->type = Command::SetParamString;
+            shmCmd->paramString.index = cmd.paramString.index;
+            shmCmd->paramString.offset = cmd.paramString.offset;
+            memcpy(shmCmd->paramString.display,
+                   cmd.paramString.display, displayLen);
 
+            delete cmd.paramString.display; // free!
+
+            channel.addCommand(shmCmd, cmdSize);
+            break;
+        }
+        case Command::SendSysex:
+        {
+            auto cmdSize = CommandSize(ShmRTCommand, sysex, cmd.sysex.size);
+            auto shmCmd = (ShmRTCommand *)alloca(cmdSize);
+            shmCmd->type = Command::SetParamString;
+            shmCmd->sysex.delta = cmd.sysex.delta;
+            shmCmd->sysex.size = cmd.sysex.size;
+            memcpy(shmCmd->sysex.data, cmd.sysex.data, cmd.sysex.size);
+
+            delete cmd.sysex.data; // free!
+
+            channel.addCommand(shmCmd, cmdSize);
+            break;
+        }
+        // all other commands take max. 8 bytes and they are
+        // rare enough that we don't have to optimize for space
+        default:
+            channel.AddCommand(cmd, d);
+            break;
+        }
+    }
 }
 
-void PluginClient::receiveEvents(RTChannel& channel){
+void PluginClient::dispatchReply(const ShmReply& reply){
+    switch (reply.type){
+    case Command::ParamAutomated:
+    case Command::ParameterUpdate:
+    {
+        auto index = reply.paramState.index;
+        auto value = reply.paramState.value;
+        paramCache_[index].value = value;
+        paramCache_[index].display = reply.paramState.display;
 
+        if (reply.type == Command::ParamAutomated){
+            auto listener = listener_.lock();
+            if (listener){
+                listener->parameterAutomated(index, value);
+            }
+        }
+        break;
+    }
+    case Command::ProgramName:
+        programCache_[program_] = reply.s;
+        break;
+    case Command::ProgramNumber:
+        program_ = reply.i;
+        break;
+    case Command::LatencyChanged:
+    {
+        latency_ = reply.i;
+        auto listener = listener_.lock();
+        if (listener){
+            listener->latencyChanged(latency_);
+        }
+        break;
+    }
+    case Command::MidiReceived:
+    {
+        auto listener = listener_.lock();
+        if (listener){
+            listener->midiEvent(reply.midi);
+        }
+        break;
+    }
+    case Command::SysexReceived:
+    {
+        auto listener = listener_.lock();
+        if (listener){
+            // put temporary copy on the stack
+            auto data = (char *)alloca(reply.sysex.size);
+            memcpy(data, reply.sysex.data, reply.sysex.size);
+
+            SysexEvent sysex;
+            sysex.delta = reply.sysex.delta;
+            sysex.size = reply.sysex.size;
+            sysex.data = data;
+
+            listener->sysexEvent(sysex);
+        }
+        break;
+    }
+    default:
+        LOG_ERROR("got unknown reply " << reply.type);
+        break;
+    }
 }
 
 void PluginClient::process(ProcessData<float>& data){
@@ -276,7 +387,7 @@ void PluginClient::writeBankData(std::string& buffer){
 }
 
 void PluginClient::sendData(Command::Type type, const char *data, size_t size){
-    auto totalSize = sizeof(ShmNRTCommand) + size;
+    auto totalSize = CommandSize(ShmNRTCommand, buffer, size);
     auto cmd = (ShmNRTCommand *)alloca(totalSize);
     cmd->type = type;
     cmd->id = id();
@@ -287,9 +398,10 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     chn.addCommand(cmd, totalSize);
     chn.send();
 
-    const ShmCommand *reply;
+    // get replies
+    const ShmReply* reply;
     while (chn.getReply(reply)){
-        // TODO parameter changes, program name changes, program change
+        dispatchReply(*reply);
     }
 }
 
@@ -300,8 +412,8 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     chn.AddCommand(cmd, empty);
     chn.send();
 
-    const ShmCommand *reply;
-    if (chn.getReply(reply)){
+    const ShmReply *reply;
+    if (chn.getReply(reply) && reply->type == Command::PluginData){
         buffer.assign(reply->buffer.data, reply->buffer.size);
     }
 }
