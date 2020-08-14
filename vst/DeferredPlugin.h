@@ -32,6 +32,12 @@ class DeferredPlugin : public IPlugin {
         return true; // what shall we do?
     }
 
+    void setBypass(Bypass state) {
+        Command command(Command::SetBypass);
+        command.bypass = state;
+        pushCommand(command);
+    }
+
     void setProgram(int program) override {
         Command command(Command::SetProgram);
         command.i = program;

@@ -333,12 +333,6 @@ void ThreadedPlugin::resume() {
     plugin_->resume();
 }
 
-void ThreadedPlugin::setBypass(Bypass state) {
-    Command command(Command::SetBypass);
-    command.bypass = state;
-    pushCommand(command);
-}
-
 void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
     LockGuard lock(mutex_);
     plugin_->setNumSpeakers(in, out, auxIn, auxOut);
