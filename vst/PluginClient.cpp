@@ -45,11 +45,32 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
         bridge_ = PluginBridge::getShared(f->arch());
     }
 
-    // TODO: open plugin
+    // create plugin
+    auto bufsize = info_->path().size() + info_->name.size() + 2; // include `\0` bytes
+    auto cmdSize = sizeof(ShmNRTCommand) + bufsize;
+    auto cmd = (ShmNRTCommand *)alloca(cmdSize);
+    cmd->type = Command::CreatePlugin;
+    cmd->id = id_;
+    cmd->buffer.size = bufsize;
+    snprintf(cmd->buffer.data, bufsize, "%s\0%s", info_->path().c_str(), info_->name.c_str());
+
+    auto chn = bridge_->getNRTChannel();
+    chn.addCommand(cmd, cmdSize);
+    chn.send();
 }
 
 PluginClient::~PluginClient(){
     bridge_->removeUIClient(id_);
+    // destroy plugin
+    // (not necessary with exlusive bridge)
+    if (bridge_->shared()){
+        ShmNRTCommand cmd(Command::DestroyPlugin, id_);
+
+        auto chn = bridge_->getNRTChannel();
+        chn.AddCommand(cmd, id);
+        chn.send();
+    }
+
     // avoid memleak with param string and sysex command
     for (auto& cmd : commands_){
         if (cmd.type == Command::SetParamString){

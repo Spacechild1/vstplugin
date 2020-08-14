@@ -63,6 +63,7 @@ using NRTChannel = _Channel<SharedMutex>;
 /*//////////////////////////// PluginBridge ///////////////////////////*/
 
 class IPluginListener;
+class ShmNRTCommand;
 
 class PluginBridge final
         : std::enable_shared_from_this<PluginBridge> {
@@ -75,6 +76,10 @@ class PluginBridge final
     PluginBridge(CpuArch arch, bool shared);
     PluginBridge(const PluginBridge&) = delete;
     ~PluginBridge();
+
+    bool shared() const {
+        return shared_;
+    }
 
     bool alive() const {
         return alive_.load(std::memory_order_acquire);
@@ -100,6 +105,7 @@ class PluginBridge final
     static const size_t rtRequestSize = 65536;
 
     ShmInterface shm_;
+    bool shared_;
     std::atomic_bool alive_{false};
 #ifdef _WIN32
     PROCESS_INFORMATION pi_;

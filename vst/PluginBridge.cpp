@@ -2,6 +2,7 @@
 
 #include "Interface.h"
 #include "Utility.h"
+#include "PluginCommand.h"
 
 #include <sstream>
 
@@ -45,7 +46,9 @@ const std::string& getModuleDirectory();
 #endif
 std::string getHostApp(CpuArch arch);
 
-PluginBridge::PluginBridge(CpuArch arch, bool shared){
+PluginBridge::PluginBridge(CpuArch arch, bool shared)
+    : shared_(shared)
+{
     // setup shared memory interface
     // UI channels:
     shm_.addChannel(ShmChannel::Queue, queueSize, "ui_snd");
@@ -129,7 +132,11 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared){
 PluginBridge::~PluginBridge(){
     // send quit message
     if (alive()){
+        ShmNRTCommand cmd(Command::Quit, 0);
 
+        auto chn = getNRTChannel();
+        chn.AddCommand(cmd, empty);
+        chn.send();
     }
 #ifdef _WIN32
     CloseHandle(pi_.hProcess);

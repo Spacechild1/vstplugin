@@ -36,6 +36,8 @@ struct Command {
         // set plugin
         SetPlugin,
         // NRT commands
+        CreatePlugin,
+        DestroyPlugin,
         Suspend,
         Resume,
         SetNumSpeakers,
@@ -57,7 +59,9 @@ struct Command {
         ParamAutomated,
         LatencyChanged,
         MidiReceived,
-        SysexReceived
+        SysexReceived,
+        // close bridge
+        Quit
     };
     Command() = default;
     Command(Command::Type _type) : type(_type){}
