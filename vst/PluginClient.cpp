@@ -367,26 +367,26 @@ void* WindowClient::getHandle() {
 
 void WindowClient::open(){
     ShmNRTCommand cmd(Command::WindowOpen, plugin_->id());
-    plugin_->bridge().postUIThread(&cmd, CommandSize(cmd, empty));
+    plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::close(){
     ShmNRTCommand cmd(Command::WindowClose, plugin_->id());
-    plugin_->bridge().postUIThread(&cmd, CommandSize(cmd, empty));
+    plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::setPos(int x, int y){
     ShmNRTCommand cmd(Command::WindowSetPos, plugin_->id());
     cmd.windowPos.x = x;
     cmd.windowPos.y = y;
-    plugin_->bridge().postUIThread(&cmd, CommandSize(cmd, windowPos));
+    plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::setSize(int w, int h){
     ShmNRTCommand cmd(Command::WindowSetSize, plugin_->id());
     cmd.windowSize.width = w;
     cmd.windowSize.height = h;
-    plugin_->bridge().postUIThread(&cmd, CommandSize(cmd, windowSize));
+    plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::update(){

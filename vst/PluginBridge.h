@@ -85,9 +85,9 @@ class PluginBridge final
 
     void removeUIClient(uint32_t id);
 
-    bool postUIThread(const void *cmd, size_t size);
+    bool postUIThread(const ShmNRTCommand& cmd);
 
-    bool pollUIThread(void *buffer, size_t& size);
+    bool pollUIThread(ShmNRTCommand& cmd);
 
     RTChannel getRTChannel();
 

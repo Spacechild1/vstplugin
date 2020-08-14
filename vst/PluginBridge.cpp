@@ -188,13 +188,15 @@ void PluginBridge::removeUIClient(uint32_t id){
     clients_.erase(id);
 }
 
-bool PluginBridge::postUIThread(const void *cmd, size_t size){
+bool PluginBridge::postUIThread(const ShmNRTCommand& cmd){
     // LockGuard lock(uiMutex_);
-    return shm_.getChannel(0).writeMessage((const char *)cmd, size);
+    // sizeof(cmd) is a bit lazy, but we don't care too much about space here
+    return shm_.getChannel(0).writeMessage((const char *)&cmd, sizeof(cmd));
 }
 
-bool PluginBridge::pollUIThread(void *buffer, size_t& size){
-    return shm_.getChannel(1).readMessage((char *)buffer, size);
+bool PluginBridge::pollUIThread(ShmNRTCommand& cmd){
+    size_t size = sizeof(cmd);
+    return shm_.getChannel(1).readMessage((char *)&cmd, size);
 }
 
 RTChannel PluginBridge::getRTChannel(){
