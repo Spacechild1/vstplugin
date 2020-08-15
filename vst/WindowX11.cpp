@@ -7,12 +7,20 @@ namespace vst {
 
 namespace UIThread {
 
-void setup(){}
+// fake event loop
+Event gQuitEvent_;
 
-void run(){}
+void setup(){
+    X11::EventLoop::instance();
+}
 
-void quit(){}
+void run(){
+    gQuitEvent_.wait();
+}
 
+void quit(){
+    gQuitEvent_.signal();
+}
 
 bool isCurrentThread(){
     return X11::EventLoop::instance().checkThread();
