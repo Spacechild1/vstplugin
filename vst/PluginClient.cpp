@@ -47,8 +47,8 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
 
     // create plugin
     auto bufsize = info_->path().size() + info_->name.size() + 2; // include `\0` bytes
-    auto cmdSize = sizeof(ShmNRTCommand) + bufsize;
-    auto cmd = (ShmNRTCommand *)alloca(cmdSize);
+    auto cmdSize = sizeof(ShmCommand) + bufsize;
+    auto cmd = (ShmCommand *)alloca(cmdSize);
     cmd->type = Command::CreatePlugin;
     cmd->id = id_;
     cmd->buffer.size = bufsize;
@@ -64,7 +64,8 @@ PluginClient::~PluginClient(){
     // destroy plugin
     // (not necessary with exlusive bridge)
     if (bridge_->shared()){
-        ShmNRTCommand cmd(Command::DestroyPlugin, id_);
+        ShmCommand cmd(Command::DestroyPlugin);
+        cmd.id = id_;
 
         auto chn = bridge_->getNRTChannel();
         chn.AddCommand(cmd, id);
@@ -82,7 +83,8 @@ PluginClient::~PluginClient(){
 }
 
 void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
-    ShmNRTCommand cmd(Command::SetupProcessing, id());
+    ShmCommand cmd(Command::SetupProcessing);
+    cmd.id = id_;
     cmd.setup.sampleRate = sampleRate;
     cmd.setup.maxBlockSize = maxBlockSize;
     cmd.setup.precision = static_cast<uint32_t>(precision);
@@ -96,20 +98,10 @@ template<typename T>
 void PluginClient::doProcess(ProcessData<T>& data){
     auto channel = bridge().getRTChannel();
 
-    // set plugin
-    {
-        ShmRTCommand cmd(Command::SetPlugin);
-        cmd.id = id();
-
-        channel.AddCommand(cmd, id);
-    }
-
-    // send commands (parameter changes, MIDI messages, etc.)
-    sendCommands(channel);
-
     // send process command
     {
-        ShmRTCommand cmd(Command::Process);
+        ShmCommand cmd(Command::Process);
+        cmd.id = id();
         cmd.process.numInputs = data.numInputs;
         cmd.process.numOutputs = data.numOutputs;
         cmd.process.numAuxInputs = data.numAuxInputs;
@@ -118,6 +110,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
 
         channel.AddCommand(cmd, process);
     }
+
     // write audio data
     // since we have sent the number of channels in the "Process" command,
     // we can simply write all channels sequentially to avoid additional copying.
@@ -129,6 +122,9 @@ void PluginClient::doProcess(ProcessData<T>& data){
 
     writeBus(data.input, data.numInputs);
     writeBus(data.auxInput, data.numAuxInputs);
+
+    // add commands (parameter changes, MIDI messages, etc.)
+    sendCommands(channel);
 
     // send and wait for reply
     channel.send();
@@ -170,8 +166,8 @@ void PluginClient::sendCommands(RTChannel& channel){
         case Command::SetParamString:
         {
             auto displayLen = strlen(cmd.paramString.display) + 1;
-            auto cmdSize = CommandSize(ShmRTCommand, paramString, displayLen);
-            auto shmCmd = (ShmRTCommand *)alloca(cmdSize);
+            auto cmdSize = CommandSize(ShmCommand, paramString, displayLen);
+            auto shmCmd = (ShmCommand *)alloca(cmdSize);
             shmCmd->type = Command::SetParamString;
             shmCmd->paramString.index = cmd.paramString.index;
             shmCmd->paramString.offset = cmd.paramString.offset;
@@ -185,8 +181,8 @@ void PluginClient::sendCommands(RTChannel& channel){
         }
         case Command::SendSysex:
         {
-            auto cmdSize = CommandSize(ShmRTCommand, sysex, cmd.sysex.size);
-            auto shmCmd = (ShmRTCommand *)alloca(cmdSize);
+            auto cmdSize = CommandSize(ShmCommand, sysex, cmd.sysex.size);
+            auto shmCmd = (ShmCommand *)alloca(cmdSize);
             shmCmd->type = Command::SetParamString;
             shmCmd->sysex.delta = cmd.sysex.delta;
             shmCmd->sysex.size = cmd.sysex.size;
@@ -279,7 +275,8 @@ void PluginClient::process(ProcessData<double>& data){
 }
 
 void PluginClient::suspend(){
-    ShmNRTCommand cmd(Command::Suspend, id());
+    ShmCommand cmd(Command::Suspend);
+    cmd.id = id();
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
@@ -287,7 +284,8 @@ void PluginClient::suspend(){
 }
 
 void PluginClient::resume(){
-    ShmNRTCommand cmd(Command::Resume, id());
+    ShmCommand cmd(Command::Resume);
+    cmd.id = id();
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
@@ -295,7 +293,8 @@ void PluginClient::resume(){
 }
 
 void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
-    ShmNRTCommand cmd(Command::SetNumSpeakers, id());
+    ShmCommand cmd(Command::SetNumSpeakers);
+    cmd.id = id();
     cmd.speakers.in = in;
     cmd.speakers.auxin = auxin;
     cmd.speakers.out = out;
@@ -387,8 +386,8 @@ void PluginClient::writeBankData(std::string& buffer){
 }
 
 void PluginClient::sendData(Command::Type type, const char *data, size_t size){
-    auto totalSize = CommandSize(ShmNRTCommand, buffer, size);
-    auto cmd = (ShmNRTCommand *)alloca(totalSize);
+    auto totalSize = CommandSize(ShmCommand, buffer, size);
+    auto cmd = (ShmCommand *)alloca(totalSize);
     cmd->type = type;
     cmd->id = id();
     cmd->buffer.size = size;
@@ -406,7 +405,8 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
 }
 
 void PluginClient::receiveData(Command::Type type, std::string &buffer){
-    ShmNRTCommand cmd(type, id());
+    ShmCommand cmd(type);
+    cmd.id = id();
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
@@ -501,24 +501,24 @@ void* WindowClient::getHandle() {
 }
 
 void WindowClient::open(){
-    ShmNRTCommand cmd(Command::WindowOpen, plugin_->id());
+    ShmUICommand cmd(Command::WindowOpen, plugin_->id());
     plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::close(){
-    ShmNRTCommand cmd(Command::WindowClose, plugin_->id());
+    ShmUICommand cmd(Command::WindowClose, plugin_->id());
     plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::setPos(int x, int y){
-    ShmNRTCommand cmd(Command::WindowSetPos, plugin_->id());
+    ShmUICommand cmd(Command::WindowSetPos, plugin_->id());
     cmd.windowPos.x = x;
     cmd.windowPos.y = y;
     plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::setSize(int w, int h){
-    ShmNRTCommand cmd(Command::WindowSetSize, plugin_->id());
+    ShmUICommand cmd(Command::WindowSetSize, plugin_->id());
     cmd.windowSize.width = w;
     cmd.windowSize.height = h;
     plugin_->bridge().postUIThread(cmd);

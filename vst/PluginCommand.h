@@ -25,9 +25,6 @@ struct Command {
         SendMidi,
         SendSysex,
         SetProgram,
-        // audio
-        SetPlugin,
-        Process,
         // NRT commands
         CreatePlugin,
         DestroyPlugin,
@@ -57,7 +54,8 @@ struct Command {
         LatencyChanged,
         MidiReceived,
         SysexReceived,
-        // close bridge
+        // for plugin bridge
+        Process,
         Quit
     };
     Command() = default;
@@ -67,6 +65,7 @@ struct Command {
 
     // data
     uint32_t type; // specify size!
+
     union {
         // no data
         struct {} empty;
@@ -76,6 +75,11 @@ struct Command {
         float f;
         // generic double
         double d;
+        // param automated
+        struct {
+            int32_t index;
+            float value;
+        } paramAutomated;
         // param value
         struct {
             int32_t offset;
@@ -101,9 +105,9 @@ struct Command {
 
 // additional commands/replies (for IPC over shared memory)
 // that are not covered by Command.
-struct ShmRTCommand {
-    ShmRTCommand() = default;
-    ShmRTCommand(Command::Type _type) : type(_type){}
+struct ShmCommand {
+    ShmCommand(){}
+    ShmCommand(Command::Type _type) : type(_type){}
 
     static const size_t headerSize = 4;
 
@@ -120,9 +124,16 @@ struct ShmRTCommand {
         char s[1];
         // generic buffer (e.g. preset data)
         struct {
+            uint32_t id;
             int32_t size;
             char data[1];
         } buffer;
+        // param value
+        struct {
+            int32_t offset;
+            int32_t index;
+            float value;
+        } paramValue;
         // flat param string
         struct {
             int32_t offset;
@@ -143,24 +154,45 @@ struct ShmRTCommand {
             int32_t size;
             char data[1];
         } sysex;
+        // time signature
+        struct {
+            int32_t num;
+            int32_t denom;
+        } timeSig;
         // process
         struct {
+            uint32_t id;
             uint8_t numInputs;
             uint8_t numOutputs;
             uint8_t numAuxInputs;
             uint8_t numAuxOutpus;
             uint32_t numSamples;
         } process;
+        // setup processing
+        struct {
+            uint32_t id;
+            double sampleRate;
+            uint32_t maxBlockSize;
+            uint32_t precision;
+        } setup;
+        // setup speakers
+        struct {
+            uint32_t id;
+            uint16_t in;
+            uint16_t out;
+            uint16_t auxin;
+            uint16_t auxout;
+        } speakers;
     };
 };
 
-using ShmReply = ShmRTCommand;
+using ShmReply = ShmCommand;
 
-// NRT commands that are not send during process
-// and therefore need to carry the plugin ID
-struct ShmNRTCommand {
-    ShmNRTCommand() = default;
-    ShmNRTCommand(Command::Type _type, uint32_t _id)
+// additional commands/replies (for IPC over shared memory)
+// that are not covered by Command.
+struct ShmUICommand {
+    ShmUICommand(){}
+    ShmUICommand(Command::Type _type, uint32_t _id)
         : type(_type), id(_id){}
 
     static const size_t headerSize = 8;
@@ -169,36 +201,17 @@ struct ShmNRTCommand {
     uint32_t id;
 
     union {
-        // no data
-        struct {} empty;
-        // generic buffer (e.g. preset data or file path)
-        struct {
-            int32_t size;
-            char data[1];
-        } buffer;
-        // setup processing
-        struct {
-            double sampleRate;
-            uint32_t maxBlockSize;
-            uint32_t precision;
-        } setup;
-        // setup speakers
-        struct {
-            uint16_t in;
-            uint16_t out;
-            uint16_t auxin;
-            uint16_t auxout;
-        } speakers;
-        // window
+        // window position
         struct {
             int32_t x;
             int32_t y;
         } windowPos;
+        // window size
         struct {
             int32_t width;
             int32_t height;
         } windowSize;
-        // UI
+        // parameter automated
         struct {
             int32_t index;
             float value;

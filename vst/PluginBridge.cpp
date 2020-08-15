@@ -137,7 +137,7 @@ PluginBridge::~PluginBridge(){
 
     // send quit message
     if (alive()){
-        ShmNRTCommand cmd(Command::Quit, 0);
+        ShmCommand cmd(Command::Quit);
 
         auto chn = getNRTChannel();
         chn.AddCommand(cmd, empty);
@@ -200,16 +200,21 @@ void PluginBridge::removeUIClient(uint32_t id){
     clients_.erase(id);
 }
 
-bool PluginBridge::postUIThread(const ShmNRTCommand& cmd){
+bool PluginBridge::postUIThread(const ShmUICommand& cmd){
     // LockGuard lock(uiMutex_);
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
-    return shm_.getChannel(0).writeMessage((const char *)&cmd, sizeof(cmd));
+    auto& channel = shm_.getChannel(0);
+    auto success = channel.writeMessage((const char *)&cmd, sizeof(cmd));
+    if (success){
+        channel.post();
+    }
+    return success;
 }
 
 void PluginBridge::pollUIThread(){
     auto& channel = shm_.getChannel(1);
 
-    ShmNRTCommand cmd;
+    ShmUICommand cmd;
     size_t size = sizeof(cmd);
     // read all available events
     while (channel.readMessage((char *)&cmd, size)){

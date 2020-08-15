@@ -38,10 +38,9 @@ struct _Channel {
     _Channel(ShmChannel& channel, Mutex& mutex)
         : channel_(&channel), lock_(std::unique_lock<Mutex>(mutex)){}
 
-    bool addCommand(const void* cmd, size_t size = 0){
+    bool addCommand(const void* cmd, size_t size){
         return channel_->addMessage(static_cast<const char *>(cmd), size);
     }
-#define AddCommand(cmd, field) addCommand(&(cmd), (cmd).headerSize + sizeof((cmd).field))
 
     void send(){
         channel_->post();
@@ -58,12 +57,14 @@ struct _Channel {
     std::unique_lock<Mutex> lock_;
 };
 
+#define AddCommand(cmd, field) addCommand(&(cmd), (cmd).headerSize + sizeof((cmd).field))
+
 using RTChannel = _Channel<SpinLock>;
 using NRTChannel = _Channel<SharedMutex>;
 
 /*//////////////////////////// PluginBridge ///////////////////////////*/
 
-class ShmNRTCommand;
+class ShmUICommand;
 
 class PluginBridge final
         : std::enable_shared_from_this<PluginBridge> {
@@ -91,7 +92,7 @@ class PluginBridge final
 
     void removeUIClient(uint32_t id);
 
-    bool postUIThread(const ShmNRTCommand& cmd);
+    bool postUIThread(const ShmUICommand& cmd);
 
     RTChannel getRTChannel();
 

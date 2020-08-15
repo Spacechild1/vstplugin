@@ -306,8 +306,8 @@ void ThreadedPlugin::sendEvents(){
         for (auto& event : events_[current_]){
             switch (event.type){
             case Command::ParamAutomated:
-                listener->parameterAutomated(event.paramValue.index,
-                                             event.paramValue.value);
+                listener->parameterAutomated(event.paramAutomated.index,
+                                             event.paramAutomated.value);
                 break;
             case Command::LatencyChanged:
                 listener->latencyChanged(event.i);
@@ -462,8 +462,9 @@ intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, floa
 void ThreadedPlugin::parameterAutomated(int index, float value) {
     if (std::this_thread::get_id() == rtThread_){
         Command e(Command::ParamAutomated);
-        e.paramValue.index = index;
-        e.paramValue.value = value;
+        e.paramAutomated.index = index;
+        e.paramAutomated.value = value;
+
         pushEvent(e);
     } else {
         // UI or NRT thread
@@ -476,6 +477,7 @@ void ThreadedPlugin::latencyChanged(int nsamples) {
     if (std::this_thread::get_id() == rtThread_){
         Command e(Command::LatencyChanged);
         e.i = nsamples;
+
         pushEvent(e);
     } else {
         // UI or NRT thread
@@ -488,6 +490,7 @@ void ThreadedPlugin::midiEvent(const MidiEvent& event) {
     if (std::this_thread::get_id() == rtThread_){
         Command e(Command::MidiReceived);
         e.midi = event;
+
         pushEvent(e);
     } else {
         // UI or NRT thread
@@ -506,6 +509,7 @@ void ThreadedPlugin::sysexEvent(const SysexEvent& event) {
         e.sysex.data = data;
         e.sysex.size = event.size;
         e.sysex.delta = event.delta;
+
         pushEvent(e);
     } else {
         // UI or NRT thread
