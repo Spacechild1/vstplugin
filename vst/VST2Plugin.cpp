@@ -1397,23 +1397,20 @@ void VST2Plugin::postProcess(int nsamples){
 }
 
 void VST2Plugin::processEvents(VstEvents *events){
-    int n = events->numEvents;
     auto listener = listener_.lock();
-    for (int i = 0; i < n; ++i){
-        auto *event = events->events[i];
-        if (event->type == kVstMidiType){
-            auto *midiEvent = (VstMidiEvent *)event;
-            if (listener){
+    if (listener){
+        for (int i = 0; i < events->numEvents; ++i){
+            auto *event = events->events[i];
+            if (event->type == kVstMidiType){
+                auto *midiEvent = (VstMidiEvent *)event;
                 auto *data = midiEvent->midiData;
                 listener->midiEvent(MidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
-            }
-        } else if (event->type == kVstSysExType){
-            auto *sysexEvent = (VstMidiSysexEvent *)event;
-            if (listener){
+            } else if (event->type == kVstSysExType){
+                auto *sysexEvent = (VstMidiSysexEvent *)event;
                 listener->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
+            } else {
+                LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");
             }
-        } else {
-            LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");
         }
     }
 }
