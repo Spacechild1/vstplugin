@@ -19,7 +19,8 @@ class ShmChannel;
 class PluginHandle : public IPluginListener {
  public:
     PluginHandle() = default;
-    PluginHandle(PluginServer& server, IPlugin::ptr plugin, uint32_t id);
+    PluginHandle(PluginServer& server, IPlugin::ptr plugin,
+                 uint32_t id, ShmChannel& channel);
 
     void handleRequest(const ShmCommand& cmd, ShmChannel& channel);
     void handleUICommand(const ShmUICommand& cmd);
@@ -29,11 +30,17 @@ class PluginHandle : public IPluginListener {
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
 
-    void process(const ShmCommand& cmd, ShmChannel& channel);
-    template<typename T>
-    void doProcess(IPlugin::ProcessData<T>& data);
+    void updateBuffer();
 
-    void cacheParamState();
+    void process(const ShmCommand& cmd, ShmChannel& channel);
+
+    template<typename T>
+    void doProcess(int numSamples, ShmChannel& channel);
+
+    void dispatchCommands(ShmChannel& channel);
+
+    void sendEvents(ShmChannel& channel);
+
     void sendUpdate(ShmChannel& channel, bool bank);
 
     static void addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
@@ -42,20 +49,19 @@ class PluginHandle : public IPluginListener {
     IPlugin::ptr plugin_;
     uint32_t id_ = 0;
 
-    std::vector<double> input_;
-    std::vector<double> auxInput_;
-    std::vector<double> output_;
-    std::vector<double> auxOuput_;
-    std::vector<Command> commands_;
+    int maxBlockSize_ = 64;
+    ProcessPrecision precision_{ProcessPrecision::Single};
+    int numInputs_ = 0;
+    int numOutputs_ = 0;
+    int numAuxInputs_ = 0;
+    int numAuxOutputs_ = 0;
+    std::vector<char> buffer_;
+    std::vector<Command> events_;
 
-    struct ParamState {
-        float value;
-        std::string display;
-    };
-    std::unique_ptr<ParamState[]> paramState_;
+    std::unique_ptr<float[]> paramState_;
 
-    static void addParam(ShmChannel& channel, int index,
-                         const ParamState& state, bool automated);
+    void sendParam(ShmChannel& channel, int index,
+                   float value, bool automated);
 };
 
 #define AddReply(cmd, field) addReply(&(cmd), (cmd).headerSize + sizeof((cmd).field))
@@ -73,7 +79,14 @@ class PluginServer {
  private:
     void pollUIThread();
     void runThread(ShmChannel* channel);
+    void handleCommand(ShmChannel& channel,
+                       const ShmCommand *cmd);
     void quit();
+
+    void createPlugin(uint32_t id, const char *data, size_t size,
+                      ShmChannel& channel);
+
+    void destroyPlugin(uint32_t id);
 
     PluginHandle *findPlugin(uint32_t id);
 
