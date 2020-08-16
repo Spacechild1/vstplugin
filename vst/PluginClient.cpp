@@ -9,7 +9,7 @@ namespace vst {
 
 #define FORBIDDEN_METHOD(name) throw Error(Error::PluginError, "PluginClient: must not call " name "()");
 
-#define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging");
+#define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging/sandboxing");
 
 #define ShmRTCommandAlloca(type, extra) new(alloca(sizeof(ShmRTCommand) + extra))ShmRTCommand(type)
 
@@ -328,6 +328,7 @@ void PluginClient::setListener(IPluginListener::ptr listener) {
 }
 
 double PluginClient::getTransportPosition() const {
+    // TODO
     return transport_;
 }
 
@@ -484,31 +485,31 @@ intptr_t PluginClient::vendorSpecific(int index, intptr_t value, void *p, float 
 // VST3 only
 
 void PluginClient::beginMessage(){
-
+    UNSUPPORTED_METHOD("beginMessage");
 }
 
 void PluginClient::addInt(const char* id, int64_t value){
-
+    UNSUPPORTED_METHOD("addInt");
 }
 
 void PluginClient::addFloat(const char* id, double value){
-
+    UNSUPPORTED_METHOD("addFloat");
 }
 
 void PluginClient::addString(const char* id, const char *value){
-
+    UNSUPPORTED_METHOD("addString");
 }
 
 void PluginClient::addString(const char* id, const std::string& value){
-
+    UNSUPPORTED_METHOD("addString");
 }
 
 void PluginClient::addBinary(const char* id, const char *data, size_t size){
-
+    UNSUPPORTED_METHOD("addBinary");
 }
 
 void PluginClient::endMessage(){
-
+    UNSUPPORTED_METHOD("endMessage");
 }
 
 
