@@ -28,7 +28,11 @@ class PluginManager {
     // throws an Error exception on failure!
     void read(const std::string& path, bool update = true);
     void write(const std::string& path) const;
+    // read a single plugin description
+    PluginInfo::const_ptr readPlugin(std::istream& stream);
  private:
+    PluginInfo::const_ptr doReadPlugin(std::istream& stream, int versionMajor,
+                                       int versionMinor, int versionBugfix);
     void doWrite(const std::string& path) const;
     std::unordered_map<std::string, IFactory::ptr> factories_;
     enum {
