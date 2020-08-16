@@ -2,6 +2,7 @@
 #include "Utility.h"
 
 #include <algorithm>
+#include <sstream>
 
 namespace vst {
 
@@ -46,13 +47,16 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     }
 
     // create plugin
-    auto bufsize = info_->path().size() + info_->name.size() + 2; // include `\0` bytes
-    auto cmdSize = sizeof(ShmCommand) + bufsize;
+    std::stringstream ss;
+    info_->serialize(ss);
+    auto info = ss.str();
+
+    auto cmdSize = sizeof(ShmCommand) + info.size();
     auto cmd = (ShmCommand *)alloca(cmdSize);
     cmd->type = Command::CreatePlugin;
-    cmd->id = id_;
-    cmd->buffer.size = bufsize;
-    snprintf(cmd->buffer.data, bufsize, "%s\0%s", info_->path().c_str(), info_->name.c_str());
+    cmd->plugin.id = id_;
+    cmd->plugin.size = info.size();
+    memcpy(cmd->plugin.data, info.c_str(), info.size());
 
     auto chn = bridge_->getNRTChannel();
     chn.addCommand(cmd, cmdSize);
