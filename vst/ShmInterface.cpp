@@ -199,6 +199,7 @@ void ShmChannel::waitReply(){
 }
 
 void ShmChannel::init(char *data, ShmInterface& shm, int num){
+    LOG_DEBUG("init channel " << num);
     header_ = reinterpret_cast<Header *>(data);
     if (owner_){
         header_->size = totalSize_;
@@ -219,11 +220,7 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         type_ = (Type)header_->type;
         name_ = header_->name;
     }
-    LOG_DEBUG("init ShmChannel " << num << " (" << name_
-              << "): buffer size = " << bufferSize_
-              << ", total size = " << totalSize_
-              << ", start address = " << (void *)data);
-
+    LOG_DEBUG("initEvent");
     initEvent(eventA_, header_->event1);
     if (type_ == Request){
         initEvent(eventB_, header_->event2);
@@ -236,6 +233,11 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
     } else {
         data_ = reinterpret_cast<Data *>(data + header_->offset);
     }
+
+    LOG_DEBUG("init ShmChannel " << num << " (" << name_
+              << "): buffer size = " << data_->capacity
+              << ", total size = " << totalSize_
+              << ", start address = " << (void *)data);
 }
 
 void ShmChannel::initEvent(Handle& event, const char *data){
@@ -338,13 +340,14 @@ void ShmInterface::connect(const std::string &path){
     }
 
     openShm(path, false);
-
+    LOG_DEBUG("ShmInterface: connected to " << path);
     auto header = reinterpret_cast<Header *>(data_);
+    LOG_DEBUG("total size: " << header->size);
 
     // channels_.reserve(header->numChannels);
     for (size_t i = 0; i < header->numChannels; ++i){
         channels_.emplace_back();
-        channels_.back().init(data_ + header->channelOffset[i], *this, i);
+        channels_[i].init(data_ + header->channelOffset[i], *this, i);
     }
 }
 
@@ -417,9 +420,12 @@ void ShmInterface::close(){
 }
 
 void ShmInterface::openShm(const std::string &path, bool create){
-    auto totalSize = sizeof(Header);
-    for (auto& chn : channels_){
-        totalSize += chn.size();
+    size_t totalSize = sizeof(Header);
+
+    if (create) {
+        for (auto& chn : channels_) {
+            totalSize += chn.size();
+        }
     }
 
 #ifdef _WIN32
@@ -452,12 +458,22 @@ void ShmInterface::openShm(const std::string &path, bool create){
     void *data = MapViewOfFile(hMapFile, // handle to map object
                                FILE_MAP_ALL_ACCESS, // read/write permission
                                0, 0, totalSize);    // size
+    if (data && !create){
+        // get actual total size
+        totalSize = static_cast<Header *>(data)->size;
+        UnmapViewOfFile(data);
+        // map again with correct size
+        data = MapViewOfFile(hMapFile,
+                             FILE_MAP_ALL_ACCESS,
+                             0, 0, totalSize);
+    }
 
     if (!data){
         CloseHandle(hMapFile);
         throw Error(Error::SystemError, "MapViewOfFile() failed with "
                     + std::to_string(GetLastError()));
     }
+
 
     // try to lock the file to physical memory
     if (create && !VirtualLock(data, totalSize)){
@@ -486,6 +502,14 @@ void ShmInterface::openShm(const std::string &path, bool create){
     }
     // memory map the shared memory object
     void *data = mmap(0, totalSize, PROT_WRITE, MAP_SHARED, fd, 0);
+    if (data && !create){
+        // get actual total size
+        auto oldSize = totalSize;
+        totalSize = static_cast<Header *>(data)->size;
+        munmap(data, oldSize);
+        // map again with correct size
+        data = mmap(0, totalSize, PROT_WRITE, MAP_SHARED, fd, 0);
+    }
     // we can close the fd after calling mmap()!
     ::close(fd);
 
