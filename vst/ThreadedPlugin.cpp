@@ -112,15 +112,19 @@ ThreadedPlugin::~ThreadedPlugin() {
 
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
     listener_ = listener;
-    plugin_->setListener(shared_from_this());
+    auto proxy = std::make_shared<ThreadedPluginListener>(*this);
+    proxyListener_ = proxy; // keep alive
+    plugin_->setListener(proxy);
 }
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
     LockGuard lock(mutex_);
     plugin_->setupProcessing(sampleRate, maxBlockSize, precision);
+
     if (maxBlockSize != blockSize_ || precision != precision_){
         blockSize_ = maxBlockSize;
         precision_ = precision;
+
         updateBuffer();
     }
 }
@@ -301,7 +305,7 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
 }
 
 void ThreadedPlugin::sendEvents(){
-    IPluginListener::ptr listener = listener_.lock();
+    auto listener = listener_.lock();
     if (listener){
         for (auto& event : events_[current_]){
             switch (event.type){
@@ -352,6 +356,7 @@ void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
     auxInput_.resize(auxIn);
     output_.resize(out);
     auxOutput_.resize(auxOut);
+
     updateBuffer();
 }
 
@@ -459,48 +464,56 @@ intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, floa
     return plugin_->vendorSpecific(index, value, p, opt);
 }
 
-void ThreadedPlugin::parameterAutomated(int index, float value) {
-    if (std::this_thread::get_id() == rtThread_){
+/*/////////////////// ThreadedPluginListener ////////////////////*/
+
+void ThreadedPluginListener::parameterAutomated(int index, float value) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
         Command e(Command::ParamAutomated);
         e.paramAutomated.index = index;
         e.paramAutomated.value = value;
 
-        pushEvent(e);
+        owner_->pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = listener_.lock();
-        listener->parameterAutomated(index, value);
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->parameterAutomated(index, value);
+        }
     }
 }
 
-void ThreadedPlugin::latencyChanged(int nsamples) {
-    if (std::this_thread::get_id() == rtThread_){
+void ThreadedPluginListener::latencyChanged(int nsamples) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
         Command e(Command::LatencyChanged);
         e.i = nsamples;
 
-        pushEvent(e);
+        owner_->pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = listener_.lock();
-        listener->latencyChanged(nsamples);
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->latencyChanged(nsamples);
+        }
     }
 }
 
-void ThreadedPlugin::midiEvent(const MidiEvent& event) {
-    if (std::this_thread::get_id() == rtThread_){
+void ThreadedPluginListener::midiEvent(const MidiEvent& event) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
         Command e(Command::MidiReceived);
         e.midi = event;
 
-        pushEvent(e);
+        owner_->pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = listener_.lock();
-        listener->midiEvent(event);
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->midiEvent(event);
+        }
     }
 }
 
-void ThreadedPlugin::sysexEvent(const SysexEvent& event) {
-    if (std::this_thread::get_id() == rtThread_){
+void ThreadedPluginListener::sysexEvent(const SysexEvent& event) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
         // deep copy!
         auto data = new char[event.size];
         memcpy(data, event.data, event.size);
@@ -510,11 +523,13 @@ void ThreadedPlugin::sysexEvent(const SysexEvent& event) {
         e.sysex.size = event.size;
         e.sysex.delta = event.delta;
 
-        pushEvent(e);
+        owner_->pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = listener_.lock();
-        listener->sysexEvent(event);
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->sysexEvent(event);
+        }
     }
 }
 

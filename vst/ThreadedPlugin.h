@@ -39,12 +39,15 @@ class DSPThreadPool {
     SpinLock popLock_;
 };
 
-class ThreadedPlugin final :
-        public DeferredPlugin,
-        public IPluginListener,
-        std::enable_shared_from_this<IPluginListener>
+/*//////////////////// ThreadedPlugin ////////////////*/
+
+class ThreadedPluginListener;
+
+class ThreadedPlugin final : public DeferredPlugin
 {
  public:
+    friend class ThreadedPluginListener;
+
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
 
@@ -141,12 +144,6 @@ class ThreadedPlugin final :
     void endMessage() override {
         plugin_->endMessage();
     }
-
-    // IPluginListener
-    void parameterAutomated(int index, float value) override;
-    void latencyChanged(int nsamples) override;
-    void midiEvent(const MidiEvent& event) override;
-    void sysexEvent(const SysexEvent& event) override;
  private:
     void updateBuffer();
     template<typename T>
@@ -159,6 +156,7 @@ class ThreadedPlugin final :
     DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
     std::weak_ptr<IPluginListener> listener_;
+    std::shared_ptr<ThreadedPluginListener> proxyListener_;
     mutable SharedMutex mutex_;
     Event event_;
     std::thread::id rtThread_;
@@ -180,6 +178,20 @@ class ThreadedPlugin final :
     std::vector<void *> output_;
     std::vector<void *> auxOutput_;
     std::vector<char> buffer_;
+};
+
+/*/////////////////// ThreadedPluginListener ////////////////////*/
+
+class ThreadedPluginListener : public IPluginListener {
+ public:
+    ThreadedPluginListener(ThreadedPlugin& owner)
+        : owner_(&owner) {}
+    void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
+    void midiEvent(const MidiEvent& event) override;
+    void sysexEvent(const SysexEvent& event) override;
+ private:
+    ThreadedPlugin *owner_;
 };
 
 } // vst
