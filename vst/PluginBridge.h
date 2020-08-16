@@ -52,6 +52,8 @@ struct _Channel {
         size_t dummy;
         return channel_->getMessage(*reinterpret_cast<const char **>(&reply), dummy);
     }
+
+    void checkError();
  private:
     ShmChannel *channel_;
     std::unique_lock<Mutex> lock_;

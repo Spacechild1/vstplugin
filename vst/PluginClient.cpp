@@ -57,6 +57,8 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     auto chn = bridge_->getNRTChannel();
     chn.addCommand(cmd, cmdSize);
     chn.send();
+
+    chn.checkError();
 }
 
 PluginClient::~PluginClient(){
@@ -92,6 +94,8 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessP
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, setup);
     chn.send();
+
+    chn.checkError();
 }
 
 template<typename T>
@@ -223,6 +227,10 @@ void PluginClient::dispatchReply(const ShmReply& reply){
     case Command::ProgramName:
         programCache_[program_] = reply.s;
         break;
+    case Command::ProgramNameIndexed:
+        programCache_[reply.programName.index]
+                = reply.programName.name;
+        break;
     case Command::ProgramNumber:
         program_ = reply.i;
         break;
@@ -247,19 +255,18 @@ void PluginClient::dispatchReply(const ShmReply& reply){
     {
         auto listener = listener_.lock();
         if (listener){
-            // put temporary copy on the stack
-            auto data = (char *)alloca(reply.sysex.size);
-            memcpy(data, reply.sysex.data, reply.sysex.size);
-
             SysexEvent sysex;
             sysex.delta = reply.sysex.delta;
             sysex.size = reply.sysex.size;
-            sysex.data = data;
+            sysex.data = reply.sysex.data;
 
             listener->sysexEvent(sysex);
         }
         break;
     }
+    case Command::Error:
+        reply.throwError();
+        break;
     default:
         LOG_ERROR("got unknown reply " << reply.type);
         break;
@@ -281,6 +288,8 @@ void PluginClient::suspend(){
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
     chn.send();
+
+    chn.checkError();
 }
 
 void PluginClient::resume(){
@@ -290,6 +299,8 @@ void PluginClient::resume(){
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
     chn.send();
+
+    chn.checkError();
 }
 
 void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
@@ -303,6 +314,8 @@ void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, speakers);
     chn.send();
+
+    chn.checkError();
 }
 
 int PluginClient::getLatencySamples(){
@@ -413,8 +426,18 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     chn.send();
 
     const ShmReply *reply;
-    if (chn.getReply(reply) && reply->type == Command::PluginData){
-        buffer.assign(reply->buffer.data, reply->buffer.size);
+    if (chn.getReply(reply)){
+        if (reply->type == Command::PluginData){
+            buffer.assign(reply->buffer.data, reply->buffer.size);
+        } else if (reply->type == Command::Error){
+           reply->throwError();
+        } else {
+            throw Error(Error::PluginError,
+                        "PluginClient::receiveData: unexpected reply message");
+        }
+    } else {
+        throw Error(Error::PluginError,
+                    "PluginClient::receiveData: missing reply message");
     }
 }
 

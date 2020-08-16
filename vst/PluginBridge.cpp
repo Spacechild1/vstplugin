@@ -7,6 +7,18 @@
 
 namespace vst {
 
+/*///////////////////// Channel /////////////////////*/
+
+template<>
+void NRTChannel::checkError(){
+    const ShmCommand *reply;
+    if (getReply(reply)){
+        if (reply->type == Command::Error){
+            reply->throwError();
+        }
+    }
+}
+
 /*//////////////////// PluginBridge /////////////////*/
 
 std::mutex gPluginBridgeMutex;

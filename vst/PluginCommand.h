@@ -49,12 +49,14 @@ struct Command {
         PluginData,
         ProgramNumber,
         ProgramName,
+        ProgramNameIndexed,
         ParameterUpdate,
         ParamAutomated,
         LatencyChanged,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
+        Error,
         Process,
         Quit
     };
@@ -116,9 +118,13 @@ struct ShmCommand {
     union {
         // no data
         struct {} empty;
-        // generic int
+        // generic integer
         int32_t i;
-        // just a plugin ID
+        // generic float
+        float f;
+        // generic double
+        double d;
+        // plugin ID
         uint32_t id;
         // flat string
         char s[1];
@@ -146,6 +152,11 @@ struct ShmCommand {
             float value;
             char display[1];
         } paramState;
+        // program name (indexed)
+        struct {
+            int32_t index;
+            char name[1];
+        } programName;
         // midi message
         MidiEvent midi;
         // flat sysex data
@@ -159,6 +170,12 @@ struct ShmCommand {
             int32_t num;
             int32_t denom;
         } timeSig;
+        // plugin
+        struct {
+            uint32_t id;
+            int32_t size;
+            char data[1];
+        } plugin;
         // process
         struct {
             uint32_t id;
@@ -183,7 +200,16 @@ struct ShmCommand {
             uint16_t auxin;
             uint16_t auxout;
         } speakers;
+        // error
+        struct {
+            int32_t code;
+            char msg[1];
+        } error;
     };
+
+    void throwError() const {
+        throw Error(static_cast<Error::ErrorCode>(error.code), error.msg);
+    }
 };
 
 using ShmReply = ShmCommand;
