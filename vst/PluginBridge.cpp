@@ -38,15 +38,22 @@ PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
 
     if (!bridge){
         // create shared bridge
+        LOG_DEBUG("create shared plugin bridge for " << cpuArchToString(arch));
         bridge = std::make_shared<PluginBridge>(arch, true);
         gPluginBridgeMap.emplace(arch, bridge);
+
+         WatchDog::instance().registerProcess(bridge);
     }
 
     return bridge;
 }
 
 PluginBridge::ptr PluginBridge::create(CpuArch arch){
-    return std::make_shared<PluginBridge>(arch, false);
+    auto bridge = std::make_shared<PluginBridge>(arch, false);
+
+    WatchDog::instance().registerProcess(bridge);
+
+    return bridge;
 }
 
 // PluginFactory.cpp
@@ -60,6 +67,7 @@ std::string getHostApp(CpuArch arch);
 PluginBridge::PluginBridge(CpuArch arch, bool shared)
     : shared_(shared)
 {
+    LOG_DEBUG("PluginBridge: created shared memory interface");
     // setup shared memory interface
     // UI channels:
     shm_.addChannel(ShmChannel::Queue, queueSize, "ui_snd");
@@ -81,6 +89,8 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     }
     shm_.create();
 
+    LOG_DEBUG("PluginBridge: created channels");
+
     // spawn host process
     std::string hostApp = getHostApp(arch);
 #ifdef _WIN32
@@ -92,7 +102,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // spaces in file names.
     std::stringstream cmdLineStream;
     cmdLineStream << hostApp << " bridge "
-                  << GetCurrentProcessId() << "\"" << shm_.path() << "\"";
+                  << GetCurrentProcessId() << " \"" << shm_.path() << "\"";
     // LOG_DEBUG(cmdLineStream.str());
     auto cmdLine = widen(cmdLineStream.str());
 
@@ -101,9 +111,13 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     STARTUPINFOW si;
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
+#if BRIDGE_LOG
+    // si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+#endif
 
-    if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL,
-                        BRIDGE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi_)){
+    if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL, 0,
+                        BRIDGE_LOG ? CREATE_NEW_CONSOLE : DETACHED_PROCESS,
+                        NULL, NULL, &si, &pi_)){
         auto err = GetLastError();
         std::stringstream ss;
         ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
@@ -137,11 +151,13 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         std::exit(EXIT_FAILURE);
     }
 #endif
-    WatchDog::instance().registerProcess(shared_from_this());
+    alive_ = true;
+    LOG_DEBUG("PluginBridge: spawned subprocess");
 
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginBridge *>(x)->pollUIThread();
     }, this);
+    LOG_DEBUG("PluginBridge: added poll function");
 }
 
 PluginBridge::~PluginBridge(){
@@ -162,6 +178,10 @@ PluginBridge::~PluginBridge(){
 }
 
 void PluginBridge::checkStatus(){
+    // already dead, no need to check
+    if (!alive_){
+        return;
+    }
 #ifdef _WIN32
     DWORD res = WaitForSingleObject(pi_.hProcess, 0);
     if (res == WAIT_TIMEOUT){
@@ -169,7 +189,11 @@ void PluginBridge::checkStatus(){
     } else if (res == WAIT_OBJECT_0){
         DWORD code = 0;
         if (GetExitCodeProcess(pi_.hProcess, &code)){
-            if (code != EXIT_SUCCESS){
+            if (code == EXIT_SUCCESS){
+                LOG_DEBUG("host process exited successfully");
+            } else if (code == EXIT_FAILURE){
+                LOG_ERROR("host process exited with failure");
+            } else {
                 LOG_ERROR("host process crashed!");
             }
         } else {
@@ -186,7 +210,11 @@ void PluginBridge::checkStatus(){
     }
     if (WIFEXITED(status)) {
         code = WEXITSTATUS(status);
-        if (code != EXIT_SUCCESS){
+        if (code == EXIT_SUCCESS){
+            LOG_DEBUG("host process exited successfully");
+        } else if (code == EXIT_FAILURE){
+            LOG_ERROR("host process exited with failure");
+        } else {
             LOG_ERROR("host process crashed!");
         }
     } else {
@@ -303,6 +331,7 @@ WatchDog& WatchDog::instance(){
 }
 
 WatchDog::WatchDog(){
+    LOG_DEBUG("create WatchDog");
     running_ = true;
     thread_ = std::thread([this](){
         vst::setThreadPriority(Priority::Low);
@@ -342,6 +371,7 @@ WatchDog::WatchDog(){
 #if !WATCHDOG_JOIN
     thread_.detach();
 #endif
+    LOG_DEBUG("create WatchDog done");
 }
 
 WatchDog::~WatchDog(){
@@ -357,6 +387,7 @@ WatchDog::~WatchDog(){
 }
 
 void WatchDog::registerProcess(PluginBridge::ptr process){
+    LOG_DEBUG("WatchDog: register process");
     std::lock_guard<std::mutex> lock(mutex_);
     processes_.push_back(process);
     // wake up if process list has been empty!

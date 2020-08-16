@@ -223,8 +223,8 @@ struct ShmUICommand {
 
     static const size_t headerSize = 8;
 
-    uint32_t type;
-    uint32_t id;
+    uint32_t type = 0;
+    uint32_t id = 0;
 
     union {
         // window position

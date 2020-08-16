@@ -40,12 +40,14 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     paramCache_.reset(new Param[info_->numParameters()]);
     programCache_.reset(new std::string[info_->numPrograms()]);
 
+    LOG_DEBUG("PluginClient: get plugin bridge");
     if (sandbox){
-        bridge_ = PluginBridge::create(f->arch());
+        bridge_ = PluginBridge::create(factory_->arch());
     } else {
-        bridge_ = PluginBridge::getShared(f->arch());
+        bridge_ = PluginBridge::getShared(factory_->arch());
     }
 
+    LOG_DEBUG("PluginClient: open plugin");
     // create plugin
     std::stringstream ss;
     info_->serialize(ss);
@@ -63,6 +65,8 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     chn.send();
 
     chn.checkError();
+
+    LOG_DEBUG("PluginClient: done!");
 }
 
 PluginClient::~PluginClient(){

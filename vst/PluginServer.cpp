@@ -9,6 +9,10 @@
 
 namespace vst {
 
+static void sleep(int s){
+    std::this_thread::sleep_for(std::chrono::seconds(s));
+}
+
 /*///////////////// PluginHandle ///////////////*/
 
 PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
@@ -469,15 +473,15 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     : pid_(pid), shm_(std::make_unique<ShmInterface>())
 {
     shm_->connect(shmPath);
-
+    LOG_DEBUG("PluginServer: connected to shared memory interface");
     // setup UI event loop
     UIThread::setup();
-
+    LOG_DEBUG("PluginServer: setup event loop");
     // install UI poll function
     UIThread::addPollFunction([](void *x){
         static_cast<PluginServer *>(x)->pollUIThread();
     }, this);
-
+    LOG_DEBUG("PluginServer: add UI poll function");
     // create threads
     running_ = true;
 
@@ -486,6 +490,7 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
                                   this, &shm_->getChannel(i));
         threads_.push_back(std::move(thread));
     }
+    LOG_DEBUG("PluginServer: create threads");
 }
 
 PluginServer::~PluginServer(){
@@ -536,7 +541,8 @@ void PluginServer::runThread(ShmChannel *channel){
         if (channel->getMessage(msg, size)){
             handleCommand(*channel, (const ShmCommand *)msg);
         } else {
-            LOG_ERROR("PluginServer: couldn't get message");
+            LOG_ERROR("PluginServer: '" << channel->name()
+                      << "': couldn't get message");
             // ?
         }
     }
@@ -569,9 +575,10 @@ void PluginServer::handleCommand(ShmChannel& channel,
         channel.clear(); // !
 
         std::string msg = e.what();
+
+        char buf[256]; // can't use alloca() in catch block
         auto size = CommandSize(ShmCommand, error, msg.size() + 1);
-        auto reply = (ShmCommand *)alloca(size);
-        reply->type = Command::Error;
+        auto reply = new(buf)ShmCommand(Command::Error);
         reply->error.code = e.code();
         memcpy(reply->error.msg, msg.c_str(), msg.size() + 1);
 

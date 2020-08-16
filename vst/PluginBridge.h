@@ -21,12 +21,12 @@
 #endif
 
 #ifndef BRIDGE_LOG
-#define BRIDGE_LOG 0
+#define BRIDGE_LOG 1
 #endif
 
 namespace vst {
 
-class PluginInfo;
+struct PluginInfo;
 enum class CpuArch;
 
 /*/////////////////////// RTChannel / NRTChannel ////////////////////////*/
@@ -66,7 +66,7 @@ using NRTChannel = _Channel<SharedMutex>;
 
 /*//////////////////////////// PluginBridge ///////////////////////////*/
 
-class ShmUICommand;
+struct ShmUICommand;
 
 class PluginBridge final
         : std::enable_shared_from_this<PluginBridge> {

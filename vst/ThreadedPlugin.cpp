@@ -149,7 +149,7 @@ void ThreadedPlugin::updateBuffer(){
     for (size_t i = 0; i < auxOutput_.size(); ++i, buffer += incr){
         auxOutput_[i] = (void *)buffer;
     }
-    assert(buffer == buffer_.end());
+    assert((buffer - buffer_.data()) == buffer_.size());
 }
 
 void ThreadedPlugin::dispatchCommands() {

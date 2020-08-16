@@ -59,11 +59,14 @@ int probe(const std::string& pluginPath, int pluginIndex,
 }
 
 int bridge(int pid, const std::string& path){
+    LOG_DEBUG("bridge begin: " << pid << " " << path);
     try {
         // create and run server
         auto server = std::make_unique<PluginServer>(pid, path);
+
         server->run();
 
+        LOG_DEBUG("bridge end");
         return EXIT_SUCCESS;
     } catch (const Error& e){
         // LATER redirect stderr to parent stdin to get the error message
@@ -79,6 +82,7 @@ int wmain(int argc, const wchar_t *argv[]){
 #else
 int main(int argc, const char *argv[]) {
 #endif
+    LOG_DEBUG("host");
     if (argc >= 2){
         std::string verb = shorten(argv[1]);
         argc -= 2;
