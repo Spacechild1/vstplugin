@@ -231,7 +231,13 @@ struct PluginInfo final {
     const std::string& path() const { return path_; }
     // create new instances
     // throws an Error exception on failure!
-    IPlugin::ptr create(bool editor, bool threaded, bool sandbox = 0) const;
+    enum class Mode {
+        Auto,
+        Sandboxed,
+        Native,
+        Bridged
+    };
+    IPlugin::ptr create(bool editor, bool threaded, Mode mode = Mode::Auto) const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,

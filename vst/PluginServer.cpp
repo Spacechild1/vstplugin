@@ -609,7 +609,9 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
     UIThread::callSync([](void *x){
         auto result = static_cast<PluginResult *>(x);
         try {
-            result->plugin = result->info->create(true, false);
+            // open with Mode::Native to avoid infinite recursion!
+            result->plugin = result->info->create(true, false,
+                                                  PluginInfo::Mode::Native);
         } catch (const Error& e){
             result->error = e;
         }
