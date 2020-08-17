@@ -13,6 +13,66 @@ static void sleep(int s){
     std::this_thread::sleep_for(std::chrono::seconds(s));
 }
 
+/*///////////////// PluginHandleListener ///////*/
+
+void PluginHandleListener::parameterAutomated(int index, float value) {
+    if (UIThread::isCurrentThread()){
+        LOG_DEBUG("UI thread: ParameterAutomated");
+        ShmUICommand cmd(Command::ParamAutomated, owner_->id_);
+        cmd.paramAutomated.index = index;
+        cmd.paramAutomated.value = value;
+
+        owner_->server_->postUIThread(cmd);
+    } else {
+        LOG_DEBUG("RT thread: ParameterAutomated");
+        Command cmd(Command::ParamAutomated);
+        cmd.paramAutomated.index = index;
+        cmd.paramAutomated.value = value;
+
+        owner_->events_.push_back(cmd);
+    }
+}
+
+void PluginHandleListener::latencyChanged(int nsamples) {
+    if (UIThread::isCurrentThread()){
+        // shouldn't happen
+    } else {
+        Command cmd(Command::LatencyChanged);
+        cmd.i = nsamples;
+
+        owner_->events_.push_back(cmd);
+    }
+}
+
+void PluginHandleListener::midiEvent(const MidiEvent& event) {
+    if (UIThread::isCurrentThread()){
+        // ignore for now
+    } else {
+        Command cmd(Command::MidiReceived);
+        cmd.midi = event;
+
+        owner_->events_.push_back(cmd);
+    }
+}
+
+void PluginHandleListener::sysexEvent(const SysexEvent& event) {
+    if (UIThread::isCurrentThread()){
+        // ignore for now
+    } else {
+        // deep copy!
+        auto data = new char[event.size];
+        memcpy(data, event.data, event.size);
+
+        Command cmd(Command::SysexReceived);
+        cmd.sysex.data = data;
+        cmd.sysex.size = event.size;
+        cmd.sysex.delta = event.delta;
+
+        owner_->events_.push_back(cmd);
+    }
+}
+
+
 /*///////////////// PluginHandle ///////////////*/
 
 PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
@@ -31,6 +91,10 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
         paramState_[i] = value;
         sendParam(channel, i, value, false);
     }
+
+    // set listener
+    proxy_ = std::make_shared<PluginHandleListener>(*this);
+    plugin_->setListener(proxy_);
 }
 
 void PluginHandle::handleRequest(const ShmCommand &cmd,
@@ -141,61 +205,6 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
         }
     } else {
         LOG_ERROR("PluginHandle: can't handle UI command without window!");
-    }
-}
-
-void PluginHandle::parameterAutomated(int index, float value) {
-    if (UIThread::isCurrentThread()){
-        ShmUICommand cmd(Command::ParamAutomated, id_);
-        cmd.paramAutomated.index = index;
-        cmd.paramAutomated.value = value;
-
-        server_->postUIThread(cmd);
-    } else {
-        Command cmd(Command::ParamAutomated);
-        cmd.paramAutomated.index = index;
-        cmd.paramAutomated.value = value;
-
-        events_.push_back(cmd);
-    }
-}
-
-void PluginHandle::latencyChanged(int nsamples) {
-    if (UIThread::isCurrentThread()){
-        // shouldn't happen
-    } else {
-        Command cmd(Command::LatencyChanged);
-        cmd.i = nsamples;
-
-        events_.push_back(cmd);
-    }
-}
-
-void PluginHandle::midiEvent(const MidiEvent& event) {
-    if (UIThread::isCurrentThread()){
-        // ignore for now
-    } else {
-        Command cmd(Command::MidiReceived);
-        cmd.midi = event;
-
-        events_.push_back(cmd);
-    }
-}
-
-void PluginHandle::sysexEvent(const SysexEvent& event) {
-    if (UIThread::isCurrentThread()){
-        // ignore for now
-    } else {
-        // deep copy!
-        auto data = new char[event.size];
-        memcpy(data, event.data, event.size);
-
-        Command cmd(Command::SysexReceived);
-        cmd.sysex.data = data;
-        cmd.sysex.size = event.size;
-        cmd.sysex.delta = event.delta;
-
-        events_.push_back(cmd);
     }
 }
 
@@ -632,8 +641,10 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
     }, &result);
 
     if (result.plugin){
+        auto handle = std::make_unique<PluginHandle>(*this,
+                std::move(result.plugin), id, channel);
+
         WriteLock lock(pluginMutex_);
-        auto handle = PluginHandle(*this, std::move(result.plugin), id, channel);
         plugins_.emplace(id, std::move(handle));
     } else {
         throw result.error;
@@ -645,15 +656,14 @@ void PluginServer::destroyPlugin(uint32_t id){
     WriteLock lock(pluginMutex_);
     auto it = plugins_.find(id);
     if (it != plugins_.end()){
-        PluginHandle plugin = std::move(it->second);
+        auto plugin = it->second.release();
         plugins_.erase(it);
-
         lock.unlock();
 
         // release on UI thread!
         UIThread::callSync([](void *x){
-            auto dummy = std::move(*static_cast<PluginHandle *>(x));
-        }, &plugin);
+            delete static_cast<PluginHandle *>(x);
+        }, plugin);
     } else {
         LOG_ERROR("PluginServer::destroyPlugin: chouldn't find plugin " << id);
     }
@@ -663,7 +673,7 @@ PluginHandle * PluginServer::findPlugin(uint32_t id){
     ReadLock lock(pluginMutex_);
     auto it = plugins_.find(id);
     if (it != plugins_.end()){
-        return &it->second;
+        return it->second.get();
     } else {
         return nullptr;
     }
