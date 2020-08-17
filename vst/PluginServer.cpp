@@ -36,11 +36,14 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
 void PluginHandle::handleRequest(const ShmCommand &cmd,
                                  ShmChannel &channel)
 {
+    LOG_DEBUG("PluginHandle: got request " << cmd.type);
     switch (cmd.type){
     case Command::Process:
+        LOG_DEBUG("PluginHandle: process");
         process(cmd, channel);
         break;
     case Command::SetupProcessing:
+        LOG_DEBUG("PluginHandle: setupProcessing");
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
         plugin_->setupProcessing(cmd.setup.sampleRate,
@@ -48,6 +51,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         updateBuffer();
         break;
     case Command::SetNumSpeakers:
+        LOG_DEBUG("PluginHandle: setNumSpeakers");
         numInputs_ = cmd.speakers.in;
         numOutputs_ = cmd.speakers.out;
         numAuxInputs_ = cmd.speakers.auxin;
@@ -57,9 +61,11 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         updateBuffer();
         break;
     case Command::Suspend:
+        LOG_DEBUG("PluginHandle: suspend");
         plugin_->suspend();
         break;
     case Command::Resume:
+        LOG_DEBUG("PluginHandle: resume");
         plugin_->resume();
         break;
     case Command::ReadProgramFile:
@@ -97,8 +103,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
 
         auto size = CommandSize(ShmCommand, buffer, buffer.size());
         auto reply = (ShmCommand *)alloca(size);
-        reply->type = Command::PluginData;
-        reply->buffer.id = id_;
+        new (reply) ShmCommand(Command::PluginData, id_);
         reply->buffer.size = buffer.size();
         memcpy(reply->buffer.data, buffer.data(), buffer.size());
 
@@ -109,7 +114,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     }
     default:
-        LOG_ERROR("PluginHandle::handleRequest: unknown request");
+        LOG_ERROR("PluginHandle: unknown NRT request " << cmd.type);
         break;
     }
 }
@@ -131,11 +136,11 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
             window->setSize(cmd.windowSize.width, cmd.windowSize.height);
             break;
         default:
-            LOG_ERROR("PluginHandle::handleUICommand: unknown command!");
+            LOG_ERROR("PluginHandle: unknown UI command " << cmd.type);
             break;
         }
     } else {
-        LOG_ERROR("PluginHandle::handleUICommand: no window!");
+        LOG_ERROR("PluginHandle: can't handle UI command without window!");
     }
 }
 
@@ -358,7 +363,7 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             }
             break;
         default:
-            LOG_ERROR("PluginHandle::dispatchCommands: unknown command");
+            LOG_ERROR("PluginHandle: unknown RT command " << cmd->type);
             break;
         }
     }
@@ -554,25 +559,27 @@ void PluginServer::runThread(ShmChannel *channel){
 }
 
 void PluginServer::handleCommand(ShmChannel& channel,
-                                 const ShmCommand *cmd){
+                                 const ShmCommand &cmd){
     PluginHandle *plugin;
 
     try {
-        switch (cmd->type){
+        switch (cmd.type){
         case Command::CreatePlugin:
-            createPlugin(cmd->plugin.id, cmd->plugin.data,
-                         cmd->plugin.size, channel);
+            createPlugin(cmd.id, cmd.plugin.data,
+                         cmd.plugin.size, channel);
             break;
         case Command::DestroyPlugin:
-            destroyPlugin(cmd->id);
+            destroyPlugin(cmd.id);
             break;
         case Command::Quit:
             quit();
             break;
         default:
-            plugin = findPlugin(cmd->id);
+            plugin = findPlugin(cmd.id);
             if (plugin){
-                plugin->handleRequest(*cmd, channel);
+                plugin->handleRequest(cmd, channel);
+            } else {
+                LOG_ERROR("PluginServer: couldn't find plugin " << cmd.id);
             }
             break;
         }
@@ -595,6 +602,7 @@ void PluginServer::handleCommand(ShmChannel& channel,
 
 void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
                                 ShmChannel& channel){
+    LOG_DEBUG("PluginServer: create plugin " << id);
     std::stringstream ss;
     ss.str(std::string(data, size));
 
@@ -632,6 +640,7 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
 }
 
 void PluginServer::destroyPlugin(uint32_t id){
+    LOG_DEBUG("PluginServer: destroy plugin " << id);
     WriteLock lock(pluginMutex_);
     auto it = plugins_.find(id);
     if (it != plugins_.end()){

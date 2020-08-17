@@ -12,10 +12,6 @@ namespace vst {
 
 #define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging/sandboxing");
 
-#define ShmRTCommandAlloca(type, extra) new(alloca(sizeof(ShmRTCommand) + extra))ShmRTCommand(type)
-
-#define ShmNRTCommandAlloca(type, id, extra) new(alloca(sizeof(ShmNRTCommand) + extra))ShmNRTCommand(type, id)
-
 IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
                                bool editor, bool sandbox)
 {
@@ -47,24 +43,30 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
         bridge_ = PluginBridge::getShared(factory_->arch());
     }
 
-    LOG_DEBUG("PluginClient: open plugin");
     // create plugin
     std::stringstream ss;
     info_->serialize(ss);
     auto info = ss.str();
+    LOG_DEBUG("PluginClient: open plugin (info size: "
+              << info.size() << ")");
 
     auto cmdSize = sizeof(ShmCommand) + info.size();
     auto cmd = (ShmCommand *)alloca(cmdSize);
-    cmd->type = Command::CreatePlugin;
-    cmd->plugin.id = id_;
+    new (cmd) ShmCommand(Command::CreatePlugin, id());
     cmd->plugin.size = info.size();
     memcpy(cmd->plugin.data, info.c_str(), info.size());
 
     auto chn = bridge_->getNRTChannel();
-    chn.addCommand(cmd, cmdSize);
+    if (!chn.addCommand(cmd, cmdSize)){
+        LOG_ERROR("PluginClient: couldn't add command");
+    }
     chn.send();
 
-    chn.checkError();
+    // collect replies
+    const ShmCommand *reply;
+    while (chn.getReply(reply)){
+        dispatchReply(*reply);
+    }
 
     LOG_DEBUG("PluginClient: done!");
 }
@@ -74,11 +76,10 @@ PluginClient::~PluginClient(){
     // destroy plugin
     // (not necessary with exlusive bridge)
     if (bridge_->shared()){
-        ShmCommand cmd(Command::DestroyPlugin);
-        cmd.id = id_;
+        ShmCommand cmd(Command::DestroyPlugin, id());
 
         auto chn = bridge_->getNRTChannel();
-        chn.AddCommand(cmd, id);
+        chn.AddCommand(cmd, empty);
         chn.send();
     }
 
@@ -93,8 +94,9 @@ PluginClient::~PluginClient(){
 }
 
 void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+    LOG_DEBUG("PluginClient: setupProcessing");
     ShmCommand cmd(Command::SetupProcessing);
-    cmd.id = id_;
+    cmd.id = id();
     cmd.setup.sampleRate = sampleRate;
     cmd.setup.maxBlockSize = maxBlockSize;
     cmd.setup.precision = static_cast<uint32_t>(precision);
@@ -215,6 +217,7 @@ void PluginClient::sendCommands(RTChannel& channel){
 }
 
 void PluginClient::dispatchReply(const ShmReply& reply){
+    LOG_DEBUG("PluginClient: got reply " << reply.type);
     switch (reply.type){
     case Command::ParamAutomated:
     case Command::ParameterUpdate:
@@ -290,8 +293,8 @@ void PluginClient::process(ProcessData<double>& data){
 }
 
 void PluginClient::suspend(){
-    ShmCommand cmd(Command::Suspend);
-    cmd.id = id();
+    LOG_DEBUG("PluginClient: suspend");
+    ShmCommand cmd(Command::Suspend, id());
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
@@ -301,8 +304,8 @@ void PluginClient::suspend(){
 }
 
 void PluginClient::resume(){
-    ShmCommand cmd(Command::Resume);
-    cmd.id = id();
+    LOG_DEBUG("PluginClient: resume");
+    ShmCommand cmd(Command::Resume, id());
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
@@ -312,8 +315,8 @@ void PluginClient::resume(){
 }
 
 void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
-    ShmCommand cmd(Command::SetNumSpeakers);
-    cmd.id = id();
+    LOG_DEBUG("PluginClient: setNumSpeakers");
+    ShmCommand cmd(Command::SetNumSpeakers, id());
     cmd.speakers.in = in;
     cmd.speakers.auxin = auxin;
     cmd.speakers.out = out;

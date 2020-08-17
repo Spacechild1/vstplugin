@@ -80,7 +80,7 @@ class PluginServer {
     void pollUIThread();
     void runThread(ShmChannel* channel);
     void handleCommand(ShmChannel& channel,
-                       const ShmCommand *cmd);
+                       const ShmCommand &cmd);
     void quit();
 
     void createPlugin(uint32_t id, const char *data, size_t size,

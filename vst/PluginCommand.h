@@ -9,7 +9,7 @@ struct Command {
     // type
     enum Type {
         // RT commands
-        SetParamValue,
+        SetParamValue, // 0
         SetParamString,
         SetBypass,
         SetTempo,
@@ -26,13 +26,13 @@ struct Command {
         SendSysex,
         SetProgram,
         // NRT commands
-        CreatePlugin,
+        CreatePlugin, // 16
         DestroyPlugin,
         Suspend,
         Resume,
         SetNumSpeakers,
         SetupProcessing,
-        ReadProgramFile,
+        ReadProgramFile, // 22
         ReadProgramData,
         ReadBankFile,
         ReadBankData,
@@ -41,32 +41,35 @@ struct Command {
         WriteBankFile,
         WriteBankData,
         // window
-        WindowOpen,
+        WindowOpen, // 30
         WindowClose,
         WindowSetPos,
         WindowSetSize,
         // events/replies
-        PluginData,
+        PluginData, // 34
         ProgramNumber,
         ProgramName,
         ProgramNameIndexed,
-        ParameterUpdate,
+        ParameterUpdate, // 38
         ParamAutomated,
         LatencyChanged,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error,
+        Error, // 43
         Process,
         Quit
     };
-    Command() = default;
+    Command(){}
     Command(Command::Type _type) : type(_type){}
 
-    static const size_t headerSize = 4;
+    static const size_t headerSize = 8;
 
     // data
-    uint32_t type; // specify size!
+    // NOTE: the union needs to be 8 byte aligned
+    // and we make the padding explicit.
+    uint32_t type;
+    uint32_t padding;
 
     union {
         // no data
@@ -109,11 +112,18 @@ struct Command {
 // that are not covered by Command.
 struct ShmCommand {
     ShmCommand(){}
-    ShmCommand(Command::Type _type) : type(_type){}
+    ShmCommand(Command::Type _type)
+        : type(_type), id(0) {}
+    ShmCommand(Command::Type _type, uint32_t _id)
+        : type(_type), id(_id){}
 
-    static const size_t headerSize = 4;
+    static const size_t headerSize = 8;
 
+    // data
+    // NOTE: the union needs to be 8 byte aligned, so we use
+    // the additional space for the (optional) 'id' member.
     uint32_t type;
+    uint32_t id;
 
     union {
         // no data
@@ -124,13 +134,10 @@ struct ShmCommand {
         float f;
         // generic double
         double d;
-        // plugin ID
-        uint32_t id;
         // flat string
         char s[1];
         // generic buffer (e.g. preset data)
         struct {
-            uint32_t id;
             int32_t size;
             char data[1];
         } buffer;
@@ -172,13 +179,11 @@ struct ShmCommand {
         } timeSig;
         // plugin
         struct {
-            uint32_t id;
             int32_t size;
             char data[1];
         } plugin;
         // process
         struct {
-            uint32_t id;
             uint8_t numInputs;
             uint8_t numOutputs;
             uint8_t numAuxInputs;
@@ -187,18 +192,16 @@ struct ShmCommand {
         } process;
         // setup processing
         struct {
-            uint32_t id;
-            double sampleRate;
+            float sampleRate;
             uint32_t maxBlockSize;
             uint32_t precision;
         } setup;
         // setup speakers
         struct {
-            uint32_t id;
-            uint16_t in;
-            uint16_t out;
-            uint16_t auxin;
-            uint16_t auxout;
+            uint8_t in;
+            uint8_t out;
+            uint8_t auxin;
+            uint8_t auxout;
         } speakers;
         // error
         struct {
@@ -227,6 +230,8 @@ struct ShmUICommand {
     uint32_t id = 0;
 
     union {
+        // no data
+        struct {} empty;
         // window position
         struct {
             int32_t x;
