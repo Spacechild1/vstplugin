@@ -91,6 +91,7 @@ PluginClient::~PluginClient(){
             delete cmd.sysex.data;
         }
     }
+    LOG_DEBUG("free PluginClient");
 }
 
 void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){

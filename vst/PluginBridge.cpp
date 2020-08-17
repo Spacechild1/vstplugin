@@ -182,6 +182,8 @@ PluginBridge::~PluginBridge(){
     CloseHandle(pi_.hProcess);
     CloseHandle(pi_.hThread);
 #endif
+
+    LOG_DEBUG("free PluginBridge");
 }
 
 void PluginBridge::checkStatus(){
@@ -375,11 +377,14 @@ WatchDog::WatchDog(){
             // because the thread is created concurrently with the first item
             // and 'running_' might be set to false during this_thread::sleep_for().
             if (running_){
+                LOG_DEBUG("WatchDog: waiting...");
                 condition_.wait(lock);
+                LOG_DEBUG("WatchDog: new process registered");
             } else {
                 break;
             }
         }
+        LOG_DEBUG("WatchDog: thread finished");
     });
 #if !WATCHDOG_JOIN
     thread_.detach();
@@ -387,13 +392,13 @@ WatchDog::WatchDog(){
 }
 
 WatchDog::~WatchDog(){
-    processes_.clear();
+#if WATCHDOG_JOIN
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        bool running_ = false;
+        processes_.clear();
+        running_ = false;
         condition_.notify_one();
     }
-#if WATCHDOG_JOIN
     thread_.join();
 #endif
     LOG_DEBUG("free WatchDog");
