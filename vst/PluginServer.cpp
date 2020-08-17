@@ -535,6 +535,8 @@ void PluginServer::runThread(ShmChannel *channel){
     while (running_){
         channel->wait();
 
+        channel->reset();
+
         const char *msg;
         size_t size;
 

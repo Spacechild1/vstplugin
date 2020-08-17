@@ -70,6 +70,7 @@ class ShmChannel {
     bool getMessage(const char *& data, size_t& size);
 
     void clear();
+    void reset();
 
     void post();
     void wait();

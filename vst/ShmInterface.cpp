@@ -178,6 +178,10 @@ bool ShmChannel::getMessage(const char *& buf, size_t& size) {
 
 void ShmChannel::clear(){
     data_->size = 0;
+    reset();
+}
+
+void ShmChannel::reset(){
     rdhead_ = 0;
     wrhead_ = 0;
 }
