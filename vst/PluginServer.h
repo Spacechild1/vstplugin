@@ -94,6 +94,7 @@ class PluginServer {
     std::unique_ptr<ShmInterface> shm_;
     std::vector<std::thread> threads_;
     std::atomic<bool> running_;
+    UIThread::Handle pollFunction_;
 
     std::unordered_map<uint32_t, PluginHandle> plugins_;
     SharedMutex pluginMutex_;

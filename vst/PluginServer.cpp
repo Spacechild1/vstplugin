@@ -478,7 +478,7 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     UIThread::setup();
     LOG_DEBUG("PluginServer: setup event loop");
     // install UI poll function
-    UIThread::addPollFunction([](void *x){
+    pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginServer *>(x)->pollUIThread();
     }, this);
     LOG_DEBUG("PluginServer: add UI poll function");
@@ -532,20 +532,23 @@ void PluginServer::runThread(ShmChannel *channel){
     // while (running_) wait for requests
     // dispatch requests to plugin
     // Quit command -> quit()
-    while (running_){
+    for (;;){
         channel->wait();
 
         channel->reset();
 
         const char *msg;
         size_t size;
-
         if (channel->getMessage(msg, size)){
-            handleCommand(*channel, (const ShmCommand *)msg);
+            handleCommand(*channel, *reinterpret_cast<const ShmCommand *>(msg));
+        } else if (!running_) {
+            // thread got woken up after quit message
+            break;
         } else {
             LOG_ERROR("PluginServer: '" << channel->name()
                       << "': couldn't get message");
             // ?
+            channel->postReply();
         }
     }
 }
@@ -657,6 +660,8 @@ PluginHandle * PluginServer::findPlugin(uint32_t id){
 }
 
 void PluginServer::quit(){
+    LOG_DEBUG("PluginServer: quit");
+    UIThread::removePollFunction(pollFunction_);
     running_ = false;
     // wake up all threads
     for (int i = 2; i < shm_->numChannels(); ++i){
