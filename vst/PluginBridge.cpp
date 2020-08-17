@@ -311,6 +311,7 @@ RTChannel PluginBridge::getRTChannel(){
         }
         return RTChannel(shm_.getChannel(index + 3), locks_[index]);
     } else {
+        // channel 2 is both NRT and RT channel
         return RTChannel(shm_.getChannel(2));
     }
 }
@@ -319,6 +320,7 @@ NRTChannel PluginBridge::getNRTChannel(){
     if (locks_){
         return NRTChannel(shm_.getChannel(2), nrtMutex_);
     } else {
+        // channel 2 is both NRT and RT channel
         return NRTChannel(shm_.getChannel(2));
     }
 }

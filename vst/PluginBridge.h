@@ -34,9 +34,12 @@ enum class CpuArch;
 template<typename Mutex>
 struct _Channel {
     _Channel(ShmChannel& channel)
-        : channel_(&channel){}
+        : channel_(&channel)
+        { channel.clear(); }
     _Channel(ShmChannel& channel, Mutex& mutex)
-        : channel_(&channel), lock_(std::unique_lock<Mutex>(mutex)){}
+        : channel_(&channel),
+          lock_(std::unique_lock<Mutex>(mutex))
+        { channel.clear(); }
 
     bool addCommand(const void* cmd, size_t size){
         return channel_->addMessage(static_cast<const char *>(cmd), size);
