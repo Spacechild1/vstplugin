@@ -97,7 +97,7 @@ class PluginBridge final
 
     void removeUIClient(uint32_t id);
 
-    bool postUIThread(const ShmUICommand& cmd);
+    void postUIThread(const ShmUICommand& cmd);
 
     RTChannel getRTChannel();
 
@@ -125,6 +125,8 @@ class PluginBridge final
     UIThread::Handle pollFunction_;
 
     void pollUIThread();
+
+    IPluginListener::ptr findClient(uint32_t id);
 
     void getStatus(bool wait);
 };

@@ -537,16 +537,19 @@ void* WindowClient::getHandle() {
 }
 
 void WindowClient::open(){
+    LOG_DEBUG("WindowOpen");
     ShmUICommand cmd(Command::WindowOpen, plugin_->id());
     plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::close(){
+    LOG_DEBUG("WindowClose");
     ShmUICommand cmd(Command::WindowClose, plugin_->id());
     plugin_->bridge().postUIThread(cmd);
 }
 
 void WindowClient::setPos(int x, int y){
+    LOG_DEBUG("WindowSetPos");
     ShmUICommand cmd(Command::WindowSetPos, plugin_->id());
     cmd.windowPos.x = x;
     cmd.windowPos.y = y;
@@ -554,6 +557,7 @@ void WindowClient::setPos(int x, int y){
 }
 
 void WindowClient::setSize(int w, int h){
+    LOG_DEBUG("WindowSetSize");
     ShmUICommand cmd(Command::WindowSetSize, plugin_->id());
     cmd.windowSize.width = w;
     cmd.windowSize.height = h;

@@ -253,50 +253,63 @@ void PluginBridge::removeUIClient(uint32_t id){
     clients_.erase(id);
 }
 
-bool PluginBridge::postUIThread(const ShmUICommand& cmd){
+void PluginBridge::postUIThread(const ShmUICommand& cmd){
     // LockGuard lock(uiMutex_);
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
     auto& channel = shm_.getChannel(0);
-    auto success = channel.writeMessage((const char *)&cmd, sizeof(cmd));
-    if (success){
-        channel.post();
+    if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
+        // other side polls regularly
+        // channel.post();
+    } else {
+        LOG_ERROR("PluginBridge: couldn't post to UI thread");
     }
-    return success;
 }
 
 void PluginBridge::pollUIThread(){
     auto& channel = shm_.getChannel(1);
 
-    ShmUICommand cmd;
-    size_t size = sizeof(cmd);
+    char buffer[64]; // larger than ShmCommand!
+    size_t size = sizeof(buffer);
     // read all available events
-    while (channel.readMessage((char *)&cmd, size)){
+    while (channel.readMessage(buffer, size)){
+        auto cmd = (const ShmUICommand *)buffer;
         // find client with matching ID
         LockGuard lock(clientMutex_);
-        auto it = clients_.find(cmd.id);
-        if (it != clients_.end()){
-            auto listener = it->second.lock();
-            if (listener){
-                // dispatch events
-                switch (cmd.type){
-                case Command::ParamAutomated:
-                    listener->parameterAutomated(cmd.paramAutomated.index,
-                                                 cmd.paramAutomated.value);
-                    break;
-                default:
-                    // ignore other events for now
-                    break;
-                }
-            } else {
-                LOG_ERROR("PluginBridge::pollUIThread: plugin "
-                            << cmd.id << " is stale");
+
+        auto client = findClient(cmd->id);
+        if (client){
+            // dispatch events
+            switch (cmd->type){
+            case Command::ParamAutomated:
+                LOG_DEBUG("UI thread: ParameterAutomated");
+                client->parameterAutomated(cmd->paramAutomated.index,
+                                           cmd->paramAutomated.value);
+                break;
+            default:
+                // ignore other events for now
+                break;
             }
+        }
+
+        size = sizeof(buffer); // reset size!
+    }
+}
+
+IPluginListener::ptr PluginBridge::findClient(uint32_t id){
+    auto it = clients_.find(id);
+    if (it != clients_.end()){
+        auto client = it->second.lock();
+        if (client){
+            return client;
         } else {
             LOG_ERROR("PluginBridge::pollUIThread: plugin "
-                      << cmd.id << " doesn't exist (anymore)");
+                        << id << " is stale");
         }
-        size = sizeof(cmd); // reset size!
+    } else {
+        LOG_ERROR("PluginBridge::pollUIThread: plugin "
+                  << id << " doesn't exist (anymore)");
     }
+    return nullptr;
 }
 
 RTChannel PluginBridge::getRTChannel(){

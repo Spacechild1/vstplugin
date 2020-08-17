@@ -188,15 +188,19 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
     if (window){
         switch (cmd.type){
         case Command::WindowOpen:
+            LOG_DEBUG("WindowOpen");
             window->open();
             break;
         case Command::WindowClose:
+            LOG_DEBUG("WindowClose");
             window->close();
             break;
         case Command::WindowSetPos:
+            LOG_DEBUG("WindowSetPos");
             window->setPos(cmd.windowPos.x, cmd.windowPos.y);
             break;
         case Command::WindowSetSize:
+            LOG_DEBUG("WindowSetSize");
             window->setSize(cmd.windowSize.width, cmd.windowSize.height);
             break;
         default:
@@ -521,25 +525,31 @@ void PluginServer::run(){
 void PluginServer::postUIThread(const ShmUICommand& cmd){
     // sizeof(cmd) is a bit lazy, but we don't care about size here
     auto& channel = shm_->getChannel(1);
-    channel.writeMessage((const char *)&cmd, sizeof(cmd));
-    channel.post();
+
+    if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
+        // other side polls regularly
+        // channel.post();
+    } else {
+        LOG_ERROR("PluginServer: couldn't post to UI thread");
+    }
 }
 
 void PluginServer::pollUIThread(){
     // poll events from channel 0 and dispatch to plugin
     auto& channel = shm_->getChannel(0);
 
-    ShmUICommand cmd;
-    size_t size = sizeof(cmd);
-
-    while (channel.readMessage((char *)&cmd, size)){
-        auto plugin = findPlugin(cmd.id);
+    char buffer[64]; // larger than ShmCommand!
+    size_t size = sizeof(buffer);
+    // read all available events
+    while (channel.readMessage(buffer, size)){
+        auto cmd = (const ShmUICommand *)buffer;
+        auto plugin = findPlugin(cmd->id);
         if (plugin){
-            plugin->handleUICommand(cmd);
+            plugin->handleUICommand(*cmd);
         } else {
-            LOG_ERROR("PluginServer::pollUIThread: couldn't find plugin " << cmd.id);
+            LOG_ERROR("PluginServer::pollUIThread: couldn't find plugin " << cmd->id);
         }
-        size = sizeof(cmd); // reset size!
+        size = sizeof(buffer); // reset size!
     }
 }
 
