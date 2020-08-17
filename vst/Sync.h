@@ -147,16 +147,18 @@ class BaseLock {
     bool owns_;
  public:
     BaseLock() : mutex_(nullptr), owns_(false){}
-    BaseLock(SharedMutex& mutex) : mutex_(&mutex){
+    BaseLock(SharedMutex& mutex)
+        : mutex_(&mutex), owns_(true)
+    {
         if (write)
             mutex_->lock();
         else
             mutex_->lock_shared();
-        owns_ = true;
     }
     BaseLock(const BaseLock&) = delete;
     BaseLock(BaseLock&& other)
-        : mutex_(other.mutex_), owns_(other.owns_){
+        : mutex_(other.mutex_), owns_(other.owns_)
+    {
         other.mutex_ = nullptr;
         other.owns_ = false;
     }
@@ -190,9 +192,11 @@ class WriteLock : BaseLock<true> {
     using BaseLock::BaseLock;
     void lock(){
         mutex_->lock();
+        owns_ = true;
     }
     void unlock(){
         mutex_->unlock();
+        owns_ = false;
     }
 };
 
@@ -201,9 +205,11 @@ class ReadLock : BaseLock<false> {
     using BaseLock::BaseLock;
     void lock(){
         mutex_->lock_shared();
+        owns_ = true;
     }
     void unlock(){
         mutex_->unlock_shared();
+        owns_ = false;
     }
 };
 
