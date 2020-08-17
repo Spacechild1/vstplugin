@@ -69,11 +69,13 @@ DWORD EventLoop::run(void *user){
     // setup timer
     auto timer = SetTimer(0, 0, EventLoop::updateInterval, NULL);
 
-    for (;;){
-        if (GetMessage(&msg, NULL, 0, 0) < 0){
+    DWORD ret;
+    while ((ret = GetMessage(&msg, NULL, 0, 0)) != 0){
+        if (ret < 0){
             LOG_ERROR("GetMessage: error");
             break;
         }
+        // LOG_DEBUG("got message " << msg.message);
 
         if (msg.message == WM_CALL){
             LOG_DEBUG("WM_CREATE_PLUGIN");
@@ -127,14 +129,15 @@ EventLoop::EventLoop(){
 }
 
 EventLoop::~EventLoop(){
+    LOG_DEBUG("EventLoop: about to quit");
     if (thread_){
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
-            CloseHandle(thread_);
             LOG_DEBUG("joined thread");
         } else {
             LOG_ERROR("couldn't post quit message!");
         }
+        CloseHandle(thread_);
     }
 }
 
