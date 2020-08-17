@@ -67,6 +67,7 @@ int bridge(int pid, const std::string& path){
         server->run();
 
         LOG_DEBUG("bridge end");
+
         return EXIT_SUCCESS;
     } catch (const Error& e){
         // LATER redirect stderr to parent stdin to get the error message

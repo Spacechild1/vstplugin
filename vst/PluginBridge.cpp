@@ -171,6 +171,13 @@ PluginBridge::~PluginBridge(){
         chn.AddCommand(cmd, empty);
         chn.send();
     }
+
+    // not really necessary.
+    // this might even be dangerous if we accidentally
+    // wait on a subprocess that somehow got stuck.
+    // maybe use some timeout?
+    getStatus(true);
+
 #ifdef _WIN32
     CloseHandle(pi_.hProcess);
     CloseHandle(pi_.hThread);
@@ -178,12 +185,16 @@ PluginBridge::~PluginBridge(){
 }
 
 void PluginBridge::checkStatus(){
+    getStatus(false);
+}
+
+void PluginBridge::getStatus(bool wait){
     // already dead, no need to check
     if (!alive_){
         return;
     }
 #ifdef _WIN32
-    DWORD res = WaitForSingleObject(pi_.hProcess, 0);
+    DWORD res = WaitForSingleObject(pi_.hProcess, wait ? INFINITE : 0);
     if (res == WAIT_TIMEOUT){
         return; // still running
     } else if (res == WAIT_OBJECT_0){
@@ -205,7 +216,7 @@ void PluginBridge::checkStatus(){
 #else
     int code = -1;
     int status = 0;
-    if (waitpid(pid_, &status, WNOHANG) == 0){
+    if (waitpid(pid_, &status, wait ? 0 : WNOHANG) == 0){
         return; // still running
     }
     if (WIFEXITED(status)) {
@@ -373,7 +384,6 @@ WatchDog::WatchDog(){
 #if !WATCHDOG_JOIN
     thread_.detach();
 #endif
-    LOG_DEBUG("create WatchDog done");
 }
 
 WatchDog::~WatchDog(){
@@ -386,6 +396,7 @@ WatchDog::~WatchDog(){
 #if WATCHDOG_JOIN
     thread_.join();
 #endif
+    LOG_DEBUG("free WatchDog");
 }
 
 void WatchDog::registerProcess(PluginBridge::ptr process){

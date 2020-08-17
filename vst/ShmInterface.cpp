@@ -336,6 +336,7 @@ ShmInterface::ShmInterface(){}
 
 ShmInterface::~ShmInterface(){
     closeShm();
+    LOG_DEBUG("closed ShmInterface");
 }
 
 void ShmInterface::connect(const std::string &path){

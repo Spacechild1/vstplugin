@@ -502,6 +502,7 @@ PluginServer::~PluginServer(){
     for (auto& thread : threads_){
         thread.join();
     }
+    LOG_DEBUG("free PluginServer");
 }
 
 void PluginServer::run(){

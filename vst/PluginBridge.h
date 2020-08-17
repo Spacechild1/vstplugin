@@ -125,6 +125,8 @@ class PluginBridge final
     UIThread::Handle pollFunction_;
 
     void pollUIThread();
+
+    void getStatus(bool wait);
 };
 
 /*/////////////////////////// WatchDog //////////////////////////////*/
