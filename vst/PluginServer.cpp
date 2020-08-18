@@ -142,19 +142,27 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     case Command::ReadProgramFile:
         plugin_->readProgramFile(cmd.buffer.data);
-        sendUpdate(channel, false);
+        channel.clear(); // !
+        sendParameterUpdate(channel);
+        sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankFile:
         plugin_->readBankFile(cmd.buffer.data);
-        sendUpdate(channel, false);
+        channel.clear(); // !
+        sendParameterUpdate(channel);
+        sendProgramUpdate(channel, true);
         break;
     case Command::ReadProgramData:
         plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
-        sendUpdate(channel, true);
+        channel.clear(); // !
+        sendParameterUpdate(channel);
+        sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankData:
         plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
-        sendUpdate(channel, true);
+        channel.clear(); // !
+        sendParameterUpdate(channel);
+        sendProgramUpdate(channel, false);
         break;
     case Command::WriteProgramFile:
         plugin_->writeProgramFile(cmd.buffer.data);
@@ -432,7 +440,7 @@ void PluginHandle::sendEvents(ShmChannel& channel){
             break;
         }
         case Command::SetProgram:
-            sendUpdate(channel, false);
+            sendParameterUpdate(channel);
             break;
         default:
             LOG_ERROR("bug PluginHandle::sendEvents");
@@ -443,12 +451,9 @@ void PluginHandle::sendEvents(ShmChannel& channel){
     events_.clear(); // !
 }
 
-void PluginHandle::sendUpdate(ShmChannel& channel, bool bank){
+void PluginHandle::sendParameterUpdate(ShmChannel& channel){
     // compare new param state with cached one
     // and send all parameters that have changed
-
-    channel.clear(); // !
-
     auto numParams = plugin_->info().numParameters();
     for (int i = 0; i < numParams; ++i){
         auto value = plugin_->getParameter(i);
@@ -457,7 +462,9 @@ void PluginHandle::sendUpdate(ShmChannel& channel, bool bank){
             paramState_[i] = value;
         }
     }
+}
 
+void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
     auto sendProgramName = [&](int index, const std::string& name){
         auto size = sizeof(ShmCommand) + name.size() + 1;
         auto reply = (ShmCommand *)alloca(size);
@@ -491,10 +498,10 @@ void PluginHandle::sendParam(ShmChannel &channel, int index,
 {
     std::string display = plugin_->getParameterString(index);
 
-    auto size  = CommandSize(ShmReply, paramState, display.size() + 1);
-    auto reply = (ShmReply *)alloca(size);
-    new (reply) ShmReply(automated ? Command::ParamAutomated
-                                   : Command::ParameterUpdate);
+    auto size  = CommandSize(ShmCommand, paramState, display.size() + 1);
+    auto reply = (ShmCommand *)alloca(size);
+    new (reply) ShmCommand(automated ? Command::ParamAutomated
+                                     : Command::ParameterUpdate);
     reply->paramState.index = index;
     reply->paramState.value = value;
     memcpy(reply->paramState.display, display.c_str(), display.size() + 1);

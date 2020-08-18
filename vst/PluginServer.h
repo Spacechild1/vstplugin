@@ -54,7 +54,8 @@ class PluginHandle {
 
     void sendEvents(ShmChannel& channel);
 
-    void sendUpdate(ShmChannel& channel, bool bank);
+    void sendParameterUpdate(ShmChannel& channel);
+    void sendProgramUpdate(ShmChannel& channel, bool bank);
 
     static void addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
 
