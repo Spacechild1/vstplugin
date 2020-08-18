@@ -218,7 +218,7 @@ void PluginClient::sendCommands(RTChannel& channel){
             auto displayLen = strlen(cmd.paramString.display) + 1;
             auto cmdSize = CommandSize(ShmCommand, paramString, displayLen);
             auto shmCmd = (ShmCommand *)alloca(cmdSize);
-            shmCmd->type = Command::SetParamString;
+            new (shmCmd) ShmCommand(Command::SetParamString);
             shmCmd->paramString.index = cmd.paramString.index;
             shmCmd->paramString.offset = cmd.paramString.offset;
             memcpy(shmCmd->paramString.display,
@@ -233,7 +233,7 @@ void PluginClient::sendCommands(RTChannel& channel){
         {
             auto cmdSize = CommandSize(ShmCommand, sysex, cmd.sysex.size);
             auto shmCmd = (ShmCommand *)alloca(cmdSize);
-            shmCmd->type = Command::SetParamString;
+            new (shmCmd) ShmCommand(Command::SendSysex);
             shmCmd->sysex.delta = cmd.sysex.delta;
             shmCmd->sysex.size = cmd.sysex.size;
             memcpy(shmCmd->sysex.data, cmd.sysex.data, cmd.sysex.size);

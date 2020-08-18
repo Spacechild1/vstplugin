@@ -488,7 +488,8 @@ void PluginHandle::sendParam(ShmChannel &channel, int index,
 
     auto size  = CommandSize(ShmReply, paramState, display.size() + 1);
     auto reply = (ShmReply *)alloca(size);
-    reply->type = automated ? Command::ParamAutomated : Command::ParameterUpdate;
+    new (reply) ShmReply(automated ? Command::ParamAutomated
+                                   : Command::ParameterUpdate);
     reply->paramState.index = index;
     reply->paramState.value = value;
     memcpy(reply->paramState.display, display.c_str(), display.size() + 1);
