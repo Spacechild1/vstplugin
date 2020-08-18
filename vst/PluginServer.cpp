@@ -225,6 +225,7 @@ void PluginHandle::updateBuffer(){
                 sizeof(double) : sizeof(float);
     auto totalSize = (numInputs_ + numOutputs_ + numAuxInputs_ + numAuxOutputs_)
             * maxBlockSize_ * sampleSize;
+    buffer_.clear(); // force zero
     buffer_.resize(totalSize);
 }
 

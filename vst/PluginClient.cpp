@@ -250,6 +250,8 @@ void PluginClient::sendCommands(RTChannel& channel){
             break;
         }
     }
+
+    commands_.clear(); // !
 }
 
 void PluginClient::dispatchReply(const ShmReply& reply){
@@ -271,9 +273,6 @@ void PluginClient::dispatchReply(const ShmReply& reply){
         }
         break;
     }
-    case Command::ProgramName:
-        programCache_[program_] = reply.s;
-        break;
     case Command::ProgramNameIndexed:
         programCache_[reply.programName.index]
                 = reply.programName.name;
