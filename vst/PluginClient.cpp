@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <cassert>
 
 namespace vst {
 
@@ -111,8 +112,11 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessP
 
 template<typename T>
 void PluginClient::doProcess(ProcessData<T>& data){
+    LOG_DEBUG("PluginClient: process");
+
     auto channel = bridge().getRTChannel();
 
+    LOG_DEBUG("PluginClient: send process command");
     // send process command
     {
         ShmCommand cmd(Command::Process);
@@ -129,28 +133,40 @@ void PluginClient::doProcess(ProcessData<T>& data){
     // write audio data
     // since we have sent the number of channels in the "Process" command,
     // we can simply write all channels sequentially to avoid additional copying.
-    auto writeBus = [&](const T** bus, int numChannels){
+    auto sendBus = [&](const T** bus, int numChannels){
+        LOG_DEBUG("PluginClient: send audio bus with "
+                  << numChannels << " channels");
         for (int i = 0; i < numChannels; ++i){
             channel.addCommand(bus[i], sizeof(T) * data.numSamples);
         }
     };
 
-    writeBus(data.input, data.numInputs);
-    writeBus(data.auxInput, data.numAuxInputs);
+    sendBus(data.input, data.numInputs);
+    sendBus(data.auxInput, data.numAuxInputs);
 
     // add commands (parameter changes, MIDI messages, etc.)
+    LOG_DEBUG("PluginClient: send commands");
     sendCommands(channel);
 
     // send and wait for reply
+    LOG_DEBUG("PluginClient: wait");
     channel.send();
 
     // read audio data
     // here we simply read all channels sequentially.
     auto readBus = [&](T** bus, int numChannels){
+        LOG_DEBUG("PluginClient: receive audio bus with "
+                  << numChannels << " channels");
         for (int i = 0; i < numChannels; ++i){
             const T* chn;
-            if (channel.getReply(chn)){
+            size_t size;
+            if (channel.getReply(chn, size)){
+                // size can be larger because of message
+                // alignment - don't use in std::copy!
+                assert(size >= data.numSamples * sizeof(T));
                 std::copy(chn, chn + data.numSamples, bus[i]);
+            } else {
+                LOG_ERROR("PluginClient: missing audio output channel");
             }
         }
     };
@@ -159,6 +175,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
     readBus(data.auxOutput, data.numAuxOutputs);
 
     // get replies (parameter changes, MIDI messages, etc.)
+    LOG_DEBUG("PluginClient: read replies");
     const ShmReply* reply;
     while (channel.getReply(reply)){
         dispatchReply(*reply);

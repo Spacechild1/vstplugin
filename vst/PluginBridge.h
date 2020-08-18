@@ -21,7 +21,7 @@
 #endif
 
 #ifndef BRIDGE_LOG
-#define BRIDGE_LOG 1
+#define BRIDGE_LOG 0
 #endif
 
 namespace vst {
@@ -54,6 +54,11 @@ struct _Channel {
     bool getReply(const T *& reply){
         size_t dummy;
         return channel_->getMessage(*reinterpret_cast<const char **>(&reply), dummy);
+    }
+
+    template<typename T>
+    bool getReply(const T *& reply, size_t& size){
+        return channel_->getMessage(*reinterpret_cast<const char **>(&reply), size);
     }
 
     void checkError();

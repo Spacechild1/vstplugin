@@ -48,7 +48,7 @@ class PluginHandle {
     void process(const ShmCommand& cmd, ShmChannel& channel);
 
     template<typename T>
-    void doProcess(int numSamples, ShmChannel& channel);
+    void doProcess(const ShmCommand& cmd, ShmChannel& channel);
 
     void dispatchCommands(ShmChannel& channel);
 

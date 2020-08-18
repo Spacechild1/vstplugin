@@ -92,6 +92,14 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
         sendParam(channel, i, value, false);
     }
 
+    // default channels
+    numInputs_ = plugin_->info().numInputs;
+    numOutputs_ = plugin_->info().numOutputs;
+    numAuxInputs_ = plugin_->info().numAuxInputs;
+    numAuxOutputs_ = plugin_->info().numAuxOutputs;
+
+    updateBuffer();
+
     // set listener
     proxy_ = std::make_shared<PluginHandleListener>(*this);
     plugin_->setListener(proxy_);
@@ -221,54 +229,63 @@ void PluginHandle::updateBuffer(){
 }
 
 void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
+    // how to handle channel numbers vs speaker numbers?
     if (precision_ == ProcessPrecision::Double){
-        doProcess<double>(cmd.process.numSamples, channel);
+        doProcess<double>(cmd, channel);
     } else {
-        doProcess<float>(cmd.process.numSamples, channel);
+        doProcess<float>(cmd, channel);
     }
 }
 
 template<typename T>
-void PluginHandle::doProcess(int numSamples, ShmChannel& channel){
+void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     IPlugin::ProcessData<T> data;
-    data.numInputs = numInputs_;
-    data.input = (const T**)alloca(sizeof(T*) * numInputs_);
-    data.numOutputs = numOutputs_;
-    data.output = (T**)alloca(sizeof(T*) * numOutputs_);
-    data.numAuxInputs = numAuxInputs_;
-    data.auxInput = (const T**)alloca(sizeof(T*) * numAuxInputs_);
-    data.numAuxOutputs = numAuxOutputs_;
-    data.auxOutput = (T**)alloca(sizeof(T*) * numAuxOutputs_);
+    data.numSamples = cmd.process.numSamples;
+
+    data.numInputs = cmd.process.numInputs;
+    data.input = (const T**)alloca(sizeof(T*) * data.numInputs);
+    data.numOutputs = cmd.process.numOutputs;
+    data.output = (T**)alloca(sizeof(T*) * data.numOutputs);
+    data.numAuxInputs = cmd.process.numAuxInputs;
+    data.auxInput = (const T**)alloca(sizeof(T*) * data.numAuxInputs);
+    data.numAuxOutputs = cmd.process.numAuxOutpus;
+    data.auxOutput = (T**)alloca(sizeof(T*) * data.numAuxOutputs);
 
     // read audio input data
-    auto bufptr = buffer_.data();
+    auto bufptr = (T *)buffer_.data();
 
     auto readAudio = [&](auto vec, auto numChannels){
+        LOG_DEBUG("PluginClient: read audio bus with "
+                  << numChannels << " channels");
         for (int i = 0; i < numChannels; ++i){
-            const char *data;
+            const char *bytes;
             size_t size;
-            if (channel.getMessage(data, size)){
-                assert(size == numSamples * sizeof(T));
-                memcpy(bufptr, data, size);
-                vec[i] = (const T *)bufptr;
-                bufptr += size;
+            if (channel.getMessage(bytes, size)){
+                // size can be larger because of message
+                // alignment - don't use in std::copy!
+                assert(size >= data.numSamples * sizeof(T));
+
+                auto chn = (const T *)bytes;
+                std::copy(chn, chn + data.numSamples, bufptr);
+                vec[i] = bufptr;
+                bufptr += data.numSamples;
             } else {
-                LOG_ERROR("PluginHandle::doProcess");
+                LOG_ERROR("PluginHandle: missing audio input channel");
             }
         }
     };
 
-    readAudio(data.input, numInputs_);
-    readAudio(data.auxInput, numAuxInputs_);
+    readAudio(data.input, data.numInputs);
+    readAudio(data.auxInput, data.numAuxInputs);
 
     // set output pointers
-    for (int i = 0; i < numOutputs_; ++i){
-        data.output[i] = (T *)bufptr;
-        bufptr += sizeof(T) * numSamples;
+    for (int i = 0; i < data.numOutputs; ++i){
+        data.output[i] = bufptr;
+        bufptr += data.numSamples;
     }
-    for (int i = 0; i < numAuxOutputs_; ++i){
-        data.auxOutput[i] = (T *)bufptr;
-        bufptr += sizeof(T) * numSamples;
+    for (int i = 0; i < data.numAuxOutputs; ++i){
+        data.auxOutput[i] = bufptr;
+        bufptr += data.numSamples;
     }
 
     // read and dispatch commands
@@ -280,13 +297,13 @@ void PluginHandle::doProcess(int numSamples, ShmChannel& channel){
     // send audio output data
     channel.clear(); // !
 
-    for (int i = 0; i < numOutputs_; ++i){
+    for (int i = 0; i < data.numOutputs; ++i){
         channel.addMessage((const char *)data.output[i],
-                           sizeof(T) * numSamples);
+                           sizeof(T) * data.numSamples);
     }
-    for (int i = 0; i < numAuxOutputs_; ++i){
+    for (int i = 0; i < data.numAuxOutputs; ++i){
         channel.addMessage((const char *)data.auxOutput[i],
-                           sizeof(T) * numSamples);
+                           sizeof(T) * data.numSamples);
     }
 
     // send replies
