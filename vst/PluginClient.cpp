@@ -194,7 +194,7 @@ void PluginClient::doProcess(ProcessData<T>& data){
 
     // get replies (parameter changes, MIDI messages, etc.)
     // LOG_DEBUG("PluginClient: read replies");
-    const ShmReply* reply;
+    const ShmCommand* reply;
     while (channel.getReply(reply)){
         dispatchReply(*reply);
     }
@@ -254,7 +254,7 @@ void PluginClient::sendCommands(RTChannel& channel){
     commands_.clear(); // !
 }
 
-void PluginClient::dispatchReply(const ShmReply& reply){
+void PluginClient::dispatchReply(const ShmCommand& reply){
     LOG_DEBUG("PluginClient: got reply " << reply.type);
     switch (reply.type){
     case Command::ParamAutomated:
@@ -465,8 +465,7 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
 
     auto totalSize = CommandSize(ShmCommand, buffer, size);
     auto cmd = (ShmCommand *)alloca(totalSize);
-    cmd->type = type;
-    cmd->id = id();
+    new (cmd) ShmCommand(type, id());
     cmd->buffer.size = size;
     memcpy(cmd->buffer.data, data, size);
 
@@ -475,7 +474,7 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     chn.send();
 
     // get replies
-    const ShmReply* reply;
+    const ShmCommand* reply;
     while (chn.getReply(reply)){
         dispatchReply(*reply);
     }
@@ -486,14 +485,13 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
         return;
     }
 
-    ShmCommand cmd(type);
-    cmd.id = id();
+    ShmCommand cmd(type, id());
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
     chn.send();
 
-    const ShmReply *reply;
+    const ShmCommand *reply;
     if (chn.getReply(reply)){
         if (reply->type == Command::PluginData){
             buffer.assign(reply->buffer.data, reply->buffer.size);

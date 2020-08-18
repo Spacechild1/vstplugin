@@ -120,7 +120,7 @@ class PluginClient final : public DeferredPlugin {
     template<typename T>
     void doProcess(ProcessData<T>& data);
     void sendCommands(RTChannel& channel);
-    void dispatchReply(const ShmReply &reply);
+    void dispatchReply(const ShmCommand &reply);
 };
 
 class WindowClient : public IWindow {
