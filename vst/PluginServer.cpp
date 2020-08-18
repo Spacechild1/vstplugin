@@ -654,8 +654,6 @@ void PluginServer::handleCommand(ShmChannel& channel,
 void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
                                 ShmChannel& channel){
     LOG_DEBUG("PluginServer: create plugin " << id);
-    std::stringstream ss;
-    ss.str(std::string(data, size));
 
     struct PluginResult {
         PluginInfo::const_ptr info;
@@ -663,7 +661,20 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
         Error error;
     } result;
 
-    result.info = gPluginManager.readPlugin(ss);
+    if (size){
+        // info is transmitted in place
+        std::stringstream ss;
+        ss << std::string(data, size);
+        result.info = gPluginManager.readPlugin(ss);
+    } else {
+        // info is transmitted via a tmp file
+        File file(data);
+        if (!file.is_open()){
+            throw Error(Error::PluginError, "couldn't read plugin info!");
+        }
+        result.info = gPluginManager.readPlugin(file);
+    }
+
     if (!result.info){
         // shouldn't happen...
         throw Error(Error::PluginError, "plugin info out of date!");

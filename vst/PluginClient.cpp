@@ -34,8 +34,8 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     static std::atomic<uint32_t> nextID{0};
     id_ = ++nextID; // atomic increment!
 
-    paramCache_.reset(new Param[info_->numParameters()]);
-    programCache_.reset(new std::string[info_->numPrograms()]);
+    paramCache_ = std::make_unique<Param[]>(info_->numParameters());
+    programCache_ = std::make_unique<std::string[]>(info_->numPrograms());
 
     LOG_DEBUG("PluginClient: get plugin bridge");
     if (sandbox){
@@ -52,16 +52,34 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
               << info.size() << ")");
 
     auto cmdSize = sizeof(ShmCommand) + info.size();
-    auto cmd = (ShmCommand *)alloca(cmdSize);
-    new (cmd) ShmCommand(Command::CreatePlugin, id());
+    auto data = std::make_unique<char[]>(cmdSize);
+    auto cmd = new (data.get()) ShmCommand(Command::CreatePlugin, id());
     cmd->plugin.size = info.size();
     memcpy(cmd->plugin.data, info.c_str(), info.size());
 
     auto chn = bridge_->getNRTChannel();
-    if (!chn.addCommand(cmd, cmdSize)){
-        LOG_ERROR("PluginClient: couldn't add command");
+    if (chn.addCommand(cmd, cmdSize)){
+        chn.send();
+    } else {
+        // info too large, try transmit via tmp file
+        std::stringstream ss;
+        ss << getTmpDirectory() << "/vst_" << (void *)this;
+        std::string path = ss.str();
+        TmpFile file(path, File::WRITE);
+
+        file << info;
+
+        cmdSize = sizeof(ShmCommand) + path.size() + 1;
+        cmd->plugin.size = 0; // !
+        memcpy(cmd->plugin.data, path.c_str(), path.size() + 1);
+
+        if (!chn.addCommand(cmd, cmdSize)){
+            throw Error(Error::PluginError,
+                        "PluginClient: couldn't send plugin info");
+        }
+
+        chn.send(); // tmp file is still in scope!
     }
-    chn.send();
 
     // collect replies
     const ShmCommand *reply;
