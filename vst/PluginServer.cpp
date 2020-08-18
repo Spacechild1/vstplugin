@@ -328,8 +328,8 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             }
             break;
         case Command::SetParamString:
-            plugin_->setParameter(cmd->paramString.index, cmd->paramString.display,
-                                  cmd->paramString.offset);
+            if (plugin_->setParameter(cmd->paramString.index, cmd->paramString.display,
+                                  cmd->paramString.offset))
             {
                 Command event(Command::ParameterUpdate);
                 int index = cmd->paramValue.index;
@@ -398,8 +398,6 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             break;
         }
     }
-
-    events_.clear(); // !
 }
 
 void PluginHandle::sendEvents(ShmChannel& channel){
@@ -437,6 +435,8 @@ void PluginHandle::sendEvents(ShmChannel& channel){
             break;
         }
     }
+
+    events_.clear(); // !
 }
 
 void PluginHandle::sendUpdate(ShmChannel& channel, bool bank){
