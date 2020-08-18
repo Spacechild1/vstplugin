@@ -225,12 +225,6 @@ void PluginClient::sendCommands(RTChannel& channel){
         case Command::SetParamValue:
             channel.AddCommand(cmd, paramValue);
             break;
-        case Command::SendMidi:
-            channel.AddCommand(cmd, midi);
-            break;
-        case Command::SetTimeSignature:
-            channel.AddCommand(cmd, timeSig);
-            break;
         case Command::SetParamString:
         {
             auto displayLen = strlen(cmd.paramString.display) + 1;
@@ -260,6 +254,9 @@ void PluginClient::sendCommands(RTChannel& channel){
             channel.addCommand(shmCmd, cmdSize);
             break;
         }
+        case Command::SendMidi:
+            channel.AddCommand(cmd, midi);
+            break;
         case Command::SendSysex:
         {
             auto cmdSize = CommandSize(ShmCommand, sysex, cmd.sysex.size);
