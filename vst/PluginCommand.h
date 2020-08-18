@@ -25,14 +25,15 @@ struct Command {
         SendMidi,
         SendSysex,
         SetProgram,
+        SetProgramName,
         // NRT commands
-        CreatePlugin, // 16
+        CreatePlugin, // 17
         DestroyPlugin,
         Suspend,
         Resume,
         SetNumSpeakers,
         SetupProcessing,
-        ReadProgramFile, // 22
+        ReadProgramFile, // 23
         ReadProgramData,
         ReadBankFile,
         ReadBankData,
@@ -41,22 +42,22 @@ struct Command {
         WriteBankFile,
         WriteBankData,
         // window
-        WindowOpen, // 30
+        WindowOpen, // 31
         WindowClose,
         WindowSetPos,
         WindowSetSize,
         // events/replies
-        PluginData, // 34
+        PluginData, // 35
         ProgramNumber,
         ProgramName,
         ProgramNameIndexed,
-        ParameterUpdate, // 38
+        ParameterUpdate, // 39
         ParamAutomated,
         LatencyChanged,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error, // 43
+        Error, // 44
         Process,
         Quit
     };
@@ -80,6 +81,8 @@ struct Command {
         float f;
         // generic double
         double d;
+        // string
+        char *s;
         // param automated
         struct {
             int32_t index;
@@ -214,8 +217,6 @@ struct ShmCommand {
         throw Error(static_cast<Error::ErrorCode>(error.code), error.msg);
     }
 };
-
-using ShmReply = ShmCommand;
 
 // additional commands/replies (for IPC over shared memory)
 // that are not covered by Command.

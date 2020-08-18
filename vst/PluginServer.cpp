@@ -316,7 +316,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
                            sizeof(T) * data.numSamples);
     }
 
-    // send replies
+    // send events
     sendEvents(channel);
 }
 
@@ -330,6 +330,7 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             plugin_->setParameter(cmd->paramValue.index, cmd->paramValue.value,
                                   cmd->paramValue.offset);
             {
+                // parameter update event
                 Command event(Command::ParameterUpdate);
                 event.paramAutomated.index = cmd->paramValue.index;
                 event.paramAutomated.value = cmd->paramValue.value;
@@ -340,12 +341,16 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             if (plugin_->setParameter(cmd->paramString.index, cmd->paramString.display,
                                   cmd->paramString.offset))
             {
+                // parameter update event
                 Command event(Command::ParameterUpdate);
                 int index = cmd->paramValue.index;
                 event.paramAutomated.index = index;
                 event.paramAutomated.value = plugin_->getParameter(index);
                 events_.push_back(event);
             }
+            break;
+        case Command::SetProgramName:
+            plugin_->setProgramName(cmd->s);
             break;
         case Command::SetBypass:
             plugin_->setBypass(static_cast<Bypass>(cmd->i));
@@ -396,7 +401,7 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
         case Command::SetProgram:
             plugin_->setProgram(cmd->i);
             {
-                // to send parameter updates
+                // program change event
                 Command event(Command::SetProgram);
                 event.i = cmd->i;
                 events_.push_back(event);

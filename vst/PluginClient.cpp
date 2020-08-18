@@ -247,6 +247,19 @@ void PluginClient::sendCommands(RTChannel& channel){
             channel.addCommand(shmCmd, cmdSize);
             break;
         }
+        case Command::SetProgramName:
+        {
+            auto len = strlen(cmd.s) + 1;
+            auto cmdSize = CommandSize(ShmCommand, s, len);
+            auto shmCmd = (ShmCommand *)alloca(cmdSize);
+            new (shmCmd) ShmCommand(Command::SetProgramName);
+            memcpy(shmCmd->s, cmd.s, len);
+
+            delete cmd.s; // free!
+
+            channel.addCommand(shmCmd, cmdSize);
+            break;
+        }
         case Command::SendSysex:
         {
             auto cmdSize = CommandSize(ShmCommand, sysex, cmd.sysex.size);
@@ -429,7 +442,12 @@ std::string PluginClient::getParameterString(int index) const {
 
 void PluginClient::setProgramName(const std::string& name){
     programCache_[program_] = name;
-    // TODO send to plugin
+
+    Command cmd(Command::SetProgram);
+    cmd.s = new char[name.size() + 1];
+    memcpy(cmd.s, name.c_str(), name.size() + 1);
+
+    commands_.push_back(cmd);
 }
 
 int PluginClient::getProgram() const {
