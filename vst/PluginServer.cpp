@@ -405,10 +405,14 @@ void PluginHandle::sendEvents(ShmChannel& channel){
         switch (event.type){
         case Command::ParamAutomated:
         case Command::ParameterUpdate:
-            sendParam(channel, event.paramAutomated.index,
-                      event.paramAutomated.value,
+        {
+            auto index = event.paramAutomated.index;
+            auto value = event.paramAutomated.value;
+            paramState_[index] = value;
+            sendParam(channel, index, value,
                       event.type == Command::ParamAutomated);
             break;
+        }
         case Command::LatencyChanged:
             addReply(channel, &event, sizeof(ShmCommand));
             break;
