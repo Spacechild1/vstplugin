@@ -527,7 +527,17 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     const ShmCommand *reply;
     if (chn.getReply(reply)){
         if (reply->type == Command::PluginData){
-            buffer.assign(reply->buffer.data, reply->buffer.size);
+            auto len = reply->i;
+            // data is in a seperate message!
+            const char *data;
+            size_t size;
+            if (chn.getReply(data, size)){
+                assert(size >= len); // 'size' can be larger because of padding!
+                buffer.assign(data, len);
+            } else {
+                throw Error(Error::PluginError,
+                            "PluginClient::receiveData: missing data message");
+            }
         } else if (reply->type == Command::Error){
            reply->throwError();
         } else {
