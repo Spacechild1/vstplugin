@@ -133,21 +133,6 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
     }
 }
 
-// RAII class for automatic cleanup
-class TmpFile : public File {
-public:
-    using File::File;
-    ~TmpFile(){
-        if (is_open()){
-            close();
-            // destructor must not throw!
-            if (!removeFile(path_)){
-                LOG_ERROR("couldn't remove tmp file!");
-            };
-        }
-    }
-};
-
 /*/////////////////////////// PluginFactory ////////////////////////*/
 
 PluginFactory::PluginFactory(const std::string &path)

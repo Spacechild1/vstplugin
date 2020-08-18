@@ -179,6 +179,21 @@ protected:
     std::string path_;
 };
 
+// RAII class for automatic cleanup
+class TmpFile : public File {
+public:
+    using File::File;
+    ~TmpFile(){
+        if (is_open()){
+            close();
+            // destructor must not throw!
+            if (!removeFile(path_)){
+                LOG_ERROR("couldn't remove tmp file!");
+            };
+        }
+    }
+};
+
 //----------------------------------------------------------------------------------------
 enum class Priority {
     Low,
