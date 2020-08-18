@@ -19,6 +19,8 @@ class PluginClient final : public DeferredPlugin {
         return *bridge_;
     }
 
+    bool check();
+
     uint32_t id() const { return id_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
@@ -97,6 +99,7 @@ class PluginClient final : public DeferredPlugin {
     std::weak_ptr<IPluginListener> listener_;
     PluginBridge::ptr bridge_;
     uint32_t id_;
+    bool crashed_ = false;
     std::vector<Command> commands_;
     // cache
     struct Param {

@@ -95,8 +95,23 @@ PluginClient::~PluginClient(){
     LOG_DEBUG("free PluginClient");
 }
 
-void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+bool PluginClient::check() {
+    if (bridge_->alive()){
+        return true;
+    } else if (!crashed_){
+        // report crash
+        crashed_ = true;
+    }
+    return false;
+}
+
+void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
+                                   ProcessPrecision precision){
+    if (!check()){
+        return;
+    }
     LOG_DEBUG("PluginClient: setupProcessing");
+
     ShmCommand cmd(Command::SetupProcessing);
     cmd.id = id();
     cmd.setup.sampleRate = sampleRate;
@@ -112,6 +127,9 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize, ProcessP
 
 template<typename T>
 void PluginClient::doProcess(ProcessData<T>& data){
+    if (!check()){
+        return;
+    }
     LOG_DEBUG("PluginClient: process");
 
     auto channel = bridge().getRTChannel();
@@ -311,6 +329,9 @@ void PluginClient::process(ProcessData<double>& data){
 }
 
 void PluginClient::suspend(){
+    if (!check()){
+        return;
+    }
     LOG_DEBUG("PluginClient: suspend");
     ShmCommand cmd(Command::Suspend, id());
 
@@ -322,6 +343,10 @@ void PluginClient::suspend(){
 }
 
 void PluginClient::resume(){
+    if (!check()){
+        return;
+    }
+
     LOG_DEBUG("PluginClient: resume");
     ShmCommand cmd(Command::Resume, id());
 
@@ -429,6 +454,10 @@ void PluginClient::writeBankData(std::string& buffer){
 }
 
 void PluginClient::sendData(Command::Type type, const char *data, size_t size){
+    if (!check()){
+        return;
+    }
+
     auto totalSize = CommandSize(ShmCommand, buffer, size);
     auto cmd = (ShmCommand *)alloca(totalSize);
     cmd->type = type;
@@ -448,6 +477,10 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
 }
 
 void PluginClient::receiveData(Command::Type type, std::string &buffer){
+    if (!check()){
+        return;
+    }
+
     ShmCommand cmd(type);
     cmd.id = id();
 
