@@ -110,7 +110,7 @@ class PluginBridge final
  private:
     static const int maxNumThreads = 8;
     static const size_t queueSize = 1024;
-    static const size_t nrtRequestSize = 1024;
+    static const size_t nrtRequestSize = 65536;
     static const size_t rtRequestSize = 65536;
 
     ShmInterface shm_;

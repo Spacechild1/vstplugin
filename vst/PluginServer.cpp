@@ -173,23 +173,24 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     case Command::WriteProgramData:
     case Command::WriteBankData:
     {
-        // LATER improve
+        // get data
         std::string buffer;
         if (cmd.type == Command::WriteBankData){
             plugin_->writeBankData(buffer);
         } else {
             plugin_->writeProgramData(buffer);
         }
-
-        auto size = CommandSize(ShmCommand, buffer, buffer.size());
-        auto reply = (ShmCommand *)alloca(size);
-        new (reply) ShmCommand(Command::PluginData, id_);
-        reply->buffer.size = buffer.size();
-        memcpy(reply->buffer.data, buffer.data(), buffer.size());
-
+        // send data
         channel.clear(); // !
 
-        addReply(channel, reply, size);
+        ShmCommand reply(Command::PluginData, id_);
+        reply.i = buffer.size(); // save actual size!
+        addReply(channel, &reply, sizeof(reply));
+
+        // send actual data as a seperate message to avoid needless copy.
+        if (!addReply(channel, buffer.data(), buffer.size())){
+            throw Error("plugin data too large!");
+        }
 
         break;
     }
@@ -509,8 +510,8 @@ void PluginHandle::sendParam(ShmChannel &channel, int index,
     addReply(channel, reply, size);
 }
 
-void PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){
-    channel.addMessage(static_cast<const char *>(cmd), size);
+bool PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){
+    return channel.addMessage(static_cast<const char *>(cmd), size);
 }
 
 /*////////////////// PluginServer ////////////////*/

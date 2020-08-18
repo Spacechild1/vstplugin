@@ -57,7 +57,7 @@ class PluginHandle {
     void sendParameterUpdate(ShmChannel& channel);
     void sendProgramUpdate(ShmChannel& channel, bool bank);
 
-    static void addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
+    static bool addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
 
     PluginServer *server_ = nullptr;
     IPlugin::ptr plugin_;
