@@ -36,9 +36,9 @@ struct _Channel {
     _Channel(ShmChannel& channel)
         : channel_(&channel)
         { channel.clear(); }
-    _Channel(ShmChannel& channel, Mutex& mutex)
+    _Channel(ShmChannel& channel, std::unique_lock<Mutex> lock)
         : channel_(&channel),
-          lock_(std::unique_lock<Mutex>(mutex))
+          lock_(std::move(lock))
         { channel.clear(); }
 
     bool addCommand(const void* cmd, size_t size){

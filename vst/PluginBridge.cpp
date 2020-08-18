@@ -335,7 +335,8 @@ RTChannel PluginBridge::getRTChannel(){
             }
             ++counter; // atomic increment
         }
-        return RTChannel(shm_.getChannel(index + 3), locks_[index]);
+        return RTChannel(shm_.getChannel(index + 3),
+                         std::unique_lock<SpinLock>(locks_[index], std::adopt_lock));
     } else {
         // channel 2 is both NRT and RT channel
         return RTChannel(shm_.getChannel(2));
@@ -344,7 +345,8 @@ RTChannel PluginBridge::getRTChannel(){
 
 NRTChannel PluginBridge::getNRTChannel(){
     if (locks_){
-        return NRTChannel(shm_.getChannel(2), nrtMutex_);
+        return NRTChannel(shm_.getChannel(2),
+                          std::unique_lock<SharedMutex>(nrtMutex_));
     } else {
         // channel 2 is both NRT and RT channel
         return NRTChannel(shm_.getChannel(2));
