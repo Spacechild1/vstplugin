@@ -32,7 +32,12 @@ bool isCurrentThread(){
 void poll(){}
 
 bool callSync(Callback cb, void *user){
-    return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
+    if (UIThread::isCurrentThread()){
+        cb(user);
+        return true;
+    } else {
+        return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
+    }
 }
 
 bool callAsync(Callback cb, void *user){
@@ -78,7 +83,7 @@ DWORD EventLoop::run(void *user){
         // LOG_DEBUG("got message " << msg.message);
 
         if (msg.message == WM_CALL){
-            LOG_DEBUG("WM_CREATE_PLUGIN");
+            LOG_DEBUG("WM_CALL");
             auto cb = (UIThread::Callback)msg.wParam;
             auto data = (void *)msg.lParam;
             cb(data);

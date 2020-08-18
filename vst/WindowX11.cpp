@@ -29,7 +29,12 @@ bool isCurrentThread(){
 void poll(){}
 
 bool callSync(Callback cb, void *user){
-    return X11::EventLoop::instance().callSync(cb, user);
+    if (UIThread::isCurrentThread()){
+        cb(user); // avoid deadlock
+        return true;
+    } else {
+        return X11::EventLoop::instance().callSync(cb, user);
+    }
 }
 
 bool callAsync(Callback cb, void *user){
