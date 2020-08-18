@@ -8,6 +8,13 @@
 #include <atomic>
 #include <vector>
 
+#ifdef _WIN32
+# include <Windows.h>
+#else
+# include <sys/types.h>
+# include <unistd.h>
+#endif
+
 namespace vst {
 
 class PluginServer;
@@ -93,6 +100,7 @@ class PluginServer {
     void postUIThread(const ShmUICommand& cmd);
  private:
     void pollUIThread();
+    void checkParentAlive();
     void runThread(ShmChannel* channel);
     void handleCommand(ShmChannel& channel,
                        const ShmCommand &cmd);
@@ -105,7 +113,11 @@ class PluginServer {
 
     PluginHandle *findPlugin(uint32_t id);
 
-    int pid_ = -1;
+#ifdef _WIN32
+    HANDLE parent_ = 0;
+#else
+    int parent_ = -1;
+#endif
     std::unique_ptr<ShmInterface> shm_;
     std::vector<std::thread> threads_;
     std::atomic<bool> running_;

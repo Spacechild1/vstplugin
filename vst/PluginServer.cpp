@@ -524,8 +524,14 @@ bool PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){
 static PluginManager gPluginManager;
 
 PluginServer::PluginServer(int pid, const std::string& shmPath)
-    : pid_(pid), shm_(std::make_unique<ShmInterface>())
 {
+#ifdef _WIN32
+    parent_ = OpenProcess(SYNCHRONIZE, FALSE, pid);
+#else
+    parent_ = pid;
+#endif
+
+    shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);
     LOG_DEBUG("PluginServer: connected to shared memory interface");
     // setup UI event loop
@@ -548,10 +554,16 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
 }
 
 PluginServer::~PluginServer(){
+    UIThread::removePollFunction(pollFunction_);
+
     for (auto& thread : threads_){
         thread.join();
     }
     LOG_DEBUG("free PluginServer");
+
+#ifdef _WIN32
+    CloseHandle(parent_);
+#endif
 }
 
 void PluginServer::run(){
@@ -587,6 +599,20 @@ void PluginServer::pollUIThread(){
         }
         size = sizeof(buffer); // reset size!
     }
+
+    checkParentAlive();
+}
+
+void PluginServer::checkParentAlive(){
+#ifdef _WIN32
+    if (WaitForSingleObject(parent_, 0) != WAIT_TIMEOUT){
+        quit();
+    }
+#else
+    if (getppid() != parent_){
+        quit();
+    }
+#endif
 }
 
 void PluginServer::runThread(ShmChannel *channel){
@@ -738,12 +764,23 @@ PluginHandle * PluginServer::findPlugin(uint32_t id){
 
 void PluginServer::quit(){
     LOG_DEBUG("PluginServer: quit");
-    UIThread::removePollFunction(pollFunction_);
+
     running_ = false;
     // wake up all threads
     for (int i = 2; i < shm_->numChannels(); ++i){
         shm_->getChannel(i).post();
     }
+
+    // properly destruct all remaining plugins
+    // on the UI thread (in case the parent crashed)
+    LockGuard lock(pluginMutex_);
+    if (!plugins_.empty()){
+        UIThread::callSync([](void *x){
+            static_cast<PluginServer *>(x)->plugins_.clear();
+        }, this);
+        LOG_DEBUG("released plugins");
+    }
+
     // quit event loop
     UIThread::quit();
 }
