@@ -274,8 +274,9 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     }
     // create temp file path
     std::stringstream ss;
-    ss << "/vst_" << desc.get(); // desc address should be unique as long as PluginInfos are retained.
-    std::string tmpPath = getTmpDirectory() + ss.str();
+    // desc address should be unique as long as PluginInfos are retained.
+    ss << getTmpDirectory() << "/vst_" << desc.get();
+    std::string tmpPath = ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
     std::string hostApp = getHostApp(arch_);
 #ifdef _WIN32
