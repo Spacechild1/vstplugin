@@ -2168,7 +2168,6 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
 // write program/bank file (.FXP/.FXB)
 
 struct t_save_data : t_preset_data {
-    static void free(t_save_data *x){ delete x; }
     std::string name;
     PresetType type;
     bool add;
