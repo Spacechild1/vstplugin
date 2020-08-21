@@ -112,9 +112,14 @@ ThreadedPlugin::~ThreadedPlugin() {
 
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
     listener_ = listener;
-    auto proxy = std::make_shared<ThreadedPluginListener>(*this);
-    proxyListener_ = proxy; // keep alive
-    plugin_->setListener(proxy);
+    if (listener){
+        auto proxy = std::make_shared<ThreadedPluginListener>(*this);
+        proxyListener_ = proxy; // keep alive
+        plugin_->setListener(proxy);
+    } else {
+        plugin_->setListener(nullptr);
+        proxyListener_ = nullptr;
+    }
 }
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
@@ -262,6 +267,8 @@ void ThreadedPlugin::threadFunction(int numSamples){
 
 template<typename T>
 void ThreadedPlugin::doProcess(ProcessData<T>& data){
+    // LATER do *hard* bypass here and not in the thread function
+
     // wait for last processing to finish (ideally we shouldn't have to)
     event_.wait();
     // get new input from host

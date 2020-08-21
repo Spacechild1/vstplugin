@@ -436,7 +436,11 @@ int PluginClient::getLatencySamples(){
 
 void PluginClient::setListener(IPluginListener::ptr listener) {
     listener_ = listener;
-    bridge_->addUIClient(id_, listener);
+    if (listener){
+        bridge_->addUIClient(id_, listener);
+    } else {
+        bridge_->removeUIClient(id_);
+    }
 }
 
 double PluginClient::getTransportPosition() const {
