@@ -126,6 +126,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
 #else // Unix
     // get absolute path to host app
     std::string hostPath = getModuleDirectory() + "/" + hostApp;
+    auto parent = std::to_string(getpid());
     // fork
     pid_ = fork();
     if (pid_ == -1) {
@@ -142,9 +143,8 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host.exe bridge <parent_pid> <shm_path>
-        auto pid = std::to_string(getpid());
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  pid.c_str(), shm_.path().c_str()) < 0){
+                  parent.c_str(), shm_.path().c_str()) < 0){
             // LATER redirect child stderr to parent stdin
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }
