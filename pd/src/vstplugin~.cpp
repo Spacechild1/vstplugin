@@ -1313,6 +1313,7 @@ struct t_open_data : t_command_data<t_open_data> {
     Error error;
     bool editor;
     bool threaded;
+    PluginInfo::Mode mode;
 };
 
 template<bool async>
@@ -1332,7 +1333,7 @@ static void vstplugin_open_do(t_open_data *x){
             bool ok = UIThread::callSync([](void *y){
                 auto d = (t_open_data *)y;
                 try {
-                    d->plugin = d->info->create(true, d->threaded);
+                    d->plugin = d->info->create(true, d->threaded, d->mode);
                 } catch (const Error& e){
                     d->error = e;
                 }
@@ -1347,10 +1348,10 @@ static void vstplugin_open_do(t_open_data *x){
             } else {
                 // couldn't dispatch to UI thread (probably not available).
                 // create plugin without window
-                x->plugin = info->create(false, x->threaded);
+                x->plugin = info->create(false, x->threaded, x->mode);
             }
         } else {
-            x->plugin = info->create(false, x->threaded);
+            x->plugin = info->create(false, x->threaded, x->mode);
         }
         if (x->plugin){
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
@@ -1394,6 +1395,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool editor = false;
     bool async = false;
     bool threaded = false;
+    auto mode = PluginInfo::Mode::Auto;
     // parse arguments
     while (argc && argv->a_type == A_SYMBOL){
         auto sym = argv->a_w.w_symbol;
@@ -1403,6 +1405,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
                 editor = true;
             } else if (!strcmp(flag, "-t")){
                 threaded = true;
+            } else if (!strcmp(flag, "-p")){
+                mode = PluginInfo::Mode::Sandboxed;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
@@ -1464,6 +1468,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data->path = pathsym;
         data->editor = editor;
         data->threaded = threaded;
+        data->mode = mode;
         t_workqueue::get()->push(x, data, vstplugin_open_do<true>, open_done);
     } else {
         t_open_data data;
@@ -1471,6 +1476,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data.path = pathsym;
         data.editor = editor;
         data.threaded = threaded;
+        data.mode = mode;
         vstplugin_open_do<false>(&data);
         open_done(&data);
     }
@@ -2715,6 +2721,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool threaded = false;
+    auto mode = PluginInfo::Mode::Auto;
     // precision (defaults to Pd's precision)
     ProcessPrecision precision = (PD_FLOATSIZE == 64) ?
                 ProcessPrecision::Double : ProcessPrecision::Single;
@@ -2738,6 +2745,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 search = true;
             } else if (!strcmp(flag, "-t")){
                 threaded = true;
+            } else if (!strcmp(flag, "-p")){
+                mode = PluginInfo::Mode::Sandboxed;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
@@ -2806,6 +2815,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         data.path = file;
         data.editor = editor;
         data.threaded = threaded;
+        data.mode = mode;
         vstplugin_open_do<false>(&data);
         vstplugin_open_done(&data);
         x_uithread = editor; // !
