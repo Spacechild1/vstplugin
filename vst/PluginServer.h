@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "PluginCommand.h"
 #include "Sync.h"
+#include "Utility.h"
 
 #include <thread>
 #include <atomic>
@@ -64,6 +65,8 @@ class PluginHandle {
     void sendParameterUpdate(ShmChannel& channel);
     void sendProgramUpdate(ShmChannel& channel, bool bank);
 
+    void requestParameterUpdate(int32_t index, float value);
+
     static bool addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
 
     PluginServer *server_ = nullptr;
@@ -80,6 +83,15 @@ class PluginHandle {
     std::vector<char> buffer_;
     std::vector<Command> events_;
 
+    // parameter automation from GUI
+    // -> ask RT thread to send parameter state
+    struct Param {
+        int32_t index;
+        float value;
+    };
+    LockfreeFifo<Param, 16> paramAutomated_;
+
+    // cached parameter state
     std::unique_ptr<float[]> paramState_;
 
     void sendParam(ShmChannel& channel, int index,

@@ -1,6 +1,5 @@
 #include "PluginServer.h"
 #include "ShmInterface.h"
-#include "Utility.h"
 #include "PluginManager.h"
 
 #include <cassert>
@@ -22,6 +21,7 @@ void PluginHandleListener::parameterAutomated(int index, float value) {
         cmd.paramAutomated.index = index;
         cmd.paramAutomated.value = value;
 
+        owner_->requestParameterUpdate(index, value);
         owner_->server_->postUIThread(cmd);
     } else {
         LOG_DEBUG("RT thread: ParameterAutomated");
@@ -455,6 +455,13 @@ void PluginHandle::sendEvents(ShmChannel& channel){
     }
 
     events_.clear(); // !
+
+    // handle parameter automation from GUI
+    Param param;
+    while (paramAutomated_.pop(param)){
+        paramState_[param.index] = param.value;
+        sendParam(channel, param.index, param.value, false);
+    }
 }
 
 void PluginHandle::sendParameterUpdate(ShmChannel& channel){
@@ -497,6 +504,10 @@ void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
         // send current program name
         sendProgramName(plugin_->getProgram(), plugin_->getProgramName());
     }
+}
+
+void PluginHandle::requestParameterUpdate(int32_t index, float value){
+    paramAutomated_.emplace(index, value);
 }
 
 void PluginHandle::sendParam(ShmChannel &channel, int index,
