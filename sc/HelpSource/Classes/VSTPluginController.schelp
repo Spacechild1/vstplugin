@@ -392,8 +392,16 @@ an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: threaded
 process the plugin in a seperate worker thread to utilize more CPU cores.
-note::This option is ignored for Supernova which already offers multiprocessing with ParGroup.::
+note::This option is ignored for Supernova, which already offers multiprocessing with ParGroup.::
 note::Multiprocessing introduces a delay of 1 block!::
+
+ARGUMENT:: mode
+select a run mode.
+table::
+## \auto || the default mode.
+## \sandbox || run the plugin in a seperate process. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.
+::
+note::Any run mode except for code::\auto:: incurs some fixed CPU overhead, which is less significant for larger blocksizer (see link::Classes/ServerOptions#-blockSize::).::
 
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
@@ -407,6 +415,12 @@ If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*a
 
 ARGUMENT:: editor
 request the VST editor.
+
+ARGUMENT:: threaded
+enable multiprocessing.
+
+ARGUMENT:: mode
+select a run mode.
 
 RETURNS:: the message for an emphasis::open:: command (see link::#-open::).
 

@@ -276,7 +276,8 @@ VSTPluginController {
 		};
 		browser.front;
 	}
-	open { arg path, editor=false, verbose=false, action, threaded=false;
+	open { arg path, editor=false, verbose=false, action, threaded=false, mode;
+		var intMode = 0;
 		loading.if {
 			"already opening!".error;
 			^this;
@@ -287,6 +288,14 @@ VSTPluginController {
 			Server.program.find("supernova").notNil.if {
 				"multiprocessing option not supported for Supernova; use ParGroup instead.".warn;
 			}
+		};
+		// check mode
+		mode.notNil.if {
+			intMode = switch(mode,
+				\auto, 0,
+				\sandbox, 1,
+				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
+			);
 		};
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
@@ -326,7 +335,7 @@ VSTPluginController {
 					latency.notNil.if { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
-				this.sendMsg('/open', info.key, editor.asInteger, threaded.asInteger);
+				this.sendMsg('/open', info.key, editor.asInteger, threaded.asInteger, intMode);
 			} {
 				"couldn't open '%'".format(path).error;
 				// just notify failure, but keep old plugin (if present)
@@ -335,14 +344,23 @@ VSTPluginController {
 			};
 		});
 	}
-	openMsg { arg path, editor=false;
+	openMsg { arg path, editor=false, threaded=false, mode;
+		var intMode;
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
 			this.info !? { path = this.info.key } ?? {
 				MethodError("'path' is nil but VSTPlugin doesn't have a plugin info", this).throw;
 			}
 		};
-		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger);
+		// check mode
+		mode.notNil.if {
+			intMode = switch(mode,
+				\auto, 0,
+				\sandbox, 1,
+				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
+			);
+		};
+		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger, threaded.asInteger, intMode);
 	}
 	prClear {
 		info !? { info.removeDependant(this) };

@@ -41,6 +41,7 @@ struct OpenCmdData : CmdData {
     Error error;
     bool editor;
     bool threaded;
+    PluginInfo::Mode mode;
     // flexible array for RT memory
     int size = 0;
     char path[1];
@@ -136,7 +137,8 @@ public:
     WriteLock scopedLock();
     bool tryLock();
     void unlock();
-    void open(const char* path, bool editor, bool threaded);
+    void open(const char* path, bool editor,
+              bool threaded, PluginInfo::Mode mode);
     void doneOpen(OpenCmdData& msg);
     void close();
     void showEditor(bool show);

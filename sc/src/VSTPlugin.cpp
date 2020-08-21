@@ -1089,7 +1089,7 @@ bool cmdOpen(World *world, void* cmdData) {
                 bool ok = UIThread::callSync([](void *y){
                     auto d = (OpenCmdData *)y;
                     try {
-                        d->plugin = d->info->create(true, d->threaded);
+                        d->plugin = d->info->create(true, d->threaded, d->mode);
                     } catch (const Error& e){
                         d->error = e;
                     }
@@ -1104,11 +1104,11 @@ bool cmdOpen(World *world, void* cmdData) {
                 } else {
                     // couldn't dispatch to UI thread (probably not available).
                     // create plugin without window
-                    data->plugin = info->create(false, data->threaded);
+                    data->plugin = info->create(false, data->threaded, data->mode);
                 }
             }
             else {
-                data->plugin = info->create(false, data->threaded);
+                data->plugin = info->create(false, data->threaded, data->mode);
             }
             if (data->plugin){
                 // we only access immutable members of owner!
@@ -1133,7 +1133,8 @@ bool cmdOpen(World *world, void* cmdData) {
 }
 
 // try to open the plugin in the NRT thread with an asynchronous command
-void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
+void VSTPluginDelegate::open(const char *path, bool editor,
+                             bool threaded, PluginInfo::Mode mode) {
     LOG_DEBUG("open");
     if (isLoading_) {
         LOG_WARNING("already loading!");
@@ -1160,6 +1161,7 @@ void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
         memcpy(cmdData->path, path, len);
         cmdData->editor = editor;
         cmdData->threaded = threaded;
+        cmdData->mode = mode;
 
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
             auto data = (OpenCmdData*)cmdData;
@@ -1825,8 +1827,12 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     const char *path = args->gets();
     auto editor = args->geti();
     auto threaded = args->geti();
+    auto intMode = args->geti();
+    auto mode = (intMode == 1) ?
+                PluginInfo::Mode::Sandboxed : PluginInfo::Mode::Auto;
+
     if (path) {
-        unit->delegate().open(path, editor, threaded);
+        unit->delegate().open(path, editor, threaded, mode);
     }
     else {
         LOG_WARNING("vst_open: expecting string argument!");
