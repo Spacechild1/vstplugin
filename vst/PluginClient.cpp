@@ -146,6 +146,27 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
 template<typename T>
 void PluginClient::doProcess(ProcessData<T>& data){
     if (!check()){
+        // bypass
+        // LATER also use this for *hard* bypass
+        // (but still send parameters?)
+        auto bypass = [](auto input, auto nin,
+                auto output, auto nout, auto nsamples){
+            for (int i = 0; i < nout; ++i){
+                if (i < nin){
+                    std::copy(input[i], input[i] + nsamples, output[i]);
+                } else {
+                    std::fill(output[i], output[i] + nsamples, 0);
+                }
+            }
+        };
+
+        bypass(data.input, data.numInputs,
+               data.output, data.numOutputs, data.numSamples);
+
+        bypass(data.auxInput, data.numAuxInputs,
+               data.auxOutput, data.numAuxOutputs, data.numSamples);
+
+        commands_.clear(); // avoid commands piling up!
         return;
     }
     // LOG_DEBUG("PluginClient: process");
@@ -391,6 +412,10 @@ void PluginClient::resume(){
 }
 
 void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
+    if (!check()){
+        return;
+    }
+
     LOG_DEBUG("PluginClient: setNumSpeakers");
     ShmCommand cmd(Command::SetNumSpeakers, id());
     cmd.speakers.in = in;
