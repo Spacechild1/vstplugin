@@ -176,7 +176,7 @@ PluginBridge::~PluginBridge(){
     // this might even be dangerous if we accidentally
     // wait on a subprocess that somehow got stuck.
     // maybe use some timeout?
-    getStatus(true);
+    checkStatus(true);
 
 #ifdef _WIN32
     CloseHandle(pi_.hProcess);
@@ -186,11 +186,7 @@ PluginBridge::~PluginBridge(){
     LOG_DEBUG("free PluginBridge");
 }
 
-void PluginBridge::checkStatus(){
-    getStatus(false);
-}
-
-void PluginBridge::getStatus(bool wait){
+void PluginBridge::checkStatus(bool wait){
     // already dead, no need to check
     if (!alive_){
         return;
@@ -235,11 +231,24 @@ void PluginBridge::getStatus(bool wait){
     }
 #endif
 
-    alive_ = false;
+    bool wasAlive = alive_.exchange(false);
 
     // notify waiting RT threads
     for (int i = 2; i < shm_.numChannels(); ++i){
+        // this should be safe, because channel messages
+        // can only be read when they are complete
+        // (the channel size is atomic)
         shm_.getChannel(i).postReply();
+    }
+
+    if (wasAlive){
+        // notify all clients
+        for (auto& it : clients_){
+            auto client = it.second.lock();
+            if (client){
+                client->pluginCrashed();
+            }
+        }
     }
 }
 

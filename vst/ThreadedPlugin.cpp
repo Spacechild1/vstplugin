@@ -504,6 +504,14 @@ void ThreadedPluginListener::latencyChanged(int nsamples) {
     }
 }
 
+void ThreadedPluginListener::pluginCrashed(){
+    // UI or NRT thread
+    auto listener = owner_->listener_.lock();
+    if (listener){
+        listener->pluginCrashed();
+    }
+}
+
 void ThreadedPluginListener::midiEvent(const MidiEvent& event) {
     if (std::this_thread::get_id() == owner_->rtThread_){
         Command e(Command::MidiReceived);

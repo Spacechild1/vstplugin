@@ -33,6 +33,7 @@ class PluginHandleListener : public IPluginListener {
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void pluginCrashed() {} // never called inside the bridge
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
  private:

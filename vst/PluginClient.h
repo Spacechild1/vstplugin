@@ -99,7 +99,6 @@ class PluginClient final : public DeferredPlugin {
     std::weak_ptr<IPluginListener> listener_;
     PluginBridge::ptr bridge_;
     uint32_t id_;
-    bool crashed_ = false;
     std::vector<Command> commands_;
     // cache
     struct Param {

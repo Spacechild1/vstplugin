@@ -80,6 +80,7 @@ class IPluginListener {
     virtual void latencyChanged(int nsamples) = 0;
     virtual void midiEvent(const MidiEvent& event) = 0;
     virtual void sysexEvent(const SysexEvent& event) = 0;
+    virtual void pluginCrashed() = 0;
 };
 
 enum class ProcessPrecision {

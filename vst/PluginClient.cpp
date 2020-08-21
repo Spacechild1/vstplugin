@@ -87,6 +87,11 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
         dispatchReply(*reply);
     }
 
+    // in case the process has already crashed during creation...
+    if (!bridge_->alive()){
+        throw Error(Error::PluginError, "plugin crashed");
+    }
+
     LOG_DEBUG("PluginClient: done!");
 }
 
@@ -114,13 +119,7 @@ PluginClient::~PluginClient(){
 }
 
 bool PluginClient::check() {
-    if (bridge_->alive()){
-        return true;
-    } else if (!crashed_){
-        // report crash
-        crashed_ = true;
-    }
-    return false;
+    return bridge_->alive();
 }
 
 void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,

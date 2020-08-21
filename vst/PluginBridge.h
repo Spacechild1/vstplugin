@@ -96,7 +96,7 @@ class PluginBridge final
         return alive_.load(std::memory_order_acquire);
     }
 
-    void checkStatus();
+    void checkStatus(bool wait = false);
 
     void addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client);
 
