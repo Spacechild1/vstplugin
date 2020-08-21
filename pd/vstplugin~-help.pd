@@ -984,31 +984,37 @@ CPU cores., f 67;
 #X obj 19 46 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 48 creation arguments:;
-#N canvas 87 398 600 357 message-out 0;
+#N canvas 101 355 600 374 message-out 0;
 #X obj 10 17 inlet;
 #X obj 10 63 s \$0-program-data;
 #X obj 10 40 route program_data bank_data, f 39;
 #X obj 125 63 s \$0-bank-data;
-#X obj 268 132 print;
-#X obj 268 111 spigot 1;
-#X obj 313 90 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 268 135 print;
+#X obj 268 114 spigot 1;
+#X obj 327 114 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X text 314 72 print messages;
+#X text 348 113 print messages;
 #X obj 241 86 s \$0-out;
 #X obj 241 63 t a a;
-#X msg 18 168 param_automated <index> <value>;
-#X msg 18 194 latency <numsamples>;
-#X msg 20 247 midi <bytes...>;
-#X msg 19 274 sysex <bytes...>;
-#X text 223 162 a parameter has been changed in the GUI (or by changing
+#X msg 18 178 param_automated <index> <value>;
+#X msg 18 204 latency <numsamples>;
+#X msg 20 257 midi <bytes...>;
+#X msg 19 284 sysex <bytes...>;
+#X text 223 172 a parameter has been changed in the GUI (or by changing
 a linked parameter).;
-#X text 152 194 the plugin's internal processing latency has changed
+#X text 152 204 the plugin's internal processing latency has changed
 ;
-#X text 129 247 a MIDI message sent by the plugin;
-#X text 129 274 a SysEx message sent by the plugin;
-#X text 18 143 events:;
-#X text 153 212 NOTE: the value includes the additional latency caused
+#X text 129 257 a MIDI message sent by the plugin;
+#X text 129 284 a SysEx message sent by the plugin;
+#X text 18 153 events:;
+#X text 153 222 NOTE: the value includes the additional latency caused
 by multithreading (see the "-t" flag for "open"), f 55;
+#X msg 19 312 crash;
+#X text 302 85 goes to vstpresetbrowser;
+#X text 13 87 see [pd preset];
+#X text 73 313 the plugin subprocess has crashed.;
+#X text 74 331 This is only sent for bridged or sandboxed plugins \,
+because normal plugins would simply crash Pd., f 53;
 #X connect 0 0 2 0;
 #X connect 2 0 1 0;
 #X connect 2 1 3 0;

@@ -784,6 +784,12 @@ void t_vsteditor::latencyChanged(int nsamples){
     post_event(e);
 }
 
+// plugin crash notification might come from another thread
+void t_vsteditor::pluginCrashed(){
+    t_event e(t_event::Crash);
+    post_event(e);
+}
+
 // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
 void t_vsteditor::midiEvent(const MidiEvent &event){
     t_event e(t_event::Midi);
@@ -802,6 +808,8 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
     e.sysex.delta = event.delta;
     post_event(e);
 }
+
+static void vstplugin_close(t_vstplugin *x);
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
@@ -838,6 +846,19 @@ void t_vsteditor::tick(t_vsteditor *x){
             SETFLOAT(&msg[0], e.param.index);
             SETFLOAT(&msg[1], e.param.value);
             outlet_anything(outlet, gensym("param_automated"), 2, msg);
+            break;
+        }
+        case t_event::Crash:
+        {
+            auto& name = x->e_owner->x_plugin->info().name;
+            pd_error(x->e_owner, "plugin '%s' crashed!", name.c_str());
+
+            // send notification
+            outlet_anything(outlet, gensym("crash"), 0, 0);
+
+            // automatically close plugin
+            vstplugin_close(x->e_owner);
+
             break;
         }
         case t_event::Midi:
@@ -2164,8 +2185,8 @@ static void vstplugin_preset_write_do(t_preset_data *data){
             // so we keep the critical section as short as possible.
             buffer.reserve(1024);
         }
+        // protect against vstplugin_dsp() and vstplugin_save()
         {
-            // protect against vstplugin_dsp() and vstplugin_save()
             LockGuard lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);

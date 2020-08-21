@@ -157,6 +157,7 @@ class t_vsteditor : public IPluginListener {
     // plugin callbacks
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void pluginCrashed() override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
 private:
@@ -173,6 +174,7 @@ private:
         enum t_type {
             Latency,
             Parameter,
+            Crash,
             Midi,
             Sysex
         };
