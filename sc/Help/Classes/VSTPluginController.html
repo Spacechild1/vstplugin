@@ -37,6 +37,7 @@ var scdoc_sc_version = '3.11.0';
 <li class='toc3'><a href='#-openMsg'>openMsg</a> </li>
 <li class='toc3'><a href='#-close'>close</a> </li>
 <li class='toc3'><a href='#-closeMsg'>closeMsg</a> </li>
+<li class='toc3'><a href='#-pluginCrashed'>pluginCrashed</a> </li>
 <li class='toc3'><a href='#-browse'>browse</a> </li>
 <li class='toc3'><a href='#-editor'>editor</a> </li>
 <li class='toc3'><a href='#-editorMsg'>editorMsg</a> </li>
@@ -411,7 +412,12 @@ SynthDef(\chorus, { arg bus=0;
 <p>close the current plugin (but don't free the Synth!). You can open another plugin later.<h4>Discussion:</h4>
 
 <p>This will automatically bypass the plugin (i.e. the input is just passed through).
-<p>Just like <a href="#-open">-open</a>, this method is realtime-safe.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-browse' href='./../Overviews/Methods.html#browse'>browse</a></h3>
+<p>Just like <a href="#-open">-open</a>, this method is realtime-safe.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-pluginCrashed' href='./../Overviews/Methods.html#pluginCrashed'>pluginCrashed</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-pluginCrashed' href='./../Overviews/Methods.html#pluginCrashed'>pluginCrashed</a> = value</h3>
+<div class='method'>
+<p>a <a href="./..\Classes/Function.html">Function</a> or <a href="./..\Classes/FunctionList.html">FunctionList</a> to be called when the plugin subprocess crashes.<h4>Discussion:</h4>
+
+<p>You could use this callback to automatically reopen the plugin, for example.<div class='note'><span class='notelabel'>NOTE:</span> This is only meant for bridged or sandboxed plugins, because a normal plugin would simply crash the server.</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-browse' href='./../Overviews/Methods.html#browse'>browse</a></h3>
 <div class='method'>
 <p>open the plugin browser dialog.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editor' href='./../Overviews/Methods.html#editor'>editor</a>(<span class='argstr'>show: true</span>)</h3>
 <div class='method'></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editorMsg' href='./../Overviews/Methods.html#editorMsg'>editorMsg</a>(<span class='argstr'>show: true</span>)</h3>

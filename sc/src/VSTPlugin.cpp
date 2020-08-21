@@ -876,6 +876,8 @@ void VSTPlugin::next(int inNumSamples) {
                 delegate_->sendParameterAutomated(p.index, p.value);
             } else if (p.index == VSTPluginDelegate::LatencyChange){
                 delegate_->sendLatencyChange(p.value);
+            } else if (p.index == VSTPluginDelegate::PluginCrash){
+                delegate_->sendPluginCrash();
             }
         }
         if (suspended){
@@ -963,6 +965,19 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
         // from GUI thread [or NRT thread] - push to queue
         LockGuard lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
+            LOG_DEBUG("param queue overflow");
+        }
+    }
+}
+
+void VSTPluginDelegate::pluginCrashed(){
+    // RT thread
+    if (std::this_thread::get_id() == rtThreadID_) {
+        sendPluginCrash();
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
+        LockGuard lock(owner_->paramQueueMutex_);
+        if (!(owner_->paramQueue_.emplace(PluginCrash, 0.f))){
             LOG_DEBUG("param queue overflow");
         }
     }
@@ -1746,6 +1761,10 @@ void VSTPluginDelegate::sendLatencyChange(int nsamples){
         nsamples += bufferSize_;
     }
     sendMsg("/vst_latency", (float)nsamples);
+}
+
+void VSTPluginDelegate::sendPluginCrash(){
+    sendMsg("/vst_crash", 0);
 }
 
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {

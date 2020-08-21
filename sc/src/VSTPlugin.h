@@ -105,7 +105,8 @@ class VSTPluginDelegate :
     friend class VSTPlugin;
 public:
     enum {
-        LatencyChange = -1
+        LatencyChange = -2,
+        PluginCrash
     };
 
     VSTPluginDelegate(VSTPlugin& owner);
@@ -123,6 +124,7 @@ public:
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void pluginCrashed();
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
 
@@ -178,6 +180,7 @@ public:
     void sendParameter(int32 index, float value); // unchecked
     void sendParameterAutomated(int32 index, float value); // unchecked
     void sendLatencyChange(int nsamples);
+    void sendPluginCrash();
     // perform sequenced command
     template<bool owner = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,

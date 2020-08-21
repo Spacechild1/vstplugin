@@ -420,6 +420,13 @@ This will automatically bypass the plugin (i.e. the input is just passed through
 Just like link::#-open::, this method is realtime-safe.
 
 
+METHOD:: pluginCrashed
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin subprocess crashes.
+
+discussion::
+You could use this callback to automatically reopen the plugin, for example.
+note::This is only meant for bridged or sandboxed plugins, because a normal plugin would simply crash the server.::
+
 METHOD:: browse
 open the plugin browser dialog.
 

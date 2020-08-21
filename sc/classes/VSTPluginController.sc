@@ -14,6 +14,7 @@ VSTPluginController {
 	var <>midiReceived;
 	var <>sysexReceived;
 	var <>latencyChanged;
+	var <>pluginCrashed;
 	// private
 	var oscFuncs;
 	var <paramCache; // only for dependants
@@ -217,6 +218,12 @@ VSTPluginController {
 			var nsamples = msg[3].asInteger;
 			latencyChanged.value(nsamples);
 		}, '/vst_latency'));
+		// plugin crashed
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			"plugin '%' crashed".format(this.info.name).warn;
+			this.close;
+			pluginCrashed.value;
+		}, '/vst_crash'));
 		// MIDI received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			// convert to integers and pass as args to action
