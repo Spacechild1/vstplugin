@@ -151,7 +151,7 @@ bool ShmChannel::addMessage(const char * data, size_t size) {
         memcpy(msg->data, data, size); // use original size!
 
         wrhead_ += msgsize;
-        data_->size += msgsize;
+        data_->size += msgsize; // atomic increment!
 
         return true;
     } else {
@@ -168,7 +168,7 @@ bool ShmChannel::getMessage(const char *& buf, size_t& size) {
 
         auto msgsize = msg->size + sizeof(msg->size);
         rdhead_ += msgsize;
-        data_->size -= msgsize;
+        data_->size -= msgsize; // atomic decrement!
 
         return true;
     } else {
@@ -570,6 +570,12 @@ void ShmInterface::closeShm(){
     data_ = nullptr;
     size_ = 0;
     channels_.clear();
+}
+
+void ShmInterface::getVersion(int& major, int& minor, int& bugfix) const {
+    major = reinterpret_cast<const Header *>(data_)->versionMajor;
+    minor = reinterpret_cast<const Header *>(data_)->versionMinor;
+    bugfix = reinterpret_cast<const Header *>(data_)->versionBugfix;
 }
 
 } // vst

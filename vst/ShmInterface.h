@@ -145,6 +145,8 @@ class ShmInterface {
     const ShmChannel& getChannel(int i) const {
         return channels_[i];
     }
+
+    void getVersion(int& major, int& minor, int& bugfix) const;
  private:
     std::vector<ShmChannel> channels_;
     bool owner_ = false;
