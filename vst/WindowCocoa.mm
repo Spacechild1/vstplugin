@@ -55,6 +55,8 @@ namespace vst {
 
 namespace UIThread {
 
+static std::atomic_bool gRunning;
+
 void setup(){
     if (isCurrentThread()){
         // create NSApplication in this thread (= main thread)
@@ -70,6 +72,46 @@ void setup(){
         // we don't run on the main thread and expect the host app to create
         // the event loop (the EventLoop constructor will warn us otherwise).
     }
+}
+
+void run() {
+    // this doesn't work...
+    // [NSApp run];
+    // Kudos to https://www.cocoawithlove.com/2009/01/demystifying-nsapplication-by.html
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+
+    [NSApp finishLaunching];
+    gRunning = true;
+
+    while (gRunning) {
+        [pool release];
+        pool = [[NSAutoreleasePool alloc] init];
+        NSEvent* event = [NSApp nextEventMatchingMask:NSAnyEventMask
+                                            untilDate:[NSDate distantFuture]
+                                               inMode:NSDefaultRunLoopMode
+                                              dequeue:YES];
+        if (event) {
+            [NSApp sendEvent:event];
+            [NSApp updateWindows];
+        }
+    }
+    [pool release];
+}
+
+void quit() {
+    // break from event loop instead of [NSApp terminate:nil]
+    gRunning = false;
+    // send dummy event to wake up event loop
+    NSEvent* event = [NSEvent otherEventWithType:NSApplicationDefined
+                                        location:NSMakePoint(0, 0)
+                                   modifierFlags:0
+                                       timestamp:0
+                                    windowNumber:0
+                                         context:nil
+                                         subtype:0
+                                           data1:0
+                                           data2:0];
+    [NSApp postEvent:event atStart:NO];
 }
 
 bool isCurrentThread(){
@@ -106,6 +148,14 @@ bool callAsync(Callback cb, void *user){
     return Cocoa::EventLoop::instance().callAsync(cb, user);
 }
 
+int32_t addPollFunction(PollFunction fn, void *context){
+    return Cocoa::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return Cocoa::EventLoop::instance().removePollFunction(handle);
+}
+
 } // UIThread
 
 namespace Cocoa {
@@ -126,9 +176,44 @@ EventLoop::EventLoop(){
     } else {
         LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
     }
+
+    auto createTimer = [this](){
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
+                    target:nil
+                    selector:@selector(poll)
+                    userInfo:nil
+                    repeats:YES];
+    };
+
+    if (UIThread::isCurrentThread()){
+        createTimer();
+    } else {
+        auto queue = dispatch_get_main_queue();
+        dispatch_async(queue, createTimer);
+    }
 }
 
 EventLoop::~EventLoop(){}
+
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
+}
+
+void EventLoop::poll(){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    for (auto& it : pollFunctions_){
+        it.second();
+    }
+}
 
 bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (haveNSApp_){
@@ -199,11 +284,15 @@ void Window::doOpen(){
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        [window setOwner:this];
         window_ = window;
-        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:window];
+        [window setOwner:this];
+        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:)
+                name:NSWindowDidResizeNotification object:window];
         
-        setTitle(plugin_->info().name);
+        // set window title
+        NSString *title = @(plugin_->info().name.c_str());
+        [window setTitle:title];
+
         int left = 100, top = 100, right = 400, bottom = 400;
         bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
         if (gotEditorRect){
@@ -254,13 +343,6 @@ void Window::updateEditor(){
 
 void * Window::getHandle(){
     return window_ ? [window_ contentView] : nullptr;
-}
-
-void Window::setTitle(const std::string& title){
-    if (window_){
-        NSString *name = @(title.c_str());
-        [window_ setTitle:name];
-    }
 }
 
 void Window::setFrame(int x, int y, int w, int h){

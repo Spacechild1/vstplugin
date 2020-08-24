@@ -41,6 +41,7 @@ struct OpenCmdData : CmdData {
     Error error;
     bool editor;
     bool threaded;
+    PluginInfo::Mode mode;
     // flexible array for RT memory
     int size = 0;
     char path[1];
@@ -105,7 +106,8 @@ class VSTPluginDelegate :
     friend class VSTPlugin;
 public:
     enum {
-        LatencyChange = -1
+        LatencyChange = -2,
+        PluginCrash
     };
 
     VSTPluginDelegate(VSTPlugin& owner);
@@ -123,6 +125,7 @@ public:
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void pluginCrashed();
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
 
@@ -134,7 +137,8 @@ public:
     WriteLock scopedLock();
     bool tryLock();
     void unlock();
-    void open(const char* path, bool editor, bool threaded);
+    void open(const char* path, bool editor,
+              bool threaded, PluginInfo::Mode mode);
     void doneOpen(OpenCmdData& msg);
     void close();
     void showEditor(bool show);
@@ -178,6 +182,7 @@ public:
     void sendParameter(int32 index, float value); // unchecked
     void sendParameterAutomated(int32 index, float value); // unchecked
     void sendLatencyChange(int nsamples);
+    void sendPluginCrash();
     // perform sequenced command
     template<bool owner = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,

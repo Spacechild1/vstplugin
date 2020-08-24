@@ -1,6 +1,7 @@
 #pragma once
 #include "Interface.h"
 #include "Utility.h"
+#include "PluginFactory.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
@@ -66,39 +67,21 @@ uint32 PLUGIN_API release()override { return BaseClass::release (); }
 
 namespace vst {
 
-class VST3Factory : public IFactory {
+class VST3Factory final : public PluginFactory {
  public:
-    VST3Factory(const std::string& path);
+    VST3Factory(const std::string& path, bool probe);
     ~VST3Factory();
-    // get a list of all available plugins
-    void addPlugin(PluginInfo::ptr desc) override;
-    PluginInfo::const_ptr getPlugin(int index) const override;
-    int numPlugins() const override;
-    // probe plugins (in a seperate process)
-    ProbeFuture probeAsync() override;
-    bool isProbed() const override {
-        return !plugins_.empty();
-    }
-    bool valid() const override {
-        return plugins_.size() > 0;
-    }
-    std::string path() const override {
-        return path_;
-    }
+    // probe a single plugin
+    PluginInfo::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
-    IPlugin::ptr create(const std::string& name, bool probe = false) const override;
+    IPlugin::ptr create(const std::string& name) const override;
  private:
     void doLoad();
-    std::string path_;
-    std::unique_ptr<IModule> module_;
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
-    // probed plugins:
-    std::vector<PluginInfo::ptr> plugins_;
-    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
-    // factory plugins:
-    std::vector<std::string> pluginList_;
-    mutable std::unordered_map<std::string, int> pluginIndexMap_;
+    // subplugins
+    PluginInfo::SubPluginList subPlugins_;
+    std::unordered_map<std::string, int> subPluginMap_;
 };
 
 //----------------------------------------------------------------------
@@ -199,9 +182,8 @@ class VST3Plugin final :
     // IPlugFrame
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
 
-    PluginType getType() const override { return PluginType::VST3; }
-
     const PluginInfo& info() const override { return *info_; }
+    PluginInfo::const_ptr getInfo() const { return info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData<float>& data) override;
@@ -283,7 +265,6 @@ class VST3Plugin final :
      int getNumPrograms() const;
      bool hasEditor() const;
      bool hasPrecision(ProcessPrecision precision) const;
-     bool isSynth() const;
      bool hasTail() const;
      int getTailSize() const;
      bool hasBypass() const;
@@ -340,7 +321,7 @@ class VST3Plugin final :
         std::atomic<float> value;
         std::atomic<bool> changed;
     };
-    std::vector<ParamState> paramCache_;
+    std::unique_ptr<ParamState[]> paramCache_;
     struct ParamChange {
         ParamChange() : id(0), value(0) {}
         ParamChange(Vst::ParamID _id, Vst::ParamValue _value)

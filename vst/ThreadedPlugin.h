@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "Sync.h"
 #include "Utility.h"
+#include "DeferredPlugin.h"
 
 #include <thread>
 #include <condition_variable>
@@ -38,14 +39,17 @@ class DSPThreadPool {
     SpinLock popLock_;
 };
 
-class ThreadedPlugin final : public IPlugin {
+/*//////////////////// ThreadedPlugin ////////////////*/
+
+class ThreadedPluginListener;
+
+class ThreadedPlugin final : public DeferredPlugin
+{
  public:
+    friend class ThreadedPluginListener;
+
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
-
-    PluginType getType() const override {
-        return plugin_->getType();
-    }
 
     const PluginInfo& info() const override {
         return plugin_->info();
@@ -56,7 +60,6 @@ class ThreadedPlugin final : public IPlugin {
     void process(ProcessData<double>& data) override;
     void suspend() override;
     void resume() override;
-    void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
     int getLatencySamples() override {
         return plugin_->getLatencySamples();
@@ -64,29 +67,13 @@ class ThreadedPlugin final : public IPlugin {
 
     void setListener(IPluginListener::ptr listener) override;
 
-    void setTempoBPM(double tempo) override;
-    void setTimeSignature(int numerator, int denominator) override;
-    void setTransportPlaying(bool play) override;
-    void setTransportRecording(bool record) override;
-    void setTransportAutomationWriting(bool writing) override;
-    void setTransportAutomationReading(bool reading) override;
-    void setTransportCycleActive(bool active) override;
-    void setTransportCycleStart(double beat) override;
-    void setTransportCycleEnd(double beat) override;
-    void setTransportPosition(double beat) override;
     double getTransportPosition() const override {
         return plugin_->getTransportPosition();
     }
 
-    void sendMidiEvent(const MidiEvent& event) override;
-    void sendSysexEvent(const SysexEvent& event) override;
-
-    void setParameter(int index, float value, int sampleOffset = 0) override;
-    bool setParameter(int index, const std::string& str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
-    void setProgram(int program) override;
     void setProgramName(const std::string& name) override;
     int getProgram() const override;
     std::string getProgramName() const override;
@@ -162,69 +149,26 @@ class ThreadedPlugin final : public IPlugin {
     template<typename T>
     void doProcess(ProcessData<T>& data);
     void dispatchCommands();
+    void sendEvents();
     template<typename T>
     void threadFunction(int numSamples);
     // data
     DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
+    std::weak_ptr<IPluginListener> listener_;
+    std::shared_ptr<ThreadedPluginListener> proxyListener_;
     mutable SharedMutex mutex_;
     Event event_;
-    // commands
-    struct Command {
-        // type
-        enum Type {
-            SetParamValue,
-            SetParamString,
-            SetBypass,
-            SetTempo,
-            SetTimeSignature,
-            SetTransportPlaying,
-            SetTransportRecording,
-            SetTransportAutomationWriting,
-            SetTransportAutomationReading,
-            SetTransportCycleActive,
-            SetTransportCycleStart,
-            SetTransportCycleEnd,
-            SetTransportPosition,
-            SendMidi,
-            SendSysex,
-            SetProgram
-        } type;
-        Command() = default;
-        Command(Command::Type _type) : type(_type){}
-        // data
-        union {
-            bool b;
-            int i;
-            float f;
-            // param value
-            struct {
-                int index;
-                float value;
-                int offset;
-            } paramValue;
-            // param string
-            struct {
-                int index;
-                int offset;
-                char* string;
-            } paramString;
-            // time signature
-            struct {
-                int num;
-                int denom;
-            } timeSig;
-            // bypass
-            Bypass bypass;
-            // midi
-            MidiEvent midi;
-            SysexEvent sysex;
-        };
-    };
-    void pushCommand(const Command& command){
+    std::thread::id rtThread_;
+    // commands/events
+    void pushCommand(const Command& command) override {
         commands_[current_].push_back(command);
     }
+    void pushEvent(const Command& event){
+        events_[!current_].push_back(event);
+    }
     std::vector<Command> commands_[2];
+    std::vector<Command> events_[2];
     int current_ = 0;
     // buffer
     int blockSize_ = 0;
@@ -234,6 +178,21 @@ class ThreadedPlugin final : public IPlugin {
     std::vector<void *> output_;
     std::vector<void *> auxOutput_;
     std::vector<char> buffer_;
+};
+
+/*/////////////////// ThreadedPluginListener ////////////////////*/
+
+class ThreadedPluginListener : public IPluginListener {
+ public:
+    ThreadedPluginListener(ThreadedPlugin& owner)
+        : owner_(&owner) {}
+    void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
+    void pluginCrashed() override;
+    void midiEvent(const MidiEvent& event) override;
+    void sysexEvent(const SysexEvent& event) override;
+ private:
+    ThreadedPlugin *owner_;
 };
 
 } // vst

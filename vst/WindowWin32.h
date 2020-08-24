@@ -5,6 +5,8 @@
 
 #include <windows.h>
 #include <mutex>
+#include <functional>
+#include <unordered_map>
 
 namespace vst {
 namespace Win32 {
@@ -19,7 +21,7 @@ enum Message {
 
 class EventLoop {
  public:
-    static  const int updateInterval = 30;
+    static const int updateInterval = 30;
 
     static EventLoop& instance();
 
@@ -28,6 +30,9 @@ class EventLoop {
 
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
     bool sendMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // blocking
+
+    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
+    void removePollFunction(UIThread::Handle handle);
 
     bool checkThread();
  private:
@@ -39,6 +44,10 @@ class EventLoop {
     DWORD threadID_;
     std::mutex mutex_;
     Event event_;
+
+    UIThread::Handle nextPollFunctionHandle_ = 0;
+    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
+    std::mutex pollFunctionMutex_;
 };
 
 class Window : public IWindow {
@@ -52,7 +61,7 @@ class Window : public IWindow {
         return hwnd_;
     }
 
-    void setTitle(const std::string& title) override;
+    void setTitle(const std::string& title);
 
     void open() override;
     void close() override;

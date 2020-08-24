@@ -82,7 +82,7 @@ t_workqueue::t_workqueue(){
     w_thread = std::thread([this]{
         LOG_DEBUG("worker thread started");
 
-        vst::setThreadPriority(ThreadPriority::Low);
+        vst::setThreadPriority(Priority::Low);
 
     #ifdef PDINSTANCE
         pd_setinstance(w_instance);
@@ -435,25 +435,22 @@ static IFactory::ptr loadFactory(const std::string& path){
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const PluginInfo& desc){
-    std::string key;
-    auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
-    if (desc.path.find(ext, onset) != std::string::npos){
-        key = desc.name + ext;
+    if (desc.type() == PluginType::VST3){
+        return desc.name + ".vst3";
     } else {
-        key = desc.name;
+        return desc.name;
     }
-    return key;
 }
 
 static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path, plugin);
+        gPluginManager.addPlugin(plugin->path(), plugin);
         gPluginManager.addPlugin(path, plugin);
     }
     gPluginManager.addFactory(path, factory);
+    // add plugins
     for (int i = 0; i < factory->numPlugins(); ++i){
         auto plugin = factory->getPlugin(i);
         // also map bashed parameter names
@@ -465,7 +462,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
         }
         // search for presets
         const_cast<PluginInfo&>(*plugin).scanPresets();
-        // add plugin info
+        // add plugin
         auto key = makeKey(*plugin);
         gPluginManager.addPlugin(key, plugin);
         bash_name(key); // also add bashed version!
@@ -729,11 +726,16 @@ t_vsteditor::~t_vsteditor(){
         pd_free((t_pd *)e_canvas);
     }
     clock_free(e_clock);
+    // prevent memleak with sysex events
+    for (auto& e : e_events){
+        if (e.type == t_event::Sysex){
+            delete e.sysex.data;
+        }
+    }
 }
 
 // post outgoing event (thread-safe)
-template<typename T, typename U>
-void t_vsteditor::post_event(T& queue, U&& event){
+void t_vsteditor::post_event(const t_event& event){
     bool mainthread = std::this_thread::get_id() == e_mainthread;
     // prevent event scheduling from within the tick method to avoid
     // deadlocks or memory errors
@@ -743,7 +745,7 @@ void t_vsteditor::post_event(T& queue, U&& event){
     }
     // the event might come from the GUI thread, worker thread or audio thread
     e_mutex.lock();
-    queue.push_back(std::forward<U>(event));
+    e_events.push_back(event);
     e_mutex.unlock();
 
     if (mainthread){
@@ -769,22 +771,45 @@ void t_vsteditor::post_event(T& queue, U&& event){
 
 // parameter automation notification might come from another thread (VST GUI editor).
 void t_vsteditor::parameterAutomated(int index, float value){
-    post_event(e_automated, param_change{index, value});
+    t_event e(t_event::Parameter);
+    e.param.index = index;
+    e.param.value = value;
+    post_event(e);
 }
 
 // latency change notification might come from another thread
 void t_vsteditor::latencyChanged(int nsamples){
-    post_event(e_automated, param_change{LatencyChange, (float)nsamples});
+    t_event e(t_event::Latency);
+    e.latency = nsamples;
+    post_event(e);
+}
+
+// plugin crash notification might come from another thread
+void t_vsteditor::pluginCrashed(){
+    t_event e(t_event::Crash);
+    post_event(e);
 }
 
 // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
 void t_vsteditor::midiEvent(const MidiEvent &event){
-    post_event(e_midi, event);
+    t_event e(t_event::Midi);
+    e.midi = event;
+    post_event(e);
 }
 
 void t_vsteditor::sysexEvent(const SysexEvent &event){
-    post_event(e_sysex, event);
+    // deep copy!
+    auto data = new char[event.size];
+    memcpy(data, event.data, event.size);
+
+    t_event e(t_event::Sysex);
+    e.sysex.data = data;
+    e.sysex.size = event.size;
+    e.sysex.delta = event.delta;
+    post_event(e);
 }
+
+static void vstplugin_close(t_vstplugin *x);
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
@@ -799,47 +824,69 @@ void t_vsteditor::tick(t_vsteditor *x){
     }
 
     // automated parameters:
-    for (auto& p : x->e_automated){
-        if (p.index >= 0){
-            // update the generic GUI
-            x->param_changed(p.index, p.value);
-            // send message
-            t_atom msg[2];
-            SETFLOAT(&msg[0], p.index);
-            SETFLOAT(&msg[1], p.value);
-            outlet_anything(outlet, gensym("param_automated"), 2, msg);
-        } else if (p.index == LatencyChange){
+    for (auto& e : x->e_events){
+        switch (e.type){
+        case t_event::Latency:
+        {
             t_atom a;
-            int latency = p.value;
+            int latency = e.latency;
             if (x->e_owner->x_threaded){
                 latency += x->e_owner->x_blocksize;
             }
             SETFLOAT(&a, latency);
             outlet_anything(outlet, gensym("latency"), 1, &a);
+            break;
         }
-    }
-    x->e_automated.clear();
-    // midi events:
-    for (auto& midi : x->e_midi){
-        t_atom msg[3];
-        SETFLOAT(&msg[0], (unsigned char)midi.data[0]);
-        SETFLOAT(&msg[1], (unsigned char)midi.data[1]);
-        SETFLOAT(&msg[2], (unsigned char)midi.data[2]);
-        outlet_anything(outlet, gensym("midi"), 3, msg);
-    }
-    x->e_midi.clear();
-    // sysex events:
-    for (auto& sysex : x->e_sysex){
-        std::vector<t_atom> msg;
-        int n = sysex.size;
-        msg.resize(n);
-        for (int i = 0; i < n; ++i){
-            SETFLOAT(&msg[i], (unsigned char)sysex.data[i]);
+        case t_event::Parameter:
+        {
+            // update the generic GUI
+            x->param_changed(e.param.index, e.param.value);
+            // send message
+            t_atom msg[2];
+            SETFLOAT(&msg[0], e.param.index);
+            SETFLOAT(&msg[1], e.param.value);
+            outlet_anything(outlet, gensym("param_automated"), 2, msg);
+            break;
         }
-        outlet_anything(outlet, gensym("midi"), n, msg.data());
-    }
-    x->e_sysex.clear();
+        case t_event::Crash:
+        {
+            auto& name = x->e_owner->x_plugin->info().name;
+            pd_error(x->e_owner, "plugin '%s' crashed!", name.c_str());
 
+            // send notification
+            outlet_anything(outlet, gensym("crash"), 0, 0);
+
+            // automatically close plugin
+            vstplugin_close(x->e_owner);
+
+            break;
+        }
+        case t_event::Midi:
+        {
+            t_atom msg[3];
+            SETFLOAT(&msg[0], (unsigned char)e.midi.data[0]);
+            SETFLOAT(&msg[1], (unsigned char)e.midi.data[1]);
+            SETFLOAT(&msg[2], (unsigned char)e.midi.data[2]);
+            outlet_anything(outlet, gensym("midi"), 3, msg);
+            break;
+        }
+        case t_event::Sysex:
+        {
+            auto msg = new t_atom[e.sysex.size];
+            int n = e.sysex.size;
+            for (int i = 0; i < n; ++i){
+                SETFLOAT(&msg[i], (unsigned char)e.sysex.data[i]);
+            }
+            outlet_anything(outlet, gensym("sysex"), n, msg);
+            delete msg;
+            delete e.sysex.data; // free sysex data!
+            break;
+        }
+        default:
+            bug("t_vsteditor::tick");
+        }
+    }
+    x->e_events.clear();
     x->e_mutex.unlock();
     x->e_tick = false;
 }
@@ -1185,7 +1232,7 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
             verbose(PD_DEBUG, "'%s' is neither an existing plugin name "
                     "nor a valid file path", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(abspath))){
-                // finally probe plugin
+            // finally probe plugin
             if (probePlugin<async>(abspath)){
                 desc = gPluginManager.findPlugin(abspath);
                 // findPlugin() fails if the module contains several plugins,
@@ -1266,6 +1313,7 @@ struct t_open_data : t_command_data<t_open_data> {
     Error error;
     bool editor;
     bool threaded;
+    PluginInfo::Mode mode;
 };
 
 template<bool async>
@@ -1285,7 +1333,7 @@ static void vstplugin_open_do(t_open_data *x){
             bool ok = UIThread::callSync([](void *y){
                 auto d = (t_open_data *)y;
                 try {
-                    d->plugin = d->info->create(true, d->threaded);
+                    d->plugin = d->info->create(true, d->threaded, d->mode);
                 } catch (const Error& e){
                     d->error = e;
                 }
@@ -1300,10 +1348,10 @@ static void vstplugin_open_do(t_open_data *x){
             } else {
                 // couldn't dispatch to UI thread (probably not available).
                 // create plugin without window
-                x->plugin = info->create(false, x->threaded);
+                x->plugin = info->create(false, x->threaded, x->mode);
             }
         } else {
-            x->plugin = info->create(false, x->threaded);
+            x->plugin = info->create(false, x->threaded, x->mode);
         }
         if (x->plugin){
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
@@ -1347,6 +1395,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool editor = false;
     bool async = false;
     bool threaded = false;
+    auto mode = PluginInfo::Mode::Auto;
     // parse arguments
     while (argc && argv->a_type == A_SYMBOL){
         auto sym = argv->a_w.w_symbol;
@@ -1356,6 +1405,10 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
                 editor = true;
             } else if (!strcmp(flag, "-t")){
                 threaded = true;
+            } else if (!strcmp(flag, "-p")){
+                mode = PluginInfo::Mode::Sandboxed;
+            } else if (!strcmp(flag, "-b")){
+                mode = PluginInfo::Mode::Bridged;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
@@ -1417,6 +1470,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data->path = pathsym;
         data->editor = editor;
         data->threaded = threaded;
+        data->mode = mode;
         t_workqueue::get()->push(x, data, vstplugin_open_do<true>, open_done);
     } else {
         t_open_data data;
@@ -1424,6 +1478,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data.path = pathsym;
         data.editor = editor;
         data.threaded = threaded;
+        data.mode = mode;
         vstplugin_open_do<false>(&data);
         open_done(&data);
     }
@@ -1459,7 +1514,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         if (!x->check_plugin()) return;
         info = &x->x_plugin->info();
     }
-    sendInfo(x, "path", info->path);
+    sendInfo(x, "path", info->path());
     sendInfo(x, "name", info->name);
     sendInfo(x, "vendor", info->vendor);
     sendInfo(x, "category", info->category);
@@ -1470,14 +1525,15 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     sendInfo(x, "auxinputs", info->numAuxInputs);
     sendInfo(x, "auxoutputs", info->numAuxOutputs);
     sendInfo(x, "id", ("0x"+info->uniqueID));
-    sendInfo(x, "editor", info->hasEditor());
-    sendInfo(x, "synth", info->isSynth());
+    sendInfo(x, "editor", info->editor());
+    sendInfo(x, "synth", info->synth());
     sendInfo(x, "single", info->singlePrecision());
     sendInfo(x, "double", info->doublePrecision());
     sendInfo(x, "midiin", info->midiInput());
     sendInfo(x, "midiout", info->midiOutput());
     sendInfo(x, "sysexin", info->sysexInput());
     sendInfo(x, "sysexout", info->sysexOutput());
+    sendInfo(x, "bridged", info->bridged());
 }
 
 // query plugin for capabilities
@@ -1515,10 +1571,10 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!getInt(0, index)) return;
     if (!getInt(1, value)) return;
     float opt = atom_getfloatarg(2, argc, argv);
-    char *data = nullptr;
     int size = argc - 3;
+    char *data = nullptr;
     if (size > 0){
-        data = (char *)getbytes(size);
+        data = new char[size];
         for (int i = 0, j = 3; i < size; ++i, ++j){
             data[i] = atom_getfloat(argv + j);
         }
@@ -1529,7 +1585,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
     outlet_anything(x->x_messout, gensym("vendor_method"), 2, msg);
     if (data){
-        freebytes(data, size);
+        delete data;
     }
 }
 
@@ -1537,12 +1593,15 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
-    post("~~~ VST plugin info ~~~");
+    post("---");
     post("name: %s", info.name.c_str());
-    post("path: %s", info.path.c_str());
+    post("type: %s%s%s", info.sdkVersion.c_str(),
+         info.synth() ? " (synth)" : "",
+         info.bridged() ? " [bridged] " : "");
+    post("version: %s", info.version.c_str());
+    post("path: %s", info.path().c_str());
     post("vendor: %s", info.vendor.c_str());
     post("category: %s", info.category.c_str());
-    post("version: %s", info.version.c_str());
     post("input channels: %d", info.numInputs);
     post("output channels: %d", info.numOutputs);
     if (info.numAuxInputs > 0){
@@ -1551,15 +1610,15 @@ static void vstplugin_print(t_vstplugin *x){
     if (info.numAuxOutputs > 0){
         post("aux output channels: %d", info.numAuxOutputs);
     }
+    post("parameters: %d", info.numParameters());
+    post("programs: %d", info.numPrograms());
+    post("presets: %d", info.numPresets());
+    post("editor: %s", info.editor() ? "yes" : "no");
     post("single precision: %s", info.singlePrecision() ? "yes" : "no");
     post("double precision: %s", info.doublePrecision() ? "yes" : "no");
-    post("editor: %s", info.hasEditor() ? "yes" : "no");
-    post("number of parameters: %d", info.numParameters());
-    post("number of programs: %d", info.numPrograms());
-    post("synth: %s", info.isSynth() ? "yes" : "no");
     post("midi input: %s", info.midiInput() ? "yes" : "no");
     post("midi output: %s", info.midiOutput() ? "yes" : "no");
-    post("");
+    post("---");
 }
 
 // bypass the plugin
@@ -2117,7 +2176,6 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
 // write program/bank file (.FXP/.FXB)
 
 struct t_save_data : t_preset_data {
-    static void free(t_save_data *x){ delete x; }
     std::string name;
     PresetType type;
     bool add;
@@ -2134,8 +2192,8 @@ static void vstplugin_preset_write_do(t_preset_data *data){
             // so we keep the critical section as short as possible.
             buffer.reserve(1024);
         }
+        // protect against vstplugin_dsp() and vstplugin_save()
         {
-            // protect against vstplugin_dsp() and vstplugin_save()
             LockGuard lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
@@ -2586,7 +2644,7 @@ static t_class *vstplugin_class;
 void t_vstplugin::set_param(int index, float value, bool automated){
     if (index >= 0 && index < x_plugin->info().numParameters()){
         value = std::max(0.f, std::min(1.f, value));
-        int offset = x_plugin->getType() == PluginType::VST3 ? get_sample_offset() : 0;
+        int offset = x_plugin->info().type() == PluginType::VST3 ? get_sample_offset() : 0;
         x_plugin->setParameter(index, value, offset);
         x_editor->param_changed(index, value, automated);
     } else {
@@ -2596,7 +2654,7 @@ void t_vstplugin::set_param(int index, float value, bool automated){
 
 void t_vstplugin::set_param(int index, const char *s, bool automated){
     if (index >= 0 && index < x_plugin->info().numParameters()){
-        int offset = x_plugin->getType() == PluginType::VST3 ? get_sample_offset() : 0;
+        int offset = x_plugin->info().type() == PluginType::VST3 ? get_sample_offset() : 0;
         if (!x_plugin->setParameter(index, s, offset)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
         }
@@ -2665,6 +2723,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool threaded = false;
+    auto mode = PluginInfo::Mode::Auto;
     // precision (defaults to Pd's precision)
     ProcessPrecision precision = (PD_FLOATSIZE == 64) ?
                 ProcessPrecision::Double : ProcessPrecision::Single;
@@ -2688,6 +2747,10 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 search = true;
             } else if (!strcmp(flag, "-t")){
                 threaded = true;
+            } else if (!strcmp(flag, "-p")){
+                mode = PluginInfo::Mode::Sandboxed;
+            } else if (!strcmp(flag, "-b")){
+                mode = PluginInfo::Mode::Bridged;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
@@ -2756,6 +2819,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         data.path = file;
         data.editor = editor;
         data.threaded = threaded;
+        data.mode = mode;
         vstplugin_open_do<false>(&data);
         vstplugin_open_done(&data);
         x_uithread = editor; // !

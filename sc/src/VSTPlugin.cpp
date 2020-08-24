@@ -185,16 +185,11 @@ static void writeIniFile(){
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const PluginInfo& desc) {
-    std::string key;
-    auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
-    if (desc.path.find(ext, onset) != std::string::npos) {
-        key = desc.name + ext;
+    if (desc.type() == PluginType::VST3){
+        return desc.name + ".vst3";
+    } else {
+        return desc.name;
     }
-    else {
-        key = desc.name;
-    }
-    return key;
 }
 
 void serializePlugin(std::ostream& os, const PluginInfo& desc) {
@@ -236,7 +231,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1) {
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path, plugin);
+        gPluginManager.addPlugin(plugin->path(), plugin);
         gPluginManager.addPlugin(path, plugin);
     }
     gPluginManager.addFactory(path, factory);
@@ -754,7 +749,7 @@ void VSTPlugin::next(int inNumSamples) {
     }
 
     if (process) {
-        auto vst3 = plugin->getType() == PluginType::VST3;
+        auto vst3 = plugin->info().type() == PluginType::VST3;
 
         // check bypass state
         Bypass bypass = Bypass::Off;
@@ -881,6 +876,8 @@ void VSTPlugin::next(int inNumSamples) {
                 delegate_->sendParameterAutomated(p.index, p.value);
             } else if (p.index == VSTPluginDelegate::LatencyChange){
                 delegate_->sendLatencyChange(p.value);
+            } else if (p.index == VSTPluginDelegate::PluginCrash){
+                delegate_->sendPluginCrash();
             }
         }
         if (suspended){
@@ -968,6 +965,19 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
         // from GUI thread [or NRT thread] - push to queue
         LockGuard lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
+            LOG_DEBUG("param queue overflow");
+        }
+    }
+}
+
+void VSTPluginDelegate::pluginCrashed(){
+    // RT thread
+    if (std::this_thread::get_id() == rtThreadID_) {
+        sendPluginCrash();
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
+        LockGuard lock(owner_->paramQueueMutex_);
+        if (!(owner_->paramQueue_.emplace(PluginCrash, 0.f))){
             LOG_DEBUG("param queue overflow");
         }
     }
@@ -1079,7 +1089,7 @@ bool cmdOpen(World *world, void* cmdData) {
                 bool ok = UIThread::callSync([](void *y){
                     auto d = (OpenCmdData *)y;
                     try {
-                        d->plugin = d->info->create(true, d->threaded);
+                        d->plugin = d->info->create(true, d->threaded, d->mode);
                     } catch (const Error& e){
                         d->error = e;
                     }
@@ -1094,11 +1104,11 @@ bool cmdOpen(World *world, void* cmdData) {
                 } else {
                     // couldn't dispatch to UI thread (probably not available).
                     // create plugin without window
-                    data->plugin = info->create(false, data->threaded);
+                    data->plugin = info->create(false, data->threaded, data->mode);
                 }
             }
             else {
-                data->plugin = info->create(false, data->threaded);
+                data->plugin = info->create(false, data->threaded, data->mode);
             }
             if (data->plugin){
                 // we only access immutable members of owner!
@@ -1123,7 +1133,8 @@ bool cmdOpen(World *world, void* cmdData) {
 }
 
 // try to open the plugin in the NRT thread with an asynchronous command
-void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
+void VSTPluginDelegate::open(const char *path, bool editor,
+                             bool threaded, PluginInfo::Mode mode) {
     LOG_DEBUG("open");
     if (isLoading_) {
         LOG_WARNING("already loading!");
@@ -1150,6 +1161,7 @@ void VSTPluginDelegate::open(const char *path, bool editor, bool threaded) {
         memcpy(cmdData->path, path, len);
         cmdData->editor = editor;
         cmdData->threaded = threaded;
+        cmdData->mode = mode;
 
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
             auto data = (OpenCmdData*)cmdData;
@@ -1753,6 +1765,10 @@ void VSTPluginDelegate::sendLatencyChange(int nsamples){
     sendMsg("/vst_latency", (float)nsamples);
 }
 
+void VSTPluginDelegate::sendPluginCrash(){
+    sendMsg("/vst_crash", 0);
+}
+
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
     if (owner_){
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
@@ -1811,8 +1827,22 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     const char *path = args->gets();
     auto editor = args->geti();
     auto threaded = args->geti();
+
+    PluginInfo::Mode mode;
+    switch (args->geti()){
+    case 1:
+        mode = PluginInfo::Mode::Sandboxed;
+        break;
+    case 2:
+        mode = PluginInfo::Mode::Bridged;
+        break;
+    default:
+        mode = PluginInfo::Mode::Auto;
+        break;
+    }
+
     if (path) {
-        unit->delegate().open(path, editor, threaded);
+        unit->delegate().open(path, editor, threaded, mode);
     }
     else {
         LOG_WARNING("vst_open: expecting string argument!");
@@ -2484,8 +2514,6 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_search_stop);
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
-
-    // UIThread::setup();
 
     Print("VSTPlugin %s\n", getVersionString().c_str());
     // read cached plugin info

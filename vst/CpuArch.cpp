@@ -45,7 +45,7 @@ CpuArch getHostCpuArchitecture(){
 #endif
 }
 
-const char * getCpuArchString(CpuArch arch){
+const char * cpuArchToString(CpuArch arch){
     switch (arch){
     case CpuArch::i386:
         return "i386";
@@ -61,6 +61,24 @@ const char * getCpuArchString(CpuArch arch){
         return "ppc64";
     default:
         return "unknown";
+    }
+}
+
+std::unordered_map<std::string, CpuArch> gCpuArchMap = {
+    { "i386", CpuArch::i386 },
+    { "amd64", CpuArch::amd64 },
+    { "arm", CpuArch::arm },
+    { "aarch64", CpuArch::aarch64 },
+    { "ppc", CpuArch::ppc },
+    { "ppc64", CpuArch::ppc64 }
+};
+
+CpuArch cpuArchFromString(const std::string &name){
+    auto it = gCpuArchMap.find(name);
+    if (it != gCpuArchMap.end()){
+        return it->second;
+    } else {
+        return CpuArch::unknown;
     }
 }
 
@@ -342,7 +360,7 @@ void printCpuArchitectures(const std::string& path){
     if (!archs.empty()){
         std::stringstream ss;
         for (auto& arch : archs){
-            ss << getCpuArchString(arch) << " ";
+            ss << cpuArchToString(arch) << " ";
         }
         LOG_VERBOSE("CPU architectures: " << ss.str());
     } else {

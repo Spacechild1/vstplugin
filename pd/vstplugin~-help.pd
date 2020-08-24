@@ -293,53 +293,52 @@ f 51;
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#N canvas 260 94 436 659 creation 0;
-#X text 24 154 -sp: prefer single precision (default on single precision
+#N canvas 260 94 436 636 creation 0;
+#X text 24 119 -sp: prefer single precision (default on single precision
 Pd), f 62;
-#X text 24 171 -dp: prefer double precision (default on double precision
+#X text 24 136 -dp: prefer double precision (default on double precision
 Pd), f 62;
-#X obj 17 264 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 17 247 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 13 12 vstplugin~ takes the following optional creation arguments
 (in the given order):, f 40;
-#X text 14 274 file:;
-#X text 14 318 nin \, nout:;
-#X text 85 320 the number of input and output channels (default is
+#X text 14 257 file:;
+#X text 14 301 nin \, nout:;
+#X text 85 303 the number of input and output channels (default is
 2), f 30;
 #X text 14 79 flags:;
-#X obj 16 384 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 16 367 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 24 385 examples:;
-#X text 11 596 [vstplugin~];
+#X text 24 368 examples:;
+#X text 11 579 [vstplugin~];
 #X text 25 100 -n: don't use any editor GUI, f 31;
-#X text 25 118 -e: open the plugin with the VST editor;
-#X text 46 136 (ignored if no file name is given);
-#X text 57 273 open a plugin on creation (see the 'open' message),
+#X text 57 256 open a plugin on creation (see the 'open' message),
 f 27;
-#X text 39 614 2 in \, 2 out;
-#X obj 15 307 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X text 39 597 2 in \, 2 out;
+#X obj 15 290 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 25 189 -k: keep current plugin state (similar to [text define
+#X text 25 154 -k: keep current plugin state (similar to [text define
 -k]);
-#X text 49 205 NOTE: for large \, complex plugins this can lead to
+#X text 49 170 NOTE: for large \, complex plugins this can lead to
 significant increases in patch file size., f 47;
-#X text 25 235 -s: search in the standard VST directories (see [pd
+#X text 25 200 -s: search in the standard VST directories (see [pd
 search]);
 #X text 13 49 [flags...] \, [file] \, [nin \, nout] \, [nauxin \, nauxout]
 ;
-#X text 14 349 nin \, nout:;
-#X text 85 349 the number of auxiliary (VST3 side-chain) input and
+#X text 14 332 nin \, nout:;
+#X text 85 332 the number of auxiliary (VST3 side-chain) input and
 output channels (default is 0), f 41;
-#X text 13 550 [vstplugin~ 2 2 1];
-#X text 34 570 2 in \, 2 out \, 1 auxin;
-#X text 16 413 [vstplugin~ -e GChorus 2 4];
-#X text 36 463 "GChorus" might be a plugin name or a file in your search
+#X text 13 533 [vstplugin~ 2 2 1];
+#X text 34 553 2 in \, 2 out \, 1 auxin;
+#X text 16 396 [vstplugin~ -e GChorus 2 4];
+#X text 36 446 "GChorus" might be a plugin name or a file in your search
 paths (see 'search'), f 51;
-#X text 15 497 [vstplugin~ GChorus.vst3];
-#X text 36 435 open the VST2 plugin "GChorus" with the VST editor GUI
+#X text 15 480 [vstplugin~ GChorus.vst3];
+#X text 36 418 open the VST2 plugin "GChorus" with the VST editor GUI
 and 2 input and 4 output channels., f 49;
-#X text 38 516 open the VST3 version of "GChorus" with the Pd editor
+#X text 38 499 open the VST3 version of "GChorus" with the Pd editor
 and 2 input and 2 output channels., f 49;
+#X text 28 220 -e \, -t \, -p \, -b: see [open( method.;
 #X restore 23 74 pd creation arguments;
 #N canvas 387 235 555 431 advanced 0;
 #X obj 23 386 s \$0-msg;
@@ -755,7 +754,7 @@ to build your own preset management in Pd:, f 49;
 #X text 382 198 macOS:;
 #X text 381 259 Linux:;
 #X text 384 136 NOTE: on 32bit Pd "%ProgramFiles%";
-#N canvas 738 353 449 394 info 0;
+#N canvas 738 353 449 416 info 0;
 #X text 107 9 plugin name;
 #X msg 18 9 info name <s>;
 #X text 112 33 full plugin path;
@@ -788,10 +787,11 @@ to build your own preset management in Pd:, f 49;
 #X msg 19 318 info midiout <f>;
 #X text 126 339 has sysex input (0|1);
 #X msg 19 340 info sysexin <f>;
-#X text 132 363 as sysex output (0|1);
 #X msg 19 362 info sysexout <f>;
+#X msg 19 386 info bridged <f>;
+#X text 132 363 has sysex output (0|1);
+#X text 131 386 is bridged (0|1);
 #X restore 306 547 pd info;
-#X text 28 195 additionally \, you can use the following methods:;
 #X text 100 495 get info about currently loaded plugin;
 #X msg 48 444 search_clear;
 #X text 138 444 clear the plugin dictionary;
@@ -808,35 +808,16 @@ paths. relative paths are resolved to the current patch directory.
 #X msg 25 329 search -a;
 #X text 92 329 search asynchronously, f 22;
 #X text 28 144 [vstplugin~ -s];
-#X text 29 115 you can use the -s flag to perform a search in the standard
-VST directories on object creation:, f 49;
-#X text 28 162 the search is guaranteed to run only once \, even if
-several objects receive this flag., f 44;
-#X text 14 24 searched plugins are stored in a global dictionary using
-their name as the key \, which can be used as the creation argument
-to [vstplugin~] or in the [open( message.;
 #X msg 54 469 search_clear 1;
 #X text 156 468 clear and delete cache file;
-#X text 12 63 (whitespace in names is replaced by underscores.);
-#X text 14 84 on startup \, plugin definitions are read from a cache
-file - which is updated after every new search operation., f 57;
 #X msg 30 393 search -n;
 #X text 98 394 search but don't update the cache file;
-#X obj 384 326 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 384 404 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 388 329 NOTE:;
-#X text 384 406 the reason is that every plugin has to probed in a
-seperate process to catch bad plugins., f 45;
-#X text 383 435 however \, the next search in the same directory will
-be almost instantaneous because the plugin info is read from the cache
-file., f 47;
-#X text 384 352 the first search in a directory might take from a couple
-of seconds to several minutes \, depending on the number of plugins
-(shell plugins like Waves contain hundreds of sub-plugins!), f 50
-;
+#X text 388 407 NOTE:;
 #X text 91 347 this prevents Pd from freezing till the search has finished
 and it lets you see the progress in the console., f 37;
-#X text 383 478 [vstpluginbrowser] uses [search -a( by default to avoid
+#X text 383 556 [vstpluginbrowser] uses [search -a( by default to avoid
 freezing Pd for an indeterminate amount of time., f 56;
 #X msg 37 418 search_stop;
 #X text 119 417 stop the current (asynchronous) search;
@@ -846,31 +827,56 @@ freezing Pd for an indeterminate amount of time., f 56;
 #X text 42 263 and a final;
 #X msg 116 263 search_done;
 #X text 192 263 message;
+#X text 12 63 (Whitespace in names is replaced by underscores.);
+#X text 14 84 On startup \, plugin definitions are read from a cache
+file - which is updated after every new search operation., f 57;
+#X text 29 115 You can use the -s flag to perform a search in the standard
+VST directories on object creation:, f 49;
+#X text 28 162 The search is guaranteed to run only once \, even if
+several objects receive this flag., f 44;
+#X text 28 195 Additionally \, you can use the following methods:;
+#X text 384 430 The first search in a directory might take from a couple
+of seconds to several minutes \, depending on the number of plugins
+(shell plugins like Waves contain hundreds of sub-plugins!), f 50
+;
+#X text 384 484 The reason is that every plugin has to probed in a
+seperate process to catch bad plugins., f 45;
+#X text 383 513 However \, subsequent searches in the same directory
+will be almost instantaneous because the plugin info is read from the
+cache file., f 55;
+#X text 382 322 Since v0.4 you use 32-bit plugins on a 64-bit Pd and
+vice versa!, f 54;
+#X text 382 352 Incompatible plugins automatically run in a shared
+subprocess (= "bit bridging") \, which incurs some CPU overhead.,
+f 54;
+#X text 14 24 Plugin definitions are stored in a global dictionary
+using their name as the key \, which can be used as the creation argument
+to [vstplugin~] or in the [open( message.;
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
 #X connect 4 0 3 0;
 #X connect 5 0 4 0;
-#X connect 22 0 0 0;
-#X connect 26 0 0 0;
-#X connect 27 0 26 0;
-#X connect 28 0 0 0;
+#X connect 21 0 0 0;
+#X connect 25 0 0 0;
+#X connect 26 0 25 0;
+#X connect 27 0 0 0;
+#X connect 30 0 0 0;
 #X connect 31 0 0 0;
-#X connect 32 0 0 0;
-#X connect 38 0 0 0;
+#X connect 34 0 0 0;
+#X connect 36 0 0 0;
 #X connect 42 0 0 0;
-#X connect 51 0 0 0;
 #X restore 394 510 pd search;
 #X f 14;
 #X text 392 488 search + info;
-#N canvas 261 35 548 714 open 0;
-#X obj 62 558 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#N canvas 261 35 971 554 open 0;
+#X obj 483 357 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+-1 -1;
+#X obj 483 378 openpanel;
+#X obj 448 43 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 62 579 openpanel;
-#X obj 27 217 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
--1;
-#X obj 27 237 openpanel;
-#X obj 27 676 t a;
-#X msg 27 282 open -e \$1;
+#X obj 448 63 openpanel;
+#X obj 448 475 t a;
+#X msg 448 108 open -e \$1;
 #N canvas 582 228 451 307 editor 0;
 #X text 10 120 on MacOS \, however \, because of technical limitations
 the GUI must run on the main thread - which happens to be the audio
@@ -891,71 +897,82 @@ CPU cycles but it probably won't matter a lot., f 61;
 #X text 12 22 if the plugin has a VST editor it can be shown in a native
 window \, otherwise a canvas with a generic Pd editor is created.,
 f 64;
-#X restore 322 301 pd editor;
+#X restore 743 127 pd editor;
 #X f 10;
-#X text 108 210 by default \, a generic Pd editor is created \, use
+#X text 529 36 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
-#X obj 27 700 outlet;
-#X text 152 301 more info about the editor:;
-#X text 161 443 VST3 plug-in keys get a '.vst3' extension to distinguish
+#X obj 448 499 outlet;
+#X text 573 127 more info about the editor:;
+#X text 582 242 VST3 plug-in keys get a '.vst3' extension to distinguish
 them from VST2 plugins of the same name.;
-#X text 162 469 generally \, keys can only be used after a search (see
+#X text 583 268 generally \, keys can only be used after a search (see
 the 'search' method) or if the plug-in has already been opened by its
 file path., f 49;
-#X obj 106 243 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 527 69 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 114 248 NOTE: on macOS \, the VST editor is highly experimental
+#X text 535 74 NOTE: on macOS \, the VST editor is highly experimental
 and runs on the audio thread! see the README for more information.
 , f 44;
-#X text 145 362 plug-ins can be opened in 2 ways:;
-#X symbolatom 47 451 16 0 0 0 - - -;
-#X obj 46 408 s \$0-msg;
-#X text 141 651 opening by file path doesn't work if the module contains
+#X text 566 161 plug-ins can be opened in 2 ways:;
+#X symbolatom 468 250 16 0 0 0 - - -;
+#X obj 467 207 s \$0-msg;
+#X text 562 450 opening by file path doesn't work if the module contains
 several plug-ins (shell plug-ins or certain VST3 plug-ins)!;
-#X text 140 679 also \, keys are always platform independent while
+#X text 561 478 also \, keys are always platform independent while
 file names may be different (e.g. containing an architecture string
 like 'x64'), f 60;
-#X text 81 558 file path;
-#X msg 46 387 search -a;
-#X text 162 404 the key is the plug-in name with whitespace substituted
+#X text 502 357 file path;
+#X msg 467 186 search -a;
+#X text 583 203 the key is the plug-in name with whitespace substituted
 by underscores \, so that the symbol can be easily typed in Pd (e.g.
 'Awesome Reverb' becomes 'Awesome_Reverb').;
-#X text 162 606 for VST2 plug-ins the extension (.dll \, .so \, .vst)
+#X text 583 405 for VST2 plug-ins the extension (.dll \, .so \, .vst)
 can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
 , f 58;
-#X text 162 554 both absolute and relative paths are allowed. relative
+#X text 583 353 both absolute and relative paths are allowed. relative
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 58
 ;
-#X text 157 176 on success and;
-#X text 22 175 outputs;
-#X msg 251 176 open 0;
-#X text 299 176 on failure;
-#X msg 74 175 open 1 <key>;
-#X obj 47 493 pack s f;
-#X obj 92 471 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X text 157 327 on success and;
+#X text 22 326 outputs;
+#X msg 251 327 open 0;
+#X text 299 327 on failure;
+#X msg 74 326 open 1 <key>;
+#X obj 468 292 pack s f;
+#X obj 513 270 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 47 517 open \$1 \$2;
-#X obj 62 624 pack s f;
-#X obj 107 602 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X msg 468 316 open \$1 \$2;
+#X obj 483 423 pack s f;
+#X obj 528 401 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 62 650 open \$1 \$2;
-#X symbolatom 37 261 10 0 0 0 - - -;
-#X text 22 115 async:;
-#X text 50 132 0: load synchronously (default);
-#X text 147 386 a) by KEY:;
-#X text 142 534 b) by FILE NAME:;
-#X text 44 363 1) search;
-#X text 44 430 2) open by key;
+#X msg 483 449 open \$1 \$2;
+#X symbolatom 458 87 10 0 0 0 - - -;
+#X text 22 266 async:;
+#X text 50 283 0: load synchronously (default);
+#X text 568 185 a) by KEY:;
+#X text 563 333 b) by FILE NAME:;
+#X text 465 162 1) search;
+#X text 465 229 2) open by key;
 #X text 19 43 -e: use the VST editor;
-#X text 23 96 key/path: plugin key or file path (see below);
-#X text 50 148 1: load asynchronously;
+#X text 23 247 key/path: plugin key or file path (see below);
+#X text 50 299 1: load asynchronously;
 #X obj 18 19 cnv 20 240 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 60 -t: process plugin in a seperate thread to utilize more
 CPU cores., f 67;
 #X text 44 75 NOTE: this introduces a delay of 1 block.;
 #X text 24 21 arguments: [-e] [-t] key/path [async];
+#X text 45 113 This makes sure that the plugin can safely crash without
+taking down the whole Pd process. Use this for buggy plugins or safe
+experimentation., f 57;
+#X text 46 155 NOTE: switching between processes incurs some fixed
+CPU overhead \, which is less significant for higher blocksizes.;
+#X text 20 94 -p: run plugin in a dedicated subprocess (= sandbox).
+;
+#X text 19 184 -b: run plugin in a shared subprocess.;
+#X text 44 202 This uses less memory and possibly less CPU \, but if
+one plugin crashes \, it will inevitably take down all other plugins
+in the same process.;
 #X connect 0 0 1 0;
 #X connect 1 0 32 0;
 #X connect 2 0 3 0;
@@ -982,31 +999,37 @@ CPU cores., f 67;
 #X obj 19 46 cnv 15 120 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 48 creation arguments:;
-#N canvas 87 398 600 357 message-out 0;
+#N canvas 101 355 600 374 message-out 0;
 #X obj 10 17 inlet;
 #X obj 10 63 s \$0-program-data;
 #X obj 10 40 route program_data bank_data, f 39;
 #X obj 125 63 s \$0-bank-data;
-#X obj 268 132 print;
-#X obj 268 111 spigot 1;
-#X obj 313 90 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X obj 268 135 print;
+#X obj 268 114 spigot 1;
+#X obj 327 114 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X text 314 72 print messages;
+#X text 348 113 print messages;
 #X obj 241 86 s \$0-out;
 #X obj 241 63 t a a;
-#X msg 18 168 param_automated <index> <value>;
-#X msg 18 194 latency <numsamples>;
-#X msg 20 247 midi <bytes...>;
-#X msg 19 274 sysex <bytes...>;
-#X text 223 162 a parameter has been changed in the GUI (or by changing
+#X msg 18 178 param_automated <index> <value>;
+#X msg 18 204 latency <numsamples>;
+#X msg 20 257 midi <bytes...>;
+#X msg 19 284 sysex <bytes...>;
+#X text 223 172 a parameter has been changed in the GUI (or by changing
 a linked parameter).;
-#X text 152 194 the plugin's internal processing latency has changed
+#X text 152 204 the plugin's internal processing latency has changed
 ;
-#X text 129 247 a MIDI message sent by the plugin;
-#X text 129 274 a SysEx message sent by the plugin;
-#X text 18 143 events:;
-#X text 153 212 NOTE: the value includes the additional latency caused
+#X text 129 257 a MIDI message sent by the plugin;
+#X text 129 284 a SysEx message sent by the plugin;
+#X text 18 153 events:;
+#X text 153 222 NOTE: the value includes the additional latency caused
 by multithreading (see the "-t" flag for "open"), f 55;
+#X msg 19 312 crash;
+#X text 302 85 goes to vstpresetbrowser;
+#X text 13 87 see [pd preset];
+#X text 73 313 the plugin subprocess has crashed.;
+#X text 74 331 This is only sent for bridged or sandboxed plugins \,
+because normal plugins would simply crash Pd., f 53;
 #X connect 0 0 2 0;
 #X connect 2 0 1 0;
 #X connect 2 1 3 0;

@@ -15,7 +15,7 @@ PRIVATE:: prParse, prBashPath
 
 INSTANCEMETHODS::
 
-PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets
+PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets, hasEditor, isSynth
 
 METHOD:: key
 
@@ -39,19 +39,23 @@ the plugin vendor.
 
 METHOD:: category
 
-the plugin category. Multiple (sub)categories are seperated with the '|' character.
+the plugin category. Multiple (sub)categories are seperated with the '|' character, e.g. "Fx|Delay".
 
 METHOD:: version
 
-the plugin version.
+the plugin version, e.g. "1.0".
 
 METHOD:: sdkVersion
 
-the VST SDK version.
+the VST SDK version, e.g. "VST 2.4".
+
+METHOD:: bridged
+
+whether the plugin is bit-bridged (using a 32-bit plugin on 64-bit Supercollider or vice versa).
 
 METHOD:: id
 
-the unique ID.
+the unique ID as a hex string, e.g. "6779416F". The size of the id is 4 bytes (max. 8 characters) for VST2 plugins and 16 bytes (max. 32 characters) for VST3 plugins.
 
 METHOD:: numInputs
 
@@ -69,11 +73,11 @@ METHOD:: numAuxOutputs
 
 number of auxiliary audio outputs (VST3 only)
 
-METHOD:: hasEditor
+METHOD:: editor
 
 whether the plugin has a VST GUI editor
 
-METHOD:: isSynth
+METHOD:: synth
 
 whether the plugin is a VST instrument
 

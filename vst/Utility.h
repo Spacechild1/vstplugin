@@ -37,6 +37,8 @@
 #error No byte order defined
 #endif
 
+#include <string>
+#include <sstream>
 #include <iostream>
 #include <fstream>
 #include <atomic>
@@ -144,7 +146,9 @@ enum class CpuArch {
 
 CpuArch getHostCpuArchitecture();
 
-const char * getCpuArchString(CpuArch arch);
+const char * cpuArchToString(CpuArch arch);
+
+CpuArch cpuArchFromString(const std::string& name);
 
 std::vector<CpuArch> getCpuArchitectures(const std::string& path);
 
@@ -175,13 +179,30 @@ protected:
     std::string path_;
 };
 
+// RAII class for automatic cleanup
+class TmpFile : public File {
+public:
+    using File::File;
+    ~TmpFile(){
+        if (is_open()){
+            close();
+            // destructor must not throw!
+            if (!removeFile(path_)){
+                LOG_ERROR("couldn't remove tmp file!");
+            };
+        }
+    }
+};
+
 //----------------------------------------------------------------------------------------
-enum class ThreadPriority {
+enum class Priority {
     Low,
     High
 };
 
-void setThreadPriority(ThreadPriority p);
+void setProcessPriority(Priority p);
+
+void setThreadPriority(Priority p);
 
 //-----------------------------------------------------------------------------------------
 

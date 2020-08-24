@@ -35,6 +35,9 @@ class EventLoop {
     bool checkThread();
     Display *getDisplay() { return display_; }
 
+    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
+    void removePollFunction(UIThread::Handle handle);
+
     void registerWindow(Window& w);
     void unregisterWindow(Window& w);
  private:
@@ -49,6 +52,9 @@ class EventLoop {
     std::unordered_map<::Window, IPlugin *> pluginMap_;
     std::thread timerThread_;
     std::atomic<bool> timerThreadRunning_{true};
+    UIThread::Handle nextPollFunctionHandle_ = 0;
+    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
+    std::mutex pollFunctionMutex_;
 };
 
 class Window : public IWindow {
@@ -61,8 +67,6 @@ class Window : public IWindow {
     }
 
     IPlugin* getPlugin() { return plugin_; }
-
-    void setTitle(const std::string& title) override;
 
     void open() override;
     void close() override;

@@ -12,19 +12,30 @@ VSTPluginDesc {
 	var <>numOutputs;
 	var <>numAuxInputs;
 	var <>numAuxOutputs;
-	var <>hasEditor;
-	var <>isSynth;
+	var <>parameters;
+	var <>programs;
+	var <>presets;
+	// flags
+	var <>editor;
+	var <>synth;
 	var <>singlePrecision;
 	var <>doublePrecision;
 	var <>midiInput;
 	var <>midiOutput;
 	var <>sysexInput;
 	var <>sysexOutput;
-	var <>parameters;
-	var <>programs;
-	var <>presets;
+	var <>bridged;
 	// private fields
 	var <>prParamIndexMap;
+	// legacy methods
+	isSynth {
+		this.deprecated(thisMethod, this.class.findMethod(\synth));
+		^this.synth;
+	}
+	hasEditor {
+		this.deprecated(thisMethod, this.class.findMethod(\editor));
+		^this.editor;
+	}
 	// public methods
 	numParameters { ^parameters.size; }
 	numPrograms { ^programs.size; }
@@ -47,10 +58,11 @@ VSTPluginDesc {
 			"".postln;
 			"programs (%):".format(this.numPrograms).postln;
 			this.printPrograms;
+			"".postln;
 			"presets (%):".format(this.numPresets).postln;
 			this.printPresets;
 		};
-		"".postln;
+		"---".postln;
 	}
 	printParameters {
 		this.parameters.do { arg param, i;
@@ -280,9 +292,10 @@ VSTPluginDesc {
 						line = VSTPlugin.prGetLine(stream);
 						#name, label = line.split($,);
 						parameters[i] = (
-							name: VSTPlugin.prTrim(name),
-							label: VSTPlugin.prTrim(label)
-							// more info later
+							name: name.stripWhiteSpace,
+							label: label.stripWhiteSpace
+							// id (ignore)
+							// more info later...
 						);
 					};
 					info.parameters = parameters;
@@ -342,15 +355,16 @@ VSTPluginDesc {
 						\flags,
 						{
 							f = hex2int.(value);
-							flags = Array.fill(8, {arg i; ((f >> i) & 1).asBoolean });
-							info.hasEditor = flags[0];
-							info.isSynth = flags[1];
+							flags = Array.fill(9, {arg i; ((f >> i) & 1).asBoolean });
+							info.editor = flags[0];
+							info.synth = flags[1];
 							info.singlePrecision = flags[2];
 							info.doublePrecision = flags[3];
 							info.midiInput = flags[4];
 							info.midiOutput = flags[5];
 							info.sysexInput = flags[6];
 							info.sysexOutput = flags[7];
+							info.bridged = flags[8];
 						},
 						{
 							future.if {
@@ -366,11 +380,12 @@ VSTPluginDesc {
 	}
 	prToString { arg sep = $\n;
 		var s = "name: %".format(this.name) ++ sep
+		++ "type: %%%".format(this.sdkVersion,
+			this.synth.if { " (synth)" } { "" }, this.bridged.if { " [bridged]" } { "" }) ++ sep
 		++ "path: %".format(this.path) ++ sep
 		++ "vendor: %".format(this.vendor) ++ sep
 		++ "category: %".format(this.category) ++ sep
 		++ "version: %".format(this.version) ++ sep
-		++ "SDK version: %".format(this.sdkVersion) ++ sep
 		++ "input channels: %".format(this.numInputs) ++ sep
 		++ ((this.numAuxInputs > 0).if { "aux input channels: %".format(this.numAuxInputs) ++ sep } {""})
 		++ "output channels: %".format(this.numOutputs) ++ sep
@@ -378,14 +393,13 @@ VSTPluginDesc {
 		++ "parameters: %".format(this.numParameters) ++ sep
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "presets: %".format(this.numPresets) ++ sep
+		++ "editor: %".format(this.editor) ++ sep
+		// ++ "single precision: %".format(this.singlePrecision) ++ sep
+		// ++ "double precision: %".format(this.doublePrecision) ++ sep
 		++ "MIDI input: %".format(this.midiInput) ++ sep
-		++ "MIDI output: %".format(this.midiOutput) ++ sep
+		++ "MIDI output: %".format(this.midiOutput)
 		// ++ "sysex input: %".format(this.sysexInput) ++ sep
 		// ++ "sysex output: %".format(this.sysexOutput) ++ sep
-		++ "synth: %".format(this.isSynth) ++ sep
-		++ "editor: %".format(this.hasEditor) ++ sep
-		// ++ "single precision: %".format(this.singlePrecision) ++ sep
-		// ++ "double precision: %".format(this.doublePrecision)
 		;
 		^s;
 	}
@@ -469,6 +483,7 @@ VSTPlugin : MultiOutUGen {
 	}
 	*reset { arg server;
 		this.deprecated(thisMethod, this.class.findMethod(\clear));
+		this.clear(server);
 	}
 	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
 		server = server ?? Server.default;
@@ -508,7 +523,7 @@ VSTPlugin : MultiOutUGen {
 			stream.notNil.if {
 				this.prParseIni(stream).do { arg info;
 					// store under key
-					dict[info.key] = info;
+					this.prAddPlugin(dict, info.key, info);
 				};
 			};
 			action.value;
@@ -529,7 +544,7 @@ VSTPlugin : MultiOutUGen {
 					var string = array.collectAs({arg c; c.asInteger.asAscii}, String);
 					this.prParseIni(CollStream.new(string)).do { arg info;
 						// store under key
-						dict[info.key] = info;
+						this.prAddPlugin(dict, info.key, info);
 					};
 					buf.free;
 					action.value; // done
@@ -575,10 +590,12 @@ VSTPlugin : MultiOutUGen {
 				stream.notNil.if {
 					info = VSTPluginDesc.prParse(stream).scanPresets;
 					// store under key
-					dict[info.key] = info;
+					this.prAddPlugin(dict, info.key, info);
 					// also store under resolved path and custom key
-					dict[path.asSymbol] = info;
-					key !? { dict[key.asSymbol] = info };
+					this.prAddPlugin(dict, path, info);
+					key !? {
+						this.prAddPlugin(dict, key, info);
+					}
 				};
 			};
 			// done (on fail, info is nil)
@@ -602,10 +619,12 @@ VSTPlugin : MultiOutUGen {
 					(string.size > 0).if {
 						info = VSTPluginDesc.prParse(CollStream.new(string)).scanPresets;
 						// store under key
-						dict[info.key] = info;
+						this.prAddPlugin(dict, info.key, info);
 						// also store under resolved path and custom key
-						dict[path.asSymbol] = info;
-						key !? { dict[key.asSymbol] = info };
+						this.prAddPlugin(dict, path, info);
+						key !? {
+							this.prAddPlugin(dict, key, info);
+						}
 					};
 					buf.free;
 					action.value(info); // done
@@ -634,11 +653,19 @@ VSTPlugin : MultiOutUGen {
 		};
 		stream.notNil.if {
 			this.prParseIni(stream).do { arg info;
-				// store under key
-				dict[info.key] = info;
+				this.prAddPlugin(dict, info.key, info);
 			};
 		};
 		^dict;
+	}
+	*prAddPlugin { arg dict, key, info;
+		key = key.asSymbol;
+		// we prefer non-bridged plugins, so we don't overwrite
+		// an existing non-bridged plugin with a new bridged plugin.
+		dict[key] !? { arg item;
+			(item.bridged.not && info.bridged).if { ^this; }
+		};
+		dict[key] = info;
 	}
 	*prGetLine { arg stream, skip=false;
 		var pos, line;
@@ -657,27 +684,6 @@ VSTPlugin : MultiOutUGen {
 		onset ?? { Error("expecting 'n=<number>'").throw; };
 		^line[(onset+1)..].asInteger; // will eat whitespace and stop at newline
 	}
-	*prTrim { arg str;
-		var start, end;
-		var isWhiteSpace = { arg c; (c == $ ) || (c == $\t) };
-		(str.size == 0).if { ^str };
-		start = block { arg break;
-			str.do { arg c, i;
-				isWhiteSpace.(c).not.if {
-					break.value(i);
-				}
-			}
-			^""; // all white space
-		};
-		end = block { arg break;
-			str.reverseDo { arg c, i;
-				isWhiteSpace.(c).not.if {
-					break.value(str.size - i - 1);
-				}
-			}
-		};
-		^str[start..end]; // start and end can be both nil
-	}
 	*prParseKeyValuePair { arg line;
 		var key, value, split = line.find("=");
 		split ?? { Error("expecting 'key=value'").throw; };
@@ -686,7 +692,7 @@ VSTPlugin : MultiOutUGen {
 		(split < line.size).if {
 			value = line[split..];
 		} { value = "" };
-		^[this.prTrim(key).asSymbol, this.prTrim(value)];
+		^[key.stripWhiteSpace.asSymbol, value.stripWhiteSpace ];
 	}
 	*prParseIni { arg stream;
 		var results, onset, line, n, indices, last = 0;

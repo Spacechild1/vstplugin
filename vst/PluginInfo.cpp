@@ -1,7 +1,6 @@
 #include "Interface.h"
 #include "Utility.h"
 #include "Sync.h"
-#include "ThreadedPlugin.h"
 
 #include <algorithm>
 #include <sstream>
@@ -98,24 +97,56 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
 
 /*///////////////////// PluginInfo /////////////////////*/
 
-PluginInfo::PluginInfo(const std::shared_ptr<const IFactory>& factory)
-    : path(factory->path()), factory_(factory) {}
+PluginInfo::PluginInfo(std::shared_ptr<const IFactory> f){
+    if (f){
+        setFactory(std::move(f));
+    }
+}
 
 PluginInfo::~PluginInfo(){}
 
-IPlugin::ptr PluginInfo::create(bool editor, bool threaded) const {
+void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
+    if (path_.empty()){
+        path_ = factory->path();
+    }
+    if (factory->arch() != getHostCpuArchitecture()){
+        flags |= Bridged;
+    }
+    factory_ = std::move(factory);
+}
+
+// ThreadedPlugin.cpp
+IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
+
+#if USE_BRIDGE
+// PluginClient.cpp
+IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
+                               bool editor, bool sandbox);
+#endif
+
+IPlugin::ptr PluginInfo::create(bool editor, bool threaded, Mode mode) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     if (!factory){
         return nullptr;
     }
-    auto plugin = factory->create(name);
-    if (threaded){
-        plugin = std::make_unique<ThreadedPlugin>(std::move(plugin));
+    IPlugin::ptr plugin;
+#if USE_BRIDGE
+    if ((mode == Mode::Bridged) || (mode == Mode::Sandboxed) ||
+            ((mode == Mode::Auto) && bridged())){
+        plugin = makeBridgedPlugin(factory, name, editor, mode == Mode::Sandboxed);
+    }
+    else
+#endif
+    {
+        plugin = factory->create(name);
+        if (editor && plugin->info().editor()){
+            auto window = IWindow::create(*plugin);
+            plugin->setWindow(std::move(window));
+        }
     }
 
-    if (editor && plugin->info().hasEditor()){
-        auto window = IWindow::create(*plugin);
-        plugin->setWindow(std::move(window));
+    if (threaded){
+        plugin = makeThreadedPlugin(std::move(plugin));
     }
 
     return plugin;
@@ -373,11 +404,21 @@ static std::string bashString(std::string name){
 }
 
 #define toHex(x) std::hex << (x) << std::dec
+#define fromHex(x) std::stol(x, 0, 16); // hex
 
 void PluginInfo::serialize(std::ostream& file) const {
+    // list sub plugins (only when probing)
+    if (!subPlugins.empty()){
+        file << "[subplugins]\n";
+        file << "n=" << (int)subPlugins.size() << "\n";
+        for (auto& sub : subPlugins){
+            file << sub.name << "," << toHex(sub.id) << "\n";
+        }
+        return;
+    }
     file << "[plugin]\n";
+    file << "path=" << path() << "\n";
     file << "id=" << uniqueID << "\n";
-    file << "path=" << path << "\n";
     file << "name=" << name << "\n";
     file << "vendor=" << vendor << "\n";
     file << "category=" << category << "\n";
@@ -404,7 +445,8 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
-        file << bashString(param.name) << "," << param.label << "," << toHex(param.id) << "\n";
+        file << bashString(param.name) << ","
+             << param.label << "," << toHex(param.id) << "\n";
     }
     // programs
     file << "[programs]\n";
@@ -412,16 +454,6 @@ void PluginInfo::serialize(std::ostream& file) const {
     for (auto& pgm : programs) {
         file << pgm << "\n";
     }
-#if USE_VST2
-    // shell plugins (only used for probe.exe)
-    if (!shellPlugins.empty()){
-        file << "[shell]\n";
-        file << "n=" << (int)shellPlugins.size() << "\n";
-        for (auto& shell : shellPlugins){
-            file << shell.name << "," << shell.id << "\n";
-        }
-    }
-#endif
 }
 
 namespace {
@@ -480,7 +512,7 @@ void parseArg(int32_t& lh, const std::string& rh){
 }
 
 void parseArg(uint32_t& lh, const std::string& rh){
-    lh = std::stol(rh, nullptr, 16); // hex
+    lh = fromHex(rh);
 }
 
 void parseArg(std::string& lh, const std::string& rh){
@@ -535,7 +567,7 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     param.label = ltrim(args[1]);
                 }
                 if (args.size() >= 3){
-                    param.id = std::stol(args[2], nullptr, 16); // hex
+                    param.id = fromHex(args[2]);
                 }
                 parameters.push_back(std::move(param));
             }
@@ -556,24 +588,21 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
             while (n-- && std::getline(file, line)){
                 programs.push_back(std::move(line));
             }
-            // finished if we're not a shell plugin (a bit hacky...)
-            if (category != "Shell"){
-                break; // done!
-            }
-        } else if (line == "[shell]"){
-        #if USE_VST2
-            shellPlugins.clear();
+            goto done;
+        } else if (line == "[subplugins]"){
+            // get list of subplugins (only when probing)
+            subPlugins.clear();
             std::getline(file, line);
             int n = getCount(line);
             while (n-- && std::getline(file, line)){
                 auto pos = line.find(',');
-                ShellPlugin shell;
-                shell.name = rtrim(line.substr(0, pos));
-                shell.id = std::stol(line.substr(pos + 1));
-                shellPlugins.push_back(std::move(shell));
+                SubPlugin sub;
+                sub.name = rtrim(line.substr(0, pos));
+                sub.id = fromHex(line.substr(pos + 1));
+                // LOG_DEBUG("got subplugin " << sub.name << " " << sub.id);
+                subPlugins.push_back(std::move(sub));
             }
-        #endif
-            break; // done!
+            goto done;
         } else if (start){
             std::string key;
             std::string value;
@@ -598,7 +627,7 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                     }
                     uniqueID = value;
                 }
-                MATCH("path", path)
+                MATCH("path", path_)
                 MATCH("name", name)
                 MATCH("vendor", vendor)
                 MATCH("category", category)
@@ -640,6 +669,12 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                 throw Error("bad data: " + line);
             }
         }
+    }
+done:
+    // restore "Bridge" flag
+    auto factory = factory_.lock();
+    if (factory && factory->arch() != getHostCpuArchitecture()){
+        flags |= Bridged;
     }
 }
 

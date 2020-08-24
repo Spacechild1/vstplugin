@@ -45,8 +45,11 @@ variables:
 .build:linux: &build_linux
   image: gcc
   stage: build
+  variables:
+    pd_extension: pd_linux
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends make cmake puredata-dev puredata
+    - apt-get update && apt-get install -y --no-install-recommends make cmake
+      puredata-dev puredata
     - export PD=/usr/bin/pd
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
@@ -55,10 +58,18 @@ variables:
     - git submodule update --init
     - popd
     - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
-      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
+      -DSTATIC_LIBS=ON -DPD_EXTENSION=${pd_extension} -DPD_INSTALLDIR=$(pwd)
+      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
     - make -C build install/strip VERBOSE=1
+
+.build:linux_i386: &build_linux_i386
+  allow_failure: true
+  extends: .build:linux
+  image: registry.git.iem.at/devtools/docker/debiancross:i386
+  variables:
+    pd_extension: l_i386
 
 .build:macos: &build_macos
   tags:
@@ -76,7 +87,7 @@ variables:
     - pushd "${SC_PATH}"
     - git submodule update --init
     - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
+    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DBUILD_HOST32=ON
       -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
   script:
     - make -C build -j4 VERBOSE=1
@@ -140,6 +151,9 @@ variables:
 Linux:
   <<: *build_linux
   <<: *release
+Linux-i386:
+  <<: *build_linux_i386
+  <<: *release
 Darwin:
   <<: *build_macos
   <<: *release
@@ -153,6 +167,9 @@ w64:
 
 Linux_snapshot:
   <<: *build_linux
+  <<: *snapshot
+Linux-i386_snapshot:
+  <<: *build_linux_i386
   <<: *snapshot
 Darwin_snapshot:
   <<: *build_macos

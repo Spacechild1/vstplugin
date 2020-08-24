@@ -32,13 +32,14 @@ var scdoc_sc_version = '3.11.0';
 <li class='toc3'><a href='#-category'>category</a> </li>
 <li class='toc3'><a href='#-version'>version</a> </li>
 <li class='toc3'><a href='#-sdkVersion'>sdkVersion</a> </li>
+<li class='toc3'><a href='#-bridged'>bridged</a> </li>
 <li class='toc3'><a href='#-id'>id</a> </li>
 <li class='toc3'><a href='#-numInputs'>numInputs</a> </li>
 <li class='toc3'><a href='#-numOutputs'>numOutputs</a> </li>
 <li class='toc3'><a href='#-numAuxInputs'>numAuxInputs</a> </li>
 <li class='toc3'><a href='#-numAuxOutputs'>numAuxOutputs</a> </li>
-<li class='toc3'><a href='#-hasEditor'>hasEditor</a> </li>
-<li class='toc3'><a href='#-isSynth'>isSynth</a> </li>
+<li class='toc3'><a href='#-editor'>editor</a> </li>
+<li class='toc3'><a href='#-synth'>synth</a> </li>
 <li class='toc3'><a href='#-singlePrecision'>singlePrecision</a> </li>
 <li class='toc3'><a href='#-doublePrecision'>doublePrecision</a> </li>
 <li class='toc3'><a href='#-midiInput'>midiInput</a> </li>
@@ -100,16 +101,19 @@ var scdoc_sc_version = '3.11.0';
 <p>the plugin vendor.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-category' href='./../Overviews/Methods.html#category'>category</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-category' href='./../Overviews/Methods.html#category'>category</a> = value</h3>
 <div class='method'>
-<p>the plugin category. Multiple (sub)categories are seperated with the '|' character.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-version' href='./../Overviews/Methods.html#version'>version</a></h3>
+<p>the plugin category. Multiple (sub)categories are seperated with the '|' character, e.g. "Fx|Delay".</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-version' href='./../Overviews/Methods.html#version'>version</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-version' href='./../Overviews/Methods.html#version'>version</a> = value</h3>
 <div class='method'>
-<p>the plugin version.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sdkVersion' href='./../Overviews/Methods.html#sdkVersion'>sdkVersion</a></h3>
+<p>the plugin version, e.g. "1.0".</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sdkVersion' href='./../Overviews/Methods.html#sdkVersion'>sdkVersion</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-sdkVersion' href='./../Overviews/Methods.html#sdkVersion'>sdkVersion</a> = value</h3>
 <div class='method'>
-<p>the VST SDK version.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a></h3>
+<p>the VST SDK version, e.g. "VST 2.4".</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-bridged' href='./../Overviews/Methods.html#bridged'>bridged</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-bridged' href='./../Overviews/Methods.html#bridged'>bridged</a> = value</h3>
+<div class='method'>
+<p>whether the plugin is bit-bridged (using a 32-bit plugin on 64-bit Supercollider or vice versa).</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a> = value</h3>
 <div class='method'>
-<p>the unique ID.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numInputs' href='./../Overviews/Methods.html#numInputs'>numInputs</a></h3>
+<p>the unique ID as a hex string, e.g. "6779416F". The size of the id is 4 bytes (max. 8 characters) for VST2 plugins and 16 bytes (max. 32 characters) for VST3 plugins.</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numInputs' href='./../Overviews/Methods.html#numInputs'>numInputs</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numInputs' href='./../Overviews/Methods.html#numInputs'>numInputs</a> = value</h3>
 <div class='method'>
 <p>number of (main) audio inputs</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numOutputs' href='./../Overviews/Methods.html#numOutputs'>numOutputs</a></h3>
@@ -121,11 +125,11 @@ var scdoc_sc_version = '3.11.0';
 <p>number of auxiliary audio inputs (VST3 only)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numAuxOutputs' href='./../Overviews/Methods.html#numAuxOutputs'>numAuxOutputs</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-numAuxOutputs' href='./../Overviews/Methods.html#numAuxOutputs'>numAuxOutputs</a> = value</h3>
 <div class='method'>
-<p>number of auxiliary audio outputs (VST3 only)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-hasEditor' href='./../Overviews/Methods.html#hasEditor'>hasEditor</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-hasEditor' href='./../Overviews/Methods.html#hasEditor'>hasEditor</a> = value</h3>
+<p>number of auxiliary audio outputs (VST3 only)</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editor' href='./../Overviews/Methods.html#editor'>editor</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-editor' href='./../Overviews/Methods.html#editor'>editor</a> = value</h3>
 <div class='method'>
-<p>whether the plugin has a VST GUI editor</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-isSynth' href='./../Overviews/Methods.html#isSynth'>isSynth</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-isSynth' href='./../Overviews/Methods.html#isSynth'>isSynth</a> = value</h3>
+<p>whether the plugin has a VST GUI editor</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synth' href='./../Overviews/Methods.html#synth'>synth</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synth' href='./../Overviews/Methods.html#synth'>synth</a> = value</h3>
 <div class='method'>
 <p>whether the plugin is a VST instrument</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-singlePrecision' href='./../Overviews/Methods.html#singlePrecision'>singlePrecision</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-singlePrecision' href='./../Overviews/Methods.html#singlePrecision'>singlePrecision</a> = value</h3>

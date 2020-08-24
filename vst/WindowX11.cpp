@@ -7,7 +7,20 @@ namespace vst {
 
 namespace UIThread {
 
-void setup(){}
+// fake event loop
+Event gQuitEvent_;
+
+void setup(){
+    X11::EventLoop::instance();
+}
+
+void run(){
+    gQuitEvent_.wait();
+}
+
+void quit(){
+    gQuitEvent_.signal();
+}
 
 bool isCurrentThread(){
     return X11::EventLoop::instance().checkThread();
@@ -16,11 +29,24 @@ bool isCurrentThread(){
 void poll(){}
 
 bool callSync(Callback cb, void *user){
-    return X11::EventLoop::instance().callSync(cb, user);
+    if (UIThread::isCurrentThread()){
+        cb(user); // avoid deadlock
+        return true;
+    } else {
+        return X11::EventLoop::instance().callSync(cb, user);
+    }
 }
 
 bool callAsync(Callback cb, void *user){
     return X11::EventLoop::instance().callAsync(cb, user);
+}
+
+int32_t addPollFunction(PollFunction fn, void *context){
+    return X11::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return X11::EventLoop::instance().removePollFunction(handle);
 }
 
 } // UIThread
@@ -97,7 +123,7 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::run(){
-    setThreadPriority(ThreadPriority::Low);
+    setThreadPriority(Priority::Low);
 
     XEvent event;
     LOG_DEBUG("X11: start event loop");
@@ -142,6 +168,7 @@ void EventLoop::run(){
                     LOG_ERROR("bug wmCloseEditor: " << msg.window);
                 }
             } else if (type == wmUpdatePlugins){
+                // update plugins
                 for (auto& it : pluginMap_){
                     auto plugin = it.second;
                     if (plugin){
@@ -149,6 +176,11 @@ void EventLoop::run(){
                     } else {
                         LOG_ERROR("bug wmUpdatePlugins: " << it.first);
                     }
+                }
+                // call poll functions
+                std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+                for (auto& it : pollFunctions_){
+                    it.second();
                 }
             } else if (type == wmQuit){
                 LOG_DEBUG("wmQuit");
@@ -174,7 +206,10 @@ void EventLoop::run(){
 }
 
 void EventLoop::updatePlugins(){
-    // this seems to be the easiest way to do it...
+    // X11 doesn't seem to have a timer API...
+
+    setThreadPriority(Priority::Low);
+
     while (timerThreadRunning_){
         postClientEvent(root_, wmUpdatePlugins);
         std::this_thread::sleep_for(std::chrono::milliseconds(updateInterval));
@@ -223,6 +258,19 @@ bool EventLoop::sendClientEvent(::Window window, Atom atom,
     } else {
         return false;
     }
+}
+
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
 }
 
 bool EventLoop::checkThread(){
@@ -291,7 +339,11 @@ Window::Window(Display& display, IPlugin& plugin)
         XFree(ch);
     }
     LOG_DEBUG("X11: created Window " << window_);
-    setTitle(plugin_->info().name);
+
+    // set window title
+    auto title = plugin_->info().name.c_str();
+    XStoreName(display_, window_, title);
+    XSetIconName(display_, window_, title);
 
     EventLoop::instance().registerWindow(*this);
 }
@@ -302,13 +354,6 @@ Window::~Window(){
     plugin_->closeEditor();
     XDestroyWindow(display_, window_);
     LOG_DEBUG("X11: destroyed Window");
-}
-
-void Window::setTitle(const std::string& title){
-    XStoreName(display_, window_, title.c_str());
-    XSetIconName(display_, window_, title.c_str());
-    XFlush(display_);
-    LOG_DEBUG("Window::setTitle: " << title);
 }
 
 void Window::open(){

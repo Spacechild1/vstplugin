@@ -390,10 +390,19 @@ post the plugin info to the console if loaded successfully.
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
-ARGUMENT:: threaded
+ARGUMENT:: multiThreading
 process the plugin in a seperate worker thread to utilize more CPU cores.
-note::This option is ignored for Supernova which already offers multiprocessing with ParGroup.::
-note::Multiprocessing introduces a delay of 1 block!::
+note::This option is ignored for Supernova, which already offers multithreading with ParGroup.::
+note::Multithreading introduces a delay of 1 block!::
+
+ARGUMENT:: mode
+select a run mode.
+table::
+## \auto || normal mode (default).
+## \sandbox || run the plugin in a dedicated subprocess. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.
+## \bridge || run the plugin in a shared subprocess. This uses less memory and possibly less CPU, but if one plugin crashes, it will inevitably take down all other plugins in the same process.
+::
+note::Any run mode except for code::\auto:: incurs some fixed CPU overhead, which is less significant for larger blocksizer (see link::Classes/ServerOptions#-blockSize::).::
 
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
@@ -408,6 +417,12 @@ If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*a
 ARGUMENT:: editor
 request the VST editor.
 
+ARGUMENT:: multiThreading
+enable multithreading.
+
+ARGUMENT:: mode
+select a run mode.
+
 RETURNS:: the message for an emphasis::open:: command (see link::#-open::).
 
 METHOD:: close
@@ -419,6 +434,13 @@ This will automatically bypass the plugin (i.e. the input is just passed through
 
 Just like link::#-open::, this method is realtime-safe.
 
+
+METHOD:: pluginCrashed
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin subprocess crashes.
+
+discussion::
+You could use this callback to automatically reopen the plugin, for example.
+note::This is only meant for bridged or sandboxed plugins, because a normal plugin would simply crash the server.::
 
 METHOD:: browse
 open the plugin browser dialog.

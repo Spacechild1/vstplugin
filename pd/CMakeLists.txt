@@ -67,7 +67,7 @@ endif()
 # the Pd external
 add_library(${PROJECT} MODULE ${SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
-target_link_libraries(${PROJECT} ${VST_LIBS})
+target_link_libraries(${PROJECT} ${LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
 # platform specific definitions and options
@@ -85,15 +85,15 @@ else()
 endif()
 
 # installation
-add_dependencies(${PROJECT} ${PROBE})
-if (APPLE)
-    add_dependencies(${PROJECT} ${PROBE32})
+add_dependencies(${PROJECT} ${HOST})
+if (HOST32)
+    add_dependencies(${PROJECT} ${HOST32})
 endif()
 
 install(TARGETS ${PROJECT} DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
-install(PROGRAMS "${PROBE_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
-if (APPLE)
-    install(PROGRAMS "${PROBE32_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+install(PROGRAMS "${HOST_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+if (HOST32)
+    install(PROGRAMS "${HOST32_PATH}" DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
 endif()
 install(FILES "${FILENAME}-help.pd" "vstpluginbrowser.pd" "vstpluginbrowser-help.pd"
     "vstpresetbrowser.pd" "vstpresetbrowser-help.pd" "../README.md" "../LICENSE.txt"

@@ -1,5 +1,5 @@
 # vstplugin specific ignores
-test**
+bin**
 vst/VST_SDK**
 build**
 install**

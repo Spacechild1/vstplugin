@@ -10,7 +10,20 @@ namespace vst {
 
 namespace UIThread {
 
-void setup(){}
+// fake event loop
+Event gQuitEvent_;
+
+void setup(){
+    Win32::EventLoop::instance();
+}
+
+void run(){
+    gQuitEvent_.wait();
+}
+
+void quit(){
+    gQuitEvent_.signal();
+}
 
 bool isCurrentThread(){
     return Win32::EventLoop::instance().checkThread();
@@ -19,11 +32,24 @@ bool isCurrentThread(){
 void poll(){}
 
 bool callSync(Callback cb, void *user){
-    return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
+    if (UIThread::isCurrentThread()){
+        cb(user);
+        return true;
+    } else {
+        return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
+    }
 }
 
 bool callAsync(Callback cb, void *user){
     return Win32::EventLoop::instance().postMessage(Win32::WM_CALL, (void *)cb, user);
+}
+
+int32_t addPollFunction(PollFunction fn, void *context){
+    return Win32::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return Win32::EventLoop::instance().removePollFunction(handle);
 }
 
 } // UIThread
@@ -36,38 +62,49 @@ EventLoop& EventLoop::instance(){
 }
 
 DWORD EventLoop::run(void *user){
-    setThreadPriority(ThreadPriority::Low);
+    setThreadPriority(Priority::Low);
 
     auto obj = (EventLoop *)user;
-    MSG msg;
-    int ret;
     // force message queue creation
+    MSG msg;
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
     obj->notify();
     LOG_DEBUG("start message loop");
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
+
+    // setup timer
+    auto timer = SetTimer(0, 0, EventLoop::updateInterval, NULL);
+
+    DWORD ret;
+    while ((ret = GetMessage(&msg, NULL, 0, 0)) != 0){
         if (ret < 0){
-            // error
             LOG_ERROR("GetMessage: error");
             break;
         }
-        switch (msg.message){
-        case WM_CALL:
-        {
-            LOG_DEBUG("WM_CREATE_PLUGIN");
+        // LOG_DEBUG("got message " << msg.message);
+
+        if (msg.message == WM_CALL){
+            LOG_DEBUG("WM_CALL");
             auto cb = (UIThread::Callback)msg.wParam;
             auto data = (void *)msg.lParam;
             cb(data);
             obj->notify();
-            break;
-        }
-        default:
+        } else if ((msg.message == WM_TIMER) && (msg.hwnd == NULL)
+                   && (msg.wParam == timer)) {
+            // call poll functions
+            std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
+            for (auto& it : obj->pollFunctions_){
+                it.second();
+            }
+            // LOG_VERBOSE("call poll functions.");
+        } else {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
-            break;
         }
     }
     LOG_DEBUG("quit message loop");
+
+    KillTimer(NULL, timer);
+
     return 0;
 }
 
@@ -97,14 +134,15 @@ EventLoop::EventLoop(){
 }
 
 EventLoop::~EventLoop(){
+    LOG_DEBUG("EventLoop: about to quit");
     if (thread_){
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
-            CloseHandle(thread_);
             LOG_DEBUG("joined thread");
         } else {
             LOG_ERROR("couldn't post quit message!");
         }
+        CloseHandle(thread_);
     }
 }
 
@@ -128,6 +166,19 @@ bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
     }
 }
 
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
+}
+
 void EventLoop::notify(){
     event_.signal();
 }
@@ -143,7 +194,8 @@ Window::Window(IPlugin& plugin)
           NULL, NULL, NULL, NULL
     );
     LOG_DEBUG("created Window");
-    setTitle(plugin_->info().name);
+    // set window title
+    SetWindowTextW(hwnd_, widen(plugin.info().name).c_str());
     // get window dimensions from plugin
     int left = 100, top = 100, right = 400, bottom = 400;
     if (!plugin_->getEditorRect(left, top, right, bottom)){
@@ -260,13 +312,10 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
     auto window = (Window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     if (window){
         window->plugin_->updateEditor();
+        // LOG_DEBUG("update editor");
     } else {
         LOG_ERROR("bug GetWindowLongPtr");
     }
-}
-
-void Window::setTitle(const std::string& title){
-    SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
 void Window::open(){

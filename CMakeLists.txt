@@ -4,6 +4,9 @@ set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
 project(${PROJECT})
 
+include (CheckCCompilerFlag)
+include (CheckCXXCompilerFlag)
+
 if(UNIX AND NOT APPLE AND NOT MINGW)
 	set(LINUX TRUE)
 endif()
@@ -31,20 +34,13 @@ set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install director
 if (WIN32 OR MINGW)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
     set(_pf_x86 "ProgramFiles(x86)")
-    if (DEFINED ENV{${_pf_x86}} AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    if (DEFINED ENV{${_pf_x86}} AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
         set(PROGRAMFILES $ENV{${_pf_x86}})
     else()
         set(PROGRAMFILES $ENV{PROGRAMFILES})
     endif()
     set(APPDATA $ENV{APPDATA})
     set(LOCALAPPDATA $ENV{LOCALAPPDATA})
-#    if (MINGW)
-#        # For MinGW, CMake thinks that "C:/" is a relative path, so we have to bash it to "/c/"...
-#        # For simplicity, I just assume that program files are on the C drive. A CMake guru should fix this!
-#        string(REPLACE "C:\\" "/c/" PROGRAMFILES ${PROGRAMFILES})
-#        string(REPLACE "C:\\" "/c/" APPDATA ${APPDATA})
-#        string(REPLACE "C:\\" "/c/" APPDATA ${LOCALAPPDATA})
-#    endif()
 endif()
 
 # logging
@@ -57,9 +53,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_definitions(-fvisibility=hidden)
     # disable some warnings
     add_definitions(-Wno-unknown-pragmas -Wno-format-security)
-
-    include (CheckCCompilerFlag)
-    include (CheckCXXCompilerFlag)
 
     CHECK_CXX_COMPILER_FLAG(-msse HAS_CXX_SSE)
     if (HAS_CXX_SSE)
@@ -101,6 +94,9 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
+# include dependencies
+include_directories(deps)
+
 # VST2 SDK
 option(VST2 "Enable VST2.x plug-ins" ON)
 if (VST2)
@@ -122,14 +118,30 @@ if (VST3)
     message(STATUS "VST3DIR: ${VST3DIR}")
 endif()
 
-# vst library
-include_directories(vst)
-set(VST "vst")
-set(VST_LIBS ${VST})
+# bit bridging
+option(BRIDGE "Enable bit-bridging" ON)
+if (BRIDGE)
+    message(STATUS "Enable bit-bridging")
+    add_definitions(-DUSE_BRIDGE=1)
+    if(APPLE OR LINUX)
+        # Try to directly build the 32-bit (Intel) version of 'HOST' with -m32.
+        # This works on Linux and older macOS versions.
+        # We don't enable this by default because on Linux we would have to install
+        # lots of extra libs and on macOS it won't work on newer OS versions (macOs 10.15+) anyway.
+        # (Maybe we can somehow detect the macOs version)?
+        #
+        # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
+        option(BUILD_HOST32 "Build the 32-bit host app" OFF)
+    endif()
+endif()
 
 # platform specific linker flags
 if (LINUX)
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11" "-pthread")
+    if (BRIDGE)
+        # for shm_open/shm_unlink
+        list(APPEND VST_LIBS "-lrt")
+    endif()
     if(STATIC_LIBS)
         list(APPEND VST_LIBS "-static-libstdc++" "-static-libgcc")
     endif()
@@ -148,30 +160,42 @@ if (APPLE)
     list(APPEND VST_LIBS "-framework Cocoa" "-lpthread")
 endif()
 
+# vst library
+include_directories(vst)
+
+set(VST "vst")
+set(LIBS ${VST} ${VST_LIBS})
+if (BUILD_HOST32)
+    set(VST32 "vst32")
+    set(LIBS32 ${VST32} ${VST_LIBS})
+endif()
+
 add_subdirectory(vst)
 
-# probe exe
-set(PROBE "probe")
-add_executable(${PROBE} "vst/${PROBE}.cpp" ${SRC}) # probe exe
-target_link_libraries(${PROBE} ${VST_LIBS})
-set_target_properties(${PROBE} PROPERTIES LINK_FLAGS_RELEASE -s)
+# host exe
+set(HOST "host")
+add_executable(${HOST} "vst/${HOST}.cpp") # HOST exe
+target_link_libraries(${HOST} ${LIBS})
+set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
     # -municode for wmain and -mwindows to hide console window
-    target_link_libraries(${PROBE} -municode)
+    target_link_libraries(${HOST} -municode)
 endif()
 # up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.
-set(PROBE_PATH $<TARGET_FILE:${PROBE}>)
+set(HOST_PATH $<TARGET_FILE:${HOST}>)
 
-# on macOS we can directly build the 32-bit version of 'probe'
-if (APPLE)
-    set(PROBE32 "probe_i386")
-    add_executable(${PROBE32} "vst/${PROBE}.cpp" ${SRC})
-    target_compile_options(${PROBE32} PUBLIC "-arch i386")
-    target_link_libraries(${PROBE32} ${VST_LIBS})
-    set_target_properties(${PROBE32} PROPERTIES LINK_FLAGS_RELEASE -s)
+if (BUILD_HOST32)
+    message(STATUS "Build 32-bit host program")
+    # is -m32 always Intel?
+    set(HOST32 "host_i386")
+    add_executable(${HOST32} "vst/${HOST}.cpp")
+    target_compile_options(${HOST32} PUBLIC "-m32")
+    target_link_options(${HOST32} PUBLIC "-m32")
+    target_link_libraries(${HOST32} ${LIBS32})
+    set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
     # see above
-    set(PROBE32_PATH $<TARGET_FILE:${PROBE32}>)
+    set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
 endif()
 
 # vstplugin~
@@ -184,4 +208,10 @@ endif()
 option(SC "build SC plugin" ON)
 if (SC)
     add_subdirectory(sc)
+endif()
+
+# testsuite
+option(TESTSUITE "build test suite" ON)
+if (TESTSUITE)
+    add_subdirectory(test)
 endif()

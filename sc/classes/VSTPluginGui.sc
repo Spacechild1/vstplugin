@@ -462,10 +462,10 @@ VSTPluginGui : ObjectGui {
 					// use shortcircuiting to skip test if 'ok' is already 'false'
 					ok = ok and: {
 						switch(typeFilter.value,
-							1, { vst3.not and: { item.isSynth.not } }, // VST
-							2, { vst3.not and: { item.isSynth } }, // VSTi
-							3, { vst3 and: { item.isSynth.not } }, // VST3
-							4, { vst3 and: { item.isSynth } }, // VST3i
+							1, { vst3.not && item.synth.not }, // VST
+							2, { vst3.not && item.synth }, // VSTi
+							3, { vst3 && item.synth.not }, // VST3
+							4, { vst3 && item.synth }, // VST3i
 							false
 						)
 					};
@@ -481,7 +481,9 @@ VSTPluginGui : ObjectGui {
 				ok;
 			});
 			items = filteredPlugins.collect({ arg item;
-				"% (%)".format(item.key, item.vendor); // rather use key instead of name
+				var vendor = (item.vendor.size > 0).if { item.vendor } { "unknown" };
+				var bridged = item.bridged.if { "[bridged]" } { "" };
+				"% (%) %".format(item.key, vendor, bridged); // rather use key instead of name
 			});
 			browser.toolTip_(nil);
 			browser.items = items;

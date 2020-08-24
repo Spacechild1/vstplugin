@@ -1,8 +1,9 @@
 cmake_minimum_required (VERSION 2.8)
 
-set(SRC "Interface.h" "Utility.h" "PluginManager.h" "ThreadedPlugin.h"
-    "PluginInfo.cpp" "PluginManager.cpp" "ThreadedPlugin.cpp" "Sync.cpp"
-    "CpuArch.cpp" "Loader.cpp" "Module.cpp" "Search.cpp"  "Utility.cpp")
+set(SRC "Interface.h" "PluginCommand.h" "Utility.h" "Utility.cpp"
+    "PluginInfo.cpp" "ThreadedPlugin.h" "ThreadedPlugin.cpp" 
+    "PluginManager.h" "PluginManager.cpp" "Search.cpp" "CpuArch.cpp"
+    "PluginFactory.h" "PluginFactory.cpp" "Module.cpp"  "Sync.cpp")
 
 # VST2 SDK
 if (VST2)
@@ -18,6 +19,14 @@ if (VST3)
     include_directories(${VST3DIR}/pluginterfaces/vst)
     include_directories(${VST3DIR}/pluginterfaces/gui)
     list(APPEND SRC "VST3Plugin.h" "VST3Plugin.cpp")
+endif()
+
+# bit bridging
+if (BRIDGE)
+    list(APPEND SRC "PluginBridge.h" "PluginBridge.cpp"
+        "PluginClient.h" "PluginClient.cpp"
+        "PluginServer.h" "PluginServer.cpp"
+        "ShmInterface.h" "ShmInterface.cpp")
 endif()
 
 # platform specific VST sources and defines
@@ -36,3 +45,7 @@ endif()
 # static library
 
 add_library(${VST} STATIC ${SRC})
+if (BUILD_HOST32)
+    add_library(${VST32} STATIC ${SRC})
+    target_compile_options(${VST32} PUBLIC "-m32")
+endif()

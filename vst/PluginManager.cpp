@@ -35,14 +35,21 @@ bool PluginManager::isException(const std::string& path) const {
 
 void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
     WriteLock lock(mutex_);
-    plugins_[key] = std::move(plugin);
+    int index = plugin->bridged() ? BRIDGED : NATIVE;
+    plugins_[index][key] = std::move(plugin);
 }
 
 PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
     ReadLock lock(mutex_);
-    auto desc = plugins_.find(key);
-    if (desc != plugins_.end()){
-        return desc->second;
+    // first try to find native plugin
+    auto it = plugins_[NATIVE].find(key);
+    if (it != plugins_[NATIVE].end()){
+        return it->second;
+    }
+    // then try to find bridged plugin
+    it = plugins_[BRIDGED].find(key);
+    if (it != plugins_[BRIDGED].end()){
+        return it->second;
     }
     return nullptr;
 }
@@ -50,7 +57,9 @@ PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
 void PluginManager::clear() {
     WriteLock lock(mutex_);
     factories_.clear();
-    plugins_.clear();
+    for (auto& plugins : plugins_){
+        plugins.clear();
+    }
     exceptions_.clear();
 }
 
@@ -80,45 +89,33 @@ void PluginManager::read(const std::string& path, bool update){
             std::getline(file, line);
             int numPlugins = getCount(line);
             while (numPlugins--){
-                // deserialize plugin
-                auto desc = std::make_shared<PluginInfo>();
-                desc->deserialize(file, versionMajor, versionMinor, versionBugfix);
-                // collect keys
-                std::vector<std::string> keys;
-                while (getLine(file, line)){
-                    if (line == "[keys]"){
-                        std::getline(file, line);
-                        int n = getCount(line);
-                        while (n-- && std::getline(file, line)){
-                            keys.push_back(std::move(line));
+                // read a single plugin description
+                auto plugin = doReadPlugin(file, versionMajor,
+                                           versionMinor, versionBugfix);
+                if (plugin){
+                    // collect keys
+                    std::vector<std::string> keys;
+                    std::string line;
+                    while (getLine(file, line)){
+                        if (line == "[keys]"){
+                            std::getline(file, line);
+                            int n = getCount(line);
+                            while (n-- && std::getline(file, line)){
+                                keys.push_back(std::move(line));
+                            }
+                            break;
+                        } else {
+                            throw Error("bad format");
                         }
-                        break;
-                    } else {
-                        throw Error("bad format");
                     }
-                }
-                // scan presets
-                desc->scanPresets();
-                // load the factory (if not loaded already) to verify that the plugin still exists
-                IFactory::ptr factory;
-                if (!factories_.count(desc->path)){
-                    try {
-                        factory = IFactory::load(desc->path);
-                        factories_[desc->path] = factory;
-                    } catch (const Error& e){
-                        // this probably happens when the plugin has been (re)moved
-                        LOG_ERROR("couldn't load '" << desc->name <<
-                                  "' (" << desc->path << "): " << e.what());
-                        outdated = true; // we need to update the cache
-                        continue; // skip plugin
+                    // store plugin at keys
+                    for (auto& key : keys){
+                        int index = plugin->bridged() ? BRIDGED : NATIVE;
+                        plugins_[index][key] = plugin;
                     }
                 } else {
-                    factory = factories_[desc->path];
-                }
-                factory->addPlugin(desc);
-                desc->setFactory(factory);
-                for (auto& key : keys){
-                    plugins_[key] = desc;
+                    // plugin is outdated, we need to update the cache
+                    outdated = true;
                 }
             }
         } else if (line == "[ignore]"){
@@ -145,6 +142,48 @@ void PluginManager::read(const std::string& path, bool update){
               << "." << versionMinor << "." << versionBugfix);
 }
 
+PluginInfo::const_ptr PluginManager::readPlugin(std::istream& stream){
+    WriteLock lock(mutex_);
+    return doReadPlugin(stream, VERSION_MAJOR,
+                        VERSION_MINOR, VERSION_BUGFIX);
+}
+
+PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int versionMajor,
+                                                  int versionMinor, int versionBugfix){
+    // deserialize plugin
+    auto desc = std::make_shared<PluginInfo>(nullptr);
+    desc->deserialize(stream, versionMajor, versionMinor, versionBugfix);
+
+    // load the factory (if not loaded already) to verify that the plugin still exists
+    IFactory::ptr factory;
+    if (!factories_.count(desc->path())){
+        try {
+            factory = IFactory::load(desc->path());
+            factories_[desc->path()] = factory;
+        } catch (const Error& e){
+            // this probably happens when the plugin has been (re)moved
+            LOG_ERROR("couldn't load '" << desc->name <<
+                      "' (" << desc->path() << "): " << e.what());
+            return nullptr; // skip plugin
+        }
+    } else {
+        factory = factories_[desc->path()];
+        // check if plugin has already been added
+        auto result = factory->findPlugin(desc->name);
+        if (result){
+            // return existing plugin descriptor
+            return result;
+        }
+    }
+    // associate plugin and factory
+    desc->setFactory(factory);
+    factory->addPlugin(desc);
+    // scan presets
+    desc->scanPresets();
+
+    return desc;
+}
+
 void PluginManager::write(const std::string &path) const {
     WriteLock lock(mutex_);
     doWrite(path);
@@ -157,28 +196,11 @@ void PluginManager::doWrite(const std::string& path) const {
     }
     // inverse mapping (plugin -> keys)
     std::unordered_map<PluginInfo::const_ptr, std::vector<std::string>> pluginMap;
-    for (auto& it : plugins_){
-        pluginMap[it.second].push_back(it.first);
+    for (auto& plugins : plugins_){
+        for (auto& it : plugins){
+            pluginMap[it.second].push_back(it.first);
+        }
     }
-#if 0
-    // actually, I'd like to sort alphabetically.
-    // I've tried to do it  with a std::map, but VST2/VST3 plugins
-    // of the same name either got lost or "merged"...
-    // Something is wrong with this sort function.
-    auto comp = [](const auto& lhs, const auto& rhs){
-        std::string s1 = lhs.first->name;
-        std::string s2 = rhs.first->name;
-        for (auto& c : s1) { c = std::tolower(c); }
-        for (auto& c : s2) { c = std::tolower(c); }
-        if (s1 != s2){
-            return s1 < s2;
-        }
-        if (lhs.first->type() != rhs.first->type()){
-            return lhs.first->type() == IPlugin::VST3;
-        }
-        return false;
-    };
-#endif
     // write version number
     file << "[version]\n";
     file << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_BUGFIX << "\n";

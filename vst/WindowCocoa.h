@@ -35,8 +35,17 @@ class EventLoop {
     bool callSync(UIThread::Callback cb, void *user);
 
     bool callAsync(UIThread::Callback cb, void *user);
+
+    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
+
+    void removePollFunction(UIThread::Handle handle);
  private:
+    void poll();
     bool haveNSApp_ = false;
+    NSTimer *timer_;
+    UIThread::Handle nextPollFunctionHandle_ = 0;
+    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
+    std::mutex pollFunctionMutex_;
 };
 
 class Window : public IWindow {
@@ -45,8 +54,6 @@ class Window : public IWindow {
     ~Window();
 
     void* getHandle() override;
-
-    void setTitle(const std::string& title) override;
 
     void open() override;
     void close() override;

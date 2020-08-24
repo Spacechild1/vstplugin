@@ -157,6 +157,7 @@ class t_vsteditor : public IPluginListener {
     // plugin callbacks
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void pluginCrashed() override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
 private:
@@ -169,8 +170,29 @@ private:
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
     // notify Pd (e.g. for MIDI event or GUI automation)
-    template<typename T, typename U>
-    void post_event(T& queue, U&& event);
+    struct t_event {
+        enum t_type {
+            Latency,
+            Parameter,
+            Crash,
+            Midi,
+            Sysex
+        };
+        t_event() = default;
+        t_event(t_type _type) : type(_type){}
+        // data
+        t_type type;
+        union {
+            int latency;
+            struct {
+                int index;
+                float value;
+            }  param;
+            MidiEvent midi;
+            SysexEvent sysex;
+        };
+    };
+    void post_event(const t_event& event);
     static void tick(t_vsteditor *x);
     // data
     t_vstplugin *e_owner;
@@ -181,13 +203,8 @@ private:
     SharedMutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
-    struct param_change {
-        int index; // negative value for other events
-        float value;
-    };
-    std::vector<param_change> e_automated; // negative
-    std::vector<MidiEvent> e_midi;
-    std::vector<SysexEvent> e_sysex;
+
+    std::vector<t_event> e_events;
     bool e_tick = false;
     int width_ = 0;
     int height_ = 0;

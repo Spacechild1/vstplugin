@@ -14,7 +14,7 @@ roli2vst() {
 mkdir -p "${VST2DIR}/pluginterfaces/vst2.x/"
 for f in aeffect.h  aeffectx.h  vstfxstore.h; do
   echo "fetching $f" 1>&2
-  wget -q -O "${VST2DIR}/pluginterfaces/vst2.x/${f}" "${VST2ROLI}/${f}"
+  wget -q --no-check-certificate -O "${VST2DIR}/pluginterfaces/vst2.x/${f}" "${VST2ROLI}/${f}"
 done
 }
 

@@ -3,6 +3,12 @@
 #include <string.h>
 #include <assert.h>
 
+#if 0
+#define THREAD_DEBUG(x) LOG_DEBUG(x)
+#else
+#define THREAD_DEBUG(x)
+#endif
+
 namespace vst {
 
 /*/////////////////// DSPThreadPool /////////////////////////*/
@@ -17,21 +23,21 @@ namespace vst {
 
 DSPThreadPool::DSPThreadPool() {
 #if 0
-    LOG_DEBUG("Align of DSPThreadPool: " << alignof(*this));
-    LOG_DEBUG("DSPThreadPool address: " << this);
-    LOG_DEBUG("pushLock address: " << &pushLock_);
-    LOG_DEBUG("popLock address: " << &popLock_);
+    THREAD_DEBUG("Align of DSPThreadPool: " << alignof(*this));
+    THREAD_DEBUG("DSPThreadPool address: " << this);
+    THREAD_DEBUG("pushLock address: " << &pushLock_);
+    THREAD_DEBUG("popLock address: " << &popLock_);
 #endif
 
     running_ = true;
 
     //  number of available hardware threads minus one (= the main audio thread)
     int numThreads = std::max<int>(std::thread::hardware_concurrency() - 1, 1);
-    LOG_DEBUG("number of DSP helper threads: " << numThreads);
+    THREAD_DEBUG("number of DSP helper threads: " << numThreads);
 
     for (int i = 0; i < numThreads; ++i){
         std::thread thread([this, i](){
-            setThreadPriority(ThreadPriority::High);
+            setThreadPriority(Priority::High);
             // the loop
             while (running_) {
                 Task task;
@@ -47,7 +53,7 @@ DSPThreadPool::DSPThreadPool() {
                 // wait for more
                 event_.wait();
 
-                LOG_DEBUG("DSP thread " << i << " woke up");
+                THREAD_DEBUG("DSP thread " << i << " woke up");
             }
         });
     #if !DSPTHREADPOOL_JOIN
@@ -78,12 +84,16 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     pushLock_.lock();
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
-    LOG_DEBUG("DSPThreadPool::push");
+    THREAD_DEBUG("DSPThreadPool::push");
     event_.signal();
     return result;
 }
 
 /*////////////////////// ThreadedPlugin ///////////////////////*/
+
+IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin){
+    return std::make_unique<ThreadedPlugin>(std::move(plugin));
+}
 
 ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
     : plugin_(std::move(plugin)) {
@@ -94,18 +104,38 @@ ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
 ThreadedPlugin::~ThreadedPlugin() {
     // wait for last processing to finish (ideally we shouldn't have to)
     event_.wait();
+    // avoid memleak with param string and sysex command
+    for (int i = 0; i < 2; ++i){
+        for (auto& cmd : commands_[i]){
+            if (cmd.type == Command::SetParamString){
+                delete cmd.paramString.display;
+            } else if (cmd.type == Command::SendSysex){
+                delete cmd.sysex.data;
+            }
+        }
+    }
 }
 
 void ThreadedPlugin::setListener(IPluginListener::ptr listener){
-    plugin_->setListener(std::move(listener));
+    listener_ = listener;
+    if (listener){
+        auto proxy = std::make_shared<ThreadedPluginListener>(*this);
+        proxyListener_ = proxy; // keep alive
+        plugin_->setListener(proxy);
+    } else {
+        plugin_->setListener(nullptr);
+        proxyListener_ = nullptr;
+    }
 }
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
     LockGuard lock(mutex_);
     plugin_->setupProcessing(sampleRate, maxBlockSize, precision);
+
     if (maxBlockSize != blockSize_ || precision != precision_){
         blockSize_ = maxBlockSize;
         precision_ = precision;
+
         updateBuffer();
     }
 }
@@ -130,7 +160,7 @@ void ThreadedPlugin::updateBuffer(){
     for (size_t i = 0; i < auxOutput_.size(); ++i, buffer += incr){
         auxOutput_[i] = (void *)buffer;
     }
-    assert(buffer == buffer_.end());
+    assert((buffer - buffer_.data()) == buffer_.size());
 }
 
 void ThreadedPlugin::dispatchCommands() {
@@ -138,52 +168,53 @@ void ThreadedPlugin::dispatchCommands() {
     for (auto& command : commands_[!current_]){
         switch(command.type){
         case Command::SetParamValue:
-            plugin_->setParameter(command.paramValue.index,
-                                  command.paramValue.value, command.paramValue.offset);
+            plugin_->setParameter(command.paramValue.index, command.paramValue.value,
+                                  command.paramValue.offset);
             break;
         case Command::SetParamString:
-            plugin_->setParameter(command.paramString.index,
-                                  command.paramString.string, command.paramString.offset);
+            plugin_->setParameter(command.paramString.index, command.paramString.display,
+                                  command.paramString.offset);
+            delete command.paramString.display; // !
             break;
         case Command::SetBypass:
-            plugin_->setBypass(command.bypass);
+            plugin_->setBypass(static_cast<Bypass>(command.i));
             break;
         case Command::SetTempo:
-            plugin_->setTempoBPM(command.f);
+            plugin_->setTempoBPM(command.d);
             break;
         case Command::SetTimeSignature:
             plugin_->setTimeSignature(command.timeSig.num, command.timeSig.denom);
             break;
         case Command::SetTransportPlaying:
-            plugin_->setTransportPlaying(command.b);
+            plugin_->setTransportPlaying(command.i);
             break;
         case Command::SetTransportRecording:
-            plugin_->setTransportRecording(command.b);
+            plugin_->setTransportRecording(command.i);
             break;
         case Command::SetTransportAutomationWriting:
-            plugin_->setTransportAutomationWriting(command.b);
+            plugin_->setTransportAutomationWriting(command.i);
             break;
         case Command::SetTransportAutomationReading:
-            plugin_->setTransportAutomationReading(command.b);
+            plugin_->setTransportAutomationReading(command.i);
             break;
         case Command::SetTransportCycleActive:
-            plugin_->setTransportCycleActive(command.b);
+            plugin_->setTransportCycleActive(command.i);
             break;
         case Command::SetTransportCycleStart:
-            plugin_->setTransportCycleStart(command.f);
+            plugin_->setTransportCycleStart(command.d);
             break;
         case Command::SetTransportCycleEnd:
-            plugin_->setTransportCycleEnd(command.f);
+            plugin_->setTransportCycleEnd(command.d);
             break;
         case Command::SetTransportPosition:
-            plugin_->setTransportPosition(command.f);
+            plugin_->setTransportPosition(command.d);
             break;
         case Command::SendMidi:
             plugin_->sendMidiEvent(command.midi);
             break;
         case Command::SendSysex:
             plugin_->sendSysexEvent(command.sysex);
-            free((void *)command.sysex.data);
+            delete command.sysex.data; // !
             break;
         case Command::SetProgram:
             plugin_->setProgram(command.i);
@@ -200,6 +231,12 @@ void ThreadedPlugin::dispatchCommands() {
 template<typename T>
 void ThreadedPlugin::threadFunction(int numSamples){
     if (mutex_.try_lock()){
+        // set thread ID!
+        rtThread_ = std::this_thread::get_id();
+
+        // clear outgoing event queue!
+        events_[!current_].clear();
+
         dispatchCommands();
 
         ProcessData<T> data;
@@ -236,6 +273,8 @@ void ThreadedPlugin::threadFunction(int numSamples){
 
 template<typename T>
 void ThreadedPlugin::doProcess(ProcessData<T>& data){
+    // LATER do *hard* bypass here and not in the thread function
+
     // wait for last processing to finish (ideally we shouldn't have to)
     event_.wait();
     // get new input from host
@@ -258,7 +297,7 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
     for (int i = 0; i < data.numAuxOutputs; ++i){
         std::copy(auxOutput[i], auxOutput[i] + data.numSamples, data.auxOutput[i]);
     }
-    // swap queue and notify DSP thread pool
+    // swap queues and notify DSP thread pool
     current_ = !current_;
     auto cb = [](ThreadedPlugin *plugin, int numSamples){
         plugin->threadFunction<T>(numSamples);
@@ -273,6 +312,34 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
             std::fill(auxOutput[i], auxOutput[i] + data.numSamples, 0);
         }
         event_.signal(); // so that the next call to event_.wait() doesn't block!
+    }
+
+    sendEvents();
+}
+
+void ThreadedPlugin::sendEvents(){
+    auto listener = listener_.lock();
+    if (listener){
+        for (auto& event : events_[current_]){
+            switch (event.type){
+            case Command::ParamAutomated:
+                listener->parameterAutomated(event.paramAutomated.index,
+                                             event.paramAutomated.value);
+                break;
+            case Command::LatencyChanged:
+                listener->latencyChanged(event.i);
+                break;
+            case Command::MidiReceived:
+                listener->midiEvent(event.midi);
+                break;
+            case Command::SysexReceived:
+                listener->sysexEvent(event.sysex);
+                delete event.sysex.data; // delete data!
+                break;
+            default:
+                break;
+            }
+        }
     }
 }
 
@@ -294,12 +361,6 @@ void ThreadedPlugin::resume() {
     plugin_->resume();
 }
 
-void ThreadedPlugin::setBypass(Bypass state) {
-    Command command(Command::SetBypass);
-    command.bypass = state;
-    pushCommand(command);
-}
-
 void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
     LockGuard lock(mutex_);
     plugin_->setNumSpeakers(in, out, auxIn, auxOut);
@@ -308,114 +369,8 @@ void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
     auxInput_.resize(auxIn);
     output_.resize(out);
     auxOutput_.resize(auxOut);
+
     updateBuffer();
-}
-
-void ThreadedPlugin::setTempoBPM(double tempo) {
-    Command command(Command::SetTempo);
-    command.f = tempo;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTimeSignature(int numerator, int denominator) {
-    Command command(Command::SetTransportPosition);
-    command.timeSig.num = numerator;
-    command.timeSig.denom = denominator;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportPlaying(bool play) {
-    Command command(Command::SetTransportPosition);
-    command.b = play;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportRecording(bool record) {
-    Command command(Command::SetTransportRecording);
-    command.b = record;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportAutomationWriting(bool writing) {
-    Command command(Command::SetTransportAutomationWriting);
-    command.b = writing;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportAutomationReading(bool reading) {
-    Command command(Command::SetTransportAutomationReading);
-    command.b = reading;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportCycleActive(bool active) {
-    Command command(Command::SetTransportCycleActive);
-    command.b = active;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportCycleStart(double beat) {
-    Command command(Command::SetTransportCycleStart);
-    command.f = beat;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportCycleEnd(double beat) {
-    Command command(Command::SetTransportCycleEnd);
-    command.f = beat;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setTransportPosition(double beat) {
-    Command command(Command::SetTransportPosition);
-    command.f = beat;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::sendMidiEvent(const MidiEvent& event) {
-    Command command(Command::SendMidi);
-    auto& midi = command.midi;
-    memcpy(midi.data, event.data, sizeof(event.data));
-    midi.delta = event.delta;
-    midi.detune = event.detune;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::sendSysexEvent(const SysexEvent& event) {
-    // copy data (LATER improve)
-    auto data = (char *)malloc(event.size);
-    memcpy(data, event.data, event.size);
-
-    Command command(Command::SendSysex);
-    auto& sysex = command.sysex;
-    sysex.data = data;
-    sysex.size = event.size;
-    sysex.delta = event.delta;
-    pushCommand(command);
-}
-
-void ThreadedPlugin::setParameter(int index, float value, int sampleOffset) {
-    Command command(Command::SetParamValue);
-    auto& param = command.paramValue;
-    param.index = index;
-    param.value = value;
-    param.offset = sampleOffset;
-    pushCommand(command);
-}
-
-bool ThreadedPlugin::setParameter(int index, const std::string& str, int sampleOffset) {
-    // copy string (LATER improve)
-    auto buf = (char *)malloc(str.size() + 1);
-    memcpy(buf, str.data(), str.size() + 1);
-
-    Command command(Command::SetParamString);
-    auto& param = command.paramString;
-    param.index = index;
-    param.string = buf;
-    param.offset = sampleOffset;
-    pushCommand(command);
-
-    return true; // what shall we do?
 }
 
 float ThreadedPlugin::getParameter(int index) const {
@@ -424,15 +379,10 @@ float ThreadedPlugin::getParameter(int index) const {
     // instead we need one block of delay.
     return plugin_->getParameter(index);
 }
+
 std::string ThreadedPlugin::getParameterString(int index) const {
     // see above
     return plugin_->getParameterString(index);
-}
-
-void ThreadedPlugin::setProgram(int program) {
-    Command command(Command::SetProgram);
-    command.i = program;
-    pushCommand(command);
 }
 
 void ThreadedPlugin::setProgramName(const std::string& name) {
@@ -525,6 +475,83 @@ void ThreadedPlugin::writeBankData(std::string& buffer) {
 intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, float opt) {
     LockGuard lock(mutex_);
     return plugin_->vendorSpecific(index, value, p, opt);
+}
+
+/*/////////////////// ThreadedPluginListener ////////////////////*/
+
+void ThreadedPluginListener::parameterAutomated(int index, float value) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
+        Command e(Command::ParamAutomated);
+        e.paramAutomated.index = index;
+        e.paramAutomated.value = value;
+
+        owner_->pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->parameterAutomated(index, value);
+        }
+    }
+}
+
+void ThreadedPluginListener::latencyChanged(int nsamples) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
+        Command e(Command::LatencyChanged);
+        e.i = nsamples;
+
+        owner_->pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->latencyChanged(nsamples);
+        }
+    }
+}
+
+void ThreadedPluginListener::pluginCrashed(){
+    // UI or NRT thread
+    auto listener = owner_->listener_.lock();
+    if (listener){
+        listener->pluginCrashed();
+    }
+}
+
+void ThreadedPluginListener::midiEvent(const MidiEvent& event) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
+        Command e(Command::MidiReceived);
+        e.midi = event;
+
+        owner_->pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->midiEvent(event);
+        }
+    }
+}
+
+void ThreadedPluginListener::sysexEvent(const SysexEvent& event) {
+    if (std::this_thread::get_id() == owner_->rtThread_){
+        // deep copy!
+        auto data = new char[event.size];
+        memcpy(data, event.data, event.size);
+
+        Command e(Command::SysexReceived);
+        e.sysex.data = data;
+        e.sysex.size = event.size;
+        e.sysex.delta = event.delta;
+
+        owner_->pushEvent(e);
+    } else {
+        // UI or NRT thread
+        auto listener = owner_->listener_.lock();
+        if (listener){
+            listener->sysexEvent(event);
+        }
+    }
 }
 
 } // vst

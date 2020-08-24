@@ -14,6 +14,7 @@ VSTPluginController {
 	var <>midiReceived;
 	var <>sysexReceived;
 	var <>latencyChanged;
+	var <>pluginCrashed;
 	// private
 	var oscFuncs;
 	var <paramCache; // only for dependants
@@ -217,6 +218,12 @@ VSTPluginController {
 			var nsamples = msg[3].asInteger;
 			latencyChanged.value(nsamples);
 		}, '/vst_latency'));
+		// plugin crashed
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			"plugin '%' crashed".format(this.info.name).warn;
+			this.close;
+			pluginCrashed.value;
+		}, '/vst_crash'));
 		// MIDI received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			// convert to integers and pass as args to action
@@ -269,17 +276,27 @@ VSTPluginController {
 		};
 		browser.front;
 	}
-	open { arg path, editor=false, verbose=false, action, threaded=false;
+	open { arg path, editor=false, verbose=false, action, multiThreading=false, mode;
+		var intMode = 0;
 		loading.if {
 			"already opening!".error;
 			^this;
 		};
 		loading = true;
-		// threaded is not supported for Supernova
-		threaded.if {
+		// multi-threading is not supported for Supernova
+		multiThreading.if {
 			Server.program.find("supernova").notNil.if {
-				"multiprocessing option not supported for Supernova; use ParGroup instead.".warn;
+				"'multiThreading' option is not supported on Supernova; use ParGroup instead.".warn;
 			}
+		};
+		// check mode
+		mode.notNil.if {
+			intMode = switch(mode.asSymbol,
+				\auto, 0,
+				\sandbox, 1,
+				\bridge, 2,
+				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
+			);
 		};
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
@@ -319,7 +336,7 @@ VSTPluginController {
 					latency.notNil.if { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
-				this.sendMsg('/open', info.key, editor.asInteger, threaded.asInteger);
+				this.sendMsg('/open', info.key, editor.asInteger, multiThreading.asInteger, intMode);
 			} {
 				"couldn't open '%'".format(path).error;
 				// just notify failure, but keep old plugin (if present)
@@ -328,14 +345,25 @@ VSTPluginController {
 			};
 		});
 	}
-	openMsg { arg path, editor=false;
+	openMsg { arg path, editor=false, multiThreading=false, mode;
+		var intMode = 0;
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
 			this.info !? { path = this.info.key } ?? {
 				MethodError("'path' is nil but VSTPlugin doesn't have a plugin info", this).throw;
 			}
 		};
-		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger);
+		// check mode
+		mode.notNil.if {
+			intMode = switch(mode.asSymbol,
+				\auto, 0,
+				\sandbox, 1,
+				\bridge, 2,
+				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
+			);
+		};
+		^this.makeMsg('/open', path.asString.standardizePath,
+			editor.asInteger, multiThreading.asInteger, intMode);
 	}
 	prClear {
 		info !? { info.removeDependant(this) };

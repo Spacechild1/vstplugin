@@ -86,6 +86,10 @@ void SpinLock::lock(){
     } while (locked_.exchange(true, std::memory_order_acquire));
 }
 
+bool SpinLock::try_lock(){
+    return !locked_.exchange(true, std::memory_order_acquire);
+}
+
 void SpinLock::unlock(){
     locked_.store(false, std::memory_order_release);
 }
