@@ -130,9 +130,9 @@ IPlugin::ptr PluginInfo::create(bool editor, bool threaded, Mode mode) const {
         return nullptr;
     }
     IPlugin::ptr plugin;
-#if USE_BRIDGE || 1
+#if USE_BRIDGE
     if ((mode == Mode::Bridged) || (mode == Mode::Sandboxed) ||
-         ((mode == Mode::Auto) && bridged())){
+            ((mode == Mode::Auto) && bridged())){
         plugin = makeBridgedPlugin(factory, name, editor, mode == Mode::Sandboxed);
     }
     else

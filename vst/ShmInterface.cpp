@@ -485,9 +485,28 @@ void ShmInterface::openShm(const std::string &path, bool create){
                     + std::to_string(GetLastError()));
     }
 
-
     // try to lock the file to physical memory
-    if (create && !VirtualLock(data, totalSize)){
+    // first we have to increase the minimum working set size
+    SIZE_T minSize, maxSize;
+    if (GetProcessWorkingSetSize(GetCurrentProcess(), &minSize, &maxSize)){
+        SHM_DEBUG("working set size: min = " << minSize << ", max = " << maxSize);
+        SHM_DEBUG("request size: " << totalSize);
+        if (totalSize > minSize){
+            minSize += totalSize;
+        }
+        if (totalSize > maxSize){
+            maxSize += totalSize;
+        }
+       if (!SetProcessWorkingSetSize(GetCurrentProcess(), minSize, maxSize)){
+            LOG_WARNING("ShmInterface: SetProcessWorkingSetSize() failed with "
+                        << GetLastError());
+        }
+    } else {
+        LOG_WARNING("ShmInterface: GetProcessWorkingSetSize() failed with "
+                    << GetLastError());
+    }
+    // now we can attempt to lock the memory
+    if (!VirtualLock(data, totalSize)){
         LOG_WARNING("ShmInterface: VirtualLock() failed with "
                     << GetLastError());
     }
@@ -533,7 +552,7 @@ void ShmInterface::openShm(const std::string &path, bool create){
     }
 
     // try to lock the file to physical memory
-    if (create && (mlock(data, totalSize) != 0)){
+    if (mlock(data, totalSize) != 0){
         LOG_WARNING("ShmInterface: mlock() failed with "
                     << strerror(errno));
     }
