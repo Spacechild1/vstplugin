@@ -792,7 +792,6 @@ to build your own preset management in Pd:, f 49;
 #X text 132 363 has sysex output (0|1);
 #X text 131 386 is bridged (0|1);
 #X restore 306 547 pd info;
-#X text 28 195 additionally \, you can use the following methods:;
 #X text 100 495 get info about currently loaded plugin;
 #X msg 48 444 search_clear;
 #X text 138 444 clear the plugin dictionary;
@@ -809,35 +808,16 @@ paths. relative paths are resolved to the current patch directory.
 #X msg 25 329 search -a;
 #X text 92 329 search asynchronously, f 22;
 #X text 28 144 [vstplugin~ -s];
-#X text 29 115 you can use the -s flag to perform a search in the standard
-VST directories on object creation:, f 49;
-#X text 28 162 the search is guaranteed to run only once \, even if
-several objects receive this flag., f 44;
-#X text 14 24 searched plugins are stored in a global dictionary using
-their name as the key \, which can be used as the creation argument
-to [vstplugin~] or in the [open( message.;
 #X msg 54 469 search_clear 1;
 #X text 156 468 clear and delete cache file;
-#X text 12 63 (whitespace in names is replaced by underscores.);
-#X text 14 84 on startup \, plugin definitions are read from a cache
-file - which is updated after every new search operation., f 57;
 #X msg 30 393 search -n;
 #X text 98 394 search but don't update the cache file;
-#X obj 384 326 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 384 404 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 388 329 NOTE:;
-#X text 384 406 the reason is that every plugin has to probed in a
-seperate process to catch bad plugins., f 45;
-#X text 383 435 however \, the next search in the same directory will
-be almost instantaneous because the plugin info is read from the cache
-file., f 47;
-#X text 384 352 the first search in a directory might take from a couple
-of seconds to several minutes \, depending on the number of plugins
-(shell plugins like Waves contain hundreds of sub-plugins!), f 50
-;
+#X text 388 407 NOTE:;
 #X text 91 347 this prevents Pd from freezing till the search has finished
 and it lets you see the progress in the console., f 37;
-#X text 383 478 [vstpluginbrowser] uses [search -a( by default to avoid
+#X text 383 556 [vstpluginbrowser] uses [search -a( by default to avoid
 freezing Pd for an indeterminate amount of time., f 56;
 #X msg 37 418 search_stop;
 #X text 119 417 stop the current (asynchronous) search;
@@ -847,19 +827,44 @@ freezing Pd for an indeterminate amount of time., f 56;
 #X text 42 263 and a final;
 #X msg 116 263 search_done;
 #X text 192 263 message;
+#X text 12 63 (Whitespace in names is replaced by underscores.);
+#X text 14 84 On startup \, plugin definitions are read from a cache
+file - which is updated after every new search operation., f 57;
+#X text 29 115 You can use the -s flag to perform a search in the standard
+VST directories on object creation:, f 49;
+#X text 28 162 The search is guaranteed to run only once \, even if
+several objects receive this flag., f 44;
+#X text 28 195 Additionally \, you can use the following methods:;
+#X text 384 430 The first search in a directory might take from a couple
+of seconds to several minutes \, depending on the number of plugins
+(shell plugins like Waves contain hundreds of sub-plugins!), f 50
+;
+#X text 384 484 The reason is that every plugin has to probed in a
+seperate process to catch bad plugins., f 45;
+#X text 383 513 However \, subsequent searches in the same directory
+will be almost instantaneous because the plugin info is read from the
+cache file., f 55;
+#X text 382 322 Since v0.4 you use 32-bit plugins on a 64-bit Pd and
+vice versa!, f 54;
+#X text 382 352 Incompatible plugins automatically run in a shared
+subprocess (= "bit bridging") \, which incurs some CPU overhead.,
+f 54;
+#X text 14 24 Plugin definitions are stored in a global dictionary
+using their name as the key \, which can be used as the creation argument
+to [vstplugin~] or in the [open( message.;
 #X connect 1 0 0 0;
 #X connect 3 0 0 0;
 #X connect 4 0 3 0;
 #X connect 5 0 4 0;
-#X connect 22 0 0 0;
-#X connect 26 0 0 0;
-#X connect 27 0 26 0;
-#X connect 28 0 0 0;
+#X connect 21 0 0 0;
+#X connect 25 0 0 0;
+#X connect 26 0 25 0;
+#X connect 27 0 0 0;
+#X connect 30 0 0 0;
 #X connect 31 0 0 0;
-#X connect 32 0 0 0;
-#X connect 38 0 0 0;
+#X connect 34 0 0 0;
+#X connect 36 0 0 0;
 #X connect 42 0 0 0;
-#X connect 51 0 0 0;
 #X restore 394 510 pd search;
 #X f 14;
 #X text 392 488 search + info;

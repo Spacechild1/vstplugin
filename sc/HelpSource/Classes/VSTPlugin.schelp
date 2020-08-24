@@ -226,7 +226,7 @@ ARGUMENT:: verbose
 a Boolean telling if the Server should post a message for each VST plugin being found.
 
 The message shows the file path, name and probe result. Probing can fail if the file is
-not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
+not a VST plugin or if it has the wrong architecture (and cannot be "bridged").
 
 ARGUMENT:: wait
 The wait time between OSC messages.
@@ -255,8 +255,11 @@ DISCUSSION::
 Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client
 and can be retrieved with its key (see link::#Plugin Management::).
 
-If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong architecture.
-note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
+If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong CPU architecture (and can't be bridged).
+
+note::Since v0.4 you can run 32-bit plugins on a 64-bit Server and vice verca!
+
+Incompatible plugins will automatically run in a shared subprocess (= bit bridging), which incurs some CPU overhead. Bridging can also be explictly enabled for regular plugins, see the code::mode:: argument in link::Classes/VSTPluginController#-open::.::
 
 A new search doesn't automatically clear the dictionary, but existing keys are overwritten.
 You can clear the dictionary explicitly with link::#*clear::.
