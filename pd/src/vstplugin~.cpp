@@ -1407,6 +1407,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
                 threaded = true;
             } else if (!strcmp(flag, "-p")){
                 mode = PluginInfo::Mode::Sandboxed;
+            } else if (!strcmp(flag, "-b")){
+                mode = PluginInfo::Mode::Bridged;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
@@ -2747,6 +2749,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 threaded = true;
             } else if (!strcmp(flag, "-p")){
                 mode = PluginInfo::Mode::Sandboxed;
+            } else if (!strcmp(flag, "-b")){
+                mode = PluginInfo::Mode::Bridged;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }

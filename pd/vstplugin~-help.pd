@@ -338,7 +338,7 @@ paths (see 'search'), f 51;
 and 2 input and 4 output channels., f 49;
 #X text 38 499 open the VST3 version of "GChorus" with the Pd editor
 and 2 input and 2 output channels., f 49;
-#X text 28 220 -e \, -t \, -p: see [open( method.;
+#X text 28 220 -e \, -t \, -p \, -b: see [open( method.;
 #X restore 23 74 pd creation arguments;
 #N canvas 387 235 555 431 advanced 0;
 #X obj 23 386 s \$0-msg;
@@ -928,11 +928,11 @@ can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 58
 ;
-#X text 157 278 on success and;
-#X text 22 277 outputs;
-#X msg 251 278 open 0;
-#X text 299 278 on failure;
-#X msg 74 277 open 1 <key>;
+#X text 157 327 on success and;
+#X text 22 326 outputs;
+#X msg 251 327 open 0;
+#X text 299 327 on failure;
+#X msg 74 326 open 1 <key>;
 #X obj 468 292 pack s f;
 #X obj 513 270 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
@@ -942,27 +942,32 @@ VST search paths are searched *recursively* (see [pd search]), f 58
 1;
 #X msg 483 449 open \$1 \$2;
 #X symbolatom 458 87 10 0 0 0 - - -;
-#X text 22 217 async:;
-#X text 50 234 0: load synchronously (default);
+#X text 22 266 async:;
+#X text 50 283 0: load synchronously (default);
 #X text 568 185 a) by KEY:;
 #X text 563 333 b) by FILE NAME:;
 #X text 465 162 1) search;
 #X text 465 229 2) open by key;
 #X text 19 43 -e: use the VST editor;
-#X text 23 198 key/path: plugin key or file path (see below);
-#X text 50 250 1: load asynchronously;
+#X text 23 247 key/path: plugin key or file path (see below);
+#X text 50 299 1: load asynchronously;
 #X obj 18 19 cnv 20 240 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 20 60 -t: process plugin in a seperate thread to utilize more
 CPU cores., f 67;
 #X text 44 75 NOTE: this introduces a delay of 1 block.;
 #X text 24 21 arguments: [-e] [-t] key/path [async];
-#X text 20 94 -p: run plugin in a seperate process (= sandbox).;
 #X text 45 113 This makes sure that the plugin can safely crash without
 taking down the whole Pd process. Use this for buggy plugins or safe
 experimentation., f 57;
 #X text 46 155 NOTE: switching between processes incurs some fixed
 CPU overhead \, which is less significant for higher blocksizes.;
+#X text 20 94 -p: run plugin in a dedicated subprocess (= sandbox).
+;
+#X text 19 184 -b: run plugin in a shared subprocess.;
+#X text 44 202 This uses less memory and possibly less CPU \, but if
+one plugin crashes \, it will inevitably take down all other plugins
+in the same process.;
 #X connect 0 0 1 0;
 #X connect 1 0 32 0;
 #X connect 2 0 3 0;
