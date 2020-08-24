@@ -390,16 +390,17 @@ post the plugin info to the console if loaded successfully.
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
-ARGUMENT:: threaded
+ARGUMENT:: multiThreading
 process the plugin in a seperate worker thread to utilize more CPU cores.
-note::This option is ignored for Supernova, which already offers multiprocessing with ParGroup.::
-note::Multiprocessing introduces a delay of 1 block!::
+note::This option is ignored for Supernova, which already offers multithreading with ParGroup.::
+note::Multithreading introduces a delay of 1 block!::
 
 ARGUMENT:: mode
 select a run mode.
 table::
-## \auto || the default mode.
-## \sandbox || run the plugin in a seperate process. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.
+## \auto || normal mode (default).
+## \sandbox || run the plugin in a dedicated subprocess. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.
+## \bridge || run the plugin in a shared subprocess. This uses less memory and possibly less CPU, but if one plugin crashes, it will inevitably take down all other plugins in the same process.
 ::
 note::Any run mode except for code::\auto:: incurs some fixed CPU overhead, which is less significant for larger blocksizer (see link::Classes/ServerOptions#-blockSize::).::
 
@@ -416,8 +417,8 @@ If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*a
 ARGUMENT:: editor
 request the VST editor.
 
-ARGUMENT:: threaded
-enable multiprocessing.
+ARGUMENT:: multiThreading
+enable multithreading.
 
 ARGUMENT:: mode
 select a run mode.

@@ -365,7 +365,7 @@ SynthDef.new(\test, { arg bus = 0;
 )</textarea>
 </div><h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
 <div id='inheritedclassmets'></div><h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-open' href='./../Overviews/Methods.html#open'>open</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>verbose: false</span>, <span class='argstr'>action</span>, <span class='argstr'>threaded: false</span>, <span class='argstr'>mode</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-open' href='./../Overviews/Methods.html#open'>open</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>verbose: false</span>, <span class='argstr'>action</span>, <span class='argstr'>multiThreading: false</span>, <span class='argstr'>mode</span>)</h3>
 <div class='method'>
 <p>open a VST plugin.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -393,23 +393,23 @@ SynthDef(\chorus, { arg bus=0;
 <tr><td class='argumentname'>editor<td class='argumentdesc'>
 <p>request the VST plugin editor.<div class='note'><span class='notelabel'>NOTE:</span> On macOS this only works with SuperCollider 3.11 and above!</div><tr><td class='argumentname'>verbose<td class='argumentdesc'>
 <p>post the plugin info to the console if loaded successfully.<tr><td class='argumentname'>action<td class='argumentdesc'>
-<p>an action to be called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>threaded<td class='argumentdesc'>
-<p>process the plugin in a seperate worker thread to utilize more CPU cores.<div class='note'><span class='notelabel'>NOTE:</span> This option is ignored for Supernova, which already offers multiprocessing with ParGroup.</div>
-<p><div class='note'><span class='notelabel'>NOTE:</span> Multiprocessing introduces a delay of 1 block!</div><tr><td class='argumentname'>mode<td class='argumentdesc'>
+<p>an action to be called with <code>this</code> and a Boolean (success/fail).<tr><td class='argumentname'>multiThreading<td class='argumentdesc'>
+<p>process the plugin in a seperate worker thread to utilize more CPU cores.<div class='note'><span class='notelabel'>NOTE:</span> This option is ignored for Supernova, which already offers multithreading with ParGroup.</div>
+<p><div class='note'><span class='notelabel'>NOTE:</span> Multithreading introduces a delay of 1 block!</div><tr><td class='argumentname'>mode<td class='argumentdesc'>
 <p>select a run mode.<table>
-<tr><td>\auto<td>the default mode.<tr><td>\sandbox<td>run the plugin in a seperate process. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.</table>
+<tr><td>\auto<td>normal mode (default).<tr><td>\sandbox<td>run the plugin in a dedicated subprocess. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.<tr><td>\bridge<td>run the plugin in a shared subprocess. This uses less memory and possibly less CPU, but if one plugin crashes, it will inevitably take down all other plugins in the same process.</table>
 
 <p><div class='note'><span class='notelabel'>NOTE:</span> Any run mode except for <code>\auto</code> incurs some fixed CPU overhead, which is less significant for larger blocksizer (see <a href="./..\Classes/ServerOptions.html#-blockSize">ServerOptions: -blockSize</a>).</div></table><h4>Discussion:</h4>
 
-<p>This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-openMsg' href='./../Overviews/Methods.html#openMsg'>openMsg</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>threaded: false</span>, <span class='argstr'>mode</span>)</h3>
+<p>This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).</div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-openMsg' href='./../Overviews/Methods.html#openMsg'>openMsg</a>(<span class='argstr'>path</span>, <span class='argstr'>editor: false</span>, <span class='argstr'>multiThreading: false</span>, <span class='argstr'>mode</span>)</h3>
 <div class='method'>
 <p><h4>Arguments:</h4>
 <table class='arguments'>
 <tr><td class='argumentname'>path<td class='argumentdesc'>
 <p>the plugin name/key or file path. Relative paths are resolved to the standard VST directories.
 <p>If the VSTPlugin UGen holds a plugin description (see <a href="./..\Classes/VSTPlugin.html#*ar">VSTPlugin: *ar</a>), the <code>path</code> argument can be deduced and therefor ommitted.<tr><td class='argumentname'>editor<td class='argumentdesc'>
-<p>request the VST editor.<tr><td class='argumentname'>threaded<td class='argumentdesc'>
-<p>enable multiprocessing.<tr><td class='argumentname'>mode<td class='argumentdesc'>
+<p>request the VST editor.<tr><td class='argumentname'>multiThreading<td class='argumentdesc'>
+<p>enable multithreading.<tr><td class='argumentname'>mode<td class='argumentdesc'>
 <p>select a run mode.</table><h4>Returns:</h4>
 <div class='returnvalue'>
 <p>the message for an <em>open</em> command (see <a href="#-open">-open</a>).</div></div><h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-close' href='./../Overviews/Methods.html#close'>close</a></h3>

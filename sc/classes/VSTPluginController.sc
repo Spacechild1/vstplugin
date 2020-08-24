@@ -276,24 +276,25 @@ VSTPluginController {
 		};
 		browser.front;
 	}
-	open { arg path, editor=false, verbose=false, action, threaded=false, mode;
+	open { arg path, editor=false, verbose=false, action, multiThreading=false, mode;
 		var intMode = 0;
 		loading.if {
 			"already opening!".error;
 			^this;
 		};
 		loading = true;
-		// threaded is not supported for Supernova
-		threaded.if {
+		// multi-threading is not supported for Supernova
+		multiThreading.if {
 			Server.program.find("supernova").notNil.if {
-				"multiprocessing option not supported for Supernova; use ParGroup instead.".warn;
+				"'multiThreading' option is not supported on Supernova; use ParGroup instead.".warn;
 			}
 		};
 		// check mode
 		mode.notNil.if {
-			intMode = switch(mode,
+			intMode = switch(mode.asSymbol,
 				\auto, 0,
 				\sandbox, 1,
+				\bridge, 2,
 				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
 			);
 		};
@@ -335,7 +336,7 @@ VSTPluginController {
 					latency.notNil.if { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
-				this.sendMsg('/open', info.key, editor.asInteger, threaded.asInteger, intMode);
+				this.sendMsg('/open', info.key, editor.asInteger, multiThreading.asInteger, intMode);
 			} {
 				"couldn't open '%'".format(path).error;
 				// just notify failure, but keep old plugin (if present)
@@ -344,8 +345,8 @@ VSTPluginController {
 			};
 		});
 	}
-	openMsg { arg path, editor=false, threaded=false, mode;
-		var intMode;
+	openMsg { arg path, editor=false, multiThreading=false, mode;
+		var intMode = 0;
 		// if path is nil we try to get it from VSTPlugin
 		path ?? {
 			this.info !? { path = this.info.key } ?? {
@@ -354,13 +355,15 @@ VSTPluginController {
 		};
 		// check mode
 		mode.notNil.if {
-			intMode = switch(mode,
+			intMode = switch(mode.asSymbol,
 				\auto, 0,
 				\sandbox, 1,
+				\bridge, 2,
 				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
 			);
 		};
-		^this.makeMsg('/open', path.asString.standardizePath, editor.asInteger, threaded.asInteger, intMode);
+		^this.makeMsg('/open', path.asString.standardizePath,
+			editor.asInteger, multiThreading.asInteger, intMode);
 	}
 	prClear {
 		info !? { info.removeDependant(this) };

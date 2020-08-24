@@ -1827,9 +1827,19 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     const char *path = args->gets();
     auto editor = args->geti();
     auto threaded = args->geti();
-    auto intMode = args->geti();
-    auto mode = (intMode == 1) ?
-                PluginInfo::Mode::Sandboxed : PluginInfo::Mode::Auto;
+
+    PluginInfo::Mode mode;
+    switch (args->geti()){
+    case 1:
+        mode = PluginInfo::Mode::Sandboxed;
+        break;
+    case 2:
+        mode = PluginInfo::Mode::Bridged;
+        break;
+    default:
+        mode = PluginInfo::Mode::Auto;
+        break;
+    }
 
     if (path) {
         unit->delegate().open(path, editor, threaded, mode);
