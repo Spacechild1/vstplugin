@@ -3,6 +3,12 @@
 #include <string.h>
 #include <assert.h>
 
+#if 0
+#define THREAD_DEBUG(x) LOG_DEBUG(x)
+#else
+#define THREAD_DEBUG(x)
+#endif
+
 namespace vst {
 
 /*/////////////////// DSPThreadPool /////////////////////////*/
@@ -17,17 +23,17 @@ namespace vst {
 
 DSPThreadPool::DSPThreadPool() {
 #if 0
-    LOG_DEBUG("Align of DSPThreadPool: " << alignof(*this));
-    LOG_DEBUG("DSPThreadPool address: " << this);
-    LOG_DEBUG("pushLock address: " << &pushLock_);
-    LOG_DEBUG("popLock address: " << &popLock_);
+    THREAD_DEBUG("Align of DSPThreadPool: " << alignof(*this));
+    THREAD_DEBUG("DSPThreadPool address: " << this);
+    THREAD_DEBUG("pushLock address: " << &pushLock_);
+    THREAD_DEBUG("popLock address: " << &popLock_);
 #endif
 
     running_ = true;
 
     //  number of available hardware threads minus one (= the main audio thread)
     int numThreads = std::max<int>(std::thread::hardware_concurrency() - 1, 1);
-    LOG_DEBUG("number of DSP helper threads: " << numThreads);
+    THREAD_DEBUG("number of DSP helper threads: " << numThreads);
 
     for (int i = 0; i < numThreads; ++i){
         std::thread thread([this, i](){
@@ -47,7 +53,7 @@ DSPThreadPool::DSPThreadPool() {
                 // wait for more
                 event_.wait();
 
-                LOG_DEBUG("DSP thread " << i << " woke up");
+                THREAD_DEBUG("DSP thread " << i << " woke up");
             }
         });
     #if !DSPTHREADPOOL_JOIN
@@ -78,7 +84,7 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     pushLock_.lock();
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
-    LOG_DEBUG("DSPThreadPool::push");
+    THREAD_DEBUG("DSPThreadPool::push");
     event_.signal();
     return result;
 }
