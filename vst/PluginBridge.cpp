@@ -40,9 +40,9 @@ PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
         // create shared bridge
         LOG_DEBUG("create shared plugin bridge for " << cpuArchToString(arch));
         bridge = std::make_shared<PluginBridge>(arch, true);
-        gPluginBridgeMap.emplace(arch, bridge);
+        gPluginBridgeMap[arch] = bridge; // insert/assign
 
-         WatchDog::instance().registerProcess(bridge);
+        WatchDog::instance().registerProcess(bridge);
     }
 
     return bridge;
