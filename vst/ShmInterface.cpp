@@ -18,6 +18,12 @@
 # endif
 #endif
 
+#if 0
+#define SHM_DEBUG(x) LOG_DEBUG(x)
+#else
+#define SHM_DEBUG(x)
+#endif
+
 namespace vst {
 
 constexpr size_t align_to(size_t s, size_t alignment){
@@ -38,7 +44,7 @@ ShmChannel::ShmChannel(Type type, int32_t size,
 
 void ShmChannel::HandleDeleter::operator ()(void *handle){
 #if defined(_WIN32)
-    // LOG_DEBUG("close event " << handle);
+    // SHM_DEBUG("close event " << handle);
     CloseHandle((HANDLE)handle);
 #elif defined(__APPLE__)
     sem_close((sem_t *)handle);
@@ -57,7 +63,7 @@ ShmChannel::~ShmChannel(){
         }
     }
 #endif
-    // LOG_DEBUG("~ShmChannel");
+    // SHM_DEBUG("~ShmChannel");
 }
 
 size_t ShmChannel::peekMessage() const {
@@ -203,7 +209,7 @@ void ShmChannel::waitReply(){
 }
 
 void ShmChannel::init(char *data, ShmInterface& shm, int num){
-    LOG_DEBUG("init channel " << num);
+    SHM_DEBUG("init channel " << num);
     header_ = reinterpret_cast<Header *>(data);
     if (owner_){
         header_->size = totalSize_;
@@ -224,7 +230,7 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         type_ = (Type)header_->type;
         name_ = header_->name;
     }
-    LOG_DEBUG("initEvent");
+    SHM_DEBUG("initEvent");
     initEvent(eventA_, header_->event1);
     if (type_ == Request){
         initEvent(eventB_, header_->event2);
@@ -238,21 +244,21 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         data_ = reinterpret_cast<Data *>(data + header_->offset);
     }
 
-    LOG_DEBUG("init ShmChannel " << num << " (" << name_
+    SHM_DEBUG("init ShmChannel " << num << " (" << name_
               << "): buffer size = " << data_->capacity
               << ", total size = " << totalSize_
               << ", start address = " << (void *)data);
 }
 
 void ShmChannel::initEvent(Handle& event, const char *data){
-    // LOG_DEBUG("ShmChannel: init event " << which);
+    // SHM_DEBUG("ShmChannel: init event " << which);
 #if defined(_WIN32)
     // named Event
     if (owner_){
         event.reset(CreateEventA(0, 0, 0, data));
         if (event){
             if (GetLastError() != ERROR_ALREADY_EXISTS){
-                LOG_DEBUG("ShmChannel: created Event " << data);
+                SHM_DEBUG("ShmChannel: created Event " << data);
             } else {
                 throw Error(Error::SystemError,
                             "CreateEvent() failed - already exists!");
@@ -264,13 +270,13 @@ void ShmChannel::initEvent(Handle& event, const char *data){
     } else {
         event.reset(OpenEventA(EVENT_ALL_ACCESS, 0, data));
         if (event){
-            LOG_DEBUG("ShmChannel: opened Event " << data);
+            SHM_DEBUG("ShmChannel: opened Event " << data);
         } else {
             throw Error(Error::SystemError, "OpenEvent() failed with "
                         + std::to_string(GetLastError()));
         }
     }
-    LOG_DEBUG("create event " << event.get());
+    SHM_DEBUG("create event " << event.get());
 #elif defined(__APPLE__)
     // named semaphore
     if (owner_){
@@ -336,7 +342,7 @@ ShmInterface::ShmInterface(){}
 
 ShmInterface::~ShmInterface(){
     closeShm();
-    LOG_DEBUG("closed ShmInterface");
+    SHM_DEBUG("closed ShmInterface");
 }
 
 void ShmInterface::connect(const std::string &path){
@@ -345,9 +351,9 @@ void ShmInterface::connect(const std::string &path){
     }
 
     openShm(path, false);
-    LOG_DEBUG("ShmInterface: connected to " << path);
+    SHM_DEBUG("ShmInterface: connected to " << path);
     auto header = reinterpret_cast<Header *>(data_);
-    LOG_DEBUG("total size: " << header->size);
+    SHM_DEBUG("total size: " << header->size);
 
     // channels_.reserve(header->numChannels);
     for (size_t i = 0; i < header->numChannels; ++i){
