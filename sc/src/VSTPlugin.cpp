@@ -740,8 +740,10 @@ void VSTPlugin::next(int inNumSamples) {
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
     bool suspended = delegate_->suspended();
     if (process && suspended){
-        // if we're temporarily suspended, we have to grab the mutex.
-        // we use a try_lock() and bypass on failure, so we don't block the whole Server.
+        // Whenever an asynchronous command is executing, the plugin is temporarily
+        // suspended. This is mainly for blocking other commands until the async
+        // command has finished. The actual critical section is protected by mutex.
+        // We use tryLock() and bypass on failure, so we don't block the whole Server.
         process = delegate_->tryLock();
         if (!process){
             LOG_DEBUG("couldn't lock mutex");
@@ -768,14 +770,15 @@ void VSTPlugin::next(int inNumSamples) {
         }
 
         // parameter automation
+        // (check paramState_ in case RTAlloc failed)
         if (paramState_) {
-            int nparam = plugin->info().numParameters();
             // automate parameters with mapped control busses
+            int nparams = plugin->info().numParameters();
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
                 uint32 index = m->index;
                 auto type = m->type();
                 uint32 num = m->bus();
-                assert(index < nparam);
+                assert(index < nparams);
                 // Control Bus mapping
                 if (type == Mapping::Control) {
                     float value = readControlBus(num);
@@ -814,12 +817,12 @@ void VSTPlugin::next(int inNumSamples) {
                 }
             }
             // automate parameters with UGen inputs
-            int nparams = numParameterControls();
-            for (int i = 0; i < nparams; ++i) {
+            auto numControls = numParameterControls();
+            for (int i = 0; i < numControls; ++i) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
                 // only if index is not out of range and the parameter is not mapped to a bus
-                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr){
+                if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
                     auto calcRate = mInput[k + 1]->mCalcRate;
                     // audio rate
                     if (calcRate == calc_FullRate) {
