@@ -125,7 +125,7 @@ public:
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
-    void pluginCrashed();
+    void pluginCrashed() override;
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
 

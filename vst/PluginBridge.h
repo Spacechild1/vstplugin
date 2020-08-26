@@ -77,7 +77,7 @@ using NRTChannel = _Channel<SharedMutex>;
 struct ShmUICommand;
 
 class PluginBridge final
-        : std::enable_shared_from_this<PluginBridge> {
+        : public std::enable_shared_from_this<PluginBridge> {
  public:
     using ptr = std::shared_ptr<PluginBridge>;
 

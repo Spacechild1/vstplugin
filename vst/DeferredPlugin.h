@@ -33,7 +33,7 @@ class DeferredPlugin : public IPlugin {
         return true; // what shall we do?
     }
 
-    void setBypass(Bypass state) {
+    void setBypass(Bypass state) override {
         Command command(Command::SetBypass);
         command.i = static_cast<int32_t>(state);
         pushCommand(command);

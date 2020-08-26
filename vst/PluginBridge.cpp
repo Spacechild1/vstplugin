@@ -21,10 +21,10 @@ void NRTChannel::checkError(){
 
 /*//////////////////// PluginBridge /////////////////*/
 
-std::mutex gPluginBridgeMutex;
+static std::mutex gPluginBridgeMutex;
 
 // use std::weak_ptr, so the bridge is automatically closed if it is not used
-std::unordered_map<CpuArch, std::weak_ptr<PluginBridge>> gPluginBridgeMap;
+static std::unordered_map<CpuArch, std::weak_ptr<PluginBridge>> gPluginBridgeMap;
 
 PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
     PluginBridge::ptr bridge;
