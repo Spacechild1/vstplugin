@@ -6,7 +6,9 @@
 #endif
 
 #include <iostream>
+#include <dispatch/dispatch.h>
 
+// CocoaEditorWindow
 
 @implementation CocoaEditorWindow {}
 
@@ -47,8 +49,23 @@
 - (void)updateEditor {
     static_cast<vst::Cocoa::Window *>(owner_)->updateEditor();
 }
+
+@end
+
+// EventLoopProxy
+
+@implementation EventLoopProxy
+- (id)initWithOwner:(vst::Cocoa::EventLoop*)owner {
+    self = [super init];
+    if (!self) return nil;
+
+    owner_ = owner;
+    return self;
 }
 
+- (void)poll {
+    owner_->poll();
+}
 @end
 
 namespace vst {
@@ -178,8 +195,9 @@ EventLoop::EventLoop(){
     }
 
     auto createTimer = [this](){
+        proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
         timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
-                    target:nil
+                    target:proxy_
                     selector:@selector(poll)
                     userInfo:nil
                     repeats:YES];
@@ -193,7 +211,11 @@ EventLoop::EventLoop(){
     }
 }
 
-EventLoop::~EventLoop(){}
+EventLoop::~EventLoop(){
+    [timer_ invalidate];
+    timer_ = nil;
+    [proxy_ release];
+}
 
 UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
                                             void *context){
@@ -209,6 +231,7 @@ void EventLoop::removePollFunction(UIThread::Handle handle){
 }
 
 void EventLoop::poll(){
+    // LOG_DEBUG("poll functions");
     std::lock_guard<std::mutex> lock(pollFunctionMutex_);
     for (auto& it : pollFunctions_){
         it.second();

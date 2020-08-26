@@ -19,6 +19,21 @@
 
 @end
 
+// EventLoopProxy
+
+namespace vst { namespace Cocoa {
+class EventLoop;
+}}
+
+@interface EventLoopProxy : NSObject {
+    vst::Cocoa::EventLoop *owner_;
+}
+
+- (id)initWithOwner:(vst::Cocoa::EventLoop*)owner;
+- (void)poll;
+
+@end
+
 namespace vst {
 namespace Cocoa {
 
@@ -38,9 +53,11 @@ class EventLoop {
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
 
     void removePollFunction(UIThread::Handle handle);
- private:
+
     void poll();
+ private:
     bool haveNSApp_ = false;
+    EventLoopProxy *proxy_;
     NSTimer *timer_;
     UIThread::Handle nextPollFunctionHandle_ = 0;
     std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
