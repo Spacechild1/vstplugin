@@ -729,7 +729,7 @@ t_vsteditor::~t_vsteditor(){
     // prevent memleak with sysex events
     for (auto& e : e_events){
         if (e.type == t_event::Sysex){
-            delete e.sysex.data;
+            delete[] e.sysex.data;
         }
     }
 }
@@ -878,8 +878,8 @@ void t_vsteditor::tick(t_vsteditor *x){
                 SETFLOAT(&msg[i], (unsigned char)e.sysex.data[i]);
             }
             outlet_anything(outlet, gensym("sysex"), n, msg);
-            delete msg;
-            delete e.sysex.data; // free sysex data!
+            delete[] msg;
+            delete[] e.sysex.data; // free sysex data!
             break;
         }
         default:
@@ -1572,21 +1572,18 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!getInt(1, value)) return;
     float opt = atom_getfloatarg(2, argc, argv);
     int size = argc - 3;
-    char *data = nullptr;
+    std::unique_ptr<char[]> data;
     if (size > 0){
-        data = new char[size];
+        data = std::make_unique<char[]>(size);
         for (int i = 0, j = 3; i < size; ++i, ++j){
             data[i] = atom_getfloat(argv + j);
         }
     }
-    intptr_t result = x->x_plugin->vendorSpecific(index, value, data, opt);
+    intptr_t result = x->x_plugin->vendorSpecific(index, value, data.get(), opt);
     t_atom msg[2];
     SETFLOAT(&msg[0], result);
     SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
     outlet_anything(x->x_messout, gensym("vendor_method"), 2, msg);
-    if (data){
-        delete data;
-    }
 }
 
 // print plugin info in Pd console

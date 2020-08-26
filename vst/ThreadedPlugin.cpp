@@ -108,9 +108,9 @@ ThreadedPlugin::~ThreadedPlugin() {
     for (int i = 0; i < 2; ++i){
         for (auto& cmd : commands_[i]){
             if (cmd.type == Command::SetParamString){
-                delete cmd.paramString.display;
+                delete[] cmd.paramString.display;
             } else if (cmd.type == Command::SendSysex){
-                delete cmd.sysex.data;
+                delete[] cmd.sysex.data;
             }
         }
     }
@@ -174,7 +174,7 @@ void ThreadedPlugin::dispatchCommands() {
         case Command::SetParamString:
             plugin_->setParameter(command.paramString.index, command.paramString.display,
                                   command.paramString.offset);
-            delete command.paramString.display; // !
+            delete[] command.paramString.display; // !
             break;
         case Command::SetBypass:
             plugin_->setBypass(static_cast<Bypass>(command.i));
@@ -214,7 +214,7 @@ void ThreadedPlugin::dispatchCommands() {
             break;
         case Command::SendSysex:
             plugin_->sendSysexEvent(command.sysex);
-            delete command.sysex.data; // !
+            delete[] command.sysex.data; // !
             break;
         case Command::SetProgram:
             plugin_->setProgram(command.i);
@@ -334,7 +334,7 @@ void ThreadedPlugin::sendEvents(){
                 break;
             case Command::SysexReceived:
                 listener->sysexEvent(event.sysex);
-                delete event.sysex.data; // delete data!
+                delete[] event.sysex.data; // delete data!
                 break;
             default:
                 break;

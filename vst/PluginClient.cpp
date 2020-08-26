@@ -112,9 +112,9 @@ PluginClient::~PluginClient(){
     // avoid memleak with param string and sysex command
     for (auto& cmd : commands_){
         if (cmd.type == Command::SetParamString){
-            delete cmd.paramString.display;
+            delete[] cmd.paramString.display;
         } else if (cmd.type == Command::SendSysex){
-            delete cmd.sysex.data;
+            delete[] cmd.sysex.data;
         }
     }
     LOG_DEBUG("free PluginClient");
@@ -258,7 +258,7 @@ void PluginClient::sendCommands(RTChannel& channel){
             memcpy(shmCmd->paramString.display,
                    cmd.paramString.display, displayLen);
 
-            delete cmd.paramString.display; // free!
+            delete[] cmd.paramString.display; // free!
 
             channel.addCommand(shmCmd, cmdSize);
             break;
@@ -271,7 +271,7 @@ void PluginClient::sendCommands(RTChannel& channel){
             new (shmCmd) ShmCommand(Command::SetProgramName);
             memcpy(shmCmd->s, cmd.s, len);
 
-            delete cmd.s; // free!
+            delete[] cmd.s; // free!
 
             channel.addCommand(shmCmd, cmdSize);
             break;
@@ -288,7 +288,7 @@ void PluginClient::sendCommands(RTChannel& channel){
             shmCmd->sysex.size = cmd.sysex.size;
             memcpy(shmCmd->sysex.data, cmd.sysex.data, cmd.sysex.size);
 
-            delete cmd.sysex.data; // free!
+            delete[] cmd.sysex.data; // free!
 
             channel.addCommand(shmCmd, cmdSize);
             break;
