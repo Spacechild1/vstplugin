@@ -230,7 +230,6 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         type_ = (Type)header_->type;
         name_ = header_->name;
     }
-    SHM_DEBUG("initEvent");
     initEvent(eventA_, header_->event1);
     if (type_ == Request){
         initEvent(eventB_, header_->event2);
@@ -280,6 +279,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
 #elif defined(__APPLE__)
     // named semaphore
     if (owner_){
+        SHM_DEBUG("ShmChannel: created semaphore " << data);
         // create semaphore and return an error if it already exists
         event.reset(sem_open(data, O_CREAT | O_EXCL, 0755, 0));
     } else {
@@ -290,6 +290,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
         throw Error(Error::SystemError, "sem_open() failed with "
                     + std::string(strerror(errno)));
     }
+    SHM_DEBUG("ShmChannel: opened semaphore " << data);
 #else
     // unnamed semaphore in shared memory segment
     event.reset((void *)data);
@@ -299,6 +300,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
             throw Error(Error::SystemError, "sem_init() failed: "
                         + std::string(strerror(errno)));
         }
+        SHM_DEBUG("ShmChannel: created semaphore");
     }
 #endif
 }
