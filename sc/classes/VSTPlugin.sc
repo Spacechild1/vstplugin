@@ -740,7 +740,7 @@ VSTPlugin : MultiOutUGen {
 
 	// instance methods
 	init { arg id, info, numOut, numAuxOut, flags, bypass ... args;
-		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, sym, offset=0;
+		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, offset=0;
 		// store id and info (both optional)
 		this.id = id !? { id.asSymbol }; // !
 		this.info = info;
@@ -777,12 +777,16 @@ VSTPlugin : MultiOutUGen {
 		};
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
-			param.isNumber.not.if {
-				info ?? { MethodError("can't resolve parameter '%' without info".format(param), this).throw; };
-				sym = param.asSymbol;
-				param = info.findParamIndex(sym);
-				param ?? { MethodError("unknown parameter '%' for plugin '%'".format(sym, info.name), this).throw; };
-				paramArray[i] = param;
+			var index;
+			param.isValidUGenInput.not.if {
+				(param.isString || param.isKindOf(Symbol)).if {
+					info ?? { MethodError("can't resolve parameter '%' without info".format(param), this).throw; };
+					index = info.findParamIndex(param.asSymbol);
+					index ?? { MethodError("unknown parameter '%' for plugin '%'".format(param, info.name), this).throw; };
+					paramArray[i] = index;
+				} {
+					MethodError("bad parameter index '%'".format(param), this).throw;
+				}
 			};
 		};
 		// reassemble UGen inputs (in correct order)

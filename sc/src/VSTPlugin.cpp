@@ -822,6 +822,7 @@ void VSTPlugin::next(int inNumSamples) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
                 // only if index is not out of range and the parameter is not mapped to a bus
+                // (a negative index effectively deactivates the parameter control)
                 if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
                     auto calcRate = mInput[k + 1]->mCalcRate;
                     // audio rate
