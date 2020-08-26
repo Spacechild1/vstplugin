@@ -36,9 +36,9 @@ typedef unsigned int uint32_t;
 namespace vst {
 
 const int VERSION_MAJOR = 0;
-const int VERSION_MINOR = 3;
-const int VERSION_BUGFIX = 3;
-const int VERSION_PRERELEASE = 0;
+const int VERSION_MINOR = 4;
+const int VERSION_BUGFIX = 0;
+const int VERSION_PRERELEASE = 1;
 
 std::string getVersionString();
 

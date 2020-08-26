@@ -1,4 +1,4 @@
-vstplugin v0.3.3
+vstplugin v0.4.0
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -15,7 +15,8 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
   set/get the plugin state as raw data to build your own preset management
 * MIDI input/output
 * basic sequencing support (for arpeggiators, sequencers etc.)
-
+* bit bridging and sandboxing
+* multithreading
 
 **NOTE:** 64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VSTPlugin.scx and vice versa.
 
