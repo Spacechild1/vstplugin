@@ -13,14 +13,19 @@ static void eventLoopTick(void *x){
     clock_delay(eventLoopClock, EVENT_LOOP_POLL_INT);
 }
 
-// only called from main thread!
 static void initEventLoop(){
     static bool done = false;
     if (!done){
         UIThread::setup();
 
-        eventLoopClock = clock_new(0, (t_method)eventLoopTick);
-        clock_delay(eventLoopClock, 0);
+        // start polling if called from main thread
+        if (UIThread::isCurrentThread()){
+            post("WARNING: the VST GUI currently runs on the audio thread! "
+                 "See the README for more information.");
+
+            eventLoopClock = clock_new(0, (t_method)eventLoopTick);
+            clock_delay(eventLoopClock, 0);
+        }
 
         done = true;
     }
@@ -3193,7 +3198,4 @@ EXPORT void vstplugin_tilde_setup(void){
     readIniFile();
 
     post("vstplugin~ %s", getVersionString().c_str());
-#ifdef __APPLE__
-    post("WARNING: on macOS, the VST GUI must run on the audio thread - use with care!");
-#endif
 }
