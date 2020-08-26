@@ -103,18 +103,18 @@
 #X text 184 490 parameters;
 #X text 273 489 FX programs/banks;
 #N canvas 753 189 627 553 parameter 0;
-#X obj 100 76 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X obj 19 18 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+#X obj 100 76 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
+#X obj 19 18 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 19 124 param_set \$1 \$2;
-#X obj 39 249 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 39 249 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 50 357 param_count;
 #X msg 54 412 param_list;
 #X msg 30 190 param_get \$1;
-#X obj 30 166 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 30 166 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 56 464 param_dump;
 #X obj 19 518 s \$0-msg;
 #X text 158 75 index;
@@ -196,8 +196,8 @@ parameters \,, f 34;
 #X msg 76 288 midi_bend 1 \$1;
 #X obj 79 264 hsl 128 15 -1 1 0 0 empty empty empty -2 -8 0 10 -262144
 -1 -1 0 1;
-#X obj 82 320 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 82 320 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X text 136 35 send raw MIDI message (list of bytes);
 #X text 155 59 send MIDI system exclusive message (list of bytes);
 #X text 49 89 convenience methods:;
@@ -246,7 +246,7 @@ output as;
 #N canvas 814 225 469 439 transport 0;
 #X obj 22 299 s \$0-msg;
 #X msg 22 78 tempo \$1;
-#X obj 22 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
+#X obj 22 56 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 34 137 time_signature \$1 \$2;
 #X msg 34 111 4 4;
@@ -256,8 +256,8 @@ output as;
 #X msg 43 184 play \$1;
 #X obj 43 163 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 51 211 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 51 211 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 59 262 transport_get;
 #X msg 51 229 transport_set \$1;
 #X text 102 183 start/stop sequencing;
@@ -311,7 +311,6 @@ Pd), f 62;
 0;
 #X text 24 368 examples:;
 #X text 11 579 [vstplugin~];
-#X text 25 100 -n: don't use any editor GUI, f 31;
 #X text 57 256 open a plugin on creation (see the 'open' message),
 f 27;
 #X text 39 597 2 in \, 2 out;
@@ -338,7 +337,9 @@ paths (see 'search'), f 51;
 and 2 input and 4 output channels., f 49;
 #X text 38 499 open the VST3 version of "GChorus" with the Pd editor
 and 2 input and 2 output channels., f 49;
-#X text 28 220 -e \, -t \, -p \, -b: see [open( method.;
+#X text 25 220 -e \, -t \, -p \, -b: see [open( method.;
+#X text 25 100 -n: don't use any editor GUI (reduce memory usage),
+f 62;
 #X restore 23 74 pd creation arguments;
 #N canvas 387 235 555 431 advanced 0;
 #X obj 23 386 s \$0-msg;
@@ -377,15 +378,15 @@ the limited precision of decimal numbers in Pd., f 63;
 #X text 391 530 advanced stuff;
 #N canvas 361 4 1180 776 preset 0;
 #X obj 817 393 s \$0-msg;
-#X obj 817 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 817 56 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X text 921 76 set program;
 #X msg 828 109 program_get;
 #X text 908 110 get the current program index;
 #X symbolatom 839 161 10 0 0 2 - - -;
 #X text 979 235 get the name of a program;
-#X obj 850 213 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 850 213 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X msg 871 311 program_count;
 #X text 961 310 get number of programs;
 #X msg 880 358 program_list;
@@ -499,8 +500,8 @@ DAW), f 53;
 #X text 84 160 %PROGRAMDATA%/VST3 Presets/[VENDOR]/[PLUGIN];
 #X restore 288 69 pd more;
 #X msg 50 370 preset_info \$1;
-#X obj 50 349 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
+#X obj 50 349 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+-262144 -1 -1 0 256;
 #X text 109 348 index;
 #X text 243 473 load a preset;
 #N canvas 738 177 650 433 preset-management-example 0;
@@ -526,7 +527,7 @@ your own preset banks in Pd, f 47;
 #X obj 305 131 t b b, f 7;
 #X obj 305 174 until;
 #X msg 305 153 16;
-#X obj 305 218 text set \$0-data 1e+007;
+#X obj 305 218 text set \$0-data 1e+07;
 #X msg 305 195 list;
 #X obj 305 110 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
@@ -868,126 +869,102 @@ to [vstplugin~] or in the [open( message.;
 #X restore 394 510 pd search;
 #X f 14;
 #X text 392 488 search + info;
-#N canvas 261 35 971 554 open 0;
-#X obj 483 357 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#N canvas 261 35 972 523 open 0;
+#X obj 483 327 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 483 378 openpanel;
-#X obj 448 43 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X obj 483 348 openpanel;
+#X obj 448 33 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
-#X obj 448 63 openpanel;
-#X obj 448 475 t a;
-#X msg 448 108 open -e \$1;
-#N canvas 582 228 451 307 editor 0;
-#X text 10 120 on MacOS \, however \, because of technical limitations
-the GUI must run on the main thread - which happens to be the audio
-thread in Pd... until we've found a better solution you are adviced
-to keep the editor window closed in low-latency realtime situations
-to avoid audio hick-ups - or use the Pd editor instead., f 66;
-#X text 12 56 you have to explicitly request the VST editor with [open
--e ...(, f 66;
-#X text 12 79 on Windows and Linux \, the VST editor window runs in
-its own thread which means that automating the GUI shouldn't have a
-noticable effect on audio performance., f 61;
-#X text 9 187 the Pd editor might be better for performance if you
-have lots of plugins. as a rule of thumb only use the VST editor if
-you really need it., f 67;
-#X text 8 233 if don't need any GUI and you're paranoid about performance
-\, use [vstplugin~ -n] to disable any GUI. this saves some memory and
-CPU cycles but it probably won't matter a lot., f 61;
-#X text 12 22 if the plugin has a VST editor it can be shown in a native
-window \, otherwise a canvas with a generic Pd editor is created.,
-f 64;
-#X restore 743 127 pd editor;
-#X f 10;
-#X text 529 36 by default \, a generic Pd editor is created \, use
+#X obj 448 53 openpanel;
+#X obj 448 445 t a;
+#X msg 448 98 open -e \$1;
+#X text 529 26 by default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
-#X obj 448 499 outlet;
-#X text 573 127 more info about the editor:;
-#X text 582 242 VST3 plug-in keys get a '.vst3' extension to distinguish
+#X obj 448 469 outlet;
+#X text 582 212 VST3 plug-in keys get a '.vst3' extension to distinguish
 them from VST2 plugins of the same name.;
-#X text 583 268 generally \, keys can only be used after a search (see
+#X text 583 238 generally \, keys can only be used after a search (see
 the 'search' method) or if the plug-in has already been opened by its
 file path., f 49;
-#X obj 527 69 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 527 59 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 535 74 NOTE: on macOS \, the VST editor is highly experimental
-and runs on the audio thread! see the README for more information.
-, f 44;
-#X text 566 161 plug-ins can be opened in 2 ways:;
-#X symbolatom 468 250 16 0 0 0 - - -;
-#X obj 467 207 s \$0-msg;
-#X text 562 450 opening by file path doesn't work if the module contains
+#X text 566 131 plug-ins can be opened in 2 ways:;
+#X symbolatom 468 220 16 0 0 0 - - -;
+#X obj 467 177 s \$0-msg;
+#X text 572 420 opening by file path doesn't work if the module contains
 several plug-ins (shell plug-ins or certain VST3 plug-ins)!;
-#X text 561 478 also \, keys are always platform independent while
-file names may be different (e.g. containing an architecture string
-like 'x64'), f 60;
-#X text 502 357 file path;
-#X msg 467 186 search -a;
-#X text 583 203 the key is the plug-in name with whitespace substituted
+#X text 502 327 file path;
+#X msg 467 156 search -a;
+#X text 583 173 the key is the plug-in name with whitespace substituted
 by underscores \, so that the symbol can be easily typed in Pd (e.g.
 'Awesome Reverb' becomes 'Awesome_Reverb').;
-#X text 583 405 for VST2 plug-ins the extension (.dll \, .so \, .vst)
+#X text 583 375 for VST2 plug-ins the extension (.dll \, .so \, .vst)
 can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
 , f 58;
-#X text 583 353 both absolute and relative paths are allowed. relative
+#X text 583 323 both absolute and relative paths are allowed. relative
 paths are searched like abstractions. if that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 58
 ;
-#X text 157 327 on success and;
-#X text 22 326 outputs;
-#X msg 251 327 open 0;
-#X text 299 327 on failure;
-#X msg 74 326 open 1 <key>;
-#X obj 468 292 pack s f;
-#X obj 513 270 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X text 167 337 on success and;
+#X text 32 336 outputs;
+#X msg 261 337 open 0;
+#X text 309 337 on failure;
+#X msg 84 336 open 1 <key>;
+#X obj 468 262 pack s f;
+#X obj 513 240 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 468 316 open \$1 \$2;
-#X obj 483 423 pack s f;
-#X obj 528 401 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X msg 468 286 open \$1 \$2;
+#X obj 483 393 pack s f;
+#X obj 528 371 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 483 449 open \$1 \$2;
-#X symbolatom 458 87 10 0 0 0 - - -;
-#X text 22 266 async:;
-#X text 50 283 0: load synchronously (default);
-#X text 568 185 a) by KEY:;
-#X text 563 333 b) by FILE NAME:;
-#X text 465 162 1) search;
-#X text 465 229 2) open by key;
-#X text 19 43 -e: use the VST editor;
-#X text 23 247 key/path: plugin key or file path (see below);
-#X text 50 299 1: load asynchronously;
-#X obj 18 19 cnv 20 240 20 empty empty empty 20 12 0 14 -228856 -66577
+#X msg 483 419 open \$1 \$2;
+#X symbolatom 458 77 10 0 0 0 - - -;
+#X text 32 276 async:;
+#X text 60 293 0: load synchronously (default);
+#X text 568 155 a) by KEY:;
+#X text 563 303 b) by FILE NAME:;
+#X text 465 132 1) search;
+#X text 465 199 2) open by key;
+#X text 29 53 -e: use the VST editor;
+#X text 33 257 key/path: plugin key or file path (see below);
+#X text 60 309 1: load asynchronously;
+#X obj 28 29 cnv 20 240 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
-#X text 20 60 -t: process plugin in a seperate thread to utilize more
+#X text 30 70 -t: process plugin in a seperate thread to utilize more
 CPU cores., f 67;
-#X text 44 75 NOTE: this introduces a delay of 1 block.;
-#X text 24 21 arguments: [-e] [-t] key/path [async];
-#X text 45 113 This makes sure that the plugin can safely crash without
+#X text 54 85 NOTE: this introduces a delay of 1 block.;
+#X text 55 123 This makes sure that the plugin can safely crash without
 taking down the whole Pd process. Use this for buggy plugins or safe
 experimentation., f 57;
-#X text 46 155 NOTE: switching between processes incurs some fixed
+#X text 56 165 NOTE: switching between processes incurs some fixed
 CPU overhead \, which is less significant for higher blocksizes.;
-#X text 20 94 -p: run plugin in a dedicated subprocess (= sandbox).
+#X text 30 104 -p: run plugin in a dedicated subprocess (= sandbox).
 ;
-#X text 19 184 -b: run plugin in a shared subprocess.;
-#X text 44 202 This uses less memory and possibly less CPU \, but if
+#X text 29 194 -b: run plugin in a shared subprocess.;
+#X text 54 212 This uses less memory and possibly less CPU \, but if
 one plugin crashes \, it will inevitably take down all other plugins
 in the same process.;
+#X text 535 64 NOTE: on macOS \, the VST editor might run on the audio
+thread! See the README for more information., f 43;
+#X text 571 448 also \, file names may differ between platforms (e.g.
+containing an architecture string like 'x64') \, while keys are always
+platform independent., f 63;
+#X text 34 31 arguments: [flags...] key/path [async];
 #X connect 0 0 1 0;
-#X connect 1 0 32 0;
+#X connect 1 0 28 0;
 #X connect 2 0 3 0;
 #X connect 3 0 5 0;
-#X connect 4 0 8 0;
+#X connect 4 0 7 0;
 #X connect 5 0 4 0;
-#X connect 15 0 29 0;
-#X connect 20 0 16 0;
-#X connect 29 0 31 0;
-#X connect 30 0 29 1;
-#X connect 31 0 4 0;
-#X connect 32 0 34 0;
-#X connect 33 0 32 1;
-#X connect 34 0 4 0;
-#X connect 35 0 5 0;
+#X connect 12 0 25 0;
+#X connect 16 0 13 0;
+#X connect 25 0 27 0;
+#X connect 26 0 25 1;
+#X connect 27 0 4 0;
+#X connect 28 0 30 0;
+#X connect 29 0 28 1;
+#X connect 30 0 4 0;
+#X connect 31 0 5 0;
 #X restore 199 209 pd open;
 #X text 252 210 open a plugin;
 #X obj 20 99 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
