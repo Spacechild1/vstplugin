@@ -108,10 +108,10 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
 void PluginHandle::handleRequest(const ShmCommand &cmd,
                                  ShmChannel &channel)
 {
-    LOG_DEBUG("PluginHandle: got request " << cmd.type);
+    // LOG_DEBUG("PluginHandle: got request " << cmd.type);
     switch (cmd.type){
     case Command::Process:
-        LOG_DEBUG("PluginHandle: process");
+        // LOG_DEBUG("PluginHandle: process");
         process(cmd, channel);
         break;
     case Command::SetupProcessing:
@@ -265,8 +265,8 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     auto bufptr = (T *)buffer_.data();
 
     auto readAudio = [&](auto vec, auto numChannels){
-        LOG_DEBUG("PluginClient: read audio bus with "
-                  << numChannels << " channels");
+//        LOG_DEBUG("PluginClient: read audio bus with "
+//                  << numChannels << " channels");
         for (int i = 0; i < numChannels; ++i){
             const char *bytes;
             size_t size;

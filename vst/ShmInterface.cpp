@@ -552,13 +552,15 @@ void ShmInterface::openShm(const std::string &path, bool create){
         throw Error(Error::SystemError, "mmap() failed with "
                     + std::string(strerror(errno)));
     }
-
+#if 1
     // try to lock the file to physical memory
     if (mlock(data, totalSize) != 0){
         LOG_WARNING("ShmInterface: mlock() failed with "
                     << strerror(errno));
     }
 #endif
+
+#endif // Unix
 
     // success!
     path_ = path;
