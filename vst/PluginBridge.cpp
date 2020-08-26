@@ -253,11 +253,13 @@ void PluginBridge::checkStatus(bool wait){
 }
 
 void PluginBridge::addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client){
+    LOG_DEBUG("PluginBridge: add client " << id);
     LockGuard lock(clientMutex_);
     clients_.emplace(id, client);
 }
 
 void PluginBridge::removeUIClient(uint32_t id){
+    LOG_DEBUG("PluginBridge: remove client " << id);
     LockGuard lock(clientMutex_);
     clients_.erase(id);
 }

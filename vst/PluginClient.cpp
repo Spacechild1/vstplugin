@@ -96,10 +96,12 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
 }
 
 PluginClient::~PluginClient(){
-    bridge_->removeUIClient(id_);
+    if (!listener_.expired()){
+        bridge_->removeUIClient(id_);
+    }
     // destroy plugin
     // (not necessary with exlusive bridge)
-    if (bridge_->shared()){
+    if (bridge_->shared() && bridge_->alive()){
         ShmCommand cmd(Command::DestroyPlugin, id());
 
         auto chn = bridge_->getNRTChannel();
@@ -303,7 +305,7 @@ void PluginClient::sendCommands(RTChannel& channel){
 }
 
 void PluginClient::dispatchReply(const ShmCommand& reply){
-    LOG_DEBUG("PluginClient: got reply " << reply.type);
+    // LOG_DEBUG("PluginClient: got reply " << reply.type);
     switch (reply.type){
     case Command::ParamAutomated:
     case Command::ParameterUpdate:
