@@ -186,9 +186,12 @@ EventLoop::EventLoop(){
     // we must access NSApp only once in the beginning (why?)
     haveNSApp_ = (NSApp != nullptr);
     if (haveNSApp_){
+    #if 0
         // transform process into foreground application
+        // this doesn't seem to be necessary anymore...
         ProcessSerialNumber psn = {0, kCurrentProcess};
         TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+    #endif
         LOG_DEBUG("init cocoa event loop");
     } else {
         LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
