@@ -5,11 +5,10 @@
 // TODO: this probably should be a window *delegate*, so we don't need
 // the NoficationCenter hack.
 @interface CocoaEditorWindow : NSWindow {
-    vst::IWindow *_owner;
+    vst::IWindow *owner_;
 }
 
-@property (nonatomic, readwrite) vst::IWindow *owner;
-
+- (void)setOwner:(vst::IWindow *)owner;
 - (BOOL)windowShouldClose:(id)sender;
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize;
 - (void)windowDidResize:(NSNotification *)notification;

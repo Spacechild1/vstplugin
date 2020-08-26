@@ -10,12 +10,13 @@
 
 @implementation CocoaEditorWindow {}
 
-@synthesize owner = _owner;
+- (void)setOwner:(vst::IWindow *)owner {
+    owner_ = owner;
+}
 
 - (BOOL)windowShouldClose:(id)sender {
     LOG_DEBUG("window should close");
-    vst::IWindow *owner = [self owner];
-    static_cast<vst::Cocoa::Window *>(owner)->onClose();
+    static_cast<vst::Cocoa::Window *>(owner_)->onClose();
     return YES;
 }
 
@@ -26,11 +27,10 @@
 
 - (void)windowDidResize:(NSNotification *)notification {
     // LATER verify size
-    vst::IWindow *owner = [self owner];
     // get content size from frame size
     NSRect contentRect = [self contentRectForFrameRect:[self frame]];
     // resize editor
-    static_cast<vst::Cocoa::Window *>(owner)->plugin().resizeEditor(
+    static_cast<vst::Cocoa::Window *>(owner_)->plugin().resizeEditor(
         contentRect.size.width, contentRect.size.height);
     LOG_DEBUG("window did resize");
 }
@@ -45,8 +45,8 @@
     LOG_DEBUG("window did move");
 }
 - (void)updateEditor {
-    vst::IWindow *owner = [self owner];
-    static_cast<vst::Cocoa::Window *>(owner)->updateEditor();
+    static_cast<vst::Cocoa::Window *>(owner_)->updateEditor();
+}
 }
 
 @end
@@ -331,6 +331,7 @@ void Window::onClose(){
     if (window_){
         [[NSNotificationCenter defaultCenter] removeObserver:window_ name:NSWindowDidResizeNotification object:window_];
         [timer_ invalidate];
+        timer_ = nil;
         plugin_->closeEditor();
         origin_ = [window_ frame].origin;
         window_ = nullptr;
