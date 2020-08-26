@@ -144,7 +144,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     #endif
         // arguments: host.exe bridge <parent_pid> <shm_path>
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  parent.c_str(), shm_.path().c_str()) < 0){
+                  parent.c_str(), shm_.path().c_str(), 0) < 0){
             // LATER redirect child stderr to parent stdin
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }
