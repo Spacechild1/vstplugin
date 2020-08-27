@@ -514,9 +514,11 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 VSTPlugin::VSTPlugin(){
     // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
     assert(numInputs() >= 5);
+    // out
     int nout = numOutChannels();
     LOG_DEBUG("out: " << nout);
     assert(!(nout < 0 || nout > numOutputs()));
+    // in
     auto nin = numInChannels();
     LOG_DEBUG("in: " << nin);
     assert(nin >= 0);
@@ -909,6 +911,9 @@ void VSTPlugin::next(int inNumSamples) {
     }
 }
 
+int VSTPlugin::blockSize() const {
+    return reblock_ ? reblock_->blockSize : bufferSize();
+}
 
 //------------------- VSTPluginDelegate ------------------------------//
 
@@ -927,20 +932,11 @@ bool VSTPluginDelegate::alive() const {
     return owner_ != nullptr;
 }
 
+// owner can be nullptr (= destroyed)!
 void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
     if (owner) {
         // cache some members
         world_ = owner->mWorld;
-        // these are needed in cmdOpen (so we don't have to touch VSTPlugin
-        // which might get destroyed concurrently in the RT thread).
-        // NOTE: this might get called in the VSTPlugin's constructor,
-        // so we have to make sure that those methods return a valid result (they do).
-        sampleRate_ = owner->sampleRate();
-        bufferSize_ = owner->bufferSize();
-        numInChannels_ = owner->numInChannels();
-        numOutChannels_ = owner->numOutChannels();
-        numAuxInChannels_ = owner->numAuxInChannels();
-        numAuxOutChannels_ = owner->numAuxOutChannels();
     }
     owner_ = owner;
 }
@@ -1117,15 +1113,15 @@ bool cmdOpen(World *world, void* cmdData) {
             if (data->plugin){
                 // we only access immutable members of owner!
                 if (info->hasPrecision(ProcessPrecision::Single)) {
-                    data->plugin->setupProcessing(data->owner->sampleRate(),
-                                                  data->owner->bufferSize(), ProcessPrecision::Single);
+                    data->plugin->setupProcessing(data->sampleRate, data->blockSize,
+                                                  ProcessPrecision::Single);
                 }
                 else {
                     LOG_WARNING("VSTPlugin: plugin '" << info->name <<
                                 "' doesn't support single precision processing - bypassing!");
                 }
-                data->plugin->setNumSpeakers(data->owner->numInChannels(), data->owner->numOutChannels(),
-                                             data->owner->numAuxInChannels(), data->owner->numAuxOutChannels());
+                data->plugin->setNumSpeakers(data->numInputs, data->numOutputs,
+                                             data->numAuxInputs, data->numAuxOutputs);
                 data->plugin->resume();
             }
         }
@@ -1166,6 +1162,12 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         cmdData->editor = editor;
         cmdData->threaded = threaded;
         cmdData->mode = mode;
+        cmdData->sampleRate = owner_->sampleRate();
+        cmdData->blockSize = owner_->blockSize();
+        cmdData->numInputs = owner_->numInChannels();
+        cmdData->numOutputs = owner_->numOutChannels();
+        cmdData->numAuxInputs = owner_->numAuxInChannels();
+        cmdData->numAuxOutputs = owner_->numAuxOutChannels();
 
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
             auto data = (OpenCmdData*)cmdData;
@@ -1202,10 +1204,7 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
         owner_->update();
         // success, window, initial latency
         bool haveWindow = plugin_->getWindow() != nullptr;
-        int latency = plugin_->getLatencySamples();
-        if (threaded_) {
-            latency += bufferSize_;
-        }
+        int latency = plugin_->getLatencySamples() + latencySamples();
         float data[3] = { 1.f, (float)haveWindow, (float)latency };
         sendMsg("/vst_open", 3, data);
     } else {
@@ -1762,11 +1761,17 @@ void VSTPluginDelegate::sendParameterAutomated(int32 index, float value) {
     sendMsg("/vst_auto", 2, buf);
 }
 
-void VSTPluginDelegate::sendLatencyChange(int nsamples){
+int32 VSTPluginDelegate::latencySamples() const {
+    int32 blockSize = owner_->blockSize();
+    int32 nsamples = blockSize - world_->mBufLength;
     if (threaded_){
-        nsamples += bufferSize_;
+        nsamples += blockSize;
     }
-    sendMsg("/vst_latency", (float)nsamples);
+    return nsamples;
+}
+
+void VSTPluginDelegate::sendLatencyChange(int nsamples){
+    sendMsg("/vst_latency", nsamples + latencySamples());
 }
 
 void VSTPluginDelegate::sendPluginCrash(){

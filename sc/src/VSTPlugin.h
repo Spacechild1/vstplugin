@@ -35,6 +35,8 @@ struct CloseCmdData : CmdData {
     bool editor;
 };
 
+// cache all relevant info so we don't have to touch
+// the VSTPlugin instance during the async command.
 struct OpenCmdData : CmdData {
     const PluginInfo *info;
     IPlugin::ptr plugin;
@@ -42,6 +44,12 @@ struct OpenCmdData : CmdData {
     bool editor;
     bool threaded;
     PluginInfo::Mode mode;
+    double sampleRate;
+    int blockSize;
+    int numInputs;
+    int numAuxInputs;
+    int numOutputs;
+    int numAuxOutputs;
     // flexible array for RT memory
     int size = 0;
     char path[1];
@@ -105,7 +113,7 @@ class VSTPluginDelegate :
 {
     friend class VSTPlugin;
 public:
-    enum {
+    enum EventType {
         LatencyChange = -2,
         PluginCrash
     };
@@ -115,13 +123,7 @@ public:
 
     bool alive() const;
     void setOwner(VSTPlugin *owner);
-    World* world() { return world_;  }
-    float sampleRate() const { return sampleRate_; }
-    int32 bufferSize() const { return bufferSize_; }
-    int32 numInChannels() const { return numInChannels_; }
-    int32 numOutChannels() const { return numOutChannels_; }
-    int32 numAuxInChannels() const { return numAuxInChannels_; }
-    int32 numAuxOutChannels() const { return numAuxOutChannels_; }
+    World* world() { return world_; }
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
@@ -181,6 +183,7 @@ public:
     void sendCurrentProgramName();
     void sendParameter(int32 index, float value); // unchecked
     void sendParameterAutomated(int32 index, float value); // unchecked
+    int32 latencySamples() const;
     void sendLatencyChange(int nsamples);
     void sendPluginCrash();
     // perform sequenced command
@@ -194,13 +197,6 @@ private:
     bool threaded_ = false;
     bool isLoading_ = false;
     World* world_ = nullptr;
-    // cache (for cmdOpen)
-    double sampleRate_ = 1;
-    int bufferSize_ = 0;
-    int numInChannels_ = 0;
-    int numOutChannels_ = 0;
-    int numAuxInChannels_ = 0;
-    int numAuxOutChannels_ = 0;
     // thread safety
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
@@ -224,6 +220,9 @@ public:
     void next(int inNumSamples);
     bool hasFlag(uint32 flag) const { return (uint32)in0(1) & flag; }
     int getBypass() const { return (int)in0(2); }
+
+    int blockSize() const;
+
     int numInChannels() const { return (int)in0(3); }
     int numAuxInChannels() const {
         return (int)in0(auxInChannelOnset_ - 1);
@@ -232,10 +231,12 @@ public:
     int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
 
     int numParameterControls() const { return (int)in0(parameterControlOnset_ - 1); }
-    void update();
+
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
     void clearMapping();
+
+    void update();
 private:
     float readControlBus(uint32 num);
     // data members
@@ -250,6 +251,18 @@ private:
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
     rt::shared_ptr<VSTPluginDelegate> delegate_;
+
+    struct Reblock {
+        int blockSize;
+        int phase;
+        float **input;
+        float **auxInput;
+        float **output;
+        float **auxOutput;
+        float *buffer;
+    };
+
+    Reblock *reblock_ = nullptr;
 
     static const int inChannelOnset_ = 4;
     int auxInChannelOnset_ = 0;
@@ -283,7 +296,7 @@ private:
 
     // threading
     struct ParamChange {
-        int index; // negative value for other events
+        int index; // parameter index or EventType (negative)
         float value;
     };
     LockfreeFifo<ParamChange, 16> paramQueue_;
