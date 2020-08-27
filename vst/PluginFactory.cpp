@@ -201,25 +201,33 @@ PluginFactory::PluginFactory(const std::string &path)
     }
 }
 
-IFactory::ProbeFuture PluginFactory::probeAsync() {
+IFactory::ProbeFuture PluginFactory::probeAsync(bool nonblocking) {
     plugins_.clear();
     pluginMap_.clear();
-    auto f = doProbePlugin();
+    auto f = doProbePlugin(nonblocking);
     auto self = shared_from_this();
     return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
-        auto result = f(); // call future
-        if (result.plugin->subPlugins.empty()){
-            if (result.valid()) {
-                plugins_ = { result.plugin };
+        // call future
+        ProbeResult result;
+        if (f(result)){
+            if (result.plugin->subPlugins.empty()){
+                // factory only contains a single plugin
+                if (result.valid()) {
+                    plugins_ = { result.plugin };
+                }
+                if (callback){
+                    callback(result);
+                }
+            } else {
+                // factory contains several subplugins
+                plugins_ = doProbePlugins(result.plugin->subPlugins, callback);
             }
-            if (callback){
-                callback(result);
+            for (auto& desc : plugins_) {
+                pluginMap_[desc->name] = desc;
             }
+            return true;
         } else {
-            plugins_ = doProbePlugins(result.plugin->subPlugins, callback);
-        }
-        for (auto& desc : plugins_) {
-            pluginMap_[desc->name] = desc;
+            return false;
         }
     };
 }
@@ -255,13 +263,13 @@ int PluginFactory::numPlugins() const {
 // should host.exe inherit file handles and print to stdout/stderr?
 #define PROBE_LOG 0
 
-PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(){
-    return doProbePlugin(PluginInfo::SubPlugin { "", -1 });
+PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(bool nonblocking){
+    return doProbePlugin(PluginInfo::SubPlugin { "", -1 }, nonblocking);
 }
 
 // probe a plugin in a seperate process and return the info in a file
 PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
-        const PluginInfo::SubPlugin& sub)
+        const PluginInfo::SubPlugin& sub, bool nonblocking)
 {
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     desc->name = sub.name; // necessary for error reporting, will be overriden later
@@ -304,17 +312,24 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
-    auto wait = [pi](){
-        if (WaitForSingleObject(pi.hProcess, INFINITE) != 0){
+    auto wait = [pi, nonblocking](DWORD& code){
+        auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : INFINITE);
+        if (res == WAIT_TIMEOUT){
+            return false;
+        } else if (res == WAIT_OBJECT_0){
+            if (!GetExitCodeProcess(pi.hProcess, &code)){
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                throw Error(Error::SystemError, "couldn't retrieve exit code for host process!");
+            }
+        } else {
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
             throw Error(Error::SystemError, "couldn't wait for host process!");
-        }
-        DWORD code = -1;
-        if (!GetExitCodeProcess(pi.hProcess, &code)){
-            throw Error(Error::SystemError, "couldn't retrieve exit code for host process!");
         }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-        return code;
+        return true;
     };
 #else // Unix
     // get absolute path to host app
@@ -349,24 +364,38 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         std::exit(EXIT_FAILURE);
     }
     // parent process: wait for child
-    auto wait = [pid](){
+    auto wait = [pid, nonblocking](int& code){
         int status = 0;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            return WEXITSTATUS(status);
-        } else {
-            return -1;
+        if (waitpid(pid, &status, nonblocking ? WNOHANG : 0) == 0){
+            return false;
         }
+        if (WIFEXITED(status)) {
+            code = WEXITSTATUS(status);
+        } else {
+            code = -1;
+        }
+        return true;
     };
 #endif
-    return [desc=std::move(desc), tmpPath=std::move(tmpPath), wait=std::move(wait)](){
-        ProbeResult result;
+    return [desc=std::move(desc),
+            tmpPath=std::move(tmpPath),
+            wait=std::move(wait)]
+            (ProbeResult& result){
+    #ifdef _WIN32
+        DWORD code;
+    #else
+        int code;
+    #endif
+        // wait for process to finish
+        // (returns false when nonblocking and still running)
+        if (!wait(code)){
+            return false;
+        }
         result.plugin = std::move(desc);
         result.total = 1;
-        auto ret = wait(); // wait for process to finish
         /// LOG_DEBUG("return code: " << ret);
         TmpFile file(tmpPath); // removes the file on destruction
-        if (ret == EXIT_SUCCESS) {
+        if (code == EXIT_SUCCESS) {
             // get info from temp file
             if (file.is_open()) {
                 desc->deserialize(file);
@@ -375,21 +404,21 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                 result.error = Error(Error::SystemError, "couldn't read tempfile!");
             }
         }
-        else if (ret == EXIT_FAILURE) {
+        else if (code == EXIT_FAILURE) {
             // get error from temp file
             if (file.is_open()) {
-                int code;
+                int err;
                 std::string msg;
                 file >> code;
                 if (!file){
                     // happens in certain cases, e.g. the plugin destructor
                     // terminates the probe process with exit code 1.
-                    code = (int)Error::UnknownError;
+                    err = (int)Error::UnknownError;
                 }
                 std::getline(file, msg); // skip newline
                 std::getline(file, msg); // read message
-                LOG_DEBUG("code: " << code << ", msg: " << msg);
-                result.error = Error((Error::ErrorCode)code, msg);
+                LOG_DEBUG("code: " << err << ", msg: " << msg);
+                result.error = Error((Error::ErrorCode)err, msg);
             }
             else {
                 result.error = Error(Error::SystemError, "couldn't read temp file!");
@@ -399,7 +428,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
             // ignore temp file
             result.error = Error(Error::Crash);
         }
-        return result;
+        return true;
     };
 }
 
@@ -407,141 +436,56 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
 // #define PLUGIN_LIMIT 50
 
 // We probe sub-plugins asynchronously with "futures" or worker threads.
-// The latter are just wrappers around futures, but we can gather results as soon as they are available.
-// Both methods are about equally fast, the worker threads just look more responsive.
 #define PROBE_FUTURES 8 // number of futures to wait for
-#define PROBE_THREADS 8 // number of worker threads (0: use futures instead of threads)
-
-#if 0
-static std::mutex gLogMutex;
-#define DEBUG_THREAD(x) do { gLogMutex.lock(); LOG_DEBUG(x); gLogMutex.unlock(); } while (false)
-#else
-#define DEBUG_THREAD(x)
-#endif
 
 std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
-        const PluginInfo::SubPluginList& pluginList, ProbeCallback callback){
-    int numPlugins = pluginList.size();
+        const PluginInfo::SubPluginList& pluginList, ProbeCallback callback)
+{
     std::vector<PluginInfo::ptr> results;
+    int numPlugins = pluginList.size();
 #ifdef PLUGIN_LIMIT
     numPlugins = std::min<int>(numPlugins, PLUGIN_LIMIT);
 #endif
-#if !PROBE_THREADS
-    /// LOG_DEBUG("numPlugins: " << numPlugins);
-    std::vector<std::pair<int, ProbeResultFuture>> futures;
+    // LOG_DEBUG("numPlugins: " << numPlugins);
     int i = 0;
-    while (i < numPlugins){
-        futures.clear();
-        // probe the next n plugins
-        int n = std::min<int>(numPlugins - i, PROBE_FUTURES);
-        for (int j = 0; j < n; ++j, ++i){
-            auto& sub = pluginList[i];
-            /// LOG_DEBUG("probing '" << sub.name << "'");
+    int count = 0;
+    int maxNumFutures = std::min<int>(PROBE_FUTURES, numPlugins);
+    std::vector<ProbeResultFuture> futures;
+    while (count < numPlugins) {
+        // push futures
+        while (futures.size() < maxNumFutures && i < numPlugins){
+            auto& sub = pluginList[i++];
             try {
-                futures.emplace_back(i, doProbePlugin(sub));
+                futures.push_back(doProbePlugin(sub, true));
             } catch (const Error& e){
                 // return error future
-                futures.emplace_back(i, [=](){
-                    ProbeResult result;
+                futures.push_back([=](ProbeResult& result){
                     result.error = e;
-                    return result;
+                    return true;
                 });
             }
         }
         // collect results
-        for (auto& it : futures) {
-            auto result = it.second(); // wait on future
-            result.index = it.first;
-            result.total = numPlugins;
-            if (result.valid()) {
-                results.push_back(result.plugin);
-            }
-            if (callback){
-                callback(result);
-            }
-        }
-    }
-#else
-    DEBUG_THREAD("numPlugins: " << numPlugins);
-    std::vector<ProbeResult> probeResults;
-    int head = 0;
-    int tail = 0;
-
-    std::mutex mutex;
-    std::condition_variable cond;
-    int numThreads = std::min<int>(numPlugins, PROBE_THREADS);
-    std::vector<std::thread> threads;
-
-    // thread function
-    auto threadFun = [&](int i){
-        DEBUG_THREAD("worker thread " << i << " started");
-        std::unique_lock<std::mutex> lock(mutex);
-        while (head < numPlugins){
-            auto& sub = pluginList[head];
-            head++;
-            lock.unlock();
-
-            DEBUG_THREAD("thread " << i << ": probing '" << sub.name << "'");
+        for (auto it = futures.begin(); it != futures.end();) {
             ProbeResult result;
-            try {
-                result = doProbePlugin(sub)(); // call future
-            } catch (const Error& e){
-                DEBUG_THREAD("probe error " << e.what());
-                result.error = e;
+            // call future (non-blocking)
+            if ((*it)(result)){
+                result.index = count++;
+                result.total = numPlugins;
+                if (result.valid()) {
+                    results.push_back(result.plugin);
+                }
+                if (callback){
+                    callback(result);
+                }
+                // remove future
+                it = futures.erase(it);
+            } else {
+                it++;
             }
-
-            lock.lock();
-            probeResults.push_back(result);
-            DEBUG_THREAD("thread " << i << ": probed " << sub.name);
-            cond.notify_one();
         }
-        DEBUG_THREAD("worker thread " << i << " finished");
-    };
-    // spawn worker threads
-    for (int j = 0; j < numThreads; ++j){
-        threads.push_back(std::thread(threadFun, j));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    // collect results
-    std::unique_lock<std::mutex> lock(mutex);
-    DEBUG_THREAD("collect results");
-    while (true) {
-        // process available data
-        while (tail < (int)probeResults.size()){
-            auto result = probeResults[tail]; // copy!
-            lock.unlock();
-
-            result.index = tail++;
-            result.total = numPlugins;
-            if (result.valid()) {
-                results.push_back(result.plugin);
-                DEBUG_THREAD("got plugin " << result.plugin->name
-                    << " (" << (result.index + 1) << " of " << numPlugins << ")");
-            }
-            if (callback){
-                callback(result);
-            }
-
-            lock.lock();
-        }
-        // wait for more data if needed
-        if ((int)probeResults.size() < numPlugins){
-            DEBUG_THREAD("wait...");
-            cond.wait(lock);
-        } else {
-            break;
-        }
-    }
-    lock.unlock(); // !!!
-
-    DEBUG_THREAD("exit loop");
-    // join worker threads
-    for (auto& thread : threads){
-        if (thread.joinable()){
-            thread.join();
-        }
-    }
-    DEBUG_THREAD("all worker threads joined");
-#endif
     return results;
 }
 

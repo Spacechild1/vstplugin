@@ -13,7 +13,7 @@ class PluginFactory :
     PluginFactory(const std::string& path);
     virtual ~PluginFactory(){}
 
-    ProbeFuture probeAsync() override;
+    ProbeFuture probeAsync(bool nonblocking) override;
 
     void addPlugin(PluginInfo::ptr desc) override;
     PluginInfo::const_ptr getPlugin(int index) const override;
@@ -23,9 +23,9 @@ class PluginFactory :
     const std::string& path() const override { return path_; }
     CpuArch arch() const override { return arch_; }
  protected:
-    using ProbeResultFuture = std::function<ProbeResult()>;
-    ProbeResultFuture doProbePlugin();
-    ProbeResultFuture doProbePlugin(const PluginInfo::SubPlugin& subplugin);
+    using ProbeResultFuture = std::function<bool(ProbeResult&)>;
+    ProbeResultFuture doProbePlugin(bool nonblocking);
+    ProbeResultFuture doProbePlugin(const PluginInfo::SubPlugin& subplugin, bool nonblocking);
     std::vector<PluginInfo::ptr> doProbePlugins(
             const PluginInfo::SubPluginList& pluginList, ProbeCallback callback);
     // data

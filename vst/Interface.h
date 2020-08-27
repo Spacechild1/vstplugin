@@ -484,7 +484,7 @@ class IFactory {
     using const_ptr = std::shared_ptr<const IFactory>;
 
     using ProbeCallback = std::function<void(const ProbeResult&)>;
-    using ProbeFuture = std::function<void(ProbeCallback)>;
+    using ProbeFuture = std::function<bool(ProbeCallback)>;
 
     // expects an absolute path to the actual plugin file with or without extension
     // throws an Error exception on failure!
@@ -497,9 +497,9 @@ class IFactory {
     virtual int numPlugins() const = 0;
 
     void probe(ProbeCallback callback){
-        probeAsync()(std::move(callback));
+        probeAsync(false)(std::move(callback));
     }
-    virtual ProbeFuture probeAsync() = 0;
+    virtual ProbeFuture probeAsync(bool nonblocking) = 0;
     virtual PluginInfo::const_ptr probePlugin(int id) const = 0;
 
     bool valid() const { return numPlugins() > 0; }
