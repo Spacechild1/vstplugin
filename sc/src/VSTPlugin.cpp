@@ -864,16 +864,62 @@ void VSTPlugin::next(int inNumSamples) {
         }
         // process
         IPlugin::ProcessData<float> data;
-        data.numInputs = numInChannels();
-        data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
-        data.numOutputs = numOutChannels();
-        data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
-        data.numAuxInputs = numAuxInChannels();
-        data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
-        data.numAuxOutputs = numAuxOutChannels();
-        data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
-        data.numSamples = inNumSamples;
-        plugin->process(data);
+
+        if (reblock_){
+            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
+                for (int i = 0; i < nchannels; ++i){
+                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
+                }
+            };
+            auto writeOutput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
+                for (int i = 0; i < nchannels; ++i){
+                    auto src = from[i] + phase;
+                    std::copy(src, src + nsamples, to[i]);
+                }
+            };
+
+            data.numInputs = numInChannels();
+            data.numOutputs = numOutChannels();
+            data.numAuxInputs = numAuxInChannels();
+            data.numAuxOutputs = numAuxOutChannels();
+
+            readInput(mInBuf + inChannelOnset_, reblock_->input, data.numInputs,
+                        inNumSamples, reblock_->phase);
+            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, data.numAuxInputs,
+                        inNumSamples, reblock_->phase);
+
+            reblock_->phase += inNumSamples;
+
+            if (reblock_->phase >= reblock_->blockSize){
+                reblock_->phase -= reblock_->blockSize;
+                assert(reblock_->phase == 0);
+
+                data.input = data.numInputs > 0 ? (const float **)reblock_->input : nullptr;
+                data.output = data.numOutputs > 0 ? reblock_->output : nullptr;
+                data.auxInput = data.numAuxInputs > 0 ? (const float **)reblock_->auxInput : nullptr;
+                data.auxOutput = data.numAuxOutputs > 0 ? reblock_->auxOutput : nullptr;
+                data.numSamples = reblock_->blockSize;
+
+                plugin->process(data);
+            }
+
+            writeOutput(reblock_->output, mOutBuf, data.numOutputs,
+                        inNumSamples, reblock_->phase);
+            writeOutput(reblock_->auxOutput, mOutBuf + numOutChannels(), data.numAuxOutputs,
+                        inNumSamples, reblock_->phase);
+        } else {
+            data.numInputs = numInChannels();
+            data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
+            data.numOutputs = numOutChannels();
+            data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
+            data.numAuxInputs = numAuxInChannels();
+            data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
+            data.numAuxOutputs = numAuxOutChannels();
+            data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
+            data.numSamples = inNumSamples;
+
+            plugin->process(data);
+        }
 
         // send parameter automation notification posted from the GUI thread [or NRT thread]
         ParamChange p;
@@ -892,22 +938,51 @@ void VSTPlugin::next(int inNumSamples) {
     }
     else {
         // bypass (copy input to output and zero remaining output channels)
-        auto doBypass = [](auto input, int nin, auto output, int nout, int n) {
+        auto doBypass = [](auto input, int nin, auto output, int nout, int n, int phase) {
             for (int i = 0; i < nout; ++i) {
-                auto dst = output[i];
                 if (i < nin) {
-                    auto src = input[i];
-                    std::copy(src, src + n, dst);
+                    auto src = input[i] + phase;
+                    std::copy(src, src + n, output[i]);
                 }
                 else {
-                    std::fill(dst, dst + n, 0); // zero
+                    std::fill(output[i], output[i] + n, 0); // zero
                 }
             }
         };
-        // input -> output
-        doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(), inNumSamples);
-        // aux input -> aux output
-        doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(), numAuxOutChannels(), inNumSamples);
+
+        if (reblock_){
+            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
+                for (int i = 0; i < nchannels; ++i){
+                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
+                }
+            };
+
+            readInput(mInBuf + inChannelOnset_, reblock_->input, numInChannels(),
+                        inNumSamples, reblock_->phase);
+            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, numAuxInChannels(),
+                        inNumSamples, reblock_->phase);
+
+            reblock_->phase += inNumSamples;
+
+            if (reblock_->phase >= reblock_->blockSize){
+                reblock_->phase -= reblock_->blockSize;
+                assert(reblock_->phase == 0);
+            }
+
+            // input -> output
+            doBypass(reblock_->input, numInChannels(), mOutBuf, numOutChannels(),
+                     inNumSamples, reblock_->phase);
+            // aux input -> aux output
+            doBypass(reblock_->auxInput, numAuxInChannels(), mOutBuf + numOutChannels(),
+                     numAuxOutChannels(), inNumSamples, reblock_->phase);
+        } else {
+            // input -> output
+            doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(),
+                     inNumSamples, 0);
+            // aux input -> aux output
+            doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(),
+                     numAuxOutChannels(), inNumSamples, 0);
+        }
     }
 }
 
