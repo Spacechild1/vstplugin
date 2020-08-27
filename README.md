@@ -18,7 +18,8 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 * bit bridging and sandboxing
 * multithreading
 
-**NOTE:** 64bit VST plugins can only be loaded with the 64bit version of [vstplugin~] / VSTPlugin.scx and vice versa.
+**NOTE:** It is now possible to load 32-bit VST plugins with a 64-bit version of [vstplugin~] / VSTPlugin.scx and vice versa,
+but the required bit bridging is experimental and incurs some CPU overhead.
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
