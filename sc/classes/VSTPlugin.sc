@@ -819,7 +819,7 @@ VSTPlugin : MultiOutUGen {
 				this.id.notNil.if {
 					// check for VSTPlugin without ID
 					metadata.at(false).notNil.if {
-						Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
+						Error("SynthDef '%' contains multiple VSTPlugin instances - can't omit 'id' argument!".format(this.synthDef.name)).throw;
 					};
 					// check for duplicate ID
 					metadata.at(this.id).notNil.if {
@@ -829,7 +829,7 @@ VSTPlugin : MultiOutUGen {
 				} {
 					// metadata must not contain other VSTPlugins!
 					(metadata.size > 0).if {
-						Error("SynthDef '%' contains more than 1 VSTPlugin without ID!".format(this.synthDef.name)).throw;
+						Error("SynthDef '%' contains multiple VSTPlugin instances - can't omit 'id' argument!".format(this.synthDef.name)).throw;
 					};
 					metadata.put(false, this.desc);
 				};
