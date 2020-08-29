@@ -434,10 +434,6 @@ VSTPlugin : MultiOutUGen {
 		params.size.odd.if {
 			MethodError("'params' must be pairs of param index/name + value", this).throw;
 		};
-		(info.notNil && info.class != VSTPluginDesc).if {
-			// get plugin from default server
-			info = VSTPlugin.plugins[info.asSymbol];
-		};
 		^this.multiNewList([\audio, id, info, numOut, numAuxOut, 0, bypass, input.size]
 			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
 	}
@@ -743,7 +739,10 @@ VSTPlugin : MultiOutUGen {
 		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, offset=0;
 		// store id and info (both optional)
 		this.id = id !? { id.asSymbol }; // !
-		this.info = info;
+		this.info = (info.notNil && info.isKindOf(VSTPluginDesc).not).if {
+			// try to get plugin from default server
+			VSTPlugin.plugins[info.asSymbol] ?? { MethodError("can't find plugin '%' (did you forget to call VSTPlugin.search?)".format(info), this).throw; };
+		} { info };
 		this.didInit = true; // so we know that init() has been called!
 		// main inputs
 		numInputs = args[offset];
@@ -780,9 +779,9 @@ VSTPlugin : MultiOutUGen {
 			var index;
 			param.isValidUGenInput.not.if {
 				(param.isString || param.isKindOf(Symbol)).if {
-					info ?? { MethodError("can't resolve parameter '%' without info".format(param), this).throw; };
-					index = info.findParamIndex(param.asSymbol);
-					index ?? { MethodError("unknown parameter '%' for plugin '%'".format(param, info.name), this).throw; };
+					this.info ?? { MethodError("can't resolve parameter '%' without info".format(param), this).throw; };
+					index = this.info.findParamIndex(param.asSymbol);
+					index ?? { MethodError("unknown parameter '%' for plugin '%'".format(param, this.info.name), this).throw; };
 					paramArray[i] = index;
 				} {
 					MethodError("bad parameter index '%'".format(param), this).throw;
