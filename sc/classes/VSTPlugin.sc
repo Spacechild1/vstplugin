@@ -657,8 +657,8 @@ VSTPlugin : MultiOutUGen {
 		key = key.asSymbol;
 		// we prefer non-bridged plugins, so we don't overwrite
 		// an existing non-bridged plugin with a new bridged plugin.
-		dict[key] !? { arg item;
-			(item.bridged.not && info.bridged).if { ^this; }
+		dict[key] !? {
+			(dict[key].bridged.not && info.bridged).if { ^this; }
 		};
 		dict[key] = info;
 	}

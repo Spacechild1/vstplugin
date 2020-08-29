@@ -1221,8 +1221,7 @@ SynthDef.new(\my_instrument, { arg out;
 
 ~score = Score.new;
 
-~score.add([0.0, VSTPlugin.searchMsg(verbose: true)]); // search for plugins in default search paths
-// ~score.add([0.0, VSTPlugin.searchMsg(["/my/plugin/directory"], useDefault: false, verbose: true)]); // use custom search path
+~score.add([0.0, VSTPlugin.searchMsg(verbose: false)]); // search for plugins in default search paths
 
 // create the synths:
 ~score.add([0.0, ~synth[0].newMsg]);
