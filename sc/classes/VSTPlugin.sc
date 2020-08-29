@@ -415,7 +415,6 @@ VSTPlugin : MultiOutUGen {
 	// instance members
 	var <>id;
 	var <>info;
-	var <>didInit;
 	var <>desc;
 	// class methods
 	*initClass {
@@ -743,7 +742,6 @@ VSTPlugin : MultiOutUGen {
 			// try to get plugin from default server
 			VSTPlugin.plugins[info.asSymbol] ?? { MethodError("can't find plugin '%' (did you forget to call VSTPlugin.search?)".format(info), this).throw; };
 		} { info };
-		this.didInit = true; // so we know that init() has been called!
 		// main inputs
 		numInputs = args[offset];
 		(numInputs > 0).if {
@@ -793,50 +791,41 @@ VSTPlugin : MultiOutUGen {
 		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
 		^this.initOutputs(numOut + numAuxOut, rate)
 	}
+	optimizeGraph {
+		// This is called exactly once during SynthDef construction!
+		// Make sure metadata entry exists:
+		var metadata = this.synthDef.metadata[\vstplugins];
+		metadata ?? {
+			metadata = ();
+			this.synthDef.metadata[\vstplugins] = metadata;
+		};
+		// Make plugin description and add to metadata:
+		this.desc = ();
+		this.info !? { this.desc[\key] = this.info.key };
+		// There can only be a single VSTPlugin without ID. In this case, the metadata will contain
+		// a (single) item at the pseudo key 'false', see VSTPluginController.prFindPlugins.
+		this.id.notNil.if {
+			// check for VSTPlugin without ID
+			metadata.at(false).notNil.if {
+				Error("SynthDef '%' contains multiple VSTPlugin instances - can't omit 'id' argument!".format(this.synthDef.name)).throw;
+			};
+			// check for duplicate ID
+			metadata.at(this.id).notNil.if {
+				Error("SynthDef '%' contains duplicate VSTPlugin ID '%'".format(this.synthDef.name, this.id)).throw;
+			};
+			metadata.put(this.id, this.desc);
+		} {
+			// metadata must not contain other VSTPlugins!
+			(metadata.size > 0).if {
+				Error("SynthDef '%' contains multiple VSTPlugin instances - can't omit 'id' argument!".format(this.synthDef.name)).throw;
+			};
+			metadata.put(false, this.desc);
+		};
+	}
 	synthIndex_ { arg index;
 		var metadata;
 		synthIndex = index;
-		// Whenever the synth index is set while building the UGen graph, we update the metadata.
-		// We also have to check that 'init' has been called, so we don't accidentally write wrong
-		// metadata, e.g. because 'info' and 'id' appear to be 'nil'.
-		// For example, 'SynthDef.store' reconstructs the UGens from disk without calling 'init' at all!
-		// Also, 'SynthDef.new' indirectly calls 'synthIndex_' (via 'UGen.addToSynth') before calling 'init'.
-		(this.didInit.asBoolean && UGen.buildSynthDef.notNil).if {
-			// NOTE: synthIndex_ might be called several times during UGen graph constructions!
-			this.desc.isNil.if {
-				// first time: make plugin description
-				this.desc = ( index: index );
-				this.info !? { this.desc[\key] = this.info.key };
-				// make sure metadata data exists
-				metadata = this.synthDef.metadata[\vstplugins];
-				metadata ?? {
-					metadata = ();
-					this.synthDef.metadata[\vstplugins] = metadata;
-				};
-				// There can only be a single VSTPlugin without ID. In this case, the metadata will contain
-				// a (single) item at the pseudo key 'false', see VSTPluginController.prFindPlugins.
-				this.id.notNil.if {
-					// check for VSTPlugin without ID
-					metadata.at(false).notNil.if {
-						Error("SynthDef '%' contains multiple VSTPlugin instances - can't omit 'id' argument!".format(this.synthDef.name)).throw;
-					};
-					// check for duplicate ID
-					metadata.at(this.id).notNil.if {
-						Error("SynthDef '%' contains duplicate VSTPlugin ID '%'".format(this.synthDef.name, this.id)).throw;
-					};
-					metadata.put(this.id, this.desc);
-				} {
-					// metadata must not contain other VSTPlugins!
-					(metadata.size > 0).if {
-						Error("SynthDef '%' contains multiple VSTPlugin instances - can't omit 'id' argument!".format(this.synthDef.name)).throw;
-					};
-					metadata.put(false, this.desc);
-				};
-				// "set synthIndex % for %".format(index, this.id).postln;
-			} {
-				// called subsequently: simply update index
-				this.desc.index = index;
-			}
-		}
+		// update metadata (ignored if reconstructing from disk)
+		this.desc.notNil.if { this.desc.index = index; }
 	}
 }
