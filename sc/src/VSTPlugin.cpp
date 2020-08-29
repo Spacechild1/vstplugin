@@ -535,6 +535,8 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 
 // -------------------- VSTPlugin ------------------------ //
 
+
+
 VSTPlugin::VSTPlugin(){
     // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
     assert(numInputs() >= 5);
@@ -552,6 +554,8 @@ VSTPlugin::VSTPlugin(){
     auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
     LOG_DEBUG("aux in: " << nauxin);
     assert(nauxin >= 0);
+    // aux out
+    auto nauxout = numAuxOutChannels();
     // parameter controls
     parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
     assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ <= numInputs());
@@ -564,6 +568,66 @@ VSTPlugin::VSTPlugin(){
     delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
 
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
+
+    // create reblocker after setting the calc function (because it calculates a single 1 sample)!
+    int reblockSize = in0(1);
+    if (reblockSize >= bufferSize()){
+        auto reblock = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
+        if (reblock){
+            memset(reblock, 0, sizeof(Reblock)); // set all pointers to NULL!
+            // make sure that block size is power of 2
+            int n = 1;
+            while (n < reblockSize){
+               n *= 2;
+            }
+            reblock->blockSize = n;
+            // allocate buffer
+            int total = nin + nout + nauxin + nauxout;
+            if ((total == 0) ||
+                (reblock->buffer = (float *)RTAlloc(mWorld, sizeof(float) * total * n)))
+            {
+                auto bufptr = reblock->buffer;
+                std::fill(bufptr, bufptr + (total * n), 0);
+                // allocate and assign channel vectors
+                auto makeVec = [&](auto& vec, int nchannels){
+                    if (nchannels > 0){
+                        vec = (float **)RTAlloc(mWorld, sizeof(float *) * nchannels);
+                        if (!vec){
+                            LOG_ERROR("RTAlloc failed!");
+                            return false;
+                        }
+                        for (int i = 0; i < nchannels; ++i, bufptr += n){
+                            vec[i] = bufptr;
+                        }
+                    }
+                    return true;
+                };
+                if (makeVec(reblock->input, nin)
+                    && makeVec(reblock->output, nout)
+                    && makeVec(reblock->auxInput, nauxin)
+                    && makeVec(reblock->auxOutput, nauxout))
+                {
+                    // start phase at one block before end, so that the first call
+                    // to the perform routine will trigger plugin processing.
+                    reblock->phase = n - bufferSize();
+                    reblock_ = reblock;
+                } else {
+                    // clean up
+                    RTFreeSafe(mWorld, reblock->input);
+                    RTFreeSafe(mWorld, reblock->output);
+                    RTFreeSafe(mWorld, reblock->auxInput);
+                    RTFreeSafe(mWorld, reblock->auxOutput);
+                    RTFreeSafe(mWorld, reblock->buffer);
+                    RTFree(mWorld, reblock);
+                }
+            } else {
+                LOG_ERROR("RTAlloc failed!");
+                RTFree(mWorld, reblock);
+            }
+        } else {
+            LOG_ERROR("RTAlloc failed!");
+        }
+    }
 
     // run queued unit commands
     if (queued_ == MagicQueued) {
@@ -587,6 +651,14 @@ VSTPlugin::~VSTPlugin(){
     clearMapping();
     if (paramState_) RTFree(mWorld, paramState_);
     if (paramMapping_) RTFree(mWorld, paramMapping_);
+    if (reblock_){
+        RTFreeSafe(mWorld, reblock_->input);
+        RTFreeSafe(mWorld, reblock_->output);
+        RTFreeSafe(mWorld, reblock_->auxInput);
+        RTFreeSafe(mWorld, reblock_->auxOutput);
+        RTFreeSafe(mWorld, reblock_->buffer);
+        RTFree(mWorld, reblock_);
+    }
     // both variables are volatile, so the compiler is not allowed to optimize it away!
     initialized_ = 0;
     queued_ = 0;
@@ -913,8 +985,8 @@ void VSTPlugin::next(int inNumSamples) {
             reblock_->phase += inNumSamples;
 
             if (reblock_->phase >= reblock_->blockSize){
-                reblock_->phase -= reblock_->blockSize;
-                assert(reblock_->phase == 0);
+                assert(reblock_->phase == reblock_->blockSize);
+                reblock_->phase = 0;
 
                 data.input = data.numInputs > 0 ? (const float **)reblock_->input : nullptr;
                 data.output = data.numOutputs > 0 ? reblock_->output : nullptr;
@@ -973,6 +1045,8 @@ void VSTPlugin::next(int inNumSamples) {
         };
 
         if (reblock_){
+            // we have to copy the inputs to the reblocker, so that we
+            // can stop bypassing anytime and always have valid input data.
             auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
                 for (int i = 0; i < nchannels; ++i){
                     std::copy(from[i], from[i] + nsamples, to[i] + phase);
@@ -980,15 +1054,16 @@ void VSTPlugin::next(int inNumSamples) {
             };
 
             readInput(mInBuf + inChannelOnset_, reblock_->input, numInChannels(),
-                        inNumSamples, reblock_->phase);
+                      inNumSamples, reblock_->phase);
             readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, numAuxInChannels(),
-                        inNumSamples, reblock_->phase);
+                      inNumSamples, reblock_->phase);
 
+            // advance phase before bypassing to keep delay!
             reblock_->phase += inNumSamples;
 
             if (reblock_->phase >= reblock_->blockSize){
-                reblock_->phase -= reblock_->blockSize;
-                assert(reblock_->phase == 0);
+                assert(reblock_->phase == reblock_->blockSize);
+                reblock_->phase = 0;
             }
 
             // input -> output

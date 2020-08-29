@@ -426,14 +426,14 @@ VSTPlugin : MultiOutUGen {
 			pluginDict[Server.default] = IdentityDictionary.new;
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0;
+	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0, blockSize;
 		input = input.asArray;
 		auxInput = auxInput.asArray;
 		params = params.asArray;
 		params.size.odd.if {
 			MethodError("'params' must be pairs of param index/name + value", this).throw;
 		};
-		^this.multiNewList([\audio, id, info, numOut, numAuxOut, 0, bypass, input.size]
+		^this.multiNewList([\audio, id, info, numOut, numAuxOut, blockSize, bypass, input.size]
 			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
@@ -734,7 +734,7 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg id, info, numOut, numAuxOut, flags, bypass ... args;
+	init { arg id, info, numOut, numAuxOut, blockSize, bypass ... args;
 		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, offset=0;
 		// store id and info (both optional)
 		this.id = id !? { id.asSymbol }; // !
@@ -787,7 +787,7 @@ VSTPlugin : MultiOutUGen {
 			};
 		};
 		// reassemble UGen inputs (in correct order)
-		inputs = [numOut, flags, bypass, numInputs] ++ inputArray
+		inputs = [numOut, blockSize ?? { 0 }, bypass, numInputs] ++ inputArray
 		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
 		^this.initOutputs(numOut + numAuxOut, rate)
 	}

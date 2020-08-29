@@ -109,6 +109,12 @@ ARGUMENT:: numAuxOut
 The number of auxiliary output channels. This must be a fixed number greater or equal 0.
 Like code::auxInput::, this is only useful for certain VST3 plugins.
 
+ARGUMENT:: blockSize
+Run the plugin with a certain block size (in samples). The default is code::nil:: (= no reblocking).
+
+Some plugins run more efficiently with larger blocksizes. (This is generally true for bridged/sandboxed plugins.) Instead of globally changing the Server block size, you can selectively reblock VSTPlugin instances.
+
+note::Reblocking causes a delay of code::N - M:: samples, where N is the desired block size and M is the Server block size.::
 
 SUBSECTION:: Plugin Management
 

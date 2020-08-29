@@ -49,8 +49,8 @@ var scdoc_sc_version = '3.11.0';
 <li class='toc2'><a href='#Inherited%20instance%20methods'>Inherited instance methods</a></li>
 <li class='toc2'><a href='#Undocumented%20instance%20methods'>Undocumented instance methods</a></li>
 <ul class='toc'><li class='toc3'><a href='#-desc'>desc</a> </li>
-<li class='toc3'><a href='#-didInit'>didInit</a> </li>
 <li class='toc3'><a href='#-info'>info</a> </li>
+<li class='toc3'><a href='#-optimizeGraph'>optimizeGraph</a> </li>
 <li class='toc3'><a href='#-synthIndex'>synthIndex</a> </li>
 </ul></ul></ul></div><div id='menubar'></div>
 <div class='contents'>
@@ -69,7 +69,7 @@ var scdoc_sc_version = '3.11.0';
 
 <p>This UGen represents a single VST plugin instance on the <a href="./..\Classes/Server.html">Server</a>. See the helpfile of <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a> for how to control it from the SuperCollider language.
 <p>VSTPlugin also has class methods to scan a Server for plugins and cache the info in the Client, see <a href="#Plugin%20Management">Plugin Management</a>.<h2><a class='anchor' name='classmethods'>Class Methods</a></h2>
-<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*ar' href='./../Overviews/Methods.html#ar'>ar</a>(<span class='argstr'>input</span>, <span class='argstr'>numOut: 1</span>, <span class='argstr'>bypass: 0</span>, <span class='argstr'>params</span>, <span class='argstr'>id</span>, <span class='argstr'>info</span>, <span class='argstr'>auxInput</span>, <span class='argstr'>numAuxOut: 0</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*ar' href='./../Overviews/Methods.html#ar'>ar</a>(<span class='argstr'>input</span>, <span class='argstr'>numOut: 1</span>, <span class='argstr'>bypass: 0</span>, <span class='argstr'>params</span>, <span class='argstr'>id</span>, <span class='argstr'>info</span>, <span class='argstr'>auxInput</span>, <span class='argstr'>numAuxOut: 0</span>, <span class='argstr'>blockSize</span>)</h3>
 <div class='method'>
 <p>create a UGen instance.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -125,7 +125,9 @@ SynthDef(\chorus, { arg bus;
 <p>Also, you can omit the <code>path</code> argument when opening plugins:<textarea class='editor'>~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'</textarea>
 <tr><td class='argumentname'>auxInput<td class='argumentdesc'>
 <p>An Array of channels or a single auxiliary input for the plugin to process. You cannot change the size of this once a SynthDef has been built. This is only useful for certain VST3 plugins (e.g. for side chaining).<tr><td class='argumentname'>numAuxOut<td class='argumentdesc'>
-<p>The number of auxiliary output channels. This must be a fixed number greater or equal 0. Like <code>auxInput</code>, this is only useful for certain VST3 plugins.</table></div><h3><a class='anchor' name='Plugin%20Management'>Plugin Management</a></h3>
+<p>The number of auxiliary output channels. This must be a fixed number greater or equal 0. Like <code>auxInput</code>, this is only useful for certain VST3 plugins.<tr><td class='argumentname'>blockSize<td class='argumentdesc'>
+<p>Run the plugin with a certain block size (in samples). The default is <code>nil</code> (= no reblocking).
+<p>Some plugins run more efficiently with larger blocksizes. (This is generally true for bridged/sandboxed plugins.) Instead of globally changing the Server block size, you can selectively reblock VSTPlugin instances.<div class='note'><span class='notelabel'>NOTE:</span> Reblocking causes a delay of <code>N - M</code> samples, where N is the desired block size and M is the Server block size.</div></table></div><h3><a class='anchor' name='Plugin%20Management'>Plugin Management</a></h3>
 
 <p>All VST plugin information is cached in the Client. This is done mainly for performance reasons but it can be also handy for end users because it's possible to investigate plugins without actually creating any instances.
 <p>The plugin info is stored as a <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance under its key (see <a href="./..\Classes/VSTPluginDesc.html#-key">VSTPluginDesc: -key</a>) and can be retrieved with <a href="#*plugins">*plugins</a>.<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*plugins' href='./../Overviews/Methods.html#plugins'>plugins</a>(<span class='argstr'>server</span>)</h3>
@@ -294,10 +296,9 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <div id='inheritedinstmets'></div><h3><a class='anchor' name='Undocumented%20instance%20methods'>Undocumented instance methods</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-desc' href='./../Overviews/Methods.html#desc'>desc</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-desc' href='./../Overviews/Methods.html#desc'>desc</a> = value</h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-didInit' href='./../Overviews/Methods.html#didInit'>didInit</a></h3>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-didInit' href='./../Overviews/Methods.html#didInit'>didInit</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a> = value</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-optimizeGraph' href='./../Overviews/Methods.html#optimizeGraph'>optimizeGraph</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synthIndex' href='./../Overviews/Methods.html#synthIndex'>synthIndex</a></h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synthIndex' href='./../Overviews/Methods.html#synthIndex'>synthIndex</a> = <span class='argstr'>index</span></h3>
 <div class='supmethod'>From superclass: <a href='./../Classes/UGen.html'>UGen</a></div>

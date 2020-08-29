@@ -218,7 +218,6 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    bool hasFlag(uint32 flag) const { return (uint32)in0(1) & flag; }
     int getBypass() const { return (int)in0(2); }
 
     int blockSize() const;
