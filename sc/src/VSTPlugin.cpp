@@ -15,6 +15,12 @@ void SCLog(const std::string& msg){
     Print(msg.c_str());
 }
 
+void RTFreeSafe(World *world, void *data){
+    if (data){
+        RTFree(world, data);
+    }
+}
+
 // SndBuffers
 static void syncBuffer(World *world, int32 index) {
     auto src = world->mSndBufsNonRealTimeMirror + index;
@@ -669,9 +675,8 @@ void VSTPlugin::update() {
             #endif
             }
             paramState_ = result;
-        }
-        else {
-            RTFree(mWorld, paramState_);
+        } else {
+            RTFreeSafe(mWorld, paramState_);
             paramState_ = nullptr;
         }
     }
@@ -689,9 +694,8 @@ void VSTPlugin::update() {
                 result[i] = nullptr;
             }
             paramMapping_ = result;
-        }
-        else {
-            RTFree(mWorld, paramMapping_);
+        } else {
+            RTFreeSafe(mWorld, paramMapping_);
             paramMapping_ = nullptr;
         }
     }
