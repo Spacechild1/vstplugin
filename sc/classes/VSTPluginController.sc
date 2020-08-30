@@ -215,8 +215,8 @@ VSTPluginController {
 		}, '/vst_auto'));
 		// latency changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
-			var nsamples = msg[3].asInteger;
-			latencyChanged.value(nsamples);
+			latency = msg[3].asInteger;
+			latencyChanged.value(latency);
 		}, '/vst_latency'));
 		// plugin crashed
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -332,8 +332,8 @@ VSTPluginController {
 					loading = false;
 					this.changed('/open', path, loaded);
 					action.value(this, loaded);
-					// report latency
-					latency.notNil.if { latencyChanged.value(latency); }
+					// report latency (if loaded)
+					latency !? { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet
 				this.sendMsg('/open', info.key, editor.asInteger, multiThreading.asInteger, intMode);

@@ -397,7 +397,3 @@ Sending the message to the Server will emphasis::not:: clear the Client plugin d
 
 
 INSTANCEMETHODS::
-
-METHOD:: id
-the ID which uniquely identifies the plugin in a SynthDef. It should be a Symbol, a Number or code::nil::.
-
