@@ -149,9 +149,9 @@ static PluginManager gPluginManager;
 #define SETTINGS_DIR ".VSTPlugin"
 // so that 64-bit and 32-bit installations can co-exist!
 #if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
-#define SETTINGS_FILE "cache32.ini"
+#define CACHE_FILE "cache32.ini"
 #else
-#define SETTINGS_FILE "cache.ini"
+#define CACHE_FILE "cache.ini"
 #endif
 
 static std::string getSettingsDir(){
@@ -165,26 +165,30 @@ static std::string getSettingsDir(){
 static SharedMutex gFileLock;
 
 static void readIniFile(){
-    ReadLock lock(gFileLock);
-    try {
-        gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
-    } catch (const Error& e){
-        LOG_ERROR("couldn't read cache file: " << e.what());
+    LockGuard lock(gFileLock);
+    auto path = getSettingsDir() + "/" CACHE_FILE;
+    if (pathExists(path)){
+        LOG_VERBOSE("read cache file " << path.c_str());
+        try {
+            gPluginManager.read(path);
+        } catch (const Error& e){
+            LOG_ERROR("ERROR: couldn't read cache file: " << e.what());
+        }
     }
 }
 
 static void writeIniFile(){
-    WriteLock lock(gFileLock);
+    LockGuard lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
             if (!createDirectory(dir)){
-                throw Error("couldn't create directory");
+                throw Error("couldn't create directory " + dir);
             }
         }
-        gPluginManager.write(dir + "/" SETTINGS_FILE);
+        gPluginManager.write(dir + "/" CACHE_FILE);
     } catch (const Error& e){
-        LOG_ERROR("couldn't write settings file: " << e.what());
+        LOG_ERROR("couldn't write cache file: " << e.what());
     }
 }
 
@@ -2515,7 +2519,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                 int flags = static_cast<PluginCmdData*>(data)->i;
                 if (flags & 1) {
                     // remove cache file
-                    removeFile(getSettingsDir() + "/" SETTINGS_FILE);
+                    removeFile(getSettingsDir() + "/" CACHE_FILE);
                 }
                 gPluginManager.clear();
                 return false;

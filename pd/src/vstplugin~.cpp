@@ -240,9 +240,9 @@ static PluginManager gPluginManager;
 #define SETTINGS_DIR ".vstplugin~"
 // so that 64-bit and 32-bit installations can co-exist!
 #if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
-#define SETTINGS_FILE "cache32.ini"
+#define CACHE_FILE "cache32.ini"
 #else
-#define SETTINGS_FILE "cache.ini"
+#define CACHE_FILE "cache.ini"
 #endif
 
 static std::string getSettingsDir(){
@@ -256,28 +256,30 @@ static std::string getSettingsDir(){
 static SharedMutex gFileLock;
 
 static void readIniFile(){
-    ReadLock lock(gFileLock);
-    try {
-        gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
-    } catch (const Error& e){
-        error("couldn't read settings file:");
-        error("%s", e.what());
+    LockGuard lock(gFileLock);
+    auto path = getSettingsDir() + "/" CACHE_FILE;
+    if (pathExists(path)){
+        verbose(PD_DEBUG, "read cache file %s", path.c_str());
+        try {
+            gPluginManager.read(path);
+        } catch (const Error& e){
+            error("couldn't read cache file: %s", e.what());
+        }
     }
 }
 
 static void writeIniFile(){
-    WriteLock lock(gFileLock);
+    LockGuard lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
             if (!createDirectory(dir)){
-                throw Error("couldn't create directory");
+                throw Error("couldn't create directory " + dir);
             }
         }
-        gPluginManager.write(dir + "/" SETTINGS_FILE);
+        gPluginManager.write(dir + "/" CACHE_FILE);
     } catch (const Error& e){
-        error("couldn't write settings file:");
-        error("%s", e.what());
+        error("couldn't write cache file: %s", e.what());
     }
 }
 
@@ -1153,7 +1155,7 @@ static void vstplugin_search_stop(t_vstplugin *x){
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
         // unloading plugins might crash, so we we first delete the cache file
     if (f != 0){
-        removeFile(getSettingsDir() + "/" SETTINGS_FILE);
+        removeFile(getSettingsDir() + "/" CACHE_FILE);
     }
         // clear the plugin description dictionary
     gPluginManager.clear();
@@ -3211,8 +3213,8 @@ EXPORT void vstplugin_tilde_setup(void){
 
     t_workqueue::init();
 
+    post("vstplugin~ %s", getVersionString().c_str());
+
     // read cached plugin info
     readIniFile();
-
-    post("vstplugin~ %s", getVersionString().c_str());
 }

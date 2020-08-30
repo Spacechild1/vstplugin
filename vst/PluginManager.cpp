@@ -138,7 +138,7 @@ void PluginManager::read(const std::string& path, bool update){
         }
         LOG_VERBOSE("updated cache file");
     }
-    LOG_DEBUG("read cache file " << path << " v" << versionMajor
+    LOG_DEBUG("cache file version: v" << versionMajor
               << "." << versionMinor << "." << versionBugfix);
 }
 
