@@ -435,7 +435,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
 // for testing we don't want to load hundreds of sub plugins
 // #define PLUGIN_LIMIT 50
 
-// We probe sub-plugins asynchronously with "futures" or worker threads.
+// We probe sub-plugins asynchronously with "futures".
+// Each future spawns a subprocess and then waits for the results.
 #define PROBE_FUTURES 8 // number of futures to wait for
 
 std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
@@ -447,16 +448,15 @@ std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
     numPlugins = std::min<int>(numPlugins, PLUGIN_LIMIT);
 #endif
     // LOG_DEBUG("numPlugins: " << numPlugins);
-    int i = 0;
+    auto plugin = pluginList.begin();
     int count = 0;
     int maxNumFutures = std::min<int>(PROBE_FUTURES, numPlugins);
     std::vector<ProbeResultFuture> futures;
     while (count < numPlugins) {
         // push futures
-        while (futures.size() < maxNumFutures && i < numPlugins){
-            auto& sub = pluginList[i++];
+        while (futures.size() < maxNumFutures && plugin != pluginList.end()){
             try {
-                futures.push_back(doProbePlugin(sub, true));
+                futures.push_back(doProbePlugin(*plugin++, true));
             } catch (const Error& e){
                 // return error future
                 futures.push_back([=](ProbeResult& result){
