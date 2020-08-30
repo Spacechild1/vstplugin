@@ -573,9 +573,9 @@ VSTPlugin::VSTPlugin(){
 
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
 
-    // create reblocker after setting the calc function (because it calculates a single 1 sample)!
+    // create reblocker after setting the calc function (to avoid 1 sample computation)!
     int reblockSize = in0(1);
-    if (reblockSize >= bufferSize()){
+    if (reblockSize > bufferSize()){
         auto reblock = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
         if (reblock){
             memset(reblock, 0, sizeof(Reblock)); // set all pointers to NULL!
@@ -653,8 +653,8 @@ VSTPlugin::VSTPlugin(){
 
 VSTPlugin::~VSTPlugin(){
     clearMapping();
-    if (paramState_) RTFree(mWorld, paramState_);
-    if (paramMapping_) RTFree(mWorld, paramMapping_);
+    RTFreeSafe(mWorld, paramState_);
+    RTFreeSafe(mWorld, paramMapping_);
     if (reblock_){
         RTFreeSafe(mWorld, reblock_->input);
         RTFreeSafe(mWorld, reblock_->output);
@@ -1370,8 +1370,8 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     }
     if (plugin_){
         if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
-            Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 
-                plugin_->info().name.c_str());
+            Print("WARNING: '%s' doesn't support single precision processing - bypassing!\n",
+                  plugin_->info().name.c_str());
         }
         LOG_DEBUG("opened " << cmd.path);
         // receive events from plugin
