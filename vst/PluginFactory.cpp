@@ -399,32 +399,30 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
             // get info from temp file
             if (file.is_open()) {
                 desc->deserialize(file);
+            } else {
+                result.error = Error(Error::SystemError, "couldn't read temp file!");
             }
-            else {
-                result.error = Error(Error::SystemError, "couldn't read tempfile!");
-            }
-        }
-        else if (code == EXIT_FAILURE) {
+        } else if (code == EXIT_FAILURE) {
             // get error from temp file
             if (file.is_open()) {
                 int err;
                 std::string msg;
-                file >> code;
-                if (!file){
+                file >> err;
+                if (file){
+                    std::getline(file, msg); // skip newline
+                    std::getline(file, msg); // read message
+                } else {
                     // happens in certain cases, e.g. the plugin destructor
                     // terminates the probe process with exit code 1.
                     err = (int)Error::UnknownError;
+                    msg = "(uncaught exception)";
                 }
-                std::getline(file, msg); // skip newline
-                std::getline(file, msg); // read message
                 LOG_DEBUG("code: " << err << ", msg: " << msg);
                 result.error = Error((Error::ErrorCode)err, msg);
+            } else {
+                result.error = Error(Error::UnknownError, "(uncaught exception)");
             }
-            else {
-                result.error = Error(Error::SystemError, "couldn't read temp file!");
-            }
-        }
-        else {
+        } else {
             // ignore temp file
             result.error = Error(Error::Crash);
         }

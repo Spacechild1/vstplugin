@@ -12,8 +12,6 @@ using namespace vst;
  #define shorten(x) x
 #endif
 
-namespace {
-
 void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& path){
     if (!path.empty()){
         vst::File file(path, File::WRITE);
@@ -26,8 +24,8 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
     }
 }
 
-} // namespace
-
+// probe a plugin and write info to file
+// returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 int probe(const std::string& pluginPath, int pluginIndex,
           const std::string& filePath)
 {
@@ -54,10 +52,15 @@ int probe(const std::string& pluginPath, int pluginIndex,
     } catch (const std::exception& e) {
         writeErrorMsg(Error::UnknownError, e.what(), filePath);
         LOG_ERROR("probe failed: " << e.what());
+    } catch (...) {
+        writeErrorMsg(Error::UnknownError, "unknown exception", filePath);
+        LOG_ERROR("probe failed: unknown exception");
     }
     return EXIT_FAILURE;
 }
 
+#if USE_BRIDGE
+// host one or more VST plugins
 int bridge(int pid, const std::string& path){
     LOG_DEBUG("bridge begin: " << pid << " " << path);
     try {
@@ -75,15 +78,13 @@ int bridge(int pid, const std::string& path){
         return EXIT_FAILURE;
     }
 }
+#endif
 
-// probe a plugin and write info to file
-// returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 #ifdef _WIN32
 int wmain(int argc, const wchar_t *argv[]){
 #else
 int main(int argc, const char *argv[]) {
 #endif
-    LOG_DEBUG("host");
     if (argc >= 2){
         std::string verb = shorten(argv[1]);
         argc -= 2;
