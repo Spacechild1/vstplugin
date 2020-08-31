@@ -20,6 +20,25 @@ namespace fs = std::experimental::filesystem;
 
 namespace vst {
 
+using LogFunction = void(*)(const char *);
+
+static LogFunction gLogFunction = nullptr;
+
+void setLogFunction(LogFunction f){
+    gLogFunction = f;
+}
+
+Log::~Log(){
+    stream_ << "\n";
+    std::string msg = stream_.str();
+    if (gLogFunction){
+        gLogFunction(msg.c_str());
+    } else {
+        std::cerr << msg;
+        std::flush(std::cerr);
+    }
+}
+
 #ifdef _WIN32
 std::wstring widen(const std::string& s){
     if (s.empty()){

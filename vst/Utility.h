@@ -50,28 +50,7 @@
 #define LOGLEVEL 0
 #endif
 
-#ifdef LOGFUNCTION
-#include <sstream>
-	void LOGFUNCTION(const std::string& msg);
-	class Log {
-	public:
-		~Log() {
-			stream_ << "\n";
-			std::string msg = stream_.str();
-			LOGFUNCTION(msg.c_str());
-		}
-		template<typename T>
-		Log& operator<<(T&& t) {
-            stream_ << std::forward<T>(t);
-			return *this;
-		}
-	private:
-		std::ostringstream stream_;
-	};
-#define DO_LOG(x) (Log() << x)
-#else // default log function
-#define DO_LOG(x) std::cerr << x << std::endl
-#endif
+#define DO_LOG(x) (vst::Log() << x)
 
 #if LOGLEVEL >= 0
 #define LOG_ERROR(x) DO_LOG(x)
@@ -98,6 +77,18 @@
 #endif
 
 namespace vst {
+
+class Log {
+public:
+    ~Log();
+    template<typename T>
+    Log& operator<<(T&& t) {
+        stream_ << std::forward<T>(t);
+        return *this;
+    }
+private:
+    std::ostringstream stream_;
+};
 
 #ifdef _WIN32
 std::wstring widen(const std::string& s);

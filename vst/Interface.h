@@ -42,6 +42,9 @@ const int VERSION_PRERELEASE = 1;
 
 std::string getVersionString();
 
+using LogFunction = void (*)(const char *);
+void setLogFunction(LogFunction f);
+
 class SharedMutex;
 class WriteLock;
 class ReadLock;

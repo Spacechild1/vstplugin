@@ -11,8 +11,8 @@ namespace rt {
     InterfaceTable* interfaceTable;
 }
 
-void SCLog(const std::string& msg){
-    Print(msg.c_str());
+void SCLog(const char *s){
+    Print("%s", s);
 }
 
 void RTFreeSafe(World *world, void *data){
@@ -2699,6 +2699,8 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_search_stop);
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
+
+    setLogFunction(SCLog);
 
     Print("VSTPlugin %s\n", getVersionString().c_str());
     // read cached plugin info

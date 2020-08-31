@@ -43,7 +43,6 @@ message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 # the UGen
 add_library(${PROJECT} MODULE ${SRC})
-target_compile_definitions(${PROJECT} PUBLIC -DLOGFUNCTION=SCLog)
 target_link_libraries(${PROJECT} ${LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
