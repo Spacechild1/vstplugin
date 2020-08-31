@@ -75,20 +75,7 @@ namespace UIThread {
 static std::atomic_bool gRunning;
 
 void setup(){
-    if (isCurrentThread()){
-        // create NSApplication in this thread (= main thread)
-        // check if someone already created NSApp (just out of curiousity)
-        if (NSApp != nullptr){
-            LOG_WARNING("NSApp already initialized!");
-            return;
-        }
-        // NSApp will automatically point to the NSApplication singleton
-        [NSApplication sharedApplication];
-        LOG_DEBUG("init cocoa event loop (polling)");
-    } else {
-        // we don't run on the main thread and expect the host app to create
-        // the event loop (the EventLoop constructor will warn us otherwise).
-    }
+    Cocoa::EventLoop::instance();
 }
 
 void run() {
@@ -183,22 +170,40 @@ EventLoop& EventLoop::instance(){
 }
 
 EventLoop::EventLoop(){
-    // we must access NSApp only once in the beginning (why?)
-    haveNSApp_ = (NSApp != nullptr);
-    if (haveNSApp_){
-    #if 0
-        // transform process into foreground application
-        // this doesn't seem to be necessary anymore...
-        ProcessSerialNumber psn = {0, kCurrentProcess};
-        TransformProcessType(&psn, kProcessTransformToForegroundApplication);
-    #endif
-        LOG_DEBUG("init cocoa event loop");
+    // NOTE: somehow we must access NSApp only once in the beginning to check
+    // for its existence (why?), that's why we cache the result in 'haveNSApp_'.
+    if (UIThread::isCurrentThread()){
+        // create NSApplication in this thread (= main thread)
+        // check if someone already created NSApp (just out of curiousity)
+        if (NSApp != nullptr){
+            LOG_WARNING("NSApp already initialized!");
+        } else {
+            // NSApp will automatically point to the NSApplication singleton
+            [NSApplication sharedApplication];
+            LOG_DEBUG("init cocoa event loop (polling)");
+        }
+        haveNSApp_ = true;
     } else {
-        LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
+        // we don't run on the main thread and expect the host app
+        // to create NSApp and run the event loop.
+        haveNSApp_ = (NSApp != nullptr);
+        if (!haveNSApp_){
+            LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
+            return; // done
+        }
+        LOG_DEBUG("init cocoa event loop");
     }
 
+#if 0
+    // transform process into foreground application
+    // this doesn't seem to be necessary anymore...
+    ProcessSerialNumber psn = {0, kCurrentProcess};
+    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+#endif
+
+    proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
+
     auto createTimer = [this](){
-        proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
         timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
                     target:proxy_
                     selector:@selector(poll)
@@ -215,9 +220,11 @@ EventLoop::EventLoop(){
 }
 
 EventLoop::~EventLoop(){
-    [timer_ invalidate];
-    timer_ = nil;
-    [proxy_ release];
+    if (haveNSApp_){
+        [timer_ invalidate];
+        timer_ = nil;
+        [proxy_ release];
+    }
 }
 
 UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
@@ -251,6 +258,7 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
         }
         return true;
     } else {
+        LOG_DEBUG("callSync() failed - no NSApp");
         return false;
     }
 }
@@ -265,6 +273,7 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
         }
         return true;
     } else {
+        LOG_DEBUG("callAsync() failed - no NSApp");
         return false;
     }
 }
