@@ -1484,10 +1484,10 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         outlet_anything(data->owner->x_messout, gensym("open"), n, a);
     };
 
+    // for editor or plugin bridge/sandbox
+    initEventLoop();
+
     // open the new plugin
-    if (editor){
-        initEventLoop();
-    }
     if (async){
         auto data = new t_open_data();
         data->owner = x;
@@ -2832,9 +2832,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     // open plugin
     if (file){
-        if (editor){
-            initEventLoop();
-        }
+        // for editor or plugin bridge/sandbox
+        initEventLoop();
+
         t_open_data data;
         data.owner = this;
         data.path = file;
