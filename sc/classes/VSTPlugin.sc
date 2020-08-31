@@ -793,8 +793,11 @@ VSTPlugin : MultiOutUGen {
 	}
 	optimizeGraph {
 		// This is called exactly once during SynthDef construction!
-		// Make sure metadata entry exists:
-		var metadata = this.synthDef.metadata[\vstplugins];
+		var metadata;
+		// For older SC versions, where metadata might be 'nil'
+		this.synthDef.metadata ?? { this.synthDef.metadata = () };
+		// Add vstplugin metadata entry if needed:
+		metadata = this.synthDef.metadata[\vstplugins];
 		metadata ?? {
 			metadata = ();
 			this.synthDef.metadata[\vstplugins] = metadata;
