@@ -103,6 +103,8 @@ if (VST2)
     set(VST2DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
     add_definitions(-DUSE_VST2=1)
     message(STATUS "VST2DIR: ${VST2DIR}")
+else()
+    add_definitions(-DUSE_VST2=0)
 endif()
 option(FST "Use FST instead of the official VST2 SDK")
 if (FST)
@@ -116,6 +118,8 @@ if (VST3)
     set(VST3DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
     add_definitions(-DUSE_VST3=1)
     message(STATUS "VST3DIR: ${VST3DIR}")
+else()
+    add_definitions(-DUSE_VST3=0)
 endif()
 
 # bit bridging
@@ -133,6 +137,8 @@ if (BRIDGE)
         # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
         option(BUILD_HOST32 "Build the 32-bit host app" OFF)
     endif()
+else()
+    add_definitions(-DUSE_BRIDGE=0)
 endif()
 
 # platform specific linker flags
