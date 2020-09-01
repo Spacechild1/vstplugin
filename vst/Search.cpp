@@ -65,7 +65,8 @@ const std::string& getBundleBinaryPath(){
 
 #ifdef _WIN32
 # if USE_BRIDGE
-   #define PROGRAMFILES(x) "%ProgramFiles(x86)%\\" x, "%ProgramW6432%\\" x
+   // 64-bit plugins first!
+   #define PROGRAMFILES(x) "%ProgramW6432%\\" x, "%ProgramFiles(x86)%\\" x
 # else // USE_BRIDGE
 #  ifdef _WIN64 // 64 bit
 #   define PROGRAMFILES(x) "%ProgramFiles%\\" x
@@ -76,39 +77,36 @@ const std::string& getBundleBinaryPath(){
 #endif // WIN32
 
 static std::vector<const char *> defaultSearchPaths = {
-    /*////// VST2 ////*/
+/*---- VST2 ----*/
 #if USE_VST2
     // macOS
-#ifdef __APPLE__
+  #ifdef __APPLE__
     "~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
-#endif
+  #endif
     // Windows
-#ifdef _WIN32
+  #ifdef _WIN32
     PROGRAMFILES("VSTPlugins"), PROGRAMFILES("Steinberg\\VSTPlugins"),
     PROGRAMFILES("Common Files\\VST2"), PROGRAMFILES("Common Files\\Steinberg\\VST2")
-#endif
+  #endif
     // Linux
-#ifdef __linux__
-    "~/.vst", "/usr/local/lib/vst", "/usr/lib/vst"
+  #ifdef __linux__
+    "~/.vst", "/usr/local/lib/vst", "/usr/lib/vst",
+  #endif
 #endif
-#endif // VST2
-#if USE_VST2 && USE_VST3
-    ,
-#endif
-    /*////// VST3 ////*/
+/*---- VST3 ----*/
 #if USE_VST3
     // macOS
-#ifdef __APPLE__
+  #ifdef __APPLE__
     "~/Library/Audio/Plug-Ins/VST3", "/Library/Audio/Plug-Ins/VST3"
-#endif
+  #endif
     // Windows
-#ifdef _WIN32
+  #ifdef _WIN32
     PROGRAMFILES("Common Files\\VST3")
-#endif
+  #endif
     // Linux
-#ifdef __linux__
+  #ifdef __linux__
     "~/.vst3", "/usr/local/lib/vst3", "/usr/lib/vst3"
-#endif
+  #endif
 #endif // VST3
 };
 
