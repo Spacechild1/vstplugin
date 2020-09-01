@@ -91,6 +91,8 @@ class Window : public IWindow {
     // the very first time and then always returns, so we cache
     // "true" results.
     bool canResize_ = false;
+
+    static std::atomic<int> numWindows_;
 };
 
 } // Cocoa

@@ -194,13 +194,6 @@ EventLoop::EventLoop(){
         LOG_DEBUG("init cocoa event loop");
     }
 
-#if 0
-    // transform process into foreground application
-    // this doesn't seem to be necessary anymore...
-    ProcessSerialNumber psn = {0, kCurrentProcess};
-    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
-#endif
-
     proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
 
     auto createTimer = [this](){
@@ -278,6 +271,8 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     }
 }
 
+std::atomic<int> Window::numWindows_{0};
+
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin) {
     origin_ = NSMakePoint(100, 100); // default position (bottom left)
@@ -286,9 +281,9 @@ Window::Window(IPlugin& plugin)
 // the destructor must be called on the main thread!
 Window::~Window(){
     if (window_){
-        plugin_->closeEditor();
-        [timer_ invalidate];
-        [window_ close];
+        auto window = window_;
+        onClose();
+        [window close];
     }
     LOG_DEBUG("destroyed Window");
 }
@@ -348,6 +343,15 @@ void Window::doOpen(){
                     userInfo:nil
                     repeats:YES];
 
+        if (numWindows_.fetch_add(1) == 0){
+            // first Window: transform process into foreground application.
+            // This is necessariy so we can table cycle the Window(s)
+            // and access them from the dock.
+            // NOTE: we have to do this *before* bringing the window to the top
+            ProcessSerialNumber psn = {0, kCurrentProcess};
+            TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+        }
+
         [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
         LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
@@ -370,6 +374,12 @@ void Window::onClose(){
         plugin_->closeEditor();
         origin_ = [window_ frame].origin;
         window_ = nullptr;
+
+        if (numWindows_.fetch_sub(1) == 1){
+            // last Window: transform back into background application
+            ProcessSerialNumber psn = {0, kCurrentProcess};
+            TransformProcessType(&psn, kProcessTransformToUIElementApplication);
+        }
     }
 }
 
