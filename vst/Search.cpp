@@ -81,12 +81,12 @@ static std::vector<const char *> defaultSearchPaths = {
 #if USE_VST2
     // macOS
   #ifdef __APPLE__
-    "~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST"
+    "~/Library/Audio/Plug-Ins/VST", "/Library/Audio/Plug-Ins/VST",
   #endif
     // Windows
   #ifdef _WIN32
     PROGRAMFILES("VSTPlugins"), PROGRAMFILES("Steinberg\\VSTPlugins"),
-    PROGRAMFILES("Common Files\\VST2"), PROGRAMFILES("Common Files\\Steinberg\\VST2")
+    PROGRAMFILES("Common Files\\VST2"), PROGRAMFILES("Common Files\\Steinberg\\VST2"),
   #endif
     // Linux
   #ifdef __linux__
