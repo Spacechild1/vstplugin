@@ -298,6 +298,8 @@ void Window::open(){
 // to be called on the main thread
 void Window::doOpen(){
     if (window_){
+        // just bring to top
+        [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
         return;
     }
@@ -352,6 +354,8 @@ void Window::doOpen(){
             TransformProcessType(&psn, kProcessTransformToForegroundApplication);
         }
 
+        // bring to top
+        [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
         LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
