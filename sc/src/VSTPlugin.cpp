@@ -2596,7 +2596,7 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         }
     }
 
-    auto data = CmdData::create<SearchCmdData>(inWorld);
+    auto data = CmdData::create<SearchCmdData>(inWorld, size);
     if (data) {
         data->bufnum = bufnum;
         // temp file or buffer to store the plugin info
