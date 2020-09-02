@@ -145,14 +145,14 @@ void PluginManager::read(const std::string& path, bool update){
 PluginInfo::const_ptr PluginManager::readPlugin(std::istream& stream){
     WriteLock lock(mutex_);
     return doReadPlugin(stream, VERSION_MAJOR,
-                        VERSION_MINOR, VERSION_BUGFIX);
+                        VERSION_MINOR, VERSION_PATCH);
 }
 
 PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int versionMajor,
-                                                  int versionMinor, int versionBugfix){
+                                                  int versionMinor, int versionPatch){
     // deserialize plugin
     auto desc = std::make_shared<PluginInfo>(nullptr);
-    desc->deserialize(stream, versionMajor, versionMinor, versionBugfix);
+    desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
 
     // load the factory (if not loaded already) to verify that the plugin still exists
     IFactory::ptr factory;
@@ -203,7 +203,7 @@ void PluginManager::doWrite(const std::string& path) const {
     }
     // write version number
     file << "[version]\n";
-    file << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_BUGFIX << "\n";
+    file << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_PATCH << "\n";
     // serialize plugins
     file << "[plugins]\n";
     file << "n=" << pluginMap.size() << "\n";

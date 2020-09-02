@@ -107,7 +107,7 @@ class ShmInterface {
         uint32_t size;
         uint8_t versionMajor;
         uint8_t versionMinor;
-        uint8_t versionBugfix;
+        uint8_t versionPatch;
         uint8_t unused;
         uint32_t reserved;
         uint32_t numChannels;
@@ -146,7 +146,7 @@ class ShmInterface {
         return channels_[i];
     }
 
-    void getVersion(int& major, int& minor, int& bugfix) const;
+    void getVersion(int& major, int& minor, int& patch) const;
  private:
     std::vector<ShmChannel> channels_;
     bool owner_ = false;

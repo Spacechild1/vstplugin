@@ -37,8 +37,8 @@ namespace vst {
 
 const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 4;
-const int VERSION_BUGFIX = 0;
 const int VERSION_PRERELEASE = 1;
+const int VERSION_PATCH = 0;
 
 std::string getVersionString();
 
@@ -245,7 +245,7 @@ struct PluginInfo final {
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,
-                     int versionMinor = VERSION_MINOR, int versionBugfix = VERSION_BUGFIX);
+                     int versionMinor = VERSION_MINOR, int versionPatch = VERSION_PATCH);
 #if USE_VST2
     void setUniqueID(int _id); // VST2
     int getUniqueID() const {

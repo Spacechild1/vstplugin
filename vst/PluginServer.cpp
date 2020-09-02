@@ -546,10 +546,10 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     shm_->connect(shmPath);
     LOG_DEBUG("PluginServer: connected to shared memory interface");
     // check version (for now it must match exactly)
-    int major, minor, bugfix;
-    shm_->getVersion(major, minor, bugfix);
+    int major, minor, patch;
+    shm_->getVersion(major, minor, patch);
     if (!(major == VERSION_MAJOR && minor == VERSION_MINOR
-          && bugfix == VERSION_BUGFIX)){
+          && patch == VERSION_PATCH)){
        throw Error(Error::PluginError, "host app version mismatch");
     }
     // setup UI event loop

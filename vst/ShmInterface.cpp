@@ -408,7 +408,7 @@ void ShmInterface::create(){
     header->size = size_;
     header->versionMajor = VERSION_MAJOR;
     header->versionMinor = VERSION_MINOR;
-    header->versionBugfix = VERSION_BUGFIX;
+    header->versionPatch = VERSION_PATCH;
     header->numChannels = channels_.size();
 
     char *ptr = data_ + sizeof(Header);
@@ -601,10 +601,10 @@ void ShmInterface::closeShm(){
     channels_.clear();
 }
 
-void ShmInterface::getVersion(int& major, int& minor, int& bugfix) const {
+void ShmInterface::getVersion(int& major, int& minor, int& patch) const {
     major = reinterpret_cast<const Header *>(data_)->versionMajor;
     minor = reinterpret_cast<const Header *>(data_)->versionMinor;
-    bugfix = reinterpret_cast<const Header *>(data_)->versionBugfix;
+    patch = reinterpret_cast<const Header *>(data_)->versionPatch;
 }
 
 } // vst
