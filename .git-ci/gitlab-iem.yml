@@ -14,172 +14,137 @@
 #######################################################################
 
 variables:
-  PDVERSION: 0.49-0
+  PDVERSION: 0.51-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
   SC_PATH: /tmp/supercollider
-  PDLIBNAME: "${CI_PROJECT_NAME}~"
+  PDLIBNAME: vstplugin~
   SCLIBNAME: VSTPlugin
+
+### script snippets
+
+.script:deps: &script_deps
+  - .git-ci/get_vst2.sh "${VST2DIR}"
+  - .git-ci/get_vst3.sh "${VST3DIR}"
+  - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
+  - pushd "${SC_PATH}"
+  - git submodule update --init
+  - popd
+
+.script:cmake: &script_cmake
+  - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
+   -DBUILD_HOST32=${HOST32} -DSTATIC_LIBS=${STATIC_LIBS}
+   -DPD_EXTENSION=${PD_EXTENSION} -DPD_INSTALLDIR=$(pwd) -DPD_DIR="${PD_PATH}"
+   -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR=$(pwd)
+
+### build snippets
+.script:make: &script_make
+  - make -C build VERBOSE=1
+.script:make_install: &script_make_install
+  - make -C build install/strip VERBOSE=1
 
 #######################################################################
 ### configuration templates (to be used for snapshot and release builds)
-.build:snapshot: &snapshot
+.build:script:
+  stage: build
+  script:
+    - *script_make
+    - *script_make_install
+  artifacts:
+    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME%_*}
+    paths:
+      - "${PDLIBNAME}"
+      - "${SCLIBNAME}"
+
+.snapshot:
   except:
     - tags
-  artifacts: &snapshot_artifacts
-    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME%_*}
-    paths:
-      - "${PDLIBNAME}"
-      - "${SCLIBNAME}"
+  artifacts:
     expire_in: 1 week
 
-.build:release: &release
+.release:
   only:
     - tags
-  artifacts: &release_artifacts
-    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME%_*}
-    paths:
-      - "${PDLIBNAME}"
-      - "${SCLIBNAME}"
 
 .build:linux: &build_linux
+  extends: .build:script
   image: gcc
-  stage: build
   variables:
-    pd_extension: pd_linux
+    SUPERNOVA: 1
+    STATIC_LIBS: 1
+    IEM_CI_PKGLIBDIR: Linux
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends make cmake
       puredata-dev puredata
-    - export PD=/usr/bin/pd
-    - .git-ci/get_vst2.sh "${VST2DIR}"
-    - .git-ci/get_vst3.sh "${VST3DIR}"
-    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - pushd "${SC_PATH}"
-    - git submodule update --init
-    - popd
-    - cmake -H. -Bbuild -DSTATIC_LIBS=ON -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
-      -DSTATIC_LIBS=ON -DPD_EXTENSION=${pd_extension} -DPD_INSTALLDIR=$(pwd)
-      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
-  script:
-    - make -C build -j4 VERBOSE=1
-    - make -C build install/strip VERBOSE=1
+    - *script_deps
+    - *script_cmake
 
 .build:linux_i386: &build_linux_i386
   allow_failure: true
   extends: .build:linux
   image: registry.git.iem.at/devtools/docker/debiancross:i386
   variables:
-    pd_extension: l_i386
+    PD_EXTENSION: l_i386
+    IEM_CI_PKGLIBDIR: Linux_i386
 
 .build:macos: &build_macos
+  extends: .build:script
   tags:
      - osx
-  stage: build
+  variables:
+    SUPERNOVA: 1
+    HOST32: 1
+    IEM_CI_PKGLIBDIR: Darwin
   before_script:
     - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}.mac.tar.gz
     - rm -rf /Applications/Pd*.app/
     - tar xvf Pd.tgz -C /Applications/
     - rm -f Pd.tgz
-    - export PD=$(find /Applications/Pd*.app/Contents/Resources/bin/ type f -name pd -print -quit)
-    - .git-ci/get_vst2.sh "${VST2DIR}"
-    - .git-ci/get_vst3.sh "${VST3DIR}"
-    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - pushd "${SC_PATH}"
-    - git submodule update --init
-    - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DBUILD_HOST32=ON
-      -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd) -DPD_INSTALLDIR=$(pwd)
-  script:
-    - make -C build -j4 VERBOSE=1
-    - make -C build install/strip VERBOSE=1
+    - *script_deps
+    - *script_cmake
 
 .build:w32: &build_w32
-  stage: build
+  extends: .build:script
   tags:
     - windows
   variables:
     IEMCI_CONFIGURATIONS: mingw32
+    SUPERNOVA: 1
+    STATIC_LIBS: 1
+    PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
+    IEM_CI_PKGLIBDIR: w32
   before_script:
     - pacman --noconfirm -S cmake
-    - wget -q -O Pd.zip http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
-    - rm -rf "${PROGRAMFILESX86}/pd"; mkdir -p "${PROGRAMFILESX86}/pd"
-    - unzip -q Pd.zip -d "${PROGRAMFILESX86}/pd"
-    - mv -v "${PROGRAMFILESX86}/pd"/*/* "${PROGRAMFILESX86}/pd"
-    - export PD="${PROGRAMFILESX86}/pd/bin/pd.com"
-    - .git-ci/get_vst2.sh "${VST2DIR}"
-    - .git-ci/get_vst3.sh "${VST3DIR}"
-    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - pushd "${SC_PATH}"
-    - git submodule update --init
-    - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
-      -DPD_INCLUDEDIR="/c/Program Files (x86)/pd/src" -DPD_BINDIR="/c/Program Files (x86)/pd/bin"
-      -DPD_INSTALLDIR=$(pwd) -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
-  script:
-    - make -C build -j4 VERBOSE=1
-    - make -C build install/strip VERBOSE=1
+    - wget -q -O Pd.zip ${PD_URL}
+# install locally to avoid hassles with Windows vs. Unix file paths.
+# NOTE: PD_PATH is also used in .script:cmake.
+    - export PD_PATH=/tmp/pd
+    - rm -rf "${PD_PATH}"; mkdir -p "${PD_PATH}"
+    - unzip -q Pd.zip -d "${PD_PATH}"
+    - mv -v "${PD_PATH}"/*/* "${PD_PATH}"
+    - *script_deps
+    - *script_cmake
 
 .build:w64: &build_w64
-  stage: build
-  tags:
-    - windows
+  extends: .build:w32
   variables:
     IEMCI_CONFIGURATIONS: mingw64
-  before_script:
-    - pacman --noconfirm -S cmake
-    - wget -q -O Pd.zip http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
-    - rm -rf "${PROGRAMFILES}/pd"; mkdir -p "${PROGRAMFILES}/pd"
-    - unzip -q Pd.zip -d "${PROGRAMFILES}/pd"
-    - mv -v "${PROGRAMFILES}/pd"/*/* "${PROGRAMFILES}/pd"
-    - export PD="${PROGRAMFILES}/pd/bin/pd.com"
-    - .git-ci/get_vst2.sh "${VST2DIR}"
-    - .git-ci/get_vst3.sh "${VST3DIR}"
-    - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-    - pushd "${SC_PATH}"
-    - git submodule update --init
-    - popd
-    - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DPD_EXTENSION=".m_amd64"
-      -DPD_INCLUDEDIR="/c/Program Files/pd/src" -DPD_BINDIR="/c/Program Files/pd/bin"
-      -DPD_INSTALLDIR=$(pwd) -DSC_INCLUDEDIR="${SC_PATH}" -DSUPERNOVA=ON -DSC_INSTALLDIR=$(pwd)
-  script:
-    - make -C build -j4 VERBOSE=1
-    - make -C build install/strip VERBOSE=1
+    PD_EXTENSION: m_amd64
+    PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
+    IEM_CI_PKGLIBDIR: w64
 
-#######################################################################
-### the actual jobs: (linux,macos,windows)*(release,snapshot)
-
-Linux:
+### job templates
+.Linux:
   <<: *build_linux
-  <<: *release
-Linux-i386:
+.Linux_i386:
+  allow_failure: true
   <<: *build_linux_i386
-  <<: *release
-Darwin:
+.Darwin:
   <<: *build_macos
-  <<: *release
-w32:
+.w32:
   <<: *build_w32
-  <<: *release
-w64:
+.w64:
   <<: *build_w64
-  <<: *release
-
-
-Linux_snapshot:
-  <<: *build_linux
-  <<: *snapshot
-Linux-i386_snapshot:
-  <<: *build_linux_i386
-  <<: *snapshot
-Darwin_snapshot:
-  <<: *build_macos
-  <<: *snapshot
-w32_snapshot:
-  <<: *build_w32
-  <<: *snapshot
-w64_snapshot:
-  <<: *build_w64
-  <<: *snapshot
 
 #######################################################################
 ### create deken packages and (optionally) upload them
@@ -198,3 +163,48 @@ deken:
     - deken package --version="${CI_COMMIT_TAG#v}" "tmp/${PDLIBNAME}"
     - deken package --version="${CI_COMMIT_TAG#v}" "${PDLIBNAME}"
     - test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}" || deken upload --no-source-error ./*.dek
+#######################################################################
+### the actual jobs: (linux,macos,windows)*(release,snapshot)
+
+### release jobs
+Linux:
+  extends:
+    - .Linux
+    - .release
+Linux_i386:
+  extends:
+    - .Linux_i386
+    - .release
+Darwin:
+  extends:
+    - .Darwin
+    - .release
+w32:
+  extends:
+    - .w32
+    - .release
+w64:
+  extends:
+    - .w64
+    - .release
+### snapshot jobs
+Linux_snapshot:
+  extends:
+    - .Linux
+    - .snapshot
+.Linux_i386_snapshot:
+  extends:
+    - .Linux_i386
+    - .snapshot
+.Darwin_snapshot:
+  extends:
+    - .Darwin
+    - .snapshot
+.w32_snapshot:
+  extends:
+    - .w32
+    - .snapshot
+.w64_snapshot:
+  extends:
+    - .w64
+    - .snapshot

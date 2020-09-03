@@ -9,7 +9,7 @@ set(SRC "src/${FILENAME}.h" "src/${FILENAME}.cpp")
 include_directories(src)
 
 # Pd directories:
-if (NOT DEFINED PD_DIR)
+if (NOT PD_DIR)
     if (WIN32 OR MINGW)
         set(PD_INCLUDEDIR "${PROGRAMFILES}/Pd/src" CACHE PATH "Pd header files")
     elseif(APPLE)
