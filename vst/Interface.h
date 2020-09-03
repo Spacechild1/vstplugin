@@ -220,6 +220,13 @@ struct Preset {
 
 using PresetList = std::vector<Preset>;
 
+enum class RunMode {
+    Auto,
+    Sandbox,
+    Native,
+    Bridge
+};
+
 struct PluginInfo final {
     static const uint32_t NoParamID = 0xffffffff;
 
@@ -235,13 +242,7 @@ struct PluginInfo final {
     const std::string& path() const { return path_; }
     // create new instances
     // throws an Error exception on failure!
-    enum class Mode {
-        Auto,
-        Sandboxed,
-        Native,
-        Bridged
-    };
-    IPlugin::ptr create(bool editor, bool threaded, Mode mode = Mode::Auto) const;
+    IPlugin::ptr create(bool editor, bool threaded, RunMode mode = RunMode::Auto) const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
     void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,

@@ -43,7 +43,7 @@ struct OpenCmdData : CmdData {
     Error error;
     bool editor;
     bool threaded;
-    PluginInfo::Mode mode;
+    RunMode mode;
     double sampleRate;
     int blockSize;
     int numInputs;
@@ -140,7 +140,7 @@ public:
     bool tryLock();
     void unlock();
     void open(const char* path, bool editor,
-              bool threaded, PluginInfo::Mode mode);
+              bool threaded, RunMode mode);
     void doneOpen(OpenCmdData& msg);
     void close();
     void showEditor(bool show);

@@ -124,16 +124,16 @@ IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& n
                                bool editor, bool sandbox);
 #endif
 
-IPlugin::ptr PluginInfo::create(bool editor, bool threaded, Mode mode) const {
+IPlugin::ptr PluginInfo::create(bool editor, bool threaded, RunMode mode) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     if (!factory){
         return nullptr;
     }
     IPlugin::ptr plugin;
 #if USE_BRIDGE
-    if ((mode == Mode::Bridged) || (mode == Mode::Sandboxed) ||
-            ((mode == Mode::Auto) && bridged())){
-        plugin = makeBridgedPlugin(factory, name, editor, mode == Mode::Sandboxed);
+    if ((mode == RunMode::Bridge) || (mode == RunMode::Sandbox) ||
+            ((mode == RunMode::Auto) && bridged())){
+        plugin = makeBridgedPlugin(factory, name, editor, mode == RunMode::Sandbox);
     }
     else
 #endif

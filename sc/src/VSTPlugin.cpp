@@ -1310,7 +1310,7 @@ bool cmdOpen(World *world, void* cmdData) {
 
 // try to open the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::open(const char *path, bool editor,
-                             bool threaded, PluginInfo::Mode mode) {
+                             bool threaded, RunMode mode) {
     LOG_DEBUG("open");
     if (isLoading_) {
         LOG_WARNING("already loading!");
@@ -2013,16 +2013,16 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     auto editor = args->geti();
     auto threaded = args->geti();
 
-    PluginInfo::Mode mode;
+    RunMode mode;
     switch (args->geti()){
     case 1:
-        mode = PluginInfo::Mode::Sandboxed;
+        mode = RunMode::Sandbox;
         break;
     case 2:
-        mode = PluginInfo::Mode::Bridged;
+        mode = RunMode::Bridge;
         break;
     default:
-        mode = PluginInfo::Mode::Auto;
+        mode = RunMode::Auto;
         break;
     }
 

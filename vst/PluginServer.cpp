@@ -734,8 +734,7 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
         auto result = static_cast<PluginResult *>(x);
         try {
             // open with Mode::Native to avoid infinite recursion!
-            result->plugin = result->info->create(true, false,
-                                                  PluginInfo::Mode::Native);
+            result->plugin = result->info->create(true, false, RunMode::Native);
         } catch (const Error& e){
             result->error = e;
         }

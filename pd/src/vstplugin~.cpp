@@ -1337,7 +1337,7 @@ struct t_open_data : t_command_data<t_open_data> {
     Error error;
     bool editor;
     bool threaded;
-    PluginInfo::Mode mode;
+    RunMode mode;
 };
 
 template<bool async>
@@ -1419,7 +1419,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     bool editor = false;
     bool async = false;
     bool threaded = false;
-    auto mode = PluginInfo::Mode::Auto;
+    auto mode = RunMode::Auto;
     // parse arguments
     while (argc && argv->a_type == A_SYMBOL){
         auto sym = argv->a_w.w_symbol;
@@ -1430,9 +1430,9 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
             } else if (!strcmp(flag, "-t")){
                 threaded = true;
             } else if (!strcmp(flag, "-p")){
-                mode = PluginInfo::Mode::Sandboxed;
+                mode = RunMode::Sandbox;
             } else if (!strcmp(flag, "-b")){
-                mode = PluginInfo::Mode::Bridged;
+                mode = RunMode::Bridge;
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
             }
@@ -2744,7 +2744,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool threaded = false;
-    auto mode = PluginInfo::Mode::Auto;
+    auto mode = RunMode::Auto;
     // precision (defaults to Pd's precision)
     ProcessPrecision precision = (PD_FLOATSIZE == 64) ?
                 ProcessPrecision::Double : ProcessPrecision::Single;
@@ -2769,9 +2769,9 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             } else if (!strcmp(flag, "-t")){
                 threaded = true;
             } else if (!strcmp(flag, "-p")){
-                mode = PluginInfo::Mode::Sandboxed;
+                mode = RunMode::Sandbox;
             } else if (!strcmp(flag, "-b")){
-                mode = PluginInfo::Mode::Bridged;
+                mode = RunMode::Bridge;
             } else {
                 pd_error(this, "%s: unknown flag '%s'", classname(this), flag);
             }
