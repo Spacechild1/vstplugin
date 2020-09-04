@@ -77,6 +77,14 @@ class alignas(CACHELINE_SIZE) SpinLock {
     void lock();
     bool try_lock();
     void unlock();
+
+    // before C++17, new() couldn't handle alignments larger than max_align_t
+#if __cplusplus < 201703L
+    void* operator new(size_t size);
+    void* operator new[](size_t size);
+    void operator delete(void*);
+    void operator delete[](void*);
+#endif
  private:
     // pad and align to prevent false sharing
     std::atomic_bool locked_{false};

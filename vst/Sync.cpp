@@ -1,7 +1,11 @@
 #include "Sync.h"
+#include "Utility.h"
 
 #ifdef _WIN32
-#include <windows.h>
+# include <windows.h>
+# include <malloc.h>
+#else
+# include <stdlib.h>
 #endif
 
 namespace vst {
@@ -68,6 +72,9 @@ void Event::wait(){
 
 SpinLock::SpinLock(){
     static_assert(sizeof(SpinLock) == CACHELINE_SIZE, "");
+    if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
+        LOG_WARNING("SpinLock is not properly aligned!");
+    }
 }
 
 void SpinLock::lock(){
@@ -92,6 +99,36 @@ bool SpinLock::try_lock(){
 
 void SpinLock::unlock(){
     locked_.store(false, std::memory_order_release);
+}
+
+#if __cplusplus < 201703L
+void* SpinLock::operator new(size_t size){
+#ifdef _WIN32
+    void *ptr = _aligned_malloc(size, alignof(SpinLock));
+#else
+    void *ptr = aligned_alloc(alignof(SpinLock), size);
+#endif
+    if (!ptr){
+        ptr = malloc(size);
+    }
+    return ptr;
+}
+
+void SpinLock::operator delete(void* ptr){
+#ifdef _WIN32
+    _aligned_free(ptr);
+#else
+    std::free(ptr);
+#endif
+}
+#endif
+
+void *SpinLock::operator new[](size_t size){
+    return SpinLock::operator new(size);
+}
+
+void SpinLock::operator delete[](void *ptr){
+    return SpinLock::operator delete(ptr);
 }
 
 /*////////////////////// SharedMutex ///////////////////*/
