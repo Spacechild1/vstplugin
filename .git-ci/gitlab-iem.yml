@@ -7,7 +7,7 @@
 ### the following make variables must be honoured:
 ### - extension: filename extension for externals
 ### - DESTDIR: base directory for 'make install'
-### - pkglibdir: directory to put externals into (relative to DESTDIR)
+### - pkgPLATFORM: directory to put externals into (relative to DESTDIR)
 ###
 ### one well known build-system that can be used straight away is
 ### "pd-lib-builder" -> https://github.com/pure-data/pd-lib-builder/
@@ -34,8 +34,8 @@ variables:
 .script:cmake: &script_cmake
   - cmake -H. -Bbuild -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}"
    -DBUILD_HOST32=${HOST32} -DSTATIC_LIBS=${STATIC_LIBS}
-   -DPD_EXTENSION=${PD_EXTENSION} -DPD_INSTALLDIR=$(pwd) -DPD_DIR="${PD_PATH}"
-   -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR=$(pwd)
+   -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="$(pwd)/${CI_JOB_NAME%_*}"
+   -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="$(pwd)/${CI_JOB_NAME%_*}"
 
 ### build snippets
 .script:make: &script_make
@@ -53,8 +53,8 @@ variables:
   artifacts:
     name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME%_*}
     paths:
-      - "${PDLIBNAME}"
-      - "${SCLIBNAME}"
+      - "${CI_JOB_NAME%_*}/${PDLIBNAME}"
+      - "${CI_JOB_NAME%_*}/${SCLIBNAME}"
 
 .snapshot:
   except:
@@ -72,7 +72,6 @@ variables:
   variables:
     SUPERNOVA: 1
     STATIC_LIBS: 1
-    IEM_CI_PKGLIBDIR: Linux
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends make cmake
       puredata-dev puredata
@@ -85,7 +84,6 @@ variables:
   image: registry.git.iem.at/devtools/docker/debiancross:i386
   variables:
     PD_EXTENSION: l_i386
-    IEM_CI_PKGLIBDIR: Linux_i386
 
 .build:macos: &build_macos
   extends: .build:script
@@ -94,7 +92,6 @@ variables:
   variables:
     SUPERNOVA: 1
     HOST32: 1
-    IEM_CI_PKGLIBDIR: Darwin
   before_script:
     - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}.mac.tar.gz
     - rm -rf /Applications/Pd*.app/
@@ -112,7 +109,6 @@ variables:
     SUPERNOVA: 1
     STATIC_LIBS: 1
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
-    IEM_CI_PKGLIBDIR: w32
   before_script:
     - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip ${PD_URL}
@@ -131,7 +127,6 @@ variables:
     IEMCI_CONFIGURATIONS: mingw64
     PD_EXTENSION: m_amd64
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
-    IEM_CI_PKGLIBDIR: w64
 
 ### job templates
 .Linux:
@@ -147,22 +142,45 @@ variables:
   <<: *build_w64
 
 #######################################################################
-### create deken packages and (optionally) upload them
-deken:
+### create deken packages and (optionally) upload them;
+### if you want to automatically upload a package, you need to
+### set DEKEN_USERNAME/DEKEN_PASSWORD in the CI-project settings.
+### (https://git.iem.at/help/ci/variables/README#variables)
+.package:
   stage: deploy
   image: debian:buster
-  only:
-    - tags
   variables:
     DEKEN_ROOT: "yes"
   before_script:
-    - apt-get update && apt-get --no-install-recommends -y install deken git
+    - apt-get update && apt-get --no-install-recommends -y install deken git zip
   script:
-    - chmod -R go-w .
-    - git archive --format=tar --prefix=tmp/${PDLIBNAME}/ HEAD | tar xf -
-    - deken package --version="${CI_COMMIT_TAG#v}" "tmp/${PDLIBNAME}"
-    - deken package --version="${CI_COMMIT_TAG#v}" "${PDLIBNAME}"
-    - test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}" || deken upload --no-source-error ./*.dek
+# copy win32 host to win64 package and vice versa
+    - if [ -e ./w32 ] && [ -e ./w64 ]; then
+        for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+          cp ./w32/$x/host.exe ./w64/$x/host_i386.exe;
+          cp ./w64/$x/host.exe ./w32/$x/host_amd64.exe
+        ; done
+      ; fi
+# create zip files for all platform (e.g. vstplugin~_v0.3.0_w32.zip)
+    - rm -f ./*.zip
+    - for lib in ${PDLIBNAME} ${SCLIBNAME}; do
+        for dir in ./*/$lib; do
+          name=${lib}_${CI_COMMIT_REF_NAME}_$(basename "${dir%/$lib}");
+          (cd "${dir}/.." && zip -r "../${name}.zip" ./${lib})
+        ; done
+      ; done
+# create binary deken packages for all platforms
+    - rm -f ./*.dek
+    - deken package --version="${CI_COMMIT_TAG#v}" ./*/${PDLIBNAME}
+# upload deken package (optional)
+    - test -z "${CI_COMMIT_TAG}" || test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}" || deken upload --no-source-error ./*.dek
+  artifacts:
+    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_package
+    paths:
+      - ./*.dek
+      - ./*.zip
+
+
 #######################################################################
 ### the actual jobs: (linux,macos,windows)*(release,snapshot)
 
@@ -187,24 +205,34 @@ w64:
   extends:
     - .w64
     - .release
+package:
+  extends:
+    - .package
+    - .release
+
 ### snapshot jobs
 Linux_snapshot:
   extends:
     - .Linux
     - .snapshot
-.Linux_i386_snapshot:
+Linux_i386_snapshot:
   extends:
     - .Linux_i386
     - .snapshot
-.Darwin_snapshot:
+Darwin_snapshot:
   extends:
     - .Darwin
     - .snapshot
-.w32_snapshot:
+w32_snapshot:
   extends:
     - .w32
     - .snapshot
-.w64_snapshot:
+w64_snapshot:
   extends:
     - .w64
     - .snapshot
+package_snapshot:
+  extends:
+    - .package
+    - .snapshot
+
