@@ -107,9 +107,12 @@ void* SpinLock::operator new(size_t size){
     void *ptr = _aligned_malloc(size, alignof(SpinLock));
 #else
     void *ptr = aligned_alloc(alignof(SpinLock), size);
-#endif
     if (!ptr){
         ptr = malloc(size);
+    }
+#endif
+    if (!ptr){
+        throw std::bad_alloc();
     }
     return ptr;
 }
