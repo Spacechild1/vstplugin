@@ -277,11 +277,13 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
 
                 auto chn = (const T *)bytes;
                 std::copy(chn, chn + data.numSamples, bufptr);
-                vec[i] = bufptr;
-                bufptr += data.numSamples;
+
             } else {
-                LOG_ERROR("PluginHandle: missing audio input channel");
+                std::fill(bufptr, bufptr + data.numSamples, 0);
+                LOG_ERROR("PluginHandle: missing audio input channel " << i);
             }
+            vec[i] = bufptr;
+            bufptr += data.numSamples;
         }
     };
 

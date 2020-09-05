@@ -176,17 +176,15 @@ void PluginClient::doProcess(ProcessData<T>& data){
 
     // LOG_DEBUG("PluginClient: send process command");
     // send process command
-    {
-        ShmCommand cmd(Command::Process);
-        cmd.id = id();
-        cmd.process.numInputs = data.numInputs;
-        cmd.process.numOutputs = data.numOutputs;
-        cmd.process.numAuxInputs = data.numAuxInputs;
-        cmd.process.numAuxOutpus = data.numAuxOutputs;
-        cmd.process.numSamples = data.numSamples;
+    ShmCommand cmd(Command::Process);
+    cmd.id = id();
+    cmd.process.numInputs = data.numInputs;
+    cmd.process.numOutputs = data.numOutputs;
+    cmd.process.numAuxInputs = data.numAuxInputs;
+    cmd.process.numAuxOutpus = data.numAuxOutputs;
+    cmd.process.numSamples = data.numSamples;
 
-        channel.AddCommand(cmd, process);
-    }
+    channel.AddCommand(cmd, process);
 
     // write audio data
     // since we have sent the number of channels in the "Process" command,
@@ -224,7 +222,8 @@ void PluginClient::doProcess(ProcessData<T>& data){
                 assert(size >= data.numSamples * sizeof(T));
                 std::copy(chn, chn + data.numSamples, bus[i]);
             } else {
-                LOG_ERROR("PluginClient: missing audio output channel");
+                std::fill(bus[i], bus[i] + data.numSamples, 0);
+                LOG_ERROR("PluginClient: missing audio output channel " << i);
             }
         }
     };
