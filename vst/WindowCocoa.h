@@ -5,11 +5,10 @@
 // TODO: this probably should be a window *delegate*, so we don't need
 // the NoficationCenter hack.
 @interface CocoaEditorWindow : NSWindow {
-    vst::IWindow *_owner;
+    vst::IWindow *owner_;
 }
 
-@property (nonatomic, readwrite) vst::IWindow *owner;
-
+- (void)setOwner:(vst::IWindow *)owner;
 - (BOOL)windowShouldClose:(id)sender;
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize;
 - (void)windowDidResize:(NSNotification *)notification;
@@ -20,30 +19,50 @@
 
 @end
 
+// EventLoopProxy
+
+namespace vst { namespace Cocoa {
+class EventLoop;
+}}
+
+@interface EventLoopProxy : NSObject {
+    vst::Cocoa::EventLoop *owner_;
+}
+
+- (id)initWithOwner:(vst::Cocoa::EventLoop*)owner;
+- (void)poll;
+
+@end
+
 namespace vst {
 namespace Cocoa {
-    
-namespace UIThread {
-
-const int updateInterval = 30;
 
 class EventLoop {
  public:
+    static const int updateInterval = 30;
+
     static EventLoop& instance();
 
     EventLoop();
     ~EventLoop();
 
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool postMessage();
+    bool callSync(UIThread::Callback cb, void *user);
+
+    bool callAsync(UIThread::Callback cb, void *user);
+
+    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
+
+    void removePollFunction(UIThread::Handle handle);
+
+    void poll();
  private:
     bool haveNSApp_ = false;
-#endif
+    EventLoopProxy *proxy_;
+    NSTimer *timer_;
+    UIThread::Handle nextPollFunctionHandle_ = 0;
+    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
+    std::mutex pollFunctionMutex_;
 };
-
-} // UIThread
 
 class Window : public IWindow {
  public:
@@ -51,8 +70,6 @@ class Window : public IWindow {
     ~Window();
 
     void* getHandle() override;
-
-    void setTitle(const std::string& title) override;
 
     void open() override;
     void close() override;
@@ -74,6 +91,8 @@ class Window : public IWindow {
     // the very first time and then always returns, so we cache
     // "true" results.
     bool canResize_ = false;
+
+    static std::atomic<int> numWindows_;
 };
 
 } // Cocoa

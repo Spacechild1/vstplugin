@@ -229,7 +229,7 @@ VSTPluginGui : ObjectGui {
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.savePreset(item.index, async: true);
-				} { "Save button bug".throw }
+				} { Error("Save button bug").throw }
 			}).enabled_(false);
 			// "save as" button
 			saveas = Button.new.states_([["Save As"]])
@@ -246,7 +246,7 @@ VSTPluginGui : ObjectGui {
 					textField.value(self, { arg name;
 						model.renamePreset(item.index, name);
 					}, item.preset.name);
-				} { "Rename button bug".throw }
+				} { Error("Rename button bug").throw }
 			}).enabled_(false);
 			// "delete" button
 			delete = Button.new.states_([["Delete"]])
@@ -254,7 +254,7 @@ VSTPluginGui : ObjectGui {
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.deletePreset(item.index);
-				} { "Delete button bug".throw }
+				} { Error("Delete button bug").throw }
 			}).enabled_(false);
 			// "reload" button
 			reload = Button.new.states_([["Reload"]])
@@ -262,7 +262,7 @@ VSTPluginGui : ObjectGui {
 				var item = presetMenu.item;
 				(item.notNil and: { item.type == \preset }).if {
 					model.loadPreset(item.index, async: true);
-				} { "Reload button bug".throw }
+				} { Error("Reload button bug").throw }
 			}).enabled_(false);
 
 			updateButtons = {
@@ -462,10 +462,10 @@ VSTPluginGui : ObjectGui {
 					// use shortcircuiting to skip test if 'ok' is already 'false'
 					ok = ok and: {
 						switch(typeFilter.value,
-							1, { vst3.not and: { item.isSynth.not } }, // VST
-							2, { vst3.not and: { item.isSynth } }, // VSTi
-							3, { vst3 and: { item.isSynth.not } }, // VST3
-							4, { vst3 and: { item.isSynth } }, // VST3i
+							1, { vst3.not && item.synth.not }, // VST
+							2, { vst3.not && item.synth }, // VSTi
+							3, { vst3 && item.synth.not }, // VST3
+							4, { vst3 && item.synth }, // VST3i
 							false
 						)
 					};
@@ -481,7 +481,9 @@ VSTPluginGui : ObjectGui {
 				ok;
 			});
 			items = filteredPlugins.collect({ arg item;
-				"% (%)".format(item.key, item.vendor); // rather use key instead of name
+				var vendor = (item.vendor.size > 0).if { item.vendor } { "unknown" };
+				var bridged = item.bridged.if { "[bridged]" } { "" };
+				"% (%) %".format(item.key, vendor, bridged); // rather use key instead of name
 			});
 			browser.toolTip_(nil);
 			browser.items = items;

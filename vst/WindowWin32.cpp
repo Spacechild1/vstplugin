@@ -8,30 +8,53 @@
 
 namespace vst {
 
-// Plugin.cpp
-std::wstring widen(const std::string& s);
-void setThreadLowPriority();
-
-namespace Win32 {
-    
 namespace UIThread {
 
-#if !HAVE_UI_THREAD
-#error "HAVE_UI_THREAD must be defined for Windows!"
-// void poll(){}
-#endif
+// fake event loop
+Event gQuitEvent_;
 
-IPlugin::ptr create(const PluginInfo& info){
-    return EventLoop::instance().create(info);
+void setup(){
+    Win32::EventLoop::instance();
 }
 
-void destroy(IPlugin::ptr plugin){
-    EventLoop::instance().destroy(std::move(plugin));
+void run(){
+    gQuitEvent_.wait();
 }
 
-bool checkThread(){
-    return GetCurrentThreadId() == GetThreadId(EventLoop::instance().threadHandle());
+void quit(){
+    gQuitEvent_.signal();
 }
+
+bool isCurrentThread(){
+    return Win32::EventLoop::instance().checkThread();
+}
+
+void poll(){}
+
+bool callSync(Callback cb, void *user){
+    if (UIThread::isCurrentThread()){
+        cb(user);
+        return true;
+    } else {
+        return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
+    }
+}
+
+bool callAsync(Callback cb, void *user){
+    return Win32::EventLoop::instance().postMessage(Win32::WM_CALL, (void *)cb, user);
+}
+
+int32_t addPollFunction(PollFunction fn, void *context){
+    return Win32::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return Win32::EventLoop::instance().removePollFunction(handle);
+}
+
+} // UIThread
+
+namespace Win32 {
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -39,53 +62,49 @@ EventLoop& EventLoop::instance(){
 }
 
 DWORD EventLoop::run(void *user){
-    setThreadLowPriority();
+    setThreadPriority(Priority::Low);
 
     auto obj = (EventLoop *)user;
-    MSG msg;
-    int ret;
     // force message queue creation
+    MSG msg;
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
     obj->notify();
     LOG_DEBUG("start message loop");
-    while((ret = GetMessage(&msg, NULL, 0, 0))){
+
+    // setup timer
+    auto timer = SetTimer(0, 0, EventLoop::updateInterval, NULL);
+
+    DWORD ret;
+    while ((ret = GetMessage(&msg, NULL, 0, 0)) != 0){
         if (ret < 0){
-            // error
             LOG_ERROR("GetMessage: error");
             break;
         }
-        switch (msg.message){
-        case WM_CREATE_PLUGIN:
-        {
-            LOG_DEBUG("WM_CREATE_PLUGIN");
-            auto data = (PluginData *)msg.wParam;
-            try {
-                auto plugin = data->info->create();
-                if (plugin->info().hasEditor()){
-                    plugin->setWindow(std::make_unique<Window>(*plugin));
-                }
-                data->plugin = std::move(plugin);
-            } catch (const Error& e){
-                data->err = e;
+        // LOG_DEBUG("got message " << msg.message);
+
+        if (msg.message == WM_CALL){
+            LOG_DEBUG("WM_CALL");
+            auto cb = (UIThread::Callback)msg.wParam;
+            auto data = (void *)msg.lParam;
+            cb(data);
+            obj->notify();
+        } else if ((msg.message == WM_TIMER) && (msg.hwnd == NULL)
+                   && (msg.wParam == timer)) {
+            // call poll functions
+            std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
+            for (auto& it : obj->pollFunctions_){
+                it.second();
             }
-            obj->notify();
-            break;
-        }
-        case WM_DESTROY_PLUGIN:
-        {
-            LOG_DEBUG("WM_DESTROY_PLUGIN");
-            auto data = (PluginData *)msg.wParam;
-            data->plugin = nullptr;
-            obj->notify();
-            break;
-        }
-        default:
+            // LOG_VERBOSE("call poll functions.");
+        } else {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
-            break;
         }
     }
     LOG_DEBUG("quit message loop");
+
+    KillTimer(NULL, timer);
+
     return 0;
 }
 
@@ -109,34 +128,37 @@ EventLoop::EventLoop(){
     if (!thread_){
         throw Error("couldn't create UI thread!");
     };
-    std::unique_lock<std::mutex> lock(mutex_);
     // wait for thread to create message queue
-    cond_.wait(lock, [&](){ return ready_; });
+    event_.wait();
     LOG_DEBUG("message queue created");
 }
 
 EventLoop::~EventLoop(){
+    LOG_DEBUG("EventLoop: about to quit");
     if (thread_){
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
-            CloseHandle(thread_);
             LOG_DEBUG("joined thread");
         } else {
             LOG_ERROR("couldn't post quit message!");
         }
+        CloseHandle(thread_);
     }
 }
 
-bool EventLoop::postMessage(UINT msg, void *data){
-    return PostThreadMessage(threadID_, msg, (WPARAM)data, 0);
+bool EventLoop::checkThread() {
+    return GetCurrentThreadId() == threadID_;
 }
 
-bool EventLoop::sendMessage(UINT msg, void *data){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = false;
-    if (postMessage(msg, data)){
+bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
+    return PostThreadMessage(threadID_, msg, (WPARAM)data1, (LPARAM)data2);
+}
+
+bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
+    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
+    if (postMessage(msg, data1, data2)){
         LOG_DEBUG("waiting...");
-        cond_.wait(lock, [&]{return ready_; });
+        event_.wait();
         LOG_DEBUG("done");
         return true;
     } else {
@@ -144,47 +166,22 @@ bool EventLoop::sendMessage(UINT msg, void *data){
     }
 }
 
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
+}
+
 void EventLoop::notify(){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = true;
-    lock.unlock();
-    cond_.notify_one();
+    event_.signal();
 }
-
-IPlugin::ptr EventLoop::create(const PluginInfo& info){
-    if (thread_){
-        LOG_DEBUG("create plugin in UI thread");
-        PluginData data;
-        data.info = &info;
-        // notify thread
-        if (sendMessage(WM_CREATE_PLUGIN, &data)){
-            if (data.plugin){
-                return std::move(data.plugin);
-            } else {
-                throw data.err;
-            }
-        } else {
-            throw Error("couldn't post to thread!");
-        }
-    } else {
-        throw Error("no UI thread!");
-    }
-}
-
-void EventLoop::destroy(IPlugin::ptr plugin){
-    if (thread_){
-        PluginData data;
-        data.plugin = std::move(plugin);
-        // notify thread
-        if (!sendMessage(WM_DESTROY_PLUGIN, &data)){
-            throw Error("couldn't post to thread!");
-        }
-    } else {
-        throw Error("no UI thread!");
-    }
-}
-
-} // UIThread
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin)
@@ -197,7 +194,8 @@ Window::Window(IPlugin& plugin)
           NULL, NULL, NULL, NULL
     );
     LOG_DEBUG("created Window");
-    setTitle(plugin_->info().name);
+    // set window title
+    SetWindowTextW(hwnd_, widen(plugin.info().name).c_str());
     // get window dimensions from plugin
     int left = 100, top = 100, right = 400, bottom = 400;
     if (!plugin_->getEditorRect(left, top, right, bottom)){
@@ -314,13 +312,10 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
     auto window = (Window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     if (window){
         window->plugin_->updateEditor();
+        // LOG_DEBUG("update editor");
     } else {
         LOG_ERROR("bug GetWindowLongPtr");
     }
-}
-
-void Window::setTitle(const std::string& title){
-    SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
 void Window::open(){
@@ -331,7 +326,7 @@ void Window::doOpen(){
     ShowWindow(hwnd_, SW_RESTORE);
     BringWindowToTop(hwnd_);
     plugin_->openEditor(getHandle());
-    SetTimer(hwnd_, timerID, UIThread::updateInterval, &updateEditor);
+    SetTimer(hwnd_, timerID, EventLoop::updateInterval, &updateEditor);
 }
 
 void Window::close(){
@@ -357,4 +352,9 @@ void Window::update(){
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 } // Win32
+
+IWindow::ptr IWindow::create(IPlugin &plugin){
+    return std::make_unique<Win32::Window>(plugin);
+}
+
 } // vst

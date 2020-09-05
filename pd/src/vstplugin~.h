@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
+#include "Sync.h"
 
 using namespace vst;
 
@@ -22,6 +23,13 @@ using namespace vst;
 #include <mutex>
 #include <condition_variable>
 #include <fcntl.h>
+
+// only try to poll event loop for macOS Pd standalone version
+#if defined(__APPLE__) && !defined(PDINSTANCE)
+#define POLL_EVENT_LOOP 1
+#else
+#define POLL_EVENT_LOOP 0
+#endif
 
 enum PdLogLevel {
     PD_FATAL = -3,
@@ -58,7 +66,7 @@ class t_vstplugin {
 
     t_vstplugin(int argc, t_atom *argv);
     ~t_vstplugin();
-        // Pd
+    // Pd
     t_object x_obj;
     t_sample x_f = 0;
     t_outlet *x_messout; // message outlet
@@ -73,7 +81,7 @@ class t_vstplugin {
     std::vector<char> x_auxinbuf;
     std::vector<char> x_outbuf;
     std::vector<char> x_auxoutbuf;
-    std::mutex x_mutex;
+    SharedMutex x_mutex;
     // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_key = nullptr;
@@ -81,10 +89,11 @@ class t_vstplugin {
     t_symbol *x_preset = nullptr;
     bool x_async = false;
     bool x_uithread = false;
+    bool x_threaded = false;
     bool x_keep = false;
+    int x_commands = 0;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_precision; // single/double precision
-    int x_command = -1;
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
 #ifdef PDINSTANCE
@@ -92,7 +101,7 @@ class t_vstplugin {
 #endif
     // search
     t_search_data * x_search_data = nullptr;
-    // methods
+    // helper methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
     bool check_plugin();
@@ -119,6 +128,10 @@ class t_vstparam {
 // VST editor
 class t_vsteditor : public IPluginListener {
  public:
+    enum {
+        LatencyChange = -1
+    };
+
     t_vsteditor(t_vstplugin &owner, bool gui);
     ~t_vsteditor();
     // setup the generic Pd editor
@@ -141,11 +154,13 @@ class t_vsteditor : public IPluginListener {
         return e_owner->x_plugin ? e_owner->x_plugin->getWindow() : nullptr;
     }
     void set_pos(int x, int y);
- private:
     // plugin callbacks
     void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
+    void pluginCrashed() override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
+private:
     // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
         if (e_canvas) pd_typedmess((t_pd *)e_canvas, sel, argc, argv);
@@ -155,8 +170,29 @@ class t_vsteditor : public IPluginListener {
         if (e_canvas) pd_vmess((t_pd *)e_canvas, sel, (char *)fmt, args...);
     }
     // notify Pd (e.g. for MIDI event or GUI automation)
-    template<typename T, typename U>
-    void post_event(T& queue, U&& event);
+    struct t_event {
+        enum t_type {
+            Latency,
+            Parameter,
+            Crash,
+            Midi,
+            Sysex
+        };
+        t_event() = default;
+        t_event(t_type _type) : type(_type){}
+        // data
+        t_type type;
+        union {
+            int latency;
+            struct {
+                int index;
+                float value;
+            }  param;
+            MidiEvent midi;
+            SysexEvent sysex;
+        };
+    };
+    void post_event(const t_event& event);
     static void tick(t_vsteditor *x);
     // data
     t_vstplugin *e_owner;
@@ -164,12 +200,11 @@ class t_vsteditor : public IPluginListener {
     std::vector<t_vstparam> e_params;
     // outgoing messages:
     t_clock *e_clock;
-    std::mutex e_mutex;
+    SharedMutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
-    std::vector<std::pair<int, float>> e_automated;
-    std::vector<MidiEvent> e_midi;
-    std::vector<SysexEvent> e_sysex;
+
+    std::vector<t_event> e_events;
     bool e_tick = false;
     int width_ = 0;
     int height_ = 0;
@@ -186,33 +221,30 @@ class t_workqueue {
     t_workqueue();
     ~t_workqueue();
     template<typename T, typename Fn1, typename Fn2>
-    int push(T *data, Fn1 workfn, Fn2 cb){
-        return dopush(data, t_fun<void>(t_fun<T>(workfn)),
-                    t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
+    void push(void *owner, T *data, Fn1 workfn, Fn2 cb){
+        dopush(owner, data, t_fun<void>(t_fun<T>(workfn)),
+               t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
     }
-    void cancel(int id);
+    void cancel(void *owner);
     void poll();
  private:
     struct t_item {
+        void *owner;
         void *data;
         t_fun<void> workfn;
         t_fun<void> cb;
         t_fun<void> cleanup;
-        int id;
     };
-    int dopush(void *data, t_fun<void> workfn,
-             t_fun<void> cb, t_fun<void> cleanup);
+    void dopush(void *owner, void *data, t_fun<void> workfn,
+               t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
     LockfreeFifo<t_item, 1024> w_nrt_queue;
-    std::deque<t_item> w_nrt_queue2;
-    std::mutex w_queue_mutex;
     // queue from NRT to RT
     LockfreeFifo<t_item, 1024> w_rt_queue;
     // worker thread
     std::thread w_thread;
     std::mutex w_mutex;
     std::condition_variable w_cond;
-    int w_counter = 0;
     bool w_running = true;
     // polling
     t_clock *w_clock = nullptr;

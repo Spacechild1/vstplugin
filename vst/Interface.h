@@ -7,12 +7,7 @@
 #include <functional>
 #include <memory>
 
-// for SharedMutex
 #include <mutex>
-#include <shared_mutex>
-#ifdef __APPLE__
-#include <pthread.h>
-#endif
 
 // for intptr_t
 #ifdef _MSC_VER
@@ -26,54 +21,49 @@ typedef unsigned int uint32_t;
 #include <stdint.h>
 #endif
 
-#ifndef HAVE_UI_THREAD
-#define HAVE_UI_THREAD 1
+#ifndef USE_VST2
+#define USE_VST2 1
+#endif
+
+#ifndef USE_VST3
+#define USE_VST3 1
+#endif
+
+#ifndef USE_BRIDGE
+#define USE_BRIDGE 0
 #endif
 
 namespace vst {
 
 const int VERSION_MAJOR = 0;
-const int VERSION_MINOR = 3;
-const int VERSION_BUGFIX = 3;
+const int VERSION_MINOR = 4;
+const int VERSION_PATCH = 0;
 const int VERSION_PRERELEASE = 0;
 
 std::string getVersionString();
 
-#ifndef __APPLE__
-#if __cplusplus > 202402L // C++17
-using SharedMutex = std::shared_mutex;
-#else
-using SharedMutex = std::shared_timed_mutex;
-#endif
-#else // __APPLE__
-// older OSX versions (OSX 10.11 and below) don't have std:shared_mutex...
-class SharedMutex {
-public:
-    SharedMutex() { pthread_rwlock_init(&rwlock_, nullptr); }
-    ~SharedMutex() { pthread_rwlock_destroy(&rwlock_); }
-    SharedMutex(const SharedMutex&) = delete;
-    SharedMutex& operator==(const SharedMutex&) = delete;
-    // exclusive
-    void lock() { pthread_rwlock_wrlock(&rwlock_); }
-    bool try_lock() { return pthread_rwlock_trywrlock(&rwlock_) == 0; }
-    void unlock() { pthread_rwlock_unlock(&rwlock_); }
-    // shared
-    void lock_shared() { pthread_rwlock_rdlock(&rwlock_); }
-    bool try_lock_shared() { return pthread_rwlock_tryrdlock(&rwlock_) == 0; }
-    void unlock_shared() { pthread_rwlock_unlock(&rwlock_); }
-private:
-    pthread_rwlock_t rwlock_;
-};
-#endif
-using Lock = std::unique_lock<SharedMutex>;
-using SharedLock = std::shared_lock<SharedMutex>;
+using LogFunction = void (*)(const char *);
+void setLogFunction(LogFunction f);
+
+class SharedMutex;
+class WriteLock;
+class ReadLock;
 
 struct MidiEvent {
-    MidiEvent(char status = 0, char data1 = 0, char data2 = 0, int _delta = 0, float _detune = 0){
-        data[0] = status; data[1] = data1; data[2] = data2; delta = _delta; detune = _detune;
+    MidiEvent(char _status = 0, char _data1 = 0, char _data2 = 0,
+              int _delta = 0, float _detune = 0){
+        status = _status; data1 = _data1; data2 = _data2;
+        delta = _delta; detune = _detune;
     }
-    char data[3];
-    int delta;
+    union {
+        char data[4]; // explicit padding
+        struct {
+            char status;
+            char data1;
+            char data2;
+        };
+    };
+    int32_t delta;
     float detune;
 };
 
@@ -81,8 +71,8 @@ struct SysexEvent {
     SysexEvent(const char *_data = nullptr, size_t _size = 0, int _delta = 0)
         : data(_data), size(_size), delta(_delta){}
     const char *data;
-    size_t size;
-    int delta;
+    int32_t size;
+    int32_t delta;
 };
 
 class IPluginListener {
@@ -90,8 +80,10 @@ class IPluginListener {
     using ptr = std::shared_ptr<IPluginListener>;
     virtual ~IPluginListener(){}
     virtual void parameterAutomated(int index, float value) = 0;
+    virtual void latencyChanged(int nsamples) = 0;
     virtual void midiEvent(const MidiEvent& event) = 0;
     virtual void sysexEvent(const SysexEvent& event) = 0;
+    virtual void pluginCrashed() = 0;
 };
 
 enum class ProcessPrecision {
@@ -118,8 +110,6 @@ class IPlugin {
     using ptr = std::unique_ptr<IPlugin>;
     using const_ptr = std::unique_ptr<const IPlugin>;
 
-    virtual PluginType getType() const = 0;
-
     virtual ~IPlugin(){}
 
     virtual const PluginInfo& info() const = 0;
@@ -143,6 +133,7 @@ class IPlugin {
     virtual void resume() = 0;
     virtual void setBypass(Bypass state) = 0;
     virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
+    virtual int getLatencySamples() = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;
 
@@ -229,37 +220,55 @@ struct Preset {
 
 using PresetList = std::vector<Preset>;
 
-struct PluginInfo {
+enum class RunMode {
+    Auto,
+    Sandbox,
+    Native,
+    Bridge
+};
+
+struct PluginInfo final {
     static const uint32_t NoParamID = 0xffffffff;
 
     using ptr = std::shared_ptr<PluginInfo>;
     using const_ptr = std::shared_ptr<const PluginInfo>;
 
-    PluginInfo() = default;
-    PluginInfo(const std::shared_ptr<const IFactory>& factory);
-    void setFactory(const std::shared_ptr<const IFactory>& factory){
-        factory_ = factory;
-    }
+    PluginInfo(std::shared_ptr<const IFactory> f);
+    ~PluginInfo();
     PluginInfo(const PluginInfo&) = delete;
     void operator =(const PluginInfo&) = delete;
+
+    void setFactory(std::shared_ptr<const IFactory> factory);
+    const std::string& path() const { return path_; }
     // create new instances
     // throws an Error exception on failure!
-    IPlugin::ptr create() const;
+    IPlugin::ptr create(bool editor, bool threaded, RunMode mode = RunMode::Auto) const;
     // read/write plugin description
     void serialize(std::ostream& file) const;
-    void deserialize(std::istream& file);
+    void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,
+                     int versionMinor = VERSION_MINOR, int versionPatch = VERSION_PATCH);
+#if USE_VST2
     void setUniqueID(int _id); // VST2
     int getUniqueID() const {
         return id_.id;
     }
+#endif
+#if USE_VST3
     void setUID(const char *uid); // VST3
     const char* getUID() const {
         return id_.uid;
     }
+#endif
+    struct SubPlugin {
+        std::string name;
+        int id;
+    };
+    using SubPluginList = std::vector<SubPlugin>;
+    SubPluginList subPlugins;
+
     PluginType type() const { return type_; }
     // info data
     std::string uniqueID;
-    std::string path;
     std::string name;
     std::string vendor;
     std::string category;
@@ -323,7 +332,7 @@ struct PluginInfo {
             return it->second;
         }
         else {
-            return -1; // throw?
+            return -1; // not automatable
         }
     }
 #endif
@@ -341,22 +350,17 @@ struct PluginInfo {
     std::string getPresetFolder(PresetType type, bool create = false) const;
     PresetList presets;
     // for thread-safety (if needed)
-    Lock writeLock() { return Lock(mutex); }
-    SharedLock readLock() const { return SharedLock(mutex); }
-private:
-    void sortPresets(bool userOnly = true);
-    mutable SharedMutex mutex;
-    mutable bool didCreatePresetFolder = false;
-public:
+    WriteLock writeLock();
+    ReadLock readLock() const;
     // default programs
     std::vector<std::string> programs;
     int numPrograms() const {
         return programs.size();
     }
-    bool hasEditor() const {
+    bool editor() const {
         return flags & HasEditor;
     }
-    bool isSynth() const {
+    bool synth() const {
         return flags & IsSynth;
     }
     bool singlePrecision() const {
@@ -385,6 +389,9 @@ public:
     bool sysexOutput() const {
         return flags & SysexOutput;
     }
+    bool bridged() const {
+        return flags & Bridged;
+    }
     // flags
     enum Flags {
         HasEditor = 1 << 0,
@@ -394,19 +401,13 @@ public:
         MidiInput = 1 << 4,
         MidiOutput = 1 << 5,
         SysexInput = 1 << 6,
-        SysexOutput = 1 << 7
+        SysexOutput = 1 << 7,
+        Bridged = 1 << 8
     };
     uint32_t flags = 0;
-#if USE_VST2
-    // shell plugin
-    struct ShellPlugin {
-        std::string name;
-        int id;
-    };
-    std::vector<ShellPlugin> shellPlugins;
-#endif
  private:
     std::weak_ptr<const IFactory> factory_;
+    std::string path_;
     // param name to param index
     std::unordered_map<std::string, int> paramMap_;
 #if USE_VST3
@@ -421,6 +422,10 @@ public:
         int32_t id;
     };
     ID id_;
+    // helper methods
+    void sortPresets(bool userOnly = true);
+    mutable std::unique_ptr<SharedMutex> mutex;
+    mutable bool didCreatePresetFolder = false;
 };
 
 class IModule {
@@ -471,39 +476,43 @@ struct ProbeResult {
     Error error;
     int index = 0;
     int total = 0;
+    // methods
     bool valid() const { return error.code() == Error::NoError; }
 };
 
-class IFactory : public std::enable_shared_from_this<IFactory> {
+enum class CpuArch;
+
+class IFactory {
  public:
     using ptr = std::shared_ptr<IFactory>;
     using const_ptr = std::shared_ptr<const IFactory>;
 
     using ProbeCallback = std::function<void(const ProbeResult&)>;
-    using ProbeFuture = std::function<void(ProbeCallback)>;
+    using ProbeFuture = std::function<bool(ProbeCallback)>;
 
     // expects an absolute path to the actual plugin file with or without extension
     // throws an Error exception on failure!
-    static IFactory::ptr load(const std::string& path);
+    static IFactory::ptr load(const std::string& path, bool probe = false);
 
     virtual ~IFactory(){}
     virtual void addPlugin(PluginInfo::ptr desc) = 0;
     virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
+    virtual PluginInfo::const_ptr findPlugin(const std::string& name) const = 0;
     virtual int numPlugins() const = 0;
-    void probe(ProbeCallback callback);
-    virtual ProbeFuture probeAsync() = 0;
-    virtual bool isProbed() const = 0;
-    virtual bool valid() const = 0; // contains at least one valid plugin
-    virtual std::string path() const = 0;
+
+    void probe(ProbeCallback callback){
+        probeAsync(false)(std::move(callback));
+    }
+    virtual ProbeFuture probeAsync(bool nonblocking) = 0;
+    virtual PluginInfo::const_ptr probePlugin(int id) const = 0;
+
+    bool valid() const { return numPlugins() > 0; }
+
+    virtual const std::string& path() const = 0;
+    virtual CpuArch arch() const = 0;
     // create a new plugin instance
     // throws an Error on failure!
-    virtual IPlugin::ptr create(const std::string& name, bool probe = false) const = 0;
- protected:
-    using ProbeResultFuture = std::function<ProbeResult()>;
-    ProbeResultFuture probePlugin(const std::string& name, int shellPluginID = 0);
-    using ProbeList = std::vector<std::pair<std::string, int>>;
-    std::vector<PluginInfo::ptr> probePlugins(const ProbeList& pluginList,
-            ProbeCallback callback);
+    virtual IPlugin::ptr create(const std::string& name) const = 0;
 };
 
 // recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path.
@@ -523,11 +532,11 @@ class IWindow {
     using ptr = std::unique_ptr<IWindow>;
     using const_ptr = std::unique_ptr<const IWindow>;
 
+    static IWindow::ptr create(IPlugin& plugin);
+
     virtual ~IWindow() {}
 
     virtual void* getHandle() = 0; // get system-specific handle to the window
-
-    virtual void setTitle(const std::string& title) = 0;
 
     virtual void open() = 0;
     virtual void close() = 0;
@@ -537,13 +546,31 @@ class IWindow {
 };
 
 namespace UIThread {
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-#if HAVE_UI_THREAD
-    bool checkThread();
-#else
+    void setup();
+
+    // Run the event loop. This function must be called in the main thread.
+    // It blocks until the event loop finishes.
+    void run();
+    // Ask the event loop to stop and terminate the program.
+    // This function can be called from any thread.
+    void quit();
+    // Poll the event loop. This function must be called in the main thread.
     void poll();
-#endif
+
+    bool isCurrentThread();
+
+    using Callback = void (*)(void *);
+
+    bool callSync(Callback cb, void *user);
+
+    bool callAsync(Callback cb, void *user);
+
+    using PollFunction = void (*)(void *);
+    using Handle = int32_t;
+
+    Handle addPollFunction(PollFunction fn, void *context);
+
+    void removePollFunction(Handle handle);
 }
 
 } // vst

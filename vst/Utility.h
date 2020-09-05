@@ -37,38 +37,20 @@
 #error No byte order defined
 #endif
 
+#include <string>
+#include <sstream>
 #include <iostream>
 #include <fstream>
 #include <atomic>
 #include <array>
+#include <vector>
 
 	// log level: 0 (error), 1 (warning), 2 (verbose), 3 (debug)
 #ifndef LOGLEVEL
 #define LOGLEVEL 0
 #endif
 
-#ifdef LOGFUNCTION
-#include <sstream>
-	void LOGFUNCTION(const std::string& msg);
-	class Log {
-	public:
-		~Log() {
-			stream_ << "\n";
-			std::string msg = stream_.str();
-			LOGFUNCTION(msg.c_str());
-		}
-		template<typename T>
-		Log& operator<<(T&& t) {
-            stream_ << std::forward<T>(t);
-			return *this;
-		}
-	private:
-		std::ostringstream stream_;
-	};
-#define DO_LOG(x) (Log() << x)
-#else // default log function
-#define DO_LOG(x) std::cerr << x << std::endl
-#endif
+#define DO_LOG(x) (vst::Log() << x)
 
 #if LOGLEVEL >= 0
 #define LOG_ERROR(x) DO_LOG(x)
@@ -96,11 +78,25 @@
 
 namespace vst {
 
+class Log {
+public:
+    ~Log();
+    template<typename T>
+    Log& operator<<(T&& t) {
+        stream_ << std::forward<T>(t);
+        return *this;
+    }
+private:
+    std::ostringstream stream_;
+};
+
 #ifdef _WIN32
 std::wstring widen(const std::string& s);
 
 std::string shorten(const std::wstring& s);
 #endif
+
+std::string getTmpDirectory();
 
 // lexicographical case-insensitive string comparison function
 bool stringCompare(const std::string& lhs, const std::string& rhs);
@@ -127,7 +123,29 @@ std::string fileBaseName(const std::string& path);
 
 std::string errorMessage(int err);
 
-//--------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------
+
+enum class CpuArch {
+    unknown,
+    amd64,
+    i386,
+    arm,
+    aarch64,
+    ppc,
+    ppc64
+};
+
+CpuArch getHostCpuArchitecture();
+
+const char * cpuArchToString(CpuArch arch);
+
+CpuArch cpuArchFromString(const std::string& name);
+
+std::vector<CpuArch> getCpuArchitectures(const std::string& path);
+
+void printCpuArchitectures(const std::string& path);
+
+//--------------------------------------------------------------------------------------
 
 // cross platform fstream, taking UTF-8 file paths.
 // will become obsolete when we can switch the whole project to C++17
@@ -152,7 +170,32 @@ protected:
     std::string path_;
 };
 
-//--------------------------------------------------------------------------------------------------------
+// RAII class for automatic cleanup
+class TmpFile : public File {
+public:
+    using File::File;
+    ~TmpFile(){
+        if (is_open()){
+            close();
+            // destructor must not throw!
+            if (!removeFile(path_)){
+                LOG_ERROR("couldn't remove tmp file!");
+            };
+        }
+    }
+};
+
+//----------------------------------------------------------------------------------------
+enum class Priority {
+    Low,
+    High
+};
+
+void setProcessPriority(Priority p);
+
+void setThreadPriority(Priority p);
+
+//-----------------------------------------------------------------------------------------
 
 template<typename T, size_t N>
 class LockfreeFifo {

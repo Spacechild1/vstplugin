@@ -11,7 +11,7 @@ VSTPlugin also has class methods to scan a Server for plugins and cache the info
 
 CLASSMETHODS::
 
-PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, prTrim, kr, platformExtension, reset
+PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prAddPlugin, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, kr, platformExtension, reset
 
 METHOD:: ar
 create a UGen instance.
@@ -52,38 +52,46 @@ You can automate parameters with either control and audio rate UGens, but the la
 if the plugin actually supports sample accurate automation (some, but not all VST3 plugins).
 
 ARGUMENT:: id
-An optional number or symbol which uniquely identifies the UGen within a SynthDef so it can be found by link::Classes/VSTPluginController::.
-This is only necessary if there is more than one VSTPlugin instance in the SynthDef!
+A Symbol which uniquely identifies the UGen within the SynthDef, so it can be found by link::Classes/VSTPluginController::.
+
+note::If this is the only VSTPlugin instance in the SynthDef, the id argument can be omitted.::
+
 code::
 (
-// an EQ and Chorus in parallel:
-SynthDef(\test, { arg in, out;
-	var sig;
-	sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
+// two FX in parallel:
+SynthDef(\test, { arg bus;
+	var sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
 	sig = VSTPlugin.ar(sig, 2, id: \chorus);
-	Out.ar(out, sig);
+	ReplaceOut.ar(out, sig);
 }).add;
 )
-~synth = Synth(\test, [\in, ~in, \out, ~out]);
+
+// There are two ways to control individual plugins:
+// 1) get individual VSTPluginControllers
 (
-// this is how you get a handle to a specific plugin instance in the Synth:
-~eq = VSTPluginController.new(~synth, \eq);
-~chorus = VSTPluginController.new(~synth, \chorus);
+~synth = Synth(\test, [\in, ~in, \out, ~out]);
+~eq = VSTPluginController.new(~synth, \eq).open("myEQ");
+~chorus = VSTPluginController.new(~synth, \chorus).open("myChorus");
 )
-// load plugins, etc:
-~eq.open("...");
-~chorus.open("...");
+// 2) get Event with VSTPluginControllers mapped to IDs
+(
+~fx = VSTPluginController.collect(Synth(\test));
+~fx.eq.open("myEQ");
+~fx.chorus.open("myChorus");
+)
 ::
 
 ARGUMENT:: info
 An optional link::Classes/VSTPluginDesc:: instance; the plugin must have been successfully probed (e.g. with link::Classes/VSTPlugin#*search::).
 
+Alternatively, you can provide a plugin emphasis::key:: as a Symbol, in which case the VSTPluginDesc will be taken from the default Server's plugin dictionary.
+
 If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices
 code::
 (
 SynthDef(\chorus, { arg bus;
-	var plugin = VSTPlugin.plugins['GChorus'];
-	var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: plugin);
+	// 'GChorus' is a shortcut for VSTPlugin.plugins['GChorus']
+	var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: 'GChorus');
 	ReplaceOut.ar(bus, sig);
 }).add;
 )
@@ -101,6 +109,12 @@ ARGUMENT:: numAuxOut
 The number of auxiliary output channels. This must be a fixed number greater or equal 0.
 Like code::auxInput::, this is only useful for certain VST3 plugins.
 
+ARGUMENT:: blockSize
+Run the plugin with a certain block size (in samples). The default is code::nil:: (= no reblocking).
+
+Some plugins run more efficiently with larger blocksizes. (This is generally true for bridged/sandboxed plugins.) Instead of globally changing the Server block size, you can selectively reblock VSTPlugin instances.
+
+note::Reblocking causes a delay of code::N - M:: samples, where N is the desired block size and M is the Server block size.::
 
 SUBSECTION:: Plugin Management
 
@@ -218,7 +232,7 @@ ARGUMENT:: verbose
 a Boolean telling if the Server should post a message for each VST plugin being found.
 
 The message shows the file path, name and probe result. Probing can fail if the file is
-not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).
+not a VST plugin or if it has the wrong architecture (and cannot be "bridged").
 
 ARGUMENT:: wait
 The wait time between OSC messages.
@@ -247,8 +261,11 @@ DISCUSSION::
 Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client
 and can be retrieved with its key (see link::#Plugin Management::).
 
-If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong architecture.
-note::Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!::
+If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong CPU architecture (and can't be bridged).
+
+note::Since v0.4 you can run 32-bit plugins on a 64-bit Server and vice verca!
+
+Incompatible plugins will automatically run in a shared subprocess (= bit bridging), which incurs some CPU overhead. Bridging can also be explictly enabled for regular plugins, see the code::mode:: argument in link::Classes/VSTPluginController#-open::.::
 
 A new search doesn't automatically clear the dictionary, but existing keys are overwritten.
 You can clear the dictionary explicitly with link::#*clear::.
@@ -380,7 +397,3 @@ Sending the message to the Server will emphasis::not:: clear the Client plugin d
 
 
 INSTANCEMETHODS::
-
-METHOD:: id
-the ID which uniquely identifies the plugin in a SynthDef. It should be a Symbol, a Number or code::nil::.
-

@@ -4,6 +4,9 @@ set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
 project(${PROJECT})
 
+include (CheckCCompilerFlag)
+include (CheckCXXCompilerFlag)
+
 if(UNIX AND NOT APPLE AND NOT MINGW)
 	set(LINUX TRUE)
 endif()
@@ -31,20 +34,13 @@ set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install director
 if (WIN32 OR MINGW)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
     set(_pf_x86 "ProgramFiles(x86)")
-    if (DEFINED ENV{${_pf_x86}} AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    if (DEFINED ENV{${_pf_x86}} AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
         set(PROGRAMFILES $ENV{${_pf_x86}})
     else()
         set(PROGRAMFILES $ENV{PROGRAMFILES})
     endif()
     set(APPDATA $ENV{APPDATA})
     set(LOCALAPPDATA $ENV{LOCALAPPDATA})
-    if (MINGW)
-        # For MinGW, CMake thinks that "C:/" is a relative path, so we have to bash it to "/c/"...
-        # For simplicity, I just assume that program files are on the C drive. A CMake guru should fix this!
-        string(REPLACE "C:\\" "/c/" PROGRAMFILES ${PROGRAMFILES})
-        string(REPLACE "C:\\" "/c/" APPDATA ${APPDATA})
-        string(REPLACE "C:\\" "/c/" APPDATA ${LOCALAPPDATA})
-    endif()
 endif()
 
 # logging
@@ -58,35 +54,27 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     # disable some warnings
     add_definitions(-Wno-unknown-pragmas -Wno-format-security)
 
-    include (CheckCCompilerFlag)
-    include (CheckCXXCompilerFlag)
-
-    CHECK_C_COMPILER_FLAG(-msse HAS_SSE)
     CHECK_CXX_COMPILER_FLAG(-msse HAS_CXX_SSE)
-
-    if (HAS_SSE)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse")
-    endif()
     if (HAS_CXX_SSE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
     endif()
 
-    CHECK_C_COMPILER_FLAG(-msse2 HAS_SSE2)
     CHECK_CXX_COMPILER_FLAG(-msse2 HAS_CXX_SSE2)
-
-    if (HAS_SSE2)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2")
-    endif()
     if (HAS_CXX_SSE2)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2")
     endif()
 
-    CHECK_C_COMPILER_FLAG(-mfpmath=sse HAS_FPMATH_SSE)
-    CHECK_CXX_COMPILER_FLAG(-mfpmath=sse HAS_CXX_FPMATH_SSE)
-
-    if (HAS_FPMATH_SSE)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpmath=sse")
+    CHECK_CXX_COMPILER_FLAG(-msse3 HAS_CXX_SSE3)
+    if (HAS_CXX_SSE3)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse3")
     endif()
+
+    CHECK_CXX_COMPILER_FLAG(-msse4 HAS_CXX_SSE4)
+    if (HAS_CXX_SSE4)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4")
+    endif()
+
+    CHECK_CXX_COMPILER_FLAG(-mfpmath=sse HAS_CXX_FPMATH_SSE)
     if (HAS_CXX_FPMATH_SSE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpmath=sse")
     endif()
@@ -102,27 +90,21 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     endif()
 endif()
 if(MINGW)
-    set(CMAKE_C_COMPILER gcc)
     set(CMAKE_CXX_COMPILER g++)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mstackrealign")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-# VST
-set(VST "${CMAKE_SOURCE_DIR}/vst")
-set(VST_HEADERS "${VST}/Interface.h" "${VST}/Utility.h" "${VST}/PluginManager.h")
-set(VST_SRC "${VST}/Plugin.cpp")
-set(VST_LIBS)
+# include dependencies
+include_directories(deps)
 
-# VST2 SDK:
+# VST2 SDK
 option(VST2 "Enable VST2.x plug-ins" ON)
 if (VST2)
-    set(VST2DIR "${VST}/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
+    set(VST2DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
     add_definitions(-DUSE_VST2=1)
-    list(APPEND VST_HEADERS "${VST}/VST2Plugin.h")
-    list(APPEND VST_SRC "${VST}/VST2Plugin.cpp")
     message(STATUS "VST2DIR: ${VST2DIR}")
-    include_directories(${VST2DIR}/pluginterfaces/vst2.x)
+else()
+    add_definitions(-DUSE_VST2=0)
 endif()
 option(FST "Use FST instead of the official VST2 SDK")
 if (FST)
@@ -133,33 +115,44 @@ endif()
 # VST3 SDK
 option(VST3 "Enable VST3 plug-ins" ON)
 if (VST3)
-    set(VST3DIR "${VST}/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
+    set(VST3DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
     add_definitions(-DUSE_VST3=1)
-    list(APPEND VST_HEADERS "${VST}/VST3Plugin.h")
-    list(APPEND VST_SRC "${VST}/VST3Plugin.cpp")
-    include_directories(${VST3DIR})
-    include_directories(${VST3DIR}/pluginterfaces)
-    include_directories(${VST3DIR}/pluginterfaces/base)
-    include_directories(${VST3DIR}/pluginterfaces/vst)
-    include_directories(${VST3DIR}/pluginterfaces/gui)
     message(STATUS "VST3DIR: ${VST3DIR}")
+else()
+    add_definitions(-DUSE_VST3=0)
 endif()
 
-include_directories(vst)
+# bit bridging
+option(BRIDGE "Enable bit-bridging" ON)
+if (BRIDGE)
+    message(STATUS "Enable bit-bridging")
+    add_definitions(-DUSE_BRIDGE=1)
+    if(APPLE OR LINUX)
+        # Try to directly build the 32-bit (Intel) version of 'HOST' with -m32.
+        # This works on Linux and older macOS versions.
+        # We don't enable this by default because on Linux we would have to install
+        # lots of extra libs and on macOS it won't work on newer OS versions (macOs 10.15+) anyway.
+        # (Maybe we can somehow detect the macOs version)?
+        #
+        # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
+        option(BUILD_HOST32 "Build the 32-bit host app" OFF)
+    endif()
+else()
+    add_definitions(-DUSE_BRIDGE=0)
+endif()
 
-# platform specific VST sources and linker flags
+# platform specific linker flags
 if (LINUX)
-    add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1)
-    list(APPEND VST_HEADERS "${VST}/WindowX11.h")
-    list(APPEND VST_SRC "${VST}/WindowX11.cpp")
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11" "-pthread")
+    if (BRIDGE)
+        # for shm_open/shm_unlink
+        list(APPEND VST_LIBS "-lrt")
+    endif()
     if(STATIC_LIBS)
         list(APPEND VST_LIBS "-static-libstdc++" "-static-libgcc")
     endif()
-endif()
-if (MINGW OR WIN32)
-    list(APPEND VST_HEADERS "${VST}/WindowWin32.h")
-    list(APPEND VST_SRC "${VST}/WindowWin32.cpp")
+    add_definitions("-fPIC")
+    set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 endif()
 if (MINGW)
     list(APPEND VST_LIBS "-lstdc++fs")
@@ -170,35 +163,61 @@ if (MINGW)
     endif()
 endif()
 if (APPLE)
-    add_definitions(-fno-objc-arc)
-    list(APPEND VST_HEADERS "${VST}/WindowCocoa.h")
-    list(APPEND VST_SRC "${VST}/WindowCocoa.mm")
     list(APPEND VST_LIBS "-framework Cocoa" "-lpthread")
 endif()
 
-# probe exe
-set(PROBE "probe")
-add_executable(${PROBE} "${VST}/${PROBE}.cpp") # probe exe
-target_sources(${PROBE} PUBLIC ${VST_HEADERS} ${VST_SRC})
-target_compile_definitions(${PROBE} PUBLIC -DHAVE_UI_THREAD=1)
-target_link_libraries(${PROBE} ${VST_LIBS})
-set_target_properties(${PROBE} PROPERTIES LINK_FLAGS_RELEASE -s)
+# vst library
+include_directories(vst)
+
+set(VST "vst")
+set(LIBS ${VST} ${VST_LIBS})
+if (BUILD_HOST32)
+    set(VST32 "vst32")
+    set(LIBS32 ${VST32} ${VST_LIBS})
+endif()
+
+add_subdirectory(vst)
+
+# host exe
+set(HOST "host")
+add_executable(${HOST} "vst/${HOST}.cpp") # HOST exe
+target_link_libraries(${HOST} ${LIBS})
+set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (MINGW)
     # -municode for wmain and -mwindows to hide console window
-    target_link_libraries(${PROBE} -municode)
+    target_link_libraries(${HOST} -municode)
 endif()
 # up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.
-set(PROBE_PATH $<TARGET_FILE:${PROBE}>)
+set(HOST_PATH $<TARGET_FILE:${HOST}>)
+
+if (BUILD_HOST32)
+    message(STATUS "Build 32-bit host program")
+    # is -m32 always Intel?
+    set(HOST32 "host_i386")
+    add_executable(${HOST32} "vst/${HOST}.cpp")
+    target_compile_options(${HOST32} PUBLIC "-m32")
+    target_link_options(${HOST32} PUBLIC "-m32")
+    target_link_libraries(${HOST32} ${LIBS32})
+    set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
+    # see above
+    set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
+endif()
 
 # vstplugin~
-option(PD "build [vstplugin~]" ON)
+option(PD "build Pd external" ON)
 if (PD)
     add_subdirectory(pd)
 endif()
 
 # VSTPlugin
-option(SC "build 'VSTPlugin'" ON)
+option(SC "build SC plugin" ON)
 if (SC)
     add_subdirectory(sc)
+endif()
+
+# testsuite
+option(TESTSUITE "build test suite" ON)
+if (TESTSUITE)
+    add_subdirectory(test)
 endif()

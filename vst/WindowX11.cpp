@@ -5,8 +5,51 @@
 
 namespace vst {
 
-// Plugin.cpp
-void setThreadLowPriority();
+namespace UIThread {
+
+// fake event loop
+Event gQuitEvent_;
+
+void setup(){
+    X11::EventLoop::instance();
+}
+
+void run(){
+    gQuitEvent_.wait();
+}
+
+void quit(){
+    gQuitEvent_.signal();
+}
+
+bool isCurrentThread(){
+    return X11::EventLoop::instance().checkThread();
+}
+
+void poll(){}
+
+bool callSync(Callback cb, void *user){
+    if (UIThread::isCurrentThread()){
+        cb(user); // avoid deadlock
+        return true;
+    } else {
+        return X11::EventLoop::instance().callSync(cb, user);
+    }
+}
+
+bool callAsync(Callback cb, void *user){
+    return X11::EventLoop::instance().callAsync(cb, user);
+}
+
+int32_t addPollFunction(PollFunction fn, void *context){
+    return X11::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return X11::EventLoop::instance().removePollFunction(handle);
+}
+
+} // UIThread
 
 namespace X11 {
 
@@ -14,30 +57,10 @@ namespace  {
 Atom wmProtocols;
 Atom wmDelete;
 Atom wmQuit;
-Atom wmCreatePlugin;
-Atom wmDestroyPlugin;
+Atom wmCall;
 Atom wmOpenEditor;
 Atom wmCloseEditor;
 Atom wmUpdatePlugins;
-}
-
-namespace UIThread {
-
-#if !HAVE_UI_THREAD
-#error "HAVE_UI_THREAD must be defined for X11!"
-// void poll(){}
-#endif
-
-IPlugin::ptr create(const PluginInfo& info){
-    return EventLoop::instance().create(info);
-}
-
-void destroy(IPlugin::ptr plugin){
-    EventLoop::instance().destroy(std::move(plugin));
-}
-
-bool checkThread(){
-    return std::this_thread::get_id() == EventLoop::instance().threadID();
 }
 
 EventLoop& EventLoop::instance(){
@@ -66,8 +89,7 @@ EventLoop::EventLoop() {
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
     // custom messages
     wmQuit = XInternAtom(display_, "WM_QUIT", 0);
-    wmCreatePlugin = XInternAtom(display_, "WM_CREATE_PLUGIN", 0);
-    wmDestroyPlugin = XInternAtom(display_, "WM_DESTROY_PLUGIN", 0);
+    wmCall = XInternAtom(display_, "WM_CALL", 0);
     wmOpenEditor = XInternAtom(display_, "WM_OPEN_EDITOR", 0);
     wmUpdatePlugins = XInternAtom(display_, "WM_UPDATE_PLUGINS", 0);
     wmCloseEditor = XInternAtom(display_, "WM_CLOSE_EDITOR", 0);
@@ -101,7 +123,7 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::run(){
-    setThreadLowPriority();
+    setThreadPriority(Priority::Low);
 
     XEvent event;
     LOG_DEBUG("X11: start event loop");
@@ -120,27 +142,14 @@ void EventLoop::run(){
                         LOG_ERROR("bug wmDelete " << msg.window);
                     }
                 }
-            } else if (type == wmCreatePlugin){
-                LOG_DEBUG("wmCreatePlugin");
-                try {
-                    auto plugin = data_.info->create();
-                    if (plugin->info().hasEditor()){
-                        auto window = std::make_unique<Window>(*display_, *plugin);
-                        pluginMap_[(::Window)window->getHandle()] = plugin.get();
-                        plugin->setWindow(std::move(window));
-                    }
-                    data_.plugin = std::move(plugin);
-                } catch (const Error& e){
-                    data_.err = e;
-                }
-                notify();
-            } else if (type == wmDestroyPlugin){
-                LOG_DEBUG("wmDestroyPlugin");
-                auto window = data_.plugin->getWindow();
-                if (window){
-                    pluginMap_.erase((::Window)window->getHandle());
-                }
-                data_.plugin = nullptr;
+            } else if (type == wmCall){
+                LOG_DEBUG("wmCall");
+                UIThread::Callback cb;
+                void *data;
+                memcpy(&cb, msg.data.b, sizeof(cb));
+                memcpy(&data, msg.data.b + sizeof(cb), sizeof(data));
+                cb(data);
+
                 notify();
             } else if (type == wmOpenEditor){
                 LOG_DEBUG("wmOpenEditor");
@@ -159,6 +168,7 @@ void EventLoop::run(){
                     LOG_ERROR("bug wmCloseEditor: " << msg.window);
                 }
             } else if (type == wmUpdatePlugins){
+                // update plugins
                 for (auto& it : pluginMap_){
                     auto plugin = it.second;
                     if (plugin){
@@ -166,6 +176,11 @@ void EventLoop::run(){
                     } else {
                         LOG_ERROR("bug wmUpdatePlugins: " << it.first);
                     }
+                }
+                // call poll functions
+                std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+                for (auto& it : pollFunctions_){
+                    it.second();
                 }
             } else if (type == wmQuit){
                 LOG_DEBUG("wmQuit");
@@ -191,22 +206,39 @@ void EventLoop::run(){
 }
 
 void EventLoop::updatePlugins(){
-    // this seems to be the easiest way to do it...
+    // X11 doesn't seem to have a timer API...
+
+    setThreadPriority(Priority::Low);
+
     while (timerThreadRunning_){
         postClientEvent(root_, wmUpdatePlugins);
         std::this_thread::sleep_for(std::chrono::milliseconds(updateInterval));
     }
 }
 
-bool EventLoop::postClientEvent(::Window window, Atom atom, long data1, long data2){
+bool EventLoop::callSync(UIThread::Callback cb, void *user){
+    char buf[sizeof(cb) + sizeof(user)];
+    memcpy(buf, &cb, sizeof(cb));
+    memcpy(buf + sizeof(cb), &user, sizeof(user));
+    return sendClientEvent(root_, wmCall, buf, sizeof(buf));
+}
+
+bool EventLoop::callAsync(UIThread::Callback cb, void *user){
+    char buf[sizeof(cb) + sizeof(user)];
+    memcpy(buf, &cb, sizeof(cb));
+    memcpy(buf + sizeof(cb), &user, sizeof(user));
+    return postClientEvent(root_, wmCall, buf, sizeof(buf));
+}
+
+bool EventLoop::postClientEvent(::Window window, Atom atom,
+                                const char *data, size_t size){
     XClientMessageEvent event;
     memset(&event, 0, sizeof(XClientMessageEvent));
     event.type = ClientMessage;
     event.window = window;
     event.message_type = atom;
-    event.format = 32;
-    event.data.l[0] = data1;
-    event.data.l[1] = data2;
+    event.format = 8;
+    memcpy(event.data.b, data, size);
     if (XSendEvent(display_, window, 0, 0, (XEvent*)&event) != 0){
         if (XFlush(display_) != 0){
             return true;
@@ -215,12 +247,12 @@ bool EventLoop::postClientEvent(::Window window, Atom atom, long data1, long dat
     return false;
 }
 
-bool EventLoop::sendClientEvent(::Window window, Atom atom, long data1, long data2){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = false;
-    if (postClientEvent(window, atom, data1, data2)){
+bool EventLoop::sendClientEvent(::Window window, Atom atom,
+                                const char *data, size_t size){
+    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent access
+    if (postClientEvent(window, atom, data, size)){
         LOG_DEBUG("waiting...");
-        cond_.wait(lock, [&]{return ready_; });
+        event_.wait();
         LOG_DEBUG("done");
         return true;
     } else {
@@ -228,50 +260,35 @@ bool EventLoop::sendClientEvent(::Window window, Atom atom, long data1, long dat
     }
 }
 
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
+}
+
+bool EventLoop::checkThread(){
+    return std::this_thread::get_id() == thread_.get_id();
+}
+
+void EventLoop::registerWindow(Window &w){
+    pluginMap_[(::Window)w.getHandle()] = w.getPlugin();
+}
+
+void EventLoop::unregisterWindow(Window &w){
+    pluginMap_.erase((::Window)w.getHandle());
+}
+
 void EventLoop::notify(){
-    std::unique_lock<std::mutex> lock(mutex_);
-    ready_ = true;
-    lock.unlock();
     LOG_DEBUG("notify");
-    cond_.notify_one();
+    event_.signal();
 }
-
-IPlugin::ptr EventLoop::create(const PluginInfo& info){
-    if (thread_.joinable()){
-        std::unique_lock<std::mutex> lock(lock_);
-        LOG_DEBUG("create plugin in UI thread");
-        data_.info = &info;
-        data_.plugin = nullptr;
-        // notify thread
-        if (sendClientEvent(root_, wmCreatePlugin)){
-            if (data_.plugin){
-                LOG_DEBUG("done");
-                return std::move(data_.plugin);
-            } else {
-                throw data_.err;
-            }
-        } else {
-            throw Error("X11: couldn't post to thread!");
-        }
-    } else {
-        throw Error("X11: no UI thread!");
-    }
-}
-
-void EventLoop::destroy(IPlugin::ptr plugin){
-    if (thread_.joinable()){
-        std::unique_lock<std::mutex> lock(lock_);
-        data_.plugin = std::move(plugin);
-        // notify thread
-        if (!sendClientEvent(root_, wmDestroyPlugin)){
-            throw Error("X11: couldn't post to thread!");
-        }
-    } else {
-        throw Error("X11: no UI thread!");
-    }
-}
-
-} // UIThread
 
 Window::Window(Display& display, IPlugin& plugin)
     : display_(&display), plugin_(&plugin)
@@ -322,24 +339,25 @@ Window::Window(Display& display, IPlugin& plugin)
         XFree(ch);
     }
     LOG_DEBUG("X11: created Window " << window_);
-    setTitle(plugin_->info().name);
+
+    // set window title
+    auto title = plugin_->info().name.c_str();
+    XStoreName(display_, window_, title);
+    XSetIconName(display_, window_, title);
+
+    EventLoop::instance().registerWindow(*this);
 }
 
 Window::~Window(){
+    EventLoop::instance().unregisterWindow(*this);
+
     plugin_->closeEditor();
     XDestroyWindow(display_, window_);
     LOG_DEBUG("X11: destroyed Window");
 }
 
-void Window::setTitle(const std::string& title){
-    XStoreName(display_, window_, title.c_str());
-    XSetIconName(display_, window_, title.c_str());
-    XFlush(display_);
-    LOG_DEBUG("Window::setTitle: " << title);
-}
-
 void Window::open(){
-    UIThread::EventLoop::instance().postClientEvent(window_, wmOpenEditor);
+    EventLoop::instance().postClientEvent(window_, wmOpenEditor);
 }
 
 void Window::doOpen(){
@@ -353,7 +371,7 @@ void Window::doOpen(){
 }
 
 void Window::close(){
-    UIThread::EventLoop::instance().postClientEvent(window_, wmCloseEditor);
+    EventLoop::instance().postClientEvent(window_, wmCloseEditor);
 }
 
 void Window::doClose(){
@@ -399,4 +417,14 @@ void Window::onConfigure(int x, int y, int width, int height){
 }
 
 } // X11
+
+IWindow::ptr IWindow::create(IPlugin &plugin){
+    auto display = X11::EventLoop::instance().getDisplay();
+    if (display){
+        return std::make_unique<X11::Window>(*display, plugin);
+    } else {
+        return nullptr;
+    }
+}
+
 } // vst

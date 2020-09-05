@@ -4,12 +4,12 @@
 #include "Interface.h"
 #include "PluginManager.h"
 #include "Utility.h"
+#include "Sync.h"
 #include "rt_shared_ptr.hpp"
 
 using namespace vst;
 
 #include <thread>
-#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,25 +30,36 @@ struct CmdData {
     bool alive() const;
 };
 
-struct PluginCmdData : CmdData {
-    // for asynchronous commands
-    static PluginCmdData* create(World *world, const char* path = 0);
-    // data
-    void* freeData = nullptr;
+struct CloseCmdData : CmdData {
     IPlugin::ptr plugin;
-    std::thread::id threadID;
-    // generic int value
-    int value = 0;
-    // flexible array for RT memory
-    int size = 0;
-    char buf[1];
+    bool editor;
 };
 
-struct ParamCmdData : CmdData {
-    int index;
-    float value;
-    // flexible array
-    char display[1];
+// cache all relevant info so we don't have to touch
+// the VSTPlugin instance during the async command.
+struct OpenCmdData : CmdData {
+    const PluginInfo *info;
+    IPlugin::ptr plugin;
+    Error error;
+    bool editor;
+    bool threaded;
+    RunMode mode;
+    double sampleRate;
+    int blockSize;
+    int numInputs;
+    int numAuxInputs;
+    int numOutputs;
+    int numAuxOutputs;
+    // flexible array for RT memory
+    int size = 0;
+    char path[1];
+};
+
+struct PluginCmdData : CmdData {
+    union {
+        int i;
+        float f;
+    };
 };
 
 struct VendorCmdData : CmdData {
@@ -59,21 +70,30 @@ struct VendorCmdData : CmdData {
     char data[1];
 };
 
+struct PresetCmdData : CmdData {
+    static PresetCmdData* create(World* world, const char* path, bool async = false);
+    static PresetCmdData* create(World* world, int bufnum, bool async = false);
+    static bool nrtFree(World* world, void* cmdData);
+    std::string buffer;
+    int result = 0;
+    int32 bufnum = -1;
+    bool async = false;
+    void* freeData = nullptr;
+    // flexible array
+    char path[1];
+};
+
 namespace SearchFlags {
     const int useDefault = 1;
     const int verbose = 2;
     const int save = 4;
     const int parallel = 8;
-};
+}
 
-struct InfoCmdData : CmdData {
-    static InfoCmdData* create(World* world, const char* path, bool async = false);
-    static InfoCmdData* create(World* world, int bufnum, bool async = false);
+struct SearchCmdData {
     static bool nrtFree(World* world, void* cmdData);
     int32 flags = 0;
     int32 bufnum = -1;
-    bool async = false;
-    std::string buffer;
     void* freeData = nullptr;
     char path[256];
     // flexible array
@@ -93,34 +113,35 @@ class VSTPluginDelegate :
 {
     friend class VSTPlugin;
 public:
+    enum EventType {
+        LatencyChange = -2,
+        PluginCrash
+    };
+
     VSTPluginDelegate(VSTPlugin& owner);
     ~VSTPluginDelegate();
 
     bool alive() const;
     void setOwner(VSTPlugin *owner);
-    World* world() { return world_;  }
-    float sampleRate() const { return sampleRate_; }
-    int32 bufferSize() const { return bufferSize_; }
-    int32 numInChannels() const { return numInChannels_; }
-    int32 numOutChannels() const { return numOutChannels_; }
-    int32 numAuxInChannels() const { return numAuxInChannels_; }
-    int32 numAuxOutChannels() const { return numAuxOutChannels_; }
+    World* world() { return world_; }
 
     void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
+    void pluginCrashed() override;
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
 
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
-    bool check(bool loud = true);
+    bool check(bool loud = true) const;
     bool suspended() const { return suspended_; }
     void resume() { suspended_ = false; }
-    using ScopedLock = std::unique_lock<std::mutex>;
-    ScopedLock scopedLock();
+    WriteLock scopedLock();
     bool tryLock();
     void unlock();
-    void open(const char* path, bool gui);
-    void doneOpen(PluginCmdData& msg);
+    void open(const char* path, bool editor,
+              bool threaded, RunMode mode);
+    void doneOpen(OpenCmdData& msg);
     void close();
     void showEditor(bool show);
     void reset(bool async);
@@ -162,6 +183,9 @@ public:
     void sendCurrentProgramName();
     void sendParameter(int32 index, float value); // unchecked
     void sendParameterAutomated(int32 index, float value); // unchecked
+    int32 latencySamples() const;
+    void sendLatencyChange(int nsamples);
+    void sendPluginCrash();
     // perform sequenced command
     template<bool owner = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
@@ -170,20 +194,14 @@ private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
     bool editor_ = false;
+    bool threaded_ = false;
     bool isLoading_ = false;
     World* world_ = nullptr;
-    // cache (for cmdOpen)
-    double sampleRate_ = 1;
-    int bufferSize_ = 0;
-    int numInChannels_ = 0;
-    int numOutChannels_ = 0;
-    int numAuxInChannels_ = 0;
-    int numAuxOutChannels_ = 0;
     // thread safety
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
-    std::mutex mutex_;
+    SharedMutex mutex_;
 };
 
 class VSTPlugin : public SCUnit {
@@ -200,8 +218,10 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
-    int getFlags() const { return (int)in0(1); } // not used (yet)
     int getBypass() const { return (int)in0(2); }
+
+    int blockSize() const;
+
     int numInChannels() const { return (int)in0(3); }
     int numAuxInChannels() const {
         return (int)in0(auxInChannelOnset_ - 1);
@@ -210,10 +230,12 @@ public:
     int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
 
     int numParameterControls() const { return (int)in0(parameterControlOnset_ - 1); }
-    void update();
+
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
     void clearMapping();
+
+    void update();
 private:
     float readControlBus(uint32 num);
     // data members
@@ -228,6 +250,18 @@ private:
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
     rt::shared_ptr<VSTPluginDelegate> delegate_;
+
+    struct Reblock {
+        int blockSize;
+        int phase;
+        float **input;
+        float **auxInput;
+        float **output;
+        float **auxOutput;
+        float *buffer;
+    };
+
+    Reblock *reblock_ = nullptr;
 
     static const int inChannelOnset_ = 4;
     int auxInChannelOnset_ = 0;
@@ -260,14 +294,12 @@ private:
     Bypass bypass_ = Bypass::Off;
 
     // threading
-#if HAVE_UI_THREAD
     struct ParamChange {
-        int index;
+        int index; // parameter index or EventType (negative)
         float value;
     };
     LockfreeFifo<ParamChange, 16> paramQueue_;
-    std::mutex paramQueueMutex_; // for writers
-#endif
+    SharedMutex paramQueueMutex_; // for writers
 };
 
 

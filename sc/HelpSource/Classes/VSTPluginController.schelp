@@ -58,10 +58,17 @@ SynthDef(\insert2, { arg bus;
 )
 // create the synth:
 ~synth = Synth(\insert2, [\bus, 0]);
-(
+
 // get handles to the VSTPlugins:
+(
 ~eq = VSTPluginController(~synth, \eq).open("myEQ");
 ~chorus = VSTPluginController(~synth, \chorus).open("myChorus");
+)
+// or:
+(
+~fx = VSTPluginController.collect(~synth); // creates a VSTPluginController for each VSTPlugin ID
+~fx.eq.open("myEq");
+~fx.chorus.open("myChorus");
 )
 // etc.
 ::
@@ -115,7 +122,7 @@ code::
 
 subsection:: Preset Management
 
-Change built-in FX programs with link::#-program:::
+Select built-in FX programs with link::#-program:::
 
 code::
 // list available programs:
@@ -170,10 +177,6 @@ code::
 
 The data has the same binary format as the preset files. You can use these methods to build your own preset management!
 
-note::Many plugins have additional state beyond their parameter values,
-so you emphasis::have:: to use the program and bank methods above to fully save/restore them.
-::
-
 subsection:: GUI
 
 Generally, there are two kind of GUIs:
@@ -187,8 +190,8 @@ code::
 // open the VST editor window
 ~fx.editor;
 ::
-On Windows and Linux this will run a native window on the Server (in a seperate thread).
-note:: Unfortunately, this is not possible (yet) on macOS for technical reasons.::
+This will run a native window on the Server (in a seperate thread).
+note:: On macOS this only works in SuperCollider 3.11 or above!::
 
 ## a generic Qt GUI which can be opened in a new Window or embedded into existing views:
 code::
@@ -276,7 +279,7 @@ Also, the plugin itself might be bypassed for a short time, but it will never bl
 
 CLASSMETHODS::
 
-PRIVATE:: guiClass, msg2string
+PRIVATE:: guiClass, msg2string, prFindPlugins
 
 METHOD:: new
 Create a new VSTPluginController.
@@ -285,25 +288,60 @@ ARGUMENT:: synth
 the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to control.
 
 ARGUMENT:: id
-a symbol or number which uniquely identifies the link::Classes/VSTPlugin:: within the link::Classes/SynthDef::.
+a Symbol which uniquely identifies the link::Classes/VSTPlugin:: in the link::Classes/SynthDef::.
 
-If this is code::nil::, VSTPluginController will take the first instance it can find.
-This implies that you don't need an emphasis::id:: if there's only a single VSTPlugin in the SynthDef.
+note::If this is the only VSTPlugin instance in the SynthDef, the code::id:: argument can be omitted.::
 
 ARGUMENT:: synthDef
-the synth's link::Classes/SynthDef::. This is only needed in case the SynthDef hasn't been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add::.
-Otherwise it can be automatically deduced from the emphasis::synth:: argument.
+the synth's link::Classes/SynthDef::. You can omit this argument if the SynthDef has been added to the global link::Classes/SynthDescLib::, e.g. with link::Classes/SynthDef#-add:: or link::Classes/SynthDef#-store::. In this case, the SynthDef will be automatically deduced from the emphasis::synth:: argument.
 
 ARGUMENT:: wait
-see link::#-wait::.
+the default wait time, see link::#-wait::.
 
 DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
+METHOD:: collect
+Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginControllers, with IDs used as keys.
+This is useful if you have a SynthDef containing several VSTPlugin instances.
+
+ARGUMENT:: synth
+the Synth, see link::#-new::
+
+ARGUMENT:: ids
+an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Classes/SynthDef::, or code::nil:: (= collect all).
+
+ARGUMENT:: synthDef
+the SynthDef (optional), see link::#-new::
+
+ARGUMENT:: wait
+the default wait time, see link::#-wait::.
+
+DISCUSSION::
+code::
+(
+SynthDef.new(\test, { arg bus = 0;
+	var sig = VSTPlugin.ar(nil, 2, id: \vsti);
+	sig = VSTPlugin.ar(sig, 2, id: \fx);
+	Out.ar(bus, sig);
+}).add;
+)
+
+~fx = VSTPluginController.collect(Synth(\test), [\vsti, \fx]);
+// or
+~fx = VSTPluginController.collect(Synth(\test));
+
+(
+~fx.vsti.open("myVSTi");
+~fx.fx.open("myFX");
+)
+
+::
+
 INSTANCEMETHODS::
 
-PRIVATE:: prFree, prClear, init, prQuery, prQueryParams, prQueryPrograms
-PRIVATE:: prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
+PRIVATE:: prFree, prCheckPlugin, prCheckLocal, prClear, init, prQuery, prQueryParams, prQueryPrograms
+PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
 
 
 METHOD:: open
@@ -330,7 +368,7 @@ code::
 
 note::This method only works for files which contain a single plugin (all VST 2.x plugins - except for shell plugins - and many VST 3 plugins).::
 
-- If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefor omitted.
+- If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*ar::), the code::path:: argument can be deduced and therefore omitted.
 code::
 VSTPlugin.search;
 (
@@ -344,13 +382,27 @@ SynthDef(\chorus, { arg bus=0;
 
 ARGUMENT:: editor
 request the VST plugin editor.
-note::This is not supported (yet) on macOS and for VST3 plugins!::
+note::On macOS this only works with SuperCollider 3.11 and above!::
 
 ARGUMENT:: verbose
 post the plugin info to the console if loaded successfully.
 
 ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
+
+ARGUMENT:: multiThreading
+process the plugin in a seperate worker thread to utilize more CPU cores.
+note::This option is ignored for Supernova, which already offers multithreading with ParGroup.::
+note::Multithreading introduces a delay of 1 block!::
+
+ARGUMENT:: mode
+select a run mode.
+table::
+## \auto || normal mode (default).
+## \sandbox || run the plugin in a dedicated subprocess. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.
+## \bridge || run the plugin in a shared subprocess. This uses less memory and possibly less CPU, but if one plugin crashes, it will inevitably take down all other plugins in the same process.
+::
+note::Any run mode except for code::\auto:: incurs some fixed CPU overhead, which is less significant for larger blocksizer (see link::Classes/ServerOptions#-blockSize::).::
 
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
@@ -365,6 +417,12 @@ If the VSTPlugin UGen holds a plugin description (see link::Classes/VSTPlugin#*a
 ARGUMENT:: editor
 request the VST editor.
 
+ARGUMENT:: multiThreading
+enable multithreading.
+
+ARGUMENT:: mode
+select a run mode.
+
 RETURNS:: the message for an emphasis::open:: command (see link::#-open::).
 
 METHOD:: close
@@ -377,6 +435,13 @@ This will automatically bypass the plugin (i.e. the input is just passed through
 Just like link::#-open::, this method is realtime-safe.
 
 
+METHOD:: pluginCrashed
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin subprocess crashes.
+
+discussion::
+You could use this callback to automatically reopen the plugin, for example.
+note::This is only meant for bridged or sandboxed plugins, because a normal plugin would simply crash the server.::
+
 METHOD:: browse
 open the plugin browser dialog.
 
@@ -387,7 +452,7 @@ shows/hide the VST editor window.
 DISCUSSION::
 The plugin has to be opened with emphasis::editor:: set to code::true::.
 
-note::This is not supported (yet) on macOS!::
+note::On macOS this only works on SuperCollider 3.11 and above!::
 
 METHOD:: gui
 creates a generic Qt GUI (see link::Classes/VSTPluginGui::).
@@ -408,6 +473,14 @@ returns:: the (static) plugin description (see link::Classes/VSTPluginDesc::).
 
 METHOD:: loaded
 returns:: whether a plugin is currently loaded.
+
+METHOD:: latency
+returns:: the current processing latency in samples.
+
+NOTE:: The reported value includes the additional latency caused by multithreading and reblocking (see the code::multiThreading:: and code::blockSize:: arguments for link::#-open::).::
+
+METHOD:: latencyChanged
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin's processing latency changes. The function receives the new latency as its only argument. See also link::#-latency::.
 
 METHOD:: reset
 METHOD:: resetMsg
@@ -580,7 +653,7 @@ code::
 ::
 
 METHOD:: parameterAutomated
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when parameters are automated from the VST editor.
+a link::Classes/Function:: or link::Classes/FunctionList:: to be called when parameters are automated in the VST editor.
 
 discussion::
 The action receives the parameter index and value. This can be helpful if you want to know the index of a parameter in the editor.
@@ -588,7 +661,11 @@ The action receives the parameter index and value. This can be helpful if you wa
 note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
 In that case it is not possible to determine which parameter has been automated manually.::
 
-subsection:: Preset Management
+subsection:: Programs
+
+VST plugins often contain factory presets which are called emphasis::programs::.
+
+note::Some VST2 plugins allow to change the name and state of the built-in programs and save all programs as a emphasis::bank:: file (see link::#-writeBank::).::
 
 METHOD:: numPrograms
 returns:: the number of available built-in plugin programs.
@@ -597,25 +674,92 @@ METHOD:: program
 METHOD:: programMsg
 select a built-in program or get the current program number.
 
-DISCUSSION::
-use the setter to change between built-in programs.
-
 METHOD:: programName
 METHOD:: programNameMsg
 
 get/set the name of the current program (VST2 only).
 
+subsection:: Presets
+
+Simple preset management.
+
+Presets are stored at pre-defined file system locations, so they can be simply referred to by name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+note::Since the VST3 preset locations are actually standardized, any VST3 presets created with VSTPlugin should be available in other applications and vice versa.::
+
+warning::This only works with local Servers (for now)!::
+
+METHOD:: loadPreset
+METHOD:: savePreset
+load/save VST presets.
+
+ARGUMENT:: preset
+a preset Event, name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+You can create a new preset by passing a non-existing preset name to code::savePreset::.
+
+ARGUMENT:: action
+
+an action which is called with code::this:: and a Boolean (success/fail).
+
+ARGUMENT:: async
+
+where to execute the plugin method, see link::#Realtime Safety::.
+note::The file IO itself is always performed asynchronously!::
+
+METHOD:: loadPresetMsg
+Create an OSC message for loading a preset. See also link::#-readProgramMsg::.
+
+note:: There is no equivalent code::savePresetMsg:: method because we wouldn't be able to update the preset list.::
+
+ARGUMENT:: preset
+a preset Event, name or index (see link::Classes/VSTPluginDesc#-presets::).
+
+ARGUMENT:: async
+see above.
+
+METHOD:: deletePreset
+delete a VST preset.
+
+ARGUMENT:: preset
+the preset Event, name or index.
+
+RETURNS:: code::true:: on success or code::false:: on failure.
+
+METHOD:: renamePreset
+delete a VST preset.
+
+ARGUMENT:: preset
+the old preset Event, name or index
+
+ARGUMENT:: name
+the new preset name.
+
+RETURNS:: code::true:: on success or code::false:: on failure.
+
+METHOD:: preset
+
+RETURNS:: the current preset (Event) or code::nil:: (= no preset).
+
+subsection:: Preset Files
+
+Read/write VST2 code::.fxp/.fxb:: files or VST3 code::.vstpreset:: files.
+
+This is useful if you want to save your presets to a non-standard location, e.g. relative to your project.
+
+The preset files are in a standard format which is recogized by every decent DAW or VST host.
+This means you can freely exchange presets between different applications!
+
+
 METHOD:: readProgram
-METHOD:: readBank
 METHOD:: writeProgram
-METHOD:: writeBank
-read/write program/bank files.
+read/write program files.
 
 ARGUMENT:: path
 
 an absolute file path.
 
-The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for VST2 program files, emphasis::.fxb:: for VST2 bank files and emphasis::.vstpreset:: for VST3 preset files.
+The file extension is arbitrary but it is good practice to use emphasis::.fxp:: for VST2 program files and emphasis::.vstpreset:: for VST3 preset files.
 
 ARGUMENT:: action
 
@@ -626,33 +770,46 @@ ARGUMENT:: async
 where to execute the plugin method, see link::#Realtime Safety::.
 note::The file/buffer IO itself is always performed asynchronously!::
 
-discussion::
-The program and bank files are in a standard format which is recogized by every decent DAW or VST host.
-This means you can freely exchange presets between different applications!
+METHOD:: writeBank
+METHOD:: readBank
 
-note::Preset banks are only supported by VST2 plugins::.
+same as above, but for VST2 emphasis::.fxb:: bank files.
 
 METHOD:: readProgramMsg
-METHOD:: readBankMsg
 METHOD:: writeProgramMsg
-METHOD:: writeBankMsg
+
+Create an OSC message for reading/writing a program file, or exchanging program data via a Buffer.
 
 ARGUMENT:: dest
-a) String: preset file to be read or written.
+table::
+## String || preset file to be read or written.
 
-b) link::Classes/Buffer:: or bufnum: exchange program/bank data between a Client and a remote Server via a Buffer.
+## link::Classes/Buffer:: or Integer || exchange program data between a Client and a (remote) Server via a Buffer.
 
-code::read*Msg::: the Buffer should contain the preset data with each float representing a single byte;
+code::readProgramMsg::: the Buffer should contain the preset data with each float representing a single byte;
 it has to be allocated and freed by the Client.
 
-code::write*Msg::: the Buffer should be initially empty. The UGen will fill the Buffer
+code::writeProgramMsg::: the Buffer should be initially empty. The UGen will fill the Buffer
 on the Server, the Client can then read the data and free the Buffer.
 
-ARGUMENT:: async
+::
 
+ARGUMENT:: async
 see above.
 
-RETURNS:: the message for reading/writing a program/bank file or exchanging program/bank data via a Buffer.
+RETURNS:: the OSC message.
+
+METHOD:: readBankMsg
+METHOD:: writeBankMsg
+
+same as above, but for VST2 emphasis::.fxb:: bank files.
+
+
+subsection:: Preset Data
+
+Set/get the raw plugin state. This is useful if you want to build your own custom preset system.
+
+note::The emphasis::Bank:: methods only work with VST2 plugins.::
 
 METHOD:: setProgramData
 METHOD:: setBankData
@@ -666,7 +823,6 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-
 where to execute the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
@@ -681,8 +837,9 @@ ARGUMENT:: async
 see above.
 
 DISCUSSION::
+
 Internally, the program data is exchanged via temp files.
-note::This only works with a local Server!::
+warning::This only works with a local Server!::
 
 METHOD:: sendProgramData
 METHOD:: sendBankData
@@ -717,46 +874,11 @@ an action to pass the data.
 ARGUMENT:: async
 see above.
 
-discussion::
+DISCUSSION::
 Contrary to link::#-setProgramData::, link::#-getProgramData:: etc., the methods above
 also work with remote Servers because the data is streamed via OSC messages. This means
 it is not 100% reliable when using UDP.
 
-METHOD:: loadPreset
-METHOD:: savePreset
-load/save VST presets.
-
-ARGUMENT:: preset
-the preset name or index (see link::Classes/VSTPluginDesc#-presets::). You can create a new preset by passing a non-existing preset name to code::savePreset::.
-
-ARGUMENT:: action
-
-an action which is called with code::this:: and a Boolean (success/fail).
-
-ARGUMENT:: async
-
-where to execute the plugin method, see link::#Realtime Safety::.
-note::The file/buffer IO itself is always performed asynchronously!::
-
-discussion::
-These methods use pre-defined locations on the file system, so presets can be simply referred to by name or index (see link::Classes/VSTPluginDesc#-presets::).
-
-note::This only works with local Servers (for now)!::
-
-METHOD:: deletePreset
-delete a VST preset.
-
-ARGUMENT:: preset
-the preset name or index.
-
-METHOD:: renamePreset
-delete a VST preset.
-
-ARGUMENT:: preset
-the old preset name or index
-
-ARGUMENT:: name
-the new preset name.
 
 subsection:: MIDI
 
@@ -892,7 +1014,7 @@ code::
 // play test signal on FX bus
 ~test = Synth(\test, [\out, ~fxBus]);
 // send FX bus to output
-SynthDef(\output, {arg in = 0, out = 0;
+SynthDef(\output, { arg in = 0, out = 0;
 	Out.ar(out, In.ar(in, 2))
 }).play(~test, [\in, ~fxBus, \out, 0], addAction: \addAfter);
 )
@@ -918,7 +1040,7 @@ You can also create fixed FX chains by using several VSTPlugins inside a SynthDe
 code::
 (
 // an insert FX with two plugins hardcoded in series:
-SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
+SynthDef.new(\insert2, { arg bus, bypass1=0, bypass2=0;
 	var sig = In.ar(bus, 2);
 	sig = VSTPlugin.ar(sig, 2, bypass1, id: \fx1);
 	sig = VSTPlugin.ar(sig, 2, bypass2, id: \fx2);
@@ -930,13 +1052,12 @@ SynthDef.new(\insert2, {arg bus, bypass1=0, bypass2=0;
 // insert into the FX bus
 ~synth = Synth(\insert2, [\bus, ~fxBus], ~test, addAction: \addAfter);
 // get handles to the individual VST plugins:
-~fx1 = VSTPluginController(~synth, \fx1);
-~fx2 = VSTPluginController(~synth, \fx2);
+~fx = VSTPluginController.collect(~synth);
 )
 
 // open plugins
-~fx1.browse;
-~fx2.browse;
+~fx.fx1.browse;
+~fx.fx2.browse;
 
 // bypass FX
 ~synth.set(\bypass1, 1);
@@ -1040,7 +1161,7 @@ You can easily play VST instruments with a link::Classes/Pbind:: of event type c
 code::
 // Cmd + .
 (
-SynthDef.new(\vsti, {arg out = 0;
+SynthDef.new(\vsti, { arg out = 0;
 	// VST instruments usually don't have inputs
 	Out.ar(out, VSTPlugin.ar(nil, 2));
 }).add;
@@ -1073,85 +1194,83 @@ p.stop;
 
 Subsection:: Non-Realtime Synthesis
 
-Many methods of VSTPluginController have a corresponding emphasis::*Msg:: version
+Many methods of VSTPluginController have a corresponding emphasis::*Msg:: version,
 returning a Server message which can be added to a link::Classes/Score:: for non-realtime synthesis.
-
-note::Using these messages in a realtime context is not recommended because the Client state may not always be updated correctly.::
 
 The following code snippet will create a short soundfile with two random melodies played by VST instruments;
 it can be executed in a single block.
 code::
 (
-// SynthDef for playing the VSTi
-SynthDef.new(\vsti, { arg out;
-	Out.ar(out, VSTPlugin.ar(nil,  numOut: 2));
-}).store;
+// 1) SynthDef for playing the VSTi
 
-// custom event type for sending MIDI messages
-Event.addEventType(\vsti, {
-	var pitch = ~midinote.value;
-	var velo = (~amp.value * 127).clip(0, 127).asInteger;
-	var delta = ~sustain.value;
-	// 'schedBundle' is the most low level method in the default Event type;
-	// it is overwritten in Pbind-asScore so that bundles are added to the
-	// Score (instead of sending them to the Server).
-	~schedBundle.value(0, 0, nil, ~vsti.midi.noteOnMsg(0, pitch, velo));
-	~schedBundle.value(delta, 0, nil, ~vsti.midi.noteOffMsg(0, pitch, velo));
-});
+SynthDef.new(\my_instrument, { arg out;
+	var sig = VSTPlugin.ar(nil, 2, id: \vsti);
+	sig = VSTPlugin.ar(sig, 2, id: \fx);
+	Out.ar(out, sig);
+}).store; // so that the subprocess can find the SynthDef!
 
-// helper function for recording a Pbind to a Score
-~render = { arg score, vsti, pbind, start, dur;
-	var list = pbind.asScore(dur, start, (vsti: vsti)).score;
-	score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
-};
+// 2) create the VST Synths in the language
 
-// 1) create the synths and controllers in the language:
+// make 2 Synths:
+~synth = { Synth.basicNew(\my_instrument) } ! 2;
 
-~fx1 = VSTPluginController(Synth.basicNew(\vsti));
-~fx2 = VSTPluginController(Synth.basicNew(\vsti));
+// get handles to the plugin controllers
+~vst = ~synth.collect { |x| VSTPluginController.collect(x) };
 
-// 2) create the score:
+// 3) create the score:
 
 ~score = Score.new;
 
-~score.add([0.0, VSTPlugin.searchMsg(verbose: true)]); // search for plugins in default search paths
-// ~score.add([0.0, VSTPlugin.searchMsg(["/my/plugin/directory"], useDefault: false, verbose: true)]); // use custom search path
+~score.add([0.0, VSTPlugin.searchMsg(verbose: false)]); // search for plugins in default search paths
 
 // create the synths:
-~score.add([0.0, ~fx1.synth.newMsg]);
-~score.add([0.0, ~fx2.synth.newMsg]);
+~score.add([0.0, ~synth[0].newMsg]);
+~score.add([0.0, ~synth[1].newMsg]);
 
-// load VSTi plugins (a little bit after creating the synth!)
-~score.add([0.01, ~fx1.openMsg("Dexed")]);
-~score.add([0.01, ~fx2.openMsg("Dexed")]);
+// open VSTi plugins
+~score.add([0.0, ~vst[0].vsti.openMsg("Dexed")]);
+~score.add([0.0, ~vst[1].vsti.openMsg("Dexed")]);
 
-// choose FX programs
-~score.add([0.01, ~fx1.programMsg(0)]);
-~score.add([0.01, ~fx2.programMsg(1)]);
+// choose programs
+~score.add([0.0, ~vst[0].vsti.programMsg(0)]);
+~score.add([0.0, ~vst[1].vsti.programMsg(1)]);
 
+// open FX plugins
+~score.add([0.0, ~vst[0].fx.openMsg("GDelay")]);
+~score.add([0.0, ~vst[1].fx.openMsg("GChorus")]);
+
+// set some FX params
+~score.add([0.0, ~vst[0].fx.setMsg(0, 0.2)]); // delay time
+~score.add([0.0, ~vst[0].fx.setMsg(1, 0.5)]); // delay feedback
+~score.add([0.0, ~vst[1].fx.setMsg(0, 0.9)]); // chorus depth
 // make a random melody
 ~melody = Pbind(
-	\type, \vsti,
+	\type, \vst_midi,
 	\dur, Prand(#[0.125, 0.25, 0.5, 1], inf),
 	\legato, 1,
 	\amp, Pexprand(0.5, 1.0, inf),
 	\midinote, Pwhite(48, 72, inf)
 );
 
-~render.(~score, ~fx1, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
-~render.(~score, ~fx2, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
+// helper function for recording a Pbind to a Score
+~render = { arg score, vsti, pbind, start, dur;
+	var list = pbind.asScore(dur, start, (vst: vsti)).score;
+	score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
+};
+
+~render.(~score, ~vst[0].vsti, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
+~render.(~score, ~vst[1].vsti, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
 
 // end
 ~score.sort; // important!
 ~score.add([~score.endTime + 1, [0]]);
 
-// 3) render stereo aiff file
+// 4) render stereo aiff file
 
 ~score.recordNRT("~/nrt_test".standardizePath, "~/nrt_test.aiff".standardizePath,
 	options: ServerOptions.new.numOutputBusChannels_(2));
 
-// 4) save the Score to a file
-
+// or save the Score to a file
 ~score.saveToFile("~/nrt_test.txt".standardizePath);
 )
 ::

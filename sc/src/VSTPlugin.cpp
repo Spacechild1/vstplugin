@@ -11,8 +11,14 @@ namespace rt {
     InterfaceTable* interfaceTable;
 }
 
-void SCLog(const std::string& msg){
-    Print(msg.c_str());
+void SCLog(const char *s){
+    Print("%s", s);
+}
+
+void RTFreeSafe(World *world, void *data){
+    if (data){
+        RTFree(world, data);
+    }
 }
 
 // SndBuffers
@@ -73,18 +79,19 @@ bool CmdData::alive() const {
     return b;
 }
 
-// InfoCmdData
-InfoCmdData* InfoCmdData::create(World* world, const char* path, bool async) {
-    auto data = CmdData::create<InfoCmdData>(world);
+PresetCmdData* PresetCmdData::create(World* world, const char* path, bool async) {
+    auto len = strlen(path) + 1;
+    auto data = CmdData::create<PresetCmdData>(world, len);
     if (data) {
-        snprintf(data->path, sizeof(data->path), "%s", path);
+        data->bufnum = -1;
+        memcpy(data->path, path, len);
         data->async = async;
     }
     return data;
 }
 
-InfoCmdData* InfoCmdData::create(World* world, int bufnum, bool async) {
-    auto data = CmdData::create<InfoCmdData>(world);
+PresetCmdData* PresetCmdData::create(World* world, int bufnum, bool async) {
+    auto data = CmdData::create<PresetCmdData>(world);
     if (data) {
         data->bufnum = bufnum;
         data->path[0] = '\0';
@@ -93,8 +100,8 @@ InfoCmdData* InfoCmdData::create(World* world, int bufnum, bool async) {
     return data;
 }
 
-bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+bool PresetCmdData::nrtFree(World* inWorld, void* cmdData) {
+    auto data = (PresetCmdData*)cmdData;
     // this is potentially dangerous because NRTFree internally uses free()
     // while BufFreeCmd::Stage4() uses free_aligned().
     // On the other hand, the client is supposed to pass an *unused* bufnum,
@@ -108,17 +115,12 @@ bool InfoCmdData::nrtFree(World* inWorld, void* cmdData) {
     return true;
 }
 
-// PluginCmdData
-PluginCmdData* PluginCmdData::create(World *world, const char* path) {
-    size_t size = path ? (strlen(path) + 1) : 0; // keep trailing '\0'!
-    auto cmdData = CmdData::create<PluginCmdData>(world, size);
-    if (cmdData) {
-        if (path) {
-            memcpy(cmdData->buf, path, size);
-        }
-        cmdData->size = size;
-    }
-    return cmdData;
+bool SearchCmdData::nrtFree(World *world, void *cmdData){
+    // see PresetCmdData::nrtFree
+    auto data = (SearchCmdData*)cmdData;
+    if (data->freeData)
+        NRTFree(data->freeData);
+    return true;
 }
 
 // Encode a string as a list of floats.
@@ -147,9 +149,9 @@ static PluginManager gPluginManager;
 #define SETTINGS_DIR ".VSTPlugin"
 // so that 64-bit and 32-bit installations can co-exist!
 #if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
-#define SETTINGS_FILE "cache32.ini"
+#define CACHE_FILE "cache32.ini"
 #else
-#define SETTINGS_FILE "cache.ini"
+#define CACHE_FILE "cache.ini"
 #endif
 
 static std::string getSettingsDir(){
@@ -163,42 +165,41 @@ static std::string getSettingsDir(){
 static SharedMutex gFileLock;
 
 static void readIniFile(){
-    SharedLock lock(gFileLock);
-    try {
-        gPluginManager.read(getSettingsDir() + "/" SETTINGS_FILE);
-    } catch (const Error& e){
-        LOG_ERROR("couldn't read cache file: " << e.what());
+    LockGuard lock(gFileLock);
+    auto path = getSettingsDir() + "/" CACHE_FILE;
+    if (pathExists(path)){
+        LOG_VERBOSE("read cache file " << path.c_str());
+        try {
+            gPluginManager.read(path);
+        } catch (const Error& e){
+            LOG_ERROR("ERROR: couldn't read cache file: " << e.what());
+        }
     }
 }
 
 static void writeIniFile(){
-    Lock lock(gFileLock);
+    LockGuard lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
             if (!createDirectory(dir)){
-                throw Error("couldn't create directory");
+                throw Error("couldn't create directory " + dir);
             }
         }
-        gPluginManager.write(dir + "/" SETTINGS_FILE);
+        gPluginManager.write(dir + "/" CACHE_FILE);
     } catch (const Error& e){
-        LOG_ERROR("couldn't write settings file: " << e.what());
+        LOG_ERROR("couldn't write cache file: " << e.what());
     }
 }
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const PluginInfo& desc) {
-    std::string key;
-    auto ext = ".vst3";
-    auto onset = std::max<size_t>(0, desc.path.size() - strlen(ext));
-    if (desc.path.find(ext, onset) != std::string::npos) {
-        key = desc.name + ext;
+    if (desc.type() == PluginType::VST3){
+        return desc.name + ".vst3";
+    } else {
+        return desc.name;
     }
-    else {
-        key = desc.name;
-    }
-    return key;
 }
 
 void serializePlugin(std::ostream& os, const PluginInfo& desc) {
@@ -240,7 +241,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1) {
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path, plugin);
+        gPluginManager.addPlugin(plugin->path(), plugin);
         gPluginManager.addPlugin(path, plugin);
     }
     gPluginManager.addFactory(path, factory);
@@ -313,26 +314,28 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
     return nullptr;
 }
 
-using FactoryFuture = std::function<IFactory::ptr()>;
+using FactoryFuture = std::function<bool(IFactory::ptr&)>;
 
-static FactoryFuture probePluginParallel(const std::string& path, bool verbose) {
+static FactoryFuture probePluginAsync(const std::string& path, bool verbose) {
     auto factory = loadFactory(path, verbose);
     if (!factory){
-        return []() { return nullptr; };
+        return [](IFactory::ptr& out) {
+            out = nullptr;
+            return true;
+        };
     }
     // start probing process
     try {
-        auto future = factory->probeAsync();
+        auto future = factory->probeAsync(true);
         // return future
-        return [=]() -> IFactory::ptr {
-            if (verbose) Print("probing %s... ", path.c_str());
-
+        return [=](IFactory::ptr& out) {
             // wait for results
-            future([&](const ProbeResult& result) {
+            bool done = future([&](const ProbeResult& result) {
                 if (verbose) {
                     if (result.total > 1) {
+                        // several subplugins
                         if (result.index == 0) {
-                            Print("\n");
+                            Print("probing %s... \n", path.c_str());
                         }
                         Print("\t[%d/%d] ", result.index + 1, result.total);
                         if (result.plugin && !result.plugin->name.empty()) {
@@ -340,29 +343,39 @@ static FactoryFuture probePluginParallel(const std::string& path, bool verbose) 
                         } else {
                             Print("... ");
                         }
+                    } else {
+                        // single plugin
+                        Print("probing %s... ", path.c_str());
                     }
                     postResult(result.error);
                 }
             });
-            // collect results
-            if (factory->valid()){
-                addFactory(path, factory);
-                return factory; // success
+
+            if (done){
+                // collect results
+                if (factory->valid()){
+                    addFactory(path, factory);
+                    out = factory; // success
+                } else {
+                    gPluginManager.addException(path);
+                    out = nullptr;
+                }
+                return true;
             } else {
-                gPluginManager.addException(path);
-                return nullptr;
+                return false;
             }
         };
     }
     catch (const Error& e) {
         // return future which prints the error message
-        return [=]() -> IFactory::ptr {
+        return [=](IFactory::ptr& out) {
             if (verbose) {
                 Print("probing %s... ", path.c_str());
                 postResult(e);
             }
             gPluginManager.addException(path);
-            return nullptr;
+            out = nullptr;
+            return true;
         };
     }
 }
@@ -435,14 +448,14 @@ static const PluginInfo* queryPlugin(std::string path) {
     return desc.get();
 }
 
-#define PROBE_PROCESSES 8
+#define PROBE_FUTURES 8
 
 std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                                                  bool parallel, bool verbose) {
     Print("searching in '%s'...\n", path.c_str());
     std::vector<PluginInfo::const_ptr> results;
 
-    auto addPlugin = [&](const PluginInfo::const_ptr& plugin, int which = 0, int n = 0){
+    auto addPlugin = [&](PluginInfo::const_ptr plugin, int which = 0, int n = 0){
         if (verbose && n > 0) {
             Print("\t[%d/%d] %s\n", which + 1, n, plugin->name.c_str());
         }
@@ -451,17 +464,25 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 
     std::vector<FactoryFuture> futures;
 
-    auto processFutures = [&](){
-        for (auto& f : futures){
-            auto factory = f();
-            if (factory){
-                int numPlugins = factory->numPlugins();
-                for (int i = 0; i < numPlugins; ++i){
-                    addPlugin(factory->getPlugin(i));
+    auto processFutures = [&](int limit){
+        while (futures.size() > limit){
+            for (auto it = futures.begin(); it != futures.end(); ){
+                IFactory::ptr factory;
+                if ((*it)(factory)){
+                    // future finished
+                    if (factory){
+                        for (int i = 0; i < factory->numPlugins(); ++i){
+                            addPlugin(factory->getPlugin(i));
+                        }
+                    }
+                    // remove future
+                    it = futures.erase(it);
+                } else {
+                    it++;
                 }
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        futures.clear();
     };
 
     vst::search(path, [&](const std::string & absPath) {
@@ -493,10 +514,8 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
         else {
             // probe (will post results and add plugins)
             if (parallel){
-                futures.push_back(probePluginParallel(pluginPath, verbose));
-                if (futures.size() >= PROBE_PROCESSES){
-                    processFutures();
-                }
+                futures.push_back(probePluginAsync(pluginPath, verbose));
+                processFutures(PROBE_FUTURES);
             } else {
                 if ((factory = probePlugin(pluginPath, verbose))) {
                     int numPlugins = factory->numPlugins();
@@ -507,7 +526,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
             }
         }
     });
-    processFutures();
+    processFutures(0);
 
     int numResults = results.size();
     if (numResults == 1){
@@ -520,12 +539,16 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 
 // -------------------- VSTPlugin ------------------------ //
 
+
+
 VSTPlugin::VSTPlugin(){
     // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
     assert(numInputs() >= 5);
+    // out
     int nout = numOutChannels();
     LOG_DEBUG("out: " << nout);
     assert(!(nout < 0 || nout > numOutputs()));
+    // in
     auto nin = numInChannels();
     LOG_DEBUG("in: " << nin);
     assert(nin >= 0);
@@ -535,6 +558,8 @@ VSTPlugin::VSTPlugin(){
     auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
     LOG_DEBUG("aux in: " << nauxin);
     assert(nauxin >= 0);
+    // aux out
+    auto nauxout = numAuxOutChannels();
     // parameter controls
     parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
     assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ <= numInputs());
@@ -547,6 +572,66 @@ VSTPlugin::VSTPlugin(){
     delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
 
     set_calc_function<VSTPlugin, &VSTPlugin::next>();
+
+    // create reblocker after setting the calc function (to avoid 1 sample computation)!
+    int reblockSize = in0(1);
+    if (reblockSize > bufferSize()){
+        auto reblock = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
+        if (reblock){
+            memset(reblock, 0, sizeof(Reblock)); // set all pointers to NULL!
+            // make sure that block size is power of 2
+            int n = 1;
+            while (n < reblockSize){
+               n *= 2;
+            }
+            reblock->blockSize = n;
+            // allocate buffer
+            int total = nin + nout + nauxin + nauxout;
+            if ((total == 0) ||
+                (reblock->buffer = (float *)RTAlloc(mWorld, sizeof(float) * total * n)))
+            {
+                auto bufptr = reblock->buffer;
+                std::fill(bufptr, bufptr + (total * n), 0);
+                // allocate and assign channel vectors
+                auto makeVec = [&](auto& vec, int nchannels){
+                    if (nchannels > 0){
+                        vec = (float **)RTAlloc(mWorld, sizeof(float *) * nchannels);
+                        if (!vec){
+                            LOG_ERROR("RTAlloc failed!");
+                            return false;
+                        }
+                        for (int i = 0; i < nchannels; ++i, bufptr += n){
+                            vec[i] = bufptr;
+                        }
+                    }
+                    return true;
+                };
+                if (makeVec(reblock->input, nin)
+                    && makeVec(reblock->output, nout)
+                    && makeVec(reblock->auxInput, nauxin)
+                    && makeVec(reblock->auxOutput, nauxout))
+                {
+                    // start phase at one block before end, so that the first call
+                    // to the perform routine will trigger plugin processing.
+                    reblock->phase = n - bufferSize();
+                    reblock_ = reblock;
+                } else {
+                    // clean up
+                    RTFreeSafe(mWorld, reblock->input);
+                    RTFreeSafe(mWorld, reblock->output);
+                    RTFreeSafe(mWorld, reblock->auxInput);
+                    RTFreeSafe(mWorld, reblock->auxOutput);
+                    RTFreeSafe(mWorld, reblock->buffer);
+                    RTFree(mWorld, reblock);
+                }
+            } else {
+                LOG_ERROR("RTAlloc failed!");
+                RTFree(mWorld, reblock);
+            }
+        } else {
+            LOG_ERROR("RTAlloc failed!");
+        }
+    }
 
     // run queued unit commands
     if (queued_ == MagicQueued) {
@@ -568,8 +653,16 @@ VSTPlugin::VSTPlugin(){
 
 VSTPlugin::~VSTPlugin(){
     clearMapping();
-    if (paramState_) RTFree(mWorld, paramState_);
-    if (paramMapping_) RTFree(mWorld, paramMapping_);
+    RTFreeSafe(mWorld, paramState_);
+    RTFreeSafe(mWorld, paramMapping_);
+    if (reblock_){
+        RTFreeSafe(mWorld, reblock_->input);
+        RTFreeSafe(mWorld, reblock_->output);
+        RTFreeSafe(mWorld, reblock_->auxInput);
+        RTFreeSafe(mWorld, reblock_->auxOutput);
+        RTFreeSafe(mWorld, reblock_->buffer);
+        RTFree(mWorld, reblock_);
+    }
     // both variables are volatile, so the compiler is not allowed to optimize it away!
     initialized_ = 0;
     queued_ = 0;
@@ -658,9 +751,8 @@ void VSTPlugin::update() {
             #endif
             }
             paramState_ = result;
-        }
-        else {
-            RTFree(mWorld, paramState_);
+        } else {
+            RTFreeSafe(mWorld, paramState_);
             paramState_ = nullptr;
         }
     }
@@ -678,9 +770,8 @@ void VSTPlugin::update() {
                 result[i] = nullptr;
             }
             paramMapping_ = result;
-        }
-        else {
-            RTFree(mWorld, paramMapping_);
+        } else {
+            RTFreeSafe(mWorld, paramMapping_);
             paramMapping_ = nullptr;
         }
     }
@@ -747,9 +838,12 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
     auto plugin = delegate_->plugin();
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
-    if (process && delegate_->suspended()){
-        // if we're temporarily suspended, we have to grab the mutex.
-        // we use a try_lock() and bypass on failure, so we don't block the whole Server.
+    bool suspended = delegate_->suspended();
+    if (process && suspended){
+        // Whenever an asynchronous command is executing, the plugin is temporarily
+        // suspended. This is mainly for blocking other commands until the async
+        // command has finished. The actual critical section is protected by mutex.
+        // We use tryLock() and bypass on failure, so we don't block the whole Server.
         process = delegate_->tryLock();
         if (!process){
             LOG_DEBUG("couldn't lock mutex");
@@ -757,7 +851,7 @@ void VSTPlugin::next(int inNumSamples) {
     }
 
     if (process) {
-        auto vst3 = plugin->getType() == PluginType::VST3;
+        auto vst3 = plugin->info().type() == PluginType::VST3;
 
         // check bypass state
         Bypass bypass = Bypass::Off;
@@ -776,14 +870,15 @@ void VSTPlugin::next(int inNumSamples) {
         }
 
         // parameter automation
+        // (check paramState_ in case RTAlloc failed)
         if (paramState_) {
-            int nparam = plugin->info().numParameters();
             // automate parameters with mapped control busses
+            int nparams = plugin->info().numParameters();
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
                 uint32 index = m->index;
                 auto type = m->type();
                 uint32 num = m->bus();
-                assert(index < nparam);
+                assert(index < nparams);
                 // Control Bus mapping
                 if (type == Mapping::Control) {
                     float value = readControlBus(num);
@@ -822,12 +917,13 @@ void VSTPlugin::next(int inNumSamples) {
                 }
             }
             // automate parameters with UGen inputs
-            int nparams = numParameterControls();
-            for (int i = 0; i < nparams; ++i) {
+            auto numControls = numParameterControls();
+            for (int i = 0; i < numControls; ++i) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
                 // only if index is not out of range and the parameter is not mapped to a bus
-                if (index >= 0 && index < nparam && paramMapping_[index] == nullptr){
+                // (a negative index effectively deactivates the parameter control)
+                if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
                     auto calcRate = mInput[k + 1]->mCalcRate;
                     // audio rate
                     if (calcRate == calc_FullRate) {
@@ -866,49 +962,134 @@ void VSTPlugin::next(int inNumSamples) {
         }
         // process
         IPlugin::ProcessData<float> data;
-        data.numInputs = numInChannels();
-        data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
-        data.numOutputs = numOutChannels();
-        data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
-        data.numAuxInputs = numAuxInChannels();
-        data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
-        data.numAuxOutputs = numAuxOutChannels();
-        data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
-        data.numSamples = inNumSamples;
-        plugin->process(data);
 
-    #if HAVE_UI_THREAD
+        if (reblock_){
+            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
+                for (int i = 0; i < nchannels; ++i){
+                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
+                }
+            };
+            auto writeOutput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
+                for (int i = 0; i < nchannels; ++i){
+                    auto src = from[i] + phase;
+                    std::copy(src, src + nsamples, to[i]);
+                }
+            };
+
+            data.numInputs = numInChannels();
+            data.numOutputs = numOutChannels();
+            data.numAuxInputs = numAuxInChannels();
+            data.numAuxOutputs = numAuxOutChannels();
+
+            readInput(mInBuf + inChannelOnset_, reblock_->input, data.numInputs,
+                        inNumSamples, reblock_->phase);
+            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, data.numAuxInputs,
+                        inNumSamples, reblock_->phase);
+
+            reblock_->phase += inNumSamples;
+
+            if (reblock_->phase >= reblock_->blockSize){
+                assert(reblock_->phase == reblock_->blockSize);
+                reblock_->phase = 0;
+
+                data.input = data.numInputs > 0 ? (const float **)reblock_->input : nullptr;
+                data.output = data.numOutputs > 0 ? reblock_->output : nullptr;
+                data.auxInput = data.numAuxInputs > 0 ? (const float **)reblock_->auxInput : nullptr;
+                data.auxOutput = data.numAuxOutputs > 0 ? reblock_->auxOutput : nullptr;
+                data.numSamples = reblock_->blockSize;
+
+                plugin->process(data);
+            }
+
+            writeOutput(reblock_->output, mOutBuf, data.numOutputs,
+                        inNumSamples, reblock_->phase);
+            writeOutput(reblock_->auxOutput, mOutBuf + numOutChannels(), data.numAuxOutputs,
+                        inNumSamples, reblock_->phase);
+        } else {
+            data.numInputs = numInChannels();
+            data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
+            data.numOutputs = numOutChannels();
+            data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
+            data.numAuxInputs = numAuxInChannels();
+            data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
+            data.numAuxOutputs = numAuxOutChannels();
+            data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
+            data.numSamples = inNumSamples;
+
+            plugin->process(data);
+        }
+
         // send parameter automation notification posted from the GUI thread [or NRT thread]
         ParamChange p;
         while (paramQueue_.pop(p)){
-            delegate_->sendParameterAutomated(p.index, p.value);
+            if (p.index >= 0){
+                delegate_->sendParameterAutomated(p.index, p.value);
+            } else if (p.index == VSTPluginDelegate::LatencyChange){
+                delegate_->sendLatencyChange(p.value);
+            } else if (p.index == VSTPluginDelegate::PluginCrash){
+                delegate_->sendPluginCrash();
+            }
         }
-    #endif
-        if (delegate_->suspended()){
+        if (suspended){
             delegate_->unlock();
         }
     }
     else {
         // bypass (copy input to output and zero remaining output channels)
-        auto doBypass = [](auto input, int nin, auto output, int nout, int n) {
+        auto doBypass = [](auto input, int nin, auto output, int nout, int n, int phase) {
             for (int i = 0; i < nout; ++i) {
-                auto dst = output[i];
                 if (i < nin) {
-                    auto src = input[i];
-                    std::copy(src, src + n, dst);
+                    auto src = input[i] + phase;
+                    std::copy(src, src + n, output[i]);
                 }
                 else {
-                    std::fill(dst, dst + n, 0); // zero
+                    std::fill(output[i], output[i] + n, 0); // zero
                 }
             }
         };
-        // input -> output
-        doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(), inNumSamples);
-        // aux input -> aux output
-        doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(), numAuxOutChannels(), inNumSamples);
+
+        if (reblock_){
+            // we have to copy the inputs to the reblocker, so that we
+            // can stop bypassing anytime and always have valid input data.
+            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
+                for (int i = 0; i < nchannels; ++i){
+                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
+                }
+            };
+
+            readInput(mInBuf + inChannelOnset_, reblock_->input, numInChannels(),
+                      inNumSamples, reblock_->phase);
+            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, numAuxInChannels(),
+                      inNumSamples, reblock_->phase);
+
+            // advance phase before bypassing to keep delay!
+            reblock_->phase += inNumSamples;
+
+            if (reblock_->phase >= reblock_->blockSize){
+                assert(reblock_->phase == reblock_->blockSize);
+                reblock_->phase = 0;
+            }
+
+            // input -> output
+            doBypass(reblock_->input, numInChannels(), mOutBuf, numOutChannels(),
+                     inNumSamples, reblock_->phase);
+            // aux input -> aux output
+            doBypass(reblock_->auxInput, numAuxInChannels(), mOutBuf + numOutChannels(),
+                     numAuxOutChannels(), inNumSamples, reblock_->phase);
+        } else {
+            // input -> output
+            doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(),
+                     inNumSamples, 0);
+            // aux input -> aux output
+            doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(),
+                     numAuxOutChannels(), inNumSamples, 0);
+        }
     }
 }
 
+int VSTPlugin::blockSize() const {
+    return reblock_ ? reblock_->blockSize : bufferSize();
+}
 
 //------------------- VSTPluginDelegate ------------------------------//
 
@@ -927,20 +1108,11 @@ bool VSTPluginDelegate::alive() const {
     return owner_ != nullptr;
 }
 
+// owner can be nullptr (= destroyed)!
 void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
     if (owner) {
         // cache some members
         world_ = owner->mWorld;
-        // these are needed in cmdOpen (so we don't have to touch VSTPlugin
-        // which might get destroyed concurrently in the RT thread).
-        // NOTE: this might get called in the VSTPlugin's constructor,
-        // so we have to make sure that those methods return a valid result (they do).
-        sampleRate_ = owner->sampleRate();
-        bufferSize_ = owner->bufferSize();
-        numInChannels_ = owner->numInChannels();
-        numOutChannels_ = owner->numOutChannels();
-        numAuxInChannels_ = owner->numAuxInChannels();
-        numAuxOutChannels_ = owner->numAuxOutChannels();
     }
     owner_ = owner;
 }
@@ -952,25 +1124,44 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         if (paramSet_) {
             sendParameterAutomated(index, value);
         }
-    }
-#if HAVE_UI_THREAD
-    // from GUI thread [or NRT thread] - push to queue
-    else {
-        std::unique_lock<std::mutex> writerLock(owner_->paramQueueMutex_);
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
+        LockGuard lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
         }
     }
-#endif
+}
+
+void VSTPluginDelegate::latencyChanged(int nsamples){
+    // RT thread
+    if (std::this_thread::get_id() == rtThreadID_) {
+        sendLatencyChange(nsamples);
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
+        LockGuard lock(owner_->paramQueueMutex_);
+        if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
+            LOG_DEBUG("param queue overflow");
+        }
+    }
+}
+
+void VSTPluginDelegate::pluginCrashed(){
+    // RT thread
+    if (std::this_thread::get_id() == rtThreadID_) {
+        sendPluginCrash();
+    } else {
+        // from GUI thread [or NRT thread] - push to queue
+        LockGuard lock(owner_->paramQueueMutex_);
+        if (!(owner_->paramQueue_.emplace(PluginCrash, 0.f))){
+            LOG_DEBUG("param queue overflow");
+        }
+    }
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
-#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
-#else
-    {
-#endif
         float buf[3];
         // we don't want negative values here
         buf[0] = (unsigned char)midi.data[0];
@@ -981,12 +1172,8 @@ void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
 }
 
 void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
-#if HAVE_UI_THREAD
     // check if we're on the realtime thread, otherwise ignore it
     if (std::this_thread::get_id() == rtThreadID_) {
-#else
-    {
-#endif
         if ((sysex.size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
             LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
@@ -1000,7 +1187,7 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
     }
 }
 
-bool VSTPluginDelegate::check(bool loud) {
+bool VSTPluginDelegate::check(bool loud) const {
     if (!plugin_){
         if (loud){
             LOG_WARNING("VSTPlugin: no plugin loaded!");
@@ -1016,8 +1203,8 @@ bool VSTPluginDelegate::check(bool loud) {
     return true;
 }
 
-VSTPluginDelegate::ScopedLock VSTPluginDelegate::scopedLock(){
-    return ScopedLock(mutex_);
+WriteLock VSTPluginDelegate::scopedLock(){
+    return WriteLock(mutex_);
 }
 
 bool VSTPluginDelegate::tryLock() {
@@ -1039,28 +1226,25 @@ void VSTPluginDelegate::close() {
             // will be closed by the command's cleanup function
             return;
         }
-        auto cmdData = PluginCmdData::create(world());
+        auto cmdData = CmdData::create<CloseCmdData>(world());
         if (!cmdData) {
             return;
         }
         // unset listener!
         plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
-        cmdData->value = editor_;
+        cmdData->editor = editor_;
         // don't set owner!
         doCmd<false>(cmdData, [](World *world, void* inData) {
-            auto data = (PluginCmdData*)inData;
-            try {
-                if (data->value) {
-                    UIThread::destroy(std::move(data->plugin));
-                }
-                else {
-                    data->plugin = nullptr; // destruct
-                }
+            auto data = (CloseCmdData*)inData;
+            if (data->editor) {
+                // synchronous!
+                UIThread::callSync([](void *y){
+                    static_cast<CloseCmdData *>(y)->plugin = nullptr;
+                }, data);
             }
-            catch (const Error & e) {
-                LOG_ERROR("ERROR: couldn't close plugin: " << e.what());
-            }
+            // if not destructed
+            data->plugin = nullptr;
             return false; // done
         });
         plugin_ = nullptr;
@@ -1070,33 +1254,52 @@ void VSTPluginDelegate::close() {
 bool cmdOpen(World *world, void* cmdData) {
     LOG_DEBUG("cmdOpen");
     // initialize GUI backend (if needed)
-    auto data = (PluginCmdData *)cmdData;
-    data->threadID = std::this_thread::get_id();
+    auto data = (OpenCmdData *)cmdData;
     // create plugin in main thread
-    auto info = queryPlugin(data->buf);
+    auto info = queryPlugin(data->path);
     if (info) {
         try {
-            IPlugin::ptr plugin;
-            bool editor = data->value;
-            if (editor) {
-                plugin = UIThread::create(*info);
+            if (data->editor) {
+                data->info = info;
+                LOG_DEBUG("create plugin in UI thread");
+                bool ok = UIThread::callSync([](void *y){
+                    auto d = (OpenCmdData *)y;
+                    try {
+                        d->plugin = d->info->create(true, d->threaded, d->mode);
+                    } catch (const Error& e){
+                        d->error = e;
+                    }
+                }, data);
+
+                if (ok){
+                    if (data->plugin){
+                        LOG_DEBUG("done");
+                    } else {
+                        throw data->error;
+                    }
+                } else {
+                    // couldn't dispatch to UI thread (probably not available).
+                    // create plugin without window
+                    data->plugin = info->create(false, data->threaded, data->mode);
+                }
             }
             else {
-                plugin = info->create();
+                data->plugin = info->create(false, data->threaded, data->mode);
             }
-            auto owner = data->owner;
-            plugin->suspend();
-            // we only access immutable members of owner!
-            if (plugin->info().hasPrecision(ProcessPrecision::Single)) {
-                plugin->setupProcessing(owner->sampleRate(), owner->bufferSize(), ProcessPrecision::Single);
+            if (data->plugin){
+                // we only access immutable members of owner!
+                if (info->hasPrecision(ProcessPrecision::Single)) {
+                    data->plugin->setupProcessing(data->sampleRate, data->blockSize,
+                                                  ProcessPrecision::Single);
+                }
+                else {
+                    LOG_WARNING("VSTPlugin: plugin '" << info->name <<
+                                "' doesn't support single precision processing - bypassing!");
+                }
+                data->plugin->setNumSpeakers(data->numInputs, data->numOutputs,
+                                             data->numAuxInputs, data->numAuxOutputs);
+                data->plugin->resume();
             }
-            else {
-                LOG_WARNING("VSTPlugin: plugin '" << info->name << "' doesn't support single precision processing - bypassing!");
-            }
-            plugin->setNumSpeakers(owner->numInChannels(), owner->numOutChannels(),
-                                   owner->numAuxInChannels(), owner->numAuxOutChannels());
-            plugin->resume();
-            data->plugin = std::move(plugin);
         }
         catch (const Error & e) {
             LOG_ERROR(e.what());
@@ -1106,7 +1309,8 @@ bool cmdOpen(World *world, void* cmdData) {
 }
 
 // try to open the plugin in the NRT thread with an asynchronous command
-void VSTPluginDelegate::open(const char *path, bool gui) {
+void VSTPluginDelegate::open(const char *path, bool editor,
+                             bool threaded, RunMode mode) {
     LOG_DEBUG("open");
     if (isLoading_) {
         LOG_WARNING("already loading!");
@@ -1120,15 +1324,34 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
         return;
     }
 
-    auto cmdData = PluginCmdData::create(world(), path);
+#ifdef SUPERNOVA
+    if (threaded){
+        LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
+        threaded = false;
+    }
+#endif
+
+    auto len = strlen(path) + 1;
+    auto cmdData = CmdData::create<OpenCmdData>(world(), len);
     if (cmdData) {
-        cmdData->value = gui;
+        memcpy(cmdData->path, path, len);
+        cmdData->editor = editor;
+        cmdData->threaded = threaded;
+        cmdData->mode = mode;
+        cmdData->sampleRate = owner_->sampleRate();
+        cmdData->blockSize = owner_->blockSize();
+        cmdData->numInputs = owner_->numInChannels();
+        cmdData->numOutputs = owner_->numOutChannels();
+        cmdData->numAuxInputs = owner_->numAuxInChannels();
+        cmdData->numAuxOutputs = owner_->numAuxOutChannels();
+
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
-            auto data = (PluginCmdData*)cmdData;
+            auto data = (OpenCmdData*)cmdData;
             data->owner->doneOpen(*data); // alive() checked in doneOpen!
             return false; // done
         });
-        editor_ = gui;
+        editor_ = editor;
+        threaded_ = threaded;
         isLoading_ = true;
     } else {
         sendMsg("/vst_open", 0);
@@ -1136,7 +1359,7 @@ void VSTPluginDelegate::open(const char *path, bool gui) {
 }
 
 // "/open" command succeeded/failed - called in the RT thread
-void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
+void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     LOG_DEBUG("doneOpen");
     isLoading_ = false;
     // move the plugin even if alive() returns false (so it will be properly released in close())
@@ -1147,32 +1370,34 @@ void VSTPluginDelegate::doneOpen(PluginCmdData& cmd){
     }
     if (plugin_){
         if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
-            Print("Warning: '%s' doesn't support single precision processing - bypassing!\n", 
-                plugin_->info().name.c_str());
+            Print("WARNING: '%s' doesn't support single precision processing - bypassing!\n",
+                  plugin_->info().name.c_str());
         }
-        LOG_DEBUG("opened " << cmd.buf);
+        LOG_DEBUG("opened " << cmd.path);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
         // update data
         owner_->update();
-        // success, window
-        float data[] = { 1.f, static_cast<float>(plugin_->getWindow() != nullptr) };
-        sendMsg("/vst_open", 2, data);
+        // success, window, initial latency
+        bool haveWindow = plugin_->getWindow() != nullptr;
+        int latency = plugin_->getLatencySamples() + latencySamples();
+        float data[3] = { 1.f, (float)haveWindow, (float)latency };
+        sendMsg("/vst_open", 3, data);
     } else {
-        LOG_WARNING("VSTPlugin: couldn't open " << cmd.buf);
+        LOG_WARNING("VSTPlugin: couldn't open " << cmd.path);
         sendMsg("/vst_open", 0);
     }
 }
 
 void VSTPluginDelegate::showEditor(bool show) {
     if (plugin_ && plugin_->getWindow()) {
-        auto cmdData = PluginCmdData::create(world());
+        auto cmdData = CmdData::create<PluginCmdData>(world());
         if (cmdData) {
-            cmdData->value = show;
+            cmdData->i = show;
             doCmd(cmdData, [](World * inWorld, void* inData) {
                 auto data = (PluginCmdData*)inData;
                 auto window = data->owner->plugin()->getWindow();
-                if (data->value) {
+                if (data->i) {
                     window->open();
                 }
                 else {
@@ -1189,7 +1414,7 @@ void VSTPluginDelegate::reset(bool async) {
         if (async) {
             // reset in the NRT thread
             suspended_ = true; // suspend
-            doCmd(PluginCmdData::create(world()),
+            doCmd(CmdData::create<PluginCmdData>(world()),
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
                     auto lock = data->owner->scopedLock();
@@ -1206,6 +1431,7 @@ void VSTPluginDelegate::reset(bool async) {
         }
         else {
             // reset in the RT thread
+            auto lock = scopedLock(); // avoid concurrent read/writes
             plugin_->suspend();
             plugin_->resume();
         }
@@ -1391,7 +1617,7 @@ void VSTPluginDelegate::queryPrograms(int32 index, int32 count) {
 
 template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+    auto data = (PresetCmdData*)cmdData;
     auto plugin = data->owner->plugin();
     auto& buffer = data->buffer;
     bool async = data->async;
@@ -1399,79 +1625,67 @@ bool cmdReadPreset(World* world, void* cmdData) {
     try {
         if (data->bufnum < 0) {
             // from file
-            if (async){
-                // load preset now
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->readBankFile(data->path);
-                else
-                    plugin->readProgramFile(data->path);
-            } else {
-                // load preset later in RT thread
-                vst::File file(data->path);
-                if (!file.is_open()){
-                    throw Error("couldn't open file " + std::string(data->path));
-                }
-                file.seekg(0, std::ios_base::end);
-                buffer.resize(file.tellg());
-                file.seekg(0, std::ios_base::beg);
-                file.read(&buffer[0], buffer.size());
+            vst::File file(data->path);
+            if (!file.is_open()){
+                throw Error("couldn't open file " + std::string(data->path));
             }
+            file.seekg(0, std::ios_base::end);
+            buffer.resize(file.tellg());
+            file.seekg(0, std::ios_base::beg);
+            file.read(&buffer[0], buffer.size());
         }
         else {
             // from buffer
-            std::string presetData;
-            auto buf = World_GetNRTBuf(world, data->bufnum);
-            writeBuffer(buf, presetData);
-            if (async){
-                // load preset now
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->readBankData(presetData);
-                else
-                    plugin->readProgramData(presetData);
-            } else {
-                // load preset later in RT thread
-                buffer = std::move(presetData);
-            }
+            auto sndbuf = World_GetNRTBuf(world, data->bufnum);
+            writeBuffer(sndbuf, buffer);
+        }
+        if (async) {
+            // load preset now
+            // NOTE: we avoid readProgram() to minimize the critical section
+            auto lock = data->owner->scopedLock();
+            if (bank)
+                plugin->readBankData(buffer);
+            else
+                plugin->readProgramData(buffer);
         }
     }
     catch (const Error& e) {
         Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
-    data->flags = result;
+    data->result = result;
     return true;
 }
 
 template<bool bank>
 bool cmdReadPresetDone(World *world, void *cmdData){
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (PresetCmdData *)cmdData;
     if (!data->alive()) return false;
     auto owner = data->owner;
 
     if (data->async){
         data->owner->resume();
-    } else if (data->flags) {
+    } else if (data->result) {
         // read preset data
         try {
+            auto lock = data->owner->scopedLock(); // avoid concurrent read/write
             if (bank)
                 owner->plugin()->readBankData(data->buffer);
             else
                 owner->plugin()->readProgramData(data->buffer);
         } catch (const Error& e){
             Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
-            data->flags = 0;
+            data->result = 0;
         }
     }
 
     if (bank) {
-        owner->sendMsg("/vst_bank_read", data->flags);
+        owner->sendMsg("/vst_bank_read", data->result);
         // a bank change also sets the current program number!
         owner->sendMsg("/vst_program_index", owner->plugin()->getProgram());
     }
     else {
-        owner->sendMsg("/vst_program_read", data->flags);
+        owner->sendMsg("/vst_program_read", data->result);
     }
     // the program name has most likely changed
     owner->sendCurrentProgramName();
@@ -1485,8 +1699,8 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
         if (async){
             suspended_ = true;
         }
-        doCmd(InfoCmdData::create(world(), dest, async),
-            cmdReadPreset<bank>, cmdReadPresetDone<bank>, InfoCmdData::nrtFree);
+        doCmd(PresetCmdData::create(world(), dest, async),
+            cmdReadPreset<bank>, cmdReadPresetDone<bank>, PresetCmdData::nrtFree);
     } else {
         if (bank) {
             sendMsg("/vst_bank_read", 0);
@@ -1499,60 +1713,50 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
 
 template<bool bank>
 bool cmdWritePreset(World *world, void *cmdData){
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (PresetCmdData *)cmdData;
     auto plugin = data->owner->plugin();
     auto& buffer = data->buffer;
     bool async = data->async;
     bool result = true;
     try {
+        // NOTE: we avoid writeProgram() to minimize the critical section
+        if (async){
+            // try to move memory allocation *before* the lock,
+            // so we keep the critical section as short as possible.
+            buffer.reserve(1024);
+            // get and write preset data
+            auto lock = data->owner->scopedLock();
+            if (bank)
+                plugin->writeBankData(buffer);
+            else
+                plugin->writeProgramData(buffer);
+        }
         if (data->bufnum < 0) {
-            // to file
-            if (async){
-                // get and write preset data
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->writeBankFile(data->path);
-                else
-                    plugin->writeProgramFile(data->path);
-            } else {
-                // write data to file
-                vst::File file(data->path, File::WRITE);
-                if (!file.is_open()){
-                    throw Error("couldn't create file " + std::string(data->path));
-                }
-                file.write(buffer.data(), buffer.size());
+            // write data to file
+            vst::File file(data->path, File::WRITE);
+            if (!file.is_open()){
+                throw Error("couldn't create file " + std::string(data->path));
             }
+            file.write(buffer.data(), buffer.size());
         }
         else {
             // to buffer
-            std::string presetData;
-            if (async){
-                // get preset data
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->writeBankData(presetData);
-                else
-                    plugin->writeProgramData(presetData);
-            } else {
-                // move preset data
-                presetData = std::move(buffer);
-            }
-            auto buf = World_GetNRTBuf(world, data->bufnum);
-            data->freeData = buf->data; // to be freed in stage 4
-            allocReadBuffer(buf, presetData);
+            auto sndbuf = World_GetNRTBuf(world, data->bufnum);
+            data->freeData = sndbuf->data; // to be freed in stage 4
+            allocReadBuffer(sndbuf, buffer);
         }
     }
     catch (const Error & e) {
         Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
-    data->flags = result;
+    data->result = result;
     return true;
 }
 
 template<bool bank>
 bool cmdWritePresetDone(World *world, void *cmdData){
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (PresetCmdData *)cmdData;
     if (!data->alive()) return true; // will just free data
     if (data->async){
         data->owner->resume();
@@ -1560,18 +1764,19 @@ bool cmdWritePresetDone(World *world, void *cmdData){
     if (data->bufnum >= 0){
         syncBuffer(world, data->bufnum);
     }
-    data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->flags);
+    data->owner->sendMsg(bank ? "/vst_bank_write" : "/vst_program_write", data->result);
     return true; // continue
 }
 
 template<bool bank, typename T>
 void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
-        auto data = InfoCmdData::create(world(), dest, async);
+        auto data = PresetCmdData::create(world(), dest, async);
         if (async){
             suspended_ = true;
         } else {
             try {
+                auto lock = scopedLock(); // avoid concurrent read/write
                 if (bank){
                     plugin_->writeBankData(data->buffer);
                 } else {
@@ -1582,7 +1787,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
                 goto fail;
             }
         }
-        doCmd(data, cmdWritePreset<bank>, cmdWritePresetDone<bank>, InfoCmdData::nrtFree);
+        doCmd(data, cmdWritePreset<bank>, cmdWritePresetDone<bank>, PresetCmdData::nrtFree);
     } else {
     fail:
         if (bank) {
@@ -1732,6 +1937,23 @@ void VSTPluginDelegate::sendParameterAutomated(int32 index, float value) {
     sendMsg("/vst_auto", 2, buf);
 }
 
+int32 VSTPluginDelegate::latencySamples() const {
+    int32 blockSize = owner_->blockSize();
+    int32 nsamples = blockSize - world_->mBufLength;
+    if (threaded_){
+        nsamples += blockSize;
+    }
+    return nsamples;
+}
+
+void VSTPluginDelegate::sendLatencyChange(int nsamples){
+    sendMsg("/vst_latency", nsamples + latencySamples());
+}
+
+void VSTPluginDelegate::sendPluginCrash(){
+    sendMsg("/vst_crash", 0);
+}
+
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
     if (owner_){
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
@@ -1788,9 +2010,24 @@ void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
 
 void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     const char *path = args->gets();
-    auto gui = args->geti();
+    auto editor = args->geti();
+    auto threaded = args->geti();
+
+    RunMode mode;
+    switch (args->geti()){
+    case 1:
+        mode = RunMode::Sandbox;
+        break;
+    case 2:
+        mode = RunMode::Bridge;
+        break;
+    default:
+        mode = RunMode::Auto;
+        break;
+    }
+
     if (path) {
-        unit->delegate().open(path, gui);
+        unit->delegate().open(path, editor, threaded, mode);
     }
     else {
         LOG_WARNING("vst_open: expecting string argument!");
@@ -1985,7 +2222,11 @@ void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().readPreset<false>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().readPreset<false>(buf, async);
+        } else {
+            LOG_ERROR("vst_program_read: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -1998,7 +2239,11 @@ void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().writePreset<false>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().writePreset<false>(buf, async);
+        } else {
+            LOG_ERROR("vst_program_write: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -2011,7 +2256,11 @@ void vst_bank_read(VSTPlugin* unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().readPreset<true>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().readPreset<true>(buf, async);
+        } else {
+            LOG_ERROR("vst_bank_read: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -2024,7 +2273,11 @@ void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
     else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
-        unit->delegate().writePreset<true>(buf, async);
+        if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
+            unit->delegate().writePreset<true>(buf, async);
+        } else {
+            LOG_ERROR("vst_bank_write: bufnum " << buf << " out of range");
+        }
     }
 }
 
@@ -2111,7 +2364,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 
 // recursively search directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (SearchCmdData *)cmdData;
     std::vector<PluginInfo::const_ptr> plugins;
     bool useDefault = data->flags & SearchFlags::useDefault;
     bool verbose = data->flags & SearchFlags::verbose;
@@ -2184,7 +2437,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 }
 
 bool cmdSearchDone(World *inWorld, void *cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+    auto data = (SearchCmdData*)cmdData;
     if (data->bufnum >= 0)
         syncBuffer(inWorld, data->bufnum);
     gSearching = false;
@@ -2204,10 +2457,10 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     // temp file or buffer to store the search results
     if (args->nextTag() == 's') {
         filename = args->gets();
-    }
-    else {
+    } else {
         bufnum = args->geti();
-        if (bufnum >= inWorld->mNumSndBufs) {
+        // negative bufnum allowed (= don't write result)!
+        if (bufnum >= (int)inWorld->mNumSndBufs) {
             LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
             return;
         }
@@ -2227,15 +2480,14 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
         }
     }
 
-    auto data = CmdData::create<InfoCmdData>(inWorld, pathLen);
+    SearchCmdData *data = CmdData::create<SearchCmdData>(inWorld, pathLen);
     if (data) {
         data->flags = flags;
         data->bufnum = bufnum; // negative bufnum: don't write search result
         if (filename) {
             snprintf(data->path, sizeof(data->path), "%s", filename);
-        }
-        else {
-            data->path[0] = '\0';
+        } else {
+            data->path[0] = '\0'; // empty path: use buffer
         }
         // now copy search paths into a single buffer (separated by '\0')
         data->size = pathLen;
@@ -2247,9 +2499,9 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             ptr += len;
         }
         // LOG_DEBUG("start search");
-        DoAsynchronousCommand(inWorld, replyAddr, "vst_search",
-            data, cmdSearch, cmdSearchDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
-        gSearching = true;
+        gSearching = true; // before command dispatching! -> NRT mode
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_search", data,
+            cmdSearch, cmdSearchDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
     }
 }
 
@@ -2259,15 +2511,15 @@ void vst_search_stop(World* inWorld, void* inUserData, struct sc_msg_iter*args, 
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
     if (!gSearching) {
-        auto data = CmdData::create<InfoCmdData>(inWorld);
+        auto data = CmdData::create<PluginCmdData>(inWorld);
         if (data) {
-            data->flags = args->geti(); // 1 = remove cache file
+            data->i = args->geti(); // 1 = remove cache file
             DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
                 // unloading plugins might crash, so we make sure we *first* delete the cache file
-                int flags = static_cast<InfoCmdData*>(data)->flags;
+                int flags = static_cast<PluginCmdData*>(data)->i;
                 if (flags & 1) {
                     // remove cache file
-                    removeFile(getSettingsDir() + "/" SETTINGS_FILE);
+                    removeFile(getSettingsDir() + "/" CACHE_FILE);
                 }
                 gPluginManager.clear();
                 return false;
@@ -2281,7 +2533,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 
 // query plugin info
 bool cmdProbe(World *inWorld, void *cmdData) {
-    auto data = (InfoCmdData *)cmdData;
+    auto data = (SearchCmdData *)cmdData;
     auto desc = queryPlugin(data->buf);
     // write info to file or buffer
     if (desc){
@@ -2312,7 +2564,7 @@ bool cmdProbe(World *inWorld, void *cmdData) {
 }
 
 bool cmdProbeDone(World* inWorld, void* cmdData) {
-    auto data = (InfoCmdData*)cmdData;
+    auto data = (SearchCmdData*)cmdData;
     if (data->bufnum >= 0)
         syncBuffer(inWorld, data->bufnum);
     // LOG_DEBUG("probe done!");
@@ -2328,30 +2580,36 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         LOG_ERROR("first argument to 'vst_probe' must be a string (plugin path)!");
         return;
     }
+    int32 bufnum = -1;
+    const char* filename = nullptr;
     auto path = args->gets(); // plugin path
     auto size = strlen(path) + 1;
-
-    auto data = CmdData::create<InfoCmdData>(inWorld, size);
-    if (data) {
-        // temp file or buffer to store the plugin info
-        if (args->nextTag() == 's') {
-            auto filename = args->gets();
-            snprintf(data->path, sizeof(data->path), "%s", filename);
+    // temp file or buffer to store the probe result
+    if (args->nextTag() == 's') {
+        filename = args->gets();
+    } else {
+        bufnum = args->geti();
+        // negative bufnum allowed (= don't write result)!
+        if (bufnum >= (int)inWorld->mNumSndBufs) {
+            LOG_ERROR("vst_probe: bufnum " << bufnum << " out of range");
+            return;
         }
-        else {
-            auto bufnum = args->geti();
-            if (bufnum >= inWorld->mNumSndBufs) {
-                LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
-                return;
-            }
-            data->bufnum = bufnum; // negative bufnum: don't write probe result
-            data->path[0] = '\0';
+    }
+
+    auto data = CmdData::create<SearchCmdData>(inWorld, size);
+    if (data) {
+        data->bufnum = bufnum;
+        // temp file or buffer to store the plugin info
+        if (filename) {
+            snprintf(data->path, sizeof(data->path), "%s", filename);
+        } else {
+            data->path[0] = '\0'; // empty path: use buffer
         }
 
         memcpy(data->buf, path, size); // store plugin path
 
         DoAsynchronousCommand(inWorld, replyAddr, "vst_probe",
-            data, cmdProbe, cmdProbeDone, InfoCmdData::nrtFree, cmdRTfree, 0, 0);
+            data, cmdProbe, cmdProbeDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
     }
 }
 
@@ -2442,7 +2700,9 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_clear);
     PluginCmd(vst_probe);
 
-    Print("VSTPlugin %s", getVersionString().c_str());
+    setLogFunction(SCLog);
+
+    Print("VSTPlugin %s\n", getVersionString().c_str());
     // read cached plugin info
     readIniFile();
 }

@@ -42,28 +42,31 @@ endif()
 message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
 # the UGen
-add_library(${PROJECT} MODULE ${SRC} ${VST_HEADERS} ${VST_SRC})
-target_compile_definitions(${PROJECT} PUBLIC
-    -DLOGFUNCTION=SCLog -DHAVE_UI_THREAD=1)
-target_link_libraries(${PROJECT} ${VST_LIBS})
+add_library(${PROJECT} MODULE ${SRC})
+target_link_libraries(${PROJECT} ${LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
 if(SUPERNOVA)
-    add_library(${PROJECT}_supernova MODULE ${SRC} ${VST_SRC})
-    target_compile_definitions(${PROJECT}_supernova PUBLIC
-        -DSUPERNOVA=1 -DHAVE_UI_THREAD=1)
-    target_link_libraries(${PROJECT}_supernova ${VST_LIBS})
+    add_library(${PROJECT}_supernova MODULE ${SRC})
+    target_compile_definitions(${PROJECT}_supernova PUBLIC -DSUPERNOVA=1)
+    target_link_libraries(${PROJECT}_supernova ${LIBS})
     set_target_properties(${PROJECT}_supernova PROPERTIES LINK_FLAGS_RELEASE -s)
 endif()
 
 # installation
-add_dependencies(${PROJECT} ${PROBE})
+add_dependencies(${PROJECT} ${HOST})
+if (HOST32)
+    add_dependencies(${PROJECT} ${HOST32})
+endif()
 
 install(TARGETS ${PROJECT} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 if (SUPERNOVA)
     install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
-install(PROGRAMS "${PROBE_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+install(PROGRAMS "${HOST_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+if (HOST32)
+    install(PROGRAMS "${HOST32_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+endif()
 install(DIRECTORY classes DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
 install(DIRECTORY Help DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
 install(DIRECTORY HelpSource DESTINATION "${SC_INSTALLDIR}/${PROJECT}")

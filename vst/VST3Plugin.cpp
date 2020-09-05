@@ -102,8 +102,13 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 
 /*/////////////////////// VST3Factory /////////////////////////*/
 
-VST3Factory::VST3Factory(const std::string& path)
-    : path_(path) {}
+VST3Factory::VST3Factory(const std::string& path, bool probe)
+    : PluginFactory(path)
+{
+    if (probe){
+        doLoad();
+    }
+}
 
 VST3Factory::~VST3Factory(){
     factory_ = nullptr;
@@ -115,61 +120,6 @@ VST3Factory::~VST3Factory(){
     }
 #endif
     // LOG_DEBUG("freed VST3 module " << path_);
-}
-
-void VST3Factory::addPlugin(PluginInfo::ptr desc){
-    if (!pluginMap_.count(desc->name)){
-        plugins_.push_back(desc);
-        pluginMap_[desc->name] = desc;
-    }
-}
-
-PluginInfo::const_ptr VST3Factory::getPlugin(int index) const {
-    if (index >= 0 && index < (int)plugins_.size()){
-        return plugins_[index];
-    } else {
-        return nullptr;
-    }
-}
-
-int VST3Factory::numPlugins() const {
-    return plugins_.size();
-}
-
-IFactory::ProbeFuture VST3Factory::probeAsync() {
-    doLoad(); // lazy loading
-
-    if (pluginList_.empty()){
-        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
-    }
-    plugins_.clear();
-    pluginMap_.clear();
-    auto self(shared_from_this());
-    if (pluginList_.size() > 1){
-        return [this, self=std::move(self)](ProbeCallback callback){
-            ProbeList pluginList;
-            for (auto& name : pluginList_){
-                pluginList.emplace_back(name, 0);
-            }
-            plugins_ = probePlugins(pluginList, callback);
-            for (auto& desc : plugins_) {
-                pluginMap_[desc->name] = desc;
-            }
-        };
-    } else {
-        auto f = probePlugin(pluginList_[0]);
-        return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
-            auto result = f();
-            if (result.valid()) {
-                plugins_ = { result.plugin };
-                pluginMap_[result.plugin->name] = result.plugin;
-            }
-            /// LOG_DEBUG("probed plugin " << result.plugin->name);
-            if (callback){
-                callback(result);
-            }
-        };
-    }
 }
 
 void VST3Factory::doLoad(){
@@ -200,15 +150,15 @@ void VST3Factory::doLoad(){
         // map plugin names to indices
         auto numPlugins = factory_->countClasses();
         /// LOG_DEBUG("module contains " << numPlugins << " classes");
-        pluginList_.clear();
-        pluginIndexMap_.clear();
+        subPlugins_.clear();
+        subPluginMap_.clear();
         for (int i = 0; i < numPlugins; ++i){
             PClassInfo ci;
             if (factory_->getClassInfo(i, &ci) == kResultTrue){
                 /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
                 if (!strcmp(ci.category, kVstAudioEffectClass)){
-                    pluginList_.push_back(ci.name);
-                    pluginIndexMap_[ci.name] = i;
+                    subPlugins_.push_back(PluginInfo::SubPlugin { ci.name, i });
+                    subPluginMap_[ci.name] = i;
                 }
             } else {
                 throw Error(Error::ModuleError, "Couldn't get class info!");
@@ -219,21 +169,49 @@ void VST3Factory::doLoad(){
     }
 }
 
-std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool probe) const {
+std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name) const {
     const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
 
-    PluginInfo::ptr desc = nullptr; // will stay nullptr when probing!
-    if (!probe){
-        if (plugins_.empty()){
-            throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
-        }
-        auto it = pluginMap_.find(name);
-        if (it == pluginMap_.end()){
-            throw Error(Error::ModuleError, "Can't find (sub)plugin '" + name + "'");
-        }
-        desc = it->second;
+    if (plugins_.empty()){
+        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
     }
-    return std::make_unique<VST3Plugin>(factory_, pluginIndexMap_[name], shared_from_this(), desc);
+    // find plugin desc
+    auto it = pluginMap_.find(name);
+    if (it == pluginMap_.end()){
+        throw Error(Error::ModuleError, "Can't find (sub)plugin '" + name + "'");
+    }
+    auto desc = it->second;
+    // find plugin index
+    auto it2 = subPluginMap_.find(name);
+    if (it2 == subPluginMap_.end()){
+        throw Error(Error::ModuleError, "Can't find index for (sub)plugin '" + name + "'");
+    }
+    auto index = it2->second;
+
+    return std::make_unique<VST3Plugin>(factory_, index, shared_from_this(), desc);
+}
+
+PluginInfo::const_ptr VST3Factory::probePlugin(int id) const {
+    const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
+
+    if (subPlugins_.empty()){
+        throw Error(Error::ModuleError, "Factory doesn't have any plugin(s)");
+    }
+
+    // if the module contains a single plugin, we don't have to enumerate subplugins!
+    if (id < 0){
+        if (subPlugins_.size() > 1){
+            // only write list of subplugins
+            auto desc = std::make_shared<PluginInfo>(nullptr);
+            desc->subPlugins = subPlugins_;
+            return desc;
+        } else {
+            id = subPlugins_[0].id; // grab the first (and only) plugin
+        }
+    }
+    // create (sub)plugin
+    auto plugin = std::make_unique<VST3Plugin>(factory_, id, shared_from_this(), nullptr);
+    return plugin->getInfo();
 }
 
 /*///////////////////// ParamValueQeue /////////////////////*/
@@ -380,7 +358,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     : info_(std::move(desc))
 {
     memset(&context_, 0, sizeof(context_));
-    context_.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kContTimeValid
+    context_.state = Vst::ProcessContext::kContTimeValid
             | Vst::ProcessContext::kProjectTimeMusicValid | Vst::ProcessContext::kBarPositionValid
             | Vst::ProcessContext::kCycleValid | Vst::ProcessContext::kTempoValid
             | Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kClockValid
@@ -608,8 +586,11 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     int numParams = controller_->getParameterCount();
     inputParamChanges_.setMaxNumParameters(numParams);
     outputParamChanges_.setMaxNumParameters(numParams);
-    paramCache_.resize(numParams);
+
+    // cache for automatable parameters
+    paramCache_.reset(new ParamState[getNumParameters()]);
     updateParamCache();
+
     LOG_DEBUG("program change: " << info_->programChange);
     LOG_DEBUG("bypass: " << info_->bypass);
 }
@@ -666,6 +647,14 @@ tresult VST3Plugin::restartComponent(int32 flags){
     PRINT_FLAG(Vst::kPrefetchableSupportChanged)
     PRINT_FLAG(Vst::kRoutingInfoChanged)
 #undef PRINT_FLAG
+
+    if (flags & Vst::kLatencyChanged){
+        auto listener = listener_.lock();
+        if (listener){
+            listener->latencyChanged(processor_->getLatencySamples());
+        }
+    }
+
     return kResultOk;
 }
 
@@ -1016,33 +1005,35 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     handleEvents();
     handleOutputParameterChanges();
 
-    // update time info
-    context_.continousTimeSamples += data.numSamples;
-    context_.projectTimeSamples += data.numSamples;
-    double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
-    // advance project time in bars
-    double delta = data.numSamples / context_.sampleRate;
-    double beats = delta * context_.tempo / 60.0;
-    context_.projectTimeMusic += beats;
-    // bar start: simply round project time (in bars) down to bar length
-    double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
-    context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
-    // SMPTE offset
-    double smpteFrames = projectTimeSeconds / context_.frameRate.framesPerSecond;
-    double smpteFrameFract = smpteFrames - static_cast<int64_t>(smpteFrames);
-    context_.smpteOffsetSubframes = smpteFrameFract * 80; // subframes are 1/80 of a frame
-    // MIDI clock offset
-    double clockTicks = context_.projectTimeMusic * 24.0;
-    double clockTickFract = clockTicks - static_cast<int64_t>(clockTicks);
-    // get offset to nearest tick -> can be negative!
-    if (clockTickFract > 0.5){
-        clockTickFract -= 1.0;
-    }
-    if (context_.tempo > 0){
-        double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate; // 60.0 / 24.0 = 2.5
-        context_.samplesToNextClock = clockTickFract * samplesPerClock;
-    } else {
-        context_.samplesToNextClock = 0;
+    // update time info (if playing)
+    if (context_.state & Vst::ProcessContext::kPlaying){
+        context_.continousTimeSamples += data.numSamples;
+        context_.projectTimeSamples += data.numSamples;
+        double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
+        // advance project time in bars
+        double delta = data.numSamples / context_.sampleRate;
+        double beats = delta * context_.tempo / 60.0;
+        context_.projectTimeMusic += beats;
+        // bar start: simply round project time (in bars) down to bar length
+        double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
+        context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
+        // SMPTE offset
+        double smpteFrames = projectTimeSeconds / context_.frameRate.framesPerSecond;
+        double smpteFrameFract = smpteFrames - static_cast<int64_t>(smpteFrames);
+        context_.smpteOffsetSubframes = smpteFrameFract * 80; // subframes are 1/80 of a frame
+        // MIDI clock offset
+        double clockTicks = context_.projectTimeMusic * 24.0;
+        double clockTickFract = clockTicks - static_cast<int64_t>(clockTicks);
+        // get offset to nearest tick -> can be negative!
+        if (clockTickFract > 0.5){
+            clockTickFract -= 1.0;
+        }
+        if (context_.tempo > 0){
+            double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate; // 60.0 / 24.0 = 2.5
+            context_.samplesToNextClock = clockTickFract * samplesPerClock;
+        } else {
+            context_.samplesToNextClock = 0;
+        }
     }
 }
 
@@ -1191,14 +1182,6 @@ int VST3Plugin::getNumAuxOutputs() const {
     return info_->numAuxOutputs;
 }
 
-bool VST3Plugin::isSynth() const {
-    if (info_){
-        return info_->isSynth();
-    } else {
-        return false;
-    }
-}
-
 bool VST3Plugin::hasTail() const {
     return getTailSize() != 0;
 }
@@ -1236,7 +1219,7 @@ void VST3Plugin::setBypass(Bypass state){
 }
 
 static uint64_t makeChannels(int n){
-    return ((uint64_t)(1 << (n)) - 1);
+    return ((uint64_t)1 << n - 1);
 }
 
 void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
@@ -1281,6 +1264,10 @@ void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
               << ", auxin " << numInputChannels_[Aux]
               << ", out " << numOutputChannels_[Main]
               << ", auxout " << numOutputChannels_[Aux]);
+}
+
+int VST3Plugin::getLatencySamples() {
+    return processor_->getLatencySamples();
 }
 
 void VST3Plugin::setTempoBPM(double tempo){
@@ -1542,7 +1529,8 @@ int VST3Plugin::getNumParameters() const {
 }
 
 void VST3Plugin::updateParamCache(){
-    for (int i = 0; i < (int)paramCache_.size(); ++i){
+    int n = getNumParameters();
+    for (int i = 0; i < n; ++i){
         auto id = info().getParamID(i);
         paramCache_[i].value = controller_->getParamNormalized(id);
         // we don't need to tell the GUI to update
@@ -1864,7 +1852,7 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 
 void VST3Plugin::updateEditor(){
     // automatable parameters
-    int n = paramCache_.size();
+    int n = getNumParameters();
     for (int i = 0; i < n; ++i){
         bool expected = true;
         if (paramCache_[i].changed.compare_exchange_strong(expected, false)){

@@ -2,47 +2,38 @@
 #pragma once
 
 #include "Interface.h"
+#include "PluginFactory.h"
+
+#ifndef USE_FST
+# define USE_FST 0
+#endif
 
 #if USE_FST
-#include "fst.h"
+# include "fst.h"
 #else
-#define VST_FORCE_DEPRECATED 0
-#include "aeffectx.h"
+# define VST_FORCE_DEPRECATED 0
+# include "aeffectx.h"
 #endif
 
 namespace vst {
 
-class VST2Factory : public IFactory {
+class VST2Plugin;
+
+class VST2Factory final : public PluginFactory {
  public:
     static VstInt32 shellPluginID;
 
-    VST2Factory(const std::string& path);
+    VST2Factory(const std::string& path, bool probe);
     ~VST2Factory();
-    // get a list of all available plugins
-    void addPlugin(PluginInfo::ptr desc) override;
-    PluginInfo::const_ptr getPlugin(int index) const override;
-    int numPlugins() const override;
-    // probe plugins (in a seperate process)
-    ProbeFuture probeAsync() override;
-    bool isProbed() const override {
-        return !plugins_.empty();
-    }
-    bool valid() const override {
-        return numPlugins() > 0;
-    }
-    std::string path() const override {
-        return path_;
-    }
+    // probe a single plugin
+    PluginInfo::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
-    IPlugin::ptr create(const std::string& name, bool probe = false) const override;
+    IPlugin::ptr create(const std::string& name) const override;
  private:
     void doLoad();
+    std::unique_ptr<VST2Plugin> doCreate(PluginInfo::const_ptr desc) const;
     using EntryPoint = AEffect *(*)(audioMasterCallback);
-    std::string path_;
-    std::unique_ptr<IModule> module_;
     EntryPoint entry_;
-    std::vector<PluginInfo::ptr> plugins_;
-    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
 };
 
 //-----------------------------------------------------------------------------
@@ -56,9 +47,8 @@ class VST2Plugin final : public IPlugin {
     VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST2Plugin();
 
-    PluginType getType() const override { return PluginType::VST2; }
-
     const PluginInfo& info() const override { return *info_; }
+    PluginInfo::const_ptr getInfo() const { return info_; }
 
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
@@ -70,9 +60,10 @@ class VST2Plugin final : public IPlugin {
     void resume() override;
     void setBypass(Bypass state) override;
     void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
+    int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override {
-        listener_ = std::move(listener);
+        listener_ = listener;
     }
 
     void setTempoBPM(double tempo) override;
@@ -151,6 +142,7 @@ class VST2Plugin final : public IPlugin {
     static bool canHostDo(const char *what);
     bool hasFlag(VstAEffectFlags flag) const;
     void parameterAutomated(int index, float value);
+    void checkLatency();
     VstTimeInfo * getTimeInfo(VstInt32 flags);
     bool hasChunkData() const;
     void setProgramChunkData(const void *data, size_t size);
@@ -175,6 +167,7 @@ class VST2Plugin final : public IPlugin {
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
         // processing
+    int latency_ = 0;
     int numInputChannels_ = 0;
     int numOutputChannels_ = 0;
     VstTimeInfo timeInfo_;

@@ -6,16 +6,19 @@
 #endif
 
 #include <iostream>
+#include <dispatch/dispatch.h>
 
+// CocoaEditorWindow
 
 @implementation CocoaEditorWindow {}
 
-@synthesize owner = _owner;
+- (void)setOwner:(vst::IWindow *)owner {
+    owner_ = owner;
+}
 
 - (BOOL)windowShouldClose:(id)sender {
     LOG_DEBUG("window should close");
-    vst::IWindow *owner = [self owner];
-    static_cast<vst::Cocoa::Window *>(owner)->onClose();
+    static_cast<vst::Cocoa::Window *>(owner_)->onClose();
     return YES;
 }
 
@@ -26,11 +29,10 @@
 
 - (void)windowDidResize:(NSNotification *)notification {
     // LATER verify size
-    vst::IWindow *owner = [self owner];
     // get content size from frame size
     NSRect contentRect = [self contentRectForFrameRect:[self frame]];
     // resize editor
-    static_cast<vst::Cocoa::Window *>(owner)->plugin().resizeEditor(
+    static_cast<vst::Cocoa::Window *>(owner_)->plugin().resizeEditor(
         contentRect.size.width, contentRect.size.height);
     LOG_DEBUG("window did resize");
 }
@@ -45,132 +47,231 @@
     LOG_DEBUG("window did move");
 }
 - (void)updateEditor {
-    vst::IWindow *owner = [self owner];
-    static_cast<vst::Cocoa::Window *>(owner)->updateEditor();
+    static_cast<vst::Cocoa::Window *>(owner_)->updateEditor();
 }
 
 @end
 
+// EventLoopProxy
+
+@implementation EventLoopProxy
+- (id)initWithOwner:(vst::Cocoa::EventLoop*)owner {
+    self = [super init];
+    if (!self) return nil;
+
+    owner_ = owner;
+    return self;
+}
+
+- (void)poll {
+    owner_->poll();
+}
+@end
+
 namespace vst {
-namespace Cocoa {
 
 namespace UIThread {
 
-#if HAVE_UI_THREAD
-bool checkThread(){
-    return [NSThread isMainThread];
+static std::atomic_bool gRunning;
+
+void setup(){
+    Cocoa::EventLoop::instance();
 }
-#else
-void poll(){
-    NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
-    while (true) {
-        NSEvent *event = [NSApp
-            nextEventMatchingMask:NSAnyEventMask
-            untilDate:[[NSDate alloc] init]
-            inMode:NSDefaultRunLoopMode
-            dequeue:YES];
-        if (event){
+
+void run() {
+    // this doesn't work...
+    // [NSApp run];
+    // Kudos to https://www.cocoawithlove.com/2009/01/demystifying-nsapplication-by.html
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+
+    [NSApp finishLaunching];
+    gRunning = true;
+
+    while (gRunning) {
+        [pool release];
+        pool = [[NSAutoreleasePool alloc] init];
+        NSEvent* event = [NSApp nextEventMatchingMask:NSAnyEventMask
+                                            untilDate:[NSDate distantFuture]
+                                               inMode:NSDefaultRunLoopMode
+                                              dequeue:YES];
+        if (event) {
             [NSApp sendEvent:event];
             [NSApp updateWindows];
-            // LOG_DEBUG("got event: " << [event type]);
-        } else {
-            break;
         }
     }
     [pool release];
 }
-#endif
 
-IPlugin::ptr create(const PluginInfo& info){
-    return EventLoop::instance().create(info);
+void quit() {
+    // break from event loop instead of [NSApp terminate:nil]
+    gRunning = false;
+    // send dummy event to wake up event loop
+    NSEvent* event = [NSEvent otherEventWithType:NSApplicationDefined
+                                        location:NSMakePoint(0, 0)
+                                   modifierFlags:0
+                                       timestamp:0
+                                    windowNumber:0
+                                         context:nil
+                                         subtype:0
+                                           data1:0
+                                           data2:0];
+    [NSApp postEvent:event atStart:NO];
 }
 
-void destroy(IPlugin::ptr plugin){
-    EventLoop::instance().destroy(std::move(plugin));
+bool isCurrentThread(){
+    return [NSThread isMainThread];
 }
 
-EventLoop& EventLoop::instance(){
-    static EventLoop thread;
-    return thread;
-}
-
-EventLoop::EventLoop(){
-    // transform process into foreground application
-    ProcessSerialNumber psn = {0, kCurrentProcess};
-    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
-#if HAVE_UI_THREAD
-    // we must access NSApp only once in the beginning (why?)
-    haveNSApp_ = (NSApp != nullptr);
-    if (haveNSApp_){
-        LOG_DEBUG("init cocoa event loop");
-    } else {
-        LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
-    }
-#else
-    // create NSApplication in this thread (= main thread) 
-    // check if someone already created NSApp (just out of curiousity)
-    if (NSApp != nullptr){
-        LOG_WARNING("NSApp already initialized!");
-        return;
-    }
-        // NSApp will automatically point to the NSApplication singleton
-    [NSApplication sharedApplication];
-    LOG_DEBUG("init cocoa event loop (polling)");
-#endif
-}
-
-EventLoop::~EventLoop(){}
-
-IPlugin::ptr EventLoop::create(const PluginInfo& info){
-    auto doCreate = [&](){
-        auto plugin = info.create();
-        if (info.hasEditor()){
-            plugin->setWindow(std::make_unique<Window>(*plugin));
-        }
-        return plugin;
-    };
-#if HAVE_UI_THREAD
-    if (haveNSApp_){
-        auto queue = dispatch_get_main_queue();
-        __block IPlugin* plugin;
-        __block Error err;
-        LOG_DEBUG("dispatching...");
-        dispatch_sync(queue, ^{
-            try {
-                plugin = doCreate().release();
-            } catch (const Error& e){
-                err = e;
+void poll(){
+    // only on the main thread!
+    if (isCurrentThread()){
+        NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
+        while (true) {
+            NSEvent *event = [NSApp
+                nextEventMatchingMask:NSAnyEventMask
+                untilDate:[[NSDate alloc] init]
+                inMode:NSDefaultRunLoopMode
+                dequeue:YES];
+            if (event){
+                [NSApp sendEvent:event];
+                [NSApp updateWindows];
+                // LOG_DEBUG("got event: " << [event type]);
+            } else {
+                break;
             }
-        });
-        LOG_DEBUG("done!");
-        if (plugin){
-            return IPlugin::ptr(plugin);
-        } else {
-            throw err;
         }
-    } else {
-        return info.create(); // create without window in this thread
+        [pool release];
     }
-#else
-    return doCreate();
-#endif
 }
 
-void EventLoop::destroy(IPlugin::ptr plugin){
-#if HAVE_UI_THREAD
-    if (haveNSApp_){
-        auto queue = dispatch_get_main_queue();
-        __block IPlugin* p = plugin.release();
-        LOG_DEBUG("dispatching...");
-        dispatch_sync(queue, ^{ delete p; });
-        LOG_DEBUG("done!");
-        return;
-    }
-#endif
-    // plugin destroyed
+bool callSync(Callback cb, void *user){
+    return Cocoa::EventLoop::instance().callSync(cb, user);
+}
+
+bool callAsync(Callback cb, void *user){
+    return Cocoa::EventLoop::instance().callAsync(cb, user);
+}
+
+int32_t addPollFunction(PollFunction fn, void *context){
+    return Cocoa::EventLoop::instance().addPollFunction(fn, context);
+}
+
+void removePollFunction(int32_t handle){
+    return Cocoa::EventLoop::instance().removePollFunction(handle);
 }
 
 } // UIThread
+
+namespace Cocoa {
+
+EventLoop& EventLoop::instance(){
+    static EventLoop e;
+    return e;
+}
+
+EventLoop::EventLoop(){
+    // NOTE: somehow we must access NSApp only once in the beginning to check
+    // for its existence (why?), that's why we cache the result in 'haveNSApp_'.
+    if (UIThread::isCurrentThread()){
+        // create NSApplication in this thread (= main thread)
+        // check if someone already created NSApp (just out of curiousity)
+        if (NSApp != nullptr){
+            LOG_WARNING("NSApp already initialized!");
+        } else {
+            // NSApp will automatically point to the NSApplication singleton
+            [NSApplication sharedApplication];
+            LOG_DEBUG("init cocoa event loop (polling)");
+        }
+        haveNSApp_ = true;
+    } else {
+        // we don't run on the main thread and expect the host app
+        // to create NSApp and run the event loop.
+        haveNSApp_ = (NSApp != nullptr);
+        if (!haveNSApp_){
+            LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
+            return; // done
+        }
+        LOG_DEBUG("init cocoa event loop");
+    }
+
+    proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
+
+    auto createTimer = [this](){
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
+                    target:proxy_
+                    selector:@selector(poll)
+                    userInfo:nil
+                    repeats:YES];
+    };
+
+    if (UIThread::isCurrentThread()){
+        createTimer();
+    } else {
+        auto queue = dispatch_get_main_queue();
+        dispatch_async(queue, createTimer);
+    }
+}
+
+EventLoop::~EventLoop(){
+    if (haveNSApp_){
+        [timer_ invalidate];
+        timer_ = nil;
+        [proxy_ release];
+    }
+}
+
+UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
+                                            void *context){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    auto handle = nextPollFunctionHandle_++;
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    return handle;
+}
+
+void EventLoop::removePollFunction(UIThread::Handle handle){
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
+}
+
+void EventLoop::poll(){
+    // LOG_DEBUG("poll functions");
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    for (auto& it : pollFunctions_){
+        it.second();
+    }
+}
+
+bool EventLoop::callSync(UIThread::Callback cb, void *user){
+    if (haveNSApp_){
+        if (UIThread::isCurrentThread()){
+            cb(user); // we're on the main thread
+        } else {
+            auto queue = dispatch_get_main_queue();
+            dispatch_sync_f(queue, user, cb);
+        }
+        return true;
+    } else {
+        LOG_DEBUG("callSync() failed - no NSApp");
+        return false;
+    }
+}
+
+bool EventLoop::callAsync(UIThread::Callback cb, void *user){
+    if (haveNSApp_){
+        if (UIThread::isCurrentThread()){
+            cb(user); // we're on the main thread
+        } else {
+            auto queue = dispatch_get_main_queue();
+            dispatch_async_f(queue, user, cb);
+        }
+        return true;
+    } else {
+        LOG_DEBUG("callAsync() failed - no NSApp");
+        return false;
+    }
+}
+
+std::atomic<int> Window::numWindows_{0};
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin) {
@@ -180,27 +281,25 @@ Window::Window(IPlugin& plugin)
 // the destructor must be called on the main thread!
 Window::~Window(){
     if (window_){
-        plugin_->closeEditor();
-        [timer_ invalidate];
-        [window_ close];
+        auto window = window_;
+        onClose();
+        [window close];
     }
     LOG_DEBUG("destroyed Window");
 }
 
 void Window::open(){
     LOG_DEBUG("show window");
-#if HAVE_UI_THREAD
-    dispatch_async(dispatch_get_main_queue(), ^{
-        doOpen();
-    });
-#else
-    doOpen();
-#endif
+    UIThread::callAsync([](void *x){
+        static_cast<Window *>(x)->doOpen();
+    }, this);
 }
 
 // to be called on the main thread
 void Window::doOpen(){
     if (window_){
+        // just bring to top
+        [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
         return;
     }
@@ -217,11 +316,15 @@ void Window::doOpen(){
                 backing:NSBackingStoreBuffered
                 defer:NO];
     if (window){
-        [window setOwner:this];
         window_ = window;
-        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:window];
+        [window setOwner:this];
+        [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:)
+                name:NSWindowDidResizeNotification object:window];
         
-        setTitle(plugin_->info().name);
+        // set window title
+        NSString *title = @(plugin_->info().name.c_str());
+        [window setTitle:title];
+
         int left = 100, top = 100, right = 400, bottom = 400;
         bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
         if (gotEditorRect){
@@ -236,12 +339,23 @@ void Window::doOpen(){
             setFrame(origin_.x, origin_.y, right - left, bottom - top);
         }
 
-        timer_ = [NSTimer scheduledTimerWithTimeInterval:(UIThread::updateInterval * 0.001)
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(EventLoop::updateInterval * 0.001)
                     target:window
                     selector:@selector(updateEditor)
                     userInfo:nil
                     repeats:YES];
 
+        if (numWindows_.fetch_add(1) == 0){
+            // first Window: transform process into foreground application.
+            // This is necessariy so we can table cycle the Window(s)
+            // and access them from the dock.
+            // NOTE: we have to do this *before* bringing the window to the top
+            ProcessSerialNumber psn = {0, kCurrentProcess};
+            TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+        }
+
+        // bring to top
+        [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
         LOG_DEBUG("created Window");
         LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
@@ -250,13 +364,9 @@ void Window::doOpen(){
 
 void Window::close(){
     LOG_DEBUG("hide window");
-#if HAVE_UI_THREAD
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [window_ performClose:nil];
-    });
-#else
-    [window_ performClose:nil];
-#endif
+    UIThread::callAsync([](void *x){
+        [static_cast<Window *>(x)->window_ performClose:nil];
+    }, this);
 }
 
 // to be called on the main thread
@@ -264,9 +374,16 @@ void Window::onClose(){
     if (window_){
         [[NSNotificationCenter defaultCenter] removeObserver:window_ name:NSWindowDidResizeNotification object:window_];
         [timer_ invalidate];
+        timer_ = nil;
         plugin_->closeEditor();
         origin_ = [window_ frame].origin;
         window_ = nullptr;
+
+        if (numWindows_.fetch_sub(1) == 1){
+            // last Window: transform back into background application
+            ProcessSerialNumber psn = {0, kCurrentProcess};
+            TransformProcessType(&psn, kProcessTransformToUIElementApplication);
+        }
     }
 }
 
@@ -276,13 +393,6 @@ void Window::updateEditor(){
 
 void * Window::getHandle(){
     return window_ ? [window_ contentView] : nullptr;
-}
-
-void Window::setTitle(const std::string& title){
-    if (window_){
-        NSString *name = @(title.c_str());
-        [window_ setTitle:name];
-    }
 }
 
 void Window::setFrame(int x, int y, int w, int h){
@@ -328,4 +438,9 @@ void Window::setSize(int w, int h){
 }
 
 } // Cocoa
+
+IWindow::ptr IWindow::create(IPlugin &plugin){
+    return std::make_unique<Cocoa::Window>(plugin);
+}
+
 } // vst

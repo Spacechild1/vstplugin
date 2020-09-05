@@ -1,9 +1,10 @@
-<!doctype html><html lang='en'><head><title>VSTPlugin | SuperCollider 3.10.0 Help</title>
+<!doctype html><html lang='en'><head><title>VSTPlugin | SuperCollider 3.11.0 Help</title>
 <link rel='stylesheet' href='./../scdoc.css' type='text/css' />
 <link rel='stylesheet' href='./../codemirror.css' type='text/css' />
 <link rel='stylesheet' href='./../editor.css' type='text/css' />
 <link rel='stylesheet' href='./../frontend.css' type='text/css' />
 <link rel='stylesheet' href='./../custom.css' type='text/css' />
+<meta name='viewport' content='width=device-width, initial-scale=1'>
 <meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />
 <script src='./../lib/jquery.min.js'></script>
 <script src='./../lib/codemirror-5.39.2.min.js' type='text/javascript'></script>
@@ -11,7 +12,7 @@
 <script>
 var helpRoot = './..';
 var scdoc_title = 'VSTPlugin';
-var scdoc_sc_version = '3.10.0';
+var scdoc_sc_version = '3.11.0';
 </script>
 <script src='./../scdoc.js' type='text/javascript'></script>
 <script src='./../docmap.js' type='text/javascript'></script>
@@ -39,11 +40,18 @@ var scdoc_sc_version = '3.10.0';
 <li class='toc3'><a href='#*clear'>clear</a> </li>
 <li class='toc3'><a href='#*clearMsg'>clearMsg</a> </li>
 </ul><li class='toc2'><a href='#Inherited%20class%20methods'>Inherited class methods</a></li>
-</ul><li class='toc1'><a href='#instancemethods'>Instance methods</a></li>
-<ul class='toc'><li class='toc3'><a href='#-id'>id</a> </li>
-<li class='toc2'><a href='#Inherited%20instance%20methods'>Inherited instance methods</a></li>
+<li class='toc2'><a href='#Undocumented%20class%20methods'>Undocumented class methods</a></li>
+<ul class='toc'><li class='toc3'><a href='#*versionBugfix'>versionBugfix</a> </li>
+<li class='toc3'><a href='#*versionMajor'>versionMajor</a> </li>
+<li class='toc3'><a href='#*versionMinor'>versionMinor</a> </li>
+</ul></ul><li class='toc1'><a href='#instancemethods'>Instance methods</a></li>
+<ul class='toc'><li class='toc2'><a href='#Inherited%20instance%20methods'>Inherited instance methods</a></li>
 <li class='toc2'><a href='#Undocumented%20instance%20methods'>Undocumented instance methods</a></li>
-<ul class='toc'><li class='toc3'><a href='#-info'>info</a> </li>
+<ul class='toc'><li class='toc3'><a href='#-desc'>desc</a> </li>
+<li class='toc3'><a href='#-id'>id</a> </li>
+<li class='toc3'><a href='#-info'>info</a> </li>
+<li class='toc3'><a href='#-optimizeGraph'>optimizeGraph</a> </li>
+<li class='toc3'><a href='#-synthIndex'>synthIndex</a> </li>
 </ul></ul></ul></div><div id='menubar'></div>
 <div class='contents'>
 <div class='header'>
@@ -61,7 +69,7 @@ var scdoc_sc_version = '3.10.0';
 
 <p>This UGen represents a single VST plugin instance on the <a href="./..\Classes/Server.html">Server</a>. See the helpfile of <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a> for how to control it from the SuperCollider language.
 <p>VSTPlugin also has class methods to scan a Server for plugins and cache the info in the Client, see <a href="#Plugin%20Management">Plugin Management</a>.<h2><a class='anchor' name='classmethods'>Class Methods</a></h2>
-<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*ar' href='./../Overviews/Methods.html#ar'>ar</a>(<span class='argstr'>input</span>, <span class='argstr'>numOut: 1</span>, <span class='argstr'>bypass: 0</span>, <span class='argstr'>params</span>, <span class='argstr'>id</span>, <span class='argstr'>info</span>, <span class='argstr'>auxInput</span>, <span class='argstr'>numAuxOut: 0</span>)</h3>
+<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*ar' href='./../Overviews/Methods.html#ar'>ar</a>(<span class='argstr'>input</span>, <span class='argstr'>numOut: 1</span>, <span class='argstr'>bypass: 0</span>, <span class='argstr'>params</span>, <span class='argstr'>id</span>, <span class='argstr'>info</span>, <span class='argstr'>auxInput</span>, <span class='argstr'>numAuxOut: 0</span>, <span class='argstr'>blockSize</span>)</h3>
 <div class='method'>
 <p>create a UGen instance.<h4>Arguments:</h4>
 <table class='arguments'>
@@ -81,30 +89,35 @@ SynthDef(\test, { arg in, p1, p2, idx;
 
 <p>You can set the index to a negative value to "unmap" the parameter.<div class='note'><span class='notelabel'>NOTE:</span> <em>params</em> overrides any automation of the same parameters by <a href="./..\Classes/VSTPluginController.html#-set">VSTPluginController: -set</a>, but it can itself be overriden with <a href="./..\Classes/VSTPluginController.html#-map">VSTPluginController: -map</a>.</div>
 <p>You can automate parameters with either control and audio rate UGens, but the latter is more CPU expensive and only makes sense if the plugin actually supports sample accurate automation (some, but not all VST3 plugins).<tr><td class='argumentname'>id<td class='argumentdesc'>
-<p>An optional number or symbol which uniquely identifies the UGen within a SynthDef so it can be found by <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>. This is only necessary if there is more than one VSTPlugin instance in the SynthDef!<textarea class='editor'>(
-// an EQ and Chorus in parallel:
-SynthDef(\test, { arg in, out;
-    var sig;
-    sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
+<p>A Symbol which uniquely identifies the UGen within the SynthDef, so it can be found by <a href="./..\Classes/VSTPluginController.html">VSTPluginController</a>.<div class='note'><span class='notelabel'>NOTE:</span> If this is the only VSTPlugin instance in the SynthDef, the id argument can be omitted.</div><textarea class='editor'>(
+// two FX in parallel:
+SynthDef(\test, { arg bus;
+    var sig = VSTPlugin.ar(In.ar(in, 2), 2, id: \eq);
     sig = VSTPlugin.ar(sig, 2, id: \chorus);
-    Out.ar(out, sig);
+    ReplaceOut.ar(out, sig);
 }).add;
 )
-~synth = Synth(\test, [\in, ~in, \out, ~out]);
+
+// There are two ways to control individual plugins:
+// 1) get individual VSTPluginControllers
 (
-// this is how you get a handle to a specific plugin instance in the Synth:
-~eq = VSTPluginController.new(~synth, \eq);
-~chorus = VSTPluginController.new(~synth, \chorus);
+~synth = Synth(\test, [\in, ~in, \out, ~out]);
+~eq = VSTPluginController.new(~synth, \eq).open("myEQ");
+~chorus = VSTPluginController.new(~synth, \chorus).open("myChorus");
 )
-// load plugins, etc:
-~eq.open("...");
-~chorus.open("...");</textarea>
+// 2) get Event with VSTPluginControllers mapped to IDs
+(
+~fx = VSTPluginController.collect(Synth(\test));
+~fx.eq.open("myEQ");
+~fx.chorus.open("myChorus");
+)</textarea>
 <tr><td class='argumentname'>info<td class='argumentdesc'>
 <p>An optional <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance; the plugin must have been successfully probed (e.g. with <a href="./..\Classes/VSTPlugin.html#*search">VSTPlugin: *search</a>).
+<p>Alternatively, you can provide a plugin <em>key</em> as a Symbol, in which case the VSTPluginDesc will be taken from the default Server's plugin dictionary.
 <p>If you know in advance which VST plugin you want to load, this allows you to use parameter names instead of indices<textarea class='editor'>(
 SynthDef(\chorus, { arg bus;
-    var plugin = VSTPlugin.plugins['GChorus'];
-    var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: plugin);
+    // 'GChorus' is a shortcut for VSTPlugin.plugins['GChorus']
+    var sig = VSTPlugin.ar(In.ar(bus, 2), 2, params: [Depth: 0.5, Mix: 0.9], info: 'GChorus');
     ReplaceOut.ar(bus, sig);
 }).add;
 )</textarea>
@@ -112,7 +125,9 @@ SynthDef(\chorus, { arg bus;
 <p>Also, you can omit the <code>path</code> argument when opening plugins:<textarea class='editor'>~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'</textarea>
 <tr><td class='argumentname'>auxInput<td class='argumentdesc'>
 <p>An Array of channels or a single auxiliary input for the plugin to process. You cannot change the size of this once a SynthDef has been built. This is only useful for certain VST3 plugins (e.g. for side chaining).<tr><td class='argumentname'>numAuxOut<td class='argumentdesc'>
-<p>The number of auxiliary output channels. This must be a fixed number greater or equal 0. Like <code>auxInput</code>, this is only useful for certain VST3 plugins.</table></div><h3><a class='anchor' name='Plugin%20Management'>Plugin Management</a></h3>
+<p>The number of auxiliary output channels. This must be a fixed number greater or equal 0. Like <code>auxInput</code>, this is only useful for certain VST3 plugins.<tr><td class='argumentname'>blockSize<td class='argumentdesc'>
+<p>Run the plugin with a certain block size (in samples). The default is <code>nil</code> (= no reblocking).
+<p>Some plugins run more efficiently with larger blocksizes. (This is generally true for bridged/sandboxed plugins.) Instead of globally changing the Server block size, you can selectively reblock VSTPlugin instances.<div class='note'><span class='notelabel'>NOTE:</span> Reblocking causes a delay of <code>N - M</code> samples, where N is the desired block size and M is the Server block size.</div></table></div><h3><a class='anchor' name='Plugin%20Management'>Plugin Management</a></h3>
 
 <p>All VST plugin information is cached in the Client. This is done mainly for performance reasons but it can be also handy for end users because it's possible to investigate plugins without actually creating any instances.
 <p>The plugin info is stored as a <a href="./..\Classes/VSTPluginDesc.html">VSTPluginDesc</a> instance under its key (see <a href="./..\Classes/VSTPluginDesc.html#-key">VSTPluginDesc: -key</a>) and can be retrieved with <a href="#*plugins">*plugins</a>.<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*plugins' href='./../Overviews/Methods.html#plugins'>plugins</a>(<span class='argstr'>server</span>)</h3>
@@ -188,7 +203,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 </table>
 <div class='note'><span class='notelabel'>NOTE:</span> here, <em>%ProgramFiles%</em> stands for "C:\Program Files" on a 64 bit Server and "C:\Program Files (x86)" on a 32 bit Server.</div><tr><td class='argumentname'>verbose<td class='argumentdesc'>
 <p>a Boolean telling if the Server should post a message for each VST plugin being found.
-<p>The message shows the file path, name and probe result. Probing can fail if the file is not a VST plugin or if it has the wrong architecture (64 bit vs. 32 bit).<tr><td class='argumentname'>wait<td class='argumentdesc'>
+<p>The message shows the file path, name and probe result. Probing can fail if the file is not a VST plugin or if it has the wrong architecture (and cannot be "bridged").<tr><td class='argumentname'>wait<td class='argumentdesc'>
 <p>The wait time between OSC messages.
 <p>-1 allows an OSC roundtrip between packets.
 <p>0 is not safe with UDP, but is probably ok with TCP.<div class='note'><span class='notelabel'>NOTE:</span> This is only relevant for remote Servers (local Servers will send the plugin description via temp files).</div><tr><td class='argumentname'>action<td class='argumentdesc'>
@@ -197,7 +212,8 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <p>whether plugins should be probed in parallel. This can be significantly faster - at the cost of possible audio dropouts (because all CPU cores might be fully utilized).<div class='note'><span class='notelabel'>NOTE:</span> Shell plugins like "Waves" are always probed in parallel for performance reasons.</div></table><h4>Discussion:</h4>
 
 <p>Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client and can be retrieved with its key (see <a href="#Plugin%20Management">Plugin Management</a>).
-<p>If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong architecture.<div class='note'><span class='notelabel'>NOTE:</span> Generally, you can't use 32 bit plugins on a 64 bit Server and vice verca!</div>
+<p>If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong CPU architecture (and can't be bridged).<div class='note'><span class='notelabel'>NOTE:</span> Since v0.4 you can run 32-bit plugins on a 64-bit Server and vice verca!
+<p>Incompatible plugins will automatically run in a shared subprocess (= bit bridging), which incurs some CPU overhead. Bridging can also be explictly enabled for regular plugins, see the <code>mode</code> argument in <a href="./..\Classes/VSTPluginController.html#-open">VSTPluginController: -open</a>.</div>
 <p>A new search doesn't automatically clear the dictionary, but existing keys are overwritten. You can clear the dictionary explicitly with <a href="#*clear">*clear</a>.
 <p>For efficiency, search results are written to a cache file (on the Server's computer) to significantly speed up subsequent searches (cached plugins don't have to probed again). Many DAWs use a similar strategy. If you want to search directories without updating the cache, set <code>save</code> to <code>false</code>.<div class='note'><span class='notelabel'>NOTE:</span> The very first search in a directory usually takes a couple of seconds, but if you have many (heavy) plugins, the process can take significantly longer. However, subsequent searches will be almost instantaneous (because of the cache file).</div><div class='warning'><span class='warninglabel'>WARNING:</span> Shell plugins like "Waves" contain hundreds of (heavy) sub-plugins. On my machine, the very first search takes several minutes(!), so be patient :-)</div></div><h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*searchMsg' href='./../Overviews/Methods.html#searchMsg'>searchMsg</a>(<span class='argstr'>dir</span>, <span class='argstr'>useDefault: true</span>, <span class='argstr'>verbose: false</span>, <span class='argstr'>save: true</span>, <span class='argstr'>parallel: true</span>, <span class='argstr'>dest</span>)</h3>
 <div class='method'>
@@ -268,11 +284,22 @@ VSTPlugin.plugins['AwesomePlugin'].print;</textarea>
 <p>the message for a <em>clear</em> command (see <a href="#*clear">*clear</a>).</div><h4>Discussion:</h4>
 
 <p>Sending the message to the Server will <em>not</em> clear the Client plugin dictionary!</div><h3><a class='anchor' name='Inherited%20class%20methods'>Inherited class methods</a></h3>
-<div id='inheritedclassmets'></div><h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
-<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a></h3>
-<div class='method'>
-<p>the ID which uniquely identifies the plugin in a SynthDef. It should be a Symbol, a Number or <code>nil</code>.</div><h3><a class='anchor' name='Inherited%20instance%20methods'>Inherited instance methods</a></h3>
+<div id='inheritedclassmets'></div><h3><a class='anchor' name='Undocumented%20class%20methods'>Undocumented class methods</a></h3>
+<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*versionBugfix' href='./../Overviews/Methods.html#versionBugfix'>versionBugfix</a></h3>
+<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*versionMajor' href='./../Overviews/Methods.html#versionMajor'>versionMajor</a></h3>
+<h3 class='method-code'><span class='method-prefix'>VSTPlugin.</span><a class='method-name' name='*versionMinor' href='./../Overviews/Methods.html#versionMinor'>versionMinor</a></h3>
+<h2><a class='anchor' name='instancemethods'>Instance Methods</a></h2>
+<h3><a class='anchor' name='Inherited%20instance%20methods'>Inherited instance methods</a></h3>
 <div id='inheritedinstmets'></div><h3><a class='anchor' name='Undocumented%20instance%20methods'>Undocumented instance methods</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-desc' href='./../Overviews/Methods.html#desc'>desc</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-desc' href='./../Overviews/Methods.html#desc'>desc</a> = value</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-id' href='./../Overviews/Methods.html#id'>id</a> = value</h3>
 <h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-info' href='./../Overviews/Methods.html#info'>info</a> = value</h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-optimizeGraph' href='./../Overviews/Methods.html#optimizeGraph'>optimizeGraph</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synthIndex' href='./../Overviews/Methods.html#synthIndex'>synthIndex</a></h3>
+<h3 class='method-code'><span class='method-prefix'>.</span><a class='method-name' name='-synthIndex' href='./../Overviews/Methods.html#synthIndex'>synthIndex</a> = <span class='argstr'>index</span></h3>
+<div class='supmethod'>From superclass: <a href='./../Classes/UGen.html'>UGen</a></div>
 <div class='doclink'>helpfile source: <a href='file:///C:/Users/Christof/AppData/Local/SuperCollider/Extensions/VSTPlugin/HelpSource/Classes/VSTPlugin.schelp'>C:\Users\Christof\AppData\Local\SuperCollider\Extensions\VSTPlugin\HelpSource\Classes\VSTPlugin.schelp</a><br>link::Classes/VSTPlugin::<br></div></div><script src='./../editor.js' type='text/javascript'></script>
 </body></html>

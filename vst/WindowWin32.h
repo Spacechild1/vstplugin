@@ -1,45 +1,41 @@
 #pragma once
 
 #include "Interface.h"
+#include "Sync.h"
 
 #include <windows.h>
-#include <condition_variable>
 #include <mutex>
+#include <functional>
+#include <unordered_map>
 
 namespace vst {
 namespace Win32 {
 
 enum Message {
-    WM_CREATE_PLUGIN = WM_USER + 100,
-    WM_DESTROY_PLUGIN,
+    WM_CALL = WM_USER + 100,
     WM_OPEN_EDITOR,
     WM_CLOSE_EDITOR,
     WM_EDITOR_POS,
     WM_EDITOR_SIZE
 };
 
-namespace UIThread {
-
-const int updateInterval = 30;
-
 class EventLoop {
  public:
+    static const int updateInterval = 30;
+
     static EventLoop& instance();
 
     EventLoop();
     ~EventLoop();
 
-    IPlugin::ptr create(const PluginInfo& info);
-    void destroy(IPlugin::ptr plugin);
-    bool postMessage(UINT msg, void *data = nullptr); // non-blocking
-    bool sendMessage(UINT msg, void *data = nullptr); // blocking
-    HANDLE threadHandle() { return thread_; }
+    bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
+    bool sendMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // blocking
+
+    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
+    void removePollFunction(UIThread::Handle handle);
+
+    bool checkThread();
  private:
-    struct PluginData {
-        const PluginInfo* info;
-        IPlugin::ptr plugin;
-        Error err;
-    };
     static DWORD WINAPI run(void *user);
     LRESULT WINAPI procedure(HWND hWnd, UINT Msg,
                         WPARAM wParam, LPARAM lParam);
@@ -47,11 +43,12 @@ class EventLoop {
     HANDLE thread_;
     DWORD threadID_;
     std::mutex mutex_;
-    std::condition_variable cond_;
-    bool ready_ = false;
-};
+    Event event_;
 
-} // UIThread
+    UIThread::Handle nextPollFunctionHandle_ = 0;
+    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
+    std::mutex pollFunctionMutex_;
+};
 
 class Window : public IWindow {
  public:
@@ -64,7 +61,7 @@ class Window : public IWindow {
         return hwnd_;
     }
 
-    void setTitle(const std::string& title) override;
+    void setTitle(const std::string& title);
 
     void open() override;
     void close() override;
