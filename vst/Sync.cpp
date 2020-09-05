@@ -106,8 +106,10 @@ void* SpinLock::operator new(size_t size){
 #ifdef _WIN32
     void *ptr = _aligned_malloc(size, alignof(SpinLock));
 #else
-    void *ptr = aligned_alloc(alignof(SpinLock), size);
+    void *ptr = nullptr;
+    posix_memalign(&ptr, alignof(SpinLock), size);
     if (!ptr){
+        LOG_WARNING("posix_memalign() failed");
         ptr = malloc(size);
     }
 #endif
@@ -124,7 +126,6 @@ void SpinLock::operator delete(void* ptr){
     std::free(ptr);
 #endif
 }
-#endif
 
 void *SpinLock::operator new[](size_t size){
     return SpinLock::operator new(size);
@@ -133,6 +134,7 @@ void *SpinLock::operator new[](size_t size){
 void SpinLock::operator delete[](void *ptr){
     return SpinLock::operator delete(ptr);
 }
+#endif
 
 /*////////////////////// SharedMutex ///////////////////*/
 
