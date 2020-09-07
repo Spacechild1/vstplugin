@@ -382,7 +382,7 @@ VSTPlugin : MultiOutUGen {
 		// reassemble UGen inputs (in correct order)
 		inputs = [numOut, blockSize ?? { 0 }, bypass, numInputs] ++ inputArray
 		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
-		^this.initOutputs(numOut + numAuxOut, rate)
+		^this.initOutputs(numOut + numAuxOut, rate);
 	}
 	optimizeGraph {
 		// This is called exactly once during SynthDef construction!
@@ -419,8 +419,7 @@ VSTPlugin : MultiOutUGen {
 		};
 	}
 	synthIndex_ { arg index;
-		var metadata;
-		synthIndex = index;
+		super.synthIndex_(index); // !
 		// update metadata (ignored if reconstructing from disk)
 		this.desc.notNil.if { this.desc.index = index; }
 	}
