@@ -37,7 +37,7 @@ namespace vst {
 
 const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 4;
-const int VERSION_PATCH = 0;
+const int VERSION_PATCH = 1;
 const int VERSION_PRERELEASE = 0;
 
 std::string getVersionString();
