@@ -307,6 +307,7 @@ Window::Window(Display& display, IPlugin& plugin)
         plugin_->openEditor((void *)window_);
         plugin_->getEditorRect(left, top, right, bottom);
         plugin_->closeEditor();
+        XResizeWindow(display_, window_, right - left, bottom - top);
     }
     x_ = left;
     y_ = top;
