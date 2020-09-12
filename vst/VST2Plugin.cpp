@@ -1156,15 +1156,23 @@ void VST2Plugin::closeEditor(){
 
 bool VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
     ERect* erc = nullptr;
-    dispatch(effEditGetRect, 0, 0, &erc);
+    bool result = dispatch(effEditGetRect, 0, 0, &erc);
     if (erc){
+        // some (buggy) plugins return an empty rect on failure.
+        // don't update the input coordinates!
+        if ((right - left) <= 0 || (bottom - top) <= 0){
+            return false;
+        }
         left = erc->left;
         top = erc->top;
         right = erc->right;
         bottom = erc->bottom;
-        if ((right - left) > 0 && (bottom - top) > 0){
-            return true;
-        }
+        // some plugins might forget to return '1',
+        // other plugins might return a (valid) rect on fail.
+        // Either way, we update the coordinates and return false.
+        // The return value is only used when we attempt to obtain
+        // the window size *before* opening the editor.
+        return result;
     }
     return false;
 }
