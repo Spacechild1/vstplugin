@@ -39,7 +39,7 @@ namespace rt {
             interfaceTable->fRTFree(world_, p);
         }
 
-        World* world_; // must be public...
+        World* world_; // must be public (see ctor)...
     };
 
     template <class T, class U>
@@ -74,11 +74,7 @@ namespace rt {
 
     template<typename T, typename... Args>
     shared_ptr<T> make_shared(World* world, Args&&... args) {
-        auto obj = (T*)interfaceTable->fRTAlloc(world, sizeof(T));
-        if (obj) {
-            ::new (obj) T(std::forward<Args>(args)...);
-        }
-        return shared_ptr<T>(obj, deleter<T>(world), allocator<T>(world));
-    };
+        return std::allocate_shared<T>(allocator<T>(world), std::forward<Args>(args)...);
+    }
 
 } // rt
