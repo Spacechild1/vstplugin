@@ -13,6 +13,7 @@ namespace Win32 {
 
 enum Message {
     WM_CALL = WM_USER + 100,
+    WM_SYNC,
     WM_OPEN_EDITOR,
     WM_CLOSE_EDITOR,
     WM_EDITOR_POS,
@@ -43,7 +44,7 @@ class EventLoop {
     HANDLE thread_;
     DWORD threadID_;
     std::mutex mutex_;
-    Event event_;
+    SyncEvent event_;
 
     UIThread::Handle nextPollFunctionHandle_ = 0;
     std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;

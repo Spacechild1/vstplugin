@@ -22,7 +22,7 @@ void run(){
 }
 
 void quit(){
-    gQuitEvent_.signal();
+    gQuitEvent_.notify();
 }
 
 bool isCurrentThread(){
@@ -81,14 +81,15 @@ DWORD EventLoop::run(void *user){
             break;
         }
         // LOG_DEBUG("got message " << msg.message);
-
-        if (msg.message == WM_CALL){
+        auto type = msg.message;
+        if (type == WM_CALL){
             LOG_DEBUG("WM_CALL");
             auto cb = (UIThread::Callback)msg.wParam;
             auto data = (void *)msg.lParam;
             cb(data);
+        } else if (type == WM_SYNC){
             obj->notify();
-        } else if ((msg.message == WM_TIMER) && (msg.hwnd == NULL)
+        } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
                    && (msg.wParam == timer)) {
             // call poll functions
             std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
@@ -156,7 +157,7 @@ bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
 
 bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
     std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
-    if (postMessage(msg, data1, data2)){
+    if (postMessage(msg, data1, data2) && postMessage(WM_SYNC)){
         LOG_DEBUG("waiting...");
         event_.wait();
         LOG_DEBUG("done");
@@ -180,7 +181,7 @@ void EventLoop::removePollFunction(UIThread::Handle handle){
 }
 
 void EventLoop::notify(){
-    event_.signal();
+    event_.set();
 }
 
 Window::Window(IPlugin& plugin)
