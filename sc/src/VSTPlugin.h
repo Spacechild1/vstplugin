@@ -207,8 +207,6 @@ private:
 class VSTPlugin : public SCUnit {
     friend class VSTPluginDelegate;
     friend struct PluginCmdData;
-    static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
-    static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
 public:
     VSTPlugin();
     ~VSTPlugin();
@@ -238,9 +236,9 @@ public:
     void update();
 private:
     float readControlBus(uint32 num);
+    static const int Initialized = 1;
+    static const int UnitCmdQueued = 2;
     // data members
-    volatile uint32 initialized_ = MagicInitialized; // set by constructor
-    volatile uint32 queued_; // set to MagicQueued when queuing unit commands
     struct UnitCmdQueueItem {
         UnitCmdQueueItem *next;
         UnitCmdFunc fn;

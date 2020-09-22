@@ -634,7 +634,7 @@ VSTPlugin::VSTPlugin(){
     }
 
     // run queued unit commands
-    if (queued_ == MagicQueued) {
+    if (mSpecialIndex & UnitCmdQueued) {
         auto item = unitCmdQueue_;
         while (item) {
             sc_msg_iter args(item->size, item->data);
@@ -648,6 +648,9 @@ VSTPlugin::VSTPlugin(){
             item = next;
         }
     }
+
+    mSpecialIndex |= Initialized; // !
+
     LOG_DEBUG("created VSTPlugin instance");
 }
 
@@ -663,9 +666,6 @@ VSTPlugin::~VSTPlugin(){
         RTFreeSafe(mWorld, reblock_->buffer);
         RTFree(mWorld, reblock_);
     }
-    // both variables are volatile, so the compiler is not allowed to optimize it away!
-    initialized_ = 0;
-    queued_ = 0;
     // tell the delegate that we've been destroyed!
     delegate_->setOwner(nullptr);
     delegate_ = nullptr; // release our reference
@@ -674,15 +674,15 @@ VSTPlugin::~VSTPlugin(){
 
 // HACK to check if the class has been fully constructed. See "runUnitCommand".
 bool VSTPlugin::initialized() {
-    return (initialized_ == MagicInitialized);
+    return (mSpecialIndex & Initialized);
 }
 
 // Terrible hack to enable sending unit commands right after /s_new
 // although the UGen constructor hasn't been called yet. See "runUnitCommand".
 void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
-    if (queued_ != MagicQueued) {
+    if (!(mSpecialIndex & UnitCmdQueued)) {
         unitCmdQueue_ = nullptr;
-        queued_ = MagicQueued;
+        mSpecialIndex |= UnitCmdQueued;
     }
     auto item = (UnitCmdQueueItem *)RTAlloc(mWorld, sizeof(UnitCmdQueueItem) + args->size);
     if (item) {
@@ -2644,10 +2644,8 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 // system callbacks during the "next" routine (which would be dangerous anyway).
 
 // Another problem is that the Server doesn't zero any RT memory for performance reasons.
-// This means we can't check for 0 or nullptrs... The current solution is to set the
-// "initialized_" member to some magic value in the constructor. In the destructor we zero the
-// field to protected against cases where the next VSTPlugin instance we be allocated at the same address.
-// The member has to be volate to ensure that the compiler doesn't eliminate any stores!
+// This means we can't check for 0 or nullptrs... The current solution is to (ab)use 'specialIndex',
+// which *is* set to zero.
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
     if (unit->initialized()) {
