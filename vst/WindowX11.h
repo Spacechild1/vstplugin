@@ -42,13 +42,11 @@ class EventLoop {
     void unregisterWindow(Window& w);
  private:
     void run();
-    void notify();
     void updatePlugins();
     Display *display_ = nullptr;
     ::Window root_;
     std::thread thread_;
     std::mutex mutex_;
-    Event event_;
     std::unordered_map<::Window, IPlugin *> pluginMap_;
     std::thread timerThread_;
     std::atomic<bool> timerThreadRunning_{true};

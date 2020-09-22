@@ -19,7 +19,7 @@ void run(){
 }
 
 void quit(){
-    gQuitEvent_.signal();
+    gQuitEvent_.notify();
 }
 
 bool isCurrentThread(){
@@ -149,8 +149,6 @@ void EventLoop::run(){
                 memcpy(&cb, msg.data.b, sizeof(cb));
                 memcpy(&data, msg.data.b + sizeof(cb), sizeof(data));
                 cb(data);
-
-                notify();
             } else if (type == wmOpenEditor){
                 LOG_DEBUG("wmOpenEditor");
                 auto it = pluginMap_.find(msg.window);
@@ -252,7 +250,7 @@ bool EventLoop::sendClientEvent(::Window window, Atom atom,
     std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent access
     if (postClientEvent(window, atom, data, size)){
         LOG_DEBUG("waiting...");
-        event_.wait();
+        XSync(display_, false);
         LOG_DEBUG("done");
         return true;
     } else {
@@ -283,11 +281,6 @@ void EventLoop::registerWindow(Window &w){
 
 void EventLoop::unregisterWindow(Window &w){
     pluginMap_.erase((::Window)w.getHandle());
-}
-
-void EventLoop::notify(){
-    LOG_DEBUG("notify");
-    event_.signal();
 }
 
 Window::Window(Display& display, IPlugin& plugin)
