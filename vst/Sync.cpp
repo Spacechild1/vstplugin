@@ -8,63 +8,162 @@
 # include <stdlib.h>
 #endif
 
+// for SpinLock
+// Intel
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+  #define CPU_INTEL
+  #include <immintrin.h>
+#endif
+// ARM
+#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
+  #define CPU_ARM
+  #include <intrinsics.h>
+#endif
+
 namespace vst {
 
-/*/////////////////// Event ////////////////////*/
+/*/////////////////// SyncEvent ////////////////////*/
+
+SyncEvent::SyncEvent(){
+#ifdef _WIN32
+    InitializeConditionVariable((PCONDITION_VARIABLE)&condition_);
+    InitializeSRWLock((PSRWLOCK)&mutex_);
+#else // pthreads
+    pthread_mutex_init(&mutex_, 0);
+    pthread_cond_init(&condition_, 0);
+#endif
+}
+
+SyncEvent::~SyncEvent(){
+#ifndef _WIN32
+    pthread_mutex_destroy(&mutex_);
+    pthread_cond_destroy(&condition_);
+#endif
+}
+
+void SyncEvent::set(){
+#if defined(_WIN32)
+    AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
+    state_ = true;
+    ReleaseSRWLockExclusive((PSRWLOCK)&mutex_);
+
+    WakeConditionVariable((PCONDITION_VARIABLE)&condition_);
+#else
+    pthread_mutex_lock(&mutex_);
+    state_ = true;
+    pthread_mutex_unlock(&mutex_);
+
+    pthread_cond_signal(&condition_);
+#endif
+}
+
+void SyncEvent::wait(){
+#ifdef _WIN32
+    AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
+    while (!state_){
+        SleepConditionVariableSRW((PCONDITION_VARIABLE)&condition_,
+                                  (PSRWLOCK)&mutex_, INFINITE, 0);
+    }
+    state_ = false;
+    ReleaseSRWLockExclusive((PSRWLOCK)&mutex_);
+#else
+    pthread_mutex_lock(&mutex_);
+    while (!state_){
+        pthread_cond_wait(&condition_, &mutex_);
+    }
+    state_ = false;
+    pthread_mutex_unlock(&mutex_);
+#endif
+}
+
+/*///////////////////// Event ///////////////////////*/
 
 Event::Event(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    event_ = CreateEvent(nullptr, 0, 0, nullptr);
-#elif defined(__APPLE__)
-    sem_ = dispatch_semaphore_create(0);
-#else // pthreads
-    sem_init(&sem_, 0, 0);
+#ifdef _WIN32
+    InitializeSRWLock((PSRWLOCK)&mutex_);
+    InitializeConditionVariable((PCONDITION_VARIABLE)&condition_);
+#else
+    pthread_mutex_init(&mutex_, 0);
+    pthread_cond_init(&condition_, 0);
 #endif
-#endif // USE_PLATFORM_EVENT
 }
 
 Event::~Event(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    CloseHandle(event_);
-#elif defined(__APPLE__)
-    dispatch_release(sem_);
-#else // pthreads
-    sem_destroy(&sem_);
+#ifndef _WIN32
+    pthread_mutex_destroy(&mutex_);
+    pthread_cond_destroy(&condition_);
 #endif
-#endif // USE_PLATFORM_EVENT
 }
 
-void Event::signal(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    SetEvent(event_);
-#elif defined(__APPLE__)
-    dispatch_semaphore_signal(sem_);
+void Event::notify(){
+#ifdef _WIN32
+    WakeConditionVariable((PCONDITION_VARIABLE)&condition_);
 #else
-    sem_post(&sem_);
+    pthread_cond_signal(&condition_);
 #endif
-#else // USE_PLATFORM_EVENT
-    std::lock_guard<std::mutex> lock(mutex_);
-    state_ = true;
-    condition_.notify_one();
+}
+
+void Event::notifyAll(){
+#ifdef _WIN32
+    WakeAllConditionVariable((PCONDITION_VARIABLE)&condition_);
+#else
+    pthread_cond_broadcast(&condition_);
 #endif
 }
 
 void Event::wait(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    WaitForSingleObject(event_, INFINITE);
-#elif defined(__APPLE__)
-    dispatch_semaphore_wait(sem_, DISPATCH_TIME_FOREVER);
+#ifdef _WIN32
+    AcquireSRWLockShared((PSRWLOCK)&mutex_);
+    SleepConditionVariableSRW((PCONDITION_VARIABLE)&condition_,
+                              (PSRWLOCK)&mutex_, INFINITE,
+                              CONDITION_VARIABLE_LOCKMODE_SHARED);
+    ReleaseSRWLockShared((PSRWLOCK)&mutex_);
 #else
-    sem_wait(&sem_);
+    pthread_mutex_lock(&mutex_);
+    pthread_cond_wait(&condition_, &mutex_);
+    pthread_mutex_unlock(&mutex_);
 #endif
-#else // USE_PLATFORM_EVENT
-    std::unique_lock<std::mutex> lock(mutex_);
-    condition_.wait(lock, [this](){ return state_; });
-    state_ = false;
+}
+
+/*/////////////////// Semaphore ////////////////////*/
+
+Semaphore::Semaphore(){
+#if defined(_WIN32)
+    sem_ = CreateSemaphoreA(0, 0, LONG_MAX, 0);
+#elif defined(__APPLE__)
+    semaphore_create(mach_task_self(), &sem_, SYNC_POLICY_FIFO, 0);
+#else // pthreads
+    sem_init(&sem_, 0, 0);
+#endif
+}
+
+Semaphore::~Semaphore(){
+#if defined(_WIN32)
+    CloseHandle(sem_);
+#elif defined(__APPLE__)
+    semaphore_destroy(mach_task_self(), sem_);
+#else // pthreads
+    sem_destroy(&sem_);
+#endif
+}
+
+void Semaphore::post(){
+#if defined(_WIN32)
+    ReleaseSemaphore(sem_, 1, 0);
+#elif defined(__APPLE__)
+    semaphore_signal(sem_);
+#else
+    sem_post(&sem_);
+#endif
+}
+
+void Semaphore::wait(){
+#if defined(_WIN32)
+    WaitForSingleObject(sem_, INFINITE);
+#elif defined(__APPLE__)
+    semaphore_wait(sem_);
+#else
+    while (sem_wait(&sem_) == -1 && errno == EINTR) continue;
 #endif
 }
 

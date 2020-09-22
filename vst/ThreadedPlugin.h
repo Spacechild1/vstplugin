@@ -158,7 +158,7 @@ class ThreadedPlugin final : public DeferredPlugin
     std::weak_ptr<IPluginListener> listener_;
     std::shared_ptr<ThreadedPluginListener> proxyListener_;
     mutable SharedMutex mutex_;
-    Event event_;
+    SyncEvent event_;
     std::thread::id rtThread_;
     // commands/events
     void pushCommand(const Command& command) override {

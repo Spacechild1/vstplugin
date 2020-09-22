@@ -67,10 +67,8 @@ DSPThreadPool::~DSPThreadPool(){
 #if DSPTHREADPOOL_JOIN
     running_ = false;
 
-    // signal N times to wake up all threads!
-    for (size_t i = 0; i < threads_.size(); ++i){
-        event_.signal();
-    }
+    // wake up all threads!
+    event_.notifyAll();
 
     for (auto& thread : threads_){
         if (thread.joinable()){
@@ -85,7 +83,7 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
     THREAD_DEBUG("DSPThreadPool::push");
-    event_.signal();
+    event_.notify();
     return result;
 }
 
@@ -98,7 +96,7 @@ IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin){
 ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
     : plugin_(std::move(plugin)) {
     threadPool_ = &DSPThreadPool::instance(); // cache for performance
-    event_.signal(); // so that the process routine doesn't wait the very first time
+    event_.set(); // so that the process routine doesn't wait the very first time
 }
 
 ThreadedPlugin::~ThreadedPlugin() {
@@ -268,7 +266,7 @@ void ThreadedPlugin::threadFunction(int numSamples){
         LOG_DEBUG("couldn't lock mutex - bypassing");
     }
 
-    event_.signal();
+    event_.set();
 }
 
 template<typename T>
@@ -311,7 +309,7 @@ void ThreadedPlugin::doProcess(ProcessData<T>& data){
         for (int i = 0; i < data.numAuxOutputs; ++i){
             std::fill(auxOutput[i], auxOutput[i] + data.numSamples, 0);
         }
-        event_.signal(); // so that the next call to event_.wait() doesn't block!
+        event_.set(); // so that the next call to event_.wait() doesn't block!
     }
 
     sendEvents();

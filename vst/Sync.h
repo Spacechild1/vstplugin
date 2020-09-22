@@ -1,79 +1,123 @@
 #pragma once
 
-// for SharedLock
 #ifndef _WIN32
 #include <pthread.h>
 #endif
 
-// for SpinLock
-#include <atomic>
-// Intel
-#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
-  #define CPU_INTEL
-  #include <immintrin.h>
-#endif
-// ARM
-#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
-  #define CPU_ARM
-  #include <intrinsics.h>
-#endif
-
-// for Event
-#ifndef USE_PLATFORM_EVENT
-#define USE_PLATFORM_EVENT 1
-#endif
-
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
+#ifdef _WIN32
   // Windows Event
   // #include "synchapi.h"
-#elif defined(__APPLE__)
-  // macOS doesn't support unnamed pthread semaphores,
-  // so we use GCD semaphores instead
-  #include <dispatch/dispatch.h>
 #else
-  // unnamed pthread semaphore
-  #include <semaphore.h>
+  #include <pthread.h>
+  #ifdef __APPLE__
+    // macOS doesn't support unnamed pthread semaphores,
+    // so we use Mach semaphores instead
+    #include <mach/mach.h>
+  #else
+    // unnamed pthread semaphore
+    #include <semaphore.h>
+  #endif
 #endif
-#else // C++11 condition_variable
-  #include <condition_variable>
-  #include <mutex>
-#endif
+
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 namespace vst {
 
-/*////////////////// Event ////////////////////////*/
+/*/////////////////// SyncEvent ///////////////////////*/
+
+class SyncEvent {
+ public:
+    SyncEvent();
+    ~SyncEvent();
+    SyncEvent(const SyncEvent&) = delete;
+    SyncEvent& operator=(const SyncEvent&) = delete;
+    void set();
+    void wait();
+ private:
+#ifdef _WIN32
+    void *condition_;
+    void *mutex_;
+#else
+    pthread_cond_t condition_;
+    pthread_mutex_t mutex_;
+#endif
+    bool state_ = false;
+};
+
+/*////////////////// Event ///////////////////////*/
 
 class Event {
  public:
     Event();
     ~Event();
-    void signal();
+    Event(const Event&) = delete;
+    Event& operator=(const Event&) = delete;
+    void notify();
+    void notifyAll();
     void wait();
  private:
-#if USE_PLATFORM_EVENT
+#ifdef _WIN32
+    void *condition_;
+    void *mutex_;
+#else
+    pthread_cond_t condition_;
+    pthread_mutex_t mutex_;
+#endif
+};
+
+/*////////////////// Semaphore ////////////////////////*/
+
+class Semaphore {
+ public:
+    Semaphore();
+    ~Semaphore();
+    Semaphore(const Semaphore&) = delete;
+    Semaphore& operator=(const Semaphore&) = delete;
+    void post();
+    void wait();
+ private:
 #if defined(_WIN32)
-    void * event_; // avoid including windows headers
+    void *sem_;
 #elif defined(__APPLE__)
-    dispatch_semaphore_t sem_;
+    semaphore_t sem_;
 #else // pthreads
     sem_t sem_;
 #endif
-#else // USE_PLATFORM_EVENT
-    std::condition_variable condition_;
-    std::mutex mutex_;
-    bool state_ = false;
-#endif
+};
+
+/*/////////////////// LightSemaphore /////////////////*/
+
+class LightSemaphore {
+ public:
+    void post(){
+        auto old = count_.fetch_add(1, std::memory_order_release);
+        if (old < 0){
+            sem_.post();
+        }
+    }
+    void wait(){
+        auto old = count_.fetch_sub(1, std::memory_order_acquire);
+        if (old <= 0){
+            sem_.wait();
+        }
+    }
+ private:
+    Semaphore sem_;
+    std::atomic<int32_t> count_{0};
 };
 
 /*///////////////////// SpinLock /////////////////////*/
 
 // simple spin lock
-static const size_t CACHELINE_SIZE = 64;
+const size_t CACHELINE_SIZE = 64;
 
 class alignas(CACHELINE_SIZE) SpinLock {
  public:
     SpinLock();
+    SpinLock(const SpinLock&) = delete;
+    SpinLock& operator=(const SpinLock&) = delete;
     void lock();
     bool try_lock();
     void unlock();
