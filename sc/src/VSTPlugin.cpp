@@ -1497,7 +1497,7 @@ void VSTPluginDelegate::queryParams(int32 index, int32 count) {
 }
 
 void VSTPluginDelegate::getParam(int32 index) {
-    float msg[2] = { index, 0.f };
+    float msg[2] = { (float)index, 0.f };
 
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
@@ -1540,7 +1540,7 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
         }
     }
     // send empty reply (count = 0)
-    float msg[2] = { index, 0.f };
+    float msg[2] = { (float)index, 0.f };
     sendMsg("/vst_setn", 2, msg);
 }
 
