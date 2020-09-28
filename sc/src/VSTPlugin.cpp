@@ -1234,8 +1234,7 @@ void VSTPluginDelegate::close() {
         plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
-        // don't set owner!
-        doCmd<false>(cmdData, [](World *world, void* inData) {
+        doCmd(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
             if (data->editor) {
                 // synchronous!
@@ -1994,15 +1993,15 @@ void cmdRTfree(World *world, void * cmdData) {
     }
 }
 
-// if 'owner' parameter is false, we don't store a pointer to this and we don't touch the ref count.
-// this is mainly for close(), where we don't touch any shared state because we might get called
-// in the destructor!
-template<bool owner, typename T>
+template<typename T>
 void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
     AsyncStageFn stage3, AsyncStageFn stage4) {
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
-        if (owner) {
+        // Don't store pointer to this if we're about to get destructed!
+        // This is mainly for the 'close' command which might get sent
+        // in ~VSTPluginDelegate (and doesn't need the owner).
+        if (alive()) {
             cmdData->owner = shared_from_this();
         }
         DoAsynchronousCommand(world(),

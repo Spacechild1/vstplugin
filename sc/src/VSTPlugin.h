@@ -187,7 +187,7 @@ public:
     void sendLatencyChange(int nsamples);
     void sendPluginCrash();
     // perform sequenced command
-    template<bool owner = true, typename T>
+    template<typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
 private:
