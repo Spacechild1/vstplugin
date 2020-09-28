@@ -487,10 +487,10 @@ public:
     virtual ~HostObject() {}
 
     uint32 PLUGIN_API addRef() override {
-        return ++refcount_;
+        return refcount_.fetch_add(1, std::memory_order_relaxed) + 1;
     }
     uint32 PLUGIN_API release() override {
-        auto res = --refcount_;
+        auto res = refcount_.fetch_sub(1, std::memory_order_acq_rel) - 1;
         if (res == 0){
             delete this;
         }

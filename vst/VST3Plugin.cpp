@@ -1319,7 +1319,7 @@ void VST3Plugin::setTransportAutomationReading(bool reading){
 
 void VST3Plugin::updateAutomationState(){
     if (window_){
-        automationStateChanged_ = true;
+        automationStateChanged_.store(true, std::memory_order_release);
     } else {
         FUnknownPtr<Vst::IAutomationState> automationState(controller_);
         if (automationState){
@@ -1494,9 +1494,9 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
         value = controller_->normalizedParamToPlain(id, value);
         value = controller_->plainParamToNormalized(id, value);
     #endif
-        paramCache_[index].value = value;
+        paramCache_[index].value.store(value, std::memory_order_relaxed);
         if (window_){
-            paramCache_[index].changed = true;
+            paramCache_[index].changed.store(true, std::memory_order_release);
         } else {
             controller_->setParamNormalized(id, value);
         }
@@ -1534,7 +1534,9 @@ void VST3Plugin::updateParamCache(){
         auto id = info().getParamID(i);
         paramCache_[i].value = controller_->getParamNormalized(id);
         // we don't need to tell the GUI to update
-        // paramCache_[i].changed = true;
+    #if 0
+        paramCache_[i].changed.store(true, std::memory_order_release);
+    #endif
     }
 }
 
@@ -1854,10 +1856,9 @@ void VST3Plugin::updateEditor(){
     // automatable parameters
     int n = getNumParameters();
     for (int i = 0; i < n; ++i){
-        bool expected = true;
-        if (paramCache_[i].changed.compare_exchange_strong(expected, false)){
+        if (paramCache_[i].changed.exchange(false, std::memory_order_acquire)){
             auto id = info().getParamID(i);
-            float value = paramCache_[i].value;
+            float value = paramCache_[i].value.load(std::memory_order_relaxed);
             LOG_DEBUG("update parameter " << id << ": " << value);
             controller_->setParamNormalized(id, value);
         }
@@ -1868,8 +1869,7 @@ void VST3Plugin::updateEditor(){
         controller_->setParamNormalized(p.id, p.value);
     }
     // automation state
-    bool expected = true;
-    if (automationStateChanged_.compare_exchange_strong(expected, false)){
+    if (automationStateChanged_.exchange(false, std::memory_order_acquire)){
         FUnknownPtr<Vst::IAutomationState> automationState(controller_);
         if (automationState){
             LOG_DEBUG("update automation state");
