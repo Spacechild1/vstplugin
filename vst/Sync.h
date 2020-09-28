@@ -118,9 +118,21 @@ class alignas(CACHELINE_SIZE) SpinLock {
     SpinLock();
     SpinLock(const SpinLock&) = delete;
     SpinLock& operator=(const SpinLock&) = delete;
-    void lock();
-    bool try_lock();
-    void unlock();
+    void lock(){
+        // only try to modify the shared state if the lock seems to be available.
+        // this should prevent unnecessary cache invalidation.
+        do {
+            while (locked_.load(std::memory_order_relaxed)){
+                yield();
+            }
+        } while (locked_.exchange(true, std::memory_order_acquire));
+    }
+    bool try_lock(){
+        return !locked_.exchange(true, std::memory_order_acquire);
+    }
+    void unlock(){
+        locked_.store(false, std::memory_order_release);
+    }
 
     // before C++17, new() couldn't handle alignments larger than max_align_t
 #if __cplusplus < 201703L
@@ -130,6 +142,7 @@ class alignas(CACHELINE_SIZE) SpinLock {
     void operator delete[](void*);
 #endif
  private:
+    void yield();
     // pad and align to prevent false sharing
     std::atomic_bool locked_{false};
     char pad_[CACHELINE_SIZE - sizeof(locked_)];
@@ -150,7 +163,7 @@ class SharedMutex {
 public:
     SharedMutex();
     SharedMutex(const SharedMutex&) = delete;
-    SharedMutex& operator==(const SharedMutex&) = delete;
+    SharedMutex& operator=(const SharedMutex&) = delete;
     // exclusive
     void lock();
     bool try_lock();
@@ -168,7 +181,7 @@ public:
     SharedMutex() { pthread_rwlock_init(&rwlock_, nullptr); }
     ~SharedMutex() { pthread_rwlock_destroy(&rwlock_); }
     SharedMutex(const SharedMutex&) = delete;
-    SharedMutex& operator==(const SharedMutex&) = delete;
+    SharedMutex& operator=(const SharedMutex&) = delete;
     // exclusive
     void lock() { pthread_rwlock_wrlock(&rwlock_); }
     bool try_lock() { return pthread_rwlock_trywrlock(&rwlock_) == 0; }

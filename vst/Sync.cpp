@@ -176,28 +176,14 @@ SpinLock::SpinLock(){
     }
 }
 
-void SpinLock::lock(){
-    // only try to modify the shared state if the lock seems to be available.
-    // this should prevent unnecessary cache invalidation.
-    do {
-        while (locked_.load(std::memory_order_relaxed)){
-        #if defined(CPU_INTEL)
-            _mm_pause();
-        #elif defined(CPU_ARM)
-            __yield();
-        #else // fallback
-            std::this_thread::sleep_for(std::chrono::microseconds(0));
-        #endif
-        }
-    } while (locked_.exchange(true, std::memory_order_acquire));
-}
-
-bool SpinLock::try_lock(){
-    return !locked_.exchange(true, std::memory_order_acquire);
-}
-
-void SpinLock::unlock(){
-    locked_.store(false, std::memory_order_release);
+void SpinLock::yield(){
+#if defined(CPU_INTEL)
+    _mm_pause();
+#elif defined(CPU_ARM)
+    __yield();
+#else // fallback
+    std::this_thread::sleep_for(std::chrono::microseconds(0));
+#endif
 }
 
 #if __cplusplus < 201703L
