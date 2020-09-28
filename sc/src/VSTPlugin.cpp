@@ -1498,17 +1498,18 @@ void VSTPluginDelegate::queryParams(int32 index, int32 count) {
 }
 
 void VSTPluginDelegate::getParam(int32 index) {
+    float msg[2] = { index, 0.f };
+
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            float value = plugin_->getParameter(index);
-            sendMsg("/vst_set", value);
-            return;
+            msg[1] = plugin_->getParameter(index); // value
         }
         else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
-    sendMsg("/vst_set", -1);
+
+    sendMsg("/vst_set", 2, msg);
 }
 
 void VSTPluginDelegate::getParams(int32 index, int32 count) {
@@ -1520,13 +1521,14 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
             } else {
                 count = std::min<int32>(count, nparam - index);
             }
-            const int bufsize = count + 1;
+            const int bufsize = count + 2; // for index + count
             if (bufsize * sizeof(float) < MAX_OSC_PACKET_SIZE){
                 float *buf = (float *)alloca(sizeof(float) * bufsize);
-                buf[0] = count;
+                buf[0] = index;
+                buf[1] = count;
                 for (int i = 0; i < count; ++i) {
                     float value = plugin_->getParameter(i + index);
-                    buf[i + 1] = value;
+                    buf[i + 2] = value;
                 }
                 sendMsg("/vst_setn", bufsize, buf);
                 return;
@@ -1538,7 +1540,9 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
-    sendMsg("/vst_setn", 0); // send count 0
+    // send empty reply (count = 0)
+    float msg[2] = { index, 0.f };
+    sendMsg("/vst_setn", 2, msg);
 }
 
 void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {

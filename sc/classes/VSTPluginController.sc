@@ -427,17 +427,39 @@ VSTPluginController {
 		^this.makeMsg('/setn', *nargs);
 	}
 	get { arg index, action;
+		var name;
+		// We need to match the reply message against the 'index'
+		// argument to avoid responding to other 'get' requests.
+		// Although the UGen can handle parameter names, we must
+		// first resolve it, because the reply message only
+		// includes the parameter *index* (as a float).
+		index.isNumber.not.if {
+			name = index;
+			index = info.findParamIndex(index);
+			index ?? {
+				MethodError("unknown parameter '%'".format(name), this).throw;
+			};
+		};
 		this.prMakeOscFunc({ arg msg;
-			// msg: address, nodeID, index, value
-			action.value(msg[3]); // only pass value
-		}, '/vst_set').oneShot;
+			// msg: address, nodeID, synthIndex, index, value
+			action.value(msg[4]); // only pass value
+		}, '/vst_set', index.asFloat).oneShot;
 		this.sendMsg('/get', index);
 	}
 	getn { arg index = 0, count = -1, action;
+		var name;
+		// see comment in 'get'
+		index.isNumber.not.if {
+			name = index;
+			index = info.findParamIndex(index);
+			index ?? {
+				MethodError("unknown parameter '%'".format(name), this).throw;
+			};
+		};
 		this.prMakeOscFunc({ arg msg;
-			// msg: address, nodeID, index, count, values...
-			action.value(msg[4..]); // only pass values
-		}, '/vst_setn').oneShot;
+			// msg: address, nodeID, synthIndex, index, count, values...
+			action.value(msg[5..]); // only pass values
+		}, '/vst_setn', index.asFloat).oneShot;
 		this.sendMsg('/getn', index, count);
 	}
 	map { arg ... args;
@@ -891,8 +913,8 @@ VSTPluginController {
 	makeMsg { arg cmd ... args;
 		^['/u_cmd', synth.nodeID, synthIndex, cmd] ++ args;
 	}
-	prMakeOscFunc { arg func, path;
-		^OSCFunc(func, path, synth.server.addr, argTemplate: [synth.nodeID, synthIndex]);
+	prMakeOscFunc { arg func, path ... argTemplate;
+		^OSCFunc(func, path, synth.server.addr, argTemplate: [synth.nodeID, synthIndex] ++ argTemplate);
 	}
 	*msg2string { arg msg, onset=0;
 		// format: len, chars...
