@@ -41,8 +41,8 @@ const std::vector<const char *>& getPluginExtensions() {
     return platformExtensions;
 }
 
-const std::string& getBundleBinaryPath(){
-    static std::string path =
+const char * getBundleBinaryPath(){
+    auto path =
 #if defined(_WIN32)
 #ifdef _WIN64
         "Contents/x86_64-win";

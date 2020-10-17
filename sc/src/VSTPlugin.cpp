@@ -2703,7 +2703,7 @@ PluginLoad(VSTPlugin) {
 
     setLogFunction(SCLog);
 
-    Print("VSTPlugin %s\n", getVersionString().c_str());
+    Print("VSTPlugin %s\n", getVersionString());
     // read cached plugin info
     readIniFile();
 }

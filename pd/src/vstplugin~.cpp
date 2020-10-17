@@ -1203,7 +1203,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         }
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
-            bundlePath = getBundleBinaryPath().c_str();
+            bundlePath = getBundleBinaryPath();
         #ifdef _WIN32
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
                      path.c_str(), bundlePath, fileName(path).c_str());
@@ -3213,7 +3213,7 @@ EXPORT void vstplugin_tilde_setup(void){
 
     t_workqueue::init();
 
-    post("vstplugin~ %s", getVersionString().c_str());
+    post("vstplugin~ %s", getVersionString());
 
     // read cached plugin info
     readIniFile();

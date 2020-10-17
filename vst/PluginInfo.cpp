@@ -8,16 +8,18 @@
 
 namespace vst {
 
-std::string getVersionString(){
-    std::stringstream ss;
-    ss << VERSION_MAJOR << "." << VERSION_MINOR;
-    if (VERSION_PATCH > 0){
-        ss << "." << VERSION_PATCH;
-    }
-    if (VERSION_PRERELEASE > 0){
-        ss << "-pre" << VERSION_PRERELEASE;
-    }
-    return ss.str();
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+const char * getVersionString(){
+    return STR(VERSION_MAJOR) "." STR(VERSION_MINOR)
+    #if VERSION_PATCH > 0
+        "." STR(AOO_VERSION_PATCH)
+    #endif
+    #if VERSION_PRERELEASE > 0
+       "-pre" STR(AOO_VERSION_PRERELEASE)
+    #endif
+        ;
 }
 
 /*////////////////////// preset ///////////////////////*/

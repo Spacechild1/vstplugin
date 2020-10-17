@@ -40,7 +40,7 @@ const int VERSION_MINOR = 4;
 const int VERSION_PATCH = 1;
 const int VERSION_PRERELEASE = 0;
 
-std::string getVersionString();
+const char * getVersionString();
 
 using LogFunction = void (*)(const char *);
 void setLogFunction(LogFunction f);
@@ -525,7 +525,7 @@ const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
 
-const std::string& getBundleBinaryPath();
+const char * getBundleBinaryPath();
 
 class IWindow {
  public:

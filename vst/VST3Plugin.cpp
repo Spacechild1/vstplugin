@@ -128,9 +128,9 @@ void VST3Factory::doLoad(){
     #ifndef __APPLE__
         if (isDirectory(modulePath)){
         #ifdef _WIN32
-            modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path_);
+            modulePath += "/" + std::string(getBundleBinaryPath()) + "/" + fileName(path_);
         #else
-            modulePath += "/" + getBundleBinaryPath() + "/" + fileBaseName(path_) + ".so";
+            modulePath += "/" + std::string(getBundleBinaryPath()) + "/" + fileBaseName(path_) + ".so";
         #endif
         }
     #endif
