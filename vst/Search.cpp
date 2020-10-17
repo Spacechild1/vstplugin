@@ -116,16 +116,14 @@ static std::vector<const char *> defaultSearchPaths = {
 
 // get "real" default search paths
 const std::vector<std::string>& getDefaultSearchPaths() {
-    // thread safe since C++11
-    static const struct SearchPaths {
-        SearchPaths(){
-            for (auto& path : defaultSearchPaths) {
-                list.push_back(expandPath(path));
-            }
+    static std::vector<std::string> result = [](){
+        std::vector<std::string> list;
+        for (auto& path : defaultSearchPaths) {
+            list.push_back(expandPath(path));
         }
-        std::vector<std::string> list; // expanded search paths
-    } searchPaths;
-    return searchPaths.list;
+        return list;
+    }();
+    return result;
 }
 
 #ifndef _WIN32
