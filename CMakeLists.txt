@@ -69,9 +69,12 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse3")
     endif()
 
-    CHECK_CXX_COMPILER_FLAG(-msse4 HAS_CXX_SSE4)
-    if (HAS_CXX_SSE4)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4")
+    # some people might still use old AMD CPUs...
+    if (OFF)
+        CHECK_CXX_COMPILER_FLAG(-msse4 HAS_CXX_SSE4)
+        if (HAS_CXX_SSE4)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4")
+        endif()
     endif()
 
     CHECK_CXX_COMPILER_FLAG(-mfpmath=sse HAS_CXX_FPMATH_SSE)
