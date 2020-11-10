@@ -29,7 +29,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
-* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above (not released yet at the time of writing).
+* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above.
 
 * macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above. Otherwise you get a warning if you try to open a plugin with "editor: true".
 
@@ -102,6 +102,8 @@ On Windows you would also need `-DPD_BINDIR="/path/to/Pd/bin"`; you can set both
 
 By default, [vstplugin~] is installed in the standard externals directory, but you can override it with `-DPD_INSTALLDIR="/path/to/my/externals"`.
 
+If you don't want to build the Pd external, run cmake with `-DPD=OFF`.
+
 ##### SuperCollider:
 
 Get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider).
@@ -109,12 +111,13 @@ Get the SuperCollider source code (e.g. https://github.com/supercollider/superco
 
 With `-DSC_INSTALLDIR="/path/to/my/extensions"` you can choose the installation directory, which would typically be your SuperCollider extensions folder.
 
-Set `SUPERNOVA` to `ON` if you want to build VSTPlugin for Supernova, but note that this doesn't work yet because of several bugs in Supernova (as of SC 3.10.3).
-However, this might be fixed in the next minor SC release.
+Set `SUPERNOVA` to `ON` if you want to build VSTPlugin for Supernova.
+
+If you don't want to build the SuperCollider extension, run cmake with `-DSC=OFF`.
 
 #### Build:
 
-1)	create a build directory, e.g. *build/*.
+1)	create a build directory, e.g. "build", next to the topmost "CMakeLists.txt"
 2)	cd into the build directory and run `cmake ..` + the necessary variables
     *or* set the variables in the cmake-gui and click "Configure" + "Generate"
 3)	in the build directory type `make`
