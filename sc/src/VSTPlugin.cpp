@@ -162,7 +162,7 @@ static std::string getSettingsDir(){
 #endif
 }
 
-static SharedMutex gFileLock;
+static Mutex gFileLock;
 
 static void readIniFile(){
     ScopedLock lock(gFileLock);
