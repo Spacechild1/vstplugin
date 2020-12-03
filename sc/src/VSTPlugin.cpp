@@ -165,7 +165,7 @@ static std::string getSettingsDir(){
 static SharedMutex gFileLock;
 
 static void readIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     auto path = getSettingsDir() + "/" CACHE_FILE;
     if (pathExists(path)){
         LOG_VERBOSE("read cache file " << path.c_str());
@@ -178,7 +178,7 @@ static void readIniFile(){
 }
 
 static void writeIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
@@ -1033,8 +1033,7 @@ void VSTPlugin::next(int inNumSamples) {
         if (suspended){
             delegate_->unlock();
         }
-    }
-    else {
+    } else {
         // bypass (copy input to output and zero remaining output channels)
         auto doBypass = [](auto input, int nin, auto output, int nout, int n, int phase) {
             for (int i = 0; i < nout; ++i) {
@@ -1126,7 +1125,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         }
     } else {
         // from GUI thread [or NRT thread] - push to queue
-        LockGuard lock(owner_->paramQueueMutex_);
+        ScopedLock lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
         }
@@ -1139,7 +1138,7 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
         sendLatencyChange(nsamples);
     } else {
         // from GUI thread [or NRT thread] - push to queue
-        LockGuard lock(owner_->paramQueueMutex_);
+        ScopedLock lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
             LOG_DEBUG("param queue overflow");
         }
@@ -1152,7 +1151,7 @@ void VSTPluginDelegate::pluginCrashed(){
         sendPluginCrash();
     } else {
         // from GUI thread [or NRT thread] - push to queue
-        LockGuard lock(owner_->paramQueueMutex_);
+        ScopedLock lock(owner_->paramQueueMutex_);
         if (!(owner_->paramQueue_.emplace(PluginCrash, 0.f))){
             LOG_DEBUG("param queue overflow");
         }

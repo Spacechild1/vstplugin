@@ -254,18 +254,18 @@ void PluginBridge::checkStatus(bool wait){
 
 void PluginBridge::addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client){
     LOG_DEBUG("PluginBridge: add client " << id);
-    LockGuard lock(clientMutex_);
+    ScopedLock lock(clientMutex_);
     clients_.emplace(id, client);
 }
 
 void PluginBridge::removeUIClient(uint32_t id){
     LOG_DEBUG("PluginBridge: remove client " << id);
-    LockGuard lock(clientMutex_);
+    ScopedLock lock(clientMutex_);
     clients_.erase(id);
 }
 
 void PluginBridge::postUIThread(const ShmUICommand& cmd){
-    // LockGuard lock(uiMutex_);
+    // ScopedLock lock(uiMutex_);
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
     auto& channel = shm_.getChannel(0);
     if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
@@ -285,7 +285,7 @@ void PluginBridge::pollUIThread(){
     while (channel.readMessage(buffer, size)){
         auto cmd = (const ShmUICommand *)buffer;
         // find client with matching ID
-        LockGuard lock(clientMutex_);
+        ScopedLock lock(clientMutex_);
 
         auto client = findClient(cmd->id);
         if (client){
@@ -357,7 +357,7 @@ RTChannel PluginBridge::getRTChannel(){
 NRTChannel PluginBridge::getNRTChannel(){
     if (locks_){
         return NRTChannel(shm_.getChannel(2),
-                          std::unique_lock<SharedMutex>(nrtMutex_));
+                          std::unique_lock<Mutex>(nrtMutex_));
     } else {
         // channel 2 is both NRT and RT channel
         return NRTChannel(shm_.getChannel(2));

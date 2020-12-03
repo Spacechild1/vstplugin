@@ -792,7 +792,7 @@ void PluginServer::quit(){
 
     // properly destruct all remaining plugins
     // on the UI thread (in case the parent crashed)
-    LockGuard lock(pluginMutex_);
+    WriteLock lock(pluginMutex_);
     if (!plugins_.empty()){
         UIThread::callSync([](void *x){
             static_cast<PluginServer *>(x)->plugins_.clear();

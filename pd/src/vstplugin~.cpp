@@ -253,10 +253,10 @@ static std::string getSettingsDir(){
 #endif
 }
 
-static SharedMutex gFileLock;
+static Mutex gFileLock;
 
 static void readIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     auto path = getSettingsDir() + "/" CACHE_FILE;
     if (pathExists(path)){
         verbose(PD_DEBUG, "read cache file %s", path.c_str());
@@ -269,7 +269,7 @@ static void readIniFile(){
 }
 
 static void writeIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
@@ -779,13 +779,13 @@ void t_vsteditor::post_event(const t_event& event){
         // prevents a possible deadlock with plugins that use a mutex for synchronization
         // between UI thread and processing thread.
         // Calling pd_getdspstate() is not really thread-safe, though...
+    #ifdef PDINSTANCE
+        pd_setinstance(e_owner->x_pdinstance);
+    #endif
         if (pd_getdspstate()){
             e_needclock.store(true); // set the clock in the perform routine
         } else {
             // lock the Pd scheduler
-        #ifdef PDINSTANCE
-            pd_setinstance(e_owner->x_pdinstance);
-        #endif
             sys_lock();
             clock_delay(e_clock, 0);
             sys_unlock();
@@ -1379,7 +1379,7 @@ static void vstplugin_open_do(t_open_data *x){
         }
         if (x->plugin){
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
-            LockGuard lock(x->owner->x_mutex);
+            ScopedLock lock(x->owner->x_mutex);
             x->owner->setup_plugin<async>(*x->plugin);
         }
     } catch (const Error& e) {
@@ -1681,7 +1681,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
                 // protect against vstplugin_dsp() and vstplugin_save()
-                LockGuard lock(x->owner->x_mutex);
+                ScopedLock lock(x->owner->x_mutex);
                 plugin->suspend();
                 plugin->resume();
             },
@@ -1693,7 +1693,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
         );
     } else {
         // protect against concurrent reads/writes
-        LockGuard lock(x->x_mutex);
+        ScopedLock lock(x->x_mutex);
         x->x_plugin->suspend();
         x->x_plugin->resume();
         outlet_anything(x->x_messout, gensym("reset"), 0, nullptr);
@@ -2062,7 +2062,7 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
     }
     try {
         {
-            LockGuard lock(x->x_mutex); // avoid concurrent reads/writes
+            ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
@@ -2082,7 +2082,7 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
     std::string buffer;
     try {
         {
-            LockGuard lock(x->x_mutex); // avoid concurrent reads/writes
+            ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
@@ -2145,7 +2145,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         file.read(&buffer[0], buffer.size());
         {
             // protect against vstplugin_dsp() and vstplugin_save()
-            LockGuard lock(x->x_mutex);
+            ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
@@ -2215,7 +2215,7 @@ static void vstplugin_preset_write_do(t_preset_data *data){
         }
         // protect against vstplugin_dsp() and vstplugin_save()
         {
-            LockGuard lock(x->x_mutex);
+            ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
@@ -3048,7 +3048,7 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
         // protect against concurrent vstplugin_open_do()
-        LockGuard lock(x->x_mutex);
+        ScopedLock lock(x->x_mutex);
         // 1) plugin
         if (x->x_editor->vst_gui()){
             binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
@@ -3086,7 +3086,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     t_float sr = sp[0]->s_sr;
     dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)blocksize);
     // protect against concurrent vstplugin_open_do()
-    LockGuard lock(x->x_mutex);
+    ScopedLock lock(x->x_mutex);
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
         x->setup_plugin<false>(*x->x_plugin);

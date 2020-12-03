@@ -297,7 +297,7 @@ private:
         float value;
     };
     LockfreeFifo<ParamChange, 16> paramQueue_;
-    SharedMutex paramQueueMutex_; // for writers
+    Mutex paramQueueMutex_; // for writers
 };
 
 

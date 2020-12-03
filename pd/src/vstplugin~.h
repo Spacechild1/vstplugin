@@ -81,7 +81,7 @@ class t_vstplugin {
     std::vector<char> x_auxinbuf;
     std::vector<char> x_outbuf;
     std::vector<char> x_auxoutbuf;
-    SharedMutex x_mutex;
+    Mutex x_mutex;
     // VST plugin
     IPlugin::ptr x_plugin;
     t_symbol *x_key = nullptr;
@@ -200,7 +200,7 @@ private:
     std::vector<t_vstparam> e_params;
     // outgoing messages:
     t_clock *e_clock;
-    SharedMutex e_mutex;
+    Mutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
 

@@ -127,7 +127,7 @@ void ThreadedPlugin::setListener(IPluginListener::ptr listener){
 }
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->setupProcessing(sampleRate, maxBlockSize, precision);
 
     if (maxBlockSize != blockSize_ || precision != precision_){
@@ -350,17 +350,17 @@ void ThreadedPlugin::process(ProcessData<double>& data) {
 }
 
 void ThreadedPlugin::suspend() {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->suspend();
 }
 
 void ThreadedPlugin::resume() {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->resume();
 }
 
 void ThreadedPlugin::setNumSpeakers(int in, int out, int auxIn, int auxOut) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->setNumSpeakers(in, out, auxIn, auxOut);
     // floatData and doubleData have the same layout
     input_.resize(in);
@@ -384,7 +384,7 @@ std::string ThreadedPlugin::getParameterString(int index) const {
 }
 
 void ThreadedPlugin::setProgramName(const std::string& name) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->setProgramName(name);
 }
 
@@ -394,13 +394,13 @@ int ThreadedPlugin::getProgram() const {
 
 std::string ThreadedPlugin::getProgramName() const {
     // LATER improve
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     return plugin_->getProgramName();
 }
 
 std::string ThreadedPlugin::getProgramNameIndexed(int index) const {
     // LATER improve
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     return plugin_->getProgramNameIndexed(index);
 }
 
@@ -418,7 +418,7 @@ void ThreadedPlugin::readProgramFile(const std::string& path) {
 }
 
 void ThreadedPlugin::readProgramData(const char *data, size_t size) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->readProgramData(data, size);
 }
 
@@ -433,7 +433,7 @@ void ThreadedPlugin::writeProgramFile(const std::string& path) {
 }
 
 void ThreadedPlugin::writeProgramData(std::string& buffer) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->writeProgramData(buffer);
 }
 
@@ -451,7 +451,7 @@ void ThreadedPlugin::readBankFile(const std::string& path) {
 }
 
 void ThreadedPlugin::readBankData(const char *data, size_t size) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->readBankData(data, size);
 }
 
@@ -466,12 +466,12 @@ void ThreadedPlugin::writeBankFile(const std::string& path) {
 }
 
 void ThreadedPlugin::writeBankData(std::string& buffer) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     plugin_->writeBankData(buffer);
 }
 
 intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, float opt) {
-    LockGuard lock(mutex_);
+    ScopedLock lock(mutex_);
     return plugin_->vendorSpecific(index, value, p, opt);
 }
 
