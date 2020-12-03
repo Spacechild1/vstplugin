@@ -153,27 +153,108 @@ class alignas(CACHELINE_SIZE) SpinLock {
 // The std::mutex implementation on Windows is bad on both MSVC and MinGW:
 // the MSVC version apparantely has some additional overhead; winpthreads (MinGW) doesn't even use the obvious
 // platform primitive (SRWLOCK), they rather roll their own mutex based on atomics and Events, which is bad for our use case.
-//
-// Older OSX versions (OSX 10.11 and below) don't have std:shared_mutex...
-//
-// Even on Linux, there's some overhead for things we don't need, so we use pthreads directly.
-
+// Even on Linux and macOS, there's some overhead for things we don't need, so we use pthreads directly.
 #ifdef _WIN32
-class SharedMutex {
+class Mutex {
 public:
-    SharedMutex();
-    SharedMutex(const SharedMutex&) = delete;
-    SharedMutex& operator=(const SharedMutex&) = delete;
+    Mutex();
+    Mutex(const Mutex&) = delete;
+    Mutex& operator=(const Mutex&) = delete;
     // exclusive
     void lock();
     bool try_lock();
     void unlock();
+protected:
+    void* lock_; // avoid including windows headers (SWRLOCK is pointer sized)
+};
+#else
+class Mutex {
+public:
+    Mutex() { pthread_mutex_init(&lock_, nullptr); }
+    ~Mutex() { pthread_mutex_destroy(&lock_); }
+    Mutex(const Mutex&) = delete;
+    Mutex& operator=(const Mutex&) = delete;
+    // exclusive
+    void lock() { pthread_mutex_lock(&lock_); }
+    bool try_lock() { return pthread_mutex_trylock(&lock_) == 0; }
+    void unlock() { pthread_lock_unlock(&lock_); }
+private:
+    pthread_mutex_t lock_;
+};
+#endif
+
+class ScopedLock {
+    Mutex& mutex_;
+ public:
+    ScopedLock(Mutex& mutex)
+        : mutex_(mutex){ mutex_.lock(); }
+    ~ScopedLock(){ mutex_.unlock(); }
+    ScopedLock(const ScopedLock&) = delete;
+    ScopedLock& operator=(const ScopedLock&) = delete;
+};
+
+template<typename T>
+class UniqueLock {
+ protected:
+    T* mutex_;
+    bool owns_;
+ public:
+    UniqueLock() : mutex_(nullptr), owns_(false){}
+    UniqueLock(T& mutex)
+        : mutex_(&mutex), owns_(true)
+    {
+        mutex_->lock();
+    }
+    UniqueLock(const UniqueLock&) = delete;
+    UniqueLock(UniqueLock&& other)
+        : mutex_(other.mutex_), owns_(other.owns_)
+    {
+        other.mutex_ = nullptr;
+        other.owns_ = false;
+    }
+
+    ~UniqueLock(){
+        if (owns_){
+            mutex_->unlock();
+        }
+    }
+
+    UniqueLock& operator=(const UniqueLock&) = delete;
+    UniqueLock& operator=(UniqueLock&& other){
+        if (owns_){
+            mutex_->unlock();
+        }
+        mutex_ = other.mutex_;
+        owns_ = other.owns_;
+        other.mutex_ = nullptr;
+        other.owns_ = false;
+    }
+
+    void lock(){
+        mutex_->lock();
+        owns_ = true;
+    }
+
+    void unlock(){
+        mutex_->unlock();
+        owns_ = false;
+    }
+};
+
+class Lock : public UniqueLock<Mutex> {
+    using UniqueLock::UniqueLock;
+};
+
+/*//////////////////////// SharedMutex ///////////////////////////*/
+
+#ifdef _WIN32
+class SharedMutex : public Mutex {
+public:
+    using Mutex::Mutex;
     // shared
     void lock_shared();
     bool try_lock_shared();
     void unlock_shared();
-private:
-    void* rwlock_; // avoid including windows headers (SWRLOCK is pointer sized)
 };
 #else
 class SharedMutex {
@@ -195,87 +276,57 @@ private:
 };
 #endif
 
-class LockGuard {
-    SharedMutex& mutex_;
- public:
-    LockGuard(SharedMutex& mutex)
-        : mutex_(mutex){ mutex_.lock(); }
-    ~LockGuard(){ mutex_.unlock(); }
-    LockGuard(const LockGuard&) = delete;
-    LockGuard& operator=(const LockGuard&) = delete;
+class WriteLock : public UniqueLock<SharedMutex> {
+    using UniqueLock::UniqueLock;
 };
 
-template<bool write>
-class BaseLock {
+class ReadLock {
  protected:
     SharedMutex* mutex_;
     bool owns_;
  public:
-    BaseLock() : mutex_(nullptr), owns_(false){}
-    BaseLock(SharedMutex& mutex)
+    ReadLock() : mutex_(nullptr), owns_(false){}
+    ReadLock(SharedMutex& mutex)
         : mutex_(&mutex), owns_(true)
     {
-        if (write)
-            mutex_->lock();
-        else
-            mutex_->lock_shared();
+        mutex_->lock_shared();
     }
-    BaseLock(const BaseLock&) = delete;
-    BaseLock(BaseLock&& other)
+    ReadLock(const ReadLock&) = delete;
+    ReadLock(ReadLock&& other)
         : mutex_(other.mutex_), owns_(other.owns_)
     {
         other.mutex_ = nullptr;
         other.owns_ = false;
     }
 
-    ~BaseLock(){
+    ~ReadLock(){
         if (owns_){
-            if (write)
-                mutex_->unlock();
-            else
-                mutex_->unlock_shared();
+            mutex_->unlock_shared();
         }
     }
 
-    BaseLock& operator=(const BaseLock&) = delete;
-    BaseLock& operator=(BaseLock&& other){
+    ReadLock& operator=(const ReadLock&) = delete;
+    ReadLock& operator=(ReadLock&& other){
         if (owns_){
-            if (write)
-                mutex_->unlock();
-            else
-                mutex_->unlock_shared();
+            mutex_->unlock_shared();
         }
         mutex_ = other.mutex_;
         owns_ = other.owns_;
         other.mutex_ = nullptr;
         other.owns_ = false;
+        return *this;
     }
-};
 
-class WriteLock : BaseLock<true> {
- public:
-    using BaseLock::BaseLock;
-    void lock(){
-        mutex_->lock();
-        owns_ = true;
-    }
-    void unlock(){
-        mutex_->unlock();
-        owns_ = false;
-    }
-};
-
-class ReadLock : BaseLock<false> {
- public:
-    using BaseLock::BaseLock;
     void lock(){
         mutex_->lock_shared();
         owns_ = true;
     }
+
     void unlock(){
         mutex_->unlock_shared();
         owns_ = false;
     }
 };
+
 
 } //  vst

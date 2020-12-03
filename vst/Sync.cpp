@@ -224,28 +224,28 @@ void SpinLock::operator delete[](void *ptr){
 /*////////////////////// SharedMutex ///////////////////*/
 
 #ifdef _WIN32
-SharedMutex::SharedMutex() {
-    InitializeSRWLock((PSRWLOCK)& rwlock_);
+Mutex::Mutex() {
+    InitializeSRWLock((PSRWLOCK)& lock_);
 }
 // exclusive
-void SharedMutex::lock() {
-    AcquireSRWLockExclusive((PSRWLOCK)&rwlock_);
+void Mutex::lock() {
+    AcquireSRWLockExclusive((PSRWLOCK)&lock_);
 }
-bool SharedMutex::try_lock() {
-    return TryAcquireSRWLockExclusive((PSRWLOCK)&rwlock_);
+bool Mutex::try_lock() {
+    return TryAcquireSRWLockExclusive((PSRWLOCK)&lock_);
 }
-void SharedMutex::unlock() {
-    ReleaseSRWLockExclusive((PSRWLOCK)&rwlock_);
+void Mutex::unlock() {
+    ReleaseSRWLockExclusive((PSRWLOCK)&lock_);
 }
 // shared
 void SharedMutex::lock_shared() {
-    AcquireSRWLockShared((PSRWLOCK)&rwlock_);
+    AcquireSRWLockShared((PSRWLOCK)&lock_);
 }
 bool SharedMutex::try_lock_shared() {
-    return TryAcquireSRWLockShared((PSRWLOCK)&rwlock_);
+    return TryAcquireSRWLockShared((PSRWLOCK)&lock_);
 }
 void SharedMutex::unlock_shared() {
-    ReleaseSRWLockShared((PSRWLOCK)&rwlock_);
+    ReleaseSRWLockShared((PSRWLOCK)&lock_);
 }
 
 #endif
