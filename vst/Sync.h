@@ -177,7 +177,7 @@ public:
     // exclusive
     void lock() { pthread_mutex_lock(&lock_); }
     bool try_lock() { return pthread_mutex_trylock(&lock_) == 0; }
-    void unlock() { pthread_lock_unlock(&lock_); }
+    void unlock() { pthread_mutex_unlock(&lock_); }
 private:
     pthread_mutex_t lock_;
 };
