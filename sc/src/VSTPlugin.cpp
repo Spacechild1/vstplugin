@@ -842,7 +842,7 @@ void VSTPlugin::next(int inNumSamples) {
     if (process && suspended){
         // Whenever an asynchronous command is executing, the plugin is temporarily
         // suspended. This is mainly for blocking other commands until the async
-        // command has finished. The actual critical section is protected by mutex.
+        // command has finished. The actual critical section is protected by a mutex.
         // We use tryLock() and bypass on failure, so we don't block the whole Server.
         process = delegate_->tryLock();
         if (!process){
@@ -1202,8 +1202,8 @@ bool VSTPluginDelegate::check(bool loud) const {
     return true;
 }
 
-WriteLock VSTPluginDelegate::scopedLock(){
-    return WriteLock(mutex_);
+Lock VSTPluginDelegate::scopedLock(){
+    return Lock(mutex_);
 }
 
 bool VSTPluginDelegate::tryLock() {

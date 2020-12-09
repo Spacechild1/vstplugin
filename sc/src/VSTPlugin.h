@@ -136,7 +136,7 @@ public:
     bool check(bool loud = true) const;
     bool suspended() const { return suspended_; }
     void resume() { suspended_ = false; }
-    WriteLock scopedLock();
+    Lock scopedLock();
     bool tryLock();
     void unlock();
     void open(const char* path, bool editor,
@@ -201,7 +201,7 @@ private:
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
-    SharedMutex mutex_;
+    Mutex mutex_;
 };
 
 class VSTPlugin : public SCUnit {
