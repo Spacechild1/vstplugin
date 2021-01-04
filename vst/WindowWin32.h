@@ -12,7 +12,7 @@ namespace vst {
 namespace Win32 {
 
 enum Message {
-    WM_CALL = WM_USER + 100,
+    WM_CALL = WM_APP + 2867,
     WM_SYNC,
     WM_OPEN_EDITOR,
     WM_CLOSE_EDITOR,
