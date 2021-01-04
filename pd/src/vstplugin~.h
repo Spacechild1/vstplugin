@@ -21,7 +21,6 @@ using namespace vst;
 #include <type_traits>
 #include <thread>
 #include <mutex>
-#include <condition_variable>
 #include <fcntl.h>
 
 // only try to poll event loop for macOS Pd standalone version
@@ -243,9 +242,9 @@ class t_workqueue {
     LockfreeFifo<t_item, 1024> w_rt_queue;
     // worker thread
     std::thread w_thread;
-    std::mutex w_mutex;
-    std::condition_variable w_cond;
-    bool w_running = true;
+    std::mutex w_mutex; // for cancel
+    Event w_event;
+    std::atomic<bool> w_running{false};
     // polling
     t_clock *w_clock = nullptr;
     static void clockmethod(t_workqueue *w);

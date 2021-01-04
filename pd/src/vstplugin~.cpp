@@ -92,19 +92,20 @@ t_workqueue::t_workqueue(){
     #ifdef PDINSTANCE
         pd_setinstance(w_instance);
     #endif
+        w_running.store(true);
 
-        std::unique_lock<std::mutex> lock(w_mutex);
+        while (w_running.load()) {
+            w_event.wait();
 
-        while (w_running) {
-            w_cond.wait(lock);
-
+            std::unique_lock<std::mutex> lock(w_mutex); // for cancel
             t_item item;
             while (w_nrt_queue.pop(item)){
                 if (item.workfn){
                     item.workfn(item.data);
                 }
                 while (!w_rt_queue.push(item)){
-                    // unlock to avoid dead-locks, e.g. if the RT thread blocks on cancel().
+                    // prevent possible dead lock when
+                    // RT thread blocks in cancel() method
                     lock.unlock();
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     lock.lock();
@@ -154,7 +155,7 @@ void t_workqueue::dopush(void *owner, void *data, t_fun<void> workfn,
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         post("vstplugin~: work queue blocked!");
     }
-    w_cond.notify_all();
+    w_event.set();
 }
 
 // cancel all running commands belonging to owner

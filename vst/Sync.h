@@ -20,8 +20,6 @@
 #endif
 
 #include <atomic>
-#include <condition_variable>
-#include <mutex>
 
 namespace vst {
 
@@ -46,27 +44,6 @@ class SyncCondition {
     bool state_ = false;
 };
 
-/*////////////////// Event ///////////////////////*/
-
-class Event {
- public:
-    Event();
-    ~Event();
-    Event(const Event&) = delete;
-    Event& operator=(const Event&) = delete;
-    void notify();
-    void notifyAll();
-    void wait();
- private:
-#ifdef _WIN32
-    void *condition_;
-    void *mutex_;
-#else
-    pthread_cond_t condition_;
-    pthread_mutex_t mutex_;
-#endif
-};
-
 /*////////////////// Semaphore ////////////////////////*/
 
 class Semaphore {
@@ -87,6 +64,8 @@ class Semaphore {
 #endif
 };
 
+// thanks to https://preshing.com/20150316/semaphores-are-surprisingly-versatile/
+
 /*/////////////////// LightSemaphore /////////////////*/
 
 class LightSemaphore {
@@ -96,6 +75,36 @@ class LightSemaphore {
         if (old < 0){
             sem_.post();
         }
+    }
+    void wait(){
+        auto old = count_.fetch_sub(1, std::memory_order_acquire);
+        if (old <= 0){
+            sem_.wait();
+        }
+    }
+ private:
+    Semaphore sem_;
+    std::atomic<int32_t> count_{0};
+};
+
+/*////////////////// Event ///////////////////////*/
+
+class Event {
+ public:
+    void set(){
+        int oldcount = count_.load(std::memory_order_relaxed);
+        for (;;) {
+            // don't increment past 1
+            // NOTE: we have to use the CAS loop even if we don't
+            // increment 'oldcount', because a another thread
+            // might decrement the counter concurrently!
+            auto newcount = oldcount >= 0 ? 1 : oldcount + 1;
+            if (count_.compare_exchange_weak(oldcount, newcount, std::memory_order_release,
+                                             std::memory_order_relaxed))
+                break;
+        }
+        if (oldcount < 0)
+            sem_.post(); // release one waiting thread
     }
     void wait(){
         auto old = count_.fetch_sub(1, std::memory_order_acquire);

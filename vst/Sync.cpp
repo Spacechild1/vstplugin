@@ -76,55 +76,6 @@ void SyncCondition::wait(){
 #endif
 }
 
-/*///////////////////// Event ///////////////////////*/
-
-Event::Event(){
-#ifdef _WIN32
-    InitializeSRWLock((PSRWLOCK)&mutex_);
-    InitializeConditionVariable((PCONDITION_VARIABLE)&condition_);
-#else
-    pthread_mutex_init(&mutex_, 0);
-    pthread_cond_init(&condition_, 0);
-#endif
-}
-
-Event::~Event(){
-#ifndef _WIN32
-    pthread_mutex_destroy(&mutex_);
-    pthread_cond_destroy(&condition_);
-#endif
-}
-
-void Event::notify(){
-#ifdef _WIN32
-    WakeConditionVariable((PCONDITION_VARIABLE)&condition_);
-#else
-    pthread_cond_signal(&condition_);
-#endif
-}
-
-void Event::notifyAll(){
-#ifdef _WIN32
-    WakeAllConditionVariable((PCONDITION_VARIABLE)&condition_);
-#else
-    pthread_cond_broadcast(&condition_);
-#endif
-}
-
-void Event::wait(){
-#ifdef _WIN32
-    AcquireSRWLockShared((PSRWLOCK)&mutex_);
-    SleepConditionVariableSRW((PCONDITION_VARIABLE)&condition_,
-                              (PSRWLOCK)&mutex_, INFINITE,
-                              CONDITION_VARIABLE_LOCKMODE_SHARED);
-    ReleaseSRWLockShared((PSRWLOCK)&mutex_);
-#else
-    pthread_mutex_lock(&mutex_);
-    pthread_cond_wait(&condition_, &mutex_);
-    pthread_mutex_unlock(&mutex_);
-#endif
-}
-
 /*/////////////////// Semaphore ////////////////////*/
 
 Semaphore::Semaphore(){
