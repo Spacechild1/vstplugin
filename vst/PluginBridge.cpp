@@ -378,7 +378,11 @@ WatchDog::WatchDog(){
         vst::setThreadPriority(Priority::Low);
 
         std::unique_lock<std::mutex> lock(mutex_);
-        for (;;){
+        while (running_){
+            LOG_DEBUG("WatchDog: waiting...");
+            condition_.wait(lock);
+            LOG_DEBUG("WatchDog: new process registered");
+
             // periodically check all running processes
             while (!processes_.empty()){
                 for (auto it = processes_.begin(); it != processes_.end();){
@@ -395,19 +399,6 @@ WatchDog::WatchDog(){
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 lock.lock();
-            }
-
-            // wait for a new process to be added
-            //
-            // NOTE: we have to put both the check and wait at the end,
-            // because the thread is created concurrently with the first item
-            // and 'running_' might be set to false during this_thread::sleep_for().
-            if (running_){
-                LOG_DEBUG("WatchDog: waiting...");
-                condition_.wait(lock);
-                LOG_DEBUG("WatchDog: new process registered");
-            } else {
-                break;
             }
         }
         LOG_DEBUG("WatchDog: thread finished");
@@ -434,10 +425,7 @@ void WatchDog::registerProcess(PluginBridge::ptr process){
     LOG_DEBUG("WatchDog: register process");
     std::lock_guard<std::mutex> lock(mutex_);
     processes_.push_back(process);
-    // wake up if process list has been empty!
-    if (processes_.size() == 1){
-        condition_.notify_one();
-    }
+    condition_.notify_one();
 }
 
 } // vst
