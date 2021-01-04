@@ -44,7 +44,7 @@ class EventLoop {
     HANDLE thread_;
     DWORD threadID_;
     std::mutex mutex_;
-    SyncEvent event_;
+    SyncCondition event_;
 
     UIThread::Handle nextPollFunctionHandle_ = 0;
     std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;

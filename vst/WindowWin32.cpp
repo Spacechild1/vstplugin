@@ -22,7 +22,7 @@ void run(){
 }
 
 void quit(){
-    gQuitEvent_.notify();
+    gQuitEvent_.set();
 }
 
 bool isCurrentThread(){
@@ -88,6 +88,7 @@ DWORD EventLoop::run(void *user){
             auto data = (void *)msg.lParam;
             cb(data);
         } else if (type == WM_SYNC){
+            LOG_DEBUG("WM_SYNC");
             obj->notify();
         } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
                    && (msg.wParam == timer)) {

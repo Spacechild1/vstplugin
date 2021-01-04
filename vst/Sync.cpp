@@ -22,9 +22,9 @@
 
 namespace vst {
 
-/*/////////////////// SyncEvent ////////////////////*/
+/*/////////////////// SyncCondition ////////////////////*/
 
-SyncEvent::SyncEvent(){
+SyncCondition::SyncCondition(){
 #ifdef _WIN32
     InitializeConditionVariable((PCONDITION_VARIABLE)&condition_);
     InitializeSRWLock((PSRWLOCK)&mutex_);
@@ -34,14 +34,14 @@ SyncEvent::SyncEvent(){
 #endif
 }
 
-SyncEvent::~SyncEvent(){
+SyncCondition::~SyncCondition(){
 #ifndef _WIN32
     pthread_mutex_destroy(&mutex_);
     pthread_cond_destroy(&condition_);
 #endif
 }
 
-void SyncEvent::set(){
+void SyncCondition::set(){
 #if defined(_WIN32)
     AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
     state_ = true;
@@ -57,7 +57,7 @@ void SyncEvent::set(){
 #endif
 }
 
-void SyncEvent::wait(){
+void SyncCondition::wait(){
 #ifdef _WIN32
     AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
     while (!state_){

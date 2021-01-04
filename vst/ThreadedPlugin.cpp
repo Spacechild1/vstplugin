@@ -83,7 +83,7 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
     THREAD_DEBUG("DSPThreadPool::push");
-    event_.notify();
+    event_.set();
     return result;
 }
 

@@ -25,14 +25,14 @@
 
 namespace vst {
 
-/*/////////////////// SyncEvent ///////////////////////*/
+/*/////////////////// SyncCondition ///////////////////////*/
 
-class SyncEvent {
+class SyncCondition {
  public:
-    SyncEvent();
-    ~SyncEvent();
-    SyncEvent(const SyncEvent&) = delete;
-    SyncEvent& operator=(const SyncEvent&) = delete;
+    SyncCondition();
+    ~SyncCondition();
+    SyncCondition(const SyncCondition&) = delete;
+    SyncCondition& operator=(const SyncCondition&) = delete;
     void set();
     void wait();
  private:

@@ -19,7 +19,7 @@ void run(){
 }
 
 void quit(){
-    gQuitEvent_.notify();
+    gQuitEvent_.set();
 }
 
 bool isCurrentThread(){
