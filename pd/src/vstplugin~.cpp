@@ -125,11 +125,10 @@ t_workqueue::t_workqueue(){
 
 t_workqueue::~t_workqueue(){
 #if WORK_QUEUE_JOIN
-    {
-        std::lock_guard<std::mutex> lock(w_mutex);
-        w_running = false;
-        w_cond.notify_all();
-    }
+    w_running.store(false);
+
+    // wake up and join thread
+    w_event.set();
     if (w_thread.joinable()){
         w_thread.join();
     }

@@ -29,7 +29,7 @@ DSPThreadPool::DSPThreadPool() {
     THREAD_DEBUG("popLock address: " << &popLock_);
 #endif
 
-    running_ = true;
+    running_.store(true);
 
     //  number of available hardware threads minus one (= the main audio thread)
     int numThreads = std::max<int>(std::thread::hardware_concurrency() - 1, 1);
@@ -39,7 +39,7 @@ DSPThreadPool::DSPThreadPool() {
         std::thread thread([this, i](){
             setThreadPriority(Priority::High);
             // the loop
-            while (running_) {
+            while (running_.load()) {
                 Task task;
                 popLock_.lock();
                 while (queue_.pop(task)){
@@ -65,11 +65,14 @@ DSPThreadPool::DSPThreadPool() {
 
 DSPThreadPool::~DSPThreadPool(){
 #if DSPTHREADPOOL_JOIN
-    running_ = false;
+    running_.store(false);
 
     // wake up all threads!
-    event_.notifyAll();
-
+    auto n = threads_.size();
+    while (n--){
+        event_.set();
+    }
+    // join threads
     for (auto& thread : threads_){
         if (thread.joinable()){
             thread.join();
