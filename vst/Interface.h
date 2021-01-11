@@ -563,6 +563,13 @@ namespace UIThread {
 
     bool callSync(Callback cb, void *user);
 
+    template<typename T>
+    bool callSync(const T& fn){
+        return callSync([](void *x){
+            (*static_cast<const T *>(x))();
+        }, (void *)&fn);
+    }
+
     bool callAsync(Callback cb, void *user);
 
     using PollFunction = void (*)(void *);
