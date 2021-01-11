@@ -117,7 +117,7 @@ VSTPluginDesc {
 			}
 		};
 		this.prSortPresets(false);
-		this.changed('/presets');
+		this.changed(\presets);
 	}
 	presetFolder { arg type = \user;
 		var folder, vst3 = this.sdkVersion.find("VST 3").notNil;
@@ -209,7 +209,7 @@ VSTPluginDesc {
 			}
 		};
 		presets = presets.insert(index, preset);
-		this.changed('/presets');
+		this.changed(\presets);
 		^index;
 	}
 	deletePreset { arg preset;
@@ -219,7 +219,7 @@ VSTPluginDesc {
 			(result.type == \user).if {
 				File.delete(result.path).if {
 					presets.remove(result);
-					this.changed('/presets');
+					this.changed(\presets);
 					^true;
 				} {
 					("couldn't delete preset file" + result.path).error;
@@ -249,7 +249,7 @@ VSTPluginDesc {
 					result.name = name;
 					result.path = newPath;
 					this.prSortPresets;
-					this.changed('/presets');
+					this.changed(\presets);
 					^true;
 				} { "preset '%' already exists!".format(name).error; }
 			} { "preset '%' not writeable!".format(result.name).error }

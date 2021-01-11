@@ -186,14 +186,14 @@ VSTPluginController {
 			(index < paramCache.size).if {
 				paramCache[index] = [value, display];
 				// notify dependants
-				this.changed('/param', index, value, display);
+				this.changed(\param, index, value, display);
 			} { "parameter index % out of range!".format(index).warn };
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			program = msg[3].asInteger;
 			// notify dependants
-			this.changed('/program_index', program);
+			this.changed(\program_index, program);
 		}, '/vst_program_index'));
 		// program name:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -203,7 +203,7 @@ VSTPluginController {
 			(index < programNames.size).if {
 				programNames[index] = name;
 				// notify dependants
-				this.changed('/program_name', index, name);
+				this.changed(\program_name, index, name);
 			} { "program number % out of range!".format(index).warn };
 		}, '/vst_program'));
 		// parameter automated:
@@ -244,7 +244,7 @@ VSTPluginController {
 			func.free;
 		};
 		this.prClear;
-		this.changed('/free');
+		this.changed(\free);
 	}
 	prCheckPlugin { arg method;
 		this.loaded.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
@@ -330,7 +330,7 @@ VSTPluginController {
 						"couldn't open '%'".format(path).error;
 					};
 					loading = false;
-					this.changed('/open', path, loaded);
+					this.changed(\open, path, loaded);
 					action.value(this, loaded);
 					// report latency (if loaded)
 					latency !? { latencyChanged.value(latency); }
@@ -379,7 +379,7 @@ VSTPluginController {
 		super.addDependant(dependant);
 	}
 	update { arg who, what ... args;
-		((who === info) and: { what == '/presets' }).if {
+		((who === info) and: { what == \presets }).if {
 			currentPreset !? {
 				info.prPresetIndex(currentPreset).isNil.if {
 					currentPreset = nil;
@@ -391,7 +391,7 @@ VSTPluginController {
 	close {
 		this.sendMsg('/close');
 		this.prClear;
-		this.changed('/close');
+		this.changed(\close);
 	}
 	closeMsg {
 		^this.makeMsg('/close');
@@ -551,7 +551,7 @@ VSTPluginController {
 			success.if {
 				index = info.addPreset(name, path);
 				currentPreset = info.presets[index];
-				this.changed('/preset_save', index);
+				this.changed(\preset_save, index);
 			} { "couldn't save preset '%'".format(name).error };
 			action.value(self, success);
 		}, async);
@@ -568,7 +568,7 @@ VSTPluginController {
 				index = info.prPresetIndex(result);
 				index.notNil.if {
 					currentPreset = result;
-					this.changed('/preset_load', index);
+					this.changed(\preset_load, index);
 				} {
 					"preset '%' has been removed!".format(result.name).error;
 				};

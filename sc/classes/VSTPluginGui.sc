@@ -51,15 +51,15 @@ VSTPluginGui : ObjectGui {
 		{
 			who.notNil.if {
 				switch(what,
-					'/open', { this.prOpen },
-					'/close', { this.prClose },
-					'/free', { this.prFree }, // Synth has been freed
-					'/param', { this.prParam(*args) },
-					'/program_name', { this.prUpdatePresets },
-					'/program_index', { this.prProgramIndex(*args) },
-					'/presets', { this.prUpdatePresets },
-					'/preset_load', { this.prPresetSelect(*args) },
-					'/preset_save', { this.prPresetSelect(*args) }
+					\open, { this.prOpen },
+					\close, { this.prClose },
+					\free, { this.prFree }, // Synth has been freed
+					\param, { this.prParamChanged(*args) },
+					\program_name, { this.prUpdatePresets },
+					\program_index, { this.prProgramIndex(*args) },
+					\presets, { this.prUpdatePresets },
+					\preset_load, { this.prPresetSelect(*args) },
+					\preset_save, { this.prPresetSelect(*args) }
 				)
 			} {
 				// empty update call
@@ -337,7 +337,7 @@ VSTPluginGui : ObjectGui {
 		view.layout_(layout);
 	}
 
-	prParam { arg index, value, display;
+	prParamChanged { arg index, value, display;
 		showParams.if {
 			paramSliders[index].value_(value);
 			paramDisplays[index].string_(display);
