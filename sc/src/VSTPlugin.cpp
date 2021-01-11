@@ -141,6 +141,34 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
     }
 }
 
+template<typename T>
+void defer(const T& fn, bool uithread){
+    // defer function call to the correct thread
+    if (uithread){
+        bool result;
+        Error err;
+        bool ok = UIThread::callSync([&](){
+            try {
+                fn();
+                result = true;
+            } catch (const Error& e){
+                err = e;
+                result = false;
+            }
+        });
+        if (ok){
+            if (!result){
+                throw err;
+            }
+            return;
+        } else {
+            LOG_ERROR("UIThread::callSync() failed");
+        }
+    }
+    // call on this thread
+    fn();
+}
+
 // search and probe
 static std::atomic_bool gSearching {false};
 
@@ -1235,14 +1263,10 @@ void VSTPluginDelegate::close() {
         cmdData->editor = editor_;
         doCmd(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
-            if (data->editor) {
-                // synchronous!
-                UIThread::callSync([](void *y){
-                    static_cast<CloseCmdData *>(y)->plugin = nullptr;
-                }, data);
-            }
-            // if not destructed
-            data->plugin = nullptr;
+            defer([&](){
+                // release plugin
+                data->plugin = nullptr;
+            }, data->editor);
             return false; // done
         });
         plugin_ = nullptr;
@@ -1257,49 +1281,36 @@ bool cmdOpen(World *world, void* cmdData) {
     auto info = queryPlugin(data->path);
     if (info) {
         try {
-            if (data->editor) {
-                data->info = info;
+            // make sure to only request the plugin UI if the
+            // plugin supports it and we have an event loop
+            if (data->editor &&
+                    !(info->editor() && UIThread::available())){
+                data->editor = false;
+                LOG_DEBUG("can't use plugin UI!");
+            }
+            if (data->editor){
                 LOG_DEBUG("create plugin in UI thread");
-                bool ok = UIThread::callSync([](void *y){
-                    auto d = (OpenCmdData *)y;
-                    try {
-                        d->plugin = d->info->create(true, d->threaded, d->mode);
-                    } catch (const Error& e){
-                        d->error = e;
-                    }
-                }, data);
-
-                if (ok){
-                    if (data->plugin){
-                        LOG_DEBUG("done");
-                    } else {
-                        throw data->error;
-                    }
-                } else {
-                    // couldn't dispatch to UI thread (probably not available).
-                    // create plugin without window
-                    data->plugin = info->create(false, data->threaded, data->mode);
-                }
+            } else {
+                LOG_DEBUG("create plugin in NRT thread");
             }
-            else {
-                data->plugin = info->create(false, data->threaded, data->mode);
-            }
-            if (data->plugin){
-                // we only access immutable members of owner!
+            defer([&](){
+                // create plugin
+                data->plugin = info->create(data->editor, data->threaded, data->mode);
+                // setup plugin
+                data->plugin->suspend();
                 if (info->hasPrecision(ProcessPrecision::Single)) {
                     data->plugin->setupProcessing(data->sampleRate, data->blockSize,
                                                   ProcessPrecision::Single);
-                }
-                else {
+                } else {
                     LOG_WARNING("VSTPlugin: plugin '" << info->name <<
                                 "' doesn't support single precision processing - bypassing!");
                 }
                 data->plugin->setNumSpeakers(data->numInputs, data->numOutputs,
                                              data->numAuxInputs, data->numAuxOutputs);
                 data->plugin->resume();
-            }
-        }
-        catch (const Error & e) {
+            }, data->editor);
+            LOG_DEBUG("done");
+        } catch (const Error & e) {
             LOG_ERROR(e.what());
         }
     }
@@ -1321,7 +1332,6 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         sendMsg("/vst_open", 0);
         return;
     }
-
 #ifdef SUPERNOVA
     if (threaded){
         LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
@@ -1348,9 +1358,8 @@ void VSTPluginDelegate::open(const char *path, bool editor,
             data->owner->doneOpen(*data); // alive() checked in doneOpen!
             return false; // done
         });
-        editor_ = editor;
-        threaded_ = threaded;
         isLoading_ = true;
+        // NOTE: don't set 'editor_' already because 'editor' value might change
     } else {
         sendMsg("/vst_open", 0);
     }
@@ -1359,6 +1368,8 @@ void VSTPluginDelegate::open(const char *path, bool editor,
 // "/open" command succeeded/failed - called in the RT thread
 void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     LOG_DEBUG("doneOpen");
+    editor_ = cmd.editor;
+    threaded_ = cmd.threaded;
     isLoading_ = false;
     // move the plugin even if alive() returns false (so it will be properly released in close())
     plugin_ = std::move(cmd.plugin);
@@ -1409,15 +1420,24 @@ void VSTPluginDelegate::showEditor(bool show) {
 
 void VSTPluginDelegate::reset(bool async) {
     if (check()) {
+    #if 1
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async) {
             // reset in the NRT thread
             suspended_ = true; // suspend
             doCmd(CmdData::create<PluginCmdData>(world()),
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
-                    auto lock = data->owner->scopedLock();
-                    data->owner->plugin()->suspend();
-                    data->owner->plugin()->resume();
+                    defer([&](){
+                        auto lock = data->owner->scopedLock();
+                        data->owner->plugin()->suspend();
+                        data->owner->plugin()->resume();
+                    }, data->owner->hasEditor());
                     return true; // continue
                 },
                 [](World *world, void *cmdData){
@@ -1426,8 +1446,7 @@ void VSTPluginDelegate::reset(bool async) {
                     return false; // done
                 }
             );
-        }
-        else {
+        } else {
             // reset in the RT thread
             auto lock = scopedLock(); // avoid concurrent read/writes
             plugin_->suspend();
@@ -1644,14 +1663,15 @@ bool cmdReadPreset(World* world, void* cmdData) {
         if (async) {
             // load preset now
             // NOTE: we avoid readProgram() to minimize the critical section
-            auto lock = data->owner->scopedLock();
-            if (bank)
-                plugin->readBankData(buffer);
-            else
-                plugin->readProgramData(buffer);
+            defer([&](){
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->readBankData(buffer);
+                else
+                    plugin->readProgramData(buffer);
+            }, data->owner->hasEditor());
         }
-    }
-    catch (const Error& e) {
+    } catch (const Error& e) {
         Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
@@ -1698,6 +1718,13 @@ bool cmdReadPresetDone(World *world, void *cmdData){
 template<bool bank, typename T>
 void VSTPluginDelegate::readPreset(T dest, bool async){
     if (check()){
+    #if 1
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async){
             suspended_ = true;
         }
@@ -1727,11 +1754,13 @@ bool cmdWritePreset(World *world, void *cmdData){
             // so we keep the critical section as short as possible.
             buffer.reserve(1024);
             // get and write preset data
-            auto lock = data->owner->scopedLock();
-            if (bank)
-                plugin->writeBankData(buffer);
-            else
-                plugin->writeProgramData(buffer);
+            defer([&](){
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->writeBankData(buffer);
+                else
+                    plugin->writeProgramData(buffer);
+            }, data->owner->hasEditor());
         }
         if (data->bufnum < 0) {
             // write data to file
@@ -1747,8 +1776,7 @@ bool cmdWritePreset(World *world, void *cmdData){
             data->freeData = sndbuf->data; // to be freed in stage 4
             allocReadBuffer(sndbuf, buffer);
         }
-    }
-    catch (const Error & e) {
+    } catch (const Error & e) {
         Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
@@ -1774,6 +1802,13 @@ template<bool bank, typename T>
 void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
         auto data = PresetCmdData::create(world(), dest, async);
+    #if 1
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async){
             suspended_ = true;
         } else {
@@ -2237,8 +2272,7 @@ void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
         const char* name = args->gets(); // file name
         bool async = args->geti();
         unit->delegate().writePreset<false>(name, async);
-    }
-    else {
+    } else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
@@ -2271,8 +2305,7 @@ void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
         const char* name = args->gets(); // file name
         bool async = args->geti();
         unit->delegate().writePreset<true>(name, async);
-    }
-    else {
+    } else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {

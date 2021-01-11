@@ -188,7 +188,7 @@ PluginFactory::PluginFactory(const std::string &path)
                             + std::string(cpuArchToString(archs.front())));
             }
         }
-        LOG_DEBUG("created bridged plugin factory " << path);
+        // LOG_DEBUG("created bridged plugin factory " << path);
     #else
         if (archs.size() > 1){
             throw Error(Error::ModuleError, "Unsupported CPU architectures");

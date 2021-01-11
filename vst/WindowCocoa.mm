@@ -118,8 +118,12 @@ void quit() {
     [NSApp postEvent:event atStart:NO];
 }
 
-bool isCurrentThread(){
+bool isCurrentThread() {
     return [NSThread isMainThread];
+}
+
+bool available() {
+    return Cocoa::EventLoop::instance().available();
 }
 
 void poll(){

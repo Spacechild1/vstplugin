@@ -25,9 +25,11 @@ void quit(){
     gQuitEvent_.set();
 }
 
-bool isCurrentThread(){
+bool isCurrentThread() {
     return Win32::EventLoop::instance().checkThread();
 }
+
+bool available() { return true; }
 
 void poll(){}
 
@@ -80,7 +82,6 @@ DWORD EventLoop::run(void *user){
             LOG_ERROR("GetMessage: error");
             break;
         }
-        // LOG_DEBUG("got message " << msg.message);
         auto type = msg.message;
         if (type == WM_CALL){
             LOG_DEBUG("WM_CALL");
@@ -93,12 +94,13 @@ DWORD EventLoop::run(void *user){
         } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
                    && (msg.wParam == timer)) {
             // call poll functions
+            // LOG_VERBOSE("call poll functions");
             std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
             for (auto& it : obj->pollFunctions_){
                 it.second();
             }
-            // LOG_VERBOSE("call poll functions.");
         } else {
+            // LOG_DEBUG("dispatch message " << msg.message);
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }

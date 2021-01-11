@@ -118,8 +118,10 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         LOG_DEBUG("PluginHandle: setupProcessing");
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
-        plugin_->setupProcessing(cmd.setup.sampleRate,
-                                 maxBlockSize_, precision_);
+        UIThread::callSync([&](){
+            plugin_->setupProcessing(cmd.setup.sampleRate,
+                                     maxBlockSize_, precision_);
+        });
         updateBuffer();
         break;
     case Command::SetNumSpeakers:
@@ -128,58 +130,78 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         numOutputs_ = cmd.speakers.out;
         numAuxInputs_ = cmd.speakers.auxin;
         numAuxOutputs_ = cmd.speakers.auxout;
-        plugin_->setNumSpeakers(numInputs_, numOutputs_,
-                                numAuxInputs_, numAuxOutputs_);
+        UIThread::callSync([&](){
+            plugin_->setNumSpeakers(numInputs_, numOutputs_,
+                                    numAuxInputs_, numAuxOutputs_);
+        });
         updateBuffer();
         break;
     case Command::Suspend:
         LOG_DEBUG("PluginHandle: suspend");
-        plugin_->suspend();
+        UIThread::callSync([&](){
+            plugin_->suspend();
+        });
         break;
     case Command::Resume:
         LOG_DEBUG("PluginHandle: resume");
-        plugin_->resume();
+        UIThread::callSync([&](){
+            plugin_->resume();
+        });
         break;
     case Command::ReadProgramFile:
-        plugin_->readProgramFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->readProgramFile(cmd.buffer.data);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankFile:
-        plugin_->readBankFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->readBankFile(cmd.buffer.data);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, true);
         break;
     case Command::ReadProgramData:
-        plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
+        UIThread::callSync([&](){
+            plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankData:
-        plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
+        UIThread::callSync([&](){
+            plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, false);
         break;
     case Command::WriteProgramFile:
-        plugin_->writeProgramFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->writeProgramFile(cmd.buffer.data);
+        });
         break;
     case Command::WriteBankFile:
-        plugin_->writeBankFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->writeBankFile(cmd.buffer.data);
+        });
         break;
     case Command::WriteProgramData:
     case Command::WriteBankData:
     {
         // get data
         std::string buffer;
-        if (cmd.type == Command::WriteBankData){
-            plugin_->writeBankData(buffer);
-        } else {
-            plugin_->writeProgramData(buffer);
-        }
+        UIThread::callSync([&](){
+            if (cmd.type == Command::WriteBankData){
+                plugin_->writeBankData(buffer);
+            } else {
+                plugin_->writeProgramData(buffer);
+            }
+        });
         // send data
         channel.clear(); // !
 

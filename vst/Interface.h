@@ -559,6 +559,8 @@ namespace UIThread {
 
     bool isCurrentThread();
 
+    bool available();
+
     using Callback = void (*)(void *);
 
     bool callSync(Callback cb, void *user);

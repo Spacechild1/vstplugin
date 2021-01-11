@@ -38,9 +38,7 @@ struct CloseCmdData : CmdData {
 // cache all relevant info so we don't have to touch
 // the VSTPlugin instance during the async command.
 struct OpenCmdData : CmdData {
-    const PluginInfo *info;
     IPlugin::ptr plugin;
-    Error error;
     bool editor;
     bool threaded;
     RunMode mode;
@@ -190,6 +188,9 @@ public:
     template<typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
+    bool hasEditor() const {
+        return editor_;
+    }
 private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;

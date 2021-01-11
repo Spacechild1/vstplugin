@@ -26,6 +26,8 @@ bool isCurrentThread(){
     return X11::EventLoop::instance().checkThread();
 }
 
+bool available() { return true; }
+
 void poll(){}
 
 bool callSync(Callback cb, void *user){

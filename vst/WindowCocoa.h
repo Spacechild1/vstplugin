@@ -55,6 +55,10 @@ class EventLoop {
     void removePollFunction(UIThread::Handle handle);
 
     void poll();
+
+    bool available() const {
+        return haveNSApp_;
+    }
  private:
     bool haveNSApp_ = false;
     EventLoopProxy *proxy_;
