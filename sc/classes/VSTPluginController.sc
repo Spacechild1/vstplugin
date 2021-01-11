@@ -212,17 +212,20 @@ VSTPluginController {
 			index = msg[3].asInteger;
 			value = msg[4].asFloat;
 			parameterAutomated.value(index, value);
+			this.changed(\automated, index, value);
 		}, '/vst_auto'));
 		// latency changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			latency = msg[3].asInteger;
 			latencyChanged.value(latency);
+			this.changed(\latency, latency);
 		}, '/vst_latency'));
 		// plugin crashed
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			"plugin '%' crashed".format(this.info.name).warn;
 			this.close;
 			pluginCrashed.value;
+			this.changed(\crashed);
 		}, '/vst_crash'));
 		// MIDI received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
