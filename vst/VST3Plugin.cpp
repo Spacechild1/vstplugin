@@ -236,7 +236,8 @@ tresult PLUGIN_API ParamValueQueue::getPoint(int32 index, int32& sampleOffset, V
 }
 tresult PLUGIN_API ParamValueQueue::addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) {
     // iterate in reverse because we likely add values in "chronological" order
-    for (auto it = values_.end(); it-- != values_.begin(); ){
+    for (auto it = values_.end(); it != values_.begin(); ){
+        --it; // decrement here (instead of inside the loop condition) to avoid MSVC debug assertion
         if (sampleOffset > it->sampleOffset){
             // higher sample offset -> insert *after* this point (might actually append)
             if (values_.size() < maxNumPoints){
