@@ -378,11 +378,7 @@ WatchDog::WatchDog(){
         vst::setThreadPriority(Priority::Low);
 
         std::unique_lock<std::mutex> lock(mutex_);
-        while (running_){
-            LOG_DEBUG("WatchDog: waiting...");
-            condition_.wait(lock);
-            LOG_DEBUG("WatchDog: new process registered");
-
+        for (;;){
             // periodically check all running processes
             while (!processes_.empty()){
                 for (auto it = processes_.begin(); it != processes_.end();){
@@ -399,6 +395,23 @@ WatchDog::WatchDog(){
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 lock.lock();
+            }
+
+            // wait for a new process to be added
+            //
+            // NOTE: we have to put both the check and wait at the end!
+            // Since the thread is created concurrently with the first process,
+            // the process might be registered *before* the thread starts,
+            // causing the latter to wait on the condition variable instead of
+            // entering the poll loop.
+            // Also, 'running_' might be set to false while we're sleeping in the
+            // poll loop, which means that we would wait on the condition forever.
+            if (running_){
+                LOG_DEBUG("WatchDog: waiting...");
+                condition_.wait(lock);
+                LOG_DEBUG("WatchDog: new process registered");
+            } else {
+                break;
             }
         }
         LOG_DEBUG("WatchDog: thread finished");
