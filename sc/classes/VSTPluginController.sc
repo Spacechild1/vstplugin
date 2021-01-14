@@ -958,8 +958,8 @@ VSTSynthControl : SynthControl {
 
 	*initClass {
 		// \vst role
-		AbstractPlayControl.proxyControlClasses.put(\vst, VSTSynthControl);
-		AbstractPlayControl.buildMethods.put(\vst,
+		AbstractPlayControl.proxyControlClasses.put(\vstDef, VSTSynthControl);
+		AbstractPlayControl.buildMethods.put(\vstDef,
 			#{ arg func, proxy, channelOffset = 0, index;
 				func.buildForProxy(proxy, channelOffset, index);
 			}
@@ -981,8 +981,8 @@ VSTSynthDefControl : SynthDefControl {
 
 	*initClass {
 		// \vstFunc role
-		AbstractPlayControl.proxyControlClasses.put(\vstFunc, VSTSynthDefControl);
-		AbstractPlayControl.buildMethods.put(\vstFunc,
+		AbstractPlayControl.proxyControlClasses.put(\vst, VSTSynthDefControl);
+		AbstractPlayControl.buildMethods.put(\vst,
 			#{ arg func, proxy, channelOffset = 0, index;
 				func.buildForProxy(proxy, channelOffset, index);
 			}
