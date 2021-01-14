@@ -2,7 +2,9 @@ VSTSynthControl : SynthControl {
 	var <synth;
 
 	*initClass {
-		// \vst role
+		Class.initClassTree(AbstractPlayControl);
+
+		// \vstDef role (SynthDef)
 		AbstractPlayControl.proxyControlClasses.put(\vstDef, VSTSynthControl);
 		AbstractPlayControl.buildMethods.put(\vstDef,
 			#{ arg func, proxy, channelOffset = 0, index;
@@ -25,7 +27,9 @@ VSTSynthDefControl : SynthDefControl {
 	var <synth;
 
 	*initClass {
-		// \vstFunc role
+		Class.initClassTree(AbstractPlayControl);
+
+		// \vst role (Function)
 		AbstractPlayControl.proxyControlClasses.put(\vst, VSTSynthDefControl);
 		AbstractPlayControl.buildMethods.put(\vst,
 			#{ arg func, proxy, channelOffset = 0, index;
