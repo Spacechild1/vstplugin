@@ -1295,18 +1295,23 @@ bool cmdOpen(World *world, void* cmdData) {
             }
             defer([&](){
                 // create plugin
+                LOG_DEBUG("create plugin");
                 data->plugin = info->create(data->editor, data->threaded, data->mode);
                 // setup plugin
+                LOG_DEBUG("suspend");
                 data->plugin->suspend();
                 if (info->hasPrecision(ProcessPrecision::Single)) {
+                    LOG_DEBUG("setupProcessing");
                     data->plugin->setupProcessing(data->sampleRate, data->blockSize,
                                                   ProcessPrecision::Single);
                 } else {
                     LOG_WARNING("VSTPlugin: plugin '" << info->name <<
                                 "' doesn't support single precision processing - bypassing!");
                 }
+                LOG_DEBUG("setNumSpeakers");
                 data->plugin->setNumSpeakers(data->numInputs, data->numOutputs,
                                              data->numAuxInputs, data->numAuxOutputs);
+                LOG_DEBUG("resume");
                 data->plugin->resume();
             }, data->editor);
             LOG_DEBUG("done");
