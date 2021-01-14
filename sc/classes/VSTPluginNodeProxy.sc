@@ -53,26 +53,29 @@ VSTPluginNodeProxyController : VSTPluginController {
 	var <proxy, hasStarted = false;
 
 	*new { arg proxy, index = 0, id, wait = -1;
-		var control, def;
-		control = proxy.objects[index];
+		var control = proxy.objects[index];
 		// For VSTPluginSynthControl, the SynthDef is 'nil' and must be inferred
-		def = control.tryPerform(\synthDef);
-		^super.new(control.synth, id, def, wait)
+		var def = control.tryPerform(\synthDef);
+		var synth = control.tryPerform(\synth) ?? { MethodError("Unsupported NodeProxy source", this).throw;
+		};
+		^super.new(synth, id, def, wait)
 		    .initProxyAndCondition(proxy)
-		    .checkIfStarted(control.synth);
+		    .checkIfStarted(synth);
 	}
 
 	*collect { arg proxy, index = 0, ids, wait = -1;
 		var control = proxy.objects[index];
 		// For VSTPluginSynthControl, the SynthDef is 'nil' and must be inferred
 		var def = control.tryPerform(\synthDef);
-		var plugins = this.prFindPlugins(control.synth, def);
+		var synth = control.tryPerform(\synth) ?? { MethodError("Unsupported NodeProxy source", this).throw;
+		};
+		var plugins = this.prFindPlugins(synth, def);
 		^this.prCollect(plugins, ids, { arg desc;
-			var info = desc.key !? { VSTPlugin.plugins(control.synth.server)[desc.key] };
+			var info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
 			// 'newCopyArgs' avoids calling VSTPluginController.new!
-			super.newCopyArgs.init(control.synth, desc.index, wait, info)
+			super.newCopyArgs.init(synth, desc.index, wait, info)
 			    .initProxyAndCondition(proxy)
-		        .checkIfStarted(control.synth);
+		        .checkIfStarted(synth);
 		});
 	}
 
