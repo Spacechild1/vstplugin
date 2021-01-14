@@ -6,7 +6,9 @@ related:: Classes/VSTPlugin, Classes/VSTPluginDesc, Classes/VSTPluginGui, Classe
 DESCRIPTION::
 
 This class is used to control a specific link::Classes/VSTPlugin:: instance in a link::Classes/Synth::, so you can
-open plugins, automate parameters, change programs, send MIDI messages, etc. Have a look at the examples at the bottom!
+open plugins, automate parameters, change programs, send MIDI messages, etc.
+
+Have a look at the examples at the bottom!
 
 Subsection:: Introduction
 
@@ -27,10 +29,10 @@ VSTPlugin.search;
 // get a handle to the VSTPlugin:
 ~fx = VSTPluginController(~synth);
 // open a plugin by name/key (might require VSTPlugin.search!)
-~fx.open("myplugin", verbose: true);
+~fx.open("myplugin", editor: true, verbose: true);
 // alternatively, you can open a plugin by its file path
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
-~fx.open("/path/to/plugin", verbose: true);
+~fx.open("/path/to/plugin", editor: true, verbose: true);
 
 // you can do all of the above in a single line:
 ~fx = VSTPluginController(Synth(\insert, [\bus, 0])).open("myplugin");
@@ -40,6 +42,11 @@ VSTPlugin.search;
 
 // show the generic plugin GUI:
 ~fx.gui;
+
+// show the VST plugin GUI:
+// NOTE: you have to open the plugin with 'editor: true'!
+~fx.editor;
+
 // etc.
 ::
 
@@ -70,7 +77,17 @@ SynthDef(\insert2, { arg bus;
 ~fx.eq.open("myEq");
 ~fx.chorus.open("myChorus");
 )
+
 // etc.
+::
+
+With JITLib you have to use link::Classes/VSTPluginNodeProxyController:::
+
+code::
+(
+Ndef(\foo, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
+~fx = VSTPluginNodeProxyController(Ndef(\foo)).open("myFX");
+)
 ::
 
 subsection:: Parameter Automation
@@ -282,7 +299,7 @@ CLASSMETHODS::
 PRIVATE:: guiClass, msg2string, prFindPlugins
 
 METHOD:: new
-Create a new VSTPluginController.
+Create a new VSTPluginController for a given Synth.
 
 ARGUMENT:: synth
 the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to control.
@@ -302,7 +319,7 @@ DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
 METHOD:: collect
-Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginControllers, with IDs used as keys.
+Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginControllers, with their IDs used as keys.
 This is useful if you have a SynthDef containing several VSTPlugin instances.
 
 ARGUMENT:: synth

@@ -1,0 +1,86 @@
+TITLE:: VSTPluginNodeProxyController
+summary:: VSTPluginController for JITLib
+categories:: JITLib
+related:: Classes/VSTPlugin
+
+DESCRIPTION::
+This class is used to control a specific link::Classes/VSTPlugin:: instance in a link::Classes/NodeProxy::, so you can
+open plugins, automate parameters, change programs, send MIDI messages, etc.
+
+Have a look at the examples at the bottom!
+
+SUBSECTION:: NodeProxy roles
+
+To use VSTPlugin in a NodeProxy, you have to use one the following link::Reference/NodeProxy_roles:::
+
+definitionlist::
+## code::\vst:: || a UGen graph function containing one or more VSTPlugin instances.
+code::
+Ndef(\test, \vst -> { VSTPlugin.ar(nil, 2) });
+::
+## code::\vstDef:: || the name of a SynthDef containing one or more VSTPlugin instances
+code::
+SynthDef(\vsti, { |out| Out.ar(out, VSTPlugin.ar(nil, 2)) }).add;
+
+Ndef(\test, \vstDef -> \vsti);
+::
+## code::\vstFilter:: || like code::\filter:: (use the proxy's own bus as the input)
+code::
+Ndef(\vst).add({ WhiteNoise.ar(0.1) ! 2 });
+Ndef(\vst).add(\vstFilter -> { |in| VSTPlugin.ar(in, 2) });
+::
+::
+
+
+CLASSMETHODS::
+
+METHOD:: new
+Create a new VSTPluginNodeProxyController for a given NodeProxy.
+
+ARGUMENT:: proxy
+the link::Classes/NodeProxy::.
+
+ARGUMENT:: index
+the source index.
+
+ARGUMENT:: id
+a Symbol which uniquely identifies the link::Classes/VSTPlugin:: in the link::Classes/SynthDef::.
+
+note::If this is the only VSTPlugin instance in the SynthDef, the code::id:: argument can be omitted.::
+
+ARGUMENT:: wait
+the default wait time, see link::Classes/VSTPluginController#-wait::.
+
+DISCUSSION::
+Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
+
+
+METHOD:: collect
+Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginNodeProxyControllers, with their IDs used as keys.
+This is useful if you have a SynthDef containing several VSTPlugin instances.
+
+ARGUMENT:: proxy
+the NodeProxy, see link::#-new::
+
+ARGUMENT:: index
+the source index
+
+ARGUMENT:: ids
+an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Classes/SynthDef::, or code::nil:: (= collect all).
+
+ARGUMENT:: wait
+the default wait time, see link::Classes/VSTPluginController#-wait::.
+
+PRIVATE:: initProxyAndCondition, checkIfStarted
+
+INSTANCEMETHODS::
+
+METHOD:: sendMsg
+
+METHOD:: proxy
+
+EXAMPLES::
+
+code::
+// TODO
+::

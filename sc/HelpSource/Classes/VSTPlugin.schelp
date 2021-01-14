@@ -1,6 +1,6 @@
 TITLE:: VSTPlugin
 summary:: load VST plugins as UGens
-related:: Classes/VSTPluginController, Classes/VSTPluginDesc, Classes/VSTPluginGui, Guides/HOA_IEM, Reference/VSTPlugin-UGen-Documentation
+related:: Classes/VSTPluginController, Classes/VSTPluginNodeProxyController, Classes/VSTPluginDesc, Classes/VSTPluginGui, Guides/HOA_IEM, Reference/VSTPlugin-UGen-Documentation
 categories:: UGens>FX
 
 DESCRIPTION::
