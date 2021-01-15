@@ -11,9 +11,9 @@ Have a look at the examples at the bottom!
 
 note::Don't use any NodeProxy crossfading methods, like link::Classes/NodeProxy#-xset::, because this would close the actual VST plugin and invalidate the corresponding controller.
 
-(The reason is that JITLib implements crossfading by creating a new Synth on the Server.)::
+(The reason is that JITLib implements crossfading by creating a new Synth on the Server and destroying the old one.)::
 
-warning::link::Classes/NodeProxy#-<<>:: and link::Classes/NodeProxy#-<>>:: use code::xset:: internally, so you should also avoid it. Use code::set(\in, ...):: instead!::
+warning::link::Classes/NodeProxy#-<<>:: and link::Classes/NodeProxy#-<>>:: call code::xset:: internally. Use code::set(\in, ...):: instead!::
 
 SUBSECTION:: NodeProxy roles
 
@@ -136,6 +136,7 @@ Ndef(\test, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
 
 // automate parameters with the \vstSet role
 (
+// don't add Pattern at index 0, otherwise we would replace the VST plugin!
 Ndef(\vst).put(1, \vstSet -> Pbind(
     \vst, ~fx, // VSTPluginNodeProxyController
 	\params, [\Depth, \Freq],
@@ -161,7 +162,7 @@ Ndef(\test).play;
 (
 Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
 Ndef(\fx, \vst -> { VSTPlugin.ar(\in.ar(0 ! 2), 2) });
-// Route \white to \fx. NOTE: don't use '<>>' resp. '<<>'!
+// Route \white to \fx. (Don't use '<>>' or '<<>'!)
 Ndef(\fx).set(\in, Ndef(\white));
 Ndef(\fx).play;
 
@@ -191,7 +192,9 @@ SynthDef(\vsti, { |out| Out.ar(out, VSTPlugin.ar(nil, 2)) }).add;
 // Now let's rewrite c) by using the \vstDef role:
 (
 Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
-Ndef(\fx, \vstDef -> \vst_fx_stereo).set(\in, Ndef(\white));
+Ndef(\fx, \vstDef -> \vst_fx_stereo);
+// Route \white to \fx. (Don't use '<>>' or '<<>'!)
+Ndef(\fx).set(\in, Ndef(\white));
 Ndef(\fx).play;
 
 ~fx = VSTPluginNodeProxyController(Ndef(\fx)).open("GChorus", editor: true);
@@ -210,6 +213,7 @@ Ndef(\inst).play;
 
 // Now play some notes with the \vstMidi role
 (
+// don't add Pattern at index 0, otherwise we would replace the VST plugin!
 Ndef(\inst).put(1, \vstMidi -> Pbind(
     \vst, ~inst,
     \midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
