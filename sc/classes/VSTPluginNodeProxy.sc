@@ -1,18 +1,6 @@
 VSTSynthControl : SynthControl {
 	var <synth;
 
-	*initClass {
-		Class.initClassTree(AbstractPlayControl);
-
-		// \vstDef role (SynthDef)
-		AbstractPlayControl.proxyControlClasses.put(\vstDef, VSTSynthControl);
-		AbstractPlayControl.buildMethods.put(\vstDef,
-			#{ arg func, proxy, channelOffset = 0, index;
-				func.buildForProxy(proxy, channelOffset, index);
-			}
-		);
-	}
-
 	asDefName { ^source.value }
 
 	playToBundle { arg bundle, extraArgs, target, addAction = 1;
@@ -26,21 +14,6 @@ VSTSynthControl : SynthControl {
 VSTSynthDefControl : SynthDefControl {
 	var <synth;
 
-	*initClass {
-		Class.initClassTree(AbstractPlayControl);
-
-		// \vst role (Function)
-		AbstractPlayControl.proxyControlClasses.put(\vst, VSTSynthDefControl);
-		AbstractPlayControl.buildMethods.put(\vst,
-			#{ arg func, proxy, channelOffset = 0, index;
-				func.buildForProxy(proxy, channelOffset, index);
-			}
-		);
-		// \vstFilter role
-		AbstractPlayControl.proxyControlClasses.put(\vstFilter, VSTSynthDefControl);
-		AbstractPlayControl.buildMethods.put(\vstFilter, AbstractPlayControl.buildMethods[\filter]);
-	}
-
 	playToBundle { arg bundle, extraArgs, target, addAction = 1;
 		var nodeID = super.playToBundle(bundle, extraArgs, target, addAction);
 		synth = Synth.basicNew(this.asDefName, target.server, nodeID);
@@ -51,6 +24,53 @@ VSTSynthDefControl : SynthDefControl {
 
 VSTPluginNodeProxyController : VSTPluginController {
 	var <proxy, hasStarted = false;
+
+	*initClass {
+		// add NodeProxy roles
+		Class.initClassTree(AbstractPlayControl);
+
+		// \vst role (Function)
+		AbstractPlayControl.proxyControlClasses.put(\vst, VSTSynthDefControl);
+		AbstractPlayControl.buildMethods.put(\vst,
+			#{ arg func, proxy, channelOffset = 0, index;
+				func.buildForProxy(proxy, channelOffset, index);
+			}
+		);
+
+		// \vstFilter role
+		AbstractPlayControl.proxyControlClasses.put(\vstFilter, VSTSynthDefControl);
+		AbstractPlayControl.buildMethods.put(\vstFilter, AbstractPlayControl.buildMethods[\filter]);
+
+		// \vstDef role (SynthDef)
+		AbstractPlayControl.proxyControlClasses.put(\vstDef, VSTSynthControl);
+		AbstractPlayControl.buildMethods.put(\vstDef,
+			#{ arg def, proxy, channelOffset = 0, index;
+				def.buildForProxy(proxy, channelOffset, index);
+			}
+		);
+
+		// \vstSet role
+		AbstractPlayControl.proxyControlClasses.put(\vstSet, StreamControl);
+		AbstractPlayControl.buildMethods.put(\vstSet,
+			#{ arg pattern, proxy, channelOffset = 0, index;
+				Pchain(
+					(type: \vst_set),
+					pattern
+				).buildForProxy(proxy, channelOffset, index);
+			}
+		);
+
+		// \vstSet role
+		AbstractPlayControl.proxyControlClasses.put(\vstMidi, StreamControl);
+		AbstractPlayControl.buildMethods.put(\vstMidi,
+			#{ arg pattern, proxy, channelOffset = 0, index;
+				Pchain(
+					(type: \vst_midi),
+					pattern
+				).buildForProxy(proxy, channelOffset, index);
+			}
+		);
+	}
 
 	*new { arg proxy, index = 0, id, wait = -1;
 		var control = proxy.objects[index];
