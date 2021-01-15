@@ -9,6 +9,12 @@ open plugins, automate parameters, change programs, send MIDI messages, etc.
 
 Have a look at the examples at the bottom!
 
+note::Don't use any NodeProxy crossfading methods, like link::Classes/NodeProxy#-xset::, because this would close the actual VST plugin and invalidate the corresponding controller.
+
+(The reason is that JITLib implements crossfading by creating a new Synth on the Server.)::
+
+warning::link::Classes/NodeProxy#-<<>:: and link::Classes/NodeProxy#-<>>:: use code::xset:: internally, so you should also avoid it. Use code::set(\in, ...):: instead!::
+
 SUBSECTION:: NodeProxy roles
 
 To use VSTPlugin in a NodeProxy, you have to use one the following link::Reference/NodeProxy_roles:::
@@ -24,10 +30,10 @@ SynthDef(\vsti, { |out| Out.ar(out, VSTPlugin.ar(nil, 2)) }).add;
 
 Ndef(\test, \vstDef -> \vsti);
 ::
-## code::\vstFilter:: || like code::\filter:: (use the proxy's own bus as the input)
+## code::\vstFilter:: || like code::\filter:: (use the proxy`s own bus as the input)
 code::
-Ndef(\vst).add({ WhiteNoise.ar(0.1) ! 2 });
-Ndef(\vst).add(\vstFilter -> { |in| VSTPlugin.ar(in, 2) });
+Ndef(\vst).put(0, { WhiteNoise.ar(0.1) ! 2 });
+Ndef(\vst).put(1, \vstFilter -> { |in| VSTPlugin.ar(in, 2) });
 ::
 ::
 
@@ -71,6 +77,21 @@ an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Cl
 ARGUMENT:: wait
 the default wait time, see link::Classes/VSTPluginController#-wait::.
 
+DISCUSSION::
+code::
+(
+Ndef(\vst, \vst -> {
+	var sig = WhiteNoise.ar(0.1) ! 2;
+	sig = VSTPlugin.ar(sig, 2, id: \fx1);
+	sig = VSTPlugin.ar(sig, 2, id: \fx2);
+}).play;
+
+~fx = VSTPluginNodeProxyController.collect(Ndef(\vst));
+~fx.fx1.open("GChorus", editor: true);
+~fx.fx2.open("GDelay", editor: true);
+)
+::
+
 PRIVATE:: initProxyAndCondition, checkIfStarted
 
 INSTANCEMETHODS::
@@ -82,5 +103,80 @@ METHOD:: proxy
 EXAMPLES::
 
 code::
-// TODO
+VSTPlugin.search;
+
+// a) Filter white noise through a VST plugin
+(
+Ndef(\test, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
+
+~fx = VSTPluginNodeProxyController(Ndef(\test)).open("GChorus", editor: true);
+)
+
+// b) For more flexibility, let's split it into seperate sources; the first source is filtered by the second source
+(
+Ndef(\test).put(0, { WhiteNoise.ar(0.1) ! 2 });
+Ndef(\test).put(1, \vstFilter -> { |in| VSTPlugin.ar(in, 2) });
+Ndef(\test).play;
+
+// We want to control the source at index 1!
+~fx = VSTPluginNodeProxyController(Ndef(\test), 1).open("GChorus", editor: true);
+)
+
+// c) Let's go one step further and use seperate NodeProxies
+(
+Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
+Ndef(\fx, \vst -> { VSTPlugin.ar(\in.ar(0 ! 2), 2) });
+// Route \white to \fx. NOTE: don't use '<>>' resp. '<<>'!
+Ndef(\fx).set(\in, Ndef(\white));
+Ndef(\fx).play;
+
+~fx = VSTPluginNodeProxyController(Ndef(\fx)).open("GChorus", editor: true);
+)
+
+// Now it's possible to change the routing on the fly:
+(
+Ndef(\pink, { PinkNoise.ar(0.1) ! 2 });
+Ndef(\fx).set(\in, Ndef(\pink));
+)
+
+// d) If you look at the last example, you might notice that the VSTPlugin function will always be the same, so it makes sense to use a SynthDef instead! Most of the time the following SynthDefs should be sufficient:
+
+(
+// mono insert FX
+SynthDef(\vst_fx_mono, { |out| Out.ar(out, VSTPlugin.ar(\in.ar(0), 1)) }).add;
+
+// stereo insert FX
+SynthDef(\vst_fx_stereo, { |out| Out.ar(out, VSTPlugin.ar(\in.ar(0 ! 2), 2)) }).add;
+
+// VST instrument (stereo)
+SynthDef(\vsti, { |out| Out.ar(out, VSTPlugin.ar(nil, 2)) }).add;
+)
+
+// Now let's rewrite c) by using the \vstDef role:
+(
+Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
+Ndef(\fx, \vstDef -> \vst_fx_stereo).set(\in, Ndef(\white));
+Ndef(\fx).play;
+
+~fx = VSTPluginNodeProxyController(Ndef(\fx)).open("GChorus", editor: true);
+)
+
+// e) Creating a VST instrument is simple:
+(
+Ndef(\inst, \vstDef -> \vsti).play;
+~inst = VSTPluginNodeProxyController(Ndef(\inst)).open("Dexed", editor: true, action: _.program_(1));
+Ndef(\inst).play;
+)
+
+// play some notes
+(
+p = Pbind(
+    \type, \vst_midi,
+    \vst, ~inst, // the VSTPluginNodeProxyController instance
+    \midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
+    \dur, Prand(#[0.125, 0.25, 0.5], inf),
+    \legato, Pexprand(0.5, 1.0, inf),
+    \amp, Pexprand(0.5, 1.0, inf)
+).play(quant: Ndef(\inst).quant);
+)
 ::
