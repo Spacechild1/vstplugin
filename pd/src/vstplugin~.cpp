@@ -233,6 +233,33 @@ static std::string toHex(T u){
     return buf;
 }
 
+template<typename T>
+void defer(const T& fn, bool uithread){
+    // call NRT method on the correct thread
+    if (uithread){
+        bool result = true;
+        Error err;
+        bool ok = UIThread::callSync([&](){
+            try {
+                fn();
+            } catch (const Error& e){
+                err = e;
+                result = false;
+            }
+        });
+        if (ok){
+            if (!result){
+                throw err;
+            }
+            return;
+        } else {
+            LOG_ERROR("UIThread::callSync() failed");
+        }
+    }
+    // call on this thread
+    fn();
+}
+
 /*---------------------- search/probe ----------------------------*/
 
 static PluginManager gPluginManager;
@@ -1332,9 +1359,7 @@ static void vstplugin_close(t_vstplugin *x){
 
 struct t_open_data : t_command_data<t_open_data> {
     t_symbol *path;
-    const PluginInfo *info;
     IPlugin::ptr plugin;
-    Error error;
     bool editor;
     bool threaded;
     RunMode mode;
@@ -1349,40 +1374,29 @@ static void vstplugin_open_do(t_open_data *x){
         pd_error(x->owner, "%s: can't open '%s'", classname(x->owner), x->path->s_name);
         return;
     }
-    // open the new VST plugin
     try {
-        if (x->editor){
-            x->info = info;
-            LOG_DEBUG("create plugin in UI thread");
-            bool ok = UIThread::callSync([](void *y){
-                auto d = (t_open_data *)y;
-                try {
-                    d->plugin = d->info->create(true, d->threaded, d->mode);
-                } catch (const Error& e){
-                    d->error = e;
-                }
-            }, x);
-
-            if (ok){
-                if (x->plugin){
-                    LOG_DEBUG("done");
-                } else {
-                    throw x->error;
-                }
-            } else {
-                // couldn't dispatch to UI thread (probably not available).
-                // create plugin without window
-                x->plugin = info->create(false, x->threaded, x->mode);
-            }
-        } else {
-            x->plugin = info->create(false, x->threaded, x->mode);
+        // make sure to only request the plugin UI if the
+        // plugin supports it and we have an event loop
+        if (x->editor &&
+                !(info->editor() && UIThread::available())){
+            x->editor = false;
+            LOG_DEBUG("can't use plugin UI!");
         }
-        if (x->plugin){
+        if (x->editor){
+            LOG_DEBUG("create plugin in UI thread");
+        } else {
+            LOG_DEBUG("create plugin in NRT thread");
+        }
+        defer([&](){
+            // create plugin
+            x->plugin = info->create(x->editor, x->threaded, x->mode);
+            // setup plugin
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             ScopedLock lock(x->owner->x_mutex);
-            x->owner->setup_plugin<async>(*x->plugin);
-        }
-    } catch (const Error& e) {
+            x->owner->setup_plugin<async>(*x->plugin, false);
+        }, x->editor);
+        LOG_DEBUG("done");
+    } catch (const Error & e) {
         // shouldn't happen...
         PdScopedLock<async> lock;
         pd_error(x->owner, "%s: couldn't open '%s': %s",
@@ -1393,6 +1407,9 @@ static void vstplugin_open_do(t_open_data *x){
 static void vstplugin_open_done(t_open_data *x){
     if (x->plugin){
         x->owner->x_plugin = std::move(x->plugin);
+        x->owner->x_uithread = x->editor; // remember *where* we opened the plugin
+        x->owner->x_threaded = x->threaded;
+
         auto& info = x->owner->x_plugin->info();
         // store key (mainly needed for preset change notification)
         x->owner->x_key = gensym(makeKey(info).c_str());
@@ -1402,7 +1419,9 @@ static void vstplugin_open_done(t_open_data *x){
         x->owner->x_plugin->setListener(x->owner->x_editor);
         // update Pd editor
         x->owner->x_editor->setup();
+
         verbose(PD_DEBUG, "opened '%s'", info.name.c_str());
+
         // report initial latency
         t_atom a;
         int latency = x->owner->x_plugin->getLatencySamples();
@@ -1507,8 +1526,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         open_done(&data);
     }
     x->x_async = async; // remember *how* we openend the plugin
-    x->x_uithread = editor; // remember *where* we opened the plugin
-    x->x_threaded = threaded;
+    // NOTE: don't set 'x_uithread' already because 'editor' value might change
 }
 
 static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
@@ -1672,18 +1690,20 @@ struct t_reset_data : t_command_data<t_reset_data> {};
 
 static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
-    if (f){
-        // async
+    bool async = f;
+    if (async){
         auto data = new t_reset_data();
         data->owner = x;
         x->x_commands++;
         t_workqueue::get()->push(x, data,
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
-                // protect against vstplugin_dsp() and vstplugin_save()
-                ScopedLock lock(x->owner->x_mutex);
-                plugin->suspend();
-                plugin->resume();
+                defer([&](){
+                    // protect against vstplugin_dsp() and vstplugin_save()
+                    ScopedLock lock(x->owner->x_mutex);
+                    plugin->suspend();
+                    plugin->resume();
+                }, x->owner->x_uithread);
             },
             [](t_reset_data *x){
                 x->owner->x_commands--;
@@ -1693,9 +1713,11 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
         );
     } else {
         // protect against concurrent reads/writes
-        ScopedLock lock(x->x_mutex);
-        x->x_plugin->suspend();
-        x->x_plugin->resume();
+        defer([&](){
+            ScopedLock lock(x->x_mutex);
+            x->x_plugin->suspend();
+            x->x_plugin->resume();
+        }, x->x_uithread);
         outlet_anything(x->x_messout, gensym("reset"), 0, nullptr);
     }
 }
@@ -2051,6 +2073,7 @@ struct t_preset_data : t_command_data<t_preset_data> {
 };
 
 // set program/bank data (list of bytes)
+// TODO: make this asynchronous!
 template<t_preset type>
 static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
@@ -2061,13 +2084,13 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     try {
-        {
+        defer([&](){
             ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
                 x->x_plugin->readProgramData(buffer);
-        }
+        }, x->x_uithread);
         x->x_editor->update();
     } catch (const Error& e) {
         pd_error(x, "%s: couldn't set %s data: %s",
@@ -2076,18 +2099,19 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
 }
 
 // get program/bank data
+// TODO: make this asynchronous!
 template<t_preset type>
 static void vstplugin_preset_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     try {
-        {
+       defer([&](){
             ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
                 x->x_plugin->writeProgramData(buffer);
-        }
+        }, x->x_uithread);
     } catch (const Error& e){
         pd_error(x, "%s: couldn't get %s data: %s",
                  classname(x), presetName(type), e.what());
@@ -2143,14 +2167,14 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         buffer.resize(file.tellg());
         file.seekg(0, std::ios_base::beg);
         file.read(&buffer[0], buffer.size());
-        {
+        defer([&](){
             // protect against vstplugin_dsp() and vstplugin_save()
             ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
                 x->x_plugin->readProgramData(buffer);
-        }
+        }, x->x_uithread);
         data->success = true;
     } catch (const Error& e) {
         PdScopedLock<async> lock;
@@ -2176,8 +2200,9 @@ static void vstplugin_preset_read_done(t_preset_data *data){
 }
 
 template<t_preset type>
-static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
+static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float f){
     if (!x->check_plugin()) return;
+    bool async = f;
     if (async){
         auto data = new t_preset_data();
         data->owner = x;
@@ -2214,13 +2239,13 @@ static void vstplugin_preset_write_do(t_preset_data *data){
             buffer.reserve(1024);
         }
         // protect against vstplugin_dsp() and vstplugin_save()
-        {
+        defer([&](){
             ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
                 x->x_plugin->writeProgramData(buffer);
-        }
+        }, x->x_uithread);
         // write data to file
         vst::File file(data->path, File::WRITE);
         if (!file.is_open()){
@@ -2276,8 +2301,9 @@ static void vstplugin_preset_write_done(t_preset_data *data){
 }
 
 template<t_preset type>
-static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg async){
+static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg f){
     if (!x->check_plugin()) return;
+    bool async = f;
     // get the full path here because it's relatively cheap,
     // otherwise we would have to lock Pd in the NRT thread
     // (like we do in vstplugin_preset_read)
@@ -2702,8 +2728,7 @@ bool t_vstplugin::check_plugin(){
 }
 
 template<bool async>
-void t_vstplugin::setup_plugin(IPlugin& plugin){
-    plugin.suspend();
+void t_vstplugin::setup_plugin(IPlugin& plugin, bool _defer){
     // check if precision is actually supported
     auto precision = x_precision;
     if (!plugin.info().hasPrecision(precision)){
@@ -2723,10 +2748,15 @@ void t_vstplugin::setup_plugin(IPlugin& plugin){
                 classname(this), plugin.info().name.c_str());
         }
     }
-    plugin.setupProcessing(x_sr, x_blocksize, precision);
-    plugin.setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
-                           x_sigauxinlets.size(), x_sigauxoutlets.size());
-    plugin.resume();
+
+    defer([&](){
+        plugin.suspend();
+        plugin.setupProcessing(x_sr, x_blocksize, precision);
+        plugin.setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
+                              x_sigauxinlets.size(), x_sigauxoutlets.size());
+        plugin.resume();
+    }, _defer && x_uithread);
+
     if (x_bypass != Bypass::Off){
         plugin.setBypass(x_bypass);
     }
@@ -2845,6 +2875,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         vstplugin_open_done(&data);
         x_uithread = editor; // !
         x_threaded = threaded;
+        x_async = false;
         x_path = file; // HACK: set symbol for vstplugin_loadbang
     }
 
@@ -3061,7 +3092,9 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
         binbuf_addsemi(bb);
         // 3) program data
         std::string buffer;
-        x->x_plugin->writeProgramData(buffer);
+        defer([&](){
+            x->x_plugin->writeProgramData(buffer);
+        }, x->x_uithread);
         int n = buffer.size();
         if (n){
             binbuf_addv(bb, "ss", gensym("#A"), gensym("program_data_set"));
@@ -3089,7 +3122,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     ScopedLock lock(x->x_mutex);
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
-        x->setup_plugin<false>(*x->x_plugin);
+        x->setup_plugin<false>(*x->x_plugin, x->x_uithread);
         if (x->x_threaded && blocksize != x->x_blocksize){
             // queue(!) latency change notification
             x->x_editor->latencyChanged(x->x_plugin->getLatencySamples());

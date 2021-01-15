@@ -559,9 +559,18 @@ namespace UIThread {
 
     bool isCurrentThread();
 
+    bool available();
+
     using Callback = void (*)(void *);
 
     bool callSync(Callback cb, void *user);
+
+    template<typename T>
+    bool callSync(const T& fn){
+        return callSync([](void *x){
+            (*static_cast<const T *>(x))();
+        }, (void *)&fn);
+    }
 
     bool callAsync(Callback cb, void *user);
 

@@ -103,9 +103,12 @@ class t_vstplugin {
     // helper methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
+
     bool check_plugin();
+
     template<bool async>
-    void setup_plugin(IPlugin& plugin);
+    void setup_plugin(IPlugin& plugin, bool _defer);
+
     int get_sample_offset();
 };
 

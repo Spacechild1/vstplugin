@@ -498,7 +498,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         info->numAuxOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
         uint32_t flags = 0;
         LOG_DEBUG("has editor: " << hasEditor());
-        flags |= hasEditor();
+        flags |= hasEditor() * PluginInfo::HasEditor;
         flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;

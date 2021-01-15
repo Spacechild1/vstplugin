@@ -25,9 +25,11 @@ void quit(){
     gQuitEvent_.set();
 }
 
-bool isCurrentThread(){
+bool isCurrentThread() {
     return Win32::EventLoop::instance().checkThread();
 }
+
+bool available() { return true; }
 
 void poll(){}
 
@@ -80,7 +82,6 @@ DWORD EventLoop::run(void *user){
             LOG_ERROR("GetMessage: error");
             break;
         }
-        // LOG_DEBUG("got message " << msg.message);
         auto type = msg.message;
         if (type == WM_CALL){
             LOG_DEBUG("WM_CALL");
@@ -93,12 +94,13 @@ DWORD EventLoop::run(void *user){
         } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
                    && (msg.wParam == timer)) {
             // call poll functions
+            // LOG_VERBOSE("call poll functions");
             std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
             for (auto& it : obj->pollFunctions_){
                 it.second();
             }
-            // LOG_VERBOSE("call poll functions.");
         } else {
+            // LOG_DEBUG("dispatch message " << msg.message);
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
@@ -198,24 +200,6 @@ Window::Window(IPlugin& plugin)
     LOG_DEBUG("created Window");
     // set window title
     SetWindowTextW(hwnd_, widen(plugin.info().name).c_str());
-    // get window dimensions from plugin
-    int left = 100, top = 100, right = 400, bottom = 400;
-    if (!plugin_->getEditorRect(left, top, right, bottom)){
-        // HACK for plugins which don't report the window size without the editor being opened
-        LOG_DEBUG("couldn't get editor rect!");
-        plugin_->openEditor(hwnd_);
-        plugin_->getEditorRect(left, top, right, bottom);
-        plugin_->closeEditor();
-    }
-    LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
-    RECT rc = { left, top, right, bottom };
-    // adjust window dimensions for borders and menu
-    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
-    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
-    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
-    AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-    // set window dimensions
-    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
     // set user data
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
 }
@@ -325,6 +309,26 @@ void Window::open(){
 }
 
 void Window::doOpen(){
+
+    // get window dimensions from plugin
+    int left = 100, top = 100, right = 400, bottom = 400;
+    if (!plugin_->getEditorRect(left, top, right, bottom)){
+        // HACK for plugins which don't report the window size without the editor being opened
+        LOG_DEBUG("couldn't get editor rect!");
+        plugin_->openEditor(hwnd_);
+        plugin_->getEditorRect(left, top, right, bottom);
+        plugin_->closeEditor();
+    }
+    LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
+    RECT rc = { left, top, right, bottom };
+    // adjust window dimensions for borders and menu
+    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
+    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
+    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
+    AdjustWindowRectEx(&rc, style, fMenu, exStyle);
+    // set window dimensions
+    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+    // show window
     ShowWindow(hwnd_, SW_RESTORE);
     BringWindowToTop(hwnd_);
     plugin_->openEditor(getHandle());
