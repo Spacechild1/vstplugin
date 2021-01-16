@@ -107,7 +107,7 @@ class t_vstplugin {
     bool check_plugin();
 
     template<bool async>
-    void setup_plugin(IPlugin& plugin, bool _defer);
+    void setup_plugin(IPlugin& plugin, bool uithread);
 
     int get_sample_offset();
 };

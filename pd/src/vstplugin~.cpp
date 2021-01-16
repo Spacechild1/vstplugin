@@ -1307,19 +1307,10 @@ struct t_close_data : t_command_data<t_close_data> {
     bool uithread;
 };
 
-template<bool async>
 static void vstplugin_close_do(t_close_data *x){
-    // we can't check for x->plugin->getWindow() because
-    // the plugin might have been opened on the UI thread
-    // but doesn't have an editor!
-    if (x->uithread){
-        // synchronous!
-        UIThread::callSync([](void *y){
-            static_cast<t_close_data *>(y)->plugin = nullptr;
-        }, x);
-    }
-    // if not destructed already
-    x->plugin = nullptr;
+    defer([&](){
+        x->plugin = nullptr;
+    }, x->uithread);
 }
 
 static void vstplugin_close(t_vstplugin *x){
@@ -1329,7 +1320,7 @@ static void vstplugin_close(t_vstplugin *x){
                      classname(x));
             return;
         }
-        // stop receiving events from plugin
+        // stop receiving events from plugin (not perfectly thread-safe...)
         x->x_plugin->setListener(nullptr);
         // make sure to release the plugin on the same thread where it was opened!
         // this is necessary to avoid crashes or deadlocks with certain plugins.
@@ -1337,12 +1328,12 @@ static void vstplugin_close(t_vstplugin *x){
             auto data = new t_close_data();
             data->plugin = std::move(x->x_plugin);
             data->uithread = x->x_uithread;
-            t_workqueue::get()->push(x, data, vstplugin_close_do<true>, nullptr);
+            t_workqueue::get()->push(x, data, vstplugin_close_do, nullptr);
         } else {
             t_close_data data;
             data.plugin = std::move(x->x_plugin);
             data.uithread = x->x_uithread;
-            vstplugin_close_do<false>(&data);
+            vstplugin_close_do(&data);
         }
         x->x_plugin = nullptr;
         x->x_editor->vis(false);
@@ -1393,7 +1384,7 @@ static void vstplugin_open_do(t_open_data *x){
             // setup plugin
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             ScopedLock lock(x->owner->x_mutex);
-            x->owner->setup_plugin<async>(*x->plugin, false);
+            x->owner->setup_plugin<async>(*x->plugin, false); // don't need to defer
         }, x->editor);
         LOG_DEBUG("done");
     } catch (const Error & e) {
@@ -2734,7 +2725,7 @@ bool t_vstplugin::check_plugin(){
 }
 
 template<bool async>
-void t_vstplugin::setup_plugin(IPlugin& plugin, bool _defer){
+void t_vstplugin::setup_plugin(IPlugin& plugin, bool uithread){
     // check if precision is actually supported
     auto precision = x_precision;
     if (!plugin.info().hasPrecision(precision)){
@@ -2761,7 +2752,7 @@ void t_vstplugin::setup_plugin(IPlugin& plugin, bool _defer){
         plugin.setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
                               x_sigauxinlets.size(), x_sigauxoutlets.size());
         plugin.resume();
-    }, _defer && x_uithread);
+    }, uithread);
 
     if (x_bypass != Bypass::Off){
         plugin.setBypass(x_bypass);
