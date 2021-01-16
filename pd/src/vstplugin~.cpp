@@ -1340,6 +1340,7 @@ static void vstplugin_close(t_vstplugin *x){
         x->x_key = nullptr;
         x->x_path = nullptr;
         x->x_preset = nullptr;
+
         // notify
         outlet_anything(x->x_messout, gensym("close"), 0, nullptr);
     }
@@ -2892,11 +2893,14 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 
 // destructor
 t_vstplugin::~t_vstplugin(){
-    vstplugin_close(this);
-    vstplugin_search_stop(this);
+    // first make sure that there are no pending async commands!
     if (x_suspended){
         t_workqueue::get()->cancel(this);
     }
+    vstplugin_search_stop(this);
+
+    vstplugin_close(this);
+
     LOG_DEBUG("vstplugin free");
 
     pd_unbind(&x_obj.ob_pd, gensym(glob_recv_name));
@@ -2988,8 +2992,8 @@ static t_int *vstplugin_perform(t_int *w){
     auto precision = x->x_precision;
     x->x_lastdsptime = clock_getlogicaltime();
 
-    bool doit = plugin != nullptr;
-    if (doit){
+    bool process = plugin != nullptr;
+    if (process){
         // check processing precision (single or double)
         if (!plugin->info().hasPrecision(precision)){
             if (plugin->info().hasPrecision(ProcessPrecision::Single)){
@@ -2997,17 +3001,18 @@ static t_int *vstplugin_perform(t_int *w){
             } else if (plugin->info().hasPrecision(ProcessPrecision::Double)){
                 precision = ProcessPrecision::Double;
             } else {
-                doit = false; // maybe some VST2 MIDI plugins
+                process = false; // maybe some VST2 MIDI plugins
             }
         }
         // if async command is running, try to lock the mutex or bypass on failure
         if (x->x_suspended){
-            if (!(doit = x->x_mutex.try_lock())){
+            process = x->x_mutex.try_lock();
+            if (!process){
                 LOG_DEBUG("couldn't lock mutex");
             }
         }
     }
-    if (doit){
+    if (process){
         if (precision == ProcessPrecision::Double){
             vstplugin_doperform<double>(x, n);
         } else { // single precision
