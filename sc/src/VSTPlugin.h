@@ -132,7 +132,7 @@ public:
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
     bool check(bool loud = true) const;
-    bool suspended() const { return suspended_; }
+    bool isSuspended() const { return suspended_; }
     void suspend() { suspended_ = true; }
     void resume() { suspended_ = false; }
     Lock scopedLock();

@@ -63,8 +63,7 @@ T* CmdData::create(World *world, int size) {
     if (data) {
         new (data)T();
         return (T*)data;
-    }
-    else {
+    } else {
         LOG_ERROR("RTAlloc failed!");
         return nullptr;
     }
@@ -531,8 +530,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
             auto numPlugins = factory->numPlugins();
             if (numPlugins == 1) {
                 addPlugin(factory->getPlugin(0));
-            }
-            else {
+            } else {
                 for (int i = 0; i < numPlugins; ++i) {
                     // add and post plugins
                     addPlugin(factory->getPlugin(i), i, numPlugins);
@@ -723,8 +721,7 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
             auto tail = unitCmdQueue_;
             while (tail->next) tail = tail->next;
             tail->next = item;
-        }
-        else {
+        } else {
             unitCmdQueue_ = item;
         }
     }
@@ -748,8 +745,7 @@ float VSTPlugin::readControlBus(uint32 num) {
         RELEASE_BUS_CONTROL(num);
         return value;
 #undef unit
-    }
-    else {
+    } else {
         return 0.f;
     }
 }
@@ -829,8 +825,7 @@ void VSTPlugin::map(int32 index, int32 bus, bool audio) {
             }
             paramMappingList_ = mapping;
             paramMapping_[index] = mapping;
-        }
-        else {
+        } else {
             LOG_ERROR("RTAlloc failed!");
             return;
         }
@@ -845,8 +840,7 @@ void VSTPlugin::unmap(int32 index) {
         // remove from linked list
         if (mapping->prev) {
             mapping->prev->next = mapping->next;
-        }
-        else { // head
+        } else { // head
             paramMappingList_ = mapping->next;
         }
         if (mapping->next) {
@@ -866,7 +860,7 @@ void VSTPlugin::next(int inNumSamples) {
 #endif
     auto plugin = delegate_->plugin();
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
-    bool suspended = delegate_->suspended();
+    bool suspended = delegate_->isSuspended();
     if (process && suspended){
         // Whenever an asynchronous command is executing, the plugin is temporarily
         // suspended. This is mainly for blocking other commands until the async
@@ -921,8 +915,8 @@ void VSTPlugin::next(int inNumSamples) {
                     float last = paramState_[index];
                     float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
                     ACQUIRE_BUS_AUDIO_SHARED(num);
-                    // VST3: sample accurate
                     if (vst3) {
+                        // VST3: sample accurate
                         for (int i = 0; i < inNumSamples; ++i) {
                             float value = bus[i];
                             if (value != last) {
@@ -930,9 +924,8 @@ void VSTPlugin::next(int inNumSamples) {
                                 last = value;
                             }
                         }
-                    }
-                    // VST2: pick the first sample
-                    else {
+                    } else {
+                        // VST2: pick the first sample
                         float value = *bus;
                         if (value != last) {
                             plugin->setParameter(index, value);
@@ -953,8 +946,8 @@ void VSTPlugin::next(int inNumSamples) {
                 // (a negative index effectively deactivates the parameter control)
                 if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
                     auto calcRate = mInput[k + 1]->mCalcRate;
-                    // audio rate
                     if (calcRate == calc_FullRate) {
+                        // audio rate
                         float last = paramState_[index];
                         auto buf = in(k + 1);
                         // VST3: sample accurate
@@ -966,9 +959,8 @@ void VSTPlugin::next(int inNumSamples) {
                                     last = value;
                                 }
                             }
-                        }
-                        // VST2: pick the first sample
-                        else {
+                        } else {
+                            // VST2: pick the first sample
                             float value = *buf;
                             if (value != last) {
                                 plugin->setParameter(index, value);
@@ -976,9 +968,8 @@ void VSTPlugin::next(int inNumSamples) {
                             }
                         }
                         paramState_[index] = last;
-                    }
-                    // control rate
-                    else {
+                    } else {
+                        // control rate
                         float value = in0(k + 1);
                         if (value != paramState_[index]) {
                             plugin->setParameter(index, value);
@@ -1059,7 +1050,7 @@ void VSTPlugin::next(int inNumSamples) {
             }
         }
         if (suspended){
-            delegate_->unlock();
+            delegate_->unlock(); // !
         }
     } else {
         // bypass (copy input to output and zero remaining output channels)
@@ -1257,7 +1248,7 @@ void VSTPluginDelegate::close() {
         if (!cmdData) {
             return;
         }
-        // unset listener!
+        // unset listener (not perfectly thread-safe...)
         plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
@@ -1413,8 +1404,7 @@ void VSTPluginDelegate::showEditor(bool show) {
                 auto window = data->owner->plugin()->getWindow();
                 if (data->i) {
                     window->open();
-                }
-                else {
+                } else {
                     window->close();
                 }
                 return false; // done
@@ -1434,7 +1424,7 @@ void VSTPluginDelegate::reset(bool async) {
     #endif
         if (async) {
             // reset in the NRT thread
-            suspended_ = true; // suspend
+            suspend(); // suspend
             doCmd(CmdData::create<PluginCmdData>(world()),
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
@@ -1447,7 +1437,7 @@ void VSTPluginDelegate::reset(bool async) {
                 },
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
-                    data->owner->suspended_ = false; // resume
+                    data->owner->resume();
                     return false; // done
                 }
             );
@@ -1474,8 +1464,7 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
             sendParameter(index, newValue);
             owner_->unmap(index);
             paramSet_ = false;
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1497,8 +1486,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             sendParameter(index, newValue);
             owner_->unmap(index);
             paramSet_ = false;
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1512,8 +1500,7 @@ void VSTPluginDelegate::queryParams(int32 index, int32 count) {
             for (int i = 0; i < count; ++i) {
                 sendParameter(index + i, plugin_->getParameter(index + i));
             }
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1525,8 +1512,7 @@ void VSTPluginDelegate::getParam(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
             msg[1] = plugin_->getParameter(index); // value
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1571,8 +1557,7 @@ void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
             owner_->map(index, bus, audio);
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1582,8 +1567,7 @@ void VSTPluginDelegate::unmapParam(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
             owner_->unmap(index);
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1600,8 +1584,7 @@ void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numPrograms()) {
             plugin_->setProgram(index);
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
     }
@@ -1659,8 +1642,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
             buffer.resize(file.tellg());
             file.seekg(0, std::ios_base::beg);
             file.read(&buffer[0], buffer.size());
-        }
-        else {
+        } else {
             // from buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);
             writeBuffer(sndbuf, buffer);
@@ -1710,8 +1692,7 @@ bool cmdReadPresetDone(World *world, void *cmdData){
         owner->sendMsg("/vst_bank_read", data->result);
         // a bank change also sets the current program number!
         owner->sendMsg("/vst_program_index", owner->plugin()->getProgram());
-    }
-    else {
+    } else {
         owner->sendMsg("/vst_program_read", data->result);
     }
     // the program name has most likely changed
@@ -1731,7 +1712,7 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
         }
     #endif
         if (async){
-            suspended_ = true;
+            suspend();
         }
         doCmd(PresetCmdData::create(world(), dest, async),
             cmdReadPreset<bank>, cmdReadPresetDone<bank>, PresetCmdData::nrtFree);
@@ -1774,8 +1755,7 @@ bool cmdWritePreset(World *world, void *cmdData){
                 throw Error("couldn't create file " + std::string(data->path));
             }
             file.write(buffer.data(), buffer.size());
-        }
-        else {
+        } else {
             // to buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);
             data->freeData = sndbuf->data; // to be freed in stage 4
@@ -1815,7 +1795,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
         }
     #endif
         if (async){
-            suspended_ = true;
+            suspend();
         } else {
             try {
                 auto lock = scopedLock(); // avoid concurrent read/write
@@ -1834,8 +1814,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
     fail:
         if (bank) {
             sendMsg("/vst_bank_write", 0);
-        }
-        else {
+        } else {
             sendMsg("/vst_program_write", 0);
         }
     }
@@ -1931,8 +1910,7 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
                 memcpy(cmdData->data, data, size);
                 doCmd(cmdData, cmdVendorSpecific, cmdVendorSpecificDone);
             }
-        }
-        else {
+        } else {
             auto result = plugin_->vendorSpecific(index, value, (void *)data, opt);
             sendMsg("/vst_vendor_method", (float)result);
         }
@@ -2011,8 +1989,7 @@ void VSTPluginDelegate::sendPluginCrash(){
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
     if (owner_){
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
-    }
-    else {
+    } else {
         LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
     }
 }
@@ -2020,8 +1997,7 @@ void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
 void VSTPluginDelegate::sendMsg(const char *cmd, int n, const float *data) {
     if (owner_) {
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, n, data);
-    }
-    else {
+    } else {
         LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
     }
 }
@@ -2082,8 +2058,7 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
 
     if (path) {
         unit->delegate().open(path, editor, threaded, mode);
-    }
-    else {
+    } else {
         LOG_WARNING("vst_open: expecting string argument!");
     }
 }
@@ -2131,12 +2106,10 @@ void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
             if (vst_param_index(unit, args, index)) {
                 if (args->nextTag() == 's') {
                     unit->delegate().setParam(index, args->gets());
-                }
-                else {
+                } else {
                     unit->delegate().setParam(index, args->getf());
                 }
-            }
-            else {
+            } else {
                 args->getf(); // swallow arg
             }
         }
@@ -2153,13 +2126,11 @@ void vst_setn(VSTPlugin* unit, sc_msg_iter *args) {
                 for (int i = 0; i < count; ++i) {
                     if (args->nextTag() == 's') {
                         unit->delegate().setParam(index + i, args->gets());
-                    }
-                    else {
+                    } else {
                         unit->delegate().setParam(index + i, args->getf());
                     }
                 }
-            }
-            else {
+            } else {
                 int32 count = args->geti();
                 while (count--) {
                     args->getf(); // swallow args
@@ -2181,8 +2152,7 @@ void vst_get(VSTPlugin* unit, sc_msg_iter *args) {
     int32 index = -1;
     if (vst_param_index(unit, args, index)) {
         unit->delegate().getParam(index);
-    }
-    else {
+    } else {
         unit->delegate().sendMsg("/vst_set", -1);
     }
 }
@@ -2193,8 +2163,7 @@ void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
     if (vst_param_index(unit, args, index)) {
         int32 count = args->geti();
         unit->delegate().getParams(index, count);
-    }
-    else {
+    } else {
         unit->delegate().sendMsg("/vst_setn", -1);
     }
 }
@@ -2209,8 +2178,7 @@ void vst_domap(VSTPlugin* unit, sc_msg_iter* args, bool audio) {
                 for (int i = 0; i < numChannels; ++i) {
                     unit->delegate().mapParam(index + i, bus + i, audio);
                 }
-            }
-            else {
+            } else {
                 args->geti(); // swallow bus
                 args->geti(); // swallow numChannels
             }
@@ -2238,8 +2206,7 @@ void vst_unmap(VSTPlugin* unit, sc_msg_iter *args) {
                     unit->delegate().unmapParam(index);
                 }
             } while (args->remain() > 0);
-        }
-        else {
+        } else {
             unit->delegate().unmapAll();
         }
     }
@@ -2261,8 +2228,7 @@ void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
     const char *name = args->gets();
     if (name) {
         unit->delegate().setProgramName(name);
-    }
-    else {
+    } else {
         LOG_WARNING("vst_program_name: expecting string argument!");
     }
 }
@@ -2272,8 +2238,7 @@ void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
         const char* name = args->gets(); // file name
         bool async = args->geti();
         unit->delegate().readPreset<false>(name, async);
-    }
-    else {
+    } else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
