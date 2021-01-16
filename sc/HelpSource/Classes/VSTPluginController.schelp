@@ -273,7 +273,7 @@ table::
 ## code::\progNum:: || program number for code::\program::
 ## code::\array:: || UInt8Array for code::\sysex::
 ::
-The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy:: and link::Classes/MIDIOut::.
+The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy::.
 
 See link::#VST Instruments:: for examples.
 ::
@@ -894,18 +894,9 @@ it is not 100% reliable when using UDP.
 subsection:: MIDI
 
 METHOD:: midi
-send MIDI messages to the plugin via a proxy class.
+MIDI interface for VSTPluginController.
 
 RETURNS:: an instance of link::Classes/VSTPluginMIDIProxy::.
-
-DISCUSSION::
-link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably. This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
-
-note::
-MIDI pitches can be Floats! The fractional part is converted to cents and passed as the code::detune:: argument to link::#-sendMidi::. This is not part of the MIDI standard and not all VST instruments actually support it!
-::
-
-All methods have a corresponding code::*Msg:: version which returns raw OSC messages; they can be scheduled sample accurately when sent as bundles!
 
 
 METHOD:: sendMidi

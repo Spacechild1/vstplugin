@@ -1,0 +1,16 @@
+TITLE:: VSTPluginMIDIProxy
+summary:: MIDI interface for VSTPluginController
+categories:: Server->Abstractions
+related:: Classes/VSTPluginController, Classes/VSTPlugin
+
+DESCRIPTION::
+This class mimicks the interface of link::Classes/MIDIOut::, so you don`t have to send raw MIDI messages. Instances are obtained with link::Classes/VSTPluginController#-midi::.
+
+It is used internally by link::Classes/Pbind::s of event type code::\vst_midi:: (see link::Classes/VSTPluginController#Sequencing::).
+
+note::
+MIDI pitches can be Floats! The fractional part is converted to cents and passed as the code::detune:: argument to link::#-sendMidi::. This is not part of the MIDI standard and not all VST instruments actually support it!
+::
+
+All methods have a corresponding code::*Msg:: version which returns a raw OSC message, so they can be scheduled as bundles.
+
