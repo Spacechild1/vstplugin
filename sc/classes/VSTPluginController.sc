@@ -901,14 +901,14 @@ VSTPluginController {
 		}, '/vst_can_do').oneShot;
 		this.sendMsg('/can_do', what);
 	}
-	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=false;
+	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=true;
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3].asInteger);
 		}, '/vst_vendor_method').oneShot;
 		this.sendMsg('/vendor_method', index.asInteger, value.asInteger,
 			ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}
-	vendorMethodMsg { arg index=0, value=0, ptr, opt=0.0, action, async=false;
+	vendorMethodMsg { arg index=0, value=0, ptr, opt=0.0, action, async=true;
 		^this.makeMsg('/vendor_method', index.asInteger, value.asInteger,
 			ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}

@@ -1895,21 +1895,33 @@ void VSTPluginDelegate::canDo(const char *what) {
 
 bool cmdVendorSpecific(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
-    auto result = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
-    data->index = result; // save result
+    defer([&](){
+        data->index = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
+    }, data->owner->hasEditor());
     return true;
 }
 
 bool cmdVendorSpecificDone(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
     if (!data->alive()) return false;
+    data->owner->resume(); // resume
     data->owner->sendMsg("/vst_vendor_method", (float)(data->index));
     return false; // done
 }
 
 void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async) {
     if (check()) {
+        // some calls might be safe to do on the RT thread
+        // and the user might not want to suspend processing.
+    #if 0
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async) {
+            suspend();
             auto cmdData = CmdData::create<VendorCmdData>(world(), size);
             if (cmdData) {
                 cmdData->index = index;

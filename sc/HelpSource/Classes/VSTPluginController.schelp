@@ -715,7 +715,7 @@ an action which is called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
 
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The file IO itself is always performed asynchronously!::
 
 METHOD:: loadPresetMsg
@@ -778,7 +778,7 @@ an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
 
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The file/buffer IO itself is always performed asynchronously!::
 
 METHOD:: writeBank
@@ -834,7 +834,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
 METHOD:: getProgramData
@@ -866,7 +866,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
 METHOD:: receiveProgramData
@@ -965,8 +965,7 @@ table::
 
 METHOD:: vendorMethod
 METHOD:: vendorMethodMsg
-access special functionality of a plugin which is not available via the standard parameter interface.
-Generally, you have to know what you're doing. Check the documentation of the plugin to see what data it expects
+Access special functionality of a plugin which is not available via the standard parameter interface. Check the documentation of the plugin to see what kind of data it expects.
 
 ARGUMENT:: index
 an Integer.
@@ -981,7 +980,7 @@ ARGUMENT:: action
 will be called with an Integer result. The meaning depends on the VST plugin.
 
 ARGUMENT:: async
-whether the method call should be executed in the NRT thread (true) or in the RT thread (false), see link::#Realtime Safety::.
+see link::#Realtime Safety::.
 
 EXAMPLES::
 

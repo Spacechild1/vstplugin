@@ -1594,7 +1594,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     int index = 0;
     intptr_t value = 0;
 
-        // get integer argument as number or hex string
+    // get integer argument as number or hex string
     auto getInt = [&](int which, auto& var){
         if (argc > which){
             if (argv->a_type == A_SYMBOL){
@@ -1621,7 +1621,13 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
             data[i] = atom_getfloat(argv + j);
         }
     }
-    intptr_t result = x->x_plugin->vendorSpecific(index, value, data.get(), opt);
+
+    intptr_t result;
+    // call on UI thread if we have the plugin UI!
+    defer([&](){
+        result = x->x_plugin->vendorSpecific(index, value, data.get(), opt);
+    }, x->x_uithread);
+
     t_atom msg[2];
     SETFLOAT(&msg[0], result);
     SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
