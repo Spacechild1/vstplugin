@@ -1315,7 +1315,7 @@ static void vstplugin_close_do(t_close_data *x){
 
 static void vstplugin_close(t_vstplugin *x){
     if (x->x_plugin){
-        if (x->x_commands > 0){
+        if (x->x_suspended){
             pd_error(x, "%s: can't close plugin - temporarily suspended!",
                      classname(x));
             return;
@@ -1472,7 +1472,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
     // don't open while async command is running
-    if (x->x_commands > 0){
+    if (x->x_suspended){
         pd_error(x, "%s: can't open plugin - temporarily suspended!",
                  classname(x));
         return;
@@ -1691,7 +1691,6 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     if (async){
         auto data = new t_reset_data();
         data->owner = x;
-        x->x_commands++;
         t_workqueue::get()->push(x, data,
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
@@ -1703,11 +1702,12 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
                 }, x->owner->x_uithread);
             },
             [](t_reset_data *x){
-                x->owner->x_commands--;
+                x->owner->x_suspended = false;
                 outlet_anything(x->owner->x_messout,
                                 gensym("reset"), 0, nullptr);
             }
         );
+        x->x_suspended = true;
     } else {
         // protect against concurrent reads/writes
         defer([&](){
@@ -2185,7 +2185,7 @@ template<t_preset type, bool async>
 static void vstplugin_preset_read_done(t_preset_data *data){
     if (async){
         // command finished
-        data->owner->x_commands--;
+        data->owner->x_suspended = false;
     }
     // *now* update
     data->owner->x_editor->update();
@@ -2204,9 +2204,9 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float f){
         auto data = new t_preset_data();
         data->owner = x;
         data->path = s->s_name;
-        x->x_commands++;
         t_workqueue::get()->push(x, data, vstplugin_preset_read_do<type, true>,
                                  vstplugin_preset_read_done<type, true>);
+        x->x_suspended = true;
     } else {
         t_preset_data data;
         data.owner = x;
@@ -2265,7 +2265,7 @@ template<t_preset type, bool async>
 static void vstplugin_preset_write_done(t_preset_data *data){
     if (async){
         // command finished
-        data->owner->x_commands--;
+        data->owner->x_suspended = false;
     }
     if (type == PRESET){
         if (data->success){
@@ -2310,9 +2310,9 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg f){
         auto data = new t_preset_data();
         data->owner = x;
         data->path = path;
-        x->x_commands++;
         t_workqueue::get()->push(x, data, vstplugin_preset_write_do<type, true>,
                                  vstplugin_preset_write_done<type, true>);
+        x->x_suspended = true;
     } else {
         t_preset_data data;
         data.owner = x;
@@ -2559,10 +2559,10 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data->path = std::move(preset.path);
         data->type = preset.type;
         data->add = add;
-        x->x_commands++;
         t_workqueue::get()->push(x, data,
                                  vstplugin_preset_write_do<PRESET, true>,
                                  vstplugin_preset_write_done<PRESET, true>);
+        x->x_suspended = true;
     } else {
         t_save_data data;
         data.owner = x;
@@ -2711,10 +2711,8 @@ void t_vstplugin::set_param(int index, const char *s, bool automated){
 
 bool t_vstplugin::check_plugin(){
     if (x_plugin){
-        if (x_commands == 0){
+        if (!x_suspended){
             return true;
-        } else if (x_commands < 0){
-            bug("t_vstplugin::check_plugin()");
         } else {
             pd_error(this, "%s: temporarily suspended!", classname(this));
         }
@@ -2896,7 +2894,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 t_vstplugin::~t_vstplugin(){
     vstplugin_close(this);
     vstplugin_search_stop(this);
-    if (x_commands > 0){
+    if (x_suspended){
         t_workqueue::get()->cancel(this);
     }
     LOG_DEBUG("vstplugin free");
@@ -3003,7 +3001,7 @@ static t_int *vstplugin_perform(t_int *w){
             }
         }
         // if async command is running, try to lock the mutex or bypass on failure
-        if (x->x_commands > 0){
+        if (x->x_suspended){
             if (!(doit = x->x_mutex.try_lock())){
                 LOG_DEBUG("couldn't lock mutex");
             }
@@ -3015,7 +3013,7 @@ static t_int *vstplugin_perform(t_int *w){
         } else { // single precision
             vstplugin_doperform<float>(x, n);
         }
-        if (x->x_commands > 0){
+        if (x->x_suspended){
             x->x_mutex.unlock();
         }
     } else {
