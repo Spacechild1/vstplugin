@@ -508,7 +508,6 @@ see link::#Realtime Safety::.
 
 DISCUSSION::
 Depending on the plugin, emphasis::reset:: can involve expensive operations, like clearing a large delay line, and might not be realtime-safe, so be careful with setting code::async:: to code::false::.
-::
 
 METHOD:: synth
 returns:: the link::Classes/Synth:: containing the currently controlled link::Classes/VSTPlugin:: instance.
