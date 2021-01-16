@@ -32,8 +32,8 @@ Ndef(\test, \vstDef -> \vsti);
 ::
 ## code::\vstFilter:: || like code::\filter:: (use the proxy`s own bus as the input)
 code::
-Ndef(\vst).put(0, { WhiteNoise.ar(0.1) ! 2 });
-Ndef(\vst).put(1, \vstFilter -> { |in| VSTPlugin.ar(in, 2) });
+Ndef(\vst)[0] = { WhiteNoise.ar(0.1) ! 2 };
+Ndef(\vst)[1] = \vstFilter -> { |in| VSTPlugin.ar(in, 2) };
 ::
 ## code::\vstSet:: || Set parameters with a Pbind of type code::\vst_set::, see link::Classes/VSTPluginController#Sequencing::.
 code::
@@ -137,20 +137,20 @@ Ndef(\test, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
 // automate parameters with the \vstSet role
 (
 // don't add Pattern at index 0, otherwise we would replace the VST plugin!
-Ndef(\vst).put(1, \vstSet -> Pbind(
+Ndef(\vst)[1] = \vstSet -> Pbind(
     \vst, ~fx, // VSTPluginNodeProxyController
 	\params, [\Depth, \Freq],
 	\Depth, Pwhite(0.1, 0.9),
     \Freq, Pseq([0.1, 0.2, 0.5, 0.9], inf),
 	\dur, Prand([0.25, 0.5, 1], inf)
-));
+);
 )
 
 // ***
 // b) For more flexibility, let's split it into seperate sources; the first source is filtered by the second source
 (
-Ndef(\test).put(0, { WhiteNoise.ar(0.1) ! 2 });
-Ndef(\test).put(1, \vstFilter -> { |in| VSTPlugin.ar(in, 2) });
+Ndef(\test)[0] = { WhiteNoise.ar(0.1) ! 2 };
+Ndef(\test)[1] = \vstFilter -> { |in| VSTPlugin.ar(in, 2) };
 Ndef(\test).play;
 
 // We want to control the source at index 1!
@@ -214,13 +214,13 @@ Ndef(\inst).play;
 // Now play some notes with the \vstMidi role
 (
 // don't add Pattern at index 0, otherwise we would replace the VST plugin!
-Ndef(\inst).put(1, \vstMidi -> Pbind(
+Ndef(\inst)[1] = \vstMidi -> Pbind(
     \vst, ~inst,
     \midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
     \dur, Prand(#[0.125, 0.25, 0.5], inf),
     \legato, Pexprand(0.5, 1.0, inf),
     \amp, Pexprand(0.5, 1.0, inf)
-));
+);
 )
 
 Ndef(\inst).stop;

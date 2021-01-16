@@ -285,14 +285,14 @@ You can play Pbinds of type code::\vst_midi:: and code::\vst_set:: in parallel w
 subsection:: Realtime Safety
 
 VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
-Some methods, like link::#-reset:: or link::#-readProgram::, offer two options via the code::async:: parameter:
+Some methods, like link::#-loadPreset:: and link::#-savePreset::, offer two options via the code::async:: parameter:
 
-code::async: false:: means that the plugin method is simply called on the RT thread.
-Depending on the plugin, this might be just fine - or block the Server. You have to test yourself.
+numberedlist::
+## code::async: true:: means that the plugin method is called on the NRT resp. UI thread and will never block the Server. However, plugin processing is temporarily suspended and you can't call other methods until the command has finished.
+## code::async: false:: means that the plugin method is simply called on the RT thread. The advantage is that the command is performed synchronously and plugin processing doesn't have to be suspended. Depending on the plugin, this might be just fine - or block the Server. You have to test yourself!
+::
 
-code::async: true:: means that the plugin method is called on the NRT thread.
-The UGen is temporarily "suspended", so it won't accept other messages until the command has finished.
-Also, the plugin itself might be bypassed for a short time, but it will never block the Server!
+note:: If the plugin is opened with the VST GUI editor, the code::async:: option is automatically set to code::true:: because of thread safety concerns.::
 
 CLASSMETHODS::
 
@@ -507,12 +507,7 @@ ARGUMENT:: async
 see link::#Realtime Safety::.
 
 DISCUSSION::
-Generally, emphasis::reset:: might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line.
-
-If this is a problem you can try to reset it asynchronously (in the non-realtime thread).
-
-warning::
-Some plugins crash when being reset in the non-realtime thread, so use with care!
+Depending on the plugin, emphasis::reset:: can involve expensive operations, like clearing a large delay line, and might not be realtime-safe, so be careful with setting code::async:: to code::false::.
 ::
 
 METHOD:: synth
