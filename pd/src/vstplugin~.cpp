@@ -1309,6 +1309,14 @@ struct t_close_data : t_command_data<t_close_data> {
 
 static void vstplugin_close_do(t_close_data *x){
     defer([&](){
+        // stop receiving events
+        //
+        // NOTE: the plugin might send an event between vstplugin_close()
+        // and here, e.g. when automating parameters in the plugin UI.
+        // Since the events can only come from the UI thread, we defer the
+        // call to 'setListener' to avoid a race condition.
+        x->plugin->setListener(nullptr);
+        // release plugins
         x->plugin = nullptr;
     }, x->uithread);
 }
@@ -1320,8 +1328,6 @@ static void vstplugin_close(t_vstplugin *x){
                      classname(x));
             return;
         }
-        // stop receiving events from plugin (not perfectly thread-safe...)
-        x->x_plugin->setListener(nullptr);
         // make sure to release the plugin on the same thread where it was opened!
         // this is necessary to avoid crashes or deadlocks with certain plugins.
         if (x->x_async){
@@ -2899,7 +2905,17 @@ t_vstplugin::~t_vstplugin(){
     }
     vstplugin_search_stop(this);
 
+    // Make sure that we don't get deleted while the plugin
+    // still tries to send an event, see vstplugin_close_do().
+    // This is only necessary if we have a plugin on the
+    // UI thread in the first place.
+    bool sync = x_plugin && x_uithread;
+
     vstplugin_close(this);
+
+    if (sync){
+        t_workqueue::get()->cancel(this);
+    }
 
     LOG_DEBUG("vstplugin free");
 
