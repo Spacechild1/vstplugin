@@ -201,9 +201,13 @@ public:
     template<bool retain = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
+
+    // misc
     bool hasEditor() const {
         return editor_;
     }
+    void update();
+    void handleEvents();
 private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
@@ -216,6 +220,13 @@ private:
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
     Mutex mutex_;
+    // events
+    struct ParamChange {
+        int index; // parameter index or EventType (negative)
+        float value;
+    };
+    LockfreeFifo<ParamChange, 16> paramQueue_;
+    SpinLock paramQueueWriteLock_;
 };
 
 class VSTPlugin : public SCUnit {
@@ -304,14 +315,6 @@ private:
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
     Bypass bypass_ = Bypass::Off;
-
-    // threading
-    struct ParamChange {
-        int index; // parameter index or EventType (negative)
-        float value;
-    };
-    LockfreeFifo<ParamChange, 16> paramQueue_;
-    Mutex paramQueueMutex_; // for writers
 };
 
 

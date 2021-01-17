@@ -754,7 +754,8 @@ float VSTPlugin::readControlBus(uint32 num) {
 
 // update data (after loading a new plugin)
 void VSTPlugin::update() {
-    paramQueue_.clear();
+    delegate().update();
+
     clearMapping();
     int n = delegate().plugin()->info().numParameters();
     // parameter states
@@ -1041,16 +1042,8 @@ void VSTPlugin::next(int inNumSamples) {
         }
 
         // send parameter automation notification posted from the GUI thread [or NRT thread]
-        ParamChange p;
-        while (paramQueue_.pop(p)){
-            if (p.index >= 0){
-                delegate_->sendParameterAutomated(p.index, p.value);
-            } else if (p.index == VSTPluginDelegate::LatencyChange){
-                delegate_->sendLatencyChange(p.value);
-            } else if (p.index == VSTPluginDelegate::PluginCrash){
-                delegate_->sendPluginCrash();
-            }
-        }
+        delegate().handleEvents();
+
         if (suspended){
             delegate_->unlock(); // !
         }
@@ -1162,9 +1155,9 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
             sendParameterAutomated(index, value);
         }
     } else {
-        // from GUI thread [or NRT thread] - push to queue
-        ScopedLock lock(owner_->paramQueueMutex_);
-        if (!(owner_->paramQueue_.emplace(index, value))){
+        // from UI/NRT thread - push to queue
+        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+        if (!(paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
         }
     }
@@ -1175,24 +1168,19 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
     if (std::this_thread::get_id() == rtThreadID_) {
         sendLatencyChange(nsamples);
     } else {
-        // from GUI thread [or NRT thread] - push to queue
-        ScopedLock lock(owner_->paramQueueMutex_);
-        if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
+        // from UI/NRT thread - push to queue
+        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+        if (!(paramQueue_.emplace(LatencyChange, (float)nsamples))){
             LOG_DEBUG("param queue overflow");
         }
     }
 }
 
 void VSTPluginDelegate::pluginCrashed(){
-    // RT thread
-    if (std::this_thread::get_id() == rtThreadID_) {
-        sendPluginCrash();
-    } else {
-        // from GUI thread [or NRT thread] - push to queue
-        ScopedLock lock(owner_->paramQueueMutex_);
-        if (!(owner_->paramQueue_.emplace(PluginCrash, 0.f))){
-            LOG_DEBUG("param queue overflow");
-        }
+    // From the watch dog thread.
+    std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+    if (!(paramQueue_.emplace(PluginCrash, 0.f))){
+        LOG_DEBUG("param queue overflow");
     }
 }
 
@@ -1238,6 +1226,23 @@ bool VSTPluginDelegate::check(bool loud) const {
         return false;
     }
     return true;
+}
+
+void VSTPluginDelegate::update(){
+    paramQueue_.clear();
+}
+
+void VSTPluginDelegate::handleEvents(){
+    ParamChange p;
+    while (paramQueue_.pop(p)){
+        if (p.index >= 0){
+            sendParameterAutomated(p.index, p.value);
+        } else if (p.index == VSTPluginDelegate::LatencyChange){
+            sendLatencyChange(p.value);
+        } else if (p.index == VSTPluginDelegate::PluginCrash){
+            sendPluginCrash();
+        }
+    }
 }
 
 Lock VSTPluginDelegate::scopedLock(){

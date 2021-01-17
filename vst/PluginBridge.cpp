@@ -188,7 +188,7 @@ PluginBridge::~PluginBridge(){
 
 void PluginBridge::checkStatus(bool wait){
     // already dead, no need to check
-    if (!alive_){
+    if (!alive_.load()){
         return;
     }
 #ifdef _WIN32
