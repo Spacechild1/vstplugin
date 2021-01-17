@@ -74,6 +74,8 @@ bool CmdData::alive() const {
     auto b = owner->alive();
     if (!b) {
         LOG_WARNING("WARNING: VSTPlugin freed during background task");
+        // see setOwner()
+        owner->doClose();
     }
     return b;
 }
@@ -1118,15 +1120,11 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
-    // We only have to close the plugin here if there was
-    // an async command running while the Unit got freed.
-    // Otherwise, the plugin should have already been
-    // closed by ~VSTPlugin calling setOwner().
-    //
-    // NOTE that closing the plugin in the destructor
-    // is not 100% race free, see setOwner().
-    // We only do this for exceptional cases, LATER fix this.
-    doClose();
+    // Closing the plugin in the destructor is unsafe.
+    // In practice, the plugin should have already been
+    // closed by setOwner(nullptr) or CmdData::alive().
+    // NOTE that we must *not* retain ourself!
+    doClose<false>();
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
 
@@ -1143,10 +1141,14 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
         // Schedule for closing, but keep delegate alive.
         // This makes sure that we don't get deleted while
         // the plugin sends an event, see doClose().
-        // Don't do this while we're suspended to avoid race
-        // conditions with the NRT stage of async commands!
+        // NOTE that can't do this while we have a pending
+        // command because it would create a race condition:
+        // doClose() immediately moves the plugin, but the
+        // command might try to access it in the NRT stage.
+        // Instead, the command will call alive(), which
+        // in turn will schedule a close command.
         if (!isSuspended()){
-            doClose<true>();
+            doClose();
         }
     }
     owner_ = owner;
@@ -1266,19 +1268,21 @@ void VSTPluginDelegate::doClose(){
         }
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
-        // see setOwner()
+        // NOTE: the plugin might send an event between here
+        // and the NRT stage, e.g. when automating parameters
+        // in the plugin UI. Since the events come from the
+        // UI thread, we must not unset the listener in the
+        // audio thread, otherwise we have a race condition.
+        // Instead, we keep the delegate alive with 'retain=true'
+        // until the plugin has been closed.
+        // See setOwner(), alive() and ~VSTPluginDelegate().
+    #if 0
+        data->plugin->setListener(nullptr);
+    #endif
         doCmd<retain>(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
+            // release plugin on the correct thread
             defer([&](){
-                // stop receiving events
-                //
-                // NOTE: the plugin might send an event between
-                // doCmd() and here, e.g. when automating parameters
-                // in the plugin UI. Since the events can only come
-                // from the UI thread, we defer the call to 'setListener'
-                // to avoid a race condition.
-                data->plugin->setListener(nullptr);
-                // release plugin
                 data->plugin = nullptr;
             }, data->editor);
             return false; // done
@@ -1396,10 +1400,12 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     editor_ = cmd.editor;
     threaded_ = cmd.threaded;
     isLoading_ = false;
-    // move the plugin even if alive() returns false (so it will be properly released in close())
+    // move the plugin even if alive() returns false
     plugin_ = std::move(cmd.plugin);
     if (!alive()) {
         LOG_WARNING("WARNING: VSTPlugin freed during 'open'");
+        // properly release the plugin
+        doClose();
         return; // !
     }
     if (plugin_){
@@ -1466,6 +1472,7 @@ void VSTPluginDelegate::reset(bool async) {
                 },
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
+                    if (!data->alive()) return false;
                     data->owner->resume();
                     return false; // done
                 }

@@ -138,12 +138,17 @@ public:
     Lock scopedLock();
     bool tryLock();
     void unlock();
+
     void open(const char* path, bool editor,
               bool threaded, RunMode mode);
     void doneOpen(OpenCmdData& msg);
     void close();
+    template<bool retain=true>
+    void doClose();
+
     void showEditor(bool show);
     void reset(bool async);
+
     // param
     void setParam(int32 index, float value);
     void setParam(int32 index, const char* display);
@@ -153,6 +158,7 @@ public:
     void mapParam(int32 index, int32 bus, bool audio = false);
     void unmapParam(int32 index);
     void unmapAll();
+
     // program/bank
     void setProgram(int32 index);
     void setProgramName(const char* name);
@@ -161,22 +167,27 @@ public:
     void readPreset(T dest, bool async);
     template<bool bank, typename T>
     void writePreset(T dest, bool async);
+
     // midi
     void sendMidiMsg(int32 status, int32 data1, int32 data2, float detune = 0.f);
     void sendSysexMsg(const char* data, int32 n);
+
     // transport
     void setTempo(float bpm);
     void setTimeSig(int32 num, int32 denom);
     void setTransportPlaying(bool play);
     void setTransportPos(float pos);
     void getTransportPos();
+
     // advanced
     void canDo(const char* what);
     void vendorSpecific(int32 index, int32 value, size_t size,
         const char* data, float opt, bool async);
+
     // node reply
     void sendMsg(const char* cmd, float f);
     void sendMsg(const char* cmd, int n, const float* data);
+
     // helper functions
     bool sendProgramName(int32 num); // unchecked
     void sendCurrentProgramName();
@@ -185,6 +196,7 @@ public:
     int32 latencySamples() const;
     void sendLatencyChange(int nsamples);
     void sendPluginCrash();
+
     // perform sequenced command
     template<bool retain = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
@@ -204,9 +216,6 @@ private:
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
     Mutex mutex_;
-
-    template<bool retain=false>
-    void doClose();
 };
 
 class VSTPlugin : public SCUnit {
