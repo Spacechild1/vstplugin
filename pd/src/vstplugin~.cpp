@@ -1039,8 +1039,7 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
 }
 
 void t_vsteditor::flush_queues(){
-    bool expected = true;
-    if (e_needclock.compare_exchange_strong(expected, false)){
+    if (e_needclock.exchange(false)){
         clock_delay(e_clock, 0);
     }
 }
