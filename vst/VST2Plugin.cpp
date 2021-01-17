@@ -1346,27 +1346,19 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
 }
 
 void VST2Plugin::preProcess(int nsamples){
-        // check latency
-    if (plugin_->initialDelay != latency_){
-        auto listener = listener_.lock();
-        if (listener){
-            listener->latencyChanged(plugin_->initialDelay);
-        }
-        latency_ = plugin_->initialDelay;
-    }
-        // send MIDI events:
+    // send MIDI events:
     int numEvents = vstEvents_->numEvents;
-        // resize buffer if needed
+    // resize buffer if needed
     while (numEvents > vstEventBufferSize_){
         LOG_DEBUG("vstEvents: grow (numEvents " << numEvents << ", old size " << vstEventBufferSize_<< ")");
-            // always grow (doubling the memory), never shrink
+        // always grow (doubling the memory), never shrink
         int newSize = vstEventBufferSize_ * 2;
         vstEvents_ = (VstEvents *)realloc(vstEvents_, sizeof(VstEvents) + newSize * sizeof(VstEvent *));
         vstEventBufferSize_ = newSize;
         memset(vstEvents_, 0, sizeof(VstEvents)); // zeroing class fields is enough
         vstEvents_->numEvents = numEvents;
     }
-        // set VstEvent pointers (do it right here to ensure they are all valid)
+    // set VstEvent pointers (do it right here to ensure they are all valid)
     int n = 0;
     for (auto& midi : midiQueue_){
         vstEvents_->events[n++] = (VstEvent *)&midi;
@@ -1498,6 +1490,14 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterIOChanged:
         DEBUG_HOSTCODE("audioMasterIOChanged");
+        // check latency
+        if (plugin_->initialDelay != latency_){
+            auto listener = listener_.lock();
+            if (listener){
+                listener->latencyChanged(plugin_->initialDelay);
+            }
+            latency_ = plugin_->initialDelay;
+        }
         return 1;
     case audioMasterSizeWindow:
         DEBUG_HOSTCODE("audioMasterSizeWindow");
