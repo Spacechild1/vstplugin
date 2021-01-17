@@ -205,6 +205,7 @@ private:
     bool suspended_ = false;
     Mutex mutex_;
 
+    template<bool retain=false>
     void doClose();
 };
 

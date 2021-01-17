@@ -1118,6 +1118,14 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
+    // We only have to close the plugin here if there was
+    // an async command running while the Unit got freed.
+    // Otherwise, the plugin should have already been
+    // closed by ~VSTPlugin calling setOwner().
+    //
+    // NOTE that closing the plugin in the destructor
+    // is not 100% race free, see setOwner().
+    // We only do this for exceptional cases, LATER fix this.
     doClose();
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
@@ -1131,6 +1139,15 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
     if (owner) {
         // cache some members
         world_ = owner->mWorld;
+    } else {
+        // Schedule for closing, but keep delegate alive.
+        // This makes sure that we don't get deleted while
+        // the plugin sends an event, see doClose().
+        // Don't do this while we're suspended to avoid race
+        // conditions with the NRT stage of async commands!
+        if (!isSuspended()){
+            doClose<true>();
+        }
     }
     owner_ = owner;
 }
@@ -1240,20 +1257,27 @@ void VSTPluginDelegate::close() {
     doClose();
 }
 
+template<bool retain>
 void VSTPluginDelegate::doClose(){
     if (plugin_){
         auto cmdData = CmdData::create<CloseCmdData>(world());
         if (!cmdData) {
             return;
         }
-        // unset listener (not perfectly thread-safe...)
-        plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
-        // don't retain!
-        doCmd<false>(cmdData, [](World *world, void* inData) {
+        // see setOwner()
+        doCmd<retain>(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
             defer([&](){
+                // stop receiving events
+                //
+                // NOTE: the plugin might send an event between
+                // doCmd() and here, e.g. when automating parameters
+                // in the plugin UI. Since the events can only come
+                // from the UI thread, we defer the call to 'setListener'
+                // to avoid a race condition.
+                data->plugin->setListener(nullptr);
                 // release plugin
                 data->plugin = nullptr;
             }, data->editor);
