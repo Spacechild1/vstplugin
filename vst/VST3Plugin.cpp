@@ -597,6 +597,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 }
 
 VST3Plugin::~VST3Plugin(){
+    listener_.reset(); // for some buggy plugins
     window_ = nullptr;
     processor_ = nullptr;
     // destroy controller
