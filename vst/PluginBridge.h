@@ -69,7 +69,7 @@ struct _Channel {
 
 #define AddCommand(cmd, field) addCommand(&(cmd), (cmd).headerSize + sizeof((cmd).field))
 
-using RTChannel = _Channel<SpinLock>;
+using RTChannel = _Channel<PaddedSpinLock>;
 using NRTChannel = _Channel<Mutex>;
 
 /*//////////////////////////// PluginBridge ///////////////////////////*/
@@ -121,7 +121,7 @@ class PluginBridge final
 #else
     pid_t pid_;
 #endif
-    std::unique_ptr<SpinLock[]> locks_;
+    std::unique_ptr<PaddedSpinLock[]> locks_;
     std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;
     Mutex clientMutex_;
     Mutex nrtMutex_;

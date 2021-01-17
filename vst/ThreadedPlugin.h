@@ -33,8 +33,8 @@ class DSPThreadPool {
     std::vector<std::thread> threads_;
     Event event_;
     std::atomic<bool> running_;
-    SpinLock pushLock_;
-    SpinLock popLock_;
+    PaddedSpinLock pushLock_;
+    PaddedSpinLock popLock_;
 };
 
 /*//////////////////// ThreadedPlugin ////////////////*/

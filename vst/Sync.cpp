@@ -8,7 +8,7 @@
 # include <stdlib.h>
 #endif
 
-// for SpinLock
+// for PaddedSpinLock
 // Intel
 #if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
   #define CPU_INTEL
@@ -120,13 +120,6 @@ void Semaphore::wait(){
 
 /*///////////////////// SpinLock ////////////////////////*/
 
-SpinLock::SpinLock(){
-    static_assert(sizeof(SpinLock) == CACHELINE_SIZE, "");
-    if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
-        LOG_WARNING("SpinLock is not properly aligned!");
-    }
-}
-
 void SpinLock::yield(){
 #if defined(CPU_INTEL)
     _mm_pause();
@@ -137,13 +130,22 @@ void SpinLock::yield(){
 #endif
 }
 
+/*///////////////////// PaddedSpinLock ////////////////////////*/
+
+PaddedSpinLock::PaddedSpinLock(){
+    static_assert(sizeof(PaddedSpinLock) == CACHELINE_SIZE, "");
+    if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
+        LOG_WARNING("PaddedSpinLock is not properly aligned!");
+    }
+}
+
 #if __cplusplus < 201703L
-void* SpinLock::operator new(size_t size){
+void* PaddedSpinLock::operator new(size_t size){
 #ifdef _WIN32
-    void *ptr = _aligned_malloc(size, alignof(SpinLock));
+    void *ptr = _aligned_malloc(size, alignof(PaddedSpinLock));
 #else
     void *ptr = nullptr;
-    posix_memalign(&ptr, alignof(SpinLock), size);
+    posix_memalign(&ptr, alignof(PaddedSpinLock), size);
     if (!ptr){
         LOG_WARNING("posix_memalign() failed");
         ptr = malloc(size);
@@ -155,7 +157,7 @@ void* SpinLock::operator new(size_t size){
     return ptr;
 }
 
-void SpinLock::operator delete(void* ptr){
+void PaddedSpinLock::operator delete(void* ptr){
 #ifdef _WIN32
     _aligned_free(ptr);
 #else
@@ -163,12 +165,12 @@ void SpinLock::operator delete(void* ptr){
 #endif
 }
 
-void *SpinLock::operator new[](size_t size){
-    return SpinLock::operator new(size);
+void *PaddedSpinLock::operator new[](size_t size){
+    return PaddedSpinLock::operator new(size);
 }
 
-void SpinLock::operator delete[](void *ptr){
-    return SpinLock::operator delete(ptr);
+void PaddedSpinLock::operator delete[](void *ptr){
+    return PaddedSpinLock::operator delete(ptr);
 }
 #endif
 

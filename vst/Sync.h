@@ -29,8 +29,8 @@ class SyncCondition {
  public:
     SyncCondition();
     ~SyncCondition();
-    SyncCondition(const SyncCondition&) = delete;
-    SyncCondition& operator=(const SyncCondition&) = delete;
+    SyncCondition(SyncCondition&&) = delete;
+    SyncCondition& operator=(SyncCondition&&) = delete;
     void set();
     void wait();
  private:
@@ -50,8 +50,8 @@ class Semaphore {
  public:
     Semaphore();
     ~Semaphore();
-    Semaphore(const Semaphore&) = delete;
-    Semaphore& operator=(const Semaphore&) = delete;
+    Semaphore(Semaphore&&) = delete;
+    Semaphore& operator=(Semaphore&&) = delete;
     void post();
     void wait();
  private:
@@ -120,13 +120,12 @@ class Event {
 /*///////////////////// SpinLock /////////////////////*/
 
 // simple spin lock
-const size_t CACHELINE_SIZE = 64;
 
-class alignas(CACHELINE_SIZE) SpinLock {
+class SpinLock {
  public:
-    SpinLock();
-    SpinLock(const SpinLock&) = delete;
-    SpinLock& operator=(const SpinLock&) = delete;
+    SpinLock() = default;
+    SpinLock(SpinLock&&) = delete;
+    SpinLock& operator=(SpinLock&&) = delete;
     void lock(){
         // only try to modify the shared state if the lock seems to be available.
         // this should prevent unnecessary cache invalidation.
@@ -142,7 +141,18 @@ class alignas(CACHELINE_SIZE) SpinLock {
     void unlock(){
         locked_.store(false, std::memory_order_release);
     }
+ protected:
+    void yield();
+    // data
+    std::atomic<int32_t> locked_{false};
+};
 
+
+const size_t CACHELINE_SIZE = 64;
+
+class alignas(CACHELINE_SIZE) PaddedSpinLock : public SpinLock {
+ public:
+    PaddedSpinLock();
     // before C++17, new() couldn't handle alignments larger than max_align_t
 #if __cplusplus < 201703L
     void* operator new(size_t size);
@@ -151,9 +161,7 @@ class alignas(CACHELINE_SIZE) SpinLock {
     void operator delete[](void*);
 #endif
  private:
-    void yield();
     // pad and align to prevent false sharing
-    std::atomic_bool locked_{false};
     char pad_[CACHELINE_SIZE - sizeof(locked_)];
 };
 
@@ -167,8 +175,8 @@ class alignas(CACHELINE_SIZE) SpinLock {
 class Mutex {
 public:
     Mutex();
-    Mutex(const Mutex&) = delete;
-    Mutex& operator=(const Mutex&) = delete;
+    Mutex(Mutex&&) = delete;
+    Mutex& operator=(Mutex&&) = delete;
     // exclusive
     void lock();
     bool try_lock();
@@ -181,8 +189,8 @@ class Mutex {
 public:
     Mutex() { pthread_mutex_init(&lock_, nullptr); }
     ~Mutex() { pthread_mutex_destroy(&lock_); }
-    Mutex(const Mutex&) = delete;
-    Mutex& operator=(const Mutex&) = delete;
+    Mutex(Mutex&&) = delete;
+    Mutex& operator=(Mutex&&) = delete;
     // exclusive
     void lock() { pthread_mutex_lock(&lock_); }
     bool try_lock() { return pthread_mutex_trylock(&lock_) == 0; }
@@ -198,8 +206,8 @@ class ScopedLock {
     ScopedLock(Mutex& mutex)
         : mutex_(mutex){ mutex_.lock(); }
     ~ScopedLock(){ mutex_.unlock(); }
-    ScopedLock(const ScopedLock&) = delete;
-    ScopedLock& operator=(const ScopedLock&) = delete;
+    ScopedLock(ScopedLock&&) = delete;
+    ScopedLock& operator=(ScopedLock&&) = delete;
 };
 
 template<typename T>
@@ -270,8 +278,8 @@ class SharedMutex {
 public:
     SharedMutex() { pthread_rwlock_init(&rwlock_, nullptr); }
     ~SharedMutex() { pthread_rwlock_destroy(&rwlock_); }
-    SharedMutex(const SharedMutex&) = delete;
-    SharedMutex& operator=(const SharedMutex&) = delete;
+    SharedMutex(SharedMutex&&) = delete;
+    SharedMutex& operator=(SharedMutex&&) = delete;
     // exclusive
     void lock() { pthread_rwlock_wrlock(&rwlock_); }
     bool try_lock() { return pthread_rwlock_trywrlock(&rwlock_) == 0; }

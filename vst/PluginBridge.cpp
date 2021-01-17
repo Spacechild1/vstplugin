@@ -81,7 +81,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
             snprintf(buf, sizeof(buf), "rt%d", i+1);
             shm_.addChannel(ShmChannel::Request, rtRequestSize, buf);
         }
-        locks_ = std::make_unique<SpinLock[]>(maxNumThreads);
+        locks_ = std::make_unique<PaddedSpinLock[]>(maxNumThreads);
     } else {
         // --- sandboxed plugin ---
         // a single rt channel (which also doubles as the nrt channel)
@@ -347,7 +347,7 @@ RTChannel PluginBridge::getRTChannel(){
             ++counter; // atomic increment
         }
         return RTChannel(shm_.getChannel(index + 3),
-                         std::unique_lock<SpinLock>(locks_[index], std::adopt_lock));
+                         std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
     } else {
         // channel 2 is both NRT and RT channel
         return RTChannel(shm_.getChannel(2));
