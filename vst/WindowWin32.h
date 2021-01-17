@@ -29,6 +29,7 @@ class EventLoop {
     EventLoop();
     ~EventLoop();
 
+    bool sync();
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
     bool sendMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // blocking
 

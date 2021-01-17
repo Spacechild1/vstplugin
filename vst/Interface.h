@@ -563,6 +563,8 @@ namespace UIThread {
 
     using Callback = void (*)(void *);
 
+    bool sync();
+
     bool callSync(Callback cb, void *user);
 
     template<typename T>

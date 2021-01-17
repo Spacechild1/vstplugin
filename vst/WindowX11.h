@@ -24,6 +24,7 @@ class EventLoop {
     EventLoop();
     ~EventLoop();
 
+    bool sync();
     bool callSync(UIThread::Callback cb, void *user);
     bool callAsync(UIThread::Callback cb, void *user);
 

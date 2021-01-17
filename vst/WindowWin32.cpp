@@ -33,6 +33,14 @@ bool available() { return true; }
 
 void poll(){}
 
+bool sync(){
+    if (UIThread::isCurrentThread()){
+        return true;
+    } else {
+        return Win32::EventLoop::instance().sync();
+    }
+}
+
 bool callSync(Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
@@ -161,6 +169,18 @@ bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
 bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
     std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
     if (postMessage(msg, data1, data2) && postMessage(WM_SYNC)){
+        LOG_DEBUG("waiting...");
+        event_.wait();
+        LOG_DEBUG("done");
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool EventLoop::sync(){
+    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
+    if (postMessage(WM_SYNC)){
         LOG_DEBUG("waiting...");
         event_.wait();
         LOG_DEBUG("done");

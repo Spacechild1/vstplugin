@@ -30,6 +30,14 @@ bool available() { return true; }
 
 void poll(){}
 
+bool sync(){
+    if (UIThread::isCurrentThread()){
+        return true;
+    } else {
+        return X11::EventLoop::instance().sync();
+    }
+}
+
 bool callSync(Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user); // avoid deadlock
@@ -214,6 +222,10 @@ void EventLoop::updatePlugins(){
         postClientEvent(root_, wmUpdatePlugins);
         std::this_thread::sleep_for(std::chrono::milliseconds(updateInterval));
     }
+}
+
+bool EventLoop::sync(){
+    return XSync(display_, false);
 }
 
 bool EventLoop::callSync(UIThread::Callback cb, void *user){

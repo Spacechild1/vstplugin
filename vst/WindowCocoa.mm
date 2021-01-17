@@ -148,6 +148,10 @@ void poll(){
     }
 }
 
+bool sync(){
+    return callSync([](void *){}, nullptr);
+}
+
 bool callSync(Callback cb, void *user){
     return Cocoa::EventLoop::instance().callSync(cb, user);
 }
