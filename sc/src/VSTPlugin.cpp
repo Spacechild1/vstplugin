@@ -73,7 +73,7 @@ T* CmdData::create(World *world, int size) {
 bool CmdData::alive() const {
     auto b = owner->alive();
     if (!b) {
-        LOG_WARNING("VSTPlugin: freed during background task");
+        LOG_WARNING("WARNING: VSTPlugin freed during background task");
     }
     return b;
 }
@@ -1118,7 +1118,7 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
-    close();
+    doClose();
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
 
@@ -1235,15 +1235,13 @@ void VSTPluginDelegate::unlock() {
 
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::close() {
-    if (plugin_) {
-        LOG_DEBUG("about to close");
-        // owner_ == nullptr -> close() called as result of this being the last reference,
-        // otherwise we check if there is more than one reference.
-        if (owner_ && !owner_->delegate_.unique()) {
-            LOG_WARNING("VSTPlugin: can't close plugin while commands are still running");
-            // will be closed by the command's cleanup function
-            return;
-        }
+    if (!check()) return;
+    LOG_DEBUG("about to close");
+    doClose();
+}
+
+void VSTPluginDelegate::doClose(){
+    if (plugin_){
         auto cmdData = CmdData::create<CloseCmdData>(world());
         if (!cmdData) {
             return;
@@ -1252,7 +1250,8 @@ void VSTPluginDelegate::close() {
         plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
-        doCmd(cmdData, [](World *world, void* inData) {
+        // don't retain!
+        doCmd<false>(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
             defer([&](){
                 // release plugin
@@ -1322,8 +1321,14 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         sendMsg("/vst_open", 0);
         return;
     }
-    close();
+    if (isSuspended()){
+        LOG_WARNING("VSTPlugin: temporarily suspended!");
+        sendMsg("/vst_open", 0);
+        return;
+    }
+    doClose();
     if (plugin_) {
+        // shouldn't happen...
         LOG_ERROR("ERROR: couldn't close current plugin!");
         sendMsg("/vst_open", 0);
         return;
@@ -1370,13 +1375,13 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     // move the plugin even if alive() returns false (so it will be properly released in close())
     plugin_ = std::move(cmd.plugin);
     if (!alive()) {
-        LOG_WARNING("VSTPlugin: freed while opening a plugin");
+        LOG_WARNING("WARNING: VSTPlugin freed during 'open'");
         return; // !
     }
     if (plugin_){
         if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
-            Print("WARNING: '%s' doesn't support single precision processing - bypassing!\n",
-                  plugin_->info().name.c_str());
+            LOG_WARNING("WARNING: '" << plugin_->info().name <<
+                "' doesn't support single precision processing - bypassing!");
         }
         LOG_DEBUG("opened " << cmd.path);
         // receive events from plugin
@@ -2020,15 +2025,12 @@ void cmdRTfree(World *world, void * cmdData) {
     }
 }
 
-template<typename T>
+template<bool retain, typename T>
 void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
     AsyncStageFn stage3, AsyncStageFn stage4) {
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
-        // Don't store pointer to this if we're about to get destructed!
-        // This is mainly for the 'close' command which might get sent
-        // in ~VSTPluginDelegate (and doesn't need the owner).
-        if (alive()) {
+        if (retain){
             cmdData->owner = shared_from_this();
         }
         DoAsynchronousCommand(world(),

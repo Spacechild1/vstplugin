@@ -186,7 +186,7 @@ public:
     void sendLatencyChange(int nsamples);
     void sendPluginCrash();
     // perform sequenced command
-    template<typename T>
+    template<bool retain = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
     bool hasEditor() const {
@@ -204,6 +204,8 @@ private:
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
     Mutex mutex_;
+
+    void doClose();
 };
 
 class VSTPlugin : public SCUnit {
