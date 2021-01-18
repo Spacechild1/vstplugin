@@ -630,7 +630,7 @@ void PluginClient::closeEditor(){
     FORBIDDEN_METHOD("closeEditor")
 }
 
-bool PluginClient::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+bool PluginClient::getEditorRect(Rect& rect) const {
     FORBIDDEN_METHOD("getEditorRect")
 }
 

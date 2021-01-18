@@ -102,6 +102,17 @@ enum class PluginType {
     VST3
 };
 
+struct Rect {
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+
+    bool valid() const {
+        return w > 0 && h > 0;
+    }
+};
+
 struct PluginInfo;
 class IWindow;
 
@@ -185,7 +196,7 @@ class IPlugin {
 
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
-    virtual bool getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
+    virtual bool getEditorRect(Rect& rect) const = 0;
     virtual void updateEditor() = 0;
     virtual void checkEditorSize(int& width, int& height) const = 0;
     virtual void resizeEditor(int width, int height) = 0;

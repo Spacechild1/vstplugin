@@ -8,6 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <vector>
 #include <unordered_map>
 
 namespace vst {
@@ -28,27 +29,27 @@ class EventLoop {
     bool callSync(UIThread::Callback cb, void *user);
     bool callAsync(UIThread::Callback cb, void *user);
 
-    bool postClientEvent(::Window window, Atom atom,
-                         const char *data = nullptr, size_t size = 0);
-    bool sendClientEvent(::Window, Atom atom,
-                         const char *data = nullptr, size_t size = 0);
-
     bool checkThread();
     Display *getDisplay() { return display_; }
 
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
     void removePollFunction(UIThread::Handle handle);
 
-    void registerWindow(Window& w);
-    void unregisterWindow(Window& w);
+    void registerWindow(Window* w);
+    void unregisterWindow(Window* w);
  private:
+    bool postClientEvent(::Window window, Atom atom,
+                         const char *data = nullptr, size_t size = 0);
     void run();
     void updatePlugins();
+    Window* findWindow(::Window handle);
+
     Display *display_ = nullptr;
     ::Window root_;
     std::thread thread_;
     std::mutex mutex_;
-    std::unordered_map<::Window, IPlugin *> pluginMap_;
+    SyncCondition event_;
+    std::vector<Window *> windows_;
     std::thread timerThread_;
     std::atomic<bool> timerThreadRunning_{true};
     UIThread::Handle nextPollFunctionHandle_ = 0;
@@ -65,25 +66,34 @@ class Window : public IWindow {
         return (void*)window_;
     }
 
-    IPlugin* getPlugin() { return plugin_; }
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
-    void doOpen();
-    void doClose();
-    void doUpdate();
+    void onClose();
     void onConfigure(int x, int y, int width, int height);
+    void onUpdate();
  private:
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;
-    bool mapped_ = false;
-    int x_;
-    int y_;
-    int width_;
-    int height_;
+
+    Rect rect_{ 100, 100, 0, 0 }; // empty rect!
+    int xoffset_ = 0;
+    int yoffset_ = 0;
+    int configureCounter_ = 0;
+    bool canResize_ = false;
+
+    // helper methods
+    void doOpen();
+    void doClose();
+    void setFixedSize(int w, int h);
+
+    struct Command {
+        Window *owner;
+        int x;
+        int y;
+    };
 };
 
 } // X11

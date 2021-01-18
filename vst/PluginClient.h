@@ -66,7 +66,7 @@ class PluginClient final : public DeferredPlugin {
 
     void openEditor(void *window) override;
     void closeEditor() override;
-    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    bool getEditorRect(Rect& rect) const override;
     void updateEditor() override;
     void checkEditorSize(int& width, int& height) const override;
     void resizeEditor(int width, int height) override;

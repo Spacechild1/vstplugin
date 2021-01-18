@@ -91,8 +91,8 @@ class ThreadedPlugin final : public DeferredPlugin
     void closeEditor() override {
         plugin_->closeEditor();
     }
-    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override {
-        return plugin_->getEditorRect(left, top, right, bottom);
+    bool getEditorRect(Rect& rect) const override {
+        return plugin_->getEditorRect(rect);
     }
     void updateEditor() override {
         plugin_->updateEditor();

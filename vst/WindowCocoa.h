@@ -85,18 +85,28 @@ class Window : public IWindow {
     void updateEditor();
     IPlugin& plugin() { return *plugin_; }
  private:
-    void setFrame(int x, int y, int w, int h);
+    void setFrame(const Rect& r, bool adjustSize, bool adjustPos = false);
+    void adjustSize(Rect& r);
+    void adjustPos(Rect& r);
+
     CocoaEditorWindow * window_ = nullptr;
     IPlugin *plugin_;
     NSTimer *timer_;
-    NSPoint origin_;
-    bool adjustY_ = false;
+    Rect rect_{ 100, 100, 0, 0 }; // empty rect!
+    bool needAdjustSize_ = false;
+    bool needAdjustPos_ = false;
     // HACK: at least one plugin only reports "canResize" correctly
-    // the very first time and then always returns, so we cache
+    // the very first time and then always returns false, so we cache
     // "true" results.
     bool canResize_ = false;
 
     static std::atomic<int> numWindows_;
+
+    struct Command {
+        Window *owner;
+        int x;
+        int y;
+    };
 };
 
 } // Cocoa

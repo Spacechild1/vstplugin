@@ -31,20 +31,11 @@ bool available() { return true; }
 void poll(){}
 
 bool sync(){
-    if (UIThread::isCurrentThread()){
-        return true;
-    } else {
-        return X11::EventLoop::instance().sync();
-    }
+    return X11::EventLoop::instance().sync();
 }
 
 bool callSync(Callback cb, void *user){
-    if (UIThread::isCurrentThread()){
-        cb(user); // avoid deadlock
-        return true;
-    } else {
-        return X11::EventLoop::instance().callSync(cb, user);
-    }
+    return X11::EventLoop::instance().callSync(cb, user);
 }
 
 bool callAsync(Callback cb, void *user){
@@ -68,10 +59,11 @@ Atom wmProtocols;
 Atom wmDelete;
 Atom wmQuit;
 Atom wmCall;
-Atom wmOpenEditor;
-Atom wmCloseEditor;
+Atom wmSync;
 Atom wmUpdatePlugins;
 }
+
+/*//////////////// EventLoop ////////////////*/
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -82,7 +74,7 @@ EventLoop::EventLoop() {
     if (!XInitThreads()){
         LOG_WARNING("XInitThreads failed!");
     }
-    display_ = XOpenDisplay(NULL);
+    display_ = XOpenDisplay(nullptr);
     if (!display_){
         throw Error("X11: couldn't open display!");
     }
@@ -100,9 +92,7 @@ EventLoop::EventLoop() {
     // custom messages
     wmQuit = XInternAtom(display_, "WM_QUIT", 0);
     wmCall = XInternAtom(display_, "WM_CALL", 0);
-    wmOpenEditor = XInternAtom(display_, "WM_OPEN_EDITOR", 0);
-    wmUpdatePlugins = XInternAtom(display_, "WM_UPDATE_PLUGINS", 0);
-    wmCloseEditor = XInternAtom(display_, "WM_CLOSE_EDITOR", 0);
+    wmSync = XInternAtom(display_, "WM_SYNC", 0);
     // run thread
     thread_ = std::thread(&EventLoop::run, this);
     // run timer thread
@@ -144,12 +134,11 @@ void EventLoop::run(){
             auto type = msg.message_type;
             if (type == wmProtocols){
                 if ((Atom)msg.data.l[0] == wmDelete){
-                    // only hide window
-                    auto it = pluginMap_.find(msg.window);
-                    if (it != pluginMap_.end()){
-                        static_cast<Window *>(it->second->getWindow())->doClose();
+                    auto w = findWindow(msg.window);
+                    if (w){
+                        w->onClose();
                     } else {
-                        LOG_ERROR("bug wmDelete " << msg.window);
+                        LOG_ERROR("X11: WM_DELETE: couldn't find Window " << msg.window);
                     }
                 }
             } else if (type == wmCall){
@@ -159,31 +148,13 @@ void EventLoop::run(){
                 memcpy(&cb, msg.data.b, sizeof(cb));
                 memcpy(&data, msg.data.b + sizeof(cb), sizeof(data));
                 cb(data);
-            } else if (type == wmOpenEditor){
-                LOG_DEBUG("wmOpenEditor");
-                auto it = pluginMap_.find(msg.window);
-                if (it != pluginMap_.end()){
-                    static_cast<Window *>(it->second->getWindow())->doOpen();
-                } else {
-                    LOG_ERROR("bug wmOpenEditor: " << msg.window);
-                }
-            } else if (type == wmCloseEditor){
-                LOG_DEBUG("wmCloseEditor");
-                auto it = pluginMap_.find(msg.window);
-                if (it != pluginMap_.end()){
-                    static_cast<Window *>(it->second->getWindow())->doClose();
-                } else {
-                    LOG_ERROR("bug wmCloseEditor: " << msg.window);
-                }
+            } else if (type == wmSync){
+                LOG_DEBUG("wmSync");
+                event_.set();
             } else if (type == wmUpdatePlugins){
                 // update plugins
-                for (auto& it : pluginMap_){
-                    auto plugin = it.second;
-                    if (plugin){
-                        static_cast<Window *>(plugin->getWindow())->doUpdate();
-                    } else {
-                        LOG_ERROR("bug wmUpdatePlugins: " << it.first);
-                    }
+                for (auto& w : windows_){
+                    w->onUpdate();
                 }
                 // call poll functions
                 std::lock_guard<std::mutex> lock(pollFunctionMutex_);
@@ -199,13 +170,12 @@ void EventLoop::run(){
             }
         } else if (event.type == ConfigureNotify){
             XConfigureEvent& xce = event.xconfigure;
-            LOG_DEBUG("ConfigureNotify");
-            auto it = pluginMap_.find(xce.window);
-            if (it != pluginMap_.end()){
-                static_cast<Window *>(it->second->getWindow())->onConfigure(
-                            xce.x, xce.y, xce.width, xce.height);
+            LOG_DEBUG("X11: ConfigureNotify");
+            auto w = findWindow(xce.window);
+            if (w){
+                w->onConfigure(xce.x, xce.y, xce.width, xce.height);
             } else {
-                LOG_ERROR("bug ConfigureNotify: " << xce.window);
+                LOG_ERROR("X11: ConfigureNotify: couldn't find Window " << xce.window);
             }
         } else {
             // LOG_DEBUG("got event: " << event.type);
@@ -215,7 +185,6 @@ void EventLoop::run(){
 
 void EventLoop::updatePlugins(){
     // X11 doesn't seem to have a timer API...
-
     setThreadPriority(Priority::Low);
 
     while (timerThreadRunning_){
@@ -224,22 +193,64 @@ void EventLoop::updatePlugins(){
     }
 }
 
+Window* EventLoop::findWindow(::Window handle){
+    for (auto& w : windows_){
+        if (w->getHandle() == (void *)handle){
+            return w;
+        }
+    }
+    return nullptr;
+}
+
 bool EventLoop::sync(){
-    return XSync(display_, false);
+    if (UIThread::isCurrentThread()){
+        return true;
+    } else {
+        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
+        if (postClientEvent(root_, wmSync)){
+            LOG_DEBUG("waiting...");
+            event_.wait();
+            LOG_DEBUG("done");
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
 
 bool EventLoop::callSync(UIThread::Callback cb, void *user){
-    char buf[sizeof(cb) + sizeof(user)];
-    memcpy(buf, &cb, sizeof(cb));
-    memcpy(buf + sizeof(cb), &user, sizeof(user));
-    return sendClientEvent(root_, wmCall, buf, sizeof(buf));
+    if (UIThread::isCurrentThread()){
+        cb(user);
+        return true;
+    } else {
+        char buf[sizeof(cb) + sizeof(user)];
+        memcpy(buf, &cb, sizeof(cb));
+        memcpy(buf + sizeof(cb), &user, sizeof(user));
+
+        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent access
+        if (postClientEvent(root_, wmCall, buf, sizeof(buf))
+                && postClientEvent(root_, wmSync))
+        {
+            LOG_DEBUG("waiting...");
+            event_.wait();
+            LOG_DEBUG("done");
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
 
 bool EventLoop::callAsync(UIThread::Callback cb, void *user){
-    char buf[sizeof(cb) + sizeof(user)];
-    memcpy(buf, &cb, sizeof(cb));
-    memcpy(buf + sizeof(cb), &user, sizeof(user));
-    return postClientEvent(root_, wmCall, buf, sizeof(buf));
+    if (UIThread::isCurrentThread()){
+        cb(user);
+        return true;
+    } else {
+        char buf[sizeof(cb) + sizeof(user)];
+        memcpy(buf, &cb, sizeof(cb));
+        memcpy(buf + sizeof(cb), &user, sizeof(user));
+        return postClientEvent(root_, wmCall, buf, sizeof(buf));
+    }
 }
 
 bool EventLoop::postClientEvent(::Window window, Atom atom,
@@ -259,19 +270,6 @@ bool EventLoop::postClientEvent(::Window window, Atom atom,
     return false;
 }
 
-bool EventLoop::sendClientEvent(::Window window, Atom atom,
-                                const char *data, size_t size){
-    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent access
-    if (postClientEvent(window, atom, data, size)){
-        LOG_DEBUG("waiting...");
-        XSync(display_, false);
-        LOG_DEBUG("done");
-        return true;
-    } else {
-        return false;
-    }
-}
-
 UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
                                             void *context){
     std::lock_guard<std::mutex> lock(pollFunctionMutex_);
@@ -289,55 +287,75 @@ bool EventLoop::checkThread(){
     return std::this_thread::get_id() == thread_.get_id();
 }
 
-void EventLoop::registerWindow(Window &w){
-    pluginMap_[(::Window)w.getHandle()] = w.getPlugin();
+void EventLoop::registerWindow(Window *w){
+    for (auto& it : windows_){
+        if (it == w){
+            LOG_ERROR("X11::EventLoop::registerWindow: bug");
+            return;
+        }
+    }
+    windows_.push_back(w);
 }
 
-void EventLoop::unregisterWindow(Window &w){
-    pluginMap_.erase((::Window)w.getHandle());
+void EventLoop::unregisterWindow(Window *w){
+    for (auto it = windows_.begin(); it != windows_.end(); ++it){
+        if (*it == w){
+            windows_.erase(it);
+            return;
+        }
+    }
+    LOG_ERROR("X11::EventLoop::unregisterWindow: bug");
 }
+
+/*///////////////// Window ////////////////////*/
 
 Window::Window(Display& display, IPlugin& plugin)
-    : display_(&display), plugin_(&plugin)
-{
-    // get window coordinates
-    int left = 100, top = 100, right = 400, bottom = 400;
-    bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
-    // create window
+    : display_(&display), plugin_(&plugin) {
+    // cache for buggy plugins!
+    canResize_ = plugin_->canResize();
+}
+
+Window::~Window(){
+    doClose();
+}
+
+void Window::open(){
+    EventLoop::instance().callAsync([](void *x){
+        static_cast<Window *>(x)->doOpen();
+    }, this);
+}
+
+void Window::doOpen(){
+    LOG_DEBUG("X11: open");
+    if (window_){
+        // just bring to foreground
+        LOG_DEBUG("X11: restore");
+    #if 1
+        XRaiseWindow(display_, window_);
+    #else
+        XUnmapWindow(display_, window_);
+        XMapWindow(display_, window_);
+        XMoveWindow(display_, window_, rect_.x, rect_.y);
+    #endif
+        XFlush(display_);
+        return;
+    }
+
+    // Create window with dummy (non-empty!) size.
+    // Already set 'window_' in the beginning because openEditor()
+    // might implicitly call setSize()!
     int s = DefaultScreen(display_);
     window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
-                left, top, right - left, bottom - top,
-                1, BlackPixel(display_, s), WhitePixel(display_, s));
-    if (!gotEditorRect){
-        // HACK for plugins which don't report the window size without the editor being opened
-        LOG_DEBUG("couldn't get editor rect!");
-        plugin_->openEditor((void *)window_);
-        plugin_->getEditorRect(left, top, right, bottom);
-        plugin_->closeEditor();
-        XResizeWindow(display_, window_, right - left, bottom - top);
-    }
-    x_ = left;
-    y_ = top;
-    width_ = right - left;
-    height_ = bottom - top;
+                0, 0, 300, 300, 1,
+                BlackPixel(display_, s), WhitePixel(display_, s));
+    // immediately map and move it, so we can use the *third* call to
+    // onConfigure() to calculate the offset.
+    XMapWindow(display_, window_);
+    XMoveWindow(display_, window_, rect_.x, rect_.y);
     // receive configure events
     XSelectInput(display_, window_, StructureNotifyMask);
-    // intercept request to delete window when being closed
+    // Intercept request to delete window when being closed
     XSetWMProtocols(display_, window_, &wmDelete, 1);
-    // disable resizing
-    if (!plugin_->canResize()){
-        LOG_DEBUG("can't resize");
-        XSizeHints *hints = XAllocSizeHints();
-        if (hints){
-            hints->flags = PMinSize | PMaxSize;
-            hints->max_width = hints->min_width = width_;
-            hints->min_height = hints->max_height = height_;
-            XSetWMNormalHints(display_, window_, hints);
-            XFree(hints);
-        }
-    } else {
-        LOG_DEBUG("can resize");
-    }
     // set window class hint
     XClassHint *ch = XAllocClassHint();
     if (ch){
@@ -346,82 +364,165 @@ Window::Window(Display& display, IPlugin& plugin)
         XSetClassHint(display_, window_, ch);
         XFree(ch);
     }
-    LOG_DEBUG("X11: created Window " << window_);
-
     // set window title
     auto title = plugin_->info().name.c_str();
     XStoreName(display_, window_, title);
     XSetIconName(display_, window_, title);
+    LOG_DEBUG("X11: created Window " << window_);
 
-    EventLoop::instance().registerWindow(*this);
-}
-
-Window::~Window(){
-    EventLoop::instance().unregisterWindow(*this);
-
-    plugin_->closeEditor();
-    XDestroyWindow(display_, window_);
-    LOG_DEBUG("X11: destroyed Window");
-}
-
-void Window::open(){
-    EventLoop::instance().postClientEvent(window_, wmOpenEditor);
-}
-
-void Window::doOpen(){
-    if (!mapped_){
-        XMapRaised(display_, window_);
-        plugin_->openEditor((void *)window_);
-        // restore position
-        XMoveWindow(display_, window_, x_, y_);
-        mapped_ = true;
+    // set window coordinates
+    bool didOpen = false;
+    if (rect_.valid()){
+        LOG_DEBUG("restore window");
+        // just restore from cached rect
+    } else {
+        // get window dimensions from plugin
+        Rect r;
+        if (!plugin_->getEditorRect(r)){
+            // HACK for plugins which don't report the window size
+            // without the editor being opened
+            LOG_DEBUG("couldn't get editor rect!");
+            plugin_->openEditor(getHandle());
+            plugin_->getEditorRect(r);
+            didOpen = true;
+        }
+        LOG_DEBUG("editor size: " << r.w << " * " << r.h);
+        // only set size!
+        rect_.w = r.w;
+        rect_.h = r.h;
     }
+
+    // disable resizing
+    if (!canResize_) {
+        LOG_DEBUG("X11: disable resizing");
+        setFixedSize(rect_.w, rect_.h);
+    } else {
+        LOG_DEBUG("X11: enable resizing");
+    }
+
+    // resize the window
+    XResizeWindow(display_, window_, rect_.w, rect_.h);
+    XFlush(display_);
+
+    // open VST editor
+    if (!didOpen){
+        LOG_DEBUG("open editor");
+        plugin_->openEditor(getHandle());
+    }
+
+    LOG_DEBUG("X11: register Window");
+    EventLoop::instance().registerWindow(this);
 }
 
 void Window::close(){
-    EventLoop::instance().postClientEvent(window_, wmCloseEditor);
+    EventLoop::instance().callAsync([](void *x){
+        static_cast<Window *>(x)->doClose();
+    }, this);
 }
 
 void Window::doClose(){
-    if (mapped_){
+    if (window_){
+        LOG_DEBUG("X11: close");
+
+        LOG_DEBUG("X11: unregister Window");
+        EventLoop::instance().unregisterWindow(this);
+
+        LOG_DEBUG("close editor");
         plugin_->closeEditor();
-    #if 0
-        ::Window child;
-        XTranslateCoordinates(display_, window_, DefaultRootWindow(display_), 0, 0, &x_, &y_, &child);
-        LOG_DEBUG("stored position: " << x_ << ", " << y_);
-    #endif
-        XUnmapWindow(display_, window_);
-        mapped_ = false;
+
+        XDestroyWindow(display_, window_);
+        window_ = 0;
+        LOG_DEBUG("X11: destroyed Window");
+    }
+}
+
+void Window::setFixedSize(int w, int h){
+    XSizeHints *hints = XAllocSizeHints();
+    if (hints){
+        hints->flags = PMinSize | PMaxSize;
+        hints->max_width = hints->min_width = w;
+        hints->min_height = hints->max_height = h;
+        XSetWMNormalHints(display_, window_, hints);
+        XFree(hints);
     }
 }
 
 void Window::setPos(int x, int y){
-    XMoveWindow(display_, window_, x, y);
-    XFlush(display_);
+    EventLoop::instance().callAsync([](void *user){
+        auto cmd = static_cast<Command *>(user);
+        auto window = cmd->owner->window_;
+        auto display = cmd->owner->display_;
+        auto& r = cmd->owner->rect_;
+        // cache!
+        r.x = cmd->x;
+        r.y = cmd->y;
+
+        if (window){
+            XMoveWindow(display, window, r.x, r.y);
+            XFlush(display);
+            // will call onConfigure()
+        }
+
+        delete cmd;
+    }, new Command { this, x, y });
 }
 
 void Window::setSize(int w, int h){
-    XResizeWindow(display_, window_, w, h);
-    XFlush(display_);
+    LOG_DEBUG("setSize: " << w << ", " << h);
+    EventLoop::instance().callAsync([](void *user){
+        auto cmd = static_cast<Command *>(user);
+        auto owner = cmd->owner;
+        auto window = owner->window_;
+        auto display = owner->display_;
+        auto& r = cmd->owner->rect_;
+        // cache!
+        r.w = cmd->x;
+        r.h = cmd->y;
+
+        if (window){
+            if (!owner->canResize_){
+                owner->setFixedSize(r.w, r.h);
+            }
+            XResizeWindow(display, window, r.w, r.h);
+            XFlush(display);
+        }
+
+        delete cmd;
+    }, new Command { this, w, h });
 }
 
-void Window::doUpdate(){
-    if (mapped_){
-        plugin_->updateEditor();
-    }
+void Window::onClose(){
+    doClose();
+}
+
+void Window::onUpdate(){
+    plugin_->updateEditor();
 }
 
 void Window::onConfigure(int x, int y, int width, int height){
-    if (width_ != width || height_ != height){
-        if (plugin_->canResize()){
+    LOG_DEBUG("onConfigure: x: "<< x << ", y: " << y
+              << ", w: " << width << ", h: " << height);
+    if (rect_.w != width || rect_.h != height){
+        LOG_DEBUG("size changed");
+        if (canResize_){
             plugin_->resizeEditor(width, height);
         }
-        width_ = width;
-        height_ = height;
+        rect_.w = width;
+        rect_.h = height;
     }
-    // always store position!
-    x_ = x;
-    y_ = y;
+    auto counter = ++configureCounter_;
+    if (counter == 3) {
+        // on the *third* call we store the offset between the
+        // desired position and actual position.
+        xoffset_ = x - rect_.x;
+        yoffset_ = y - rect_.y;
+        LOG_DEBUG("X11: window position offset: "
+                  << xoffset_ << ", " << yoffset_);
+    } else if (counter > 3) {
+        // always store adjusted position!
+        rect_.x = x - xoffset_;
+        rect_.y = y - yoffset_;
+    }
 }
 
 } // X11

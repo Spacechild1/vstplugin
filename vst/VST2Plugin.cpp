@@ -1160,19 +1160,21 @@ void VST2Plugin::closeEditor(){
     editor_ = false;
 }
 
-bool VST2Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+bool VST2Plugin::getEditorRect(Rect& rect) const {
     ERect* erc = nullptr;
     bool result = dispatch(effEditGetRect, 0, 0, &erc);
     if (erc){
+        auto w = erc->right - erc->left;
+        auto h = erc->bottom - erc->top;
         // some (buggy) plugins return an empty rect on failure.
-        // don't update the input coordinates!
-        if ((right - left) <= 0 || (bottom - top) <= 0){
+        // don't update the input rect!
+        if (!(w > 0 && h > 0)){
             return false;
         }
-        left = erc->left;
-        top = erc->top;
-        right = erc->right;
-        bottom = erc->bottom;
+        rect.x = erc->left;
+        rect.y = erc->top;
+        rect.w = w;
+        rect.h = h;
         // some plugins might forget to return '1',
         // other plugins might return a (valid) rect on fail.
         // Either way, we update the coordinates and return false.

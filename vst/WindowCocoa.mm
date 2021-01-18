@@ -172,6 +172,8 @@ void removePollFunction(int32_t handle){
 
 namespace Cocoa {
 
+/*////////////////////// EventLoop ////////////////////*/
+
 EventLoop& EventLoop::instance(){
     static EventLoop e;
     return e;
@@ -279,25 +281,31 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     }
 }
 
+/*///////////////// Window ///////////////////////*/
+
 std::atomic<int> Window::numWindows_{0};
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin) {
-    origin_ = NSMakePoint(100, 100); // default position (bottom left)
+    canResize_ = plugin_->canResize();
 }
 
-// the destructor must be called on the main thread!
 Window::~Window(){
     if (window_){
+    #if 1
+        // will implicitly call onClose()!
+        [window_ performClose:nil];
+    #else
+        // cache window before it is set to NULL in onClose()
         auto window = window_;
         onClose();
         [window close];
+    #endif
     }
-    LOG_DEBUG("destroyed Window");
+    LOG_DEBUG("Cocoa: destroyed Window");
 }
 
 void Window::open(){
-    LOG_DEBUG("show window");
     UIThread::callAsync([](void *x){
         static_cast<Window *>(x)->doOpen();
     }, this);
@@ -309,46 +317,60 @@ void Window::doOpen(){
         // just bring to top
         [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
+        LOG_DEBUG("Cocoa: restore")
         return;
     }
 
     NSRect frame = NSMakeRect(0, 0, 200, 200);
     NSUInteger style = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask;
-    if (canResize_ || plugin_->canResize()) {
+    if (canResize_) {
         style |= NSResizableWindowMask;
-        canResize_ = true;
-        LOG_DEBUG("can resize");
+        LOG_DEBUG("Cocoa: can resize");
     }
-    CocoaEditorWindow *window = [[CocoaEditorWindow alloc] initWithContentRect:frame
+    window_ = [[CocoaEditorWindow alloc] initWithContentRect:frame
                 styleMask:style
                 backing:NSBackingStoreBuffered
                 defer:NO];
-    if (window){
-        window_ = window;
-        [window setOwner:this];
+    if (window_){
+        [window_ setOwner:this];
         [[NSNotificationCenter defaultCenter] addObserver:window selector:@selector(windowDidResize:)
-                name:NSWindowDidResizeNotification object:window];
+                name:NSWindowDidResizeNotification object:window_];
         
         // set window title
         NSString *title = @(plugin_->info().name.c_str());
-        [window setTitle:title];
+        [window_ setTitle:title];
+        LOG_DEBUG("Cocoa: created Window");
 
-        int left = 100, top = 100, right = 400, bottom = 400;
-        bool gotEditorRect = plugin_->getEditorRect(left, top, right, bottom);
-        if (gotEditorRect){
-            setFrame(origin_.x, origin_.y, right - left, bottom - top);
+        // set window coordinates
+        bool didOpen = false;
+        if (rect_.valid()){
+            LOG_DEBUG("Cocoa: use cached editor size");
+            setFrame(rect_, false);
+        } else {
+            // get window dimensions from plugin
+            Rect r;
+            if (!plugin_->getEditorRect(r)){
+                // HACK for plugins which don't report the window size
+                // without the editor being opened
+                LOG_DEBUG("Cocoa: couldn't get editor rect!");
+                plugin_->openEditor(getHandle());
+                plugin_->getEditorRect(r);
+                didOpen = true;
+            }
+            LOG_DEBUG("Cocoa: editor size " << r.w << " * " << r.h);
+            // bash x and y values
+            r.x = rect_.x;
+            r.y = rect_.y;
+            // adjust and set window dimensions
+            setFrame(r, true);
         }
-        
-        plugin_->openEditor(getHandle());
 
-        // HACK for plugins which don't report the window size without the editor being opened
-        if (!gotEditorRect){
-            plugin_->getEditorRect(left, top, right, bottom);
-            setFrame(origin_.x, origin_.y, right - left, bottom - top);
+        if (!didOpen){
+            plugin->openEditor(getHandle());
         }
 
         timer_ = [NSTimer scheduledTimerWithTimeInterval:(EventLoop::updateInterval * 0.001)
-                    target:window
+                    target:window_
                     selector:@selector(updateEditor)
                     userInfo:nil
                     repeats:YES];
@@ -365,15 +387,16 @@ void Window::doOpen(){
         // bring to top
         [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
-        LOG_DEBUG("created Window");
-        LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
+
+        LOG_DEBUG("Cocoa: opened Window");
     }
 }
 
 void Window::close(){
-    LOG_DEBUG("hide window");
-    UIThread::callAsync([](void *x){
-        [static_cast<Window *>(x)->window_ performClose:nil];
+    EventLoop::instance().callAsync([](void *x){
+        auto window = static_cast<Window *>(x)->window_;
+        // will implicitly call onClose()!
+        [window performClose:nil];
     }, this);
 }
 
@@ -381,10 +404,21 @@ void Window::close(){
 void Window::onClose(){
     if (window_){
         [[NSNotificationCenter defaultCenter] removeObserver:window_ name:NSWindowDidResizeNotification object:window_];
+
         [timer_ invalidate];
         timer_ = nil;
+
         plugin_->closeEditor();
-        origin_ = [window_ frame].origin;
+
+        auto r = [window_ frame]; // adjusted
+        // cache position and size
+        rect_.x = r.origin.x;
+        rect_.y = r.origin.y;
+        rect_.w = r.size.width;
+        rect_.h = r.size.height;
+        needAdjustSize_ = false;
+        needAdjustPos_ = false;
+
         window_ = nullptr;
 
         if (numWindows_.fetch_sub(1) == 1){
@@ -392,6 +426,8 @@ void Window::onClose(){
             ProcessSerialNumber psn = {0, kCurrentProcess};
             TransformProcessType(&psn, kProcessTransformToUIElementApplication);
         }
+
+        LOG_DEBUG("Cocoa: closed Window");
     }
 }
 
@@ -403,46 +439,71 @@ void * Window::getHandle(){
     return window_ ? [window_ contentView] : nullptr;
 }
 
-void Window::setFrame(int x, int y, int w, int h){
+void Window::setFrame(Rect r, bool adjustSize, bool adjustPos){
     if (window_){
-        if (adjustY_){
-            y  -= window_.frame.size.height;
-            adjustY_ = false;
+        // first adjust size, because we need it to adjust pos!
+        if (adjustSize || needAdjustSize_){
+            adjustSize(r);
+            needAdjustSize_ = false;
         }
-        NSRect content = NSMakeRect(x, y, w, h);
-        NSRect frame = [window_  frameRectForContentRect:content];
+        if (adjustPos || needAdjustPos_){
+            adjustPos(r);
+            needAdjustPos_ = false;
+        }
+        NSRect frame = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
         [window_ setFrame:frame display:YES];
+    } else {
+        if (adjustSize){
+            needAdjustSize_ = true;;
+        }
+        if (adjustPos){
+            needAdjustPos_ = true;
+        }
     }
+    // cache (adjusted)  rect
+    rect_ = r;
+}
+
+void Window::adjustRect(Rect &r){
+    NSRect content = NSMakeRect(r.x, r.y, r.w, r.h);
+    NSRect frame = [window_  frameRectForContentRect:content];
+    r.w = frame.size.width;
+    r.h = frame.size.height;
+}
+
+void Window::adjustPos(Rect &r){
+    // First move the window to the given x coordinate
+    [window_ setFrameOrigin:NSMakePoint(r.x, r.y)];
+    // then obtain the screen height.
+    auto height = window_.screen.frame.size.height;
+    // flip y coordinate
+    r.y = height - r.y;
+    // adjust for window height
+    r.y -= window_.frame.size.height;
 }
 
 void Window::setPos(int x, int y){
-    // on Cocoa, the y-axis is inverted (goes up).
-    NSScreen *screen = nullptr;
-    if (window_){
-        [window_ setFrameOrigin:NSMakePoint(x, y)];
-        // First move the window to the given x coordinate,
-        // then obtain the screen height.
-        screen = [window_ screen];
-    } else {
-        screen = [NSScreen mainScreen];
-    }
-    origin_.x = x;
-    // now correct the y coordinate
-    origin_.y = screen.frame.size.height - y;
-    if (window_){
-        origin_.y -= window_.frame.size.height;
-        [window_ setFrameOrigin:origin_];
-    } else {
-        // no window height, adjust later
-        adjustY_ = true;
-    }
+    EventLoop::instance().callAsync([](void *user){
+        auto cmd = static_cast<Command *>(user);
+        auto owner = cmd->owner;
+        Rect r = owner->rect_;
+        r.x = cmd->x;
+        r.y = cmd->y;
+        owner->setFrame(r, false, true); // only adjust pos!
+        delete cmd;
+    }, new Command { this, x, y });
 }
 
 void Window::setSize(int w, int h){
-    if (window_){
-        NSPoint origin = window_.frame.origin;
-        setFrame(origin.x, origin.y, w, h);
-    }
+    EventLoop::instance().callAsync([](void *user){
+        auto cmd = static_cast<Command *>(user);
+        auto owner = cmd->owner;
+        Rect r = owner->rect_;
+        r.w = cmd->x;
+        r.h = cmd->y;
+        owner->setFrame(r, true);
+        delete cmd;
+    }, new Command { this, w, h });
 }
 
 } // Cocoa

@@ -1853,17 +1853,17 @@ void VST3Plugin::closeEditor(){
     editor_ = false;
 }
 
-bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+bool VST3Plugin::getEditorRect(Rect& rect) const {
     if (!view_){
         view_ = controller_->createView("editor");
     }
     if (view_){
-        ViewRect rect;
-        if (view_->getSize(&rect) == kResultOk){
-            left = rect.left;
-            top = rect.top;
-            right = rect.right;
-            bottom = rect.bottom;
+        ViewRect r;
+        if (view_->getSize(&r) == kResultOk){
+            rect.x = r.left;
+            rect.y = r.top;
+            rect.w = r.right - r.left;
+            rect.h = r.bottom - r.top;
             return true;
         }
     }
