@@ -330,9 +330,10 @@ void Window::doOpen(){
     if (window_){
         // just bring to foreground
         LOG_DEBUG("X11: restore");
-    #if 1
+    #if 0
         XRaiseWindow(display_, window_);
     #else
+        savePosition();
         XUnmapWindow(display_, window_);
         XMapWindow(display_, window_);
         XMoveWindow(display_, window_, rect_.x, rect_.y);
@@ -348,10 +349,6 @@ void Window::doOpen(){
     window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
                 0, 0, 300, 300, 1,
                 BlackPixel(display_, s), WhitePixel(display_, s));
-    // immediately map and move it, so we can use the *third* call to
-    // onConfigure() to calculate the offset.
-    XMapWindow(display_, window_);
-    XMoveWindow(display_, window_, rect_.x, rect_.y);
     // receive configure events
     XSelectInput(display_, window_, StructureNotifyMask);
     // Intercept request to delete window when being closed
@@ -401,7 +398,8 @@ void Window::doOpen(){
     }
 
     // resize the window
-    XResizeWindow(display_, window_, rect_.w, rect_.h);
+    XMapWindow(display_, window_);
+    XMoveResizeWindow(display_, window_, rect_.x, rect_.y, rect_.x, rect_.y);
     XFlush(display_);
 
     // open VST editor
@@ -423,6 +421,7 @@ void Window::close(){
 void Window::doClose(){
     if (window_){
         LOG_DEBUG("X11: close");
+        savePosition();
 
         LOG_DEBUG("X11: unregister Window");
         EventLoop::instance().unregisterWindow(this);
@@ -447,6 +446,19 @@ void Window::setFixedSize(int w, int h){
     }
 }
 
+void Window::savePosition(){
+    auto root = EventLoop::instance().getRoot();
+    int x, y;
+    ::Window child;
+    XWindowAttributes xwa;
+    XTranslateCoordinates(display_, window_, root, 0, 0, &x, &y, &child);
+    XGetWindowAttributes(display_, window_, &xwa);
+    // somehow it's 2 pixels off
+    rect_.x = x - xwa.x + 2;
+    rect_.y = y - xwa.y + 2;
+    LOG_DEBUG("X11: save position " << rect_.x << ", " << rect_.y);
+}
+
 void Window::setPos(int x, int y){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
@@ -460,7 +472,6 @@ void Window::setPos(int x, int y){
         if (window){
             XMoveWindow(display, window, r.x, r.y);
             XFlush(display);
-            // will call onConfigure()
         }
 
         delete cmd;
@@ -509,19 +520,6 @@ void Window::onConfigure(int x, int y, int width, int height){
         }
         rect_.w = width;
         rect_.h = height;
-    }
-    auto counter = ++configureCounter_;
-    if (counter == 3) {
-        // on the *third* call we store the offset between the
-        // desired position and actual position.
-        xoffset_ = x - rect_.x;
-        yoffset_ = y - rect_.y;
-        LOG_DEBUG("X11: window position offset: "
-                  << xoffset_ << ", " << yoffset_);
-    } else if (counter > 3) {
-        // always store adjusted position!
-        rect_.x = x - xoffset_;
-        rect_.y = y - yoffset_;
     }
 }
 

@@ -31,6 +31,7 @@ class EventLoop {
 
     bool checkThread();
     Display *getDisplay() { return display_; }
+    ::Window getRoot() { return root_; }
 
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
     void removePollFunction(UIThread::Handle handle);
@@ -79,15 +80,13 @@ class Window : public IWindow {
     ::Window window_ = 0;
 
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    int xoffset_ = 0;
-    int yoffset_ = 0;
-    int configureCounter_ = 0;
     bool canResize_ = false;
 
     // helper methods
     void doOpen();
     void doClose();
     void setFixedSize(int w, int h);
+    void savePosition();
 
     struct Command {
         Window *owner;
