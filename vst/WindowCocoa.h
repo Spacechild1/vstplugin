@@ -86,16 +86,14 @@ class Window : public IWindow {
     IPlugin& plugin() { return *plugin_; }
  private:
     void *getHandle();
-    void setFrame(Rect r, bool adjustSize, bool adjustPos = false);
-    void adjustSize(Rect& r);
-    void adjustPos(Rect& r);
+    void updateFrame();
 
     CocoaEditorWindow * window_ = nullptr;
     IPlugin *plugin_;
     NSTimer *timer_;
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    bool needAdjustSize_ = false;
-    bool needAdjustPos_ = false;
+    bool adjustSize_ = false;
+    bool adjustPos_ = false;
     // HACK: at least one plugin only reports "canResize" correctly
     // the very first time and then always returns false, so we cache
     // "true" results.
