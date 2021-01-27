@@ -344,7 +344,7 @@ void Window::doOpen(){
 
     // Create window with dummy (non-empty!) size.
     // Already set 'window_' in the beginning because openEditor()
-    // might implicitly call setSize()!
+    // might implicitly call resize()!
     int s = DefaultScreen(display_);
     window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
                 0, 0, 300, 300, 1,
@@ -483,19 +483,18 @@ void Window::setSize(int w, int h){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        auto window = owner->window_;
-        auto display = owner->display_;
-        auto& r = cmd->owner->rect_;
-        // cache!
-        r.w = cmd->x;
-        r.h = cmd->y;
+        if (owner->canResize_){
+            auto window = owner->window_;
+            auto display = owner->display_;
+            auto& r = cmd->owner->rect_;
+            // cache!
+            r.w = cmd->x;
+            r.h = cmd->y;
 
-        if (window){
-            if (!owner->canResize_){
-                owner->setFixedSize(r.w, r.h);
+            if (window){
+                XResizeWindow(display, window, r.w, r.h);
+                XFlush(display);
             }
-            XResizeWindow(display, window, r.w, r.h);
-            XFlush(display);
         }
 
         delete cmd;
@@ -529,11 +528,9 @@ void Window::onUpdate(){
 void Window::onConfigure(int x, int y, int width, int height){
     LOG_DEBUG("onConfigure: x: "<< x << ", y: " << y
               << ", w: " << width << ", h: " << height);
-    if (rect_.w != width || rect_.h != height){
+    if (canResize_ && (rect_.w != width || rect_.h != height)){
         LOG_DEBUG("size changed");
-        if (canResize_){
-            plugin_->resizeEditor(width, height);
-        }
+        plugin_->resizeEditor(width, height);
         rect_.w = width;
         rect_.h = height;
     }
