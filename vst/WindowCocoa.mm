@@ -317,7 +317,7 @@ void Window::doOpen(){
         // just bring to top
         [NSApp activateIgnoringOtherApps:YES];
         [window_ makeKeyAndOrderFront:nil];
-        LOG_DEBUG("Cocoa: restore")
+        LOG_DEBUG("Cocoa: restore");
         return;
     }
 
@@ -357,9 +357,12 @@ void Window::doOpen(){
                 didOpen = true;
             }
             LOG_DEBUG("Cocoa: editor size " << r.w << " * " << r.h);
+            // only adjust position initially!
+            if (!rect_.valid()){
+                adjustPos_ = true;
+            }
             rect_.w = r.w;
             rect_.h = r.h;
-            adjustPos_ = true;
             adjustSize_ = true;
         }
 
