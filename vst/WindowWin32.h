@@ -67,7 +67,7 @@ class Window : public IWindow {
  private:
     void doOpen();
     void doClose();
-    void adjustRect();
+    void updateFrame();
     void onSizing(RECT& newRect);
     void onSize(int w, int h);
 
@@ -76,9 +76,7 @@ class Window : public IWindow {
     HWND hwnd_ = nullptr;
     IPlugin* plugin_ = nullptr;
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    int rw_ = 0;
-    int rh_ = 0;
-    bool resizeRequest_ = false;
+    bool adjustSize_ = false;
     bool canResize_ = false;
 
     struct Command {
