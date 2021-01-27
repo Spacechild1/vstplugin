@@ -326,7 +326,6 @@ void Window::open(){
 }
 
 void Window::doOpen(){
-    LOG_DEBUG("X11: open");
     if (window_){
         // just bring to foreground
         LOG_DEBUG("X11: restore");
@@ -369,8 +368,8 @@ void Window::doOpen(){
 
     // set window coordinates
     bool didOpen = false;
-    if (rect_.valid()){
-        LOG_DEBUG("restore window");
+    if (canResize_ && rect_.valid()){
+        LOG_DEBUG("X11: restore editor size");
         // just restore from cached rect
     } else {
         // get window dimensions from plugin
@@ -420,7 +419,6 @@ void Window::close(){
 
 void Window::doClose(){
     if (window_){
-        LOG_DEBUG("X11: close");
         savePosition();
 
         LOG_DEBUG("X11: unregister Window");

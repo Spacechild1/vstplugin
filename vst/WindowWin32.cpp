@@ -293,6 +293,7 @@ void Window::doOpen(){
         ShowWindow(hwnd_, SW_MINIMIZE);
         ShowWindow(hwnd_, SW_RESTORE);
         BringWindowToTop(hwnd_);
+        LOG_DEBUG("Win32: restore");
         return;
     }
 
@@ -315,8 +316,8 @@ void Window::doOpen(){
 
     // set window coordinates
     bool didOpen = false;
-    if (rect_.valid()){
-        LOG_DEBUG("restore window");
+    if (canResize_ && rect_.valid()){
+        LOG_DEBUG("Win32: restore editor size");
         // restore from cached rect
         // NOTE: restoring the size doesn't work if openEditor()
         // calls setSize() in turn! I've tried various workarounds,
