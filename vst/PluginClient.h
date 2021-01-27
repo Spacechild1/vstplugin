@@ -126,13 +126,14 @@ class WindowClient : public IWindow {
     WindowClient(PluginClient &plugin);
     ~WindowClient();
 
-    void* getHandle() override; // get system-specific handle to the window
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
-    void update() override;
+
+    void resize(int w, int h) override {
+        // ignore
+    }
  private:
     PluginClient *plugin_;
 };

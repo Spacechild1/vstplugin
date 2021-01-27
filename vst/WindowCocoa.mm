@@ -450,7 +450,7 @@ void Window::setFrame(Rect r, bool adjustSize, bool adjustPos){
             adjustPos(r);
             needAdjustPos_ = false;
         }
-        NSRect frame = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
+        NSRect frame = NSMakeRect(r.x, r.y, r.w, r.h);
         [window_ setFrame:frame display:YES];
     } else {
         if (adjustSize){
@@ -464,14 +464,14 @@ void Window::setFrame(Rect r, bool adjustSize, bool adjustPos){
     rect_ = r;
 }
 
-void Window::adjustRect(Rect &r){
+void Window::adjustRect(Rect& r){
     NSRect content = NSMakeRect(r.x, r.y, r.w, r.h);
     NSRect frame = [window_  frameRectForContentRect:content];
     r.w = frame.size.width;
     r.h = frame.size.height;
 }
 
-void Window::adjustPos(Rect &r){
+void Window::adjustPos(Rect& r){
     // First move the window to the given x coordinate
     [window_ setFrameOrigin:NSMakePoint(r.x, r.y)];
     // then obtain the screen height.
@@ -495,15 +495,25 @@ void Window::setPos(int x, int y){
 }
 
 void Window::setSize(int w, int h){
+    LOG_DEBUG("setSize: " << w << ", " << h);
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        Rect r = owner->rect_;
-        r.w = cmd->x;
-        r.h = cmd->y;
-        owner->setFrame(r, true);
+        // only if we can resize (or don't know)
+        if (!owner->hwnd_ || canResize_){
+            Rect r = owner->rect_;
+            r.w = cmd->x;
+            r.h = cmd->y;
+            owner->setFrame(r, true);
+        }
         delete cmd;
     }, new Command { this, w, h });
+}
+
+void Window::resize(int w, int h){
+    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    Rect r { rect_.x, rect_.y, w, h };
+    setFrame(r, true);
 }
 
 } // Cocoa

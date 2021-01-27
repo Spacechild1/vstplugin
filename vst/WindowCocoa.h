@@ -73,19 +73,20 @@ class Window : public IWindow {
     Window(IPlugin& plugin);
     ~Window();
 
-    void* getHandle() override;
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
+
+    void resize(int w, int h) override;
     
     void doOpen();
     void onClose();
     void updateEditor();
     IPlugin& plugin() { return *plugin_; }
  private:
-    void setFrame(const Rect& r, bool adjustSize, bool adjustPos = false);
+    void *getHandle();
+    void setFrame(Rect r, bool adjustSize, bool adjustPos = false);
     void adjustSize(Rect& r);
     void adjustPos(Rect& r);
 

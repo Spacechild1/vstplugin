@@ -63,17 +63,18 @@ class Window : public IWindow {
     Window(Display &display, IPlugin& plugin);
     ~Window();
 
-    void* getHandle() override {
-        return (void*)window_;
-    }
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
+
+    void resize(int w, int h) override;
+
     void onClose();
     void onConfigure(int x, int y, int width, int height);
     void onUpdate();
+
+    void *getHandle() { return (void *)window_; }
  private:
     Display *display_;
     IPlugin *plugin_;

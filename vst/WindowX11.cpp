@@ -453,7 +453,7 @@ void Window::savePosition(){
     XWindowAttributes xwa;
     XTranslateCoordinates(display_, window_, root, 0, 0, &x, &y, &child);
     XGetWindowAttributes(display_, window_, &xwa);
-    // somehow it's 2 pixels off
+    // somehow it's 2 pixels off, probably because of the border
     rect_.x = x - xwa.x + 2;
     rect_.y = y - xwa.y + 2;
     LOG_DEBUG("X11: save position " << rect_.x << ", " << rect_.y);
@@ -500,6 +500,22 @@ void Window::setSize(int w, int h){
 
         delete cmd;
     }, new Command { this, w, h });
+}
+
+void Window::resize(int w, int h){
+    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    // should only be called if the window is open
+    if (window_){
+        if (!canResize_){
+            setFixedSize(w, h);
+        }
+        XResizeWindow(display_, window_, w, h);
+        XFlush(display_);
+
+        // cache!
+        rect_.w = w;
+        rect_.h = h;
+    }
 }
 
 void Window::onClose(){

@@ -700,10 +700,6 @@ WindowClient::WindowClient(PluginClient& plugin)
 
 WindowClient::~WindowClient(){}
 
-void* WindowClient::getHandle() {
-    return nullptr;
-}
-
 void WindowClient::open(){
     LOG_DEBUG("WindowOpen");
     ShmUICommand cmd(Command::WindowOpen, plugin_->id());
@@ -730,10 +726,6 @@ void WindowClient::setSize(int w, int h){
     cmd.windowSize.width = w;
     cmd.windowSize.height = h;
     plugin_->bridge().postUIThread(cmd);
-}
-
-void WindowClient::update(){
-    // ignore
 }
 
 } // vst

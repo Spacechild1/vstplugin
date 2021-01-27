@@ -570,13 +570,15 @@ class IWindow {
 
     virtual ~IWindow() {}
 
-    virtual void* getHandle() = 0; // get system-specific handle to the window
-
+    // user methods
     virtual void open() = 0;
     virtual void close() = 0;
     virtual void setPos(int x, int y) = 0;
     virtual void setSize(int w, int h) = 0;
+
+    // plugin methods
     virtual void update() {}
+    virtual void resize(int w, int h) = 0;
 };
 
 namespace UIThread {

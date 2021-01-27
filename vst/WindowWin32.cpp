@@ -318,7 +318,15 @@ void Window::doOpen(){
     if (rect_.valid()){
         LOG_DEBUG("restore window");
         // restore from cached rect
-        setFrame(rect_, false);
+        // ignore resize request if we can't resize!
+        if (resizeRequest_ && canResize_){
+            // meet resize request
+            rect_.w = rw_;
+            rect_.h = rh_;
+            adjustRect();
+            resizeRequest_ = false;
+        }
+        MoveWindow(hwnd_, rect_.x, rect_.y, rect_.w, rect_.h, TRUE);
         // NOTE: restoring the size doesn't work if openEditor()
         // calls setSize() in turn! I've tried various workarounds,
         // like setting a flag and bashing the size in setSize(),
@@ -335,16 +343,17 @@ void Window::doOpen(){
             didOpen = true;
         }
         LOG_DEBUG("editor size: " << r.w << " * " << r.h);
-        // bash x and y values
-        r.x = rect_.x;
-        r.y = rect_.y;
-        // adjust and set window dimensions
-        setFrame(r, true);
+        // set and adjust size
+        rect_.w = r.w;
+        rect_.h = r.h;
+        adjustRect();
+        MoveWindow(hwnd_, rect_.x, rect_.y, rect_.w, rect_.h, TRUE);
+        resizeRequest_ = false; // just to be sure
     }
 
     // open VST editor
     if (!didOpen){
-        plugin_->openEditor(getHandle());
+        plugin_->openEditor(hwnd_);
     }
 
     // show window
@@ -377,7 +386,7 @@ void Window::doClose(){
             rect_.y = rc.top;
             rect_.w = rc.right - rc.left;
             rect_.h = rc.bottom - rc.top;
-            needAdjust_ = false;
+            resizeRequest_ = false; // to be sure
         }
 
         KillTimer(hwnd_, timerID);
@@ -394,10 +403,13 @@ void Window::setPos(int x, int y){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        Rect r = owner->rect_;
+        auto& r = owner->rect_;
+        // update position
         r.x = cmd->x;
         r.y = cmd->y;
-        owner->setFrame(r, false);
+        if (owner->hwnd_){
+            MoveWindow(owner->hwnd_, r.x, r.y, r.w, r.h, TRUE);
+        }
         delete cmd;
     }, new Command { this, x, y });
 }
@@ -408,46 +420,52 @@ void Window::setSize(int w, int h){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        Rect r = owner->rect_;
-        r.w = cmd->x;
-        r.h = cmd->y;
-        owner->setFrame(r, true);
+        if (owner->hwnd_){
+            // update and adjust size
+            auto& r = owner->rect_;
+            r.w = cmd->x;
+            r.h = cmd->y;
+            owner->adjustRect();
+            MoveWindow(owner->hwnd_, r.x, r.y, r.w, r.h, TRUE);
+            owner->resizeRequest_ = false; // to be sure
+        } else {
+            // request resize
+            owner->rw_ = cmd->x;
+            owner->rh_ = cmd->y;
+            owner->resizeRequest_ = true;
+        }
+
         delete cmd;
     }, new Command { this, w, h });
 }
 
-void Window::setFrame(Rect r, bool adjust){
+void Window::resize(int w, int h){
+    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    // should only be called if the window is open
     if (hwnd_){
-        if (adjust || needAdjust_){
-            adjustRect(r);
-            needAdjust_ = false;
-        }
-        MoveWindow(hwnd_, r.x, r.y, r.w, r.h, TRUE);
-    } else {
-        if (adjust){
-            needAdjust_ = true;
-        }
+        rect_.w = w;
+        rect_.h = h;
+        adjustRect();
+        MoveWindow(hwnd_, rect_.x, rect_.y, rect_.w, rect_.h, TRUE);
+        resizeRequest_ = false; // override resize request!
     }
-    // cache (adjusted) rect
-    rect_ = r;
 }
 
-void Window::adjustRect(Rect& rect){
+void Window::adjustRect(){
     // adjust window dimensions for borders and menu
     const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
     const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
     const BOOL fMenu = GetMenu(hwnd_) != nullptr;
-    RECT rc = { rect.x, rect.y, rect.x + rect.w, rect.y + rect.h };
+    RECT rc = { rect_.x, rect_.y, rect_.x + rect_.w, rect_.y + rect_.h };
     AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-    rect.w = rc.right - rc.left;
-    rect.h = rc.bottom - rc.top;
+    rect_.w = rc.right - rc.left;
+    rect_.h = rc.bottom - rc.top;
 }
 
 void Window::update(){
-    EventLoop::instance().callAsync([](void * x){
-        auto hwnd = static_cast<Window *>(x)->hwnd_;
-        InvalidateRect(hwnd, nullptr, FALSE);
-    }, this);
+    if (hwnd_){
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
 }
 
 void Window::onSizing(RECT& newRect){

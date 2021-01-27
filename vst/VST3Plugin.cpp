@@ -1802,7 +1802,7 @@ bool VST3Plugin::hasEditor() const {
 tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
     LOG_DEBUG("resizeView");
     if (window_){
-        window_->setSize(newSize->getWidth(), newSize->getHeight());
+        window_->resize(newSize->getWidth(), newSize->getHeight());
     }
     return view->onSize(newSize);
 }

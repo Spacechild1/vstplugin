@@ -57,20 +57,17 @@ class Window : public IWindow {
     Window(IPlugin& plugin);
     ~Window();
 
-    void* getHandle() override {
-        return hwnd_;
-    }
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
-    void update();
+
+    void resize(int w, int h) override;
+    void update() override;
  private:
     void doOpen();
     void doClose();
-    void setFrame(Rect rect, bool adjust);
-    void adjustRect(Rect& rect);
+    void adjustRect();
     void onSizing(RECT& newRect);
     void onSize(int w, int h);
 
@@ -79,7 +76,9 @@ class Window : public IWindow {
     HWND hwnd_ = nullptr;
     IPlugin* plugin_ = nullptr;
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    bool needAdjust_ = false;
+    int rw_ = 0;
+    int rh_ = 0;
+    bool resizeRequest_ = false;
     bool canResize_ = false;
 
     struct Command {
