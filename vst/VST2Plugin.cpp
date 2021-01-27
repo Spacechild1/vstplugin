@@ -816,7 +816,7 @@ void VST2Plugin::setProgram(int program){
         dispatch(effBeginSetProgram);
         dispatch(effSetProgram, 0, program);
         dispatch(effEndSetProgram);
-            // update();
+        // update();
     } else {
         LOG_WARNING("program number out of range!");
     }

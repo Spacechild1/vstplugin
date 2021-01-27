@@ -1020,9 +1020,7 @@ void t_vsteditor::setup(){
 
 void t_vsteditor::update(){
     if (!e_owner->check_plugin()) return;
-    if (window()){
-        window()->update();
-    } else if (e_canvas) {
+    if (pd_gui()) {
         int n = e_owner->x_plugin->info().numParameters();
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
