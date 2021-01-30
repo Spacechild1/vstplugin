@@ -1313,22 +1313,26 @@ static void vstplugin_close(t_vstplugin *x){
                      classname(x));
             return;
         }
-        // NOTE: the plugin might send an event between here and vstplugin_close()
-        // and here, e.g. when automating parameters in the plugin UI.
-        // Since those events come from the UI thread, unsetting the listener
-        // would create a race condition.
-        // Instead, we unset the listener implicitly when we close the plugin.
-        // However, this is dangerous if we close the plugin asynchronously
-        // immediately before or inside ~t_vstplugin.
-        // As a workaround, we close the editor *here* and sync with the UI thread
-        // in ~t_vstplugin. (We assume that the plugin can't send UI events
-        // without the editor.)
     #if 0
         x->x_plugin->setListener(nullptr);
     #endif
         // make sure to release the plugin on the same thread where it was opened!
         // this is necessary to avoid crashes or deadlocks with certain plugins.
         if (x->x_async){
+            // NOTE: if we close the plugin asynchronously and the plugin editor
+            // is opened, it can happen that an event is sent from the UI thread,
+            // e.g. when automating parameters in the plugin UI.
+            // Since those events come from the UI thread, unsetting the listener
+            // here in the audio thread would create a race condition.
+            // Instead, we unset the listener implicitly when we close the plugin.
+            // However, this is dangerous if we close the plugin asynchronously
+            // immediately before or inside ~t_vstplugin.
+            // We can't sync with the plugin closing on the UI thread, as the
+            // actual close request is issued on the NRT thread and can execute
+            // *after* ~t_vstplugin. We *could* wait for all pending NRT commands
+            // to finish, but that's a bit overkill. Instead we close the editor
+            // *here* and sync with the UI thread in ~t_vstplugin, assuming that
+            // the plugin can't send UI events without the editor.
             auto window = x->x_plugin->getWindow();
             if (window){
                 window->close(); // see above
@@ -2908,7 +2912,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 t_vstplugin::~t_vstplugin(){
     // first make sure that there are no pending async commands!
     // NOTE that this doesn't affect pending close commands,
-    // because it can't be issued while the plugin is suspended.
+    // because they can't be issued while the plugin is suspended.
     if (x_suspended){
         t_workqueue::get()->cancel(this);
         x_suspended = false; // for vstplugin_close()!
@@ -2917,9 +2921,10 @@ t_vstplugin::~t_vstplugin(){
 
     vstplugin_close(this);
 
+
+    // Sync with UI thread if we're closing asynchronously,
+    // see comment in vstplugin_close().
     if (x_async && x_uithread){
-        // make sure that editor is closed before
-        // we get destroyed, see vstplugin_close()
         UIThread::sync();
     }
 
