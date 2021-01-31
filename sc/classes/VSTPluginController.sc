@@ -17,8 +17,8 @@ VSTPluginController {
 	var <>pluginCrashed;
 	// private
 	var oscFuncs;
-	var <paramCache; // only for dependants
-	var <programNames; // only for dependants
+	var <parameterCache; // for dependants
+	var <programCache; // for dependants
 	var currentPreset; // the current preset
 	var window; // do we have a VST editor?
 	var loading; // are we currently loading a plugin?
@@ -186,8 +186,8 @@ VSTPluginController {
 				display = this.class.msg2string(msg, 5);
 			};
 			// cache parameter value
-			(index < paramCache.size).if {
-				paramCache[index] = [value, display];
+			(index < parameterCache.size).if {
+				parameterCache[index] = [value, display];
 				// notify dependants
 				this.changed(\param, index, value, display);
 			} { "parameter index % out of range!".format(index).warn };
@@ -203,8 +203,8 @@ VSTPluginController {
 			var index, name;
 			index = msg[3].asInteger;
 			name = this.class.msg2string(msg, 4);
-			(index < programNames.size).if {
-				programNames[index] = name;
+			(index < programCache.size).if {
+				programCache[index] = name;
 				// notify dependants
 				this.changed(\program_name, index, name);
 			} { "program number % out of range!".format(index).warn };
@@ -321,10 +321,10 @@ VSTPluginController {
 						latency = msg[5].asInteger;
 						this.info = info; // now set 'info' property
 						info.addDependant(this);
-						paramCache = Array.fill(info.numParameters, [0, nil]);
+						parameterCache = Array.fill(info.numParameters, [0, nil]);
 						program = 0;
 						// copy default program names (might change later when loading banks)
-						programNames = info.programs.collect(_.name);
+						programCache = info.programs.collect(_.name);
 						// only query parameters if we have dependants!
 						(this.dependants.size > 0).if {
 							this.prQueryParams;
@@ -374,7 +374,7 @@ VSTPluginController {
 	prClear {
 		info !? { info.removeDependant(this) };
 		window = false; latency = nil; info = nil;
-		paramCache = nil; programNames = nil; didQuery = false;
+		parameterCache = nil; programCache = nil; didQuery = false;
 		program = nil; currentPreset = nil; loading = false;
 	}
 	addDependant { arg dependant;
@@ -669,7 +669,7 @@ VSTPluginController {
 	}
 	programName {
 		this.program.notNil.if {
-			^programNames[this.program];
+			^programCache[this.program];
 		} { ^nil };
 	}
 	programName_ { arg name;

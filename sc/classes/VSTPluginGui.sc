@@ -295,7 +295,7 @@ VSTPluginGui : ObjectGui {
 			nparams.do { arg i;
 				var param, row, col, name, label, display, slider, bar, unit, state;
 				param = info.parameters[i];
-				state = model.paramCache[i];
+				state = model.parameterCache[i];
 				col = i.div(nrows);
 				row = i % nrows;
 				// param name
@@ -363,7 +363,7 @@ VSTPluginGui : ObjectGui {
 				// append programs
 				labels = labels.add("--- built-in programs ---");
 				items = items.add(nil);
-				model.programNames.do { arg name, i;
+				model.programCache.do { arg name, i;
 					labels = labels.add(name);
 					items = items.add((type: \program, index: i));
 				}

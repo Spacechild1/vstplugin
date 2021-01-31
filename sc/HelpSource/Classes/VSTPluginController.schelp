@@ -358,7 +358,7 @@ SynthDef.new(\test, { arg bus = 0;
 INSTANCEMETHODS::
 
 PRIVATE:: prFree, prCheckPlugin, prCheckLocal, prClear, init, prQuery, prQueryParams, prQueryPrograms
-PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
+PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, prMakeOscFunc
 
 
 METHOD:: open
@@ -672,6 +672,9 @@ The action receives the parameter index and value. This can be helpful if you wa
 note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
 In that case it is not possible to determine which parameter has been automated manually.::
 
+METHOD:: parameterCache
+An Array containing the current state (code::[value, display]::) of each parameter. Only valid if a plugin is currently loaded!
+
 subsection:: Programs
 
 VST plugins often contain factory presets which are called emphasis::programs::.
@@ -689,6 +692,9 @@ METHOD:: programName
 METHOD:: programNameMsg
 
 get/set the name of the current program (VST2 only).
+
+METHOD:: programCache
+An Array containing the current name of each program. Only valid if a plugin is currently loaded!
 
 subsection:: Presets
 
