@@ -1299,9 +1299,6 @@ void VST2Plugin::parameterAutomated(int index, float value){
 #endif
 
 VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
-    double beatsPerBar = (double)timeInfo_.timeSigNumerator / (double)timeInfo_.timeSigDenominator * 4.0;
-        // starting position of current bar in beats (e.g. 4.0 for 4.25 in case of 4/4)
-    timeInfo_.barStartPos = std::floor(timeInfo_.ppqPos / beatsPerBar) * beatsPerBar;
     if (flags & kVstNanosValid){
         DEBUG_TIME_INFO("system time");
     }
@@ -1312,6 +1309,9 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
         DEBUG_TIME_INFO("tempo");
     }
     if (flags & kVstBarsValid){
+        double beatsPerBar = (double)timeInfo_.timeSigNumerator / (double)timeInfo_.timeSigDenominator * 4.0;
+            // starting position of current bar in beats (e.g. 4.0 for 4.25 in case of 4/4)
+        timeInfo_.barStartPos = std::floor(timeInfo_.ppqPos / beatsPerBar) * beatsPerBar;
         DEBUG_TIME_INFO("bar start pos");
     }
     if (flags & kVstCyclePosValid){
