@@ -74,14 +74,14 @@ class DeferredPlugin : public IPlugin {
     }
 
     void setTimeSignature(int numerator, int denominator) override {
-        Command command(Command::SetTransportPosition);
+        Command command(Command::SetTimeSignature);
         command.timeSig.num = numerator;
         command.timeSig.denom = denominator;
         pushCommand(command);
     }
 
     void setTransportPlaying(bool play) override {
-        Command command(Command::SetTransportPosition);
+        Command command(Command::SetTransportPlaying);
         command.i = play;
         pushCommand(command);
     }
