@@ -35,26 +35,6 @@ code::
 Ndef(\vst)[0] = { WhiteNoise.ar(0.1) ! 2 };
 Ndef(\vst)[1] = \vstFilter -> { |in| VSTPlugin.ar(in, 2) };
 ::
-## code::\vstSet:: || Set parameters with a Pbind of type code::\vst_set::, see link::Classes/VSTPluginController#Sequencing::.
-code::
-Ndef(\vst, \vstSet -> Pbind(
-    \vst, ~fx, // VSTPluginNodeProxyController
-	\params, [\Depth, \Freq],
-	\Depth, Pwhite(0.1, 0.9),
-    \Freq, Pseq([0.1, 0.2, 0.5, 0.9], inf),
-	\dur, Prand([0.25, 0.5, 1], inf)
-));
-::
-## code::\vstMidi:: || Play a VST instrument with a Pbind of type code::\vst_midi::, see link::Classes/VSTPluginController#Sequencing::.
-code::
-Ndef(\vst, \vstMidi -> Pbind(
-    \vst, ~vsti, // VSTPluginNodeProxyController
-	\midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
-	\dur, Prand(#[0.125, 0.25, 0.5], inf),
-    \legato, Pexprand(0.5, 1.0, inf),
-    \amp, Pexprand(0.5, 1.0, inf)
-));
-::
 ::
 
 
@@ -125,6 +105,7 @@ EXAMPLES::
 code::
 VSTPlugin.search;
 
+// ------------
 // a) Filter white noise through a VST plugin
 (
 Ndef(\test, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
@@ -134,19 +115,22 @@ Ndef(\test, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
 
 ~fx.editor; // open the VST plugin editor
 
-// automate parameters with the \vstSet role
+// automate parameters with a Pbind of type \vst_set
 (
-// don't add Pattern at index 0, otherwise we would replace the VST plugin!
-Ndef(\vst)[1] = \vstSet -> Pbind(
+Pdef(\auto, Pbind(
+	\type, \vst_set,
     \vst, ~fx, // VSTPluginNodeProxyController
 	\params, [\Depth, \Freq],
 	\Depth, Pwhite(0.1, 0.9),
     \Freq, Pseq([0.1, 0.2, 0.5, 0.9], inf),
 	\dur, Prand([0.25, 0.5, 1], inf)
-);
+)).play;
 )
 
-// ***
+Pdef(\auto).stop;
+Pdef(\auto).play;
+
+// ------------
 // b) For more flexibility, let's split it into seperate sources; the first source is filtered by the second source
 (
 Ndef(\test)[0] = { WhiteNoise.ar(0.1) ! 2 };
@@ -157,7 +141,7 @@ Ndef(\test).play;
 ~fx = VSTPluginNodeProxyController(Ndef(\test), 1).open("GChorus", editor: true);
 )
 
-// ***
+// ------------
 // c) Let's go one step further and use seperate NodeProxies
 (
 Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
@@ -175,7 +159,7 @@ Ndef(\pink, { PinkNoise.ar(0.1) ! 2 });
 Ndef(\fx).set(\in, Ndef(\pink));
 )
 
-// ***
+// ------------
 // d) If you look at the last example, you might notice that the VSTPlugin function will always be the same, so it makes sense to use a SynthDef instead! Most of the time the following SynthDefs should be sufficient:
 
 (
@@ -200,7 +184,7 @@ Ndef(\fx).play;
 ~fx = VSTPluginNodeProxyController(Ndef(\fx)).open("GChorus", editor: true);
 )
 
-// ***
+// ------------
 // e) Creating a VST instrument is simple:
 (
 // This needs the \vsti SynthDef above!
@@ -211,18 +195,19 @@ Ndef(\inst).play;
 
 ~inst.editor;
 
-// Now play some notes with the \vstMidi role
+// Now play some notes with a Pbind of type \vst_midi
 (
-// don't add Pattern at index 0, otherwise we would replace the VST plugin!
-Ndef(\inst)[1] = \vstMidi -> Pbind(
+Pdef(\seq, Pbind(
+	\type, \vst_midi,
     \vst, ~inst,
     \midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
     \dur, Prand(#[0.125, 0.25, 0.5], inf),
     \legato, Pexprand(0.5, 1.0, inf),
     \amp, Pexprand(0.5, 1.0, inf)
-);
+)).play;
 )
+// Pause/resume/end the Pbind.
+Pdef(\seq).stop;
+Pdef(\seq).play;
 
-Ndef(\inst).stop;
-Ndef(\inst).play;
 ::

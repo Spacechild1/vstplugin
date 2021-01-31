@@ -48,28 +48,6 @@ VSTPluginNodeProxyController : VSTPluginController {
 				def.buildForProxy(proxy, channelOffset, index);
 			}
 		);
-
-		// \vstSet role
-		AbstractPlayControl.proxyControlClasses.put(\vstSet, StreamControl);
-		AbstractPlayControl.buildMethods.put(\vstSet,
-			#{ arg pattern, proxy, channelOffset = 0, index;
-				Pchain(
-					(type: \vst_set),
-					pattern
-				).buildForProxy(proxy, channelOffset, index);
-			}
-		);
-
-		// \vstSet role
-		AbstractPlayControl.proxyControlClasses.put(\vstMidi, StreamControl);
-		AbstractPlayControl.buildMethods.put(\vstMidi,
-			#{ arg pattern, proxy, channelOffset = 0, index;
-				Pchain(
-					(type: \vst_midi),
-					pattern
-				).buildForProxy(proxy, channelOffset, index);
-			}
-		);
 	}
 
 	*new { arg proxy, index = 0, id, wait = -1;
