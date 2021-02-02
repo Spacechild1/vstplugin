@@ -39,6 +39,47 @@ Log::~Log(){
     }
 }
 
+//-----------------------------------------------------------------//
+
+template<typename T>
+void doBypass(ProcessData &data){
+    for (int i = 0; i < data.numOutputs; ++i){
+        auto output = (T **)data.outputs[i].channelData32;
+        auto nout = data.outputs[i].numChannels;
+        if (i < data.numInputs){
+            auto input = (T **)data.inputs[i].channelData32;
+            auto nin = data.inputs[i].numChannels;
+            for (int j = 0; j < nout; ++j){
+                auto out = output[j];
+                if (j < nin){
+                    // copy input to output
+                    auto in = input[j];
+                    std::copy(in, in + data.numSamples, out);
+                } else {
+                    // zero channel
+                    std::fill(out, out + data.numSamples, 0);
+                }
+            }
+        } else {
+            // zero whole bus
+            for (int j = 0; j < nout; ++j){
+                auto out = output[j];
+                std::fill(out, out + data.numSamples, 0);
+            }
+        }
+    }
+}
+
+void bypass(ProcessData &data){
+    if (data.precision == ProcessPrecision::Double){
+        doBypass<double>(data);
+    } else {
+        doBypass<float>(data);
+    }
+}
+
+//-----------------------------------------------------------------//
+
 #ifdef _WIN32
 std::wstring widen(const std::string& s){
     if (s.empty()){

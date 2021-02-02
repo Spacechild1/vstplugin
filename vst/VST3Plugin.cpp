@@ -5,6 +5,7 @@
 #include <set>
 #include <codecvt>
 #include <locale>
+#include <cassert>
 
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
@@ -460,26 +461,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error(Error::PluginError, "Couldn't get VST3 processor");
     }
-    // get IO channel count
-    auto getChannelCount = [this](auto media, auto dir, auto type) -> int {
-        auto count = component_->getBusCount(media, dir);
-        for (int i = 0; i < count; ++i){
-            Vst::BusInfo bus;
-            if (component_->getBusInfo(media, dir, i, bus) == kResultTrue
-                && bus.busType == type)
-            // we assume that the first bus is 'main' and the second bus is 'aux'
-            {
-                if ((type == Vst::kMain && i != 0) ||
-                    (type == Vst::kAux && i != 1))
-                {
-                    LOG_WARNING("unexpected bus index");
-                    return 0;
-                }
-                return bus.channelCount;
-            }
-        }
-        return 0;
-    };
+
     // finally set remaining info
     if (info){
         info->setUID(uid);
@@ -492,18 +474,52 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 info->vendor = "Unknown";
             }
         }
-        info->numInputs = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
-        info->numAuxInputs = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
-        info->numOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
-        info->numAuxOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
+        // get input/output busses
+        auto collectBusses = [this](auto dir) {
+            std::vector<PluginInfo::Bus> result;
+            auto count = component_->getBusCount(Vst::kAudio, dir);
+            for (int i = 0; i < count; ++i){
+                Vst::BusInfo busInfo;
+                if (component_->getBusInfo(Vst::kAudio, dir, i, busInfo) == kResultTrue){
+                    PluginInfo::Bus bus;
+                    bus.numChannels = busInfo.channelCount;
+                    bus.label = convertString(busInfo.name);
+                    bus.type = (busInfo.busType == Vst::kAux) ?
+                                PluginInfo::Bus::Aux : PluginInfo::Bus::Main;
+                    result.push_back(std::move(bus));
+                }
+            }
+            return result;
+        };
+
+        info->inputs = collectBusses(Vst::kInput);
+        info->outputs = collectBusses(Vst::kOutput);
+
         uint32_t flags = 0;
         LOG_DEBUG("has editor: " << hasEditor());
         flags |= hasEditor() * PluginInfo::HasEditor;
         flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
-        flags |= hasMidiInput() * PluginInfo::MidiInput;
-        flags |= hasMidiOutput() * PluginInfo::MidiOutput;
+
+        auto countMidiChannels = [this](Vst::BusDirection dir) -> int {
+            auto count = component_->getBusCount(Vst::kEvent, dir);
+            for (int i = 0; i < count; ++i){
+                Vst::BusInfo bus;
+                if (component_->getBusInfo(Vst::kEvent, dir, i, bus) == kResultTrue){
+                    if (bus.busType == Vst::kMain){
+                        return bus.channelCount;
+                    } else {
+                        LOG_DEBUG("got aux MIDI bus!");
+                    }
+                }
+            }
+            return 0;
+        };
+
+        flags |= countMidiChannels(Vst::kInput) * PluginInfo::MidiInput;
+        flags |= countMidiChannels(Vst::kOutput) * PluginInfo::MidiOutput;
+
         info->flags = flags;
         // get parameters
         std::set<Vst::ParamID> params;
@@ -569,14 +585,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
         info_ = info;
     }
-    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
-    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
-    numInputBusses_ = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kInput));
-    numInputChannels_[Main] = getNumInputs();
-    numInputChannels_[Aux] = getNumAuxInputs();
-    numOutputBusses_ = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kOutput));
-    numOutputChannels_[Main] = getNumOutputs();
-    numOutputChannels_[Aux] = getNumAuxOutputs();
 #if 0
     LOG_DEBUG("input busses: " << numInputBusses_ << ", output busses: " << numOutputBusses_);
     LOG_DEBUG("in: " << getNumInputs() << ", auxin: " << getNumAuxInputs()
@@ -701,69 +709,62 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     context_.continousTimeSamples = time * sampleRate;
 }
 
-void VST3Plugin::process(ProcessData<float>& data){
-    doProcess(data);
-}
-
-void VST3Plugin::process(ProcessData<double>& data){
-    doProcess(data);
-}
-
-void setAudioBusBuffers(Vst::AudioBusBuffers& bus, float ** vec){
-    bus.channelBuffers32 = vec;
-}
-
-void setAudioBusBuffers(Vst::AudioBusBuffers& bus, double ** vec){
-    bus.channelBuffers64 = vec;
-}
-
-template<typename T>
-void doBypassProcessing(IPlugin::ProcessData<T>& data, T** output, int numOut, T** auxoutput, int numAuxOut){
-    for (int i = 0; i < numOut; ++i){
-        auto out = output[i];
-        if (i < data.numInputs){
-            // copy input to output
-            auto in = data.input[i];
-            std::copy(in, in + data.numSamples, out);
-        } else {
-            std::fill(out, out + data.numSamples, 0); // zero
-        }
-    }
-    for (int i = 0; i < numAuxOut; ++i){
-        auto out = auxoutput[i];
-        if (i < data.numAuxInputs){
-            // copy input to output
-            auto in = data.auxInput[i];
-            std::copy(in, in + data.numSamples, out);
-        } else {
-            std::fill(out, out + data.numSamples, 0); // zero
-        }
+void VST3Plugin::process(ProcessData& data){
+    if (data.precision == ProcessPrecision::Double){
+        doProcess<double>(data);
+    } else {
+        doProcess<float>(data);
     }
 }
 
 template<typename T>
-void VST3Plugin::doProcess(ProcessData<T>& inData){
+void VST3Plugin::doProcess(ProcessData& inData){
+#if 1
+    assert(inData.numInputs > 0);
+    assert(inData.numOutputs > 0);
+#endif
+
     // process data
     Vst::ProcessData data;
-    Vst::AudioBusBuffers input[2];
-    Vst::AudioBusBuffers output[2];
     data.numSamples = inData.numSamples;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
-    // we send data for all busses (max. 2 per direction); some might have been deactivated in 'setNumSpeakers'
-    data.numInputs = numInputBusses_;
-    data.numOutputs = numOutputBusses_;
-    data.inputs = input;
-    data.outputs = output;
     data.processContext = &context_;
+    // prepare input
+    data.numInputs = inData.numInputs;
+    data.inputs = (Vst::AudioBusBuffers *)alloca(sizeof(Vst::AudioBusBuffers) * inData.numInputs);
+    for (int i = 0; i < data.numInputs; ++i){
+        auto& bus = data.inputs[i];
+        bus.silenceFlags = 0;
+        bus.numChannels = inData.inputs[i].numChannels;
+        bus.channelBuffers32 = (Vst::Sample32 **)inData.inputs[i].channelData32;
+    }
+    // prepare output
+    data.numOutputs = inData.numOutputs;
+    data.outputs = (Vst::AudioBusBuffers *)alloca(sizeof(Vst::AudioBusBuffers) * inData.numOutputs);
+    for (int i = 0; i < data.numOutputs; ++i){
+        auto& bus = data.outputs[i];
+        bus.silenceFlags = 0;
+        bus.numChannels = inData.outputs[i].numChannels;
+        bus.channelBuffers32 = (Vst::Sample32 **)inData.outputs[i].channelData32;
+    }
+
     data.inputEvents = &inputEvents_;
     data.outputEvents = &outputEvents_;
+
     data.inputParameterChanges = &inputParamChanges_;
     data.outputParameterChanges = &outputParamChanges_;
 
-    auto bypassState = bypass_; // do we have to care about bypass?
+    // send parameter changes from editor to processor
+    ParamChange paramChange;
+    while (paramChangesFromGui_.pop(paramChange)){
+        int32 index;
+        auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
+        queue->addPoint(0, paramChange.value, index);
+    }
+
+    // check bypass state
+    auto bypassState = bypass_;
     bool bypassRamp = (bypass_ != lastBypass_);
-    int rampDir = 0;
-    T rampAdvance = 0;
     if (bypassRamp){
         if ((bypass_ == Bypass::Hard || lastBypass_ == Bypass::Hard)){
             // hard bypass: just crossfade to unprocessed input - but keep processing
@@ -775,8 +776,6 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
             // instead of being cut off!
             bypassState = Bypass::Soft;
         }
-        rampDir = bypass_ != Bypass::Off;
-        rampAdvance = (1.f / data.numSamples) * (1 - 2 * rampDir);
     }
     if ((bypassState == Bypass::Hard) && hasBypass()){
         // if we request a hard bypass from a plugin which has its own bypass method,
@@ -786,218 +785,13 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     }
     lastBypass_ = bypass_;
 
-    // create dummy buffers
-    auto indummy = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
-    std::fill(indummy, indummy + data.numSamples, 0); // zero!
-    auto outdummy = (T *)alloca(sizeof(T) * data.numSamples); // (don't have to zero)
-
-    // prepare input buffers
-    auto setInputBuffers = [&](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
-                            auto** inputs, int numIn, auto** outputs, int numOut, auto* dummy){
-        bus.silenceFlags = 0;
-        bus.numChannels = numChannels;
-        for (int i = 0; i < numChannels; ++i){
-            if (i < numIn){
-                switch (bypassState){
-                case Bypass::Soft:
-                    // fade input to produce a smooth tail with no click
-                    if (bypassRamp && i < numOut){
-                        // write fade in/fade out to *output buffer* and use it as the plugin input.
-                        // this works because VST plugins actually work in "replacing" mode.
-                        auto src = inputs[i];
-                        auto dst = vec[i] = outputs[i];
-                        T mix = rampDir;
-                        for (int j = 0; j < inData.numSamples; ++j, mix += rampAdvance){
-                            dst[j] = src[j] * mix;
-                        }
-                    } else {
-                        vec[i] = dummy; // silence
-                    }
-                    break;
-                case Bypass::Hard:
-                    if (bypassRamp){
-                        // point to input (for creating the ramp)
-                        vec[i] = inputs[i];
-                    } else {
-                        vec[i] = dummy; // silence (for flushing the effect)
-                    }
-                    break;
-                default:
-                    // point to input
-                    vec[i] = inputs[i];
-                    break;
-                }
-            } else {
-                vec[i] = dummy; // silence
-            }
-        }
-        setAudioBusBuffers(bus, vec);
-    };
-    // prepare output buffers
-    auto setOutputBuffers = [](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
-                            auto** outputs, int numOut, auto* dummy){
-        bus.silenceFlags = 0;
-        bus.numChannels = numChannels;
-        for (int i = 0; i < numChannels; ++i){
-            if (i < numOut){
-                vec[i] = outputs[i];
-            } else {
-                vec[i] = dummy; // point to dummy buffer
-            }
-        }
-        setAudioBusBuffers(bus, vec);
-    };
-    // input:
-    auto nin = numInputChannels_[Main];
-    auto invec = (T **)alloca(sizeof(T*) * nin);
-    setInputBuffers(input[Main], invec, nin, (T **)inData.input, inData.numInputs,
-            inData.output, inData.numOutputs, indummy);
-    // aux input:
-    auto nauxin = numInputChannels_[Aux];
-    auto auxinvec = (T **)alloca(sizeof(T*) * nauxin);
-    setInputBuffers(input[Aux], auxinvec, nauxin, (T **)inData.auxInput, inData.numAuxInputs,
-            inData.auxOutput, inData.numAuxOutputs, indummy);
-    // output:
-    auto nout = numOutputChannels_[Main];
-    auto outvec = (T **)alloca(sizeof(T*) * nout);
-    setOutputBuffers(output[Main], outvec, nout, (T **)inData.output, inData.numOutputs, outdummy);
-    // aux output:
-    auto nauxout = numOutputChannels_[Aux];
-    auto auxoutvec = (T **)alloca(sizeof(T*) * nauxout);
-    setOutputBuffers(output[Aux], auxoutvec, nauxout, (T **)inData.auxOutput, inData.numAuxOutputs, outdummy);
-
-    // send parameter changes from editor to processor
-    ParamChange paramChange;
-    while (paramChangesFromGui_.pop(paramChange)){
-        int32 index;
-        auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
-        queue->addPoint(0, paramChange.value, index);
-    }
-
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
         processor_->process(data);
-    } else if (bypassRamp) {
-        // process <-> bypass transition
-        processor_->process(data);
-
-        if (bypassState == Bypass::Soft){
-            // soft bypass
-            auto softRamp = [&](auto inputs, auto numIn, auto outputs, auto numOut){
-                for (int i = 0; i < numOut; ++i){
-                    T mix = rampDir;
-                    auto out = outputs[i];
-                    if (i < numIn){
-                        // fade in/out unprocessed input
-                        auto in = inputs[i];
-                        for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                            out[j] += in[j] * (1.f - mix);
-                        }
-                    } else {
-                        // just fade in/out
-                        for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                            out[j] *= mix;
-                        }
-                    }
-                }
-            };
-            softRamp(inData.input, inData.numInputs, outvec, nout);
-            softRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout);
-            if (rampDir){
-                LOG_DEBUG("process -> soft bypass");
-            } else {
-                LOG_DEBUG("soft bypass -> process");
-            }
-        } else {
-            // hard bypass
-            auto hardRamp = [&](auto inputs, auto numIn, auto outputs, auto numOut){
-                for (int i = 0; i < numOut; ++i){
-                   T mix = rampDir;
-                   auto out = outputs[i];
-                   if (i < numIn){
-                       // cross fade between plugin output and unprocessed input
-                       auto in = inputs[i];
-                       for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                           out[j] = out[j] * mix + in[j] * (1.f - mix);
-                       }
-                   } else {
-                       // just fade out
-                       for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                           out[j] *= mix;
-                       }
-                   }
-                }
-            };
-            hardRamp(inData.input, inData.numInputs, outvec, nout);
-            hardRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout);
-            if (rampDir){
-                LOG_DEBUG("process -> hard bypass");
-            } else {
-                LOG_DEBUG("hard bypass -> process");
-            }
-        }
-    } else if (!bypassSilent_){
-        // continue to process with empty input till the output is silent
-        processor_->process(data);
-        // check for silence (RMS < ca. -80dB)
-        auto isChannelSilent = [](auto buf, auto n){
-            const T threshold = 0.0001;
-            T sum = 0;
-            for (int i = 0; i < n; ++i){
-                T f = buf[i];
-                sum += f * f;
-            }
-            return (sum / n) < (threshold * threshold); // sqrt(sum/n) < threshold
-        };
-        bool silent = true;
-        auto checkBusSilent = [&](auto bus, auto count, auto n){
-            for (int i = 0; i < count; ++i){
-                if (!isChannelSilent(bus[i], n)){
-                    silent = false;
-                    break;
-                }
-            }
-        };
-        checkBusSilent(outvec, nout, data.numSamples);
-        checkBusSilent(auxoutvec, nauxout, data.numSamples);
-        if (silent){
-            LOG_DEBUG("plugin output became silent!");
-        }
-        bypassSilent_ = silent;
-        if (bypassState == Bypass::Soft){
-            auto mix = [](auto** inputs, auto numIn, auto** outputs, auto numOut, auto n){
-                // mix output with unprocessed input
-                for (int i = 0; i < numOut; ++i){
-                    auto out = outputs[i];
-                    if (i < numIn){
-                        auto in = inputs[i];
-                        for (int j = 0; j < n; ++j){
-                            out[j] += in[j];
-                        }
-                    }
-                }
-            };
-            mix(inData.input, inData.numInputs, outvec, nout, inData.numSamples);
-            mix(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout, inData.numSamples);
-        } else {
-            // overwrite output
-            doBypassProcessing(inData, outvec, nout, auxoutvec, nauxout);
-        }
     } else {
-        // simple bypass
-        doBypassProcessing(inData, outvec, getNumOutputs(), auxoutvec, getNumAuxOutputs());
+        bypassProcess<T>(inData, data, bypassState, bypassRamp);
     }
-    // clear remaining outputs
-    auto clearOutputs = [](auto _outputs, int numOutputs, int numChannels, int n){
-        int rem = numOutputs - numChannels;
-        for (int i = 0; i < rem; ++i){
-            auto out = _outputs[numChannels + i];
-            std::fill(out, out + n, 0);
-        }
-    };
-    clearOutputs(inData.output, inData.numOutputs, nout, inData.numSamples);
-    clearOutputs(inData.auxOutput, inData.numAuxOutputs, nauxout, inData.numSamples);
 
     // clear input queues
     inputEvents_.clear();
@@ -1035,6 +829,204 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
             context_.samplesToNextClock = clockTickFract * samplesPerClock;
         } else {
             context_.samplesToNextClock = 0;
+        }
+    }
+}
+
+template<typename T>
+void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
+                               Bypass state, bool ramp)
+{
+    if (bypassSilent_ && !ramp){
+        // simple bypass
+        bypass(inData);
+        return;
+    }
+
+    // make temporary input vector - don't touch the original vector!
+    data.inputs = (data.numInputs > 0) ?
+                (Vst::AudioBusBuffers *)(alloca(sizeof(Vst::AudioBusBuffers) * data.numInputs))
+              : nullptr;
+    for (int i = 0; i < data.numInputs; ++i){
+        auto nin = inData.inputs[i].numChannels;
+        data.inputs[i].channelBuffers32 = nin > 0 ?
+                    (float **)alloca(sizeof(T *) * nin) : nullptr;
+        data.inputs[i].numChannels = nin;
+    }
+
+    // dummy input buffer
+    auto dummy = (T *)alloca(sizeof(T) * data.numSamples);
+    std::fill(dummy, dummy + data.numSamples, 0); // zero!
+
+    int dir;
+    T advance;
+    if (ramp){
+        dir = bypass_ != Bypass::Off;
+        advance = (1.f / data.numSamples) * (1 - 2 * dir);
+    }
+
+    // prepare bypassing
+    for (int i = 0; i < data.numInputs; ++i){
+        auto input = (const T **)data.inputs[i].channelBuffers32;
+        auto nin = data.inputs[i].numChannels;
+
+        if (state == Bypass::Soft){
+            if (ramp && i < data.numOutputs){
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+                // fade input to produce a smooth tail with no click
+                for (int j = 0; j < nin; ++j){
+                    if (j < nout){
+                        // write fade in/fade out to *output buffer* and use it as the plugin input.
+                        // this works because VST plugins actually work in "replacing" mode.
+                        auto in = (const T *)inData.inputs[i].channelData32[j];
+                        auto out = output[j];
+                        T mix = dir;
+                        for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                            out[k] = in[k] * mix;
+                        }
+                        input[j] = output[j];
+                    } else {
+                        input[j] = dummy; // silence
+                    }
+                }
+            } else {
+                for (int j = 0; j < nin; ++j){
+                    input[j] = dummy; // silence
+                }
+            }
+        } else {
+            // hard bypass
+            if (!ramp){
+                // silence (for flushing the effect)
+                for (int j = 0; j < nin; ++j){
+                    input[j] = dummy;
+                }
+            }
+        }
+    }
+
+    if (ramp) {
+        // process <-> bypass transition
+        processor_->process(data);
+
+        if (state == Bypass::Soft){
+            // soft bypass
+            for (int i = 0; i < data.numOutputs; ++i){
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+                auto nin = i < data.numInputs ? data.inputs[i].numChannels : 0;
+
+                for (int j = 0; j < nout; ++j){
+                    T mix = dir;
+                    auto out = output[j];
+                    if (j < nin){
+                        // fade in/out unprocessed (original) input
+                        auto in = (const T *)inData.inputs[i].channelData32[j];
+                        for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                            out[k] += in[k] * (1.f - mix);
+                        }
+                    } else {
+                        // just fade in/out
+                        for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                            out[k] *= mix;
+                        }
+                    }
+                }
+            }
+            if (dir){
+                LOG_DEBUG("process -> soft bypass");
+            } else {
+                LOG_DEBUG("soft bypass -> process");
+            }
+        } else {
+            // hard bypass
+            for (int i = 0; i < data.numOutputs; ++i){
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+                auto nin = i < data.numInputs ? data.inputs[i].numChannels : 0;
+
+                for (int j = 0; j < nout; ++j){
+                    T mix = dir;
+                    auto out = output[j];
+                    if (j < nin){
+                       // cross fade between plugin output and unprocessed (original) input
+                       auto in = (const T *)inData.inputs[i].channelData32[j];
+                       for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                           out[k] = out[k] * mix + in[k] * (1.f - mix);
+                       }
+                   } else {
+                       // just fade in/out
+                       for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                           out[k] *= mix;
+                       }
+                   }
+                }
+            }
+            if (dir){
+                LOG_DEBUG("process -> hard bypass");
+            } else {
+                LOG_DEBUG("hard bypass -> process");
+            }
+        }
+    } else {
+        // continue to process with empty input till all outputs are silent
+        processor_->process(data);
+
+        // check for silence (RMS < ca. -80dB)
+        auto isBusSilent = [](auto bus, auto nchannels, auto nsamples){
+            const T threshold = 0.0001;
+            for (int i = 0; i < nchannels; ++i){
+                auto buf = bus[i];
+                T sum = 0;
+                for (int j = 0; j < nsamples; ++j){
+                    T f = buf[j];
+                    sum += f * f;
+                }
+                if ((sum / nsamples) > (threshold * threshold)){
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        bool silent = true;
+
+        for (int i = 0; i < data.numOutputs; ++i){
+            auto output = (T **)data.outputs[i].channelBuffers32;
+            auto nout = data.outputs[i].numChannels;
+            if (!isBusSilent(output, nout, data.numSamples)){
+                silent = false;
+                break;
+            }
+        }
+
+        if (silent){
+            LOG_DEBUG("plugin output became silent!");
+        }
+        bypassSilent_ = silent;
+
+        if (state == Bypass::Soft){
+            // mix output with unprocessed (original) input
+            for (int i = 0; i < data.numInputs && i < data.numOutputs; ++i){
+                auto input = (const T **)inData.inputs[i].channelData32;
+                auto nin = data.inputs[i].numChannels;
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+
+                for (int j = 0; j < nin && j < nout; ++j){
+                    auto in = input[j];
+                    auto out = output[j];
+                    for (int k = 0; k < data.numSamples; ++k){
+                        out[k] += in[k];
+                    }
+                }
+            }
+        } else {
+            // hard bypass: overwrite output - the processing
+            // is only supposed to flush the effect.
+            // (we use the original data!)
+            bypass(inData);
         }
     }
 }
@@ -1168,22 +1160,6 @@ void VST3Plugin::resume(){
     processor_->setProcessing(true);
 }
 
-int VST3Plugin::getNumInputs() const {
-    return info_->numInputs;
-}
-
-int VST3Plugin::getNumAuxInputs() const {
-    return info_->numAuxInputs;
-}
-
-int VST3Plugin::getNumOutputs() const {
-    return info_->numOutputs;
-}
-
-int VST3Plugin::getNumAuxOutputs() const {
-    return info_->numAuxOutputs;
-}
-
 bool VST3Plugin::hasTail() const {
     return getTailSize() != 0;
 }
@@ -1201,13 +1177,17 @@ void VST3Plugin::setBypass(Bypass state){
     bool haveBypass = bypassID != PluginInfo::NoParamID;
     if (state != bypass_){
         if (state == Bypass::Off){
+            // turn bypass off
             if (haveBypass && (bypass_ == Bypass::Hard)){
                 doSetParameter(bypassID, 0);
+                LOG_DEBUG("plugin bypass off");
             }
             // soft bypass is handled by us
         } else if (bypass_ == Bypass::Off){
+            // turn bypass on
             if (haveBypass && (state == Bypass::Hard)){
                 doSetParameter(bypassID, 1);
+                LOG_DEBUG("plugin bypass on");
             }
             // soft bypass is handled by us
         } else {
@@ -1224,48 +1204,73 @@ static uint64_t makeChannels(int n){
     return ((uint64_t)1 << n - 1);
 }
 
-void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
-    // NOTE: for convenience, we assume that the first bus is 'main' and the second bus is 'aux',
-    // but this is not necessarily true...
-    LOG_DEBUG("requested bus arrangement: in " << in << ", auxin " << auxIn << ", out " << out << ", auxout " << auxOut);
+void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numOutputs){
+    LOG_DEBUG("requested bus arrangement:");
+    for (int i = 0; i < numInputs; ++i){
+        LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
+    }
+    for (int i = 0; i < numOutputs; ++i){
+        LOG_DEBUG("output bus " << i << ": " << output[i] << "ch");
+    }
 
-    // input busses (max. 2)
-    Vst::SpeakerArrangement inputBusses[2] = {
-        makeChannels(std::min<int>(in, getNumInputs())),
-        makeChannels(std::min<int>(auxIn, getNumAuxInputs()))
+    // input speakers
+    auto numInputSpeakers = std::min<int>(numInputs, info_->numInputs());
+    auto inputSpeakers = numInputSpeakers > 0 ?
+                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numInputSpeakers)
+              : nullptr;
+    for (int i = 0; i < numInputSpeakers; ++i){
+        inputSpeakers[i] = makeChannels(input[i]);
     };
-    // output busses (max. 2)
-    Vst::SpeakerArrangement outputBusses[2] = {
-        makeChannels(std::min<int>(out, getNumOutputs())),
-        makeChannels(std::min<int>(auxOut, getNumAuxOutputs()))
+    // output speakers
+    auto numOutputSpeakers = std::min<int>(numOutputs, info_->numOutputs());
+    auto outputSpeakers = numOutputSpeakers > 0 ?
+                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numOutputSpeakers)
+              : nullptr;
+    for (int i = 0; i < numOutputSpeakers; ++i){
+        outputSpeakers[i] = makeChannels(output[i]);
     };
-    processor_->setBusArrangements(inputBusses, numInputBusses_, outputBusses, numOutputBusses_);
+
+    processor_->setBusArrangements(inputSpeakers, numInputSpeakers,
+                                   outputSpeakers, numOutputSpeakers);
+
     // we have to (de)activate busses *after* setting the bus arrangement.
     // we also retrieve and save the actual bus channel counts.
-    for (int i = 0; i < numInputBusses_; ++i){
-        bool active = i > 0 ? auxIn : in;
-        component_->activateBus(Vst::kAudio, Vst::kInput, i, active);
-        if (processor_->getBusArrangement(Vst::kInput, i, inputBusses[i]) == kResultOk){
-            numInputChannels_[i] = Vst::SpeakerArr::getChannelCount(inputBusses[i]);
-        } else {
-            numInputChannels_[i] = i > 0 ? getNumAuxInputs() : getNumInputs();
-            LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+    auto checkSpeakers = [this](Vst::BusDirection dir, int *speakers, int numSpeakers){
+        auto busCount = component_->getBusCount(Vst::kAudio, dir);
+        for (int i = 0; i < busCount; ++i){
+            if (i < numSpeakers && (speakers[i] > 0)){
+                // check actual channel count
+                Vst::SpeakerArrangement arr;
+                if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
+                    speakers[i] = Vst::SpeakerArr::getChannelCount(arr);
+                } else {
+                    // ?
+                    LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+                }
+                // only activate bus if number of speakers is greater than zero
+                bool active = speakers[i] > 0;
+                component_->activateBus(Vst::kAudio, dir, i, active);
+            } else {
+                // deactive unused bus
+                component_->activateBus(Vst::kAudio, dir, i, false);
+            }
         }
-    }
-    for (int i = 0; i < numOutputBusses_; ++i){
-        bool active = i > 0 ? auxOut : out;
-        component_->activateBus(Vst::kAudio, Vst::kOutput, i, active);
-        if (processor_->getBusArrangement(Vst::kOutput, i, outputBusses[i]) == kResultOk){
-            numOutputChannels_[i] = Vst::SpeakerArr::getChannelCount(outputBusses[i]);
-        } else {
-            numOutputChannels_[i] = i > 0 ? getNumAuxOutputs() : getNumOutputs();
-            LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+        // zero remaining speakers!
+        for (int i = busCount; i < numSpeakers; ++i){
+            speakers[i] = 0;
         }
+    };
+
+    checkSpeakers(Vst::kInput, input, numInputs);
+    checkSpeakers(Vst::kOutput, output, numOutputs);
+
+    LOG_DEBUG("actual bus arrangement:");
+    for (int i = 0; i < numInputs; ++i){
+        LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
     }
-    LOG_DEBUG("actual bus arrangement: in " << numInputChannels_[Main]
-              << ", auxin " << numInputChannels_[Aux]
-              << ", out " << numOutputChannels_[Main]
-              << ", auxout " << numOutputChannels_[Aux]);
+    for (int i = 0; i < numOutputs; ++i){
+        LOG_DEBUG("output bus " << i << ": " << output[i] << "ch");
+    }
 }
 
 int VST3Plugin::getLatencySamples() {
@@ -1357,25 +1362,9 @@ double VST3Plugin::getTransportPosition() const {
     return context_.projectTimeMusic;
 }
 
-int VST3Plugin::getNumMidiInputChannels() const {
-    return numMidiInChannels_;
-}
-
-int VST3Plugin::getNumMidiOutputChannels() const {
-    return numMidiOutChannels_;
-}
-
-bool VST3Plugin::hasMidiInput() const {
-    return numMidiInChannels_ != 0;
-}
-
-bool VST3Plugin::hasMidiOutput() const {
-    return numMidiOutChannels_ != 0;
-}
-
 void VST3Plugin::sendMidiEvent(const MidiEvent &event){
     Vst::Event e;
-    e.busIndex = 0;
+    e.busIndex = 0; // LATER allow to choose event bus
     e.sampleOffset = event.delta;
     e.ppqPosition = context_.projectTimeMusic;
     e.flags = Vst::Event::kIsLive;
@@ -1413,7 +1402,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             Vst::ParamID id = Vst::kNoParamId;
             FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, data1, id) == kResultOk){
-                doSetParameter(id, data2 / 127.f, event.delta);
+                doSetParameter(id, data2 / 127.f, event.delta); // don't use plainParamToNormalized()
             } else {
                 LOG_WARNING("MIDI CC control number " << data1 << " not supported");
             }
@@ -1423,7 +1412,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         {
             auto id = info().programChange;
             if (id != PluginInfo::NoParamID){
-                doSetParameter(id, data1 / 127.f);
+                doSetParameter(id, data1 / 127.f); // don't use plainParamToNormalized()
             #if 0
                 program_ = data1;
             #endif

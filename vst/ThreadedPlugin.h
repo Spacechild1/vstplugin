@@ -54,11 +54,10 @@ class ThreadedPlugin final : public DeferredPlugin
     }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-    void process(ProcessData<float>& data) override;
-    void process(ProcessData<double>& data) override;
+    void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
-    void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
+    void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override {
         return plugin_->getLatencySamples();
     }
@@ -145,7 +144,7 @@ class ThreadedPlugin final : public DeferredPlugin
  private:
     void updateBuffer();
     template<typename T>
-    void doProcess(ProcessData<T>& data);
+    void doProcess(ProcessData& data);
     void dispatchCommands();
     void sendEvents();
     template<typename T>
@@ -171,10 +170,10 @@ class ThreadedPlugin final : public DeferredPlugin
     // buffer
     int blockSize_ = 0;
     ProcessPrecision precision_ = ProcessPrecision::Single;
-    std::vector<void *> input_;
-    std::vector<void *> auxInput_;
-    std::vector<void *> output_;
-    std::vector<void *> auxOutput_;
+    std::unique_ptr<Bus[]> inputs_;
+    int numInputs_ = 0;
+    std::unique_ptr<Bus[]> outputs_;
+    int numOutputs_ = 0;
     std::vector<char> buffer_;
 };
 

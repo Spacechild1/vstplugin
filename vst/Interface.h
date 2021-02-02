@@ -36,8 +36,8 @@ typedef unsigned int uint32_t;
 namespace vst {
 
 const int VERSION_MAJOR = 0;
-const int VERSION_MINOR = 4;
-const int VERSION_PATCH = 2;
+const int VERSION_MINOR = 5;
+const int VERSION_PATCH = 0;
 const int VERSION_PRERELEASE = 0;
 
 const char * getVersionString();
@@ -105,6 +105,23 @@ enum class PluginType {
 struct PluginInfo;
 class IWindow;
 
+struct AudioBus {
+    int numChannels;
+    union {
+        float **channelData32;
+        double **channelData64;
+    };
+};
+
+struct ProcessData {
+    const AudioBus *inputs;
+    AudioBus *outputs;
+    int numInputs;
+    int numOutputs;
+    int numSamples;
+    ProcessPrecision precision;
+};
+
 class IPlugin {
  public:
     using ptr = std::unique_ptr<IPlugin>;
@@ -114,25 +131,12 @@ class IPlugin {
 
     virtual const PluginInfo& info() const = 0;
 
-    template<typename T>
-    struct ProcessData {
-        const T **input = nullptr;
-        const T **auxInput = nullptr;
-        T **output = nullptr;
-        T **auxOutput = nullptr;
-        int numInputs = 0;
-        int numOutputs = 0;
-        int numAuxInputs = 0;
-        int numAuxOutputs = 0;
-        int numSamples = 0;
-    };
     virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
-    virtual void process(ProcessData<float>& data) = 0;
-    virtual void process(ProcessData<double>& data) = 0;
+    virtual void process(ProcessData& data) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
     virtual void setBypass(Bypass state) = 0;
-    virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
+    virtual void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) = 0;
     virtual int getLatencySamples() = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;
@@ -274,10 +278,28 @@ struct PluginInfo final {
     std::string category;
     std::string version;
     std::string sdkVersion;
-    int numInputs = 0;
-    int numAuxInputs = 0;
-    int numOutputs = 0;
-    int numAuxOutputs = 0;
+
+    struct Bus {
+        enum Type {
+            Main = 0,
+            Aux
+        };
+
+        int numChannels = 0;
+        Type type = Main;
+        std::string label;
+    };
+
+    std::vector<Bus> inputs;
+    int numInputs() const {
+        return inputs.size();
+    }
+
+    std::vector<Bus> outputs;
+    int numOutputs() const {
+        return outputs.size();
+    }
+
 #if USE_VST3
     uint32_t programChange = NoParamID; // no param
     uint32_t bypass = NoParamID; // no param
@@ -289,6 +311,7 @@ struct PluginInfo final {
         uint32_t id = 0;
     };
     std::vector<Param> parameters;
+
     void addParameter(Param param){
         auto index = parameters.size();
         // inverse mapping

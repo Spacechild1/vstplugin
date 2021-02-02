@@ -77,10 +77,10 @@ class PluginHandle {
 
     int maxBlockSize_ = 64;
     ProcessPrecision precision_{ProcessPrecision::Single};
+    std::unique_ptr<Bus[]> inputs_;
     int numInputs_ = 0;
+    std::unique_ptr<Bus[]> outputs_;
     int numOutputs_ = 0;
-    int numAuxInputs_ = 0;
-    int numAuxOutputs_ = 0;
     std::vector<char> buffer_;
     std::vector<Command> events_;
 

@@ -412,6 +412,16 @@ static std::string bashString(std::string name){
 #define toHex(x) std::hex << (x) << std::dec
 #define fromHex(x) std::stol(x, 0, 16); // hex
 
+void writeBusses(std::ostream& file, const std::vector<PluginInfo::Bus>& vec){
+    int n = vec.size();
+    file << "n=" << n << "\n";
+    for (int i = 0; i < n; ++i){
+        file << vec[i].numChannels << ","
+             << (int)vec[i].type << ","
+             << bashString(vec[i].label) << "\n";
+    }
+}
+
 void PluginInfo::serialize(std::ostream& file) const {
     // list sub plugins (only when probing)
     if (!subPlugins.empty()){
@@ -430,14 +440,6 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "category=" << category << "\n";
     file << "version=" << version << "\n";
     file << "sdkversion=" << sdkVersion << "\n";
-    file << "inputs=" << numInputs << "\n";
-    if (numAuxInputs > 0){
-        file << "auxinputs=" << numAuxInputs << "\n";
-    }
-    file << "outputs=" << numOutputs << "\n";
-    if (numAuxOutputs > 0){
-        file << "auxoutputs=" << numAuxOutputs << "\n";
-    }
     file << "flags=" << toHex(flags) << "\n";
 #if USE_VST3
     if (programChange != NoParamID){
@@ -447,12 +449,19 @@ void PluginInfo::serialize(std::ostream& file) const {
         file << "bypass=" << toHex(bypass) << "\n";
     }
 #endif
+    // inputs
+    file << "[inputs]\n";
+    writeBusses(file, inputs);
+    // outputs
+    file << "[outputs]\n";
+    writeBusses(file, outputs);
     // parameters
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
         file << bashString(param.name) << ","
-             << param.label << "," << toHex(param.id) << "\n";
+             << bashString(param.label) << ","
+             << toHex(param.id) << "\n";
     }
     // programs
     file << "[programs]\n";
@@ -551,6 +560,22 @@ int getCount(const std::string& line){
     }
 }
 
+std::vector<PluginInfo::Bus> readBusses(std::istream& file){
+    std::vector<PluginInfo::Bus> result;
+    std::string line;
+    std::getline(file, line);
+    int n = getCount(line);
+    while (n-- && std::getline(file, line)){
+        auto args = splitString(line, ',');
+        PluginInfo::Bus bus;
+        bus.numChannels = std::stol(args[0]);
+        bus.type = (PluginInfo::Bus::Type)std::stol(args[1]);
+        bus.label = ltrim(args[2]);
+        result.push_back(std::move(bus));
+    }
+    return result;
+}
+
 void PluginInfo::deserialize(std::istream& file, int versionMajor,
                              int versionMinor, int versionBugfix) {
     // first check for sections, then for keys!
@@ -561,6 +586,10 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
     while (getLine(file, line)){
         if (line == "[plugin]"){
             start = true;
+        } else if (line == "[inputs]"){
+            inputs = readBusses(file);
+        } else if (line == "[outputs]"){
+            outputs = readBusses(file);
         } else if (line == "[parameters]"){
             parameters.clear();
             std::getline(file, line);
@@ -639,10 +668,6 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                 MATCH("category", category)
                 MATCH("version", version)
                 MATCH("sdkversion", sdkVersion)
-                MATCH("inputs", numInputs)
-                MATCH("auxinputs", numAuxInputs)
-                MATCH("outputs", numOutputs)
-                MATCH("auxoutputs", numAuxOutputs)
             #if USE_VST3
                 MATCH("pgmchange", programChange)
                 MATCH("bypass", bypass)

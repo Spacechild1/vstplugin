@@ -186,12 +186,11 @@ class VST3Plugin final :
     PluginInfo::const_ptr getInfo() const { return info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-    void process(ProcessData<float>& data) override;
-    void process(ProcessData<double>& data) override;
+    void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
     void setBypass(Bypass state) override;
-    void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
+    void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override {
@@ -257,10 +256,6 @@ class VST3Plugin final :
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  private:
-     int getNumInputs() const;
-     int getNumAuxInputs() const;
-     int getNumOutputs() const;
-     int getNumAuxOutputs() const;
      int getNumParameters() const;
      int getNumPrograms() const;
      bool hasEditor() const;
@@ -268,12 +263,11 @@ class VST3Plugin final :
      bool hasTail() const;
      int getTailSize() const;
      bool hasBypass() const;
-     int getNumMidiInputChannels() const;
-     int getNumMidiOutputChannels() const;
-     bool hasMidiInput() const;
-     bool hasMidiOutput() const;
     template<typename T>
-    void doProcess(ProcessData<T>& inData);
+    void doProcess(ProcessData& inData);
+    template<typename T>
+    void bypassProcess(ProcessData& inData, Vst::ProcessData& data,
+                       Bypass state, bool ramp);
     void handleEvents();
     void handleOutputParameterChanges();
     void updateAutomationState();
@@ -288,14 +282,6 @@ class VST3Plugin final :
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     // audio
-    enum BusType {
-        Main = 0,
-        Aux = 1
-    };
-    int numInputBusses_ = 0;
-    int numInputChannels_[2]; // main + aux
-    int numOutputBusses_ = 0;
-    int numOutputChannels_[2]; // main + aux
     Vst::ProcessContext context_;
     // automation
     int32 automationState_ = 0; // should better be atomic as well...
@@ -307,8 +293,6 @@ class VST3Plugin final :
     // midi
     EventList inputEvents_;
     EventList outputEvents_;
-    int numMidiInChannels_ = 0;
-    int numMidiOutChannels_ = 0;
     // parameters
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;

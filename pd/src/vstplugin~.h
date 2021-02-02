@@ -72,17 +72,21 @@ class t_vstplugin {
     t_canvas *x_canvas; // parent canvas
     int x_blocksize = 64;
     t_float x_sr = 44100;
-    std::vector<t_sample *> x_siginlets;
-    std::vector<t_sample *> x_sigoutlets;
-    std::vector<t_sample *> x_sigauxinlets;
-    std::vector<t_sample *> x_sigauxoutlets;
-    std::vector<char> x_inbuf;
-    std::vector<char> x_auxinbuf;
-    std::vector<char> x_outbuf;
-    std::vector<char> x_auxoutbuf;
-    Mutex x_mutex;
+    // signals
+    struct t_signalbus {
+        std::unique_ptr<t_sample *[]> b_signals;
+        std::unique_ptr<void *[]> b_buffers;
+        int b_n = 0;
+    };
+    std::vector<t_signalbus> x_inlets;
+    std::vector<t_signalbus> x_outlets;
+    std::vector<Bus> x_inputs;
+    std::vector<Bus> x_outputs;
+    std::vector<char> x_inbuffer;
+    std::vector<char> x_outbuffer;
     // VST plugin
     IPlugin::ptr x_plugin;
+    Mutex x_mutex;
     t_symbol *x_key = nullptr;
     t_symbol *x_path = nullptr;
     t_symbol *x_preset = nullptr;
@@ -91,8 +95,10 @@ class t_vstplugin {
     bool x_threaded = false;
     bool x_keep = false;
     bool x_suspended = false;
+    bool x_process = false;
     Bypass x_bypass = Bypass::Off;
-    ProcessPrecision x_precision; // single/double precision
+    ProcessPrecision x_wantprecision; // single/double precision
+    ProcessPrecision x_realprecision;
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
 #ifdef PDINSTANCE
@@ -107,7 +113,9 @@ class t_vstplugin {
     bool check_plugin();
 
     template<bool async>
-    void setup_plugin(IPlugin& plugin, bool uithread);
+    void setup_plugin(IPlugin *plugin, bool uithread);
+
+    void update_buffers();
 
     int get_sample_offset();
 };

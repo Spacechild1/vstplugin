@@ -92,14 +92,6 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
         sendParam(channel, i, value, false);
     }
 
-    // default channels
-    numInputs_ = plugin_->info().numInputs;
-    numOutputs_ = plugin_->info().numOutputs;
-    numAuxInputs_ = plugin_->info().numAuxInputs;
-    numAuxOutputs_ = plugin_->info().numAuxOutputs;
-
-    updateBuffer();
-
     // set listener
     proxy_ = std::make_shared<PluginHandleListener>(*this);
     plugin_->setListener(proxy_);
@@ -125,17 +117,57 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         updateBuffer();
         break;
     case Command::SetNumSpeakers:
+    {
         LOG_DEBUG("PluginHandle: setNumSpeakers");
-        numInputs_ = cmd.speakers.in;
-        numOutputs_ = cmd.speakers.out;
-        numAuxInputs_ = cmd.speakers.auxin;
-        numAuxOutputs_ = cmd.speakers.auxout;
+        int numInputs = cmd.speakers.numInputs;
+        int numOutputs = cmd.speakers.numOutputs;
+        auto speakers = cmd.speakers.speakers;
+        auto input = (int *)alloca(sizeof(int) * numInputs);
+        std::copy(speakers, speakers + numInputs, input);
+        auto output = (int *)alloca(sizeof(int) * numOutputs);
+        std::copy(speakers + numInputs,
+                  speakers + numInputs + numOutputs, output);
+
         UIThread::callSync([&](){
-            plugin_->setNumSpeakers(numInputs_, numOutputs_,
-                                    numAuxInputs_, numAuxOutputs_);
+            plugin_->setNumSpeakers(input, numInputs, output, numOutputs);
         });
+
+        // create input busses
+        inputs_ = std::make_unique<Bus[]>(numInputs);
+        numInputs_ = numInputs;
+        for (int i = 0; i < numInputs; ++i){
+            inputs_[i] = Bus(input[i]);
+        }
+        // create output busses
+        outputs_ = std::make_unique<Bus[]>(numOutputs);
+        numOutputs_ = numOutputs;
+        for (int i = 0; i < numOutputs; ++i){
+            outputs_[i] = Bus(output[i]);
+        }
+
         updateBuffer();
+
+        // send actual speaker arrangement
+        channel.clear(); // !
+
+        int size = sizeof(uint32_t) * (numInputs_ + numOutputs_);
+        auto totalSize = CommandSize(ShmCommand, speakers, size);
+        auto reply = (ShmCommand *)alloca(totalSize);
+        reply->type = Command::SpeakerArrangement;
+        reply->speakers.numInputs = numInputs;
+        reply->speakers.numOutputs = numOutputs;
+        // copy input and output arrangements
+        for (int i = 0; i < numInputs; ++i){
+            reply->speakers.speakers[i] = input[i];
+        }
+        for (int i = 0; i < numOutputs; ++i){
+            reply->speakers.speakers[i + numInputs] = output[i];
+        }
+
+        addReply(channel, reply, totalSize);
+
         break;
+    }
     case Command::Suspend:
         LOG_DEBUG("PluginHandle: suspend");
         UIThread::callSync([&](){
@@ -252,12 +284,32 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
 }
 
 void PluginHandle::updateBuffer(){
-    auto sampleSize = precision_ == ProcessPrecision::Double ?
-                sizeof(double) : sizeof(float);
-    auto totalSize = (numInputs_ + numOutputs_ + numAuxInputs_ + numAuxOutputs_)
-            * maxBlockSize_ * sampleSize;
-    buffer_.clear(); // force zero
-    buffer_.resize(totalSize);
+    int total = 0;
+    for (int i = 0; i < numInputs_; ++i){
+        total += inputs_[i].numChannels;
+    }
+    for (int i = 0; i < numOutputs_; ++i){
+        total += outputs_[i].numChannels;
+    }
+    const int incr = maxBlockSize_ *
+        (precision_ == ProcessPrecision::Double ? sizeof(double) : sizeof(float));
+    buffer_.clear(); // force zero initialization
+    buffer_.resize(total * incr);
+    // set buffer vectors
+    auto buf = buffer_.data();
+    auto setBuffers = [](auto& busses, int count, auto& bufptr, int incr){
+        for (int i = 0; i < count; ++i){
+            auto& bus = busses[i];
+            for (int j = 0; j < bus.numChannels; ++j){
+                bus.channelData32[j] = (float *)bufptr; // float* and double* have the same size
+                bufptr += incr;
+            }
+        }
+    };
+    setBuffers(inputs_, numInputs_, buf, incr);
+    setBuffers(outputs_, numOutputs_, buf, incr);
+
+    assert((buf - buffer_.data()) == buffer_.size());
 }
 
 void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
@@ -271,55 +323,40 @@ void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
 
 template<typename T>
 void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
-    IPlugin::ProcessData<T> data;
-    data.numSamples = cmd.process.numSamples;
+    assert(cmd.process.numInputs == numInputs_);
+    assert(cmd.process.numOutputs == numOutputs_);
 
-    data.numInputs = cmd.process.numInputs;
-    data.input = (const T**)alloca(sizeof(T*) * data.numInputs);
-    data.numOutputs = cmd.process.numOutputs;
-    data.output = (T**)alloca(sizeof(T*) * data.numOutputs);
-    data.numAuxInputs = cmd.process.numAuxInputs;
-    data.auxInput = (const T**)alloca(sizeof(T*) * data.numAuxInputs);
-    data.numAuxOutputs = cmd.process.numAuxOutpus;
-    data.auxOutput = (T**)alloca(sizeof(T*) * data.numAuxOutputs);
+    ProcessData data;
+    data.numSamples = cmd.process.numSamples;
+    data.precision = (ProcessPrecision)cmd.process.precision;
+    data.numInputs = numInputs_;
+    data.inputs = inputs_.get();
+    data.numOutputs = numOutputs_;
+    data.outputs = outputs_.get();
 
     // read audio input data
-    auto bufptr = (T *)buffer_.data();
+    for (int i = 0; i < data.numInputs; ++i){
+        auto& bus = data.inputs[i];
+        // LOG_DEBUG("PluginClient: read audio bus " << i << " with "
+        //     << bus.numChannels << " channels");
 
-    auto readAudio = [&](auto vec, auto numChannels){
-//        LOG_DEBUG("PluginClient: read audio bus with "
-//                  << numChannels << " channels");
-        for (int i = 0; i < numChannels; ++i){
-            const char *bytes;
+        // read channels
+        for (int j = 0; j < bus.numChannels; ++j){
+            auto chn = (T *)bus.channelData32[j];
+            const char* msg;
             size_t size;
-            if (channel.getMessage(bytes, size)){
+            if (channel.getMessage(msg, size)){
                 // size can be larger because of message
                 // alignment - don't use in std::copy!
                 assert(size >= data.numSamples * sizeof(T));
-
-                auto chn = (const T *)bytes;
-                std::copy(chn, chn + data.numSamples, bufptr);
-
+                auto buf = (const float *)msg;
+                std::copy(buf, buf + data.numSamples, chn);
             } else {
-                std::fill(bufptr, bufptr + data.numSamples, 0);
-                LOG_ERROR("PluginHandle: missing audio input channel " << i);
+                std::fill(chn, chn + data.numSamples, 0);
+                LOG_ERROR("PluginClient: missing channel " << j
+                          << " for audio input bus " << i);
             }
-            vec[i] = bufptr;
-            bufptr += data.numSamples;
         }
-    };
-
-    readAudio(data.input, data.numInputs);
-    readAudio(data.auxInput, data.numAuxInputs);
-
-    // set output pointers
-    for (int i = 0; i < data.numOutputs; ++i){
-        data.output[i] = bufptr;
-        bufptr += data.numSamples;
-    }
-    for (int i = 0; i < data.numAuxOutputs; ++i){
-        data.auxOutput[i] = bufptr;
-        bufptr += data.numSamples;
     }
 
     // read and dispatch commands
@@ -331,13 +368,13 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     // send audio output data
     channel.clear(); // !
 
+    // send output busses
     for (int i = 0; i < data.numOutputs; ++i){
-        channel.addMessage((const char *)data.output[i],
-                           sizeof(T) * data.numSamples);
-    }
-    for (int i = 0; i < data.numAuxOutputs; ++i){
-        channel.addMessage((const char *)data.auxOutput[i],
-                           sizeof(T) * data.numSamples);
+        auto& bus = data.outputs[i];
+        // write all channels sequentially to avoid additional copying.
+        for (int j = 0; j < bus.numChannels; ++j){
+            channel.addMessage((const char *)bus.channelData32[j], sizeof(T) * data.numSamples);
+        }
     }
 
     // send events
@@ -503,7 +540,7 @@ void PluginHandle::sendParameterUpdate(ShmChannel& channel){
 
 void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
     auto sendProgramName = [&](int index, const std::string& name){
-        auto size = sizeof(ShmCommand) + name.size() + 1;
+        auto size  = CommandSize(ShmCommand, programName, name.size() + 1);
         auto reply = (ShmCommand *)alloca(size);
         reply->type = Command::ProgramNameIndexed;
         reply->programName.index = index;

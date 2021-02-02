@@ -567,110 +567,105 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 
 // -------------------- VSTPlugin ------------------------ //
 
-
-
 VSTPlugin::VSTPlugin(){
-    // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
+    // UGen inputs: nout, blocksize, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
+    // UGen inputs: -noutbus, nout1, nout2, ... blocksize, bypass, -ninbus, nin1, inputs1..., nin2, inputs2... nparam, params...
+    // UGen inputs: blocksize, bypass, noutbus, nout1, nout2, ... ninbus, nin1, inputs1..., nin2, inputs2... nparam, params...
     assert(numInputs() >= 5);
     // out
-    int nout = numOutChannels();
+    int nout = in0(0);
     LOG_DEBUG("out: " << nout);
     assert(!(nout < 0 || nout > numOutputs()));
+
+    // aux out
+    auto nauxout = numOutputs() - nout;
+    LOG_DEBUG("auxout: " << nauxout);
+
     // in
-    auto nin = numInChannels();
+    auto nin = (int)in0(3);
     LOG_DEBUG("in: " << nin);
     assert(nin >= 0);
+
     // aux in
-    auxInChannelOnset_ = inChannelOnset_ + nin + 1;
-    assert(auxInChannelOnset_ > inChannelOnset_ && auxInChannelOnset_ < numInputs());
-    auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
+    auto auxInChannelOnset = inChannelOnset + nin + 1;
+    assert(auxInChannelOnset > inChannelOnset && auxInChannelOnset <= numInputs());
+    auto nauxin = in0(auxInChannelOnset - 1);
     LOG_DEBUG("aux in: " << nauxin);
     assert(nauxin >= 0);
-    // aux out
-    auto nauxout = numAuxOutChannels();
+
     // parameter controls
-    parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
-    assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ <= numInputs());
-    auto numParams = numParameterControls(); // computed from parameterControlsOnset_
-    LOG_DEBUG("parameters: " << numParams);
-    assert(numParams >= 0);
-    assert((parameterControlOnset_ + numParams * 2) <= numInputs());
- 
-    // create delegate after member initialization!
-    delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
+    parameterControlOnset_ = auxInChannelOnset + nauxin + 1;
+    assert(parameterControlOnset_ > auxInChannelOnset && parameterControlOnset_ <= numInputs());
+    numParameterControls_ = in0(parameterControlOnset_ - 1);
+    LOG_DEBUG("parameters: " << numParameterControls_);
+    assert(numParameterControls_ >= 0);
+    assert((parameterControlOnset_ + numParameterControls_ * 2) <= numInputs());
 
-    set_calc_function<VSTPlugin, &VSTPlugin::next>();
+    // setup input busses
+    numUgenInputs_ = nauxin > 0 ? 2 : 1;
+    ugenInputs_ = (Bus *)RTAlloc(mWorld, sizeof(Bus) * numUgenInputs_);
+    if (ugenInputs_){
+        ugenInputs_[0].numChannels = nin;
+        ugenInputs_[0].channelData = (nin > 0) ? mInBuf + inChannelOnset : nullptr;
+        if (nauxin > 0){
+            ugenInputs_[1].numChannels = nauxin;
+            ugenInputs_[1].channelData = mInBuf + auxInChannelOnset;
+        }
+    }
+    // setup output busses
+    numUgenOutputs_ = nauxout > 0 ? 2 : 1;
+    ugenOutputs_ = (Bus *)RTAlloc(mWorld, sizeof(Bus) * numUgenOutputs_);
+    if (ugenOutputs_){
+        ugenOutputs_[0].numChannels = nout;
+        ugenOutputs_[0].channelData = (nout > 0) ? mOutBuf : nullptr;
+        if (nauxout > 0){
+            ugenOutputs_[1].numChannels = nauxout;
+            ugenOutputs_[1].channelData = mOutBuf + nout;
+        }
+    }
 
-    // create reblocker after setting the calc function (to avoid 1 sample computation)!
-    int reblockSize = in0(1);
-    if (reblockSize > bufferSize()){
-        auto reblock = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
-        if (reblock){
-            memset(reblock, 0, sizeof(Reblock)); // set all pointers to NULL!
-            // make sure that block size is power of 2
-            int n = 1;
-            while (n < reblockSize){
-               n *= 2;
-            }
-            reblock->blockSize = n;
-            // allocate buffer
-            int total = nin + nout + nauxin + nauxout;
-            if ((total == 0) ||
-                (reblock->buffer = (float *)RTAlloc(mWorld, sizeof(float) * total * n)))
-            {
-                auto bufptr = reblock->buffer;
-                std::fill(bufptr, bufptr + (total * n), 0);
-                // allocate and assign channel vectors
-                auto makeVec = [&](auto& vec, int nchannels){
-                    if (nchannels > 0){
-                        vec = (float **)RTAlloc(mWorld, sizeof(float *) * nchannels);
-                        if (!vec){
-                            LOG_ERROR("RTAlloc failed!");
-                            return false;
-                        }
-                        for (int i = 0; i < nchannels; ++i, bufptr += n){
-                            vec[i] = bufptr;
-                        }
-                    }
-                    return true;
-                };
-                if (makeVec(reblock->input, nin)
-                    && makeVec(reblock->output, nout)
-                    && makeVec(reblock->auxInput, nauxin)
-                    && makeVec(reblock->auxOutput, nauxout))
-                {
-                    // start phase at one block before end, so that the first call
-                    // to the perform routine will trigger plugin processing.
-                    reblock->phase = n - bufferSize();
-                    reblock_ = reblock;
-                } else {
-                    // clean up
-                    RTFreeSafe(mWorld, reblock->input);
-                    RTFreeSafe(mWorld, reblock->output);
-                    RTFreeSafe(mWorld, reblock->auxInput);
-                    RTFreeSafe(mWorld, reblock->auxOutput);
-                    RTFreeSafe(mWorld, reblock->buffer);
-                    RTFree(mWorld, reblock);
-                }
-            } else {
-                LOG_ERROR("RTAlloc failed!");
-                RTFree(mWorld, reblock);
-            }
+    // must not be nullptr!
+    if (ugenInputs_ && ugenOutputs_){
+        // create delegate
+        delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
+        if (delegate_){
+            mSpecialIndex |= Valid;
         } else {
             LOG_ERROR("RTAlloc failed!");
         }
+    } else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+
+    // create reblocker (if needed)
+    int reblockSize = in0(1);
+    if (valid() && reblockSize > bufferSize()){
+        initReblocker(reblockSize);
+    }
+
+    // create dummy buffer
+    size_t dummyBlocksize = reblock_ ? reblock_->blockSize : bufferSize();
+    auto dummyBufsize = dummyBlocksize * 2 * sizeof(float);
+    dummyBuffer_ = (float *)RTAlloc(mWorld, dummyBufsize);
+    if (dummyBuffer_){
+        memset(dummyBuffer_, 0, dummyBufsize); // !
+    } else {
+        LOG_ERROR("RTAlloc failed!");
+        setInvalid();
     }
 
     // run queued unit commands
     if (mSpecialIndex & UnitCmdQueued) {
         auto item = unitCmdQueue_;
         while (item) {
-            sc_msg_iter args(item->size, item->data);
-            // swallow the first 3 arguments
-            args.geti(); // node ID
-            args.geti(); // ugen index
-            args.gets(); // unit command name
-            (item->fn)((Unit*)this, &args);
+            if (delegate_){
+                sc_msg_iter args(item->size, item->data);
+                // swallow the first 3 arguments
+                args.geti(); // node ID
+                args.geti(); // ugen index
+                args.gets(); // unit command name
+                (item->fn)((Unit*)this, &args);
+            }
             auto next = item->next;
             RTFree(mWorld, item);
             item = next;
@@ -679,30 +674,46 @@ VSTPlugin::VSTPlugin(){
 
     mSpecialIndex |= Initialized; // !
 
+    mCalcFunc = [](Unit *unit, int numSamples){
+        static_cast<VSTPlugin *>(unit)->next(numSamples);
+    };
+    // don't run the calc function, instead just set
+    // the first samples of each UGen output to zero
+    for (int i = 0; i < numOutputs(); ++i){
+        out0(i) = 0;
+    }
+
     LOG_DEBUG("created VSTPlugin instance");
 }
 
 VSTPlugin::~VSTPlugin(){
     clearMapping();
+
     RTFreeSafe(mWorld, paramState_);
     RTFreeSafe(mWorld, paramMapping_);
-    if (reblock_){
-        RTFreeSafe(mWorld, reblock_->input);
-        RTFreeSafe(mWorld, reblock_->output);
-        RTFreeSafe(mWorld, reblock_->auxInput);
-        RTFreeSafe(mWorld, reblock_->auxOutput);
-        RTFreeSafe(mWorld, reblock_->buffer);
-        RTFree(mWorld, reblock_);
+
+    RTFreeSafe(mWorld, ugenInputs_);
+    RTFreeSafe(mWorld, ugenOutputs_);
+
+    // plugin input buffers
+    for (int i = 0; i < numPluginInputs_; ++i){
+        RTFreeSafe(mWorld, pluginInputs_[i].channelData32);
     }
+    RTFreeSafe(mWorld, pluginInputs_);
+    // plugin output buffers
+    for (int i = 0; i < numPluginOutputs_; ++i){
+        RTFreeSafe(mWorld, pluginOutputs_[i].channelData32);
+    }
+    RTFreeSafe(mWorld, pluginOutputs_);
+
+    RTFreeSafe(mWorld, dummyBuffer_);
+
+    freeReblocker();
+
     // tell the delegate that we've been destroyed!
     delegate_->setOwner(nullptr);
     delegate_ = nullptr; // release our reference
     LOG_DEBUG("destroyed VSTPlugin");
-}
-
-// HACK to check if the class has been fully constructed. See "runUnitCommand".
-bool VSTPlugin::initialized() {
-    return (mSpecialIndex & Initialized);
 }
 
 // Terrible hack to enable sending unit commands right after /s_new
@@ -752,24 +763,252 @@ float VSTPlugin::readControlBus(uint32 num) {
     }
 }
 
+void VSTPlugin::initReblocker(int reblockSize){
+    LOG_DEBUG("reblocking from " << bufferSize()
+        << " to " << reblockSize << " samples");
+    reblock_ = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
+    if (reblock_){
+        memset(reblock_, 0, sizeof(Reblock)); // init!
+
+        // make sure that block size is power of 2
+        reblock_->blockSize = NEXTPOWEROFTWO(reblockSize);
+
+        // allocate input/output busses
+        // NOTE: we always have at least one input and output bus!
+        reblock_->inputs = (Bus*)RTAlloc(mWorld, sizeof(Bus) * numUgenInputs_);
+        reblock_->numInputs = reblock_->inputs ? numUgenInputs_ : 0;
+
+        reblock_->outputs = (Bus*)RTAlloc(mWorld, sizeof(Bus) * numUgenOutputs_);
+        reblock_->numOutputs = reblock_->outputs ? numUgenOutputs_ : 0;
+
+        if (!(reblock_->inputs && reblock_->outputs)){
+            LOG_ERROR("RTAlloc failed!");
+            freeReblocker();
+            return;
+        }
+
+        // set and count channel numbers
+        int totalNumChannels = 0;
+        for (int i = 0; i < numUgenInputs_; ++i){
+            auto numChannels = ugenInputs_[i].numChannels;
+            reblock_->inputs[i].numChannels = numChannels;
+            reblock_->inputs[i].channelData = nullptr;
+            totalNumChannels += numChannels;
+        }
+        for (int i = 0; i < numUgenOutputs_; ++i){
+            auto numChannels = ugenInputs_[i].numChannels;
+            reblock_->outputs[i].numChannels = numChannels;
+            reblock_->outputs[i].channelData = nullptr;
+            totalNumChannels += numChannels;
+        }
+        if (totalNumChannels == 0){
+            // nothing to do
+            return;
+        }
+
+        // allocate buffer
+        int bufsize = sizeof(float) * totalNumChannels * reblock_->blockSize;
+        reblock_->buffer = (float *)RTAlloc(mWorld, bufsize);
+
+        if (reblock_->buffer){
+            auto bufptr = reblock_->buffer;
+            // zero
+            memset(bufptr, 0, bufsize);
+            // allocate and assign channel vectors
+            auto initBusses = [&](Bus * busses, int count, int blockSize){
+                for (int i = 0; i < count; ++i){
+                    auto& bus = busses[i];
+                    if (bus.numChannels > 0) {
+                        bus.channelData = (float**)RTAlloc(mWorld, sizeof(float*) * bus.numChannels);
+                        if (bus.channelData) {
+                            for (int j = 0; j < bus.numChannels; ++j, bufptr += blockSize) {
+                                bus.channelData[j] = bufptr;
+                            }
+                        } else {
+                            bus.numChannels = 0; // !
+                            return false; // bail
+                        }
+                    }
+                }
+                return true;
+            };
+            if (initBusses(reblock_->inputs, reblock_->numInputs, reblock_->blockSize)
+                && initBusses(reblock_->outputs, reblock_->numOutputs, reblock_->blockSize))
+            {
+                // start phase at one block before end, so that the first call
+                // to the perform routine will trigger plugin processing.
+                reblock_->phase = reblock_->blockSize - bufferSize();
+            } else {
+                LOG_ERROR("RTAlloc failed!");
+                freeReblocker();
+            }
+        } else {
+            LOG_ERROR("RTAlloc failed!");
+            freeReblocker();
+        }
+    } else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+}
+
+bool VSTPlugin::updateReblocker(int numSamples){
+    // read input
+    for (int i = 0; i < numUgenInputs_; ++i){
+        auto& inputs = ugenInputs_[i];
+        auto reblockInputs = reblock_->inputs[i].channelData;
+        for (int j = 0; j < inputs.numChannels; ++j){
+            auto src = inputs.channelData[j];
+            auto dst = reblockInputs[j] + reblock_->phase;
+            std::copy(src, src + numSamples, dst);
+        }
+    }
+
+    reblock_->phase += numSamples;
+
+    if (reblock_->phase >= reblock_->blockSize){
+        assert(reblock_->phase == reblock_->blockSize);
+        reblock_->phase = 0;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void VSTPlugin::freeReblocker(){
+    if (reblock_){
+        for (int i = 0; i < reblock_->numInputs; ++i){
+            RTFreeSafe(mWorld, reblock_->inputs[i].channelData);
+        }
+        for (int i = 0; i < reblock_->numOutputs; ++i){
+            RTFreeSafe(mWorld, reblock_->outputs[i].channelData);
+        }
+        RTFreeSafe(mWorld, reblock_->inputs);
+        RTFreeSafe(mWorld, reblock_->outputs);
+        RTFree(mWorld, reblock_);
+    }
+}
+
 // update data (after loading a new plugin)
-void VSTPlugin::update() {
+void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
+                            const int *outputs, int numOutputs)
+{
     delegate().update();
 
-    clearMapping();
-    int n = delegate().plugin()->info().numParameters();
-    // parameter states
-    {
-        float* result = nullptr;
-        if (n > 0) {
-            // Scsynth's RTRealloc doesn't return nullptr for size == 0
-            result = (float*)RTRealloc(mWorld, paramState_, n * sizeof(float));
-            if (!result) {
-                LOG_ERROR("RTRealloc failed!");
+#if 1
+    // HACK for buggy VST3 plugins which segfault on excess busses (e.g. mda)
+    auto trim = [](const int *speakers, int& count, const char *what){
+        // trim trailing empty busses, but keep at least one bus!
+        for (int i = count - 1; i > 0; --i){
+            if (speakers[i] == 0){
+                LOG_DEBUG("trim empty " << what << " bus " << i);
+                --count;
+            } else {
+                break;
             }
         }
+    };
+    trim(inputs, numInputs, "input");
+    trim(outputs, numOutputs, "output");
+#endif
+
+    auto inDummy = dummyBuffer_;
+    auto outDummy = dummyBuffer_ +
+            (reblock_ ? reblock_->blockSize : bufferSize());
+
+    auto setupBuffers = [this](
+            AudioBus *& pluginBusses, int &pluginBusCount,
+            Bus *ugenBusses, int ugenBusCount,
+            const int *speakers, int numSpeakers, float *dummy)
+    {
+        // free excess bus channels
+        for (int i = numSpeakers; i < pluginBusCount; ++i){
+            RTFreeSafe(mWorld, pluginBusses[i].channelData32);
+            // if the following RTRealloc fails!
+            pluginBusses[i].channelData32 = nullptr;
+            pluginBusses[i].numChannels = 0;
+        }
+        // numSpeakers is always > 0, so a nullptr means RTRealloc failed!
+        auto result = (AudioBus*)RTRealloc(mWorld, pluginBusses, numSpeakers);
+        if (!result) {
+            return false; // bail!
+        }
+        // init new busses, in case a subsequent RTRealloc call fails!
+        for (int i = pluginBusCount; i < numSpeakers; ++i) {
+            result[i].channelData32 = nullptr;
+            result[i].numChannels = 0;
+        }
+        // now we can update the bus array
+        pluginBusses = result;
+        pluginBusCount = numSpeakers;
+        // (re)allocate and set channels
+        for (int i = 0; i < numSpeakers; ++i) {
+            auto& bus = pluginBusses[i];
+            auto channelCount = speakers[i];
+            // we only need to update if the channel count has changed!
+            if (bus.numChannels != channelCount) {
+                if (channelCount > 0) {
+                    // try to resize array
+                    auto result = (float**)RTRealloc(mWorld, bus.channelData32, channelCount);
+                    if (!result) {
+                        return false; // bail!
+                    }
+                    // now update bus
+                    bus.channelData32 = result;
+                    bus.numChannels = channelCount;
+                    // set channels
+                    auto ugenChannels = i < ugenBusCount ? ugenBusses[i].numChannels : 0;
+                    for (int j = 0; j < bus.numChannels; ++j) {
+                        if (j < ugenChannels) {
+                            bus.channelData32[j] = ugenBusses[i].channelData[j];
+                        } else {
+                            // point to dummy buffer!
+                            bus.channelData32[j] = dummy;
+                        }
+                    }
+                } else {
+                    // free old array!
+                    RTFreeSafe(mWorld, bus.channelData32);
+                    bus.channelData32 = nullptr;
+                    bus.numChannels = 0;
+                }
+            }
+        }
+        return true;
+    };
+
+    if (reblock_){
+        if (!setupBuffers(pluginInputs_, numPluginInputs_,
+                          reblock_->inputs, reblock_->numInputs,
+                          inputs, numInputs, inDummy) ||
+            !setupBuffers(pluginOutputs_, numPluginOutputs_,
+                          reblock_->outputs, reblock_->numOutputs,
+                          outputs, numOutputs, outDummy))
+        {
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
+        }
+    } else {
+        if (!setupBuffers(pluginInputs_, numPluginInputs_,
+                          ugenInputs_, numUgenInputs_,
+                          inputs, numInputs, inDummy) ||
+            !setupBuffers(pluginOutputs_, numPluginOutputs_,
+                          ugenOutputs_, numUgenOutputs_,
+                          outputs, numOutputs, outDummy))
+        {
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
+        }
+    }
+
+    clearMapping();
+
+    // parameter states
+    int numParams = delegate().plugin()->info().numParameters();
+    if (numParams > 0) {
+        auto result = (float*)RTRealloc(mWorld,
+            paramState_, numParams * sizeof(float));
         if (result) {
-            for (int i = 0; i < n; ++i) {
+            for (int i = 0; i < numParams; ++i) {
             #if 0
                 // breaks floating point comparison on GCC with -ffast-math
                 result[i] = std::numeric_limits<float>::quiet_NaN();
@@ -779,28 +1018,30 @@ void VSTPlugin::update() {
             }
             paramState_ = result;
         } else {
-            RTFreeSafe(mWorld, paramState_);
-            paramState_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
         }
+    } else {
+        RTFreeSafe(mWorld, paramState_);
+        paramState_ = nullptr;
     }
+
     // parameter mapping
-    {
-        Mapping** result = nullptr;
-        if (n > 0) {
-            result = (Mapping **)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping*));
-            if (!result) {
-                LOG_ERROR("RTRealloc failed!");
-            }
-        }
+    if (numParams > 0){
+        auto result = (Mapping **)RTRealloc(mWorld,
+            paramMapping_, numParams * sizeof(Mapping*));
         if (result) {
-            for (int i = 0; i < n; ++i) {
+            for (int i = 0; i < numParams; ++i) {
                 result[i] = nullptr;
             }
             paramMapping_ = result;
         } else {
-            RTFreeSafe(mWorld, paramMapping_);
-            paramMapping_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
         }
+    } else {
+        RTFreeSafe(mWorld, paramMapping_);
+        paramMapping_ = nullptr;
     }
 }
 
@@ -861,6 +1102,11 @@ void VSTPlugin::next(int inNumSamples) {
     // for Supernova the "next" routine might be called in a different thread - each time!
     delegate_->rtThreadID_ = std::this_thread::get_id();
 #endif
+    if (!valid()){
+        ClearUnitOutputs(this, inNumSamples);
+        return;
+    }
+
     auto plugin = delegate_->plugin();
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
     bool suspended = delegate_->isSuspended();
@@ -879,15 +1125,14 @@ void VSTPlugin::next(int inNumSamples) {
         auto vst3 = plugin->info().type() == PluginType::VST3;
 
         // check bypass state
-        Bypass bypass = Bypass::Off;
+        Bypass bypass;
         int inBypass = getBypass();
-        if (inBypass > 0) {
-            if (inBypass == 1) {
-                bypass = Bypass::Hard;
-            }
-            else {
-                bypass = Bypass::Soft;
-            }
+        if (inBypass > 1) {
+            bypass = Bypass::Soft;
+        } else if (inBypass == 1){
+            bypass = Bypass::Hard;
+        } else {
+            bypass = Bypass::Off;
         }
         if (bypass != bypass_) {
             plugin->setBypass(bypass);
@@ -941,7 +1186,7 @@ void VSTPlugin::next(int inNumSamples) {
                 }
             }
             // automate parameters with UGen inputs
-            auto numControls = numParameterControls();
+            auto numControls = numParameterControls_;
             for (int i = 0; i < numControls; ++i) {
                 int k = 2 * i + parameterControlOnset_;
                 int index = in0(k);
@@ -983,62 +1228,40 @@ void VSTPlugin::next(int inNumSamples) {
             }
         }
         // process
-        IPlugin::ProcessData<float> data;
+        ProcessData data;
+        data.precision = ProcessPrecision::Single;
+        data.numInputs = numPluginInputs_;
+        data.inputs = pluginInputs_;
+        data.numOutputs = numPluginOutputs_;
+        data.outputs = pluginOutputs_;
 
         if (reblock_){
-            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
-                for (int i = 0; i < nchannels; ++i){
-                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
-                }
-            };
-            auto writeOutput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
-                for (int i = 0; i < nchannels; ++i){
-                    auto src = from[i] + phase;
-                    std::copy(src, src + nsamples, to[i]);
-                }
-            };
-
-            data.numInputs = numInChannels();
-            data.numOutputs = numOutChannels();
-            data.numAuxInputs = numAuxInChannels();
-            data.numAuxOutputs = numAuxOutChannels();
-
-            readInput(mInBuf + inChannelOnset_, reblock_->input, data.numInputs,
-                        inNumSamples, reblock_->phase);
-            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, data.numAuxInputs,
-                        inNumSamples, reblock_->phase);
-
-            reblock_->phase += inNumSamples;
-
-            if (reblock_->phase >= reblock_->blockSize){
-                assert(reblock_->phase == reblock_->blockSize);
-                reblock_->phase = 0;
-
-                data.input = data.numInputs > 0 ? (const float **)reblock_->input : nullptr;
-                data.output = data.numOutputs > 0 ? reblock_->output : nullptr;
-                data.auxInput = data.numAuxInputs > 0 ? (const float **)reblock_->auxInput : nullptr;
-                data.auxOutput = data.numAuxOutputs > 0 ? reblock_->auxOutput : nullptr;
+            if (updateReblocker(inNumSamples)){
                 data.numSamples = reblock_->blockSize;
 
                 plugin->process(data);
             }
 
-            writeOutput(reblock_->output, mOutBuf, data.numOutputs,
-                        inNumSamples, reblock_->phase);
-            writeOutput(reblock_->auxOutput, mOutBuf + numOutChannels(), data.numAuxOutputs,
-                        inNumSamples, reblock_->phase);
+            // write reblocker output
+            for (int i = 0; i < numUgenOutputs_ && i < numPluginOutputs_; ++i){
+                int ugenChannels = ugenOutputs_[i].numChannels;
+                int pluginChannels = pluginOutputs_[i].numChannels;
+                for (int j = 0; j < ugenChannels && j < pluginChannels; ++j){
+                    auto src = reblock_->outputs[i].channelData[j] + reblock_->phase;
+                    auto dst = ugenOutputs_[i].channelData[j];
+                    std::copy(src, src + inNumSamples, dst);
+                }
+            }
+
+            // zero/bypass remaining Ugen inputs/outputs
+            bypassRemaining(reblock_->inputs, reblock_->numInputs, inNumSamples, reblock_->phase);
         } else {
-            data.numInputs = numInChannels();
-            data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
-            data.numOutputs = numOutChannels();
-            data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
-            data.numAuxInputs = numAuxInChannels();
-            data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
-            data.numAuxOutputs = numAuxOutChannels();
-            data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
             data.numSamples = inNumSamples;
 
             plugin->process(data);
+
+            // zero/bypass remaining Ugen inputs/outputs
+            bypassRemaining(ugenInputs_, numUgenInputs_, inNumSamples, 0);
         }
 
         // send parameter automation notification posted from the GUI thread [or NRT thread]
@@ -1048,54 +1271,71 @@ void VSTPlugin::next(int inNumSamples) {
             delegate_->unlock(); // !
         }
     } else {
-        // bypass (copy input to output and zero remaining output channels)
-        auto doBypass = [](auto input, int nin, auto output, int nout, int n, int phase) {
-            for (int i = 0; i < nout; ++i) {
-                if (i < nin) {
-                    auto src = input[i] + phase;
-                    std::copy(src, src + n, output[i]);
-                }
-                else {
-                    std::fill(output[i], output[i] + n, 0); // zero
-                }
-            }
-        };
-
+        // bypass
         if (reblock_){
-            // we have to copy the inputs to the reblocker, so that we
-            // can stop bypassing anytime and always have valid input data.
-            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
-                for (int i = 0; i < nchannels; ++i){
-                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
-                }
-            };
+            // we have to update the reblocker, so that we can stop bypassing
+            // anytime and always have valid input data.
+            updateReblocker(inNumSamples);
 
-            readInput(mInBuf + inChannelOnset_, reblock_->input, numInChannels(),
-                      inNumSamples, reblock_->phase);
-            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, numAuxInChannels(),
-                      inNumSamples, reblock_->phase);
-
-            // advance phase before bypassing to keep delay!
-            reblock_->phase += inNumSamples;
-
-            if (reblock_->phase >= reblock_->blockSize){
-                assert(reblock_->phase == reblock_->blockSize);
-                reblock_->phase = 0;
-            }
-
-            // input -> output
-            doBypass(reblock_->input, numInChannels(), mOutBuf, numOutChannels(),
-                     inNumSamples, reblock_->phase);
-            // aux input -> aux output
-            doBypass(reblock_->auxInput, numAuxInChannels(), mOutBuf + numOutChannels(),
-                     numAuxOutChannels(), inNumSamples, reblock_->phase);
+            performBypass(reblock_->inputs, reblock_->numInputs, inNumSamples, reblock_->phase);
         } else {
-            // input -> output
-            doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(),
-                     inNumSamples, 0);
-            // aux input -> aux output
-            doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(),
-                     numAuxOutChannels(), inNumSamples, 0);
+            performBypass(ugenInputs_, numUgenInputs_, inNumSamples, 0);
+        }
+    }
+}
+
+void VSTPlugin::performBypass(const Bus *ugenInputs, int numInputs,
+                              int numSamples, int phase)
+{
+    for (int i = 0; i < numUgenOutputs_; ++i){
+        auto& outputs = ugenOutputs_[i];
+        if (i < numInputs){
+            auto& inputs = ugenInputs[i];
+            for (int j = 0; j < outputs.numChannels; ++j){
+                if (j < inputs.numChannels){
+                    // copy input to output
+                    auto chn = inputs.channelData[j] + phase;
+                    std::copy(chn, chn + numSamples, outputs.channelData[j]);
+                } else {
+                    // zero outlet
+                    auto chn = outputs.channelData[j];
+                    std::fill(chn, chn + numSamples, 0);
+                }
+            }
+        } else {
+            // zero whole bus
+            for (int j = 0; j < outputs.numChannels; ++j){
+                auto chn = outputs.channelData[j];
+                std::fill(chn, chn + numSamples, 0);
+            }
+        }
+    }
+}
+
+void VSTPlugin::bypassRemaining(const Bus *ugenInputs, int numInputs,
+                                int numSamples, int phase)
+{
+    for (int i = 0; i < numUgenOutputs_; ++i){
+        auto& ugenOutputs = ugenOutputs_[i];
+        if (i < numPluginOutputs_){
+            int onset = pluginOutputs_[i].numChannels;
+            for (int j = onset; j < ugenOutputs.numChannels; ++j){
+                auto out = ugenOutputs.channelData[j];
+                if (i < numInputs && j < ugenInputs[i].numChannels){
+                    // copy input to output
+                    auto in = ugenInputs[i].channelData[j] + phase;
+                    std::copy(in, in + numSamples, out);
+                } else {
+                    // zero outlet
+                    std::fill(out, out + numSamples, 0);
+                }
+            }
+        } else {
+            // zero whole bus
+            for (int j = 0; j < ugenOutputs.numChannels; ++j){
+                auto out = ugenOutputs.channelData[j];
+                std::fill(out, out + numSamples, 0);
+            }
         }
     }
 }
@@ -1300,6 +1540,10 @@ bool cmdOpen(World *world, void* cmdData) {
     LOG_DEBUG("cmdOpen");
     // initialize GUI backend (if needed)
     auto data = (OpenCmdData *)cmdData;
+    // check if RTAlloc failed
+    if (!data->inputs || !data->outputs){
+        return true; // continue
+    }
     // create plugin in main thread
     auto info = queryPlugin(data->path);
     if (info) {
@@ -1332,8 +1576,8 @@ bool cmdOpen(World *world, void* cmdData) {
                                 "' doesn't support single precision processing - bypassing!");
                 }
                 LOG_DEBUG("setNumSpeakers");
-                data->plugin->setNumSpeakers(data->numInputs, data->numOutputs,
-                                             data->numAuxInputs, data->numAuxOutputs);
+                data->plugin->setNumSpeakers(data->inputs, data->numInputs,
+                                             data->outputs, data->numOutputs);
                 LOG_DEBUG("resume");
                 data->plugin->resume();
             }, data->editor);
@@ -1382,16 +1626,35 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         cmdData->mode = mode;
         cmdData->sampleRate = owner_->sampleRate();
         cmdData->blockSize = owner_->blockSize();
-        cmdData->numInputs = owner_->numInChannels();
-        cmdData->numOutputs = owner_->numOutChannels();
-        cmdData->numAuxInputs = owner_->numAuxInChannels();
-        cmdData->numAuxOutputs = owner_->numAuxOutChannels();
+        // set desired number of inputs
+        cmdData->numInputs = owner_->numInputBusses();
+        cmdData->inputs = (int *)RTAlloc(world_, cmdData->numInputs * sizeof(int));
+        if (cmdData->inputs){
+            for (int i = 0; i < cmdData->numInputs; ++i){
+                cmdData->inputs[i] = owner_->inputBusses()[i].numChannels;
+            }
+        } else {
+            cmdData->numInputs = 0;
+            LOG_ERROR("RTAlloc failed!");
+        }
+        // set desired number of outputs
+        cmdData->numOutputs = owner_->numOutputBusses();
+        cmdData->outputs = (int *)RTAlloc(world_, cmdData->numOutputs * sizeof(int));
+        if (cmdData->outputs){
+            for (int i = 0; i < cmdData->numOutputs; ++i){
+                cmdData->outputs[i] = owner_->outputBusses()[i].numChannels;
+            }
+        } else {
+            cmdData->numOutputs = 0;
+            LOG_ERROR("RTAlloc failed!");
+        }
 
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
             auto data = (OpenCmdData*)cmdData;
             data->owner->doneOpen(*data); // alive() checked in doneOpen!
             return false; // done
         });
+
         isLoading_ = true;
         // NOTE: don't set 'editor_' already because 'editor' value might change
     } else {
@@ -1419,10 +1682,10 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
                 "' doesn't support single precision processing - bypassing!");
         }
         LOG_DEBUG("opened " << cmd.path);
+        // setup data structures
+        owner_->setupPlugin(cmd.inputs, cmd.numInputs, cmd.outputs, cmd.numOutputs);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
-        // update data
-        owner_->update();
         // success, window, initial latency
         bool haveWindow = plugin_->getWindow() != nullptr;
         int latency = plugin_->getLatencySamples() + latencySamples();
@@ -1432,6 +1695,10 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
         LOG_WARNING("VSTPlugin: couldn't open " << cmd.path);
         sendMsg("/vst_open", 0);
     }
+
+    // RTAlloc might have failed!
+    RTFreeSafe(world_, cmd.inputs);
+    RTFreeSafe(world_, cmd.outputs);
 }
 
 void VSTPluginDelegate::showEditor(bool show) {
@@ -2704,7 +2971,10 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
     if (unit->initialized()) {
-        fn(unit, args); // the constructor has been called, so we can savely run the command
+        // the constructor has been called, so we can savely run the command
+        if (unit->valid()){
+            fn(unit, args);
+        }
     } else {
         unit->queueUnitCmd((UnitCmdFunc)fn, args); // queue it
     }

@@ -283,24 +283,27 @@ VSTPlugin : MultiOutUGen {
 		^[key.stripWhiteSpace.asSymbol, value.stripWhiteSpace ];
 	}
 	*prParseIni { arg stream;
-		var results, onset, line, n, indices, last = 0;
+		var line, n, indices, last = 0;
 		var major = 0, minor = 0, bugfix = 0;
 		// get version
 		line = this.prGetLine(stream, true);
 		(line == "[version]").if {
 			#major, minor, bugfix = this.prGetLine(stream).split($.).collect(_.asInteger);
+			// there was a breaking change between 0.4 and 0.5
+			// (introduction of audio input/output busses)
+			((major == 0) && (minor < 5)).if {
+			    Error("The plugin cache file is incompatible with this version. Please perform a new search!").throw;
+			};
 			line = this.prGetLine(stream, true);
 		};
 		(line != "[plugins]").if { Error("missing [plugins] header").throw };
 		// get number of plugins
 		line = this.prGetLine(stream, true);
 		n = this.prParseCount(line);
-		results = Array.newClear(n);
 		// now deserialize plugins
-		n.do { arg i;
-			results[i] = VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
-		};
-		^results;
+		^{ arg i;
+			VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
+		} ! n;
 	}
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];

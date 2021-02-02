@@ -45,9 +45,9 @@ struct OpenCmdData : CmdData {
     double sampleRate;
     int blockSize;
     int numInputs;
-    int numAuxInputs;
     int numOutputs;
-    int numAuxOutputs;
+    int *inputs;
+    int *outputs;
     // flexible array for RT memory
     int size = 0;
     char path[1];
@@ -235,7 +235,13 @@ class VSTPlugin : public SCUnit {
 public:
     VSTPlugin();
     ~VSTPlugin();
-    bool initialized();
+    // HACK to check if the class has been fully constructed. See "runUnitCommand".
+    bool initialized() const {
+        return mSpecialIndex & Initialized;
+    }
+    bool valid() const {
+        return mSpecialIndex & Valid;
+    }
     void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
     void runUnitCmds();
     VSTPluginDelegate& delegate() { return *delegate_;  }
@@ -245,24 +251,48 @@ public:
 
     int blockSize() const;
 
-    int numInChannels() const { return (int)in0(3); }
-    int numAuxInChannels() const {
-        return (int)in0(auxInChannelOnset_ - 1);
-    }
-    int numOutChannels() const { return (int)in0(0); }
-    int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
+    struct Bus {
+        float **channelData = nullptr;
+        int numChannels = 0;
+    };
 
-    int numParameterControls() const { return (int)in0(parameterControlOnset_ - 1); }
+    int numInputBusses() const {
+        return numUgenInputs_;
+    }
+    int numOutputBusses() const {
+        return numUgenOutputs_;
+    }
+    const Bus * inputBusses() const {
+        return ugenInputs_;
+    }
+    const Bus * outputBusses() const {
+        return ugenOutputs_;
+    }
 
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
     void clearMapping();
 
-    void update();
+    void setupPlugin(const int *inputs, int numInputs,
+                     const int *outputs, int numOutputs);
 private:
+    void setInvalid() { mSpecialIndex &= ~Valid; }
+
     float readControlBus(uint32 num);
+
+    void initReblocker(int reblockSize);
+    bool updateReblocker(int numSamples);
+    void freeReblocker();
+
+    void performBypass(const Bus *ugenInputs, int numInputs,
+                       int numSamples, int phase);
+
+    void bypassRemaining(const Bus *ugenInputs, int numInputs,
+                         int numSamples, int phase);
+
     static const int Initialized = 1;
     static const int UnitCmdQueued = 2;
+    static const int Valid = 4;
     // data members
     struct UnitCmdQueueItem {
         UnitCmdQueueItem *next;
@@ -274,20 +304,30 @@ private:
 
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
+    int numUgenInputs_ = 0;
+    int numUgenOutputs_ = 0;
+    int numPluginInputs_ = 0;
+    int numPluginOutputs_ = 0;
+    Bus *ugenInputs_ = nullptr;
+    Bus *ugenOutputs_ = nullptr;
+    AudioBus *pluginInputs_ = nullptr;
+    AudioBus *pluginOutputs_ = nullptr;
+    float *dummyBuffer_ = nullptr;
+
     struct Reblock {
         int blockSize;
         int phase;
-        float **input;
-        float **auxInput;
-        float **output;
-        float **auxOutput;
+        int numInputs;
+        int numOutputs;
+        Bus *inputs;
+        Bus *outputs;
         float *buffer;
     };
 
     Reblock *reblock_ = nullptr;
 
-    static const int inChannelOnset_ = 4;
-    int auxInChannelOnset_ = 0;
+    static const int inChannelOnset = 4;
+    int numParameterControls_ = 0;
     int parameterControlOnset_ = 0;
 
     struct Mapping {

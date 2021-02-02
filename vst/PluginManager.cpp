@@ -84,6 +84,14 @@ void PluginManager::read(const std::string& path, bool update){
                         versionBugfix = std::strtol(pos, &pos, 10);
                     }
                 }
+                // there was a breaking change between 0.4 and 0.5
+                // (introduction of audio input/output busses)
+                if ((versionMajor < VERSION_MAJOR)
+                        || (versionMajor == 0 && versionMinor < 5)){
+                    throw Error(Error::PluginError,
+                                "The plugin cache file is incompatible with this version. "
+                                "Please perform a new search!");
+                }
             }
         } else if (line == "[plugins]"){
             std::getline(file, line);

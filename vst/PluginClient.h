@@ -24,11 +24,10 @@ class PluginClient final : public DeferredPlugin {
     uint32_t id() const { return id_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-    void process(ProcessData<float>& data) override;
-    void process(ProcessData<double>& data) override;
+    void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
-    void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
+    void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override;
@@ -117,7 +116,7 @@ class PluginClient final : public DeferredPlugin {
         commands_.push_back(cmd);
     }
     template<typename T>
-    void doProcess(ProcessData<T>& data);
+    void doProcess(ProcessData& data);
     void sendCommands(RTChannel& channel);
     void dispatchReply(const ShmCommand &reply);
 };
