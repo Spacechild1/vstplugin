@@ -2960,12 +2960,62 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 ProcessPrecision::Double : ProcessPrecision::Single;
     t_symbol *file = nullptr; // plugin to open (optional)
     bool editor = false; // open plugin with VST editor?
+    std::vector<int> inputs;
+    std::vector<int> outputs;
+
+    auto parseBusses = [this](t_atom *& argv, int& argc, const char *flag){
+        std::vector<int> result;
+        argv++; argc--;
+
+        if (argc > 0 && argv->a_type == A_FLOAT){
+            int n = argv->a_w.w_float;
+            argv++; argc--;
+            for (int i = 0; i < n; ++i){
+                if (argc > 0){
+                    if (argv->a_type == A_FLOAT){
+                        int chn = argv->a_w.w_float;
+                        if (chn < 0){
+                            pd_error(this, "%s: negative channel number for bus %d",
+                                     classname(this), i + 1);
+                            chn = 0;
+                        }
+                        result.push_back(argv->a_w.w_float);
+                    } else {
+                        pd_error(this, "%s: bad channel argument %s for bus %d",
+                                 classname(this), atom_getsymbol(argv)->s_name, i + 1);
+                    }
+                    argv++; argc--;
+                } else {
+                    pd_error(this, "%s: missing channel argument for bus %d",
+                             classname(this), i + 1);
+                }
+            }
+        } else {
+            pd_error(this, "%s: too few arguments for %s flag",
+                     classname(this), flag);
+        }
+        // we need at least a single bus!
+        if (result.empty()){
+            result.push_back(0);
+        }
+        return result;
+    };
 
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = argv->a_w.w_symbol->s_name;
         if (*flag == '-'){
             if (!strcmp(flag, "-n")){
                 gui = false;
+            } else if (!strcmp(flag, "-i")){
+                inputs = parseBusses(argv, argc, "-i");
+                // we always have at least 1 inlet because of CLASS_MAINSIGNALIN
+                if (inputs[0] == 0){
+                    inputs[0] = 1;
+                }
+                continue; // !
+            } else if (!strcmp(flag, "-o")){
+                outputs = parseBusses(argv, argc, "-o");
+                continue; // !
             } else if (!strcmp(flag, "-k")){
                 x_keep = true;
             } else if (!strcmp(flag, "-e")){
@@ -2992,20 +3042,41 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             break;
         }
     }
-    // inputs (default: 2)
-    int in = 2;
-    if (argc > 0){
-            // min. 1 because of CLASS_MAINSIGNALIN
-        in = std::max<int>(1, atom_getfloat(argv));
+
+    // inputs (default: 2), only if -i hasn't been used!
+    if (inputs.empty()){
+        // min. 1 because of CLASS_MAINSIGNALIN
+        int in = argc > 0 ?
+            std::max<int>(1, atom_getfloat(argv)) : 2;
+        inputs.push_back(in);
     }
-    // outputs (default: 2)
-    int out = 2;
-    if (argc > 1){
-        out = std::max<int>(0, atom_getfloat(argv + 1));
+    LOG_DEBUG("inputs:");
+    for (int i = 0; i < inputs.size(); ++i){
+        LOG_DEBUG("  bus " << (i + 1) << ": " << inputs[i] << "ch");
     }
+
+    // outputs (default: 2), only if -o hasn't been used!
+    if (outputs.empty()){
+        int out = argc > 1 ?
+            std::max<int>(0, atom_getfloat(argv + 1)) : 2;
+        outputs.push_back(out);
+    }
+    LOG_DEBUG("outputs:");
+    for (int i = 0; i < outputs.size(); ++i){
+        LOG_DEBUG("  bus " << (i + 1) << ": " << outputs[i] << "ch");
+    }
+
     // optional aux inputs/outputs
-    int auxin = atom_getfloatarg(2, argc, argv);
-    int auxout = atom_getfloatarg(3, argc, argv);
+    // just add them to busses because they should not
+    // be used together with the -i and -o flags
+    int auxin = std::max<int>(0, atom_getfloatarg(2, argc, argv));
+    if (auxin > 0){
+        inputs.push_back(auxin);
+    }
+    int auxout = std::max<int>(0, atom_getfloatarg(3, argc, argv));
+    if (auxout > 0){
+        outputs.push_back(auxout);
+    }
 
     x_wantprecision = precision;
     x_canvas = canvas_getcurrent();
@@ -3015,34 +3086,32 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 #endif
 
     // inlets (we already have a main inlet!)
-    int totalin = in + auxin - 1;
-    while (totalin--){
+    int totalin = 0;
+    for (auto& in : inputs){
+        totalin += in;
+        t_signalbus bus;
+        bus.b_n = in;
+        bus.b_signals = std::make_unique<t_sample *[]>(in);
+        bus.b_buffers = std::make_unique<void *[]>(in);
+        x_inlets.push_back(std::move(bus));
+    }
+    // we already have a main inlet!
+    while (--totalin){
         inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
     }
-    x_inlets.resize(1);
-    x_inlets[0].b_n = in;
-    x_inlets[0].b_signals = std::make_unique<t_sample *[]>(in);
-    x_inlets[0].b_buffers = std::make_unique<void *[]>(in);
-    if (auxin > 0){
-        x_inlets.resize(2);
-        x_inlets[1].b_n = auxin;
-        x_inlets[1].b_signals = std::make_unique<t_sample *[]>(auxin);
-        x_inlets[1].b_buffers = std::make_unique<void *[]>(auxin);
-    }
     // outlets:
-    int totalout = out + auxout;
+    int totalout = 0;
+    for (auto& out : outputs){
+        totalout += out;
+        t_signalbus bus;
+        bus.b_n = out;
+        bus.b_signals = std::make_unique<t_sample *[]>(out);
+        bus.b_buffers = std::make_unique<void *[]>(out);
+        x_outlets.push_back(std::move(bus));
+    }
+    // we already have a main inlet!
     while (totalout--){
         outlet_new(&x_obj, &s_signal);
-    }
-    x_outlets.resize(1);
-    x_outlets[0].b_n = out;
-    x_outlets[0].b_signals = std::make_unique<t_sample *[]>(out);
-    x_outlets[0].b_buffers = std::make_unique<void *[]>(out);
-    if (auxout > 0){
-        x_outlets.resize(2);
-        x_outlets[1].b_n = auxout;
-        x_outlets[1].b_signals = std::make_unique<t_sample *[]>(auxout);
-        x_outlets[1].b_buffers = std::make_unique<void *[]>(auxout);
     }
     // additional message outlet
     x_messout = outlet_new(&x_obj, 0);
@@ -3102,7 +3171,6 @@ t_vstplugin::~t_vstplugin(){
     vstplugin_search_stop(this);
 
     vstplugin_close(this);
-
 
     // Sync with UI thread if we're closing asynchronously,
     // see comment in vstplugin_close().

@@ -1,4 +1,4 @@
-#N canvas 495 126 765 589 10;
+#N canvas 354 144 645 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -103,18 +103,18 @@
 #X text 184 490 parameters;
 #X text 273 489 FX programs/banks;
 #N canvas 753 189 627 553 parameter 0;
-#X obj 100 76 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
-#X obj 19 18 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+#X obj 100 76 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X obj 19 18 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 19 124 param_set \$1 \$2;
-#X obj 39 249 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 39 249 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 50 357 param_count;
 #X msg 54 412 param_list;
 #X msg 30 190 param_get \$1;
-#X obj 30 166 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 30 166 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 56 464 param_dump;
 #X obj 19 518 s \$0-msg;
 #X text 158 75 index;
@@ -196,8 +196,8 @@ parameters \,, f 34;
 #X msg 76 288 midi_bend 1 \$1;
 #X obj 79 264 hsl 128 15 -1 1 0 0 empty empty empty -2 -8 0 10 -262144
 -1 -1 0 1;
-#X obj 82 320 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 82 320 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X text 136 35 send raw MIDI message (list of bytes);
 #X text 155 59 send MIDI system exclusive message (list of bytes);
 #X text 49 89 convenience methods:;
@@ -246,7 +246,7 @@ output as;
 #N canvas 814 225 469 439 transport 0;
 #X obj 22 299 s \$0-msg;
 #X msg 22 78 tempo \$1;
-#X obj 22 56 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
+#X obj 22 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0 10
 -262144 -1 -1 0 256;
 #X msg 34 137 time_signature \$1 \$2;
 #X msg 34 111 4 4;
@@ -256,8 +256,8 @@ output as;
 #X msg 43 184 play \$1;
 #X obj 43 163 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 51 211 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 51 211 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 59 262 transport_get;
 #X msg 51 229 transport_set \$1;
 #X text 102 183 start/stop sequencing;
@@ -293,53 +293,79 @@ f 51;
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#N canvas 260 94 436 636 creation 0;
-#X text 24 119 -sp: prefer single precision (default on single precision
+#N canvas 254 63 840 482 creation 0;
+#X text 24 212 -sp: prefer single precision (default on single precision
 Pd), f 62;
-#X text 24 136 -dp: prefer double precision (default on double precision
+#X text 24 230 -dp: prefer double precision (default on double precision
 Pd), f 62;
-#X obj 17 247 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 17 342 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 13 12 vstplugin~ takes the following optional creation arguments
-(in the given order):, f 40;
-#X text 14 257 file:;
-#X text 14 301 nin \, nout:;
-#X text 85 303 the number of input and output channels (default is
-2), f 30;
-#X text 14 79 flags:;
-#X obj 16 367 cnv 15 80 20 empty empty empty 20 12 0 14 -233017 -66577
+#X text 13 48 vstplugin~ takes the following optional creation arguments
+(in the given order):;
+#X text 14 352 file:;
+#X text 14 396 nin \, nout:;
+#X text 83 397 the number of input and output channels (default is
+2), f 55;
+#X obj 428 302 cnv 15 100 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 24 368 examples:;
-#X text 11 579 [vstplugin~];
-#X text 57 256 open a plugin on creation (see the 'open' message),
+#X text 455 128 [vstplugin~];
+#X text 57 351 open a plugin on creation (see the 'open' message),
 f 27;
-#X text 39 597 2 in \, 2 out;
-#X obj 15 290 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 15 385 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 25 154 -k: keep current plugin state (similar to [text define
+#X text 25 248 -k: keep current plugin state (similar to [text define
 -k]);
-#X text 49 170 NOTE: for large \, complex plugins this can lead to
+#X text 49 264 NOTE: for large \, complex plugins this can lead to
 significant increases in patch file size., f 47;
-#X text 25 200 -s: search in the standard VST directories (see [pd
+#X text 25 294 -s: search in the standard VST directories (see [pd
 search]);
-#X text 13 49 [flags...] \, [file] \, [nin \, nout] \, [nauxin \, nauxout]
+#X text 35 79 [flags...] \, [file] \, [nin \, nout] \, [nauxin \, nauxout]
 ;
-#X text 14 332 nin \, nout:;
-#X text 85 332 the number of auxiliary (VST3 side-chain) input and
-output channels (default is 0), f 41;
-#X text 13 533 [vstplugin~ 2 2 1];
-#X text 34 553 2 in \, 2 out \, 1 auxin;
-#X text 16 396 [vstplugin~ -e GChorus 2 4];
-#X text 36 446 "GChorus" might be a plugin name or a file in your search
-paths (see 'search'), f 51;
-#X text 15 480 [vstplugin~ GChorus.vst3];
-#X text 36 418 open the VST2 plugin "GChorus" with the VST editor GUI
-and 2 input and 4 output channels., f 49;
-#X text 38 499 open the VST3 version of "GChorus" with the Pd editor
-and 2 input and 2 output channels., f 49;
-#X text 25 220 -e \, -t \, -p \, -b: see [open( method.;
-#X text 25 100 -n: don't use any editor GUI (reduce memory usage),
+#X text 118 419 the number of auxiliary (VST3 side-chain) input and
+output channels (default is 0), f 48;
+#X text 453 385 "GChorus" might be a plugin name or a file in your
+search paths (see 'search'), f 51;
+#X text 25 314 -e \, -t \, -p \, -b: see [open( method.;
+#X text 25 194 -n: don't use any editor GUI (reduce memory usage),
 f 62;
+#X text 49 143 buscount \, channel numbers...;
+#X text 49 177 buscount \, channel numbers...;
+#X text 14 419 nauxin \, nauxout:;
+#X text 14 107 flags:;
+#X text 25 126 -i: input bus arrangement (advanced);
+#X text 25 161 -o: output bus arrangement (advanced);
+#X text 433 337 [vstplugin~ -e GChorus];
+#X text 453 357 open the VST2 plugin "GChorus" with the VST editor
+GUI and 2 input and 2 output channels., f 49;
+#X text 455 435 open the VST3 version of "GChorus" with the Pd editor
+and 1 input and 1 output channels., f 49;
+#X text 432 417 [vstplugin~ GChorus.vst3 1 1];
+#X obj 433 19 cnv 15 160 20 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 433 74 VST2 plugins only support a single input and output
+bus \, but VST3 plugins can have any number of busses., f 57;
+#X text 435 45 Generally \, VST plugins work with input and output
+busses where each bus itself can have several channels.;
+#X text 432 109 The defaul is one input and output bus with 2 channels
+each:;
+#X text 434 146 You can change the number of channels with creation
+arguments:, f 62;
+#X text 438 21 About inputs and outputs;
+#X text 435 184 If the plugin uses two input and/or output busses \,
+the channel numbers can also be provided with creation arguments:,
+f 62;
+#X text 457 213 [vstplugin~ 2 2 1 3];
+#X text 434 232 If you need more busses \, you have to use the -i and/or
+-i flag:, f 64;
+#X text 462 252 [vstplugin~ -i 2 2 1 -o 3 2 2 2];
+#X text 455 164 [vstplugin~ 1 2];
+#X text 589 214 = in: 2ch \, 1ch | out: 2ch \, 3ch;
+#X text 592 166 = in: 1ch | out: 2ch;
+#X text 465 270 = in: 2ch \, 1ch | out: 2ch \, 2ch \, 2ch;
+#X text 435 304 More examples:;
+#X obj 13 19 cnv 15 140 20 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 20 21 Creation arguments:;
 #X restore 23 74 pd creation arguments;
 #N canvas 387 235 555 431 advanced 0;
 #X obj 23 386 s \$0-msg;
@@ -378,15 +404,15 @@ the limited precision of decimal numbers in Pd., f 63;
 #X text 391 530 advanced stuff;
 #N canvas 361 4 1180 776 preset 0;
 #X obj 817 393 s \$0-msg;
-#X obj 817 56 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 817 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X text 921 76 set program;
 #X msg 828 109 program_get;
 #X text 908 110 get the current program index;
 #X symbolatom 839 161 10 0 0 2 - - -;
 #X text 979 235 get the name of a program;
-#X obj 850 213 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 850 213 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X msg 871 311 program_count;
 #X text 961 310 get number of programs;
 #X msg 880 358 program_list;
@@ -500,8 +526,8 @@ DAW), f 53;
 #X text 84 160 %PROGRAMDATA%/VST3 Presets/[VENDOR]/[PLUGIN];
 #X restore 288 69 pd more;
 #X msg 50 370 preset_info \$1;
-#X obj 50 349 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -8 0 10
--262144 -1 -1 0 256;
+#X obj 50 349 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
 #X text 109 348 index;
 #X text 243 473 load a preset;
 #N canvas 738 177 650 433 preset-management-example 0;
@@ -527,7 +553,7 @@ your own preset banks in Pd, f 47;
 #X obj 305 131 t b b, f 7;
 #X obj 305 174 until;
 #X msg 305 153 16;
-#X obj 305 218 text set \$0-data 1e+07;
+#X obj 305 218 text set \$0-data 1e+007;
 #X msg 305 195 list;
 #X obj 305 110 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
