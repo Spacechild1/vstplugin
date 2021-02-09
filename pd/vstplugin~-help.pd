@@ -1,3 +1,4 @@
+#N struct 1005-button float x float y float id;
 #N canvas 354 144 645 589 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
@@ -367,7 +368,8 @@ f 62;
 0;
 #X text 20 21 Creation arguments:;
 #X restore 23 74 pd creation arguments;
-#N canvas 387 235 555 431 advanced 0;
+#N canvas 184 222 487 548 advanced 0;
+#N canvas 614 345 519 433 vst2 0;
 #X obj 23 386 s \$0-msg;
 #X msg 24 69 can_do \$1;
 #X symbolatom 24 48 24 0 0 0 - - -;
@@ -399,6 +401,57 @@ the limited precision of decimal numbers in Pd., f 63;
 #X connect 1 0 0 0;
 #X connect 2 0 1 0;
 #X connect 7 0 0 0;
+#X restore 27 513 pd vst2;
+#X obj 43 157 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X text 100 157 index;
+#X text 61 201 responds with;
+#X text 37 82 responds with;
+#X text 57 368 responds with a series of;
+#X text 286 368 messages;
+#X msg 43 178 input_info \$1;
+#X obj 53 227 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X text 110 227 index;
+#X msg 53 247 output_info \$1;
+#X text 132 177 get input bus info;
+#X text 149 247 get output bus info;
+#X text 60 269 responds with;
+#X msg 148 200 input_info <index> <nchannels> <name> <type>;
+#X msg 154 270 output_info <index> <nchannels> [<name> <type>];
+#X text 66 290 NOTE: <name> and <type> are only output for VST3 plugins.
+<type> can be "main" or "aux".;
+#X msg 21 60 input_count;
+#X text 104 58 get number of input busses;
+#X msg 127 83 input_count <count>;
+#X text 48 131 responds with;
+#X msg 32 109 output_count;
+#X text 118 106 get number of output busses;
+#X msg 138 132 output_count <count>;
+#X msg 50 347 input_list;
+#X text 123 347 get all input bus info;
+#X msg 217 367 input_info;
+#X text 62 419 responds with a series of;
+#X text 300 418 messages;
+#X msg 58 395 output_list;
+#X text 135 394 get all output bus info;
+#X msg 222 418 output_info;
+#X obj 21 443 s \$0-msg;
+#X obj 20 18 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 26 23 Input/output bus info:;
+#X obj 17 472 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 22 478 VST2 only methods;
+#X text 64 318 In the future \, more info might be added.;
+#X connect 1 0 7 0;
+#X connect 7 0 32 0;
+#X connect 8 0 10 0;
+#X connect 10 0 32 0;
+#X connect 17 0 32 0;
+#X connect 21 0 32 0;
+#X connect 24 0 32 0;
+#X connect 29 0 32 0;
 #X restore 394 549 pd advanced;
 #X f 14;
 #X text 391 530 advanced stuff;

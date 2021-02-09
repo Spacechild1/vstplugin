@@ -1585,6 +1585,8 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     sendInfo(x, "category", info->category);
     sendInfo(x, "version", info->version);
     sendInfo(x, "sdkversion", info->sdkVersion);
+    // deprecated
+#if 1
     sendInfo(x, "inputs", info->numInputs() > 0 ?
                  info->inputs[0].numChannels : 0);
     sendInfo(x, "outputs", info->numOutputs() > 0 ?
@@ -1593,6 +1595,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
                  info->inputs[1].numChannels : 0);
     sendInfo(x, "auxoutputs", info->numOutputs() > 1 ?
                  info->outputs[1].numChannels : 0);
+#endif
     sendInfo(x, "id", ("0x"+info->uniqueID));
     sendInfo(x, "editor", info->editor());
     sendInfo(x, "synth", info->synth());
@@ -1828,6 +1831,84 @@ static void vstplugin_transport_get(t_vstplugin *x){
     t_atom a;
     SETFLOAT(&a, x->x_plugin->getTransportPosition());
     outlet_anything(x->x_messout, gensym("transport"), 1, &a);
+}
+
+/*//////////////////////////////////// inputs/outputs //////////////////////////////////////*/
+
+enum class t_direction {
+    in,
+    out
+};
+
+// get bus info (index + nchannels + name + type ...)
+template<t_direction dir>
+static void vstplugin_bus_doinfo(const PluginInfo& info, int index, t_outlet *outlet){
+    auto& bus = (dir == t_direction::out) ?
+                info.outputs[index] : info.inputs[index];
+    auto vst3 = info.type() == PluginType::VST3;
+    t_atom msg[4];
+    SETFLOAT(&msg[0], index);
+    SETFLOAT(&msg[1], bus.numChannels);
+    if (vst3){
+        SETSYMBOL(&msg[2], gensym(bus.label.c_str()));
+        SETSYMBOL(&msg[3], (bus.type == PluginInfo::Bus::Aux) ?
+                    gensym("aux") : gensym("main"));
+    }
+    // LATER add more info
+    auto sel = (dir == t_direction::out) ?
+                gensym("output_info") : gensym("input_info");
+    outlet_anything(outlet, sel, vst3 ? 4 : 2, msg);
+}
+
+template<t_direction dir>
+static void vstplugin_bus_info(t_vstplugin *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    int index = f;
+    auto& info = x->x_plugin->info();
+    if (index >= 0 && index < info.numInputs()){
+        vstplugin_bus_doinfo<dir>(info, index, x->x_messout);
+    } else {
+        auto what = (dir == t_direction::out) ? "output" : "input";
+        pd_error(x, "%s: %s bus index %d out of range!",
+                 classname(x), what, index);
+    }
+}
+
+// number of inputs/outputs
+static void vstplugin_input_count(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    t_atom msg;
+    SETFLOAT(&msg, x->x_plugin->info().numInputs());
+    outlet_anything(x->x_messout, gensym("input_count"), 1, &msg);
+}
+
+static void vstplugin_output_count(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    t_atom msg;
+    SETFLOAT(&msg, x->x_plugin->info().numOutputs());
+    outlet_anything(x->x_messout, gensym("output_count"), 1, &msg);
+}
+
+// list busses (index + info)
+template<t_direction dir>
+static void vstplugin_bus_list(t_vstplugin *x, t_symbol *s){
+    const PluginInfo *info = nullptr;
+    if (*s->s_name){
+        auto path = s->s_name;
+        if (!(info = queryPlugin<false>(x, path))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!",
+                     classname(x), path);
+            return;
+        }
+    } else {
+        if (!x->check_plugin()) return;
+        info = &x->x_plugin->info();
+    }
+    int n = (dir == t_direction::out) ?
+                info->numOutputs() : info->numInputs();
+    for (int i = 0; i < n; ++i){
+        vstplugin_bus_doinfo<dir>(*info, i, x->x_messout);
+    }
 }
 
 /*------------------------------------ parameters ------------------------------------------*/
@@ -3473,6 +3554,13 @@ EXPORT void vstplugin_tilde_setup(void){
 #endif
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_get, gensym("transport_get"), A_NULL);
+    // inputs/outputs
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_info<t_direction::in>, gensym("input_info"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_list<t_direction::in>, gensym("input_list"), A_DEFSYM, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_input_count, gensym("input_count"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_info<t_direction::out>, gensym("output_info"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_list<t_direction::out>, gensym("output_list"), A_DEFSYM, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_output_count, gensym("output_count"), A_NULL);
     // parameters
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_GIMME, A_NULL);
