@@ -1668,6 +1668,8 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
+    bool vst3 = info.type() == PluginType::VST3;
+
     post("---");
     post("name: %s", info.name.c_str());
     post("type: %s%s%s", info.sdkVersion.c_str(),
@@ -1677,16 +1679,28 @@ static void vstplugin_print(t_vstplugin *x){
     post("path: %s", info.path().c_str());
     post("vendor: %s", info.vendor.c_str());
     post("category: %s", info.category.c_str());
-    post("input channels: %d", info.numInputs() > 0 ?
-             info.inputs[0].numChannels : 0);
-    post("output channels: %d", info.numOutputs() > 0 ?
-             info.outputs[0].numChannels : 0);
-    if (info.numInputs() > 1){
-        post("aux input channels: %d", info.inputs[1].numChannels);
-    }
-    if (info.numOutputs() > 1){
-        post("aux output channels: %d", info.outputs[1].numChannels);
-    }
+
+    auto postBusses = [](auto& busses, auto what, auto vst3){
+        if (vst3){
+            post("%s:", what);
+            for (auto& bus : busses){
+                auto type = (bus.type == PluginInfo::Bus::Aux) ?
+                            "aux" : "main";
+                post("  [%s] '%s' %dch", type,
+                     bus.label.c_str(), bus.numChannels);
+            }
+        } else {
+            // always a single bus (no additional info)!
+            if (busses.size() == 1){
+                post("%s: %dch", what, busses[0].numChannels);
+            } else {
+                bug("postBusses");
+            }
+        }
+    };
+    postBusses(info.inputs, "inputs", vst3);
+    postBusses(info.outputs, "outputs", vst3);
+
     post("parameters: %d", info.numParameters());
     post("programs: %d", info.numPrograms());
     post("presets: %d", info.numPresets());
@@ -3057,18 +3071,18 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                         int chn = argv->a_w.w_float;
                         if (chn < 0){
                             pd_error(this, "%s: negative channel number for bus %d",
-                                     classname(this), i + 1);
+                                     classname(this), i);
                             chn = 0;
                         }
                         result.push_back(argv->a_w.w_float);
                     } else {
                         pd_error(this, "%s: bad channel argument %s for bus %d",
-                                 classname(this), atom_getsymbol(argv)->s_name, i + 1);
+                                 classname(this), atom_getsymbol(argv)->s_name, i);
                     }
                     argv++; argc--;
                 } else {
                     pd_error(this, "%s: missing channel argument for bus %d",
-                             classname(this), i + 1);
+                             classname(this), i);
                 }
             }
         } else {
