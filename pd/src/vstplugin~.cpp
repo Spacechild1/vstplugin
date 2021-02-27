@@ -3161,7 +3161,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         LOG_DEBUG("  bus " << (i + 1) << ": " << outputs[i] << "ch");
     }
 
-    // optional aux inputs/outputs
+    // (legacy) optional aux inputs/outputs
     // just add them to busses because they should not
     // be used together with the -i and -o flags
     int auxin = std::max<int>(0, atom_getfloatarg(2, argc, argv));
