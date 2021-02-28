@@ -271,6 +271,7 @@ VSTPluginController {
 	editorMsg { arg show=true;
 		^this.makeMsg('/vis', show.asInteger);
 	}
+	haveEditor { ^window; }
 	gui { arg parent, bounds, params=true;
 		^this.class.guiClass.new(this).gui(parent, bounds, params);
 	}
