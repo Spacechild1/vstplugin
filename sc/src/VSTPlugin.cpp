@@ -538,8 +538,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                     addPlugin(factory->getPlugin(i), i, numPlugins);
                 }
             }
-        }
-        else {
+        } else {
             // probe (will post results and add plugins)
             if (parallel){
                 futures.push_back(probePluginAsync(pluginPath, verbose));
@@ -568,63 +567,34 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 // -------------------- VSTPlugin ------------------------ //
 
 VSTPlugin::VSTPlugin(){
-    // UGen inputs: nout, blocksize, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
-    // UGen inputs: -noutbus, nout1, nout2, ... blocksize, bypass, -ninbus, nin1, inputs1..., nin2, inputs2... nparam, params...
-    // UGen inputs: blocksize, bypass, noutbus, nout1, nout2, ... ninbus, nin1, inputs1..., nin2, inputs2... nparam, params...
-    assert(numInputs() >= 5);
-    // out
-    int nout = in0(0);
-    LOG_DEBUG("out: " << nout);
-    assert(!(nout < 0 || nout > numOutputs()));
-
-    // aux out
-    auto nauxout = numOutputs() - nout;
-    LOG_DEBUG("auxout: " << nauxout);
-
-    // in
-    auto nin = (int)in0(3);
-    LOG_DEBUG("in: " << nin);
+    // Ugen inputs:
+    //   flags, blocksize, bypass, ninputs, noutputs, nparams, inputs..., outputs..., params...
+    //     input: nchannels, chn1, chn2, ...
+    //     output: nchannels
+    //     params: index, value
+    assert(numInputs() >= 6);
+    // int flags = in0(0);
+    int reblockSize = in0(1);
+    // int bypass = in0(2);
+    int nin = in0(3);
     assert(nin >= 0);
+    int nout = in0(4);
+    assert(nout >= 0);
+    int nparams = in0(5);
+    assert(nparams >= 0);
 
-    // aux in
-    auto auxInChannelOnset = inChannelOnset + nin + 1;
-    assert(auxInChannelOnset > inChannelOnset && auxInChannelOnset <= numInputs());
-    auto nauxin = in0(auxInChannelOnset - 1);
-    LOG_DEBUG("aux in: " << nauxin);
-    assert(nauxin >= 0);
+    int onset = 6;
+
+    // setup input/output busses
+    setupBusses<false>(ugenInputs_, numUgenInputs_, nin, onset);
+    setupBusses<true>(ugenOutputs_, numUgenOutputs_, nout, onset);
 
     // parameter controls
-    parameterControlOnset_ = auxInChannelOnset + nauxin + 1;
-    assert(parameterControlOnset_ > auxInChannelOnset && parameterControlOnset_ <= numInputs());
-    numParameterControls_ = in0(parameterControlOnset_ - 1);
-    LOG_DEBUG("parameters: " << numParameterControls_);
-    assert(numParameterControls_ >= 0);
-    assert((parameterControlOnset_ + numParameterControls_ * 2) <= numInputs());
+    assert((onset + nparams * 2) == numInputs());
+    parameterControls_ = mInput + onset;
+    numParameterControls_ = nparams;
 
-    // setup input busses
-    numUgenInputs_ = nauxin > 0 ? 2 : 1;
-    ugenInputs_ = (Bus *)RTAlloc(mWorld, sizeof(Bus) * numUgenInputs_);
-    if (ugenInputs_){
-        ugenInputs_[0].numChannels = nin;
-        ugenInputs_[0].channelData = (nin > 0) ? mInBuf + inChannelOnset : nullptr;
-        if (nauxin > 0){
-            ugenInputs_[1].numChannels = nauxin;
-            ugenInputs_[1].channelData = mInBuf + auxInChannelOnset;
-        }
-    }
-    // setup output busses
-    numUgenOutputs_ = nauxout > 0 ? 2 : 1;
-    ugenOutputs_ = (Bus *)RTAlloc(mWorld, sizeof(Bus) * numUgenOutputs_);
-    if (ugenOutputs_){
-        ugenOutputs_[0].numChannels = nout;
-        ugenOutputs_[0].channelData = (nout > 0) ? mOutBuf : nullptr;
-        if (nauxout > 0){
-            ugenOutputs_[1].numChannels = nauxout;
-            ugenOutputs_[1].channelData = mOutBuf + nout;
-        }
-    }
-
-    // must not be nullptr!
+    // Ugen input/output busses must not be nullptr!
     if (ugenInputs_ && ugenOutputs_){
         // create delegate
         delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
@@ -638,7 +608,6 @@ VSTPlugin::VSTPlugin(){
     }
 
     // create reblocker (if needed)
-    int reblockSize = in0(1);
     if (valid() && reblockSize > bufferSize()){
         initReblocker(reblockSize);
     }
@@ -760,6 +729,53 @@ float VSTPlugin::readControlBus(uint32 num) {
 #undef unit
     } else {
         return 0.f;
+    }
+}
+
+template<bool output>
+void VSTPlugin::setupBusses(Bus *& busses, int& numBusses,
+                            int count, int& onset)
+{
+    auto out = mOutBuf;
+    auto end = mOutBuf + numOutputs();
+    if (count > 0){
+        auto result = (Bus *)RTAlloc(mWorld, sizeof(Bus) * count);
+        if (result){
+            for (int i = 0; i < count; ++i){
+                assert(onset < numInputs());
+                auto& bus = result[i];
+                bus.numChannels = in0(onset);
+                onset++;
+                if (output){
+                    bus.channelData = out;
+                    out += bus.numChannels;
+                    assert(onset <= numInputs());
+                } else {
+                    bus.channelData = mInBuf + onset;
+                    onset += bus.numChannels;
+                    assert(out <= end);
+                }
+            }
+
+            busses = result;
+            numBusses = count;
+        } else {
+            busses = nullptr;
+            numBusses = 0;
+        }
+    } else {
+        // at least 1 (empty) bus
+        auto result = (Bus *)RTAlloc(mWorld, sizeof(Bus));
+        if (result){
+            result[0].channelData = nullptr;
+            result[0].numChannels = 0;
+
+            busses = result;
+            numBusses = 1;
+        } else {
+            busses = nullptr;
+            numBusses = 0;
+        }
     }
 }
 
@@ -1150,16 +1166,15 @@ void VSTPlugin::next(int inNumSamples) {
                 auto type = m->type();
                 uint32 num = m->bus();
                 assert(index < nparams);
-                // Control Bus mapping
                 if (type == Mapping::Control) {
+                    // Control Bus mapping
                     float value = readControlBus(num);
                     if (value != paramState_[index]) {
                         plugin->setParameter(index, value);
                         paramState_[index] = value;
                     }
-                }
-                // Audio Bus mapping
-                else if (num < mWorld->mNumAudioBusChannels){
+                } else if (num < mWorld->mNumAudioBusChannels){
+                    // Audio Bus mapping
                 #define unit this
                     float last = paramState_[index];
                     float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
@@ -1189,20 +1204,20 @@ void VSTPlugin::next(int inNumSamples) {
             // automate parameters with UGen inputs
             auto numControls = numParameterControls_;
             for (int i = 0; i < numControls; ++i) {
-                int k = 2 * i + parameterControlOnset_;
-                int index = in0(k);
+                auto control = parameterControls_ + i * 2;
+                int index = control[0]->mBuffer[0];
                 // only if index is not out of range and the parameter is not mapped to a bus
                 // (a negative index effectively deactivates the parameter control)
                 if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
-                    auto calcRate = mInput[k + 1]->mCalcRate;
+                    auto calcRate = control[1]->mCalcRate;
+                    auto buffer = control[1]->mBuffer;
                     if (calcRate == calc_FullRate) {
                         // audio rate
                         float last = paramState_[index];
-                        auto buf = in(k + 1);
                         // VST3: sample accurate
                         if (vst3) {
                             for (int i = 0; i < inNumSamples; ++i) {
-                                float value = buf[i];
+                                float value = buffer[i];
                                 if (value != last) {
                                     plugin->setParameter(index, value, i); // sample offset!
                                     last = value;
@@ -1210,7 +1225,7 @@ void VSTPlugin::next(int inNumSamples) {
                             }
                         } else {
                             // VST2: pick the first sample
-                            float value = *buf;
+                            float value = buffer[0];
                             if (value != last) {
                                 plugin->setParameter(index, value);
                                 last = value;
@@ -1219,7 +1234,7 @@ void VSTPlugin::next(int inNumSamples) {
                         paramState_[index] = last;
                     } else {
                         // control rate
-                        float value = in0(k + 1);
+                        float value = buffer[0];
                         if (value != paramState_[index]) {
                             plugin->setParameter(index, value);
                             paramState_[index] = value;

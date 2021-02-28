@@ -17,11 +17,62 @@ METHOD:: ar
 create a UGen instance.
 
 ARGUMENT:: input
-An Array of channels or single input for the plugin to process. You cannot change the size of this once a SynthDef has been built.
-Set this to code::nil:: if the plugin takes no audio input (e.g. software synthesizers).
+The UGen inputs for the plugin to process.
+
+In case of a emphasis::single:: input bus (most plugins), you can pass
+list::
+## a single UGen (= mono)
+code::
+VSTPlugin.ar(SinOsc.ar(200));
+::
+## an Array of UGens (= stereo/multichannel)
+code::
+VSTPlugin.ar([ SinOsc.ar(100), SinOsc.ar(200) ]);
+::
+## code::nil:: (= no input, e.g. VST instruments).
+::
+
+If you want to use emphasis::multiple:: input busses, you have to pass a link::Classes/Ref:: to an Array of inputs. You can skip a bus with 0 or code::nil::.
+
+code::
+// bus1: mono, bus2: stereo, bus3: -, bus4: 3ch
+VSTPlugin.ar(`[ SinOsc.ar(100), [ SinOsc.ar(100), SinOsc.ar(200) ], nil, [ SinOsc.ar(300), SinOsc.ar(400), SinOsc.ar(500) ] ]);
+::
+
+note::You can check the available input busses with link::Classes/VSTPluginDesc#-inputs::.::
 
 ARGUMENT:: numOut
-The number of output channels. This must be a fixed number greater than 0.
+The number of output channels.
+
+In case of a emphasis::single:: output bus (most plugins), this must be a fixed number greater than 0.
+
+The result is either a single link::Classes/OutputProxy:: (mono) or an Array of OutputProxies (stereo/multichannel), just like a regular link::Classes/MultiOutUGen::.
+
+code::
+// mono output, returns a VSTPlugin
+VSTPlugin.ar(numOut: 1);
+// stereo output, returns [ OutputProxy, OutputProxy ]
+VSTPlugin.ar(numOutput: 2);
+::
+
+---
+
+If you want to use emphasis::multiple:: output busses, you have to pass a link::Classes/Ref:: to an Array of channel numbers. You can skip a bus with 0 or code::nil::.
+
+The result is an Array of output busses, where each bus is an Array of link::Classes/OutputProxy::.
+
+note::Skipped output busses are omitted from the Array!::
+
+code::
+// bus1: stereo, bus2: mono, bus3: -, bus4: 4ch
+var sig = VSTPlugin.ar(numOut: `[2, 1, nil, 4]);
+Out.ar(0, sig[0]); // do something with bus1
+Out.ar(4, sig[2]); // do something with bus4 (bus3 is omitted!)
+Out.ar(8, sig.flat); // output all bus channels in a row
+::
+
+note::You can check the available output busses with link::Classes/VSTPluginDesc#-outputs::.::
+
 
 ARGUMENT:: bypass
 change the bypass state. If bypass is non-zero, then processing is suspended and each input is passed straight to its corresponding output.
@@ -100,14 +151,6 @@ Also, you can omit the code::path:: argument when opening plugins:
 code::
 ~fx = VSTPluginController(Synth(\chorus)).open; // will open 'GChorus'
 ::
-
-ARGUMENT:: auxInput
-An Array of channels or a single auxiliary input for the plugin to process. You cannot change the size of this once a SynthDef has been built.
-This is only useful for certain VST3 plugins (e.g. for side chaining).
-
-ARGUMENT:: numAuxOut
-The number of auxiliary output channels. This must be a fixed number greater or equal 0.
-Like code::auxInput::, this is only useful for certain VST3 plugins.
 
 ARGUMENT:: blockSize
 Run the plugin with a certain block size (in samples). The default is code::nil:: (= no reblocking).

@@ -10,16 +10,37 @@ Have a look at `VSTPlugin.sc` and `VSTPluginController.sc` in the *classes* fold
 
 ### UGen inputs
 | name         | rate  ||
-| ------------ | ----- ||
-| numOutputs   | ir    | number of main audio outputs                       |
-| flags        | ir    | creation flags (reserved for future use)           |
-| bypass       | ir/kr | bypass state                                       |
-| numInputs    | ir    | number of main audio inputs; can be 0              |
-| inputs...    | ar    | (optional) `<numInputs>` main audio inputs         |
-| numAuxInputs | ir    | number of auxiliary audio inputs; can be 0         |
-| auxInputs... | ar    | (optional) `<numAuxInputs>` auxiliary audio inputs |
-| numParams    | ir    | number of parameter controls; can be 0             |
-| params...    | *     | (optional) `2 * <numParams>` parameter controls    |
+| ------------ | ----- |-|
+| flags        | ir    | creation flags (reserved for future use)      |
+| blockSize    | ir    | desired block size or 0 (= Server block size) |
+| bypass       | ir/kr | bypass state                                  |
+| numInputs    | ir    | number of audio input busses; can be 0        |
+| numOutputs   | ir    | number of audio output busses; can be 0       |
+| numParamCtls | ir    | number of parameter controls; can be 0        |
+| inputBus...  |       | (optional) `<numInputs>` audio input busses   |
+| outputBus... |       | (optional) `<numOutputs>` audio output busses |
+| paramCtl...  |       | (optional) `<numParamCtls>` parameter controls   |
+
+*inputBus*
+
+The number of channels (`ir`), followed by the actual channel inputs (`ar`).
+Example: `2, <ch1>, <ch2>`.
+
+*outputBus*
+
+The number of channels (`ir`).
+
+*paramCtl*
+
+A pair of `<index, value>`.
+
+`index` is the index of the parameter to be automated. Supported rates are `ir` and `kr`. You can dynamically switch between different parameters at control rate. A negative number deactivates the control.
+
+`value` is the new state for the given plugin parameter and should be a floating point number between 0.0 and 1.0. All rates are supported, but `ir` and `kr` are recommended. `ar` only makes sense for VST3 plugins - and only for those which actually support sample accurate automation (many VST3 plugins do not!).
+
+**NOTE**: Automation via UGen inputs can be overriden by the `/map` and `/mapa` Unit commands (see below).
+
+*bypass*
 
 If a plugin is bypassed, processing is suspended and each input is passed straight to its corresponding output. The `bypass` parameter can have the following states:
 
@@ -27,21 +48,14 @@ If a plugin is bypassed, processing is suspended and each input is passed straig
 * 1 -> hard bypass; processing is suspended immediately and the plugin's own bypass method is called (if available). Good plugins will do a short crossfade, others will cause a click. |
 * 2 -> soft bypass; if the plugin has a tail (e.g. reverb or delay), it will fade out. Also, this doesn't call the plugin's bypass method, so we can always do a nice crossfade. |
 
-Each parameter control is a pair of `<index, value>`, so `params` takes up 2 * `numParams` UGen inputs in total.
-
-`index` is the index of the parameter to be automated. Supported rates are `ir` and `kr`. You can dynamically switch between different parameters at control rate. A negative number deactivates the control.
-
-`value` is the new state for the given plugin parameter and should be a floating point number between 0.0 and 1.0. All rates are supported, but `ir` and `kr` are recommended. `ar` only makes sense for VST3 plugins - and only for those which actually perform sample accurate automation (many VST3 plugins do not!).
-
-**NOTE**: Automation via UGen inputs can be overriden by the `/map` and `/mapa` Unit commands (see below).
 
 ### UGen outputs
 
 | name          | rate ||
-| ------------- | ---- ||
-| outputs...    | ar   | (optional) <numOutputs> main audio outputs
-| auxOutputs... | ar   | (optional) auxiliary audio outputs (`UGen outputs - <numOutputs>`)
+| ------------- | ---- |-|
+| outputBus...  | ar   | (optional) `<numOutputs>` output busses
 
+Each *outputBus* contains one or more output channels; the number of channels is determined by the corresponding `outputBus` UGen input.
 
 # Realtime safety
 
@@ -811,3 +825,4 @@ n=<number of paths>
 ```
 
 Plugins are black-listed if the probe process failed (see `/vst_probe`). If you want to replace a "bad" plugin with a "good" one, you have to first remove the cache file (see `/vst_clear`).
+

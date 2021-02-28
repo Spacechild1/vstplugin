@@ -247,6 +247,7 @@ public:
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
+
     int getBypass() const { return (int)in0(2); }
 
     int blockSize() const;
@@ -279,6 +280,10 @@ private:
     void setInvalid() { mSpecialIndex &= ~Valid; }
 
     float readControlBus(uint32 num);
+
+    template<bool output>
+    void setupBusses(Bus *& busses, int& numBusses,
+                     int count, int& onset);
 
     void initReblocker(int reblockSize);
     bool updateReblocker(int numSamples);
@@ -326,9 +331,8 @@ private:
 
     Reblock *reblock_ = nullptr;
 
-    static const int inChannelOnset = 4;
     int numParameterControls_ = 0;
-    int parameterControlOnset_ = 0;
+    Wire ** parameterControls_ = nullptr;
 
     struct Mapping {
         enum BusType {
