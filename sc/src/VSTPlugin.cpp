@@ -1046,13 +1046,14 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
 }
 
 #if 1
-#define PRINT_MAPPING \
-    LOG_DEBUG("mappings:"); \
-    for (auto mapping = paramMappingList_; mapping; mapping = mapping->next){ \
-        LOG_DEBUG(mapping->index << " -> " << mapping->bus() << " (" << mapping->type() << ")"); \
+void VSTPlugin::printMapping(){
+    LOG_DEBUG("mappings:");
+    for (auto mapping = paramMappingList_; mapping; mapping = mapping->next){
+        LOG_DEBUG(mapping->index << " -> " << mapping->bus() << " (" << mapping->type() << ")");
     }
+}
 #else
-#define PRINT_MAPPING
+void VSTPlugin::printMapping() {}
 #endif
 
 void VSTPlugin::map(int32 index, int32 bus, bool audio) {
@@ -1075,7 +1076,7 @@ void VSTPlugin::map(int32 index, int32 bus, bool audio) {
         }
     }
     mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
-    PRINT_MAPPING
+    printMapping();
 }
 
 void VSTPlugin::unmap(int32 index) {
@@ -1093,7 +1094,7 @@ void VSTPlugin::unmap(int32 index) {
         RTFree(mWorld, mapping);
         paramMapping_[index] = nullptr;
     }
-    PRINT_MAPPING
+    printMapping();
 }
 
 // perform routine

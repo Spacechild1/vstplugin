@@ -355,6 +355,8 @@ private:
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
     Bypass bypass_ = Bypass::Off;
+
+    void printMapping();
 };
 
 
