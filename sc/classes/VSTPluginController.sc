@@ -15,10 +15,11 @@ VSTPluginController {
 	var <>sysexReceived;
 	var <>latencyChanged;
 	var <>pluginCrashed;
+	// for dependants
+	var <parameterCache;
+	var <programCache;
 	// private
 	var oscFuncs;
-	var <parameterCache; // for dependants
-	var <programCache; // for dependants
 	var currentPreset; // the current preset
 	var window; // do we have a VST editor?
 	var loading; // are we currently loading a plugin?
