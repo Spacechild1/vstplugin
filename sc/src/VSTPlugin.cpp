@@ -796,7 +796,7 @@ void VSTPlugin::initReblocker(int reblockSize){
             totalNumChannels += numChannels;
         }
         for (int i = 0; i < numUgenOutputs_; ++i){
-            auto numChannels = ugenInputs_[i].numChannels;
+            auto numChannels = ugenOutputs_[i].numChannels;
             reblock_->outputs[i].numChannels = numChannels;
             reblock_->outputs[i].channelData = nullptr;
             totalNumChannels += numChannels;
@@ -1318,23 +1318,20 @@ void VSTPlugin::bypassRemaining(const Bus *ugenInputs, int numInputs,
 {
     for (int i = 0; i < numUgenOutputs_; ++i){
         auto& ugenOutputs = ugenOutputs_[i];
-        if (i < numPluginOutputs_){
-            int onset = pluginOutputs_[i].numChannels;
-            for (int j = onset; j < ugenOutputs.numChannels; ++j){
-                auto out = ugenOutputs.channelData[j];
-                if (i < numInputs && j < ugenInputs[i].numChannels){
-                    // copy input to output
-                    auto in = ugenInputs[i].channelData[j] + phase;
-                    std::copy(in, in + numSamples, out);
-                } else {
-                    // zero outlet
-                    std::fill(out, out + numSamples, 0);
-                }
-            }
-        } else {
-            // zero whole bus
-            for (int j = 0; j < ugenOutputs.numChannels; ++j){
-                auto out = ugenOutputs.channelData[j];
+        int onset = (i < numPluginOutputs_) ?
+            pluginOutputs_[i].numChannels : 0;
+        for (int j = onset; j < ugenOutputs.numChannels; ++j){
+            auto out = ugenOutputs.channelData[j];
+            // only bypass if a) there is a corresponding UGen input
+            // and b) that input isn't used by the plugin
+            if (i < numInputs && j < ugenInputs[i].numChannels &&
+                !(i < numPluginInputs_ && j < pluginInputs_[i].numChannels))
+            {
+                // copy input to output
+                auto in = ugenInputs[i].channelData[j] + phase;
+                std::copy(in, in + numSamples, out);
+            } else {
+                // zero output
                 std::fill(out, out + numSamples, 0);
             }
         }
