@@ -452,10 +452,10 @@ VSTPluginGui : ObjectGui {
 			var items;
 			filteredPlugins = plugins.select({ arg item;
 				var vst3, ok = true;
-				var string = stringFilter.string;
+				var string = stringFilter.string.toLower;
 				(string.size > 0).if {
 					// search plugin and vendor name
-					ok = item.name.find(string).notNil or: { item.vendor.find(string).notNil };
+					ok = item.name.toLower.find(string).notNil or: { item.vendor.toLower.find(string).notNil };
 				};
 				(typeFilter.value > 0).if {
 					vst3 = item.sdkVersion.find("VST 3").notNil;
