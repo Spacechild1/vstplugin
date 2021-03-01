@@ -217,6 +217,8 @@ PluginInfo::const_ptr VST3Factory::probePlugin(int id) const {
 
 /*///////////////////// ParamValueQeue /////////////////////*/
 
+#if USE_MULTI_POINT_AUTOMATION
+
 ParamValueQueue::ParamValueQueue() {
     values_.reserve(maxNumPoints);
 }
@@ -269,6 +271,8 @@ tresult PLUGIN_API ParamValueQueue::addPoint (int32 sampleOffset, Vst::ParamValu
     index = 0;
     return kResultOk;
 }
+
+#endif
 
 /*///////////////////// ParameterChanges /////////////////////*/
 

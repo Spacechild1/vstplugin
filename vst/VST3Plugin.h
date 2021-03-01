@@ -85,6 +85,12 @@ class VST3Factory final : public PluginFactory {
 };
 
 //----------------------------------------------------------------------
+
+#ifndef USE_MULTI_POINT_AUTOMATION
+#define USE_MULTI_POINT_AUTOMATION 0
+#endif
+
+#if USE_MULTI_POINT_AUTOMATION
 class ParamValueQueue: public Vst::IParamValueQueue {
  public:
     static const int maxNumPoints = 64;
@@ -108,6 +114,34 @@ class ParamValueQueue: public Vst::IParamValueQueue {
     std::vector<Value> values_;
     Vst::ParamID id_ = Vst::kNoParamId;
 };
+#else
+class ParamValueQueue: public Vst::IParamValueQueue {
+ public:
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IParamValueQueue)
+    DUMMY_REFCOUNT_METHODS
+
+    void setParameterId(Vst::ParamID id){
+        id_ = id;
+    }
+    Vst::ParamID PLUGIN_API getParameterId() override { return id_; }
+    int32 PLUGIN_API getPointCount() override { return 1; }
+    tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) override {
+        sampleOffset = sampleOffset_;
+        value = value_;
+        return kResultOk;
+    }
+    tresult PLUGIN_API addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) override {
+        sampleOffset_ = sampleOffset;
+        value_ = value;
+        index = 0;
+        return kResultOk;
+    }
+ protected:
+    Vst::ParamID id_ = Vst::kNoParamId;
+    int32 sampleOffset_;
+    Vst::ParamValue value_;
+};
+#endif
 
 //----------------------------------------------------------------------
 class ParameterChanges: public Vst::IParameterChanges {
