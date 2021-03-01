@@ -396,17 +396,30 @@ VSTPluginDesc {
 
 	}
 	prToString { arg sep = $\n;
-		var s = "name: %".format(this.name) ++ sep
+		var vst3 = this.sdkVersion.find("VST 3").notNil;
+		var inputs, outputs;
+		var toString = { arg busses;
+			var result = busses.collect({ arg bus;
+				vst3.if {
+					"[%] '%' %ch".format(bus.type, bus.name, bus.channels)
+				} { "%ch".format(bus.channels) }
+			}).join(sep);
+			(busses.size > 1).if {
+				sep ++ result;
+			} { result }
+		};
+		inputs = toString.value(this.inputs);
+		outputs = toString.value(this.outputs);
+
+		^ "name: %".format(this.name) ++ sep
 		++ "type: %%%".format(this.sdkVersion,
 			this.synth.if { " (synth)" } { "" }, this.bridged.if { " [bridged]" } { "" }) ++ sep
 		++ "path: %".format(this.path) ++ sep
 		++ "vendor: %".format(this.vendor) ++ sep
 		++ "category: %".format(this.category) ++ sep
 		++ "version: %".format(this.version) ++ sep
-		++ "input channels: %".format(this.numInputs) ++ sep
-		++ ((this.numAuxInputs > 0).if { "aux input channels: %".format(this.numAuxInputs) ++ sep } {""})
-		++ "output channels: %".format(this.numOutputs) ++ sep
-		++ ((this.numAuxOutputs > 0).if { "aux output channels: %".format(this.numAuxOutputs) ++ sep } {""})
+		++ "inputs: %".format(inputs) ++ sep
+		++ "outputs: %".format(outputs) ++ sep
 		++ "parameters: %".format(this.numParameters) ++ sep
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "presets: %".format(this.numPresets) ++ sep
@@ -417,7 +430,5 @@ VSTPluginDesc {
 		++ "MIDI output: %".format(this.midiOutput)
 		// ++ "sysex input: %".format(this.sysexInput) ++ sep
 		// ++ "sysex output: %".format(this.sysexOutput) ++ sep
-		;
-		^s;
 	}
 }
