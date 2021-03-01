@@ -81,15 +81,15 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
         chn.send(); // tmp file is still in scope!
     }
 
-    // collect replies
-    const ShmCommand *reply;
-    while (chn.getReply(reply)){
-        dispatchReply(*reply);
-    }
-
     // in case the process has already crashed during creation...
     if (!bridge_->alive()){
         throw Error(Error::PluginError, "plugin crashed");
+    }
+
+    // collect replies (after check!)
+    const ShmCommand *reply;
+    while (chn.getReply(reply)){
+        dispatchReply(*reply);
     }
 
     LOG_DEBUG("PluginClient: done!");
@@ -311,8 +311,10 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
         break;
     }
     case Command::ProgramNameIndexed:
-        programCache_[reply.programName.index]
-                = reply.programName.name;
+        if (info().numPrograms() > 0){
+            programCache_[reply.programName.index]
+                    = reply.programName.name;
+        }
         break;
     case Command::ProgramNumber:
         program_ = reply.i;
@@ -424,6 +426,11 @@ void PluginClient::setNumSpeakers(int *input, int numInputs,
     auto chn = bridge().getNRTChannel();
     chn.addCommand(cmd, totalSize);
     chn.send();
+
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
 
     // get reply
     const ShmCommand* reply;
@@ -561,6 +568,11 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     chn.addCommand(cmd, totalSize);
     chn.send();
 
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
+
     // get replies
     const ShmCommand* reply;
     while (chn.getReply(reply)){
@@ -578,6 +590,11 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
     chn.send();
+
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
 
     const ShmCommand *reply;
     if (chn.getReply(reply)){

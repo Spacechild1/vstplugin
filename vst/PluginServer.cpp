@@ -210,7 +210,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         });
         channel.clear(); // !
         sendParameterUpdate(channel);
-        sendProgramUpdate(channel, false);
+        sendProgramUpdate(channel, true);
         break;
     case Command::WriteProgramFile:
         UIThread::callSync([&](){
@@ -563,7 +563,9 @@ void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
         }
     } else {
         // send current program name
-        sendProgramName(plugin_->getProgram(), plugin_->getProgramName());
+        if (plugin_->info().numPrograms() > 0){
+            sendProgramName(plugin_->getProgram(), plugin_->getProgramName());
+        }
     }
 }
 
