@@ -100,6 +100,7 @@ ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
     : plugin_(std::move(plugin)) {
     threadPool_ = &DSPThreadPool::instance(); // cache for performance
     event_.set(); // so that the process routine doesn't wait the very first time
+    LOG_DEBUG("ThreadedPlugin");
 }
 
 ThreadedPlugin::~ThreadedPlugin() {

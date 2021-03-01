@@ -183,6 +183,13 @@ void PluginClient::doProcess(ProcessData& data){
     // LOG_DEBUG("PluginClient: wait");
     channel.send();
 
+    // check if host is still alive
+    if (!check()){
+        bypass(data);
+        commands_.clear(); // avoid commands piling up!
+        return;
+    }
+
     // read output busses
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
