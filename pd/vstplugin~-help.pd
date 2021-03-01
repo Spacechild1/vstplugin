@@ -1,4 +1,5 @@
-#N canvas 354 144 645 589 10;
+#N struct 1004-button float x float y float id;
+#N canvas 499 129 645 594 10;
 #N canvas 703 204 450 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -90,16 +91,16 @@
 #X connect 15 0 12 1;
 #X coords 0 -1 1 1 70 110 2 100 100;
 #X restore 20 201 pd open;
-#X msg 208 234 close;
-#X msg 222 305 vis \$1;
-#X obj 222 285 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X msg 208 266 close;
+#X msg 224 341 vis \$1;
+#X obj 224 321 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 232 402 bypass \$1;
+#X msg 230 387 bypass \$1;
 #X obj 187 468 s \$0-msg;
 #X obj 27 318 r \$0-msg;
-#X text 255 235 close the plugin;
-#X text 272 305 show/hide editor;
-#X text 257 261 print plugin info to console, f 18;
+#X text 255 267 close the plugin;
+#X text 274 341 show/hide editor;
+#X text 257 295 print plugin info to console, f 18;
 #X text 184 490 parameters;
 #X text 273 489 FX programs/banks;
 #N canvas 753 189 627 553 parameter 0;
@@ -285,7 +286,7 @@ f 51;
 #X restore 281 549 pd transport;
 #X f 16;
 #X text 279 530 transport/timing;
-#X text 292 446 reset the plugin (e.g. clear delay lines);
+#X text 292 431 reset the plugin (e.g. clear delay lines);
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
@@ -355,92 +356,6 @@ where each bus itself can have several channels.;
 #X text 434 193 If you need more busses \, you have to use the -i and/or
 -o flag:, f 64;
 #X restore 23 74 pd creation arguments;
-#N canvas 184 222 487 548 advanced 0;
-#N canvas 614 345 519 433 vst2 0;
-#X obj 23 386 s \$0-msg;
-#X msg 24 69 can_do \$1;
-#X symbolatom 24 48 24 0 0 0 - - -;
-#X text 175 47 query the plugin for special capabilites. you have to
-know the query string: some are documented in the VST SDK \, some are
-not..., f 44;
-#X text 44 166 access special functionality of a plugin which is not
-available via the standard parameter interface., f 54;
-#X text 173 86 you will get a message "can_do" with the query string
-+ the result as an integer:, f 42;
-#X text 172 116 1: yes \, -1: no \, 0: don't know;
-#X msg 36 145 vendor_method <index> <value> <opt> <ptr>;
-#X text 46 226 arguments:;
-#X text 44 264 <value>: pointer sized integer;
-#X text 44 247 <index>: 32bit integer;
-#X text 44 280 <opt>: float;
-#X text 46 299 <ptr>: raw data as list of bytes;
-#X text 44 195 generally \, you have to know what you're doing \, check
-the documentation of the plugin to see what data it expects.;
-#X text 46 353 the purpose of sending/receiving hex symbols is to circumvent
-the limited precision of decimal numbers in Pd., f 63;
-#X text 21 24 VST2 only:;
-#X msg 229 319 vendor_method <f> <s>;
-#X text 47 336 message in both float and symbol (hex) representation.
-;
-#X text 238 242 <index> and <value> can be provided as floats or symbols
-(in hex representation \, e.g. "0x10FD7F04"), f 41;
-#X text 46 319 the return value is sent as a;
-#X connect 1 0 0 0;
-#X connect 2 0 1 0;
-#X connect 7 0 0 0;
-#X restore 27 513 pd vst2;
-#X obj 43 157 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X text 100 157 index;
-#X text 61 201 responds with;
-#X text 37 82 responds with;
-#X text 57 368 responds with a series of;
-#X text 286 368 messages;
-#X msg 43 178 input_info \$1;
-#X obj 53 227 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
-10 -262144 -1 -1 0 256;
-#X text 110 227 index;
-#X msg 53 247 output_info \$1;
-#X text 132 177 get input bus info;
-#X text 149 247 get output bus info;
-#X text 60 269 responds with;
-#X msg 148 200 input_info <index> <nchannels> <name> <type>;
-#X msg 154 270 output_info <index> <nchannels> [<name> <type>];
-#X text 66 290 NOTE: <name> and <type> are only output for VST3 plugins.
-<type> can be "main" or "aux".;
-#X msg 21 60 input_count;
-#X text 104 58 get number of input busses;
-#X msg 127 83 input_count <count>;
-#X text 48 131 responds with;
-#X msg 32 109 output_count;
-#X text 118 106 get number of output busses;
-#X msg 138 132 output_count <count>;
-#X msg 50 347 input_list;
-#X text 123 347 get all input bus info;
-#X msg 217 367 input_info;
-#X text 62 419 responds with a series of;
-#X text 300 418 messages;
-#X msg 58 395 output_list;
-#X text 135 394 get all output bus info;
-#X msg 222 418 output_info;
-#X obj 21 443 s \$0-msg;
-#X obj 20 18 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
-0;
-#X text 26 23 Input/output bus info:;
-#X obj 17 472 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
-0;
-#X text 22 478 VST2 only methods;
-#X text 64 318 In the future \, more info might be added.;
-#X connect 1 0 7 0;
-#X connect 7 0 32 0;
-#X connect 8 0 10 0;
-#X connect 10 0 32 0;
-#X connect 17 0 32 0;
-#X connect 21 0 32 0;
-#X connect 24 0 32 0;
-#X connect 29 0 32 0;
-#X restore 394 549 pd advanced;
-#X f 14;
 #N canvas 361 4 1180 776 preset 0;
 #X obj 817 393 s \$0-msg;
 #X obj 817 56 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
@@ -790,7 +705,7 @@ to build your own preset management in Pd:, f 49;
 #X connect 146 0 145 0;
 #X restore 274 510 pd preset;
 #X f 17;
-#X msg 216 261 print;
+#X msg 216 295 print;
 #N canvas 513 68 786 701 search 0;
 #X obj 18 551 s \$0-msg;
 #X msg 67 406 info;
@@ -1051,8 +966,8 @@ the -e flag to enable the VST editor., f 45;
 #X connect 22 0 21 1;
 #X connect 23 0 4 0;
 #X connect 24 0 5 0;
-#X restore 199 209 pd open;
-#X text 252 210 open a plugin;
+#X restore 199 241 pd open;
+#X text 252 242 open a plugin;
 #X obj 20 99 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 22 101 inlets:;
@@ -1104,16 +1019,103 @@ because normal plugins would simply crash Pd., f 53;
 #X restore 78 364 pd message-out;
 #X text 22 124 input signals;
 #X text 24 169 output signals + 1 message outlet, f 16;
-#X obj 187 51 vstpluginbrowser;
+#X obj 187 46 vstpluginbrowser;
 #X text 23 14 [vstplugin~] - load VST plug-ins in Pd on all platforms
 ;
 #X text 91 342 <- click me, f 13;
 #X text 89 319 <- message in;
-#X obj 232 382 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
+#X obj 230 367 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
 -1 -1 0;
-#X text 285 382 bypass;
-#X text 300 404 0: off \, 1: hard \, 2: soft;
-#X msg 226 357 pos \$1 \$2;
+#X text 283 367 bypass;
+#X text 298 389 0: off \, 1: hard \, 2: soft;
+#X obj 382 46 vstpresetbrowser;
+#X obj 382 23 r \$0-out;
+#X obj 382 303 s \$0-msg;
+#X obj 232 412 hradio 15 1 0 2 empty empty empty 0 -8 0 10 -262144
+-1 -1 0;
+#X msg 232 431 reset \$1;
+#X text 271 412 0: synchronous \, 1: asynchronous;
+#X msg 344 455 reset;
+#X text 383 455 when done;
+#X text 293 455 outputs;
+#X text 391 531 more methods;
+#N canvas 184 222 736 489 more 0;
+#N canvas 614 345 519 433 vst2 0;
+#X obj 23 386 s \$0-msg;
+#X msg 24 69 can_do \$1;
+#X symbolatom 24 48 24 0 0 0 - - -;
+#X text 175 47 query the plugin for special capabilites. you have to
+know the query string: some are documented in the VST SDK \, some are
+not..., f 44;
+#X text 44 166 access special functionality of a plugin which is not
+available via the standard parameter interface., f 54;
+#X text 173 86 you will get a message "can_do" with the query string
++ the result as an integer:, f 42;
+#X text 172 116 1: yes \, -1: no \, 0: don't know;
+#X msg 36 145 vendor_method <index> <value> <opt> <ptr>;
+#X text 46 226 arguments:;
+#X text 44 264 <value>: pointer sized integer;
+#X text 44 247 <index>: 32bit integer;
+#X text 44 280 <opt>: float;
+#X text 46 299 <ptr>: raw data as list of bytes;
+#X text 44 195 generally \, you have to know what you're doing \, check
+the documentation of the plugin to see what data it expects.;
+#X text 46 353 the purpose of sending/receiving hex symbols is to circumvent
+the limited precision of decimal numbers in Pd., f 63;
+#X text 21 24 VST2 only:;
+#X msg 229 319 vendor_method <f> <s>;
+#X text 47 336 message in both float and symbol (hex) representation.
+;
+#X text 238 242 <index> and <value> can be provided as floats or symbols
+(in hex representation \, e.g. "0x10FD7F04"), f 41;
+#X text 46 319 the return value is sent as a;
+#X connect 1 0 0 0;
+#X connect 2 0 1 0;
+#X connect 7 0 0 0;
+#X restore 464 421 pd vst2;
+#X obj 43 157 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X text 100 157 index;
+#X text 61 201 responds with;
+#X text 37 82 responds with;
+#X text 57 368 responds with a series of;
+#X text 286 368 messages;
+#X msg 43 178 input_info \$1;
+#X obj 53 227 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
+10 -262144 -1 -1 0 256;
+#X text 110 227 index;
+#X msg 53 247 output_info \$1;
+#X text 132 177 get input bus info;
+#X text 149 247 get output bus info;
+#X text 60 269 responds with;
+#X msg 148 200 input_info <index> <nchannels> <name> <type>;
+#X msg 154 270 output_info <index> <nchannels> [<name> <type>];
+#X text 66 290 NOTE: <name> and <type> are only output for VST3 plugins.
+<type> can be "main" or "aux".;
+#X msg 21 60 input_count;
+#X text 104 58 get number of input busses;
+#X msg 127 83 input_count <count>;
+#X text 48 131 responds with;
+#X msg 32 109 output_count;
+#X text 118 106 get number of output busses;
+#X msg 138 132 output_count <count>;
+#X msg 50 347 input_list;
+#X text 123 347 get all input bus info;
+#X msg 217 367 input_info;
+#X text 62 419 responds with a series of;
+#X text 300 418 messages;
+#X msg 58 395 output_list;
+#X text 135 394 get all output bus info;
+#X msg 222 418 output_info;
+#X obj 21 443 s \$0-msg;
+#X obj 20 18 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 26 23 Input/output bus info:;
+#X obj 454 380 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 459 386 VST2 only methods;
+#X text 64 318 In the future \, more info might be added.;
+#X msg 458 92 pos \$1 \$2;
 #N canvas 0 23 450 300 pos 0;
 #X floatatom 114 104 5 0 0 0 x #0-bar #0-posx;
 #X floatatom 162 104 5 0 0 0 y #0-bar #0-posy;
@@ -1128,19 +1130,24 @@ because normal plugins would simply crash Pd., f 53;
 #X connect 5 0 3 0;
 #X connect 6 0 4 0;
 #X coords 0 -1 1 1 100 24 2 100 100;
-#X restore 226 328 pd pos;
-#X text 293 357 move editor;
-#X obj 382 52 vstpresetbrowser;
-#X obj 382 29 r \$0-out;
-#X obj 382 309 s \$0-msg;
-#X obj 232 427 hradio 15 1 0 2 empty empty empty 0 -8 0 10 -262144
--1 -1 0;
-#X msg 232 446 reset \$1;
-#X text 271 427 0: synchronous \, 1: asynchronous;
-#X msg 344 464 reset;
-#X text 383 464 when done;
-#X text 293 464 outputs;
-#X text 391 531 advanced methods;
+#X restore 458 63 pd pos;
+#X text 525 91 move editor;
+#X obj 458 114 s \$0-msg;
+#X obj 450 23 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 456 28 Move/size editor window;
+#X connect 1 0 7 0;
+#X connect 7 0 32 0;
+#X connect 8 0 10 0;
+#X connect 10 0 32 0;
+#X connect 17 0 32 0;
+#X connect 21 0 32 0;
+#X connect 24 0 32 0;
+#X connect 29 0 32 0;
+#X connect 38 0 41 0;
+#X connect 39 0 38 0;
+#X restore 394 549 pd more;
+#X f 14;
 #X connect 1 0 19 0;
 #X connect 1 1 19 1;
 #X connect 2 0 6 0;
@@ -1150,14 +1157,12 @@ because normal plugins would simply crash Pd., f 53;
 #X connect 7 0 19 0;
 #X connect 19 0 0 0;
 #X connect 19 1 0 1;
-#X connect 19 2 35 0;
-#X connect 24 0 6 0;
-#X connect 27 0 6 0;
-#X connect 38 0 6 0;
-#X connect 42 0 5 0;
-#X connect 45 0 6 0;
-#X connect 46 0 45 0;
-#X connect 48 0 50 0;
-#X connect 49 0 48 0;
-#X connect 51 0 52 0;
-#X connect 52 0 6 0;
+#X connect 19 2 34 0;
+#X connect 23 0 6 0;
+#X connect 26 0 6 0;
+#X connect 37 0 6 0;
+#X connect 41 0 5 0;
+#X connect 44 0 46 0;
+#X connect 45 0 44 0;
+#X connect 47 0 48 0;
+#X connect 48 0 6 0;
