@@ -331,15 +331,11 @@ class VST3Plugin final :
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;
     struct ParamState {
-        ParamState()
-            : value(0.f), changed(false) {}
-        // copy ctor is needed so we can use it in a vector
-        ParamState(const ParamState& other)
-            : value(other.value.load()), changed(other.changed.load()) {}
-        std::atomic<float> value;
-        std::atomic<bool> changed;
+        std::atomic<float> value{0.f};
+        std::atomic<bool> changed{false};
     };
     std::unique_ptr<ParamState[]> paramCache_;
+    std::atomic<bool> paramCacheChanged_{false};
     struct ParamChange {
         ParamChange() : id(0), value(0) {}
         ParamChange(Vst::ParamID _id, Vst::ParamValue _value)

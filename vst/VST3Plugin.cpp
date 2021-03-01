@@ -1043,7 +1043,14 @@ void VST3Plugin::handleEvents(){
         for (int i = 0; i < outputEvents_.getEventCount(); ++i){
             Vst::Event event;
             outputEvents_.getEvent(i, event);
-            if (event.type != Vst::Event::kDataEvent){
+            if (event.type == Vst::Event::kDataEvent){
+                if (event.data.type == Vst::DataEvent::kMidiSysEx){
+                    SysexEvent e((const char *)event.data.bytes, event.data.size);
+                    listener->sysexEvent(e);
+                } else {
+                    LOG_DEBUG("got unsupported data event");
+                }
+            } else {
                 MidiEvent e;
                 switch (event.type){
                 case Vst::Event::kNoteOffEvent:
@@ -1094,13 +1101,6 @@ void VST3Plugin::handleEvents(){
                     continue;
                 }
                 listener->midiEvent(e);
-            } else {
-                if (event.data.type == Vst::DataEvent::kMidiSysEx){
-                    SysexEvent e((const char *)event.data.bytes, event.data.size);
-                    listener->sysexEvent(e);
-                } else {
-                    LOG_DEBUG("got unsupported data event");
-                }
             }
         }
         outputEvents_.clear();
@@ -1491,7 +1491,8 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
     #endif
         paramCache_[index].value.store(value, std::memory_order_relaxed);
         if (window_){
-            paramCache_[index].changed.store(true, std::memory_order_release);
+            paramCache_[index].changed.store(true, std::memory_order_relaxed);
+            paramCacheChanged_.store(true, std::memory_order_release);
         } else {
             controller_->setParamNormalized(id, value);
         }
@@ -1529,10 +1530,13 @@ void VST3Plugin::updateParamCache(){
         auto id = info().getParamID(i);
         paramCache_[i].value = controller_->getParamNormalized(id);
         // we don't need to tell the GUI to update
-    #if 0
-        paramCache_[i].changed.store(true, std::memory_order_release);
-    #endif
+#if 0
+        paramCache_[i].changed.store(true, std::memory_order_relaxed);
     }
+    paramCacheChanged_.store(true, std::memory_order_release);
+#else
+    }
+#endif
 }
 
 void VST3Plugin::setProgram(int program){
@@ -1849,13 +1853,15 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 
 void VST3Plugin::updateEditor(){
     // automatable parameters
-    int n = getNumParameters();
-    for (int i = 0; i < n; ++i){
-        if (paramCache_[i].changed.exchange(false, std::memory_order_acquire)){
-            auto id = info().getParamID(i);
-            float value = paramCache_[i].value.load(std::memory_order_relaxed);
-            LOG_DEBUG("update parameter " << id << ": " << value);
-            controller_->setParamNormalized(id, value);
+    if (paramCacheChanged_.exchange(false, std::memory_order_acquire)){
+        int n = getNumParameters();
+        for (int i = 0; i < n; ++i){
+            if (paramCache_[i].changed.exchange(false, std::memory_order_relaxed)){
+                auto id = info().getParamID(i);
+                float value = paramCache_[i].value.load(std::memory_order_relaxed);
+                LOG_DEBUG("update parameter " << id << ": " << value);
+                controller_->setParamNormalized(id, value);
+            }
         }
     }
     // non-automatable parameters (e.g. VU meter)
