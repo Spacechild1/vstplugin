@@ -669,6 +669,25 @@ tresult VST3Plugin::restartComponent(int32 flags){
         }
     }
 
+    // restart component might be called before paramCache_ is allocated
+    if ((flags & Vst::kParamValuesChanged) && paramCache_){
+        int n = getNumParameters();
+        auto listener = listener_.lock();
+        // this is no perfect, because we might already change a parameter
+        // before this method gets called on the UI thread.
+        for (int i = 0; i < n; ++i){
+            auto id = info().getParamID(i);
+            auto value = controller_->getParamNormalized(id);
+            if (listener){
+                if (paramCache_[i].value.exchange(value, std::memory_order_relaxed) != value){
+                    listener->parameterAutomated(i, value);
+                }
+            } else {
+                paramCache_[i].value.store(value, std::memory_order_relaxed);
+            }
+        }
+    }
+
     return kResultOk;
 }
 
@@ -1420,7 +1439,9 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             #if 0
                 program_ = data1;
             #endif
+            #if 0
                 updateParamCache();
+            #endif
             } else {
                 LOG_DEBUG("no program change parameter");
             }
@@ -1528,15 +1549,9 @@ void VST3Plugin::updateParamCache(){
     int n = getNumParameters();
     for (int i = 0; i < n; ++i){
         auto id = info().getParamID(i);
-        paramCache_[i].value = controller_->getParamNormalized(id);
-        // we don't need to tell the GUI to update
-#if 0
-        paramCache_[i].changed.store(true, std::memory_order_relaxed);
+        auto value = controller_->getParamNormalized(id);
+        paramCache_[i].value.store(value, std::memory_order_relaxed);
     }
-    paramCacheChanged_.store(true, std::memory_order_release);
-#else
-    }
-#endif
 }
 
 void VST3Plugin::setProgram(int program){
@@ -1544,9 +1559,12 @@ void VST3Plugin::setProgram(int program){
         auto id = info().programChange;
         if (id != PluginInfo::NoParamID){
             auto value = controller_->plainParamToNormalized(id, program);
+            LOG_DEBUG("program change value: " << value);
             doSetParameter(id, value);
             program_ = program;
+        #if 0
             updateParamCache();
+        #endif
         } else {
             LOG_DEBUG("no program change parameter");
         }
@@ -1678,8 +1696,7 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             if (component_->setState(&stream) == kResultOk){
                 // also update controller state!
                 stream.setPos(entry.offset); // rewind
-                controller_->setComponentState(&stream); // TODO: make thread-safe
-                updateParamCache();
+                controller_->setComponentState(&stream);
                 LOG_DEBUG("restored component state");
             } else {
                 LOG_WARNING("couldn't restore component state");
@@ -1693,6 +1710,8 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             }
         }
     }
+
+    updateParamCache();
 }
 
 void VST3Plugin::writeProgramFile(const std::string& path){
