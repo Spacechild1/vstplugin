@@ -1681,21 +1681,25 @@ static void vstplugin_print(t_vstplugin *x){
     post("category: %s", info.category.c_str());
 
     auto postBusses = [](auto& busses, auto what, auto vst3){
-        if (vst3){
-            post("%s:", what);
-            for (auto& bus : busses){
-                auto type = (bus.type == PluginInfo::Bus::Aux) ?
-                            "aux" : "main";
-                post("  [%s] '%s' %dch", type,
-                     bus.label.c_str(), bus.numChannels);
+        if (busses.size() > 0){
+            if (vst3){
+                post("%s:", what);
+                for (auto& bus : busses){
+                    auto type = (bus.type == PluginInfo::Bus::Aux) ?
+                                "aux" : "main";
+                    post("  [%s] '%s' %dch", type,
+                         bus.label.c_str(), bus.numChannels);
+                }
+            } else {
+                // always a single bus (no additional info)!
+                if (busses[0].numChannels > 0){
+                    post("%s: %dch", what, busses[0].numChannels);
+                } else {
+                    post("%s: none", what);
+                }
             }
         } else {
-            // always a single bus (no additional info)!
-            if (busses.size() == 1){
-                post("%s: %dch", what, busses[0].numChannels);
-            } else {
-                bug("postBusses");
-            }
+            post("%s: none", what);
         }
     };
     postBusses(info.inputs, "inputs", vst3);
