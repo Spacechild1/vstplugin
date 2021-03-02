@@ -73,6 +73,11 @@ VSTPlugin : MultiOutUGen {
 	}
 	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
 		server = server ?? Server.default;
+		server.serverRunning.not.if {
+			"VSTPlugin.search requires the Server to be running!".warn;
+			action.value;
+			^this;
+		};
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, parallel, action) }
@@ -145,6 +150,11 @@ VSTPlugin : MultiOutUGen {
 	*stopSearchMsg { ^['/cmd', '/vst_search_stop']; }
 	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
+		server.serverRunning.not.if {
+			"VSTPlugin.probe requires the Server to be running!".warn;
+			action.value;
+			^this;
+		};
 		path = path.asString.standardizePath;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
