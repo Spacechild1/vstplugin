@@ -540,9 +540,9 @@ VSTPluginGui : ObjectGui {
 
 		fxFilter = CheckBox.new(text: "FX").value_(true).action_(applyFilter);
 
-		synthFilter = CheckBox.new(text: "Synth").value_(true).action_(applyFilter);
+		synthFilter = CheckBox.new(text: "Instrument").value_(true).action_(applyFilter);
 
-		showBridged = CheckBox.new(text: "Show bridged").value_(true).action_(applyFilter);
+		showBridged = CheckBox.new(text: "Show bridged plugins").value_(true).action_(applyFilter);
 
 		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 
@@ -597,7 +597,7 @@ VSTPluginGui : ObjectGui {
 		cancel = Button.new.states_([["Cancel"]])
 		.action = { window.close };
 
-		ok = Button.new.states_([["OK"]])
+		ok = Button.new.states_([["Open"]])
 		.action = {
 			var theMode = #[\auto, \sandbox, \bridge][mode.value];
 			key !? {
@@ -618,8 +618,11 @@ VSTPluginGui : ObjectGui {
 				[StaticText.new.string_("Category:"), stretch: 0],
 				[categoryFilter, stretch: 1]
 			),
-			HLayout(vst2Filter, vst3Filter, fxFilter, synthFilter, nil, showBridged),
+			HLayout(
+				vst2Filter, vst3Filter, fxFilter, synthFilter, nil, showBridged
+			),
 			HLayout(search, dir, file, nil, status),
+			8,
 			HLayout(StaticText.new.string_("Mode:"), mode,
 				editor, multiThreading, nil, cancel, ok)
 		));
