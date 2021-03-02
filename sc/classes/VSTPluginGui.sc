@@ -430,9 +430,9 @@ VSTPluginGui : ObjectGui {
 	}
 
 	*prMakePluginBrowser { arg model, settings;
-		var window, browser, dir, file, editor, search, path, ok, cancel, status, key, absPath;
+		var window, browser, dir, file, editor, multiThreading, mode, search, path, ok, cancel, status, key, absPath;
 		var showSearch, updatePlugins, plugins, filteredPlugins, server;
-		var applyFilter, stringFilter, typeFilter, vendorFilter, categoryFilter;
+		var applyFilter, stringFilter, vendorFilter, categoryFilter, vst2Filter, vst3Filter, fxFilter, synthFilter, showBridged;
 		server = model.synth.server;
 		window = Window.new.alwaysOnTop_(true).name_("VST plugin browser");
 		browser = ListView.new.selectionMode_(\single);
@@ -451,27 +451,32 @@ VSTPluginGui : ObjectGui {
 		applyFilter = {
 			var items;
 			filteredPlugins = plugins.select({ arg item;
-				var vst3, ok = true;
-				var string = stringFilter.string.toLower;
-				(string.size > 0).if {
+				var ok = true, vst3 = item.sdkVersion.find("VST 3").notNil;
+				var phrase = stringFilter.string.toLower;
+				(phrase.size > 0).if {
 					// search plugin and vendor name
-					ok = item.name.toLower.find(string).notNil or: { item.vendor.toLower.find(string).notNil };
+					ok = item.name.toLower.find(phrase).notNil or: { item.vendor.toLower.find(phrase).notNil };
 				};
-				(typeFilter.value > 0).if {
-					vst3 = item.sdkVersion.find("VST 3").notNil;
-					// use shortcircuiting to skip test if 'ok' is already 'false'
-					ok = ok and: {
-						switch(typeFilter.value,
-							1, { vst3.not && item.synth.not }, // VST
-							2, { vst3.not && item.synth }, // VSTi
-							3, { vst3 && item.synth.not }, // VST3
-							4, { vst3 && item.synth }, // VST3i
-							false
-						)
-					};
+				// use shortcircuiting to skip test if 'ok' is already 'false'
+				ok = ok and: {
+					(vst2Filter.value && vst3.not) ||
+					(vst3Filter.value && vst3)
+				};
+				ok = ok and: {
+					(fxFilter.value && item.synth.not) ||
+					(synthFilter.value && item.synth)
+				};
+				ok = ok and: {
+					item.bridged.not || showBridged.value
 				};
 				(vendorFilter.value > 0).if {
-					ok = ok and: { item.vendor == vendorFilter.item };
+					ok = ok and: {
+						(item.vendor.size > 0).if {
+							item.vendor == vendorFilter.item;
+						} {
+							vendorFilter.item == "[unknown]";
+						}
+					};
 				};
 				(categoryFilter.value > 0).if {
 					ok = ok and: {
@@ -500,19 +505,19 @@ VSTPluginGui : ObjectGui {
 		updatePlugins = {
 			var categories = Set.new;
 			var vendors = Set.new;
-			var oldCat = categoryFilter.item;
+			var oldCategory = categoryFilter.item;
 			var oldVendor = vendorFilter.item;
 			plugins = VSTPlugin.pluginList(server, sorted: true);
 			plugins.do({ arg item;
-				vendors.add(item.vendor);
+				vendors.add((item.vendor.size > 0).if { item.vendor } { "[unknown]" });
 				item.category.split($|).do { arg cat; categories.add(cat) };
 			});
 			categoryFilter.items = ["All"] ++ categories.asArray.sort({ arg a, b; a.compare(b, true) < 0});
 			vendorFilter.items = ["All"] ++ vendors.asArray.sort({ arg a, b; a.compare(b, true) < 0});
 			// restore filters
-			oldCat.notNil.if {
+			oldCategory.notNil.if {
 				categoryFilter.items.do { arg item, index;
-					(item == oldCat).if { categoryFilter.value_(index) }
+					(item == oldCategory).if { categoryFilter.value_(index) }
 				}
 			};
 			oldVendor.notNil.if {
@@ -524,17 +529,33 @@ VSTPluginGui : ObjectGui {
 			applyFilter.value;
 		};
 
+		// plugin filters
 		// update on every key input; the delay makes sure we really see the updated text.
 		stringFilter = TextField.new.minWidth_(60)
 		.addAction({ AppClock.sched(0, applyFilter) }, 'keyDownAction');
-		typeFilter = PopUpMenu.new.items_(["All", "VST", "VSTi", "VST3", "VST3i"]).action_(applyFilter);
+
+		vst2Filter = CheckBox.new(text: "VST2").value_(true).action_(applyFilter);
+
+		vst3Filter = CheckBox.new(text: "VST3").value_(true).action_(applyFilter);
+
+		fxFilter = CheckBox.new(text: "FX").value_(true).action_(applyFilter);
+
+		synthFilter = CheckBox.new(text: "Synth").value_(true).action_(applyFilter);
+
+		showBridged = CheckBox.new(text: "Show bridged").value_(true).action_(applyFilter);
+
 		vendorFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
+
 		categoryFilter = PopUpMenu.new.items_(["All"]).action_(applyFilter);
 
+		// status bar
 		status = StaticText.new.align_(\left);
+
 		showSearch = { arg show;
 			show.if { status.stringColor_(Color.red); status.string_("searching..."); } { status.string_("") };
 		};
+
+		// search buttons
 		search = Button.new.states_([["Search"]])
 		.toolTip_("Search for VST plugins in the platform specific default paths\n(see VSTPlugin*search)")
 		.action_({
@@ -543,6 +564,7 @@ VSTPluginGui : ObjectGui {
 				{ updatePlugins.value; }.defer;
 			});
 		});
+
 		dir = Button.new.states_([["Directory"]])
 		.toolTip_("Search a directory for VST plugins")
 		.action_({
@@ -553,6 +575,7 @@ VSTPluginGui : ObjectGui {
 				});
 			}, nil, 2, 0, true, pluginPath);
 		});
+
 		file = Button.new.states_([["File"]])
 		.toolTip_("Open a VST plugin file")
 		.action_({
@@ -562,15 +585,24 @@ VSTPluginGui : ObjectGui {
 				ok.action.value;
 			}, nil, 1, 0, true, pluginPath);
 		});
-		editor = CheckBox.new(text: "Editor");
 
+		// plugin options
+		editor = CheckBox.new(text: "Editor").value_(true);
+
+		multiThreading = CheckBox.new(text: "Multi-threading");
+
+		mode = PopUpMenu.new.items_(["normal", "sandbox", "bridge"]);
+
+		// cancel/ok
 		cancel = Button.new.states_([["Cancel"]])
 		.action = { window.close };
+
 		ok = Button.new.states_([["OK"]])
 		.action = {
+			var theMode = #[\auto, \sandbox, \bridge][mode.value];
 			key !? {
 				// open with key - not absPath!
-				model.open(key, editor: editor.value);
+				model.open(key, editor: editor.value, multiThreading: multiThreading.value, mode: theMode);
 				pluginPath = absPath.dirname;
 				window.close;
 			};
@@ -579,13 +611,17 @@ VSTPluginGui : ObjectGui {
 		window.layout_(VLayout(
 			browser,
 			HLayout(
-				[StaticText.new.string_("Find:"), stretch: 0], [stringFilter, stretch: 1],
-				[StaticText.new.string_("Type:"), stretch: 0], [typeFilter, stretch: 0], // doesn't need to grow!
-				[StaticText.new.string_("Vendor:"), stretch: 0], [vendorFilter, stretch: 1],
-				[StaticText.new.string_("Category:"), stretch: 0], [categoryFilter, stretch: 1]
+				[StaticText.new.string_("Find:"), stretch: 0],
+				[stringFilter, stretch: 1],
+				[StaticText.new.string_("Vendor:"), stretch: 0],
+				[vendorFilter, stretch: 1],
+				[StaticText.new.string_("Category:"), stretch: 0],
+				[categoryFilter, stretch: 1]
 			),
-			status,
-			HLayout(search, dir, file, editor, nil, cancel, ok)
+			HLayout(vst2Filter, vst3Filter, fxFilter, synthFilter, nil, showBridged),
+			HLayout(search, dir, file, nil, status),
+			HLayout(StaticText.new.string_("Mode:"), mode,
+				editor, multiThreading, nil, cancel, ok)
 		));
 
 		// start at current plugin
