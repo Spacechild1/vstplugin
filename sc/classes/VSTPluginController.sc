@@ -964,6 +964,13 @@ VSTPluginMIDIProxy {
 	*new { arg theOwner;
 		^super.new.owner_(theOwner);
 	}
+	// dummy setter/getter for compatibility with MIDIOut
+	latency { ^0; }
+	latency_ {
+		"Calling 'latency' on VSTPluginMIDIProxy has no effect.\n"
+		"If you want to schedule MIDI messages on the Server, use Server.bind or similar methods.".warn;
+		^this;
+	}
 	write { arg len, hiStatus, loStatus, a=0, b=0, detune;
 		owner.sendMidi(hiStatus bitOr: loStatus, a, b, detune);
 	}
