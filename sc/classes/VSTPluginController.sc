@@ -284,7 +284,7 @@ VSTPluginController {
 		};
 		browser.front;
 	}
-	open { arg path, editor=false, verbose=false, action, multiThreading=false, mode;
+	open { arg path, editor=true, verbose=false, action, multiThreading=false, mode;
 		var intMode = 0;
 		loading.if {
 			"already opening!".error;

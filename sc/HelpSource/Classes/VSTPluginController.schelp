@@ -29,10 +29,10 @@ VSTPlugin.search;
 // get a handle to the VSTPlugin:
 ~fx = VSTPluginController(~synth);
 // open a plugin by name/key (might require VSTPlugin.search!)
-~fx.open("myplugin", editor: true, verbose: true);
+~fx.open("myplugin", verbose: true);
 // alternatively, you can open a plugin by its file path
 // (this only works if the file contains a single plugin, like most VST2.x plugins)
-~fx.open("/path/to/plugin", editor: true, verbose: true);
+~fx.open("/path/to/plugin", verbose: true);
 
 // you can do all of the above in a single line:
 ~fx = VSTPluginController(Synth(\insert, [\bus, 0])).open("myplugin");
@@ -43,8 +43,7 @@ VSTPlugin.search;
 // show the generic plugin GUI:
 ~fx.gui;
 
-// show the VST plugin GUI:
-// NOTE: you have to open the plugin with 'editor: true'!
+// show the VST editor:
 ~fx.editor;
 
 // etc.
@@ -203,7 +202,7 @@ list::
 
 code::
 // load a plugin
-~fx.open("/path/to/plugin", editor: true);
+~fx.open("/path/to/plugin");
 // open the VST editor window
 ~fx.editor;
 ::
@@ -213,8 +212,8 @@ note:: On macOS this only works in SuperCollider 3.11 or above!::
 ## a generic Qt GUI which can be opened in a new Window or embedded into existing views:
 code::
 // load a plugin
-~fx.open("/path/to/plugin");
-// create a Window with the plugin GUI
+~fx.open("/path/to/plugin", editor: false);
+// open the plugin GUI in a Window
 ~fx.gui;
 ::
 You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins).
