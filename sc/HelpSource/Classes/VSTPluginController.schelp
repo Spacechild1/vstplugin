@@ -222,9 +222,29 @@ Additionally, you can browse for plugins, select programs and read/write preset 
 See link::#-gui:: and link::Classes/VSTPluginGui:: for more information.
 ::
 
+subsection:: Scheduling
+
+Generally, emphasis::synchronous:: methods, like link::#-set:: or link::#-map::, simply send an OSC message to the Server. This is fine for interactive use, but if you need accurate timing, commands have to be scheduled as OSC bundles (see also link::Guides/ServerTiming::).
+
+Here are two basic ways how to schedule methods with Server latency:
+code::
+// object style, asking the object for the message
+~fx = VSTPluginController(Synth(\foo));
+s.sendBundle(s.latency, ~fx.setMsg(0, 0.5));
+s.sendBundle(s.latency, ~fx.midi.noteOn(0, 60, 100));
+
+// object style, using automatic bundling
+s.bind {
+	~fx.set(0, 0.5);
+	~fx.midi.noteOn(0, 60, 100);
+};
+::
+
+
 subsection:: Sequencing
 
-VSTPlugin defines two custom event types, which makes it easy to use with link::Classes/Pbind::. Like most other event types, commands are scheduled as bundles with Server latency taken into account.
+VSTPlugin defines two custom Event types which can be used in link::Classes/Pbind::.
+Like with (most) other Event types, commands are scheduled as OSC bundles with Server latency.
 
 definitionlist::
 ## code::\vst_set::
@@ -275,12 +295,14 @@ table::
 ::
 The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy::.
 
+note::Always prefer code::\vst_midi:: over code::\midi:: because the latter doesn't schedule OSC bundles!::
+
 See link::#VST Instruments:: for examples.
 ::
 
-note::
+strong::Tip:::
 You can play Pbinds of type code::\vst_midi:: and code::\vst_set:: in parallel with link::Classes/Ppar::.
-::
+
 
 subsection:: Realtime Safety
 
