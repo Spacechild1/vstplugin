@@ -82,8 +82,8 @@ class Window : public IWindow {
     
     void doOpen();
     void onClose();
+    void onResize(int w, int h);
     void updateEditor();
-    IPlugin& plugin() { return *plugin_; }
  private:
     void *getHandle();
     void updateFrame();
@@ -98,6 +98,7 @@ class Window : public IWindow {
     // the very first time and then always returns false, so we cache
     // "true" results.
     bool canResize_ = false;
+    bool loading_ = false;
 
     static std::atomic<int> numWindows_;
 

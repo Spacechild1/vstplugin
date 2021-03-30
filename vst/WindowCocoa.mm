@@ -32,7 +32,7 @@
     // get content size from frame size
     NSRect contentRect = [self contentRectForFrameRect:[self frame]];
     // resize editor
-    static_cast<vst::Cocoa::Window *>(owner_)->plugin().resizeEditor(
+    static_cast<vst::Cocoa::Window *>(owner_)->onResize(
         contentRect.size.width, contentRect.size.height);
     LOG_DEBUG("window did resize");
 }
@@ -287,7 +287,9 @@ std::atomic<int> Window::numWindows_{0};
 
 Window::Window(IPlugin& plugin)
     : plugin_(&plugin) {
+    // cache because of some buggy plugins
     canResize_ = plugin_->canResize();
+    LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
 }
 
 Window::~Window(){
@@ -342,6 +344,7 @@ void Window::doOpen(){
         LOG_DEBUG("Cocoa: created Window");
 
         // set window coordinates
+        loading_ = true;
         bool didOpen = false;
         if (canResize_ && rect_.valid()){
             LOG_DEBUG("Cocoa: restore editor size");
@@ -365,6 +368,7 @@ void Window::doOpen(){
             rect_.h = r.h;
             adjustSize_ = true;
         }
+        loading_ = false;
 
         updateFrame();
 
@@ -413,14 +417,18 @@ void Window::onClose(){
 
         plugin_->closeEditor();
 
-        auto r = [window_ frame]; // adjusted
-        // cache adjusted position and size
-        rect_.x = r.origin.x;
-        rect_.y = r.origin.y;
-        rect_.w = r.size.width;
-        rect_.h = r.size.height;
-        adjustSize_ = false; // !
+        // cache actual position and size
+        auto pos = window_.frame.origin;
+        rect_.x = pos.x;
+        rect_.y = pos.y;
         adjustPos_ = false; // !
+        LOG_DEBUG("cache pos: " << rect_.x << ", " << rect_.y);
+
+        auto size = window_.frame.size;
+        rect_.w = size.width;
+        rect_.h = size.height;
+        adjustSize_ = false; // !
+        LOG_DEBUG("cache size: " << rect_.w << ", " << rect_.h);
 
         window_ = nullptr;
 
@@ -445,25 +453,30 @@ void * Window::getHandle(){
 void Window::updateFrame(){
     // first adjust size, because we need it to adjust pos!
     if (adjustSize_){
+        LOG_DEBUG("adjust size: want size " << rect_.w << ", " << rect_.h);
         NSRect content = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
         NSRect frame = [window_  frameRectForContentRect:content];
         rect_.w = frame.size.width;
         rect_.h = frame.size.height;
-
+        LOG_DEBUG("real size " << rect_.w << ", " << rect_.h);
         adjustSize_ = false;
     }
     if (adjustPos_){
-        // First move the window to the given x coordinate
+        LOG_DEBUG("adjust pos: want pos " << rect_.x << ", " << rect_.y);
+        // first move the window to the given x coordinate
         [window_ setFrameOrigin:NSMakePoint(rect_.x, rect_.y)];
         // then obtain the screen height.
-        auto height = window_.screen.frame.size.height;
-        // flip y coordinate
-        rect_.y = height - rect_.y;
-        // adjust for window height
-        rect_.y -= window_.frame.size.height;
-
+        auto screenHeight = window_.screen.frame.size.height;
+        LOG_DEBUG("screen height: " << screenHeight);
+        // finally flip y coordinate
+        // (don't use the actual frame height yet!)
+        rect_.y = screenHeight - (rect_.y + rect_.h);
+        LOG_DEBUG("real pos " << rect_.x << ", " << rect_.y);
         adjustPos_ = false;
     }
+    LOG_DEBUG("Cocoa: update frame");
+    LOG_DEBUG("x: " << rect_.x << ", y: " << rect_.y
+              << ", w: " << rect_.w << ", h: " << rect_.h);
     NSRect frame = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
     [window_ setFrame:frame display:YES];
 }
@@ -484,28 +497,59 @@ void Window::setPos(int x, int y){
 
 void Window::setSize(int w, int h){
     LOG_DEBUG("setSize: " << w << ", " << h);
-    EventLoop::instance().callAsync([](void *user){
-        auto cmd = static_cast<Command *>(user);
-        auto owner = cmd->owner;
-        // only if we can resize!
-        if (owner->canResize_){
-            owner->rect_.w = cmd->x;
-            owner->rect_.h = cmd->y;
-            owner->adjustSize_ = true;
-            if (owner->getHandle()){
-                owner->updateFrame();
+    if (w > 0 && h > 0){
+        EventLoop::instance().callAsync([](void *user){
+            auto cmd = static_cast<Command *>(user);
+            auto owner = cmd->owner;
+            // only if we can resize!
+            if (owner->canResize_){
+                // if the window is visible, cache real position
+                // and adjust y coordinate for height difference!
+                if (owner->getHandle()){
+                    auto frame = owner->window_.frame;
+                    NSRect rect = [owner->window_  contentRectForFrameRect:frame];
+                    auto& pos = frame.origin;
+                    owner->rect_.x = pos.x;
+                    owner->rect_.y = pos.y - (cmd->y - rect.size.height);
+                }
+                owner->rect_.w = cmd->x;
+                owner->rect_.h = cmd->y;
+                owner->adjustSize_ = true;
+                if (owner->getHandle()){
+                    owner->updateFrame();
+                }
             }
-        }
-        delete cmd;
-    }, new Command { this, w, h });
+            delete cmd;
+        }, new Command { this, w, h });
+    }
+}
+
+void Window::onResize(int w, int h){
+    LOG_DEBUG("Cocoa: onResize");
+    if (!loading_){
+        plugin_->resizeEditor(w, h);
+        rect_.w = w;
+        rect_.h = h;
+        adjustSize_ = true; // !
+    }
 }
 
 void Window::resize(int w, int h){
     LOG_DEBUG("resized by plugin: " << w << ", " << h);
-    rect_.w = w;
-    rect_.h = h;
-    adjustSize_ = true;
-    updateFrame();
+    if (!loading_){
+        // cache real position and adjust y coordinate for height difference!
+        // the window is visible, so rect_ should already be adjusted.
+        auto pos = window_.frame.origin;
+        LOG_DEBUG("pos: " << pos.x << ", " << pos.y);
+        NSRect rect = [window_  contentRectForFrameRect:window_.frame];
+        rect_.x = pos.x;
+        rect_.y = pos.y - (h - rect.size.height);
+        // update and adjust size
+        rect_.w = w;
+        rect_.h = h;
+        adjustSize_ = true;
+        updateFrame();
+    }
 }
 
 } // Cocoa
