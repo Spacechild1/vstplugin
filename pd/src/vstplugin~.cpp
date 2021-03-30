@@ -1069,6 +1069,25 @@ void t_vsteditor::set_pos(int x, int y){
     }
 }
 
+void t_vsteditor::set_size(int w, int h){
+    w = std::max(w, 100);
+    h = std::max(h, 100);
+    auto win = window();
+    if (win){
+        win->setSize(w, h);
+    } else if (e_canvas) {
+        // LATER get the real canvas position
+        int x = 20;
+        int y = 20;
+        send_vmess(gensym("setbounds"), "ffff",
+            (float)x, (float)y, (float)x + w, (float)y + h);
+        send_vmess(gensym("vis"), "i", 0);
+        send_vmess(gensym("vis"), "i", 1);
+        width_ = w;
+        height_ = h;
+    }
+}
+
 /*---------------- t_vstplugin (public methods) ------------------*/
 
 // search
@@ -1785,6 +1804,11 @@ static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
 static void vstplugin_pos(t_vstplugin *x, t_floatarg x_, t_floatarg y_){
     if (!x->check_plugin()) return;
     x->x_editor->set_pos(x_, y_);
+}
+
+static void vstplugin_size(t_vstplugin *x, t_floatarg w, t_floatarg h){
+    if (!x->check_plugin()) return;
+    x->x_editor->set_size(w, h);
 }
 
 static void vstplugin_click(t_vstplugin *x){
@@ -3554,6 +3578,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_DEFFLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_pos, gensym("pos"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_size, gensym("size"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);

@@ -164,6 +164,7 @@ class t_vsteditor : public IPluginListener {
         return e_owner->x_plugin ? e_owner->x_plugin->getWindow() : nullptr;
     }
     void set_pos(int x, int y);
+    void set_size(int w, int h);
     // plugin callbacks
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
