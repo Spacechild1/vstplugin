@@ -67,6 +67,7 @@ class Window : public IWindow {
  private:
     void doOpen();
     void doClose();
+    void saveCurrentPosition();
     void updateFrame();
     void onSizing(RECT& newRect);
     void onSize(int w, int h);

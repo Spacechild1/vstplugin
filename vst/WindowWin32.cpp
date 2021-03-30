@@ -416,6 +416,7 @@ void Window::setSize(int w, int h){
             owner->rect_.h = cmd->y;
             owner->adjustSize_ = true; // !
             if (owner->hwnd_){
+                owner->saveCurrentPosition(); // !
                 owner->updateFrame();
             }
         }
@@ -428,11 +429,21 @@ void Window::resize(int w, int h){
     LOG_DEBUG("resized by plugin: " << w << ", " << h);
     // should only be called if the window is open
     if (hwnd_){
+        saveCurrentPosition(); // !
         // update and adjust size
         rect_.w = w;
         rect_.h = h;
         adjustSize_ = true; // !
         updateFrame();
+    }
+}
+
+void Window::saveCurrentPosition(){
+    // get actual position
+    RECT rc;
+    if (GetWindowRect(hwnd_, &rc)){
+        rect_.x = rc.left;
+        rect_.y = rc.top;
     }
 }
 
@@ -476,6 +487,8 @@ void Window::onSizing(RECT& newRect){
 
 void Window::onSize(int w, int h){
     plugin_->resizeEditor(w, h);
+    rect_.w = w;
+    rect_.h = h;
 }
 
 } // Win32
