@@ -194,12 +194,24 @@ class VST3Plugin final :
         public Vst::IComponentHandler,
         public Vst::IConnectionPoint,
         public IPlugFrame
+    #if SMTG_OS_LINUX
+        , public Linux::IRunLoop
+    #endif
 {
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
 
-    MY_IMPLEMENT_QUERYINTERFACE(Vst::IComponentHandler)
+    tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override {
+        QUERY_INTERFACE (_iid, obj, FUnknown::iid, Vst::IComponentHandler)
+        QUERY_INTERFACE (_iid, obj, Vst::IComponentHandler::iid, Vst::IComponentHandler)
+        QUERY_INTERFACE (_iid, obj, IPlugFrame::iid, IPlugFrame)
+    #if SMTG_OS_LINUX
+        QUERY_INTERFACE (_iid, obj, Linux::IRunLoop::iid, Linux::IRunLoop)
+    #endif
+        *obj = nullptr;
+        return kNoInterface;
+    }
     DUMMY_REFCOUNT_METHODS
 
     // IComponentHandler
@@ -215,6 +227,16 @@ class VST3Plugin final :
 
     // IPlugFrame
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
+
+#if SMTG_OS_LINUX
+    // IRunLoop
+    tresult PLUGIN_API registerEventHandler (Linux::IEventHandler* handler,
+                                             Linux::FileDescriptor fd) override;
+	tresult PLUGIN_API unregisterEventHandler (Linux::IEventHandler* handler) override;
+	tresult PLUGIN_API registerTimer (Linux::ITimerHandler* handler,
+                                      Linux::TimerInterval milliseconds) override;
+	tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
+#endif
 
     const PluginInfo& info() const override { return *info_; }
     PluginInfo::const_ptr getInfo() const { return info_; }

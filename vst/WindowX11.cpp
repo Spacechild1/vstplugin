@@ -2,6 +2,10 @@
 #include "Utility.h"
 
 #include <cstring>
+#include <cassert>
+
+#include <poll.h>
+#include <unistd.h>
 
 namespace vst {
 
@@ -122,6 +126,8 @@ EventLoop::~EventLoop(){
     }
 }
 
+#define POLL_IN_UITHREAD 1
+
 void EventLoop::run(){
     setThreadPriority(Priority::Low);
 
@@ -156,7 +162,16 @@ void EventLoop::run(){
                 for (auto& w : windows_){
                     w->onUpdate();
                 }
-                // call poll functions
+            #if 1
+                for (auto& timer : timerList_){
+                    timer.cb(timer.obj);
+                }
+            #endif
+            #if POLL_IN_UITHREAD
+                // poll events
+                pollEvents();
+            #endif
+                // finally call poll functions
                 std::lock_guard<std::mutex> lock(pollFunctionMutex_);
                 for (auto& it : pollFunctions_){
                     it.second();
@@ -188,6 +203,9 @@ void EventLoop::updatePlugins(){
     setThreadPriority(Priority::Low);
 
     while (timerThreadRunning_){
+    #if !POLL_IN_UITHREAD
+        pollEvents();
+    #endif
         postClientEvent(root_, wmUpdatePlugins);
         std::this_thread::sleep_for(std::chrono::milliseconds(updateInterval));
     }
@@ -200,6 +218,39 @@ Window* EventLoop::findWindow(::Window handle){
         }
     }
     return nullptr;
+}
+
+void EventLoop::pollEvents(){
+#if USE_VST3
+    std::lock_guard<std::mutex> lock(eventMutex_);
+
+    int count = eventHandlers_.size();
+    auto fds = (pollfd *)alloca(sizeof(pollfd) * count);
+    auto it = eventHandlers_.begin();
+    for (int i = 0; i < count; ++i, ++it){
+        fds[i].fd = it->first;
+        fds[i].events = POLLIN;
+        fds[i].revents = 0;
+    }
+
+    auto result = poll(fds, count, 0);
+    if (result > 0){
+        for (int i = 0; i < count; ++i){
+            auto revents = fds[i].revents;
+            if (revents != 0){
+                auto fd = fds[i].fd;
+                if (revents & POLLIN){
+                    LOG_DEBUG("fd " << fd << " became ready!");
+                    auto& handler = eventHandlers_[fd];
+                    handler.cb(fd, handler.obj);
+                } else {
+                    LOG_ERROR("eventfd " << fd << ": error - removing event handler");
+                    eventHandlers_.erase(fd);
+                }
+            }
+        }
+    }
+#endif
 }
 
 bool EventLoop::sync(){
@@ -306,6 +357,48 @@ void EventLoop::unregisterWindow(Window *w){
     }
     LOG_ERROR("X11::EventLoop::unregisterWindow: bug");
 }
+
+#if USE_VST3
+void EventLoop::registerEventHandler(int fd, EventHandlerCallback cb, void *obj){
+    assert(UIThread::isCurrentThread());
+    std::lock_guard<std::mutex> lock(eventMutex_);
+    eventHandlers_[fd] = EventHandler { obj, cb };
+}
+
+void EventLoop::unregisterEventHandler(void *obj){
+    assert(UIThread::isCurrentThread());
+    std::lock_guard<std::mutex> lock(eventMutex_);
+    int count = 0;
+    for (auto it = eventHandlers_.begin(); it != eventHandlers_.end(); ){
+        if (it->second.obj == obj){
+            it = eventHandlers_.erase(it);
+            count++;
+        } else {
+            ++it;
+        }
+    }
+    LOG_DEBUG("unregistered " << count << " handlers");
+}
+
+void EventLoop::registerTimer(int64_t ms, TimerCallback cb, void *obj){
+    assert(UIThread::isCurrentThread());
+    timerList_.push_back({ obj, cb, ms, 0 });
+}
+
+void EventLoop::unregisterTimer(void *obj){
+    assert(UIThread::isCurrentThread());
+    int count = 0;
+    for (auto it = timerList_.begin(); it != timerList_.end(); ){
+        if (it->obj == obj){
+            it = timerList_.erase(it);
+            count++;
+        } else {
+            ++it;
+        }
+    }
+    LOG_DEBUG("unregistered " << count << " timers");
+}
+#endif
 
 /*///////////////// Window ////////////////////*/
 

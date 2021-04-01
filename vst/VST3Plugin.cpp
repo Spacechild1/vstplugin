@@ -1,5 +1,9 @@
 #include "VST3Plugin.h"
 
+#if SMTG_OS_LINUX
+  #include "WindowX11.h"
+#endif
+
 #include <cstring>
 #include <algorithm>
 #include <set>
@@ -10,6 +14,9 @@
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
 DEF_CLASS_IID (IPlugFrame)
+#if SMTG_OS_LINUX
+  DEF_CLASS_IID (Linux::IRunLoop)
+#endif
 DEF_CLASS_IID (IPlugView)
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPluginFactory)
@@ -1807,6 +1814,36 @@ tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
     return view->onSize(newSize);
 }
 
+#if SMTG_OS_LINUX
+tresult VST3Plugin::registerEventHandler(Linux::IEventHandler* handler,
+                                         Linux::FileDescriptor fd) {
+    LOG_DEBUG("registerEventHandler (fd: " << fd << ")");
+    X11::EventLoop::instance().registerEventHandler(fd,
+        [](int fd, void *obj){ static_cast<Linux::IEventHandler *>(obj)->onFDIsSet(fd); }, handler);
+    return kResultOk;
+}
+
+tresult VST3Plugin::unregisterEventHandler(Linux::IEventHandler* handler) {
+    LOG_DEBUG("unregisterEventHandler");
+    X11::EventLoop::instance().unregisterEventHandler(handler);
+    return kResultOk;
+}
+
+tresult VST3Plugin::registerTimer(Linux::ITimerHandler* handler,
+                                  Linux::TimerInterval milliseconds) {
+    LOG_DEBUG("registerTimer (" << milliseconds << " ms)");
+    X11::EventLoop::instance().registerTimer(milliseconds,
+        [](void *obj){ static_cast<Linux::ITimerHandler *>(obj)->onTimer(); }, handler);
+    return kResultOk;
+}
+
+tresult VST3Plugin::unregisterTimer(Linux::ITimerHandler* handler) {
+    LOG_DEBUG("unregisterTimer");
+    X11::EventLoop::instance().unregisterTimer(handler);
+    return kResultOk;
+}
+#endif
+
 void VST3Plugin::openEditor(void * window){
     if (editor_){
         return;
@@ -1827,8 +1864,7 @@ void VST3Plugin::openEditor(void * window){
     #endif
         if (result == kResultOk) {
             LOG_DEBUG("opened VST3 editor");
-        }
-        else {
+        } else {
             LOG_ERROR("couldn't open VST3 editor");
         }
     }

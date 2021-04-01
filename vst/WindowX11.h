@@ -38,12 +38,23 @@ class EventLoop {
 
     void registerWindow(Window* w);
     void unregisterWindow(Window* w);
+
+#if USE_VST3
+    using EventHandlerCallback = void (*)(int fd, void *obj);
+    void registerEventHandler(int fd, EventHandlerCallback cb, void *obj);
+    void unregisterEventHandler(void *obj);
+
+    using TimerCallback = void (*)(void *obj);
+    void registerTimer(int64_t ms, TimerCallback cb, void *obj);
+    void unregisterTimer(void *obj);
+#endif
  private:
     bool postClientEvent(::Window window, Atom atom,
                          const char *data = nullptr, size_t size = 0);
     void run();
     void updatePlugins();
     Window* findWindow(::Window handle);
+    void pollEvents();
 
     Display *display_ = nullptr;
     ::Window root_;
@@ -51,6 +62,21 @@ class EventLoop {
     std::mutex mutex_;
     SyncCondition event_;
     std::vector<Window *> windows_;
+#if USE_VST3
+    struct EventHandler {
+        void *obj;
+        EventHandlerCallback cb;
+    };
+    std::unordered_map<int, EventHandler> eventHandlers_;
+    std::mutex eventMutex_;
+    struct Timer {
+        void *obj = nullptr;
+        TimerCallback cb;
+        int64_t interval;
+        int64_t elapsed;
+    };
+    std::vector<Timer> timerList_;
+#endif
     std::thread timerThread_;
     std::atomic<bool> timerThreadRunning_{true};
     UIThread::Handle nextPollFunctionHandle_ = 0;
