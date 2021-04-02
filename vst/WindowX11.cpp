@@ -3,7 +3,9 @@
 
 #include <cstring>
 #include <cassert>
+#include <chrono>
 
+#include <sys/eventfd.h>
 #include <poll.h>
 #include <unistd.h>
 
@@ -61,10 +63,6 @@ namespace X11 {
 namespace  {
 Atom wmProtocols;
 Atom wmDelete;
-Atom wmQuit;
-Atom wmCall;
-Atom wmSync;
-Atom wmUpdatePlugins;
 }
 
 /*//////////////// EventLoop ////////////////*/
@@ -77,6 +75,10 @@ EventLoop& EventLoop::instance(){
 EventLoop::EventLoop() {
     if (!XInitThreads()){
         LOG_WARNING("XInitThreads failed!");
+    }
+    eventfd_ = eventfd(0, 0);
+    if (eventfd_ < 0){
+        throw Error("X11: couldn't create eventfd");
     }
     display_ = XOpenDisplay(nullptr);
     if (!display_){
@@ -93,29 +95,19 @@ EventLoop::EventLoop() {
     LOG_DEBUG("created X11 root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
-    // custom messages
-    wmQuit = XInternAtom(display_, "WM_QUIT", 0);
-    wmCall = XInternAtom(display_, "WM_CALL", 0);
-    wmSync = XInternAtom(display_, "WM_SYNC", 0);
     // run thread
+    running_.store(true);
     thread_ = std::thread(&EventLoop::run, this);
-    // run timer thread
-    timerThread_ = std::thread(&EventLoop::updatePlugins, this);
     LOG_DEBUG("X11: UI thread ready");
 }
 
 EventLoop::~EventLoop(){
     if (thread_.joinable()){
-        // post quit message
-        // https://stackoverflow.com/questions/10792361/how-do-i-gracefully-exit-an-x11-event-loop
-        postClientEvent(root_, wmQuit);
-        // wait for thread to finish
+        // notify thread and wait
+        running_.store(false);
+        notify();
         thread_.join();
         LOG_VERBOSE("X11: terminated UI thread");
-    }
-    if (timerThread_.joinable()){
-        timerThreadRunning_ = false;
-        timerThread_.join();
     }
     if (display_){
     #if 1
@@ -124,16 +116,118 @@ EventLoop::~EventLoop(){
     #endif
         XCloseDisplay(display_);
     }
+    if (eventfd_ >= 0){
+        close(eventfd_);
+    }
 }
 
-#define POLL_IN_UITHREAD 1
+void EventLoop::pushCommand(UIThread::Callback cb, void *user){
+    std::lock_guard<std::mutex> lock(mutex_);
+    commands_.push_back({ cb, user });
+    notify();
+}
 
 void EventLoop::run(){
     setThreadPriority(Priority::Low);
 
-    XEvent event;
     LOG_DEBUG("X11: start event loop");
-    while (true){
+
+    auto last = std::chrono::high_resolution_clock::now();
+
+    while (running_.load()){
+        pollFds();
+
+        pollEvents();
+
+        auto now = std::chrono::high_resolution_clock::now();
+        auto delta = std::chrono::duration<double, std::milli>(now - last).count();
+        last = now;
+
+        // handle timers
+        // lock because timers can be added from another thread!
+        std::unique_lock<std::mutex> lock(mutex_);
+        for (auto& timer : timerList_){
+            timer.elapsed += delta;
+            while (timer.elapsed > (double)timer.interval){
+                timer.cb(timer.obj);
+                timer.elapsed -= (double)timer.interval;
+            }
+        }
+        // handle commands
+        // don't execute callbacks while holding the lock to
+        // avoid a deadlock (e.g. PluginBridge calls addPollFunction())
+        std::vector<Command> commands = std::move(commands_);
+        commands_.clear();
+        lock.unlock();
+        for (auto& cmd : commands){
+            cmd.cb(cmd.obj);
+        }
+    }
+}
+
+void EventLoop::pollFds(){
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    int count = eventHandlers_.size();
+    // allocate extra fd for eventfd_
+    auto fds = (pollfd *)alloca(sizeof(pollfd) * (count + 1));
+    auto it = eventHandlers_.begin();
+    for (int i = 0; i < count; ++i, ++it){
+        fds[i].fd = it->first;
+        fds[i].events = POLLIN;
+        fds[i].revents = 0;
+    }
+    fds[count].fd = eventfd_;
+    fds[count].events = POLLIN;
+    fds[count].revents = 0;
+
+    // unlock before poll!
+    lock.unlock();
+    auto result = poll(fds, count + 1, sleepGrain);
+    if (result > 0){
+        // lock again!
+        lock.lock();
+        // check registered event handler fds
+        for (int i = 0; i < count; ++i){
+            auto revents = fds[i].revents;
+            if (revents != 0){
+                auto fd = fds[i].fd;
+                // check if handler still exists!
+                auto it = eventHandlers_.find(fd);
+                if (it != eventHandlers_.end()){
+                    auto& handler = it->second;
+                    if (revents & POLLIN){
+                        LOG_DEBUG("fd " << fd << " became ready!");
+                        handler.cb(fd, handler.obj);
+                    } else {
+                        LOG_ERROR("eventfd " << fd << ": error - removing event handler");
+                        eventHandlers_.erase(fd);
+                    }
+                }
+            }
+        }
+        // check our eventfd
+        auto revents = fds[count].revents;
+        if (revents != 0){
+            if (revents & POLLIN){
+                uint64_t data;
+                auto n = read(eventfd_, &data, sizeof(data));
+                if (n < 0){
+                    LOG_ERROR("X11: couldn't read eventfd: " << strerror(errno));
+                } else if (n != sizeof(data)){
+                    LOG_ERROR("X11: read wrong number of bytes from eventfd");
+                }
+            } else {
+                LOG_ERROR("X11: eventfd error");
+                running_.store(false);
+            }
+        }
+    }
+}
+
+void EventLoop::pollEvents(){
+    while (XPending(display_)){
+        XEvent event;
         XNextEvent(display_, &event);
         if (event.type == ClientMessage){
             auto& msg = event.xclient;
@@ -147,39 +241,6 @@ void EventLoop::run(){
                         LOG_ERROR("X11: WM_DELETE: couldn't find Window " << msg.window);
                     }
                 }
-            } else if (type == wmCall){
-                LOG_DEBUG("wmCall");
-                UIThread::Callback cb;
-                void *data;
-                memcpy(&cb, msg.data.b, sizeof(cb));
-                memcpy(&data, msg.data.b + sizeof(cb), sizeof(data));
-                cb(data);
-            } else if (type == wmSync){
-                LOG_DEBUG("wmSync");
-                event_.set();
-            } else if (type == wmUpdatePlugins){
-                // update plugins
-                for (auto& w : windows_){
-                    w->onUpdate();
-                }
-            #if 1
-                for (auto& timer : timerList_){
-                    timer.cb(timer.obj);
-                }
-            #endif
-            #if POLL_IN_UITHREAD
-                // poll events
-                pollEvents();
-            #endif
-                // finally call poll functions
-                std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-                for (auto& it : pollFunctions_){
-                    it.second();
-                }
-            } else if (type == wmQuit){
-                LOG_DEBUG("wmQuit");
-                LOG_DEBUG("X11: quit event loop");
-                break; // quit event loop
             } else {
                 LOG_DEBUG("X11: unknown client message");
             }
@@ -198,16 +259,10 @@ void EventLoop::run(){
     }
 }
 
-void EventLoop::updatePlugins(){
-    // X11 doesn't seem to have a timer API...
-    setThreadPriority(Priority::Low);
-
-    while (timerThreadRunning_){
-    #if !POLL_IN_UITHREAD
-        pollEvents();
-    #endif
-        postClientEvent(root_, wmUpdatePlugins);
-        std::this_thread::sleep_for(std::chrono::milliseconds(updateInterval));
+void EventLoop::notify(){
+    uint64_t i = 1;
+    if (write(eventfd_, &i, sizeof(i)) < 0){
+        LOG_ERROR("X11: couldn't write to eventfd: " << strerror(errno));
     }
 }
 
@@ -220,118 +275,68 @@ Window* EventLoop::findWindow(::Window handle){
     return nullptr;
 }
 
-void EventLoop::pollEvents(){
-#if USE_VST3
-    std::lock_guard<std::mutex> lock(eventMutex_);
-
-    int count = eventHandlers_.size();
-    auto fds = (pollfd *)alloca(sizeof(pollfd) * count);
-    auto it = eventHandlers_.begin();
-    for (int i = 0; i < count; ++i, ++it){
-        fds[i].fd = it->first;
-        fds[i].events = POLLIN;
-        fds[i].revents = 0;
-    }
-
-    auto result = poll(fds, count, 0);
-    if (result > 0){
-        for (int i = 0; i < count; ++i){
-            auto revents = fds[i].revents;
-            if (revents != 0){
-                auto fd = fds[i].fd;
-                if (revents & POLLIN){
-                    LOG_DEBUG("fd " << fd << " became ready!");
-                    auto& handler = eventHandlers_[fd];
-                    handler.cb(fd, handler.obj);
-                } else {
-                    LOG_ERROR("eventfd " << fd << ": error - removing event handler");
-                    eventHandlers_.erase(fd);
-                }
-            }
-        }
-    }
-#endif
-}
-
 bool EventLoop::sync(){
-    if (UIThread::isCurrentThread()){
-        return true;
-    } else {
-        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
-        if (postClientEvent(root_, wmSync)){
-            LOG_DEBUG("waiting...");
-            event_.wait();
-            LOG_DEBUG("done");
-            return true;
-        } else {
-            return false;
-        }
+    if (!UIThread::isCurrentThread()){
+        std::lock_guard<std::mutex> lock(syncMutex_); // prevent concurrent calls
+        pushCommand([](void *x){
+            static_cast<EventLoop *>(x)->event_.set();
+        }, this);
+        LOG_DEBUG("waiting...");
+        event_.wait();
+        LOG_DEBUG("done");
     }
+    return true;
 }
 
 bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
-        return true;
     } else {
-        char buf[sizeof(cb) + sizeof(user)];
-        memcpy(buf, &cb, sizeof(cb));
-        memcpy(buf + sizeof(cb), &user, sizeof(user));
-
-        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent access
-        if (postClientEvent(root_, wmCall, buf, sizeof(buf))
-                && postClientEvent(root_, wmSync))
-        {
-            LOG_DEBUG("waiting...");
-            event_.wait();
-            LOG_DEBUG("done");
-            return true;
-        } else {
-            return false;
-        }
+        std::lock_guard<std::mutex> lock(syncMutex_); // prevent concurrent calls
+        auto cmd = [&](){
+            cb(user);
+            event_.set();
+        };
+        pushCommand([](void *x){
+            // call the lambda
+            (*static_cast<decltype (cmd) *>(x))();
+        }, &cmd);
+        LOG_DEBUG("waiting...");
+        event_.wait();
+        LOG_DEBUG("done");
     }
+    return true;
 }
 
 bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
-        return true;
     } else {
-        char buf[sizeof(cb) + sizeof(user)];
-        memcpy(buf, &cb, sizeof(cb));
-        memcpy(buf + sizeof(cb), &user, sizeof(user));
-        return postClientEvent(root_, wmCall, buf, sizeof(buf));
+        pushCommand(cb, user);
     }
-}
-
-bool EventLoop::postClientEvent(::Window window, Atom atom,
-                                const char *data, size_t size){
-    XClientMessageEvent event;
-    memset(&event, 0, sizeof(XClientMessageEvent));
-    event.type = ClientMessage;
-    event.window = window;
-    event.message_type = atom;
-    event.format = 8;
-    memcpy(event.data.b, data, size);
-    if (XSendEvent(display_, window, 0, 0, (XEvent*)&event) != 0){
-        if (XFlush(display_) != 0){
-            return true;
-        }
-    }
-    return false;
+    return true;
 }
 
 UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
                                             void *context){
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     auto handle = nextPollFunctionHandle_++;
-    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
+    pollFunctions_.emplace(handle, context);
+    doRegisterTimer(updateInterval, fn, context);
     return handle;
 }
 
 void EventLoop::removePollFunction(UIThread::Handle handle){
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    pollFunctions_.erase(handle);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = pollFunctions_.find(handle);
+    if (it != pollFunctions_.end()){
+        // we assume that we only ever register a single
+        // poll function for a given context
+        doUnregisterTimer(it->second);
+        pollFunctions_.erase(it);
+    } else {
+        LOG_ERROR("X11: couldn't remove poll function");
+    }
 }
 
 bool EventLoop::checkThread(){
@@ -346,11 +351,15 @@ void EventLoop::registerWindow(Window *w){
         }
     }
     windows_.push_back(w);
+    doRegisterTimer(updateInterval, [](void *x){
+        static_cast<Window *>(x)->onUpdate();
+    }, w);
 }
 
 void EventLoop::unregisterWindow(Window *w){
     for (auto it = windows_.begin(); it != windows_.end(); ++it){
         if (*it == w){
+            doUnregisterTimer(w);
             windows_.erase(it);
             return;
         }
@@ -358,16 +367,21 @@ void EventLoop::unregisterWindow(Window *w){
     LOG_ERROR("X11::EventLoop::unregisterWindow: bug");
 }
 
-#if USE_VST3
 void EventLoop::registerEventHandler(int fd, EventHandlerCallback cb, void *obj){
+#if 1
     assert(UIThread::isCurrentThread());
-    std::lock_guard<std::mutex> lock(eventMutex_);
+#else
+    std::lock_guard<std::mutex> lock(mutex_);
+#endif
     eventHandlers_[fd] = EventHandler { obj, cb };
 }
 
 void EventLoop::unregisterEventHandler(void *obj){
+#if 1
     assert(UIThread::isCurrentThread());
-    std::lock_guard<std::mutex> lock(eventMutex_);
+#else
+    std::lock_guard<std::mutex> lock(mutex_);
+#endif
     int count = 0;
     for (auto it = eventHandlers_.begin(); it != eventHandlers_.end(); ){
         if (it->second.obj == obj){
@@ -381,12 +395,28 @@ void EventLoop::unregisterEventHandler(void *obj){
 }
 
 void EventLoop::registerTimer(int64_t ms, TimerCallback cb, void *obj){
+#if 1
     assert(UIThread::isCurrentThread());
-    timerList_.push_back({ obj, cb, ms, 0 });
+#else
+    std::lock_guard<std::mutex> lock(mutex_);
+#endif
+    doRegisterTimer(ms, cb, obj);
+}
+
+void EventLoop::doRegisterTimer(int64_t ms, TimerCallback cb, void *obj){
+    timerList_.push_back({ obj, cb, ms, 0.0 });
 }
 
 void EventLoop::unregisterTimer(void *obj){
+#if 1
     assert(UIThread::isCurrentThread());
+#else
+    std::lock_guard<std::mutex> lock(mutex_);
+#endif
+    doUnregisterTimer(obj);
+}
+
+void EventLoop::doUnregisterTimer(void *obj){
     int count = 0;
     for (auto it = timerList_.begin(); it != timerList_.end(); ){
         if (it->obj == obj){
@@ -398,7 +428,6 @@ void EventLoop::unregisterTimer(void *obj){
     }
     LOG_DEBUG("unregistered " << count << " timers");
 }
-#endif
 
 /*///////////////// Window ////////////////////*/
 
