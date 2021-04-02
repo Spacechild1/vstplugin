@@ -404,7 +404,7 @@ void Window::setPos(int x, int y){
     }, new Command { this, x, y });
 }
 
-// always the client rect size!
+// client rect size!
 void Window::setSize(int w, int h){
     LOG_DEBUG("setSize: " << w << ", " << h);
     EventLoop::instance().callAsync([](void *user){
@@ -425,6 +425,7 @@ void Window::setSize(int w, int h){
     }, new Command { this, w, h });
 }
 
+// client rect size!
 void Window::resize(int w, int h){
     LOG_DEBUG("resized by plugin: " << w << ", " << h);
     // should only be called if the window is open
@@ -459,6 +460,8 @@ void Window::updateFrame(){
         rect_.h = rc.bottom - rc.top;
         adjustSize_ = false;
     }
+    LOG_DEBUG("Win32: update frame, pos: " << rect_.x << ", " << rect_.y
+              << ", size: " << rect_.w << ", " << rect_.h);
     MoveWindow(hwnd_, rect_.x, rect_.y, rect_.w, rect_.h, TRUE);
 }
 
@@ -485,10 +488,13 @@ void Window::onSizing(RECT& newRect){
 #endif
 }
 
+// client rect size!
 void Window::onSize(int w, int h){
     plugin_->resizeEditor(w, h);
     rect_.w = w;
     rect_.h = h;
+    adjustSize_ = true;
+    LOG_DEBUG("Win32: size changed: " << w << ", " << h);
 }
 
 } // Win32
