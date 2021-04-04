@@ -63,6 +63,9 @@ int probe(const std::string& pluginPath, int pluginIndex,
 // host one or more VST plugins
 int bridge(int pid, const std::string& path){
     LOG_DEBUG("bridge begin: " << pid << " " << path);
+    setProcessPriority(Priority::High);
+    // main thread is UI thread
+    setThreadPriority(Priority::Low);
     try {
         // create and run server
         auto server = std::make_unique<PluginServer>(pid, path);

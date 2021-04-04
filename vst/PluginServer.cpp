@@ -697,6 +697,8 @@ void PluginServer::checkParentAlive(){
 }
 
 void PluginServer::runThread(ShmChannel *channel){
+    // raise thread priority for audio thread!
+    setThreadPriority(Priority::High);
     // while (running_) wait for requests
     // dispatch requests to plugin
     // Quit command -> quit()
