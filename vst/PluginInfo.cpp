@@ -683,14 +683,11 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                         throw Error("unknown key: " + key);
                     }
                 }
-            }
-            catch (const std::invalid_argument& e) {
+            } catch (const std::invalid_argument& e) {
                 throw Error("invalid argument for key '" + key + "': " + value);
-            }
-            catch (const std::out_of_range& e) {
+            } catch (const std::out_of_range& e) {
                 throw Error("out of range argument for key '" + key + "': " + value);
-            }
-            catch (const std::exception& e){
+            } catch (const std::exception& e){
                 throw Error("unknown error: " + std::string(e.what()));
             }
         } else {

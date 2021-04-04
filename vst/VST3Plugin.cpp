@@ -506,13 +506,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         info->inputs = collectBusses(Vst::kInput);
         info->outputs = collectBusses(Vst::kOutput);
 
-        uint32_t flags = 0;
-        LOG_DEBUG("has editor: " << hasEditor());
-        flags |= hasEditor() * PluginInfo::HasEditor;
-        flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
-        flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
-        flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
-
         auto countMidiChannels = [this](Vst::BusDirection dir) -> int {
             auto count = component_->getBusCount(Vst::kEvent, dir);
             for (int i = 0; i < count; ++i){
@@ -527,11 +520,22 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             }
             return 0;
         };
+        bool midiInput = countMidiChannels(Vst::kInput);
+        bool midiOutput = countMidiChannels(Vst::kOutput);
 
-        flags |= countMidiChannels(Vst::kInput) * PluginInfo::MidiInput;
-        flags |= countMidiChannels(Vst::kOutput) * PluginInfo::MidiOutput;
+        bool isSynth = (info->category.find(Vst::PlugType::kInstrument) != std::string::npos);
+
+        uint32_t flags = 0;
+
+        flags |= hasEditor() * PluginInfo::HasEditor;
+        flags |= isSynth * PluginInfo::IsSynth;
+        flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
+        flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
+        flags |= midiInput * PluginInfo::MidiInput;
+        flags |= midiOutput * PluginInfo::MidiOutput;
 
         info->flags = flags;
+
         // get parameters
         std::set<Vst::ParamID> params;
         int numParameters = controller_->getParameterCount();

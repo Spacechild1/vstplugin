@@ -36,6 +36,7 @@ bool PluginManager::isException(const std::string& path) const {
 void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
     WriteLock lock(mutex_);
     int index = plugin->bridged() ? BRIDGED : NATIVE;
+    // LOG_DEBUG("add plugin " << key << ((index == BRIDGED) ? " [bridged]" : ""));
     plugins_[index][key] = std::move(plugin);
 }
 

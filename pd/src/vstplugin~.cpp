@@ -479,6 +479,7 @@ static std::string makeKey(const PluginInfo& desc){
 }
 
 static void addFactory(const std::string& path, IFactory::ptr factory){
+    // LOG_DEBUG("add factory: " << path << " (" << cpuArchToString(factory->arch()) << ")");
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
