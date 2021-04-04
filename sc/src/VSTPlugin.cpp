@@ -1159,6 +1159,7 @@ void VSTPlugin::next(int inNumSamples) {
         // parameter automation
         // (check paramState_ in case RTAlloc failed)
         if (paramState_) {
+            int sampleOffset = reblockPhase();
             // automate parameters with mapped control busses
             int nparams = plugin->info().numParameters();
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
@@ -1170,7 +1171,7 @@ void VSTPlugin::next(int inNumSamples) {
                     // Control Bus mapping
                     float value = readControlBus(num);
                     if (value != paramState_[index]) {
-                        plugin->setParameter(index, value);
+                        plugin->setParameter(index, value, sampleOffset);
                         paramState_[index] = value;
                     }
                 } else if (num < mWorld->mNumAudioBusChannels){
@@ -1184,7 +1185,7 @@ void VSTPlugin::next(int inNumSamples) {
                         for (int i = 0; i < inNumSamples; ++i) {
                             float value = bus[i];
                             if (value != last) {
-                                plugin->setParameter(index, value, i); // sample offset!
+                                plugin->setParameter(index, value, sampleOffset + i);
                                 last = value;
                             }
                         }
@@ -1192,7 +1193,7 @@ void VSTPlugin::next(int inNumSamples) {
                         // VST2: pick the first sample
                         float value = *bus;
                         if (value != last) {
-                            plugin->setParameter(index, value);
+                            plugin->setParameter(index, value); // no offset
                             last = value;
                         }
                     }
@@ -1219,7 +1220,7 @@ void VSTPlugin::next(int inNumSamples) {
                             for (int i = 0; i < inNumSamples; ++i) {
                                 float value = buffer[i];
                                 if (value != last) {
-                                    plugin->setParameter(index, value, i); // sample offset!
+                                    plugin->setParameter(index, value, sampleOffset + i);
                                     last = value;
                                 }
                             }
@@ -1227,7 +1228,7 @@ void VSTPlugin::next(int inNumSamples) {
                             // VST2: pick the first sample
                             float value = buffer[0];
                             if (value != last) {
-                                plugin->setParameter(index, value);
+                                plugin->setParameter(index, value); // no offset
                                 last = value;
                             }
                         }
@@ -1236,7 +1237,7 @@ void VSTPlugin::next(int inNumSamples) {
                         // control rate
                         float value = buffer[0];
                         if (value != paramState_[index]) {
-                            plugin->setParameter(index, value);
+                            plugin->setParameter(index, value, sampleOffset);
                             paramState_[index] = value;
                         }
                     }
@@ -1355,6 +1356,10 @@ void VSTPlugin::bypassRemaining(const Bus *ugenInputs, int numInputs,
 
 int VSTPlugin::blockSize() const {
     return reblock_ ? reblock_->blockSize : bufferSize();
+}
+
+int VSTPlugin::reblockPhase() const {
+    return reblock_ ? reblock_->phase : 0;
 }
 
 //------------------- VSTPluginDelegate ------------------------------//
@@ -1779,7 +1784,8 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
             rtThreadID_ = std::this_thread::get_id();
 #endif
             paramSet_ = true;
-            plugin_->setParameter(index, value, owner_->mWorld->mSampleOffset);
+            int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
+            plugin_->setParameter(index, value, sampleOffset);
             float newValue = plugin_->getParameter(index);
             owner_->paramState_[index] = newValue;
             sendParameter(index, newValue);
@@ -1799,7 +1805,8 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             rtThreadID_ = std::this_thread::get_id();
 #endif
             paramSet_ = true;
-            if (!plugin_->setParameter(index, display, owner_->mWorld->mSampleOffset)) {
+            int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
+            if (!plugin_->setParameter(index, display, sampleOffset)) {
                 LOG_WARNING("VSTPlugin: couldn't set parameter " << index << " to " << display);
             }
             float newValue = plugin_->getParameter(index);
@@ -2144,7 +2151,8 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
 // midi
 void VSTPluginDelegate::sendMidiMsg(int32 status, int32 data1, int32 data2, float detune) {
     if (check()) {
-        plugin_->sendMidiEvent(MidiEvent(status, data1, data2, world_->mSampleOffset, detune));
+        int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
+        plugin_->sendMidiEvent(MidiEvent(status, data1, data2, sampleOffset, detune));
     }
 }
 void VSTPluginDelegate::sendSysexMsg(const char *data, int32 n) {
@@ -2748,12 +2756,10 @@ bool cmdSearch(World *inWorld, void* cmdData) {
             for (auto& plugin : plugins) {
                 serializePlugin(file, *plugin);
             }
-        }
-        else {
+        } else {
             LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
         }
-    }
-    else if (data->bufnum >= 0) {
+    } else if (data->bufnum >= 0) {
         // write to buffer
         auto buf = World_GetNRTBuf(inWorld, data->bufnum);
         data->freeData = buf->data; // to be freed in stage 4

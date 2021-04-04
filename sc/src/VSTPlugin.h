@@ -252,6 +252,8 @@ public:
 
     int blockSize() const;
 
+    int reblockPhase() const;
+
     struct Bus {
         float **channelData = nullptr;
         int numChannels = 0;
