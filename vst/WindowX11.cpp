@@ -135,9 +135,11 @@ void EventLoop::run(){
     auto last = std::chrono::high_resolution_clock::now();
 
     while (running_.load()){
-        pollFds();
-
         pollEvents();
+
+        // call after pollEvents()!
+        // this makes sure that there are no pending X11 events
+        pollFds();
 
         auto now = std::chrono::high_resolution_clock::now();
         auto delta = std::chrono::duration<double, std::milli>(now - last).count();
@@ -181,9 +183,15 @@ void EventLoop::pollFds(){
     fds[count].events = POLLIN;
     fds[count].revents = 0;
 
+    // wait if there are no registered windows and timers
+    // (poll() will wake up when commands are pushed)
+    int timeout =  windows_.empty() && timerList_.empty() ? -1 : sleepGrain;
+    if (timeout < 0){
+        LOG_DEBUG("X11: wait");
+    }
     // unlock before poll!
     lock.unlock();
-    auto result = poll(fds, count + 1, sleepGrain);
+    auto result = poll(fds, count + 1, timeout);
     if (result > 0){
         // lock again!
         lock.lock();
