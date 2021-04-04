@@ -220,6 +220,27 @@ Arguments:
 | ---- |-|
 | int  | 1 = show, 0 = hide
 
+##### /pos
+
+Set the position of the GUI editor.
+
+Arguments:
+| type ||
+| ---- |-|
+| int  | x-coordinate |
+| int  | y-coordinate |
+
+##### /vis
+
+Resize the GUI editor.
+This only works for VST3 plugins with a resizable GUI.
+
+Arguments:
+| type ||
+| ---- |-|
+| int  | width  |
+| int  | height |
+
 ##### /reset
 
 Reset the VST plugin's internal state (e.g. clear delay lines).

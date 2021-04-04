@@ -60,6 +60,17 @@ struct PluginCmdData : CmdData {
     };
 };
 
+struct WindowCmdData : CmdData {
+    union {
+        int x;
+        int width;
+    };
+    union {
+        int y;
+        int height;
+    };
+};
+
 struct VendorCmdData : CmdData {
     int32 index;
     int32 value;
@@ -147,6 +158,8 @@ public:
     void doClose();
 
     void showEditor(bool show);
+    void setEditorPos(int x, int y);
+    void setEditorSize(int w, int h);
     void reset(bool async);
 
     // param

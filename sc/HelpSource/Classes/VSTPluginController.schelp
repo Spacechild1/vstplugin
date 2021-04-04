@@ -227,12 +227,12 @@ Generally, emphasis::synchronous:: methods, like link::#-set:: or link::#-map::,
 
 Here are two basic ways how to schedule methods with Server latency:
 code::
-// object style, asking the object for the message
+// asking the object for the message
 ~fx = VSTPluginController(Synth(\foo));
 s.sendBundle(s.latency, ~fx.setMsg(0, 0.5));
 s.sendBundle(s.latency, ~fx.midi.noteOn(0, 60, 100));
 
-// object style, using automatic bundling
+// using automatic bundling
 s.bind {
 	~fx.set(0, 0.5);
 	~fx.midi.noteOn(0, 60, 100);
@@ -485,12 +485,22 @@ open the plugin browser dialog.
 
 METHOD:: editor
 METHOD:: editorMsg
-shows/hide the VST editor window.
+show/hide the VST editor window.
 
 DISCUSSION::
-The plugin has to be opened with emphasis::editor:: set to code::true::.
+The plugin has to be opened with code::editor: true::.
 
 note::On macOS this only works on SuperCollider 3.11 and above!::
+
+METHOD:: moveEditor
+METHOD:: moveEditorMsg
+move the editor window to the given position.
+
+METHOD:: resizeEditor
+METHOD:: resizeEditorMsg
+resize the editor window to the given width and height.
+
+note::This only works for VST3 plugins with a resizable editor.::
 
 METHOD:: gui
 creates a generic Qt GUI (see link::Classes/VSTPluginGui::).

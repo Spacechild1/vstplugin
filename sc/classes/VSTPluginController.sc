@@ -271,6 +271,18 @@ VSTPluginController {
 	editorMsg { arg show=true;
 		^this.makeMsg('/vis', show.asInteger);
 	}
+	moveEditor { arg x, y;
+		^this.sendMsg('/pos', x.asInteger, y.asInteger);
+	}
+	moveEditorMsg { arg x, y;
+		^this.makeMsg('/pos', x.asInteger, y.asInteger);
+	}
+	resizeEditor { arg w, h;
+		^this.sendMsg('/size', w.asInteger, h.asInteger);
+	}
+	resizeEditorMsg { arg w, h;
+		^this.makeMsg('/size', w.asInteger, h.asInteger);
+	}
 	haveEditor { ^window; }
 	gui { arg parent, bounds, params=true;
 		^this.class.guiClass.new(this).gui(parent, bounds, params);

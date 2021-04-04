@@ -1738,6 +1738,38 @@ void VSTPluginDelegate::showEditor(bool show) {
     }
 }
 
+void VSTPluginDelegate::setEditorPos(int x, int y) {
+    if (plugin_ && plugin_->getWindow()) {
+        auto cmdData = CmdData::create<WindowCmdData>(world());
+        if (cmdData) {
+            cmdData->x = x;
+            cmdData->y = y;
+            doCmd(cmdData, [](World * inWorld, void* inData) {
+                auto data = (WindowCmdData*)inData;
+                auto window = data->owner->plugin()->getWindow();
+                window->setPos(data->x, data->y);
+                return false; // done
+            });
+        }
+    }
+}
+
+void VSTPluginDelegate::setEditorSize(int w, int h){
+    if (plugin_ && plugin_->getWindow()) {
+        auto cmdData = CmdData::create<WindowCmdData>(world());
+        if (cmdData) {
+            cmdData->width = w;
+            cmdData->height = h;
+            doCmd(cmdData, [](World * inWorld, void* inData) {
+                auto data = (WindowCmdData*)inData;
+                auto window = data->owner->plugin()->getWindow();
+                window->setSize(data->width, data->height);
+                return false; // done
+            });
+        }
+    }
+}
+
 void VSTPluginDelegate::reset(bool async) {
     if (check()) {
     #if 1
@@ -2403,6 +2435,18 @@ void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
     unit->delegate().showEditor(show);
 }
 
+void vst_pos(VSTPlugin* unit, sc_msg_iter *args) {
+    int x = args->geti();
+    int y = args->geti();
+    unit->delegate().setEditorPos(x, y);
+}
+
+void vst_size(VSTPlugin* unit, sc_msg_iter *args) {
+    int w = args->geti();
+    int h = args->geti();
+    unit->delegate().setEditorSize(w, h);
+}
+
 // helper function
 bool vst_param_index(VSTPlugin* unit, sc_msg_iter *args, int& index) {
     if (args->nextTag() == 's') {
@@ -3012,6 +3056,8 @@ PluginLoad(VSTPlugin) {
     UnitCmd(close);
     UnitCmd(reset);
     UnitCmd(vis);
+    UnitCmd(pos);
+    UnitCmd(size);
     UnitCmd(set);
     UnitCmd(setn);
     UnitCmd(param_query);
