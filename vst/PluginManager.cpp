@@ -101,22 +101,23 @@ void PluginManager::read(const std::string& path, bool update){
                 // read a single plugin description
                 auto plugin = doReadPlugin(file, versionMajor,
                                            versionMinor, versionBugfix);
-                if (plugin){
-                    // collect keys
-                    std::vector<std::string> keys;
-                    std::string line;
-                    while (getLine(file, line)){
-                        if (line == "[keys]"){
-                            std::getline(file, line);
-                            int n = getCount(line);
-                            while (n-- && std::getline(file, line)){
-                                keys.push_back(std::move(line));
-                            }
-                            break;
-                        } else {
-                            throw Error("bad format");
+                // always collect keys, otherwise reading the cache file
+                // would throw an error if a plugin had been removed
+                std::vector<std::string> keys;
+                std::string line;
+                while (getLine(file, line)){
+                    if (line == "[keys]"){
+                        std::getline(file, line);
+                        int n = getCount(line);
+                        while (n-- && std::getline(file, line)){
+                            keys.push_back(std::move(line));
                         }
+                        break;
+                    } else {
+                        throw Error("bad format");
                     }
+                }
+                if (plugin){
                     // store plugin at keys
                     for (auto& key : keys){
                         int index = plugin->bridged() ? BRIDGED : NATIVE;
