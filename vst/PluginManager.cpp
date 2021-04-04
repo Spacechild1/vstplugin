@@ -144,7 +144,7 @@ void PluginManager::read(const std::string& path, bool update){
         try {
             doWrite(path);
         } catch (const Error& e){
-            throw Error("couldn't update cache file");
+            throw Error("couldn't update cache file: " + std::string(e.what()));
         }
         LOG_VERBOSE("updated cache file");
     }

@@ -76,6 +76,16 @@ EventLoop::EventLoop() {
     if (!XInitThreads()){
         LOG_WARNING("XInitThreads failed!");
     }
+    // install error handler, so our program won't die
+    // on a bad X11 request
+    XSetErrorHandler([](Display *d, XErrorEvent *e){
+        char buf[256];
+        buf[0] = 0;
+        XGetErrorText(d, e->error_code, buf, sizeof(buf));
+        LOG_ERROR("X11: " << buf);
+        return 0;
+    });
+
     eventfd_ = eventfd(0, 0);
     if (eventfd_ < 0){
         throw Error("X11: couldn't create eventfd");
