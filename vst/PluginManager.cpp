@@ -162,7 +162,12 @@ PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int vers
                                                   int versionMinor, int versionPatch){
     // deserialize plugin
     auto desc = std::make_shared<PluginInfo>(nullptr);
-    desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
+    try {
+        desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
+    } catch (const Error& e){
+        LOG_ERROR("couldn't deserialize plugin info for '" << desc->name << "': " << e.what());
+        return nullptr;
+    }
 
     // load the factory (if not loaded already) to verify that the plugin still exists
     IFactory::ptr factory;
@@ -172,8 +177,8 @@ PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int vers
             factories_[desc->path()] = factory;
         } catch (const Error& e){
             // this probably happens when the plugin has been (re)moved
-            LOG_ERROR("couldn't load '" << desc->name <<
-                      "' (" << desc->path() << "): " << e.what());
+            LOG_WARNING("couldn't load '" << desc->name <<
+                        "' (" << desc->path() << "): " << e.what());
             return nullptr; // skip plugin
         }
     } else {

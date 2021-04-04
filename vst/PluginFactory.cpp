@@ -397,7 +397,11 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         if (code == EXIT_SUCCESS) {
             // get info from temp file
             if (file.is_open()) {
-                desc->deserialize(file);
+                try {
+                    desc->deserialize(file);
+                } catch (const Error& e) {
+                    result.error = e;
+                }
             } else {
                 result.error = Error(Error::SystemError, "couldn't read temp file!");
             }
