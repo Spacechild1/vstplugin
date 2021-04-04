@@ -309,9 +309,9 @@ VSTPlugin : MultiOutUGen {
 		line = this.prGetLine(stream, true);
 		n = this.prParseCount(line);
 		// now deserialize plugins
-		^{ arg i;
+		^n.collect {
 			VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
-		} ! n;
+		};
 	}
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];

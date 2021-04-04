@@ -289,7 +289,7 @@ VSTPluginDesc {
 		var collectBusses = #{ arg stream;
 			var line = VSTPlugin.prGetLine(stream);
 			var n = VSTPlugin.prParseCount(line);
-			{ arg i;
+			n.collect {
 				var channels, type, name;
 				line = VSTPlugin.prGetLine(stream);
 				#channels, type, name = line.split($,);
@@ -299,7 +299,7 @@ VSTPluginDesc {
 					name: name.stripWhiteSpace
 					// more info later...
 				)
-			} ! n;
+			};
 		};
 		// get first (significant) line and check for [plugin] header
 		var line = VSTPlugin.prGetLine(stream, true);
@@ -318,7 +318,7 @@ VSTPluginDesc {
 				{
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
-					info.parameters = { arg i;
+					info.parameters = n.collect {
 						var name, label;
 						line = VSTPlugin.prGetLine(stream);
 						#name, label = line.split($,);
@@ -328,7 +328,7 @@ VSTPluginDesc {
 							// id (ignore)
 							// more info later...
 						)
-					} ! n;
+					};
 					// map parameter names to indices for fast lookup
 					info.prParamIndexMap = info.parameters.collectAs({ arg param, i; param.name.asSymbol -> i }, IdentityDictionary);
 				},
@@ -344,19 +344,19 @@ VSTPluginDesc {
 				{
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
-					info.programs = { arg i;
+					info.programs = n.collect {
 						var name = VSTPlugin.prGetLine(stream);
 						(name: name); // more info later
-					} ! n;
+					};
 				},
 				"[keys]",
 				{
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
 					// collect all keys, but only take the first (primary) key
-					info.key = ({ arg i;
+					info.key = n.collect({
 						VSTPlugin.prGetLine(stream);
-					} ! n)[0].asSymbol;
+					})[0].asSymbol;
 					// *** EXIT POINT ***
 					^info;
 				},
