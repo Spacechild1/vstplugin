@@ -49,6 +49,19 @@
 - (void)updateEditor {
     static_cast<vst::Cocoa::Window *>(owner_)->updateEditor();
 }
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if (event.type == NSKeyDown){
+        if (event.modifierFlags & NSCommandKeyMask){
+            auto chars = event.charactersIgnoringModifiers.UTF8String;
+            if (chars[0] == 'w'){
+                LOG_DEBUG("Cmd+W");
+                [self performClose:nil];
+                return TRUE;
+            }
+        }
+    }
+    return FALSE;
+}
 
 @end
 

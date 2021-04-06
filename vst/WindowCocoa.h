@@ -15,6 +15,7 @@
 - (void)windowDidMiniaturize:(NSNotification *)notification;
 - (void)windowDidDeminiaturize:(NSNotification *)notification;
 - (void)windowDidMove:(NSNotification *)notification;
+- (BOOL)performKeyEquivalent:(NSEvent *)event;
 - (void)updateEditor;
 
 @end
