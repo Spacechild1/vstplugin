@@ -235,10 +235,12 @@ std::string fileName(const std::string& path){
     }
 }
 
+// include the dot!
 std::string fileExtension(const std::string& path){
-    auto dot = path.find_last_of('.');
+    auto name = fileName(path);
+    auto dot = name.find_last_of('.');
     if (dot != std::string::npos){
-        return path.substr(dot + 1);
+        return name.substr(dot);
     } else {
         return "";
     }

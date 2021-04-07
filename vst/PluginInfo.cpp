@@ -217,8 +217,8 @@ void PluginInfo::scanPresets(){
         if (pathExists(folder)){
             vst::search(folder, [&](const std::string& path){
                 auto ext = fileExtension(path);
-                if ((type_ == PluginType::VST3 && ext != "vstpreset") ||
-                    (type_ == PluginType::VST2 && ext != "fxp" && ext != "FXP")){
+                if ((type_ == PluginType::VST3 && ext != ".vstpreset") ||
+                    (type_ == PluginType::VST2 && ext != ".fxp" && ext != ".FXP")){
                     return;
                 }
                 Preset preset;
