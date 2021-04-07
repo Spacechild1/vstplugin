@@ -170,7 +170,7 @@ bool removeFile(const std::string& path){
 #else
     int result = remove(path.c_str());
     if (result != 0){
-        LOG_ERROR(errorMessage(result));
+        LOG_ERROR(errorMessage(errno));
         return false;
     } else {
         return true;

@@ -263,16 +263,16 @@ void ShmChannel::initEvent(Handle& event, const char *data){
                             "CreateEvent() failed - already exists!");
             }
         } else {
-            throw Error(Error::SystemError, "CreateEvent() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "CreateEvent() failed: "
+                        + errorMessage(GetLastError()));
         }
     } else {
         event.reset(OpenEventA(EVENT_ALL_ACCESS, 0, data));
         if (event){
             SHM_DEBUG("ShmChannel: opened Event " << data);
         } else {
-            throw Error(Error::SystemError, "OpenEvent() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "OpenEvent() failed: "
+                        + errorMessage(GetLastError()));
         }
     }
     SHM_DEBUG("create event " << event.get());
@@ -287,8 +287,8 @@ void ShmChannel::initEvent(Handle& event, const char *data){
         event.reset(sem_open(data, 0, 0, 0, 0));
     }
     if (event.get() == SEM_FAILED){
-        throw Error(Error::SystemError, "sem_open() failed with "
-                    + std::string(strerror(errno)));
+        throw Error(Error::SystemError, "sem_open() failed: "
+                    + errorMessage(errno));
     }
     SHM_DEBUG("ShmChannel: opened semaphore " << data);
 #else
@@ -298,7 +298,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
         // only init the semaphore once!
         if (sem_init((sem_t *)data, 1, 0) != 0){
             throw Error(Error::SystemError, "sem_init() failed: "
-                        + std::string(strerror(errno)));
+                        + errorMessage(errno));
         }
         SHM_DEBUG("ShmChannel: created semaphore");
     }
@@ -308,13 +308,13 @@ void ShmChannel::initEvent(Handle& event, const char *data){
 void ShmChannel::postEvent(void *event){
 #ifdef _WIN32
     if (!SetEvent((HANDLE)event)){
-        throw Error(Error::SystemError, "SetEvent() failed with "
-                    + std::to_string(GetLastError()));
+        throw Error(Error::SystemError, "SetEvent() failed: "
+                    + errorMessage(GetLastError()));
     }
 #else
     if (sem_post((sem_t *)event) != 0){
         throw Error(Error::SystemError, "sem_post() failed: "
-                    + std::string(strerror(errno)));
+                    + errorMessage(errno));
     }
 #endif
 }
@@ -326,14 +326,14 @@ void ShmChannel::waitEvent(void *event){
         if (result == WAIT_ABANDONED){
             LOG_ERROR("WaitForSingleObject() failed! Event abandoned");
         } else {
-            throw Error(Error::SystemError, "WaitForSingleObject() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "WaitForSingleObject() failed: "
+                        + errorMessage(GetLastError()));
         }
     }
 #else
     if (sem_wait((sem_t *)event) != 0){
         throw Error(Error::SystemError, "sem_wait() failed: "
-                    + std::string(strerror(errno)));
+                    + errorMessage(errno));
     }
 #endif
 }
@@ -454,8 +454,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
 
         if (!hMapFile)
         {
-            throw Error(Error::SystemError, "CreateFileMapping() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "CreateFileMapping() failed: "
+                        + errorMessage(GetLastError()));
         }
     } else {
         hMapFile = OpenFileMappingA(
@@ -464,8 +464,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
             path.c_str());         // name of mapping object
 
         if (!hMapFile){
-            throw Error(Error::SystemError, "OpenFileMapping() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "OpenFileMapping() failed: "
+                        + errorMessage(GetLastError()));
         }
     }
     void *data = MapViewOfFile(hMapFile, // handle to map object
@@ -483,8 +483,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
 
     if (!data){
         CloseHandle(hMapFile);
-        throw Error(Error::SystemError, "MapViewOfFile() failed with "
-                    + std::to_string(GetLastError()));
+        throw Error(Error::SystemError, "MapViewOfFile() failed: "
+                    + errorMessage(GetLastError()));
     }
 
     // try to lock the file to physical memory
@@ -500,16 +500,16 @@ void ShmInterface::openShm(const std::string &path, bool create){
             maxSize += totalSize;
         }
        if (!SetProcessWorkingSetSize(GetCurrentProcess(), minSize, maxSize)){
-            LOG_WARNING("ShmInterface: SetProcessWorkingSetSize() failed with "
+            LOG_WARNING("ShmInterface: SetProcessWorkingSetSize() failed: "
                         << GetLastError());
         }
     } else {
-        LOG_WARNING("ShmInterface: GetProcessWorkingSetSize() failed with "
+        LOG_WARNING("ShmInterface: GetProcessWorkingSetSize() failed: "
                     << GetLastError());
     }
     // now we can attempt to lock the memory
     if (!VirtualLock(data, totalSize)){
-        LOG_WARNING("ShmInterface: VirtualLock() failed with "
+        LOG_WARNING("ShmInterface: VirtualLock() failed: "
                     << GetLastError());
     }
 #else
@@ -520,16 +520,16 @@ void ShmInterface::openShm(const std::string &path, bool create){
         fd = shm_open(path.c_str(), O_RDWR, 0666);
     }
     if (fd < 0){
-        throw Error(Error::SystemError, "shm_open() failed with "
-                    + std::string(strerror(errno)));
+        throw Error(Error::SystemError, "shm_open() failed: "
+                    + errorMessage(errno));
     }
     if (create){
         // configure size of shared memory object
         if (ftruncate(fd, totalSize) != 0){
             ::close(fd);
             shm_unlink(path.c_str());
-            throw Error(Error::SystemError, "ftruncate() failed with "
-                        + std::string(strerror(errno)));
+            throw Error(Error::SystemError, "ftruncate() failed: "
+                        + errorMessage(errno));
         }
     }
     // memory map the shared memory object
@@ -549,13 +549,13 @@ void ShmInterface::openShm(const std::string &path, bool create){
         if (create){
             shm_unlink(path.c_str());
         }
-        throw Error(Error::SystemError, "mmap() failed with "
-                    + std::string(strerror(errno)));
+        throw Error(Error::SystemError, "mmap() failed: "
+                    + errorMessage(errno));
     }
 #if 1
     // try to lock the file to physical memory
     if (mlock(data, totalSize) != 0){
-        LOG_WARNING("ShmInterface: mlock() failed with "
+        LOG_WARNING("ShmInterface: mlock() failed: "
                     << strerror(errno));
     }
 #endif
