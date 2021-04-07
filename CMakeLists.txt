@@ -102,7 +102,7 @@ include_directories(deps)
 
 # VST2 SDK
 option(VST2 "Enable VST2.x plug-ins" ON)
-add_definitions(-DUSE_VST2=$<BOOL:VST2>)
+add_definitions(-DUSE_VST2=$<BOOL:${VST2}>)
 if (VST2)
     set(VST2DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
     message(STATUS "VST2DIR: ${VST2DIR}")
@@ -115,7 +115,7 @@ endif()
 
 # VST3 SDK
 option(VST3 "Enable VST3 plug-ins" ON)
-add_definitions(-DUSE_VST3=$<BOOL:VST3>)
+add_definitions(-DUSE_VST3=$<BOOL:${VST3}>)
 if (VST3)
     set(VST3DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
     message(STATUS "VST3DIR: ${VST3DIR}")
@@ -123,7 +123,7 @@ endif()
 
 # bit bridging
 option(BRIDGE "Enable plugin bridge" ON)
-add_definitions(-DUSE_BRIDGE=$<BOOL:BRIDGE>)
+add_definitions(-DUSE_BRIDGE=$<BOOL:${BRIDGE}>)
 if (BRIDGE)
     message(STATUS "Enable plugin bridge")
     if(APPLE OR LINUX)
@@ -148,7 +148,7 @@ if(NOT (WIN32 OR MINGW))
             message(WARNING "Wine support doesn't work without plugin bridge (BRIDGE)")
         endif()
     endif()
-    add_definitions(-DUSE_WINE=$<BOOL:WINE>)
+    add_definitions(-DUSE_WINE=$<BOOL:${WINE}>)
 endif()
 
 # platform specific linker flags
