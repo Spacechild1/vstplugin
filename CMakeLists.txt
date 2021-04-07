@@ -102,12 +102,10 @@ include_directories(deps)
 
 # VST2 SDK
 option(VST2 "Enable VST2.x plug-ins" ON)
+add_definitions(-DUSE_VST2=$<BOOL:VST2>)
 if (VST2)
     set(VST2DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST2_SDK/" CACHE PATH "path to VST2_SDK")
-    add_definitions(-DUSE_VST2=1)
     message(STATUS "VST2DIR: ${VST2DIR}")
-else()
-    add_definitions(-DUSE_VST2=0)
 endif()
 option(FST "Use FST instead of the official VST2 SDK")
 if (FST)
@@ -117,19 +115,17 @@ endif()
 
 # VST3 SDK
 option(VST3 "Enable VST3 plug-ins" ON)
+add_definitions(-DUSE_VST3=$<BOOL:VST3>)
 if (VST3)
     set(VST3DIR "${CMAKE_SOURCE_DIR}/vst/VST_SDK/VST3_SDK/" CACHE PATH "path to VST3_SDK")
-    add_definitions(-DUSE_VST3=1)
     message(STATUS "VST3DIR: ${VST3DIR}")
-else()
-    add_definitions(-DUSE_VST3=0)
 endif()
 
 # bit bridging
-option(BRIDGE "Enable bit-bridging" ON)
+option(BRIDGE "Enable plugin bridge" ON)
+add_definitions(-DUSE_BRIDGE=$<BOOL:BRIDGE>)
 if (BRIDGE)
-    message(STATUS "Enable bit-bridging")
-    add_definitions(-DUSE_BRIDGE=1)
+    message(STATUS "Enable plugin bridge")
     if(APPLE OR LINUX)
         # Try to directly build the 32-bit (Intel) version of 'HOST' with -m32.
         # This works on Linux and older macOS versions.
@@ -140,8 +136,7 @@ if (BRIDGE)
         # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
         option(BUILD_HOST32 "Build the 32-bit host app" OFF)
     endif()
-else()
-    add_definitions(-DUSE_BRIDGE=0)
+endif()
 endif()
 
 # platform specific linker flags
