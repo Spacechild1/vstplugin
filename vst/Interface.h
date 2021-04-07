@@ -30,7 +30,17 @@ typedef unsigned int uint32_t;
 #endif
 
 #ifndef USE_BRIDGE
-#define USE_BRIDGE 0
+#define USE_BRIDGE 1
+#endif
+
+#ifndef _WIN32
+# ifndef USE_WINE
+#  define USE_WINE 1
+# endif
+#else
+# if USE_WINE
+#  error "USE_WINE cannot be set on Windows!"
+# endif
 #endif
 
 namespace vst {
@@ -528,7 +538,7 @@ class IFactory {
     // throws an Error exception on failure!
     static IFactory::ptr load(const std::string& path, bool probe = false);
 
-    virtual ~IFactory(){}
+    virtual ~IFactory() {}
     virtual void addPlugin(PluginInfo::ptr desc) = 0;
     virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
     virtual PluginInfo::const_ptr findPlugin(const std::string& name) const = 0;
@@ -560,6 +570,12 @@ const std::vector<std::string>& getDefaultSearchPaths();
 const std::vector<const char *>& getPluginExtensions();
 
 const char * getBundleBinaryPath();
+
+#if USE_WINE
+const char * getWineCommand();
+
+const char * getWineFolder();
+#endif
 
 class IWindow {
  public:

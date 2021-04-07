@@ -21,19 +21,19 @@ namespace vst {
 
 static std::vector<const char *> platformExtensions = {
 #if USE_VST2
-#ifdef __APPLE__
-    ".vst"
-#elif defined(_WIN32)
-    ".dll"
-#else
-    ".so"
-#endif
+ #if defined(_WIN32) || USE_WINE // Windows or Wine
+    ".dll",
+ #endif // Windows or Wine
+ #ifndef _WIN32 // Unix
+  #ifdef __APPLE_
+    ".vst",
+  #else
+    ".so",
+  #endif
+ #endif // Unix
 #endif // VST2
-#if USE_VST2 && USE_VST3
-    ,
-#endif
 #if USE_VST3
-    ".vst3"
+    ".vst3",
 #endif // VST3
 };
 
@@ -65,9 +65,8 @@ const char * getBundleBinaryPath(){
 
 #ifdef _WIN32
 # if USE_BRIDGE
-   // 64-bit plugins first!
    #define PROGRAMFILES(x) "%ProgramW6432%\\" x, "%ProgramFiles(x86)%\\" x
-# else // USE_BRIDGE
+# else
 #  ifdef _WIN64 // 64 bit
 #   define PROGRAMFILES(x) "%ProgramFiles%\\" x
 #  else // 32 bit
@@ -110,6 +109,20 @@ static std::vector<const char *> defaultSearchPaths = {
 #endif // VST3
 };
 
+#if USE_WINE
+# define PROGRAMFILES(x) "/drive_c/Program Files/" x, "/drive_c/Program Files (x86)" x
+
+static std::vector<const char *> defaultWineSearchPaths = {
+#if USE_VST2
+    PROGRAMFILES("VSTPlugins"), PROGRAMFILES("Steinberg/VSTPlugins"),
+    PROGRAMFILES("Common Files/VST2"), PROGRAMFILES("Common Files/Steinberg/VST2"),
+#endif
+#if USE_VST3
+    PROGRAMFILES("Common Files/VST3")
+#endif
+};
+#endif
+
 #ifdef PROGRAMFILES
 #undef PROGRAMFILES
 #endif
@@ -121,10 +134,41 @@ const std::vector<std::string>& getDefaultSearchPaths() {
         for (auto& path : defaultSearchPaths) {
             list.push_back(expandPath(path));
         }
+    #if USE_WINE
+        std::string winePrefix = expandPath(getWineFolder());
+        for (auto& path : defaultWineSearchPaths) {
+            list.push_back(winePrefix + path);
+        }
+    #endif
         return list;
     }();
     return result;
 }
+
+#if USE_WINE
+const char * getWineCommand(){
+    // users can override the 'wine' command with the
+    // 'VSTPLUGIN_WINE' environment variable
+    const char *cmd = getenv("VSTPLUGIN_WINE");
+    return cmd ? cmd : "wine";
+}
+
+const char * getWineFolder(){
+    // the default Wine folder is '~/.wine', but it can be
+    // override with environment variables.
+    // first try our custom variable:
+    const char *var = getenv("VSTPLUGIN_WINEPREFIX");
+    if (!var){
+        // then try the standard variable:
+        var = getenv("WINEPREFIX");
+    }
+    if (!var){
+        // finally use the default Wine folder
+        var = "~/.wine";
+    }
+    return var;
+}
+#endif
 
 #ifndef _WIN32
 // helper function

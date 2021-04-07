@@ -143,8 +143,19 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host.exe bridge <parent_pid> <shm_path>
+    #if USE_WINE
+        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+            // run in Wine
+            auto winecmd = getWineCommand();
+            // use PATH!
+            if (execlp(winecmd, winecmd, hostPath.c_str(), "bridge",
+                      parent.c_str(), shm_.path().c_str(), nullptr) < 0){
+                LOG_ERROR("couldn't run '" << winecmd << "' (" << errorMessage(errno) << ")");
+            }
+        } else
+    #endif
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  parent.c_str(), shm_.path().c_str(), 0) < 0){
+                  parent.c_str(), shm_.path().c_str(), nullptr) < 0){
             // LATER redirect child stderr to parent stdin
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }
@@ -201,6 +212,7 @@ void PluginBridge::checkStatus(bool wait){
             if (code == EXIT_SUCCESS){
                 LOG_DEBUG("host process exited successfully");
             } else if (code == EXIT_FAILURE){
+                // LATER get the actual Error from the child process.
                 LOG_ERROR("host process exited with failure");
             } else {
                 LOG_ERROR("host process crashed!");
@@ -222,6 +234,7 @@ void PluginBridge::checkStatus(bool wait){
         if (code == EXIT_SUCCESS){
             LOG_DEBUG("host process exited successfully");
         } else if (code == EXIT_FAILURE){
+            // LATER get the actual Error from the child process.
             LOG_ERROR("host process exited with failure");
         } else {
             LOG_ERROR("host process crashed!");

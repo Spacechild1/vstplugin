@@ -12,6 +12,7 @@
 # include <Windows.h>
 #else
 # include <unistd.h>
+# include <stdlib.h>
 # include <stdio.h>
 # include <dlfcn.h>
 # include <sys/wait.h>
@@ -89,8 +90,12 @@ std::string getHostApp(CpuArch arch){
     #endif
     } else {
         std::string host = std::string("host_") + cpuArchToString(arch);
-    #ifdef _WIN32
+    #if defined(_WIN32)
         host += ".exe";
+    #elif USE_WINE
+        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+            host += ".exe";
+        }
     #endif
         return host;
     }
@@ -99,6 +104,7 @@ std::string getHostApp(CpuArch arch){
 /*///////////////////// IFactory ////////////////////////*/
 
 IFactory::ptr IFactory::load(const std::string& path, bool probe){
+    // default platform extension:
 #ifdef _WIN32
     const char *ext = ".dll";
 #elif defined(__APPLE__)
@@ -119,7 +125,17 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
     } else {
     #if USE_VST2
         std::string realPath = path;
-        if (path.find(ext) == std::string::npos){
+        auto hasExtension = [](const std::string& path){
+            auto e1 = fileExtension(path);
+            for (auto& e2 : getPluginExtensions()){
+                if (e1 == e2){
+                    return true;
+                }
+            }
+            return false;
+        };
+        // if we have no extension, we assume the default platform extension.
+        if (!hasExtension(path)){
             realPath += ext;
         }
         if (!pathExists(realPath)){
@@ -140,63 +156,99 @@ PluginFactory::PluginFactory(const std::string &path)
     auto archs = getCpuArchitectures(path);
     auto hostArch = getHostCpuArchitecture();
 
-    auto hasArch = [&archs](CpuArch arch){
-        return std::find(archs.begin(), archs.end(), arch) != archs.end();
-    };
-
-    if (hasArch(hostArch)){
+    if (std::find(archs.begin(), archs.end(), hostArch) != archs.end()){
         arch_ = hostArch;
     } else {
     #if USE_BRIDGE
-        // On Windows and Linux, we only bridge between 32-bit and 64-bit Intel.
-        // On macOS we also bridge between 64-bit ARM and 64-bit Intel for upcoming
-        // ARM MacBooks (2020).
-        // It's possible to selectively enable/disable certain bridge types simply
-        // by omitting the corresponding "host_" app. E.g. macOS 10.15+ builds would
-        // ship without "host_i386", because the OS doesn't run 32-bit apps anymore.
-        // Similarly, Intel builds for the upcoming ARM MacBooks would ship "host_aarch64".
-        // Finally, we can ship 64-bit Intel builds on Linux without "host_i386"
-        // (because it's a big hassle) and ask people to compile it themselves if they need it.
-        auto canBridge = [&](auto arch){
-            if (hasArch(arch)){
-                // check if host app exists
-            #ifdef _WIN32
-                auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
-            #else
-                auto path = getModuleDirectory() + "/" + getHostApp(arch);
-            #endif
-                return pathExists(path);
+        // Generally, we can bridge between any kinds of CPU architectures,
+        // as long as the they are supported by the platform in question.
+        //
+        // We use the following naming scheme for the plugin bridge app:
+        // host_<cpu_arch>[extension]
+        // Examples: "host_i386", "host_amd64.exe", etc.
+        //
+        // We can selectively enable/disable CPU architectures simply by
+        // including resp. omitting the corresponding app.
+        // Note that we always ship a version of the *same* CPU architecture
+        // called "host" resp. "host.exe" to support plugin sandboxing.
+        //
+        // Bridging between i386 and amd64 is typically employed on Windows,
+        // but also possible on Linux and macOS (before 10.15).
+        // On the upcoming ARM MacBooks, we can also bridge between amd64 and aarch64.
+        // NOTE: We ship 64-bit Intel builds on Linux without "host_i386" and
+        // ask people to compile it themselves if they need it.
+        //
+        // On macOS and Linux we can also use the plugin bridge to run Windows plugins
+        // via Wine. The apps are called "host_pe_i386.exe" and "host_pe_amd64.exe".
+        auto canBridge = [](auto arch){
+            // check if host app exists
+        #ifdef _WIN32
+            auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
+        #else
+            auto path = getModuleDirectory() + "/" + getHostApp(arch);
+          #if USE_WINE
+            if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+                // check if the 'wine' command can be found and works.
+                // we only need to do this once!
+                static bool haveWine = [](){
+                    auto winecmd = getWineCommand();
+                    // we pass valid arguments, so the exit code should be 0.
+                    char cmdline[256];
+                    snprintf(cmdline, sizeof(cmdline), "%s --version", winecmd);
+                    int ret = system(cmdline);
+                    if (ret < 0){
+                        LOG_WARNING("Couldn't execute '" << winecmd << "': "
+                                    << strerror(errno));
+                        return false;
+                    } else {
+                        auto code = WEXITSTATUS(ret);
+                        if (code == 0){
+                            return true;
+                        } else {
+                            LOG_WARNING("'wine' command failed with exit code "
+                                        << WEXITSTATUS(ret));
+                            return false;
+                        }
+                    }
+                }();
+                if (!haveWine){
+                    return false;
+                }
             }
-            return false;
+          #endif // USE_WINE
+        #endif
+            if (pathExists(path)){
+                // LATER try to execute the bridge app?
+                return true;
+            } else {
+                LOG_WARNING("Can't locate " << path);
+                return false;
+            }
         };
 
-        if (hostArch == CpuArch::amd64 && canBridge(CpuArch::i386)){
-            arch_ = CpuArch::i386;
-        } else if (hostArch == CpuArch::i386 && canBridge(CpuArch::amd64)){
-            arch_ = CpuArch::amd64;
-        #ifdef __APPLE__
-        } else if (hostArch == CpuArch::aarch64 && canBridge(CpuArch::amd64)){
-            arch_ = CpuArch::amd64;
-        } else if (hostArch == CpuArch::amd64 && canBridge(CpuArch::aarch64)){
-            arch_ = CpuArch::aarch64;
-        #endif
-        } else {
-            if (archs.size() > 1){
-                throw Error(Error::ModuleError, "Can't bridge CPU architectures");
-            } else {
-                throw Error(Error::ModuleError, "Can't bridge CPU architecture "
-                            + std::string(cpuArchToString(archs.front())));
+        // check if can bridge any of the given CPU architectures
+        for (auto& arch : archs){
+            if (canBridge(arch)){
+                arch_ = arch;
+                // LOG_DEBUG("created bridged plugin factory " << path);
+                return;
             }
         }
-        // LOG_DEBUG("created bridged plugin factory " << path);
-    #else
+        // fail
+        if (archs.size() > 1){
+            throw Error(Error::ModuleError, "Can't bridge CPU architectures");
+        } else {
+            throw Error(Error::ModuleError, "Can't bridge CPU architecture "
+                        + std::string(cpuArchToString(archs.front())));
+        }
+    #else // USE_BRIDGE
         if (archs.size() > 1){
             throw Error(Error::ModuleError, "Unsupported CPU architectures");
         } else {
             throw Error(Error::ModuleError, "Unsupported CPU architecture "
                         + std::string(cpuArchToString(archs.front())));
         }
-    #endif
+    #endif // USE_BRIDGE
     }
 }
 
@@ -349,8 +401,23 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host probe <plugin_path> <plugin_id> <file_path>
-        if (execl(hostPath.c_str(), hostApp.c_str(), "probe", path().c_str(),
-                  idString, tmpPath.c_str(), nullptr) < 0){
+    #if USE_WINE
+        if (arch_ == CpuArch::pe_i386 || arch_ == CpuArch::pe_amd64){
+            // the wine command can be set with a environment variable
+            const char *winecmd = getenv("VSTPLUGIN_WINE");
+            if (!winecmd){
+                winecmd = "wine";
+            }
+            // use PATH!
+            if (execlp(winecmd, winecmd, hostPath.c_str(), "probe",
+                       path().c_str(), idString, tmpPath.c_str(), nullptr) < 0) {
+                // LATER redirect child stderr to parent stdin
+                LOG_ERROR("couldn't run 'wine' (" << errorMessage(errno) << ")");
+            }
+        } else
+    #endif
+        if (execl(hostPath.c_str(), hostApp.c_str(), "probe",
+                  path().c_str(), idString, tmpPath.c_str(), nullptr) < 0) {
             // write error to temp file
             int err = errno;
             File file(tmpPath, File::WRITE);

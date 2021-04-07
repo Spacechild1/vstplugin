@@ -177,7 +177,12 @@ enum class CpuArch {
     arm,
     aarch64,
     ppc,
-    ppc64
+    ppc64,
+#ifndef _WIN32
+    // PE executables (for Wine support)
+    pe_i386,
+    pe_amd64
+#endif
 };
 
 CpuArch getHostCpuArchitecture();

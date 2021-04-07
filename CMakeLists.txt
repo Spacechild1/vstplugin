@@ -137,6 +137,18 @@ if (BRIDGE)
         option(BUILD_HOST32 "Build the 32-bit host app" OFF)
     endif()
 endif()
+
+# Wine support on Linux
+if(NOT (WIN32 OR MINGW))
+    option(WINE "Enable support for running Windows VSTs with Wine" ON)
+    if (WINE)
+        if (BRIDGE)
+            message(STATUS "Enable Wine support")
+        else()
+            message(WARNING "Wine support doesn't work without plugin bridge (BRIDGE)")
+        endif()
+    endif()
+    add_definitions(-DUSE_WINE=$<BOOL:WINE>)
 endif()
 
 # platform specific linker flags
