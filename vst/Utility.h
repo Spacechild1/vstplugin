@@ -206,7 +206,7 @@ public:
         WRITE
     };
     File(const std::string& path, Mode mode = READ)
-#if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9)
+#if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9) && !defined(__WINE__)
     // UTF-16 file names supported by MSVC and newer GCC versions
         : std::fstream(vst::widen(path).c_str(),
 #else
