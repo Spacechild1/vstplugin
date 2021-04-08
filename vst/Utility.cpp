@@ -17,7 +17,7 @@ namespace fs = std::experimental::filesystem;
 # ifndef _WIN32
 #  define widen(x) x
 # endif
-#else
+#elif VST_HOST_SYSTEM != VST_WINDOWS
 # include <dirent.h>
 # include <unistd.h>
 # include <strings.h>
@@ -27,6 +27,8 @@ namespace fs = std::experimental::filesystem;
 # ifndef ACCESSPERMS
 #  define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
 # endif
+#else
+# error "must use std::filesystem on Windows!"
 #endif
 
 #include <sstream>

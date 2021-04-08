@@ -58,10 +58,16 @@ if (WINVER)
 endif()
 
 # use std::filesystem?
-if(WIN32 OR BUILD_WINEHOST)
-    set(STDFS ON CACHE BOOL "Use std::filesystem")
+if (WIN32)
+    # always use on Windows!
+    set(STDFS ON)
 else()
-    set(STDFS OFF CACHE BOOL "Use std::filesystem")
+    if (BUILD_WINEHOST OR LINUX)
+        set(STDFS ON CACHE BOOL "Use std::filesystem")
+    else()
+        # not possible on older clang version on macOS
+        set(STDFS OFF CACHE BOOL "Use std::filesystem")
+    endif()
 endif()
 add_definitions(-DUSE_STDFS=$<BOOL:${STDFS}>)
 
