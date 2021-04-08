@@ -29,9 +29,9 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
-* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above.
+* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above!
 
-* macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above. Otherwise you get a warning if you try to open a plugin with "editor: true".
+* macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above! Otherwise you get a warning if you try to open a plugin with "editor: true".
 
 * macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)... This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
 
@@ -44,12 +44,6 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 * The macOS binaries are *unsigned*, so you have to workaround the macOS Gatekeeper. See the section "macOS 10.15+" for more information.
 
 * VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa because of a mistake in the (de)serialization of VST3 plugin IDs. This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format. But first make sure to clear the plugin cache and do a new search to update the plugin IDs.
-
-* If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
-This only seems to happen if either the plugin or the host (but not both!) link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship
-additional DLLs. This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider/Pd with MinGW.
-In this special case you should run cmake with `-DSTATIC_LIBS=OFF` so that VSTPlugin/vstplugin~ also link dynamically.
-To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles. Yes, it's ridiculous!
 
 ---
 
@@ -68,10 +62,38 @@ By default, the project is built in release mode. You can change `CMAKE_BUILD_TY
 
 If you only want to only build the Pd or Supercollider version, simply set the `SC` resp. `PD` variable to `OFF`.
 
+##### Static linking
+
 When compiling with GCC on Linux or MinGW, we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is `ON`.
 
 Static linking helps if you want to share the binaries with other people because they might not have the required library versions installed on their system.
 Dynamic linking, on the other hand, is preferred for destributing via system package managers like "apt".
+
+##### Windows
+
+If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and vice versa), you have to perform the following steps:
+1) compile the project with a 64-bit compiler (e.g. in a 'build64' folder)
+2) compile the project with a 32-bit compiler (e.g. in a 'build32' folder)
+3) copy the 32-bit 'host.exe' to the 64-bit installation folder and rename it to 'host_i386.exe'
+4) copy the 64-bit 'host.exe' to the 32-bit installation folder and rename it to 'host_amd64.exe'
+
+If you get compilation errors regarding the *SRWLock functions, it means that `_WIN32_WINNT` is set too low.
+The minimum supported version is `0x0600` (= Windows 7). You can easily set it with the `WINVER` variable.
+
+**Warning about 32-bit MinGW**
+
+If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
+This only seems to happen if either the plugin or the host (but not both!) link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship additional DLLs.
+This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider/Pd with MinGW.
+In this special case you should run cmake with `-DSTATIC_LIBS=OFF` so that VSTPlugin/vstplugin~ also link dynamically.
+To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles.
+Yes, it's ridiculous!
+
+
+##### Linux
+
+You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
+Make sure to install the relevant 32-bit toolchain and libraries!
 
 #### Prerequisites:
 
