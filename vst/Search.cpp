@@ -284,8 +284,15 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
     searchDir = [&](const auto& dirname){
         try {
             // LOG_DEBUG("searching in " << shorten(dirname));
+            // strangely, MSVC's directory_iterator doesn't take options
+            // LATER switch to C++17 and get rid of std::experimental
+        #ifdef _MSC_VER
+            fs::directory_iterator iter(dirname);
+        #else
             auto options = fs::directory_options::follow_directory_symlink;
-            for (auto& entry : fs::directory_iterator(dirname, options)) {
+            fs::directory_iterator iter(dirname, options);
+        #endif
+            for (auto& entry : iter) {
                 // check the extension
                 auto path = entry.path();
                 auto ext = path.extension().u8string();
