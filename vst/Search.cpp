@@ -1,11 +1,13 @@
 #include "Interface.h"
 #include "Utility.h"
 
-#ifdef _WIN32
-#include <experimental/filesystem>
+#if USE_STDFS
+# include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
+# ifndef _WIN32
+#  define widen(x) x
+# endif
 #else
-// just because of Clang on macOS doesn't ship <experimental/filesystem>...
 # include <dirent.h>
 # include <unistd.h>
 # include <strings.h>
@@ -170,7 +172,7 @@ const char * getWineFolder(){
 }
 #endif
 
-#ifndef _WIN32
+#if !USE_STDFS
 // helper function
 static bool isDirectory(const std::string& dir, dirent *entry){
     // we don't count "." and ".."
@@ -208,7 +210,7 @@ std::string find(const std::string &dir, const std::string &path){
     if (relpath.find(".vst3") == std::string::npos && relpath.find(ext) == std::string::npos){
         relpath += ext;
     }
-#ifdef _WIN32
+#if USE_STDFS
     try {
         auto wdir = widen(dir);
         auto fpath = fs::path(widen(relpath));
@@ -227,7 +229,7 @@ std::string find(const std::string &dir, const std::string &path){
         }
     } catch (const fs::filesystem_error& e) {};
     return std::string{};
-#else // Unix
+#else // USE_STDFS
     std::string result;
     // force no trailing slash
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
@@ -259,7 +261,7 @@ std::string find(const std::string &dir, const std::string &path){
     };
     searchDir(root);
     return result;
-#endif
+#endif // USE_STDFS
 }
 
 // recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full absolute path.
@@ -270,8 +272,13 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
         extensions.insert(ext);
     }
     // search recursively
-#ifdef _WIN32
-    std::function<void(const std::wstring&)> searchDir = [&](const std::wstring& dirname){
+#if USE_STDFS
+  #ifdef _WIN32
+    std::function<void(const std::wstring&)>
+  #else
+    std::function<void(const std::string&)>
+  #endif
+    searchDir = [&](const auto& dirname){
         try {
             // LOG_DEBUG("searching in " << shorten(dirname));
             for (auto& entry : fs::directory_iterator(dirname)) {
@@ -293,7 +300,7 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
         };
     };
     searchDir(widen(dir));
-#else // Unix
+#else // USE_STDFS
     // force no trailing slash
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
     std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
@@ -329,7 +336,7 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
         }
     };
     searchDir(root);
-#endif
+#endif // USE_STDFS
 }
 
 } // vst

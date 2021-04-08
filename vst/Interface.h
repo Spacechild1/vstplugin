@@ -33,13 +33,22 @@ typedef unsigned int uint32_t;
 #define USE_BRIDGE 1
 #endif
 
-#ifndef _WIN32
+#if !defined(_WIN32)
 # ifndef USE_WINE
 #  define USE_WINE 1
 # endif
 #else
 # if USE_WINE
 #  error "USE_WINE cannot be set on Windows!"
+# endif
+#endif
+
+// older clang versions don't ship std::filesystem
+#ifndef USE_STDFS
+# if defined(_WIN32)
+#  define USE_STDFS 1
+# else
+#  define USE_STDFS 0
 # endif
 #endif
 

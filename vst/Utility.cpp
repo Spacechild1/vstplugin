@@ -2,18 +2,22 @@
 
 #ifdef _WIN32
 # include <windows.h>
+#if USE_STDFS
 # include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
+# ifndef _WIN32
+#  define widen(x) x
+# endif
 #else
-// just because of Clang on macOS doesn't ship <experimental/filesystem>...
+# include <dirent.h>
 # include <unistd.h>
-# include <string.h>
+# include <strings.h>
+# include <sys/wait.h>
 # include <sys/stat.h>
 # include <sys/types.h>
 # ifndef ACCESSPERMS
 #  define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
 # endif
-# include <pthread.h>
 #endif
 
 #include <sstream>
@@ -129,7 +133,7 @@ std::string expandPath(const char *path) {
 #endif
 
 bool pathExists(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     return fs::exists(widen(path), e);
 #else
@@ -139,7 +143,7 @@ bool pathExists(const std::string& path){
 }
 
 bool isFile(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     return fs::is_regular_file(widen(path));
 #else
     struct stat stbuf;
@@ -148,7 +152,7 @@ bool isFile(const std::string& path){
 }
 
 bool isDirectory(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     return fs::is_directory(widen(path), e);
 #else
@@ -158,7 +162,7 @@ bool isDirectory(const std::string& path){
 }
 
 bool removeFile(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     fs::remove(widen(path), e);
     if (e){
@@ -179,7 +183,7 @@ bool removeFile(const std::string& path){
 }
 
 bool renameFile(const std::string& from, const std::string& to){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     fs::rename(widen(from), widen(to), e);
     if (e){
@@ -200,7 +204,7 @@ bool renameFile(const std::string& from, const std::string& to){
 }
 
 bool createDirectory(const std::string& dir){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code err;
     return fs::create_directory(widen(dir), err);
 #else

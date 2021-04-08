@@ -30,6 +30,14 @@ endif()
 
 set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install directories")
 
+# use std::filesystem?
+if(WIN32 OR MINGW OR BUILD_WINEHOST)
+    set(STDFS ON CACHE BOOL "Use std::filesystem")
+else()
+    set(STDFS OFF CACHE BOOL "Use std::filesystem")
+endif()
+add_definitions(-DUSE_STDFS=$<BOOL:${STDFS}>)
+
 # Windows paths
 if (WIN32 OR MINGW)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
@@ -151,6 +159,10 @@ if(NOT (WIN32 OR MINGW))
     add_definitions(-DUSE_WINE=$<BOOL:${WINE}>)
 endif()
 
+if (STDFS AND (LINUX OR MINGW OR BUILD_WINEHOST))
+    list(APPEND VST_LIBS "-lstdc++fs")
+endif()
+
 # platform specific linker flags
 if (LINUX)
     list(APPEND VST_LIBS "-ldl" "-L/usr/X11R6/lib" "-lX11" "-pthread")
@@ -165,7 +177,6 @@ if (LINUX)
     set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 endif()
 if (MINGW)
-    list(APPEND VST_LIBS "-lstdc++fs")
     if (STATIC_LIBS)
         list(APPEND VST_LIBS "-static-libstdc++" "-static-libgcc" "-static -lpthread")
     else()
