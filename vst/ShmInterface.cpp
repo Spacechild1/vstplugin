@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
 # ifndef NOMINMAX
 #  define NOMINMAX
 # endif
@@ -16,7 +16,7 @@
 # include <sys/shm.h>
 # include <sys/mman.h>
 # include <semaphore.h>
-# ifdef __APPLE_
+# if VST_HOST_SYSTEM == VST_MACOS
 #  include <sys/stat.h>
 # endif
 #endif
@@ -46,16 +46,16 @@ ShmChannel::ShmChannel(Type type, int32_t size,
 }
 
 void ShmChannel::HandleDeleter::operator ()(void *handle){
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     // SHM_DEBUG("close event " << handle);
     CloseHandle((HANDLE)handle);
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     sem_close((sem_t *)handle);
 #endif
 }
 
 ShmChannel::~ShmChannel(){
-#if !defined(_WIN32) && !defined(__APPLE__)
+#if VST_HOST_SYSTEM == VST_LINUX
     // only destroy the semaphore once!
     if (owner_){
         if (eventA_){
@@ -254,7 +254,7 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
 
 void ShmChannel::initEvent(Handle& event, const char *data){
     // SHM_DEBUG("ShmChannel: init event " << which);
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     // named Event
     if (owner_){
         event.reset(CreateEventA(0, 0, 0, data));
@@ -279,7 +279,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
         }
     }
     SHM_DEBUG("create event " << event.get());
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     // named semaphore
     if (owner_){
         SHM_DEBUG("ShmChannel: created semaphore " << data);
@@ -294,7 +294,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
                     + errorMessage(errno));
     }
     SHM_DEBUG("ShmChannel: opened semaphore " << data);
-#else
+#else // Linux
     // unnamed semaphore in shared memory segment
     event.reset((void *)data);
     if (owner_){
@@ -309,7 +309,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
 }
 
 void ShmChannel::postEvent(void *event){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     if (!SetEvent((HANDLE)event)){
         throw Error(Error::SystemError, "SetEvent() failed: "
                     + errorMessage(GetLastError()));
@@ -323,7 +323,7 @@ void ShmChannel::postEvent(void *event){
 }
 
 void ShmChannel::waitEvent(void *event){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     auto result = WaitForSingleObject(event, INFINITE);
     if (result != WAIT_OBJECT_0){
         if (result == WAIT_ABANDONED){
@@ -444,10 +444,10 @@ void ShmInterface::openShm(const std::string &path, bool create){
         }
     }
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     HANDLE hMapFile;
     if (create){
-        hMapFile = CreateFileMapping(
+        hMapFile = CreateFileMappingA(
             INVALID_HANDLE_VALUE,    // use paging file
             NULL,                    // default security
             PAGE_READWRITE,          // read/write access
@@ -568,7 +568,7 @@ void ShmInterface::openShm(const std::string &path, bool create){
     // success!
     path_ = path;
     owner_ = create;
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     hMapFile_ = hMapFile;
 #endif
     data_ = (char *)data;
@@ -582,7 +582,7 @@ void ShmInterface::openShm(const std::string &path, bool create){
 }
 
 void ShmInterface::closeShm(){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     if (data_){
         UnmapViewOfFile(data_);
     }

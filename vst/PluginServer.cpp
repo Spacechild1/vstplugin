@@ -599,7 +599,7 @@ static PluginManager gPluginManager;
 
 PluginServer::PluginServer(int pid, const std::string& shmPath)
 {
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     parent_ = OpenProcess(SYNCHRONIZE, FALSE, pid);
 #else
     parent_ = pid;
@@ -642,7 +642,7 @@ PluginServer::~PluginServer(){
     }
     LOG_DEBUG("free PluginServer");
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     CloseHandle(parent_);
 #endif
 }
@@ -685,7 +685,7 @@ void PluginServer::pollUIThread(){
 }
 
 void PluginServer::checkParentAlive(){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     if (WaitForSingleObject(parent_, 0) != WAIT_TIMEOUT){
         quit();
     }

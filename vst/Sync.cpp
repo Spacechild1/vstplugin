@@ -1,7 +1,7 @@
 #include "Sync.h"
 #include "Utility.h"
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
 # ifndef NOMINMAX
 #  define NOMINMAX
 # endif
@@ -10,6 +10,8 @@
 #else
 # include <stdlib.h>
 #endif
+
+#include <climits>
 
 // for PaddedSpinLock
 // Intel
@@ -28,7 +30,7 @@ namespace vst {
 /*/////////////////// SyncCondition ////////////////////*/
 
 SyncCondition::SyncCondition(){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     InitializeConditionVariable((PCONDITION_VARIABLE)&condition_);
     InitializeSRWLock((PSRWLOCK)&mutex_);
 #else // pthreads
@@ -38,14 +40,14 @@ SyncCondition::SyncCondition(){
 }
 
 SyncCondition::~SyncCondition(){
-#ifndef _WIN32
+#if VST_HOST_SYSTEM != VST_WINDOWS
     pthread_mutex_destroy(&mutex_);
     pthread_cond_destroy(&condition_);
 #endif
 }
 
 void SyncCondition::set(){
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
     state_ = true;
     ReleaseSRWLockExclusive((PSRWLOCK)&mutex_);
@@ -61,7 +63,7 @@ void SyncCondition::set(){
 }
 
 void SyncCondition::wait(){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
     while (!state_){
         SleepConditionVariableSRW((PCONDITION_VARIABLE)&condition_,
@@ -82,41 +84,41 @@ void SyncCondition::wait(){
 /*/////////////////// Semaphore ////////////////////*/
 
 Semaphore::Semaphore(){
-#if defined(_WIN32)
-    sem_ = CreateSemaphoreA(0, 0, LONG_MAX, 0);
-#elif defined(__APPLE__)
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    sem_ = CreateSemaphoreA(0, 0, INT_MAX, 0);
+#elif VST_HOST_SYSTEM == VST_MACOS
     semaphore_create(mach_task_self(), &sem_, SYNC_POLICY_FIFO, 0);
-#else // pthreads
+#else // Linux
     sem_init(&sem_, 0, 0);
 #endif
 }
 
 Semaphore::~Semaphore(){
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     CloseHandle(sem_);
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     semaphore_destroy(mach_task_self(), sem_);
-#else // pthreads
+#else // Linux
     sem_destroy(&sem_);
 #endif
 }
 
 void Semaphore::post(){
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     ReleaseSemaphore(sem_, 1, 0);
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     semaphore_signal(sem_);
-#else
+#else // Linux
     sem_post(&sem_);
 #endif
 }
 
 void Semaphore::wait(){
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     WaitForSingleObject(sem_, INFINITE);
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     semaphore_wait(sem_);
-#else
+#else // Linux
     while (sem_wait(&sem_) == -1 && errno == EINTR) continue;
 #endif
 }
@@ -144,7 +146,8 @@ PaddedSpinLock::PaddedSpinLock(){
 
 #if __cplusplus < 201703L
 void* PaddedSpinLock::operator new(size_t size){
-#ifdef _WIN32
+    // Wine doesn't seem to have _aligned_malloc/_aligned_free
+#if defined(_WIN32) && !defined(__WINE__)
     void *ptr = _aligned_malloc(size, alignof(PaddedSpinLock));
 #else
     void *ptr = nullptr;
@@ -161,7 +164,8 @@ void* PaddedSpinLock::operator new(size_t size){
 }
 
 void PaddedSpinLock::operator delete(void* ptr){
-#ifdef _WIN32
+    // see above
+#if defined(_WIN32) && !defined(__WINE__)
     _aligned_free(ptr);
 #else
     std::free(ptr);
@@ -179,7 +183,8 @@ void PaddedSpinLock::operator delete[](void *ptr){
 
 /*////////////////////// SharedMutex ///////////////////*/
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
+
 Mutex::Mutex() {
     InitializeSRWLock((PSRWLOCK)& lock_);
 }

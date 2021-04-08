@@ -9,6 +9,23 @@
 
 #include <stdint.h>
 
+#define VST_WINDOWS 0
+#define VST_MACOS 1
+#define VST_LINUX 2
+
+// overriden when building Wine!
+#ifndef VST_HOST_SYSTEM
+# if defined(_WIN32)
+#  define VST_HOST_SYSTEM VST_WINDOWS
+# elif defined(__APPLE__)
+#  define VST_HOST_SYSTEM VST_MACOS
+# elif defined(__linux__)
+#  define VST_HOST_SYSTEM VST_LINUX
+# else
+#  error "unsupported host system"
+# endif
+#endif
+
 #ifndef USE_VST2
 #define USE_VST2 1
 #endif

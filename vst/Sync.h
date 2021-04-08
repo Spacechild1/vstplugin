@@ -1,22 +1,23 @@
 #pragma once
 
-#ifndef _WIN32
-#include <pthread.h>
-#endif
+// only for VST_HOST_SYSTEM
+#include "Interface.h"
 
-#ifdef _WIN32
-  // Windows Event
-  // #include "synchapi.h"
-#else
-  #include <pthread.h>
-  #ifdef __APPLE__
-    // macOS doesn't support unnamed pthread semaphores,
-    // so we use Mach semaphores instead
-    #include <mach/mach.h>
-  #else
-    // unnamed pthread semaphore
-    #include <semaphore.h>
-  #endif
+#include <stddef.h>
+
+// Wine executables segfaults during static initialization
+// of mutex/event/semaphore objects which use the Win32 API,
+// so we rather use the host system's synchronization primitives.
+#if VST_HOST_SYSTEM != VST_WINDOWS
+# include <pthread.h>
+# if VST_HOST_SYSTEM == VST_MACOS
+   // macOS doesn't support unnamed pthread semaphores,
+   // so we use Mach semaphores instead
+#  include <mach/mach.h>
+# else
+   // unnamed pthread semaphore
+#  include <semaphore.h>
+# endif
 #endif
 
 #include <atomic>
@@ -34,7 +35,7 @@ class SyncCondition {
     void set();
     void wait();
  private:
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     void *condition_;
     void *mutex_;
 #else
@@ -55,11 +56,11 @@ class Semaphore {
     void post();
     void wait();
  private:
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     void *sem_;
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     semaphore_t sem_;
-#else // pthreads
+#else // Linux
     sem_t sem_;
 #endif
 };
@@ -171,7 +172,7 @@ class alignas(CACHELINE_SIZE) PaddedSpinLock : public SpinLock {
 // the MSVC version apparantely has some additional overhead; winpthreads (MinGW) doesn't even use the obvious
 // platform primitive (SRWLOCK), they rather roll their own mutex based on atomics and Events, which is bad for our use case.
 // Even on Linux and macOS, there's some overhead for things we don't need, so we use pthreads directly.
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
 class Mutex {
 public:
     Mutex();
@@ -264,7 +265,7 @@ class Lock : public UniqueLock<Mutex> {
 
 /*//////////////////////// SharedMutex ///////////////////////////*/
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
 class SharedMutex : public Mutex {
 public:
     using Mutex::Mutex;

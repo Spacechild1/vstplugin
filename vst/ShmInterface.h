@@ -1,10 +1,19 @@
 #pragma once
 
+// only for VST_HOST_SYSTEM
+#include "Interface.h"
+
 #include <stdint.h>
 #include <string>
 #include <vector>
 #include <atomic>
 #include <memory>
+
+// NOTE: The Wine host needs to use the shared memory functions
+// of the host environment so it can talk to the client.
+// In fact, this is the very reason why we have to compile
+// the host with wineg++ in the first place (instead of just
+// using a regular Windows build).
 
 namespace vst {
 
@@ -151,7 +160,7 @@ class ShmInterface {
     std::vector<ShmChannel> channels_;
     bool owner_ = false;
     std::string path_;
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     void *hMapFile_ = nullptr;
 #endif
     size_t size_ = 0;
