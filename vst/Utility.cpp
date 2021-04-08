@@ -6,9 +6,13 @@
 # endif
 # include <windows.h>
 #else
-# include <pthread.h>
 # include <stdlib.h>
 # include <string.h>
+#endif
+
+#if VST_HOST_SYSTEM != VST_WINDOWS
+// thread priority
+#include <pthread.h>
 #endif
 
 #if USE_STDFS
@@ -312,7 +316,7 @@ std::string errorMessage(int err){
 }
 
 void setProcessPriority(Priority p){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     auto priorityClass = (p == Priority::High) ?
                 HIGH_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS;
     if (!SetPriorityClass(GetCurrentProcess(), priorityClass)){
@@ -322,7 +326,7 @@ void setProcessPriority(Priority p){
 }
 
 void setThreadPriority(Priority p){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     auto thread = GetCurrentThread();
     // set the thread priority
     auto threadPriority = (p == Priority::High) ?
