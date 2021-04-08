@@ -56,45 +56,45 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
 
     CHECK_CXX_COMPILER_FLAG(-msse HAS_CXX_SSE)
     if (HAS_CXX_SSE)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
+        add_definitions("-msse")
     endif()
 
     CHECK_CXX_COMPILER_FLAG(-msse2 HAS_CXX_SSE2)
     if (HAS_CXX_SSE2)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2")
+        add_definitions("-msse2")
     endif()
 
     CHECK_CXX_COMPILER_FLAG(-msse3 HAS_CXX_SSE3)
     if (HAS_CXX_SSE3)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse3")
+        add_definitions("-msse3")
     endif()
 
     # some people might still use old AMD CPUs...
     if (OFF)
         CHECK_CXX_COMPILER_FLAG(-msse4 HAS_CXX_SSE4)
         if (HAS_CXX_SSE4)
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4")
+            add_definitions("-msse4")
         endif()
     endif()
 
     CHECK_CXX_COMPILER_FLAG(-mfpmath=sse HAS_CXX_FPMATH_SSE)
     if (HAS_CXX_FPMATH_SSE)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpmath=sse")
+        add_definitions("-mfpmath=sse")
     endif()
 
     if(NATIVE)
         add_definitions(-march=native)
     endif()
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -ffast-math -funroll-loops -fomit-frame-pointer")
+    add_definitions("-std=c++14 -ffast-math -funroll-loops -fomit-frame-pointer")
 
     if(CMAKE_COMPILER_IS_CLANG)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+        add_definitions("-stdlib=libc++")
     endif()
 endif()
 if(MINGW)
     set(CMAKE_CXX_COMPILER g++)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
+    add_definitions("-mstackrealign")
 endif()
 
 # include dependencies
