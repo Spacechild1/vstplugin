@@ -72,7 +72,10 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 
 namespace vst {
 
-#ifdef _WIN32
+// On Wine std::wstring_convert would throw an exception
+// when using wchar_t, although it has the same size as char16_t.
+// Maybe because of some template specialization? Dunno...
+#if defined(_WIN32) && !defined(__WINE__)
 using unichar = wchar_t;
 #else
 using unichar = char16_t;
@@ -81,6 +84,9 @@ using unichar = char16_t;
 using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
 
 static StringCoverter& stringConverter(){
+#ifdef _WIN32
+    static_assert(sizeof(wchar_t) == sizeof(char16_t), "bad size for wchar_t!");
+#endif
 #ifdef __MINGW32__
     // because of a mingw32 bug, destructors of thread_local STL objects segfault...
     thread_local auto conv = new StringCoverter;
@@ -92,16 +98,24 @@ static StringCoverter& stringConverter(){
 }
 
 std::string convertString (const Vst::String128 str){
-    return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
+    try {
+        return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
+    } catch (const std::range_error& e){
+        throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
+    }
 }
 
 bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
     if (src.size() < 128){
-        auto wstr = stringConverter().from_bytes(src);
-        for (int i = 0; i < (int)wstr.size(); ++i){
-            dst[i] = wstr[i];
+        try {
+            auto wstr = stringConverter().from_bytes(src);
+            for (int i = 0; i < (int)wstr.size(); ++i){
+                dst[i] = wstr[i];
+            }
+            dst[src.size()] = 0;
+        } catch (const std::range_error& e){
+            throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
         }
-        dst[src.size()] = 0;
         return true;
     } else {
         return false;
