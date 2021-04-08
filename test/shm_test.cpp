@@ -6,7 +6,10 @@
 
 #ifdef _WIN32
 # define APPNAME "shm_test.exe"
-# include <Windows.h>
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 #else
 # define APPNAME "shm_test"
 # include <unistd.h>

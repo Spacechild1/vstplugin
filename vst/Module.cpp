@@ -2,8 +2,10 @@
 #include "Utility.h"
 
 #ifdef _WIN32
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 # include <windows.h>
-# include <process.h>
 #elif defined(__APPLE__)
 # include <CoreFoundation/CoreFoundation.h>
 #else

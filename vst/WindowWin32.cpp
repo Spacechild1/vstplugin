@@ -2,7 +2,6 @@
 #include "Utility.h"
 
 #include <cstring>
-#include <process.h>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 

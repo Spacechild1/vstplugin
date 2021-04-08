@@ -1,7 +1,16 @@
 #include "Utility.h"
 
 #ifdef _WIN32
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 # include <windows.h>
+#else
+# include <pthread.h>
+# include <stdlib.h>
+# include <string.h>
+#endif
+
 #if USE_STDFS
 # include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;

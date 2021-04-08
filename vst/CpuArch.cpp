@@ -2,12 +2,14 @@
 #include "Utility.h"
 
 #ifdef _WIN32
-#include <Windows.h>
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 // IMAGE_FILE_MACHINE_ARM64 is only defined on Windows 8.1 and above
-#ifndef IMAGE_FILE_MACHINE_ARM64
- #define IMAGE_FILE_MACHINE_ARM64 0xaa64
-#endif
-
+# ifndef IMAGE_FILE_MACHINE_ARM64
+   #define IMAGE_FILE_MACHINE_ARM64 0xaa64
+# endif
 #endif // _WIN32
 
 #ifdef __APPLE__

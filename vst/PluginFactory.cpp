@@ -9,7 +9,10 @@
 
 // for probing
 #ifdef _WIN32
-# include <Windows.h>
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 #else
 # include <unistd.h>
 # include <stdlib.h>
