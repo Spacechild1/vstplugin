@@ -219,7 +219,8 @@ std::string find(const std::string &dir, const std::string &path){
             return file.u8string(); // success
         }
         // continue recursively
-        for (auto& entry : fs::recursive_directory_iterator(wdir)) {
+        auto options = fs::directory_options::follow_directory_symlink;
+        for (auto& entry : fs::recursive_directory_iterator(wdir, options)) {
             if (fs::is_directory(entry)){
                 file = entry.path() / fpath;
                 if (fs::exists(file)){
@@ -227,7 +228,9 @@ std::string find(const std::string &dir, const std::string &path){
                 }
             }
         }
-    } catch (const fs::filesystem_error& e) {};
+    } catch (const fs::filesystem_error& e) {
+        LOG_DEBUG(e.what());
+    };
     return std::string{};
 #else // USE_STDFS
     std::string result;
@@ -281,7 +284,8 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
     searchDir = [&](const auto& dirname){
         try {
             // LOG_DEBUG("searching in " << shorten(dirname));
-            for (auto& entry : fs::directory_iterator(dirname)) {
+            auto options = fs::directory_options::follow_directory_symlink;
+            for (auto& entry : fs::directory_iterator(dirname, options)) {
                 // check the extension
                 auto path = entry.path();
                 auto ext = path.extension().u8string();
