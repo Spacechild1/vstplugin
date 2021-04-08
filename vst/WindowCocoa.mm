@@ -1,4 +1,5 @@
 #import "WindowCocoa.h"
+#include "PluginInfo.h"
 #include "Utility.h"
 
 #if __has_feature(objc_arc)

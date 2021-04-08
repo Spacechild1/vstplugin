@@ -7,19 +7,7 @@
 #include <functional>
 #include <memory>
 
-#include <mutex>
-
-// for intptr_t
-#ifdef _MSC_VER
-#ifdef _WIN64
-typedef __int64 intptr_t;
-#else
-typedef __int32 intptr_t;
-#endif
-typedef unsigned int uint32_t;
-#else
 #include <stdint.h>
-#endif
 
 #ifndef USE_VST2
 #define USE_VST2 1
@@ -63,10 +51,6 @@ const char * getVersionString();
 
 using LogFunction = void (*)(const char *);
 void setLogFunction(LogFunction f);
-
-class SharedMutex;
-class WriteLock;
-class ReadLock;
 
 struct MidiEvent {
     MidiEvent(char _status = 0, char _data1 = 0, char _data2 = 0,
@@ -133,6 +117,7 @@ struct Rect {
 };
 
 struct PluginInfo;
+
 class IWindow;
 
 struct AudioBus {
@@ -261,226 +246,6 @@ enum class RunMode {
     Bridge
 };
 
-struct PluginInfo final {
-    static const uint32_t NoParamID = 0xffffffff;
-
-    using ptr = std::shared_ptr<PluginInfo>;
-    using const_ptr = std::shared_ptr<const PluginInfo>;
-
-    PluginInfo(std::shared_ptr<const IFactory> f);
-    ~PluginInfo();
-    PluginInfo(const PluginInfo&) = delete;
-    void operator =(const PluginInfo&) = delete;
-
-    void setFactory(std::shared_ptr<const IFactory> factory);
-    const std::string& path() const { return path_; }
-    // create new instances
-    // throws an Error exception on failure!
-    IPlugin::ptr create(bool editor, bool threaded, RunMode mode = RunMode::Auto) const;
-    // read/write plugin description
-    void serialize(std::ostream& file) const;
-    void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,
-                     int versionMinor = VERSION_MINOR, int versionPatch = VERSION_PATCH);
-#if USE_VST2
-    void setUniqueID(int _id); // VST2
-    int getUniqueID() const {
-        return id_.id;
-    }
-#endif
-#if USE_VST3
-    void setUID(const char *uid); // VST3
-    const char* getUID() const {
-        return id_.uid;
-    }
-#endif
-    struct SubPlugin {
-        std::string name;
-        int id;
-    };
-    using SubPluginList = std::vector<SubPlugin>;
-    SubPluginList subPlugins;
-
-    PluginType type() const { return type_; }
-    // info data
-    std::string uniqueID;
-    std::string name;
-    std::string vendor;
-    std::string category;
-    std::string version;
-    std::string sdkVersion;
-
-    struct Bus {
-        enum Type {
-            Main = 0,
-            Aux
-        };
-
-        int numChannels = 0;
-        Type type = Main;
-        std::string label;
-    };
-
-    std::vector<Bus> inputs;
-    int numInputs() const {
-        return inputs.size();
-    }
-
-    std::vector<Bus> outputs;
-    int numOutputs() const {
-        return outputs.size();
-    }
-
-#if USE_VST3
-    uint32_t programChange = NoParamID; // no param
-    uint32_t bypass = NoParamID; // no param
-#endif
-    // parameters
-    struct Param {
-        std::string name;
-        std::string label;
-        uint32_t id = 0;
-    };
-    std::vector<Param> parameters;
-
-    void addParameter(Param param){
-        auto index = parameters.size();
-        // inverse mapping
-        paramMap_[param.name] = index;
-    #if USE_VST3
-        // index -> ID mapping
-        indexToIdMap_[index] = param.id;
-        // ID -> index mapping
-        idToIndexMap_[param.id] = index;
-    #endif
-        // add parameter
-        parameters.push_back(std::move(param));
-    }
-
-    void addParamAlias(int index, const std::string& key){
-        paramMap_[key] = index;
-    }
-    int findParam(const std::string& key) const {
-        auto it = paramMap_.find(key);
-        if (it != paramMap_.end()){
-            return it->second;
-        } else {
-            return -1;
-        }
-    }
-#if USE_VST3
-    // get VST3 parameter ID from index
-    uint32_t getParamID(int index) const {
-        auto it = indexToIdMap_.find(index);
-        if (it != indexToIdMap_.end()){
-            return it->second;
-        }
-        else {
-            return 0; // throw?
-        }
-    }
-    // get index from VST3 parameter ID
-    int getParamIndex(uint32_t _id) const {
-        auto it = idToIndexMap_.find(_id);
-        if (it != idToIndexMap_.end()){
-            return it->second;
-        }
-        else {
-            return -1; // not automatable
-        }
-    }
-#endif
-    int numParameters() const {
-        return parameters.size();
-    }
-    // presets
-    void scanPresets();
-    int numPresets() const { return presets.size(); }
-    int findPreset(const std::string& name) const;
-    Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
-    int addPreset(Preset preset);
-    bool removePreset(int index, bool del = true);
-    bool renamePreset(int index, const std::string& newName);
-    std::string getPresetFolder(PresetType type, bool create = false) const;
-    PresetList presets;
-    // for thread-safety (if needed)
-    WriteLock writeLock();
-    ReadLock readLock() const;
-    // default programs
-    std::vector<std::string> programs;
-    int numPrograms() const {
-        return programs.size();
-    }
-    bool editor() const {
-        return flags & HasEditor;
-    }
-    bool synth() const {
-        return flags & IsSynth;
-    }
-    bool singlePrecision() const {
-        return flags & SinglePrecision;
-    }
-    bool doublePrecision() const {
-        return flags & DoublePrecision;
-    }
-    bool hasPrecision(ProcessPrecision precision) const {
-        if (precision == ProcessPrecision::Double) {
-            return doublePrecision();
-        }
-        else {
-            return singlePrecision();
-        }
-    }
-    bool midiInput() const {
-        return flags & MidiInput;
-    }
-    bool midiOutput() const {
-        return flags & MidiOutput;
-    }
-    bool sysexInput() const {
-        return flags & SysexInput;
-    }
-    bool sysexOutput() const {
-        return flags & SysexOutput;
-    }
-    bool bridged() const {
-        return flags & Bridged;
-    }
-    // flags
-    enum Flags {
-        HasEditor = 1 << 0,
-        IsSynth = 1 << 1,
-        SinglePrecision = 1 << 2,
-        DoublePrecision = 1 << 3,
-        MidiInput = 1 << 4,
-        MidiOutput = 1 << 5,
-        SysexInput = 1 << 6,
-        SysexOutput = 1 << 7,
-        Bridged = 1 << 8
-    };
-    uint32_t flags = 0;
- private:
-    std::weak_ptr<const IFactory> factory_;
-    std::string path_;
-    // param name to param index
-    std::unordered_map<std::string, int> paramMap_;
-#if USE_VST3
-    // param index to ID (VST3 only)
-    std::unordered_map<int, uint32_t> indexToIdMap_;
-    // param ID to index (VST3 only)
-    std::unordered_map<uint32_t, int> idToIndexMap_;
-#endif
-    PluginType type_;
-    union ID {
-        char uid[16];
-        int32_t id;
-    };
-    ID id_;
-    // helper methods
-    void sortPresets(bool userOnly = true);
-    mutable std::unique_ptr<SharedMutex> mutex;
-    mutable bool didCreatePresetFolder = false;
-};
-
 class IModule {
  public:
      // throws an Error exception on failure!
@@ -525,7 +290,7 @@ class Error : public std::exception {
 };
 
 struct ProbeResult {
-    PluginInfo::ptr plugin;
+    std::shared_ptr<PluginInfo> plugin;
     Error error;
     int index = 0;
     int total = 0;
@@ -548,16 +313,16 @@ class IFactory {
     static IFactory::ptr load(const std::string& path, bool probe = false);
 
     virtual ~IFactory() {}
-    virtual void addPlugin(PluginInfo::ptr desc) = 0;
-    virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
-    virtual PluginInfo::const_ptr findPlugin(const std::string& name) const = 0;
+    virtual void addPlugin(std::shared_ptr<PluginInfo> desc) = 0;
+    virtual std::shared_ptr<const PluginInfo> getPlugin(int index) const = 0;
+    virtual std::shared_ptr<const PluginInfo> findPlugin(const std::string& name) const = 0;
     virtual int numPlugins() const = 0;
 
     void probe(ProbeCallback callback){
         probeAsync(false)(std::move(callback));
     }
     virtual ProbeFuture probeAsync(bool nonblocking) = 0;
-    virtual PluginInfo::const_ptr probePlugin(int id) const = 0;
+    virtual std::shared_ptr<const PluginInfo> probePlugin(int id) const = 0;
 
     bool valid() const { return numPlugins() > 0; }
 

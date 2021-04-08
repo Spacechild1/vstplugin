@@ -1,4 +1,4 @@
-#include "Interface.h"
+#include "PluginInfo.h"
 #include "Utility.h"
 #include "Sync.h"
 
@@ -200,6 +200,51 @@ static void conformPath(std::string& path){
         }
     }
 }
+
+void PluginInfo::addParameter(Param param){
+    auto index = parameters.size();
+    // inverse mapping
+    paramMap_[param.name] = index;
+#if USE_VST3
+    // index -> ID mapping
+    indexToIdMap_[index] = param.id;
+    // ID -> index mapping
+    idToIndexMap_[param.id] = index;
+#endif
+    // add parameter
+    parameters.push_back(std::move(param));
+}
+
+int PluginInfo::findParam(const std::string& key) const {
+    auto it = paramMap_.find(key);
+    if (it != paramMap_.end()){
+        return it->second;
+    } else {
+        return -1;
+    }
+}
+
+#if USE_VST3
+uint32_t PluginInfo::getParamID(int index) const {
+    auto it = indexToIdMap_.find(index);
+    if (it != indexToIdMap_.end()){
+        return it->second;
+    }
+    else {
+        return 0; // throw?
+    }
+}
+
+int PluginInfo::getParamIndex(uint32_t _id) const {
+    auto it = idToIndexMap_.find(_id);
+    if (it != idToIndexMap_.end()){
+        return it->second;
+    }
+    else {
+        return -1; // not automatable
+    }
+}
+#endif
 
 void PluginInfo::scanPresets(){
     const std::vector<PresetType> presetTypes = {

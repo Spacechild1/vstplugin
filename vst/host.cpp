@@ -1,4 +1,5 @@
 #include "Interface.h"
+#include "PluginInfo.h"
 #include "Utility.h"
 #if USE_BRIDGE
 #include "PluginServer.h"
