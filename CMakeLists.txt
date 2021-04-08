@@ -61,6 +61,9 @@ endif()
 if (MINGW OR BUILD_WINEHOST)
     add_definitions("-municode")
 endif()
+if (WINVER)
+    add_definitions(-D_WIN32_WINNT=${WINVER})
+endif()
 
 # use std::filesystem?
 if(WIN32 OR MINGW OR BUILD_WINEHOST)
