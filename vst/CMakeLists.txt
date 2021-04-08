@@ -30,7 +30,7 @@ if (BRIDGE)
 endif()
 
 # platform specific VST sources and defines
-if (MINGW OR WIN32 OR BUILD_WINEHOST)
+if (WIN32 OR BUILD_WINEHOST)
     list(APPEND SRC "WindowWin32.h" "WindowWin32.cpp")
 elseif (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1)

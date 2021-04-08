@@ -47,26 +47,18 @@ if(LINUX AND CMAKE_COMPILER_IS_GNUCXX)
 endif()
 if(MINGW)
 	option(STATIC_LIBS "link with static libraries (libstdc++, libgcc and phread)" ON)
-endif()
-if(MINGW OR BUILD_WINEHOST)
+
 	set(CMAKE_EXECUTABLE_SUFFIX ".exe")
 endif()
 
 set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install directories")
 
-# Windows/MinGW/Wine: build with unicode support
-if (WIN32)
-    add_definitions(-DUNICODE)
-endif()
-if (MINGW OR BUILD_WINEHOST)
-    add_definitions("-municode")
-endif()
 if (WINVER)
     add_definitions(-D_WIN32_WINNT=${WINVER})
 endif()
 
 # use std::filesystem?
-if(WIN32 OR MINGW OR BUILD_WINEHOST)
+if(WIN32 OR BUILD_WINEHOST)
     set(STDFS ON CACHE BOOL "Use std::filesystem")
 else()
     set(STDFS OFF CACHE BOOL "Use std::filesystem")
@@ -74,8 +66,8 @@ endif()
 add_definitions(-DUSE_STDFS=$<BOOL:${STDFS}>)
 
 # use wmain?
-if (WIN32 OR MINGW OR BUILD_WINEHOST)
-    if (WIN32 OR MINGW)
+if (WIN32 OR BUILD_WINEHOST)
+    if (WIN32)
         set(WMAIN ON CACHE BOOL "Use wmain")
     else()
         # wmain gives me trouble on Wine
@@ -85,9 +77,8 @@ if (WIN32 OR MINGW OR BUILD_WINEHOST)
     add_definitions(-DUSE_WMAIN=$<BOOL:${WMAIN}>)
 endif()
 
-
 # Windows paths
-if (WIN32 OR MINGW)
+if (WIN32)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit
     set(_pf_x86 "ProgramFiles(x86)")
     if (DEFINED ENV{${_pf_x86}} AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
@@ -195,7 +186,7 @@ if (BRIDGE)
 endif()
 
 # Wine support on Linux
-if(NOT (WIN32 OR MINGW))
+if(NOT WIN32)
     option(WINE "Enable support for running Windows VSTs with Wine" ON)
     if (WINE)
         if (BRIDGE)
@@ -255,6 +246,10 @@ add_subdirectory(vst)
 set(HOST "host")
 add_executable(${HOST} "vst/${HOST}.cpp") # HOST exe
 target_link_libraries(${HOST} ${LIBS})
+if (WMAIN AND (MINGW OR BUILD_WINEHOST))
+    # -municode must be a linker flag!
+    target_link_libraries(${HOST} "-municode")
+endif()
 set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 
 # up to CMake 3.12 we can't install targets from another directory,
@@ -269,6 +264,10 @@ if (BUILD_HOST32)
     target_compile_options(${HOST32} PUBLIC "-m32")
     target_link_options(${HOST32} PUBLIC "-m32")
     target_link_libraries(${HOST32} ${LIBS32})
+    if (WMAIN AND (MINGW OR BUILD_WINEHOST))
+        # -municode must be a linker flag!
+        target_link_libraries(${HOST32} "-municode")
+    endif()
     set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
     # see above
     set(HOST32_PATH $<TARGET_FILE:${HOST32}>)

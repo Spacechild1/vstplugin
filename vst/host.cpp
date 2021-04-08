@@ -10,7 +10,7 @@
 using namespace vst;
 
 #ifndef USE_WMAIN
-# if defined(_WIN32) && !defined(__WINE__)
+# ifdef _WIN32
 #  define USE_WMAIN 1
 # else
 #  define USE_WMAIN 0
