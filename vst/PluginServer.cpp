@@ -604,6 +604,7 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
 #else
     parent_ = pid;
 #endif
+    LOG_DEBUG("PluginServer: parent " << parent_);
 
     shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);
@@ -686,14 +687,25 @@ void PluginServer::pollUIThread(){
 
 void PluginServer::checkParentAlive(){
 #if VST_HOST_SYSTEM == VST_WINDOWS
-    if (WaitForSingleObject(parent_, 0) != WAIT_TIMEOUT){
-        quit();
-    }
+    bool alive = WaitForSingleObject(parent_, 0) == WAIT_TIMEOUT;
 #else
-    if (getppid() != parent_){
+    auto parent = getppid();
+  #ifndef __WINE__
+    bool alive = parent == parent_;
+  #else
+    // We can't do this on Wine, because we might have been
+    // forked in a Wine launcher app.
+    // TODO find another way to check if the client is still alive.
+    bool alive = true;
+  #endif
+#endif
+    if (!alive){
+        LOG_WARNING("parent (" << parent_ << ") terminated!");
+    #if VST_HOST_SYSTEM != VST_WINDOWS
+        LOG_DEBUG("new parent ID: " << parent);
+    #endif
         quit();
     }
-#endif
 }
 
 void PluginServer::runThread(ShmChannel *channel){

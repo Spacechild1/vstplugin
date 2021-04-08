@@ -94,6 +94,8 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // spawn host process
     std::string hostApp = getHostApp(arch);
 #ifdef _WIN32
+    // get process Id
+    auto parent = GetCurrentProcessId();
     // get absolute path to host app
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
@@ -102,7 +104,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // spaces in file names.
     std::stringstream cmdLineStream;
     cmdLineStream << hostApp << " bridge "
-                  << GetCurrentProcessId() << " \"" << shm_.path() << "\"";
+                  << parent << " \"" << shm_.path() << "\"";
     // LOG_DEBUG(cmdLineStream.str());
     auto cmdLine = widen(cmdLineStream.str());
 
@@ -124,9 +126,11 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         throw Error(Error::SystemError, ss.str());
     }
 #else // Unix
+    // get parent Id
+    auto parent = getpid();
+    auto parentStr = std::to_string(parent);
     // get absolute path to host app
     std::string hostPath = getModuleDirectory() + "/" + hostApp;
-    auto parent = std::to_string(getpid());
     // fork
     pid_ = fork();
     if (pid_ == -1) {
@@ -149,13 +153,13 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
             auto winecmd = getWineCommand();
             // use PATH!
             if (execlp(winecmd, winecmd, hostPath.c_str(), "bridge",
-                      parent.c_str(), shm_.path().c_str(), nullptr) < 0){
+                      parentStr.c_str(), shm_.path().c_str(), nullptr) < 0){
                 LOG_ERROR("couldn't run '" << winecmd << "' (" << errorMessage(errno) << ")");
             }
         } else
     #endif
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  parent.c_str(), shm_.path().c_str(), nullptr) < 0){
+                  parentStr.c_str(), shm_.path().c_str(), nullptr) < 0){
             // LATER redirect child stderr to parent stdin
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }
