@@ -11,6 +11,12 @@ if(UNIX AND NOT APPLE AND NOT MINGW)
 	set(LINUX TRUE)
 endif()
 
+# some MinGW setups don't define WIN32!
+if (MINGW AND NOT WIN32)
+	message(WARNING "Your MinGW setup doesn't define WIN32")
+	set(WIN32 TRUE)
+endif()
+
 # build Wine host
 if (LINUX OR APPLE)
 	option(BUILD_WINEHOST "Build Wine host" OFF)
