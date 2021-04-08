@@ -30,6 +30,14 @@ endif()
 
 set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install directories")
 
+# build Windows versions with unicode support
+if (WIN32)
+    add_definitions(-DUNICODE)
+endif()
+if (MINGW OR BUILD_WINEHOST)
+    add_definitions("-municode")
+endif()
+
 # use std::filesystem?
 if(WIN32 OR MINGW OR BUILD_WINEHOST)
     set(STDFS ON CACHE BOOL "Use std::filesystem")
@@ -37,6 +45,19 @@ else()
     set(STDFS OFF CACHE BOOL "Use std::filesystem")
 endif()
 add_definitions(-DUSE_STDFS=$<BOOL:${STDFS}>)
+
+# use wmain?
+if (WIN32 OR MINGW OR BUILD_WINEHOST)
+    if (WIN32 OR MINGW)
+        set(WMAIN ON CACHE BOOL "Use wmain")
+    else()
+        # wmain gives me trouble on Wine
+        # (undefined reference to wWinMain)
+        set(WMAIN OFF CACHE BOOL "Use wmain")
+    endif()
+    add_definitions(-DUSE_WMAIN=$<BOOL:${WMAIN}>)
+endif()
+
 
 # Windows paths
 if (WIN32 OR MINGW)
@@ -204,10 +225,7 @@ set(HOST "host")
 add_executable(${HOST} "vst/${HOST}.cpp") # HOST exe
 target_link_libraries(${HOST} ${LIBS})
 set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
-if (MINGW)
-    # -municode for wmain and -mwindows to hide console window
-    target_link_libraries(${HOST} -municode)
-endif()
+
 # up to CMake 3.12 we can't install targets from another directory,
 # so we export the output file path and install it as a file.
 set(HOST_PATH $<TARGET_FILE:${HOST}>)

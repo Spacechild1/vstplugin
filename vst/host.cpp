@@ -9,8 +9,16 @@
 
 using namespace vst;
 
-#ifndef _WIN32
- #define shorten(x) x
+#ifndef USE_WMAIN
+# if defined(_WIN32) && !defined(__WINE__)
+#  define USE_WMAIN 1
+# else
+#  define USE_WMAIN 0
+# endif
+#endif
+
+#if !USE_WMAIN
+# define shorten(x) x
 #endif
 
 void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& path){
@@ -84,7 +92,7 @@ int bridge(int pid, const std::string& path){
 }
 #endif
 
-#ifdef _WIN32
+#if USE_WMAIN
 int wmain(int argc, const wchar_t *argv[]){
 #else
 int main(int argc, const char *argv[]) {
