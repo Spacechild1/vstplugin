@@ -73,7 +73,7 @@ variables:
     SUPERNOVA: 1
     STATIC_LIBS: 1
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends make cmake wget
+    - apt-get update && apt-get install -y --no-install-recommends make cmake wget git
       puredata-dev puredata
     - *script_deps
     - *script_cmake
