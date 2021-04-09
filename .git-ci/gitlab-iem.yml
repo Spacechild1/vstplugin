@@ -3,6 +3,7 @@
 #######################################################################
 
 variables:
+  JOBS: "all"
   PDVERSION: 0.51-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
@@ -69,6 +70,9 @@ variables:
   variables:
     SUPERNOVA: 1
     STATIC_LIBS: 1
+  only:
+    variables:
+      - $JOBS == "all"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
       make cmake wget git libx11-dev puredata-dev puredata
@@ -94,7 +98,7 @@ variables:
     BUILD_SC: 0
   only:
     variables:
-      - $WINEHOST
+      - $JOBS == "all" || $JOBS == "Linux_wine"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
       make cmake wget git libx11-dev libwine libwine-dev
@@ -109,6 +113,9 @@ variables:
   variables:
     SUPERNOVA: 1
     HOST32: 1
+  only:
+    variables:
+      - $JOBS == "all"
   before_script:
     - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}.mac.tar.gz
     - rm -rf /Applications/Pd*.app/
@@ -126,6 +133,9 @@ variables:
     SUPERNOVA: 1
     STATIC_LIBS: 1
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
+  only:
+    variables:
+      - $JOBS == "all"
   before_script:
     - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip ${PD_URL}
@@ -171,6 +181,9 @@ variables:
   image: debian:buster
   variables:
     DEKEN_ROOT: "yes"
+  only:
+    variables:
+      - $JOBS == "all"
   before_script:
     - apt-get update && apt-get --no-install-recommends -y install deken git zip
   script:
