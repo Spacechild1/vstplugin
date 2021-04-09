@@ -92,13 +92,16 @@ std::string getHostApp(CpuArch arch){
         return "host";
     #endif
     } else {
-        std::string host = std::string("host_") + cpuArchToString(arch);
-    #if defined(_WIN32)
-        host += ".exe";
-    #elif USE_WINE
-        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-            host += ".exe";
+    #if USE_WINE
+        if (arch == CpuArch::pe_i386){
+            return "host_i386.exe.so";
+        } else if (arch == CpuArch::pe_amd64){
+            return "host_amd64.exe.so";
         }
+    #endif
+        std::string host = std::string("host_") + cpuArchToString(arch);
+    #ifdef _WIN32
+        host += ".exe";
     #endif
         return host;
     }

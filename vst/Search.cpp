@@ -112,7 +112,7 @@ static std::vector<const char *> defaultSearchPaths = {
 };
 
 #if USE_WINE
-# define PROGRAMFILES(x) "/drive_c/Program Files/" x, "/drive_c/Program Files (x86)" x
+# define PROGRAMFILES(x) "/drive_c/Program Files/" x, "/drive_c/Program Files (x86)/" x
 
 static std::vector<const char *> defaultWineSearchPaths = {
 #if USE_VST2
