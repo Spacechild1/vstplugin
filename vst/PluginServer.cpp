@@ -695,8 +695,10 @@ void PluginServer::checkParentAlive(){
   #else
     // We can't do this on Wine, because we might have been
     // forked in a Wine launcher app.
-    // TODO find another way to check if the client is still alive.
-    bool alive = true;
+    // At least we can check for 1 (= reparented to init).
+    // NOTE that this is not 100% reliable, that's why we
+    // don't use this method for the other hosts.
+    bool alive = parent != 1;
   #endif
 #endif
     if (!alive){

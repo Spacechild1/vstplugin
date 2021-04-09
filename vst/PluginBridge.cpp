@@ -125,6 +125,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
+    auto child = pi_.dwProcessId;
 #else // Unix
     // get parent Id
     auto parent = getpid();
@@ -165,9 +166,11 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         }
         std::exit(EXIT_FAILURE);
     }
+    auto child = pid_;
 #endif
     alive_ = true;
-    LOG_DEBUG("PluginBridge: spawned subprocess");
+    LOG_DEBUG("PluginBridge: spawned subprocess (child: " << child
+              << ", parent: " << parent);
 
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginBridge *>(x)->pollUIThread();
