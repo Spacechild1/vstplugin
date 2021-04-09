@@ -150,25 +150,16 @@ const std::vector<std::string>& getDefaultSearchPaths() {
 #if USE_WINE
 const char * getWineCommand(){
     // users can override the 'wine' command with the
-    // 'VSTPLUGIN_WINE' environment variable
-    const char *cmd = getenv("VSTPLUGIN_WINE");
+    // 'WINELOADER' environment variable
+    const char *cmd = getenv("WINELOADER");
     return cmd ? cmd : "wine";
 }
 
 const char * getWineFolder(){
     // the default Wine folder is '~/.wine', but it can be
-    // override with environment variables.
-    // first try our custom variable:
-    const char *var = getenv("VSTPLUGIN_WINEPREFIX");
-    if (!var){
-        // then try the standard variable:
-        var = getenv("WINEPREFIX");
-    }
-    if (!var){
-        // finally use the default Wine folder
-        var = "~/.wine";
-    }
-    return var;
+    // overridden with the 'WINEPREFIX' environment variable
+    const char *prefix = getenv("WINEPREFIX");
+    return prefix ? prefix : "~/.wine";
 }
 #endif
 
