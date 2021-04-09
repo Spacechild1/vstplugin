@@ -103,7 +103,7 @@ variables:
       - $JOBS == "all" || $JOBS == "Linux_wine"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
-      make cmake wget git libx11-dev wine64-tools libwine libwine-dev
+      make cmake wget git libx11-dev wine64-tools wine
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - *script_cmake
