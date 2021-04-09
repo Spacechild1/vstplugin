@@ -11,6 +11,8 @@ if(UNIX AND NOT APPLE AND NOT MINGW)
 	set(LINUX TRUE)
 endif()
 
+message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
+
 # some MinGW setups don't define WIN32!
 if (MINGW AND NOT WIN32)
 	message(WARNING "Your MinGW setup doesn't define WIN32")
@@ -57,12 +59,6 @@ if(MINGW)
 	set(CMAKE_EXECUTABLE_SUFFIX ".exe")
 endif()
 
-if (BUILD_WINE)
-	set(CMAKE_INSTALL_PREFIX "" CACHE PATH "Prefix prepended to install directories")
-else()
-	set(CMAKE_INSTALL_PREFIX "" CACHE INTERNAL "Prefix prepended to install directories")
-endif()
-
 if (WINVER)
     add_definitions(-D_WIN32_WINNT=${WINVER})
 endif()
@@ -72,7 +68,7 @@ if (WIN32)
     # always use on Windows!
     set(STDFS ON)
 else()
-    if (LINUX)
+    if (LINUX AND NOT BUILD_WINE)
         set(STDFS ON CACHE BOOL "Use std::filesystem")
     else()
         # not available on older clang version on macOS.

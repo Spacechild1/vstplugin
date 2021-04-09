@@ -43,6 +43,10 @@ elseif(APPLE)
 else()
     set(PD_INSTALLDIR "/usr/local/lib/pd-externals" CACHE PATH "Installation directory")
 endif()
+if (NOT PD_INSTALLDIR)
+    # HACK: force relative path!
+    set(PD_INSTALLDIR ".")
+endif()
 message(STATUS "PD_INSTALLDIR: ${PD_INSTALLDIR}")
 
 # plugin extension

@@ -24,6 +24,10 @@ elseif(APPLE)
 else()
     set(SC_INSTALLDIR "~/.local/share/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
 endif()
+if (NOT SC_INSTALLDIR)
+    # HACK: force relative path!
+    set(SC_INSTALLDIR ".")
+endif()
 message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
 
 # plugin extension
