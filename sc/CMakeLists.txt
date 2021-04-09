@@ -17,7 +17,7 @@ include_directories(${SC_INCLUDEDIR}/common)
 
 # Installation path
 # install directory:
-if (WIN32 OR MINGW)
+if (WIN32)
     set(SC_INSTALLDIR "${LOCALAPPDATA}/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
 elseif(APPLE)
     set(SC_INSTALLDIR "~/Library/Application Support/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
@@ -28,7 +28,7 @@ message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
 
 # plugin extension
 set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
-if(APPLE OR MINGW OR WIN32)
+if(APPLE OR WIN32)
 set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
 endif()
 
