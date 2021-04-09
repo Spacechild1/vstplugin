@@ -12,6 +12,7 @@ variables:
   SCLIBNAME: VSTPlugin
   BUILD_PD: 1
   BUILD_SC: 1
+  WINE: 1
 
 ### script snippets
 
@@ -29,7 +30,7 @@ variables:
 .script:cmake: &script_cmake
   - prefix="$(pwd)/${CI_JOB_NAME%_*}"
   - cmake -H. -Bbuild -DCMAKE_INSTALL_PREFIX="${prefix}"
-   -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSTATIC_LIBS=${STATIC_LIBS}
+   -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSTATIC_LIBS=${STATIC_LIBS} -DWINE=${WINE}
    -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST32=${BUILD_HOST32}
    -DPD=${BUILD_PD} -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
    -DSC=${BUILD_SC} -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}"
@@ -92,6 +93,7 @@ variables:
   image: gcc
   variables:
     STATIC_LIBS: 1
+    WINE: 0
     BUILD_WINE: 1
     BUILD_HOST32: 0
     BUILD_PD: 0
@@ -101,7 +103,7 @@ variables:
       - $JOBS == "all" || $JOBS == "Linux_wine"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
-      make cmake wget git libx11-dev libwine libwine-dev
+      make cmake wget git libx11-dev wine64-tools libwine libwine-dev
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - *script_cmake
