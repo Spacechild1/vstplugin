@@ -32,7 +32,9 @@ class VST2Factory final : public PluginFactory {
  private:
     void doLoad();
     std::unique_ptr<VST2Plugin> doCreate(PluginInfo::const_ptr desc) const;
-    using EntryPoint = AEffect *(*)(audioMasterCallback);
+    // NOTE: Wine needs VSTCALLBACK ('__cdecl') even thought that's the default
+    // 32-bit calling convention and 64-bit only has a single calling convention. WTF!?
+    using EntryPoint = AEffect *(VSTCALLBACK *)(audioMasterCallback);
     EntryPoint entry_;
 };
 
