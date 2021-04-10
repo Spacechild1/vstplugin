@@ -34,17 +34,21 @@
 #define USE_VST3 1
 #endif
 
-#ifndef USE_BRIDGE
-#define USE_BRIDGE 1
+#if defined(__WINE__)
+# define USE_BRIDGE 1
+#else
+# ifndef USE_BRIDGE
+#  define USE_BRIDGE 1
+# endif
 #endif
 
-#if !defined(_WIN32)
-# ifndef USE_WINE
-#  define USE_WINE 1
-# endif
+#if defined(__WINE__)
+# define USE_WINE 0
+#elif defined(_WIN32) && USE_WINE
+# error "USE_WINE cannot be set on Windows!"
 #else
-# if USE_WINE
-#  error "USE_WINE cannot be set on Windows!"
+# ifndef USE_WINE
+#  define USE_WINE 0
 # endif
 #endif
 

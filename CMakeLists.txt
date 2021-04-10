@@ -20,15 +20,13 @@ if (MINGW AND NOT WIN32)
 endif()
 
 # build Wine host
-if (LINUX OR APPLE)
-	option(BUILD_WINE "Build Wine host" OFF)
-	if (BUILD_WINE)
-		set(CMAKE_C_COMPILER "winegcc")
-		set(CMAKE_CXX_COMPILER "wineg++")
-		message(STATUS "Build Wine host")
-	endif()
+if (LINUX)
+	option(BUILD_WINE "Build Wine host(s)" OFF)
 endif()
 if (BUILD_WINE)
+	set(CMAKE_C_COMPILER "winegcc")
+	set(CMAKE_CXX_COMPILER "wineg++")
+
 	if (LINUX)
 		add_definitions(-DVST_HOST_SYSTEM=VST_LINUX)
 	endif()
@@ -181,6 +179,9 @@ if (VST3)
     message(STATUS "VST3DIR: ${VST3DIR}")
 endif()
 
+# host app
+option(BUILD_HOST "Build host app (needed)" ON)
+
 # bit bridging
 option(BRIDGE "Enable plugin bridge" ON)
 add_definitions(-DUSE_BRIDGE=$<BOOL:${BRIDGE}>)
@@ -199,13 +200,13 @@ if (BRIDGE)
 endif()
 
 # Wine support on Linux
-if(NOT WIN32)
+if (LINUX)
     option(WINE "Enable support for running Windows VSTs with Wine" ON)
     if (WINE)
         if (BRIDGE)
             message(STATUS "Enable Wine support")
         else()
-            message(WARNING "Wine support doesn't work without plugin bridge (BRIDGE)")
+            message(WARNING "Wine support requires BRIDGE=ON")
         endif()
     endif()
     add_definitions(-DUSE_WINE=$<BOOL:${WINE}>)
@@ -246,8 +247,10 @@ endif()
 # vst library
 include_directories(vst)
 
-set(VST "vst")
-set(LIBS ${VST} ${VST_LIBS})
+if (TRUE)
+    set(VST "vst")
+    set(LIBS ${VST} ${VST_LIBS})
+endif()
 if (BUILD_HOST32)
     set(VST32 "vst32")
     set(LIBS32 ${VST32} ${VST_LIBS})
@@ -255,24 +258,26 @@ endif()
 
 add_subdirectory(vst)
 
-# host exe
-if (BUILD_WINE)
-    set(HOST "host_amd64")
-else()
-    set(HOST "host")
+# host
+if (BUILD_HOST)
+    if (BUILD_WINE)
+        set(HOST "host_amd64")
+    else()
+        set(HOST "host")
+    endif()
+    add_executable(${HOST} "vst/host.cpp") # HOST exe
+    target_link_libraries(${HOST} ${LIBS})
+    if (WMAIN AND (MINGW OR BUILD_WINE))
+        # -municode must be a linker flag!
+        target_link_libraries(${HOST} "-municode")
+    endif()
+    set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
+    # up to CMake 3.12 we can't install targets from another directory,
+    # so we export the output file path and install it as a file.
+    set(HOST_PATH $<TARGET_FILE:${HOST}>)
 endif()
-add_executable(${HOST} "vst/host.cpp") # HOST exe
-target_link_libraries(${HOST} ${LIBS})
-if (WMAIN AND (MINGW OR BUILD_WINE))
-    # -municode must be a linker flag!
-    target_link_libraries(${HOST} "-municode")
-endif()
-set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
 
-# up to CMake 3.12 we can't install targets from another directory,
-# so we export the output file path and install it as a file.
-set(HOST_PATH $<TARGET_FILE:${HOST}>)
-
+# 32-bit host
 if (BUILD_HOST32)
     message(STATUS "Build 32-bit host program")
     # is -m32 always Intel?
@@ -292,13 +297,13 @@ endif()
 
 # vstplugin~
 option(PD "build Pd external" ON)
-if (PD)
+if (PD AND NOT BUILD_WINE)
     add_subdirectory(pd)
 endif()
 
 # VSTPlugin
 option(SC "build SC plugin" ON)
-if (SC)
+if (SC AND NOT BUILD_WINE)
     add_subdirectory(sc)
 endif()
 
@@ -308,21 +313,10 @@ if (TESTSUITE)
     add_subdirectory(test)
 endif()
 
-if (BUILD_WINE)
-    if (NOT BRIDGE)
-        message(WARNING "BUILD_WINE=ON requires BRIDGE=ON")
-    endif()
-    if (WINE)
-        message(WARNING "BUILD_WINE=ON requires WINE=OFF")
-    endif()
-    if (PD)
-        message(WARNING "Shouldn't build Pd external with BUILD_WINE=ON")
-    endif()
-    if (SC)
-        message(WARNING "Shouldn't build SC plugin with BUILD_WINE=ON")
-    endif()
+# install wine hosts
+if (BUILD_WINE AND BUILD_HOST)
     install(PROGRAMS "${HOST_PATH}.exe.so" DESTINATION "${PROJECT}")
-    if (BUILD_HOST32)
-        install(PROGRAMS "${HOST32_PATH}.exe.so" DESTINATION "${PROJECT}")
-    endif()
+endif()
+if (BUILD_WINE AND BUILD_HOST32)
+    install(PROGRAMS "${HOST32_PATH}.exe.so" DESTINATION "${PROJECT}")
 endif()

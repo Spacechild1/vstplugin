@@ -38,8 +38,8 @@ endif()
 
 option(SUPERNOVA "Build plugins for supernova" OFF)
 if (SUPERNOVA)
-	# for <nova-tt/spin_lock.h>
-	include_directories(${SC_INCLUDEDIR}/external_libraries/nova-tt)
+    # for <nova-tt/spin_lock.h>
+    include_directories(${SC_INCLUDEDIR}/external_libraries/nova-tt)
     # for <boost/atomic.hpp>
     include_directories(${SC_INCLUDEDIR}/external_libraries/boost)
 endif()
@@ -58,7 +58,9 @@ if(SUPERNOVA)
 endif()
 
 # installation
-add_dependencies(${PROJECT} ${HOST})
+if (HOST)
+    add_dependencies(${PROJECT} ${HOST})
+endif()
 if (HOST32)
     add_dependencies(${PROJECT} ${HOST32})
 endif()
@@ -67,7 +69,9 @@ install(TARGETS ${PROJECT} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 if (SUPERNOVA)
     install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
-install(PROGRAMS "${HOST_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+if (HOST)
+    install(PROGRAMS "${HOST_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+endif()
 if (HOST32)
     install(PROGRAMS "${HOST32_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()

@@ -4,16 +4,15 @@
 
 variables:
   PROJECT: vstplugin
-  JOBS: all
+  JOBS: wine
   PDVERSION: 0.51-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
   SC_PATH: /tmp/supercollider
   PDLIBNAME: vstplugin~
   SCLIBNAME: VSTPlugin
-  BUILD_PD: 1
-  BUILD_SC: 1
-  WINE: 1
+  BUILD_HOST: 1
+  TESTSUITE: 1
 
 ### script snippets
 
@@ -32,10 +31,10 @@ variables:
   - prefix="$(pwd)/${CI_JOB_NAME%_*}"
   - cmake -H. -Bbuild -DCMAKE_INSTALL_PREFIX="${prefix}"
    -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSTATIC_LIBS=${STATIC_LIBS} -DWINE=${WINE}
-   -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST32=${BUILD_HOST32}
-   -DPD=${BUILD_PD} -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
-   -DSC=${BUILD_SC} -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}"
-  - echo "$(pwd)/${CI_JOB_NAME%_*}/"
+   -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST=${BUILD_HOST} -DBUILD_HOST32=${BUILD_HOST32}
+   -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
+   -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}"
+   -DTESTSUITE=${TESTSUITE}
 
 ### build snippets
 .script:make: &script_make
@@ -92,20 +91,19 @@ variables:
 .build:linux_wine: &build_linux_wine
   allow_failure: true
   extends: .build:script
-  image: gcc
+  image: registry.git.iem.at/devtools/docker/debiancross:amd64
   variables:
     STATIC_LIBS: 1
-    WINE: 0
     BUILD_WINE: 1
-    BUILD_HOST32: 0
-    BUILD_PD: 0
-    BUILD_SC: 0
+    TESTSUITE: 0
   only:
     variables:
-      - $JOBS == "all" || $JOBS == "Linux_wine"
+      - $JOBS == "all" || $JOBS == "wine"
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends
-      make cmake wget git libx11-dev wine64-tools wine
+    - DEB_TARGET_ARCH_BITS=$(dpkg-architecture ${TARGETDEBARCH:+-A} ${TARGETDEBARCH} -q DEB_TARGET_ARCH_BITS)
+    - test "x${DEB_TARGET_ARCH_BITS}" = "x32" && { BUILD_HOST=0; BUILD_HOST32=1; }
+    - apt-get update && apt-get install make cmake wget git libx11-dev
+      wine${DEB_TARGET_ARCH_BITS}-tools wine gcc-multilib g++-multilib
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - *script_cmake
@@ -198,14 +196,15 @@ variables:
           cp ./w64/$x/host.exe ./w32/$x/host_amd64.exe
         ; done
       ; fi
-# copy Wine host to linux package
-    - if [ -e ./Linux_wine ] && [ -e ./Linux ]; then
+# copy Wine hosts to linux package
+    - if [ -e ./Linux ]; then
         for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-          cp ./Linux_wine/${PROJECT}/host_amd64.exe.so ./Linux/${x}
+          [ -e ./Linux_wine ] && cp -r ./Linux_wine/${PROJECT}/. ./Linux/${x};
+          [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PROJECT}/. ./Linux/${x}
         ; done
       ; fi
-# HACK: remove Linux_wine folder because we don't want to package it
-    - rm -rf ./Linux_wine
+# HACK: remove Linux_wine folders because we don't want to package them
+    - rm -rf ./Linux_wine ./Linux_wine32
 # create zip files for all platform (e.g. vstplugin~_v0.3.0_w32.zip)
     - rm -f ./*.zip
     - for lib in ${PDLIBNAME} ${SCLIBNAME}; do
@@ -242,6 +241,10 @@ Linux_wine:
   extends:
     - .Linux_wine
     - .release
+Linux_wine32:
+  image: registry.git.iem.at/devtools/docker/debiancross:i386
+  extends:
+    - Linux_wine
 Darwin:
   extends:
     - .Darwin
@@ -272,6 +275,10 @@ Linux_wine_snapshot:
   extends:
     - .Linux_wine
     - .snapshot
+Linux_wine32_snapshot:
+  image: registry.git.iem.at/devtools/docker/debiancross:i386
+  extends:
+    - Linux_wine_snapshot
 Darwin_snapshot:
   extends:
     - .Darwin

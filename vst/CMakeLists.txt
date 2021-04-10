@@ -42,8 +42,10 @@ endif()
 
 # static library
 
-add_library(${VST} STATIC ${SRC})
-if (BUILD_HOST32)
+if (VST)
+    add_library(${VST} STATIC ${SRC})
+endif()
+if (VST32)
     add_library(${VST32} STATIC ${SRC})
     target_compile_options(${VST32} PUBLIC "-m32")
 endif()
