@@ -3,7 +3,8 @@
 #######################################################################
 
 variables:
-  JOBS: "all"
+  PROJECT: vstplugin
+  JOBS: all
   PDVERSION: 0.51-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
@@ -54,6 +55,7 @@ variables:
     paths:
       - "${CI_JOB_NAME%_*}/${PDLIBNAME}"
       - "${CI_JOB_NAME%_*}/${SCLIBNAME}"
+      - "${CI_JOB_NAME%_*}/${PROJECT}"
 
 .snapshot:
   except:
@@ -196,6 +198,14 @@ variables:
           cp ./w64/$x/host.exe ./w32/$x/host_amd64.exe
         ; done
       ; fi
+# copy Wine host to linux package
+    - if [ -e ./Linux_wine ] && [ -e ./Linux ]; then
+        for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+          cp ./Linux_wine/${PROJECT}/host_amd64.exe.so ./Linux/${x}
+        ; done
+      ; fi
+# HACK: remove Linux_wine folder because we don't want to package it
+    - rm -rf ./Linux_wine
 # create zip files for all platform (e.g. vstplugin~_v0.3.0_w32.zip)
     - rm -f ./*.zip
     - for lib in ${PDLIBNAME} ${SCLIBNAME}; do
