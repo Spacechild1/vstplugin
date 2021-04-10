@@ -38,7 +38,7 @@ constexpr size_t align_to(size_t s, size_t alignment){
 
 
 ShmChannel::ShmChannel(Type type, int32_t size,
-                                         const std::string& name)
+                       const std::string& name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
 {
     auto total = sizeof(Header) + sizeof(Data) + size;
@@ -296,6 +296,7 @@ void ShmChannel::initEvent(Handle& event, const char *data){
     SHM_DEBUG("ShmChannel: opened semaphore " << data);
 #else // Linux
     // unnamed semaphore in shared memory segment
+    static_assert(sizeof(sem_t) <= sizeof(Header::event1), "event structure too small!");
     event.reset((void *)data);
     if (owner_){
         // only init the semaphore once!
@@ -305,6 +306,14 @@ void ShmChannel::initEvent(Handle& event, const char *data){
         }
         SHM_DEBUG("ShmChannel: created semaphore");
     }
+  #if 1
+    const auto size = sizeof(Header::event1);
+    char buf[(size * 2) + 1];
+    for (size_t i = 0; i < size; ++i){
+        sprintf(&buf[2 * i], "%02X", data[i]);
+    }
+    SHM_DEBUG(buf);
+  #endif
 #endif
 }
 
@@ -405,6 +414,8 @@ void ShmInterface::create(){
     snprintf(path, sizeof(path), "/vst_shm_%p", this);
 
     openShm(path, true);
+    SHM_DEBUG("ShmInterface: created " << path);
+    SHM_DEBUG("total size: " << size_);
 
     auto header = reinterpret_cast<Header *>(data_);
     memset(header, 0, sizeof(Header));
@@ -605,9 +616,10 @@ void ShmInterface::closeShm(){
 }
 
 void ShmInterface::getVersion(int& major, int& minor, int& patch) const {
-    major = reinterpret_cast<const Header *>(data_)->versionMajor;
-    minor = reinterpret_cast<const Header *>(data_)->versionMinor;
-    patch = reinterpret_cast<const Header *>(data_)->versionPatch;
+    auto header = reinterpret_cast<const Header *>(data_);
+    major = header->versionMajor;
+    minor = header->versionMinor;
+    patch = header->versionPatch;
 }
 
 } // vst

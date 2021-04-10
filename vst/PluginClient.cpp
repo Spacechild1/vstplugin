@@ -59,8 +59,10 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
 
     auto chn = bridge_->getNRTChannel();
     if (chn.addCommand(cmd, cmdSize)){
+        LOG_DEBUG("PluginClient: wait for Server");
         chn.send();
     } else {
+        LOG_DEBUG("PluginClient: send info via tmp file");
         // info too large, try transmit via tmp file
         std::stringstream ss;
         ss << getTmpDirectory() << "/vst_" << (void *)this;
@@ -78,6 +80,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
                         "PluginClient: couldn't send plugin info");
         }
 
+        LOG_DEBUG("PluginClient: wait for Server");
         chn.send(); // tmp file is still in scope!
     }
 
@@ -85,6 +88,8 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     if (!bridge_->alive()){
         throw Error(Error::PluginError, "plugin crashed");
     }
+
+    LOG_DEBUG("PluginClient: plugin created");
 
     // collect replies (after check!)
     const ShmCommand *reply;
