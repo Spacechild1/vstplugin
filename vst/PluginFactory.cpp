@@ -476,7 +476,17 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                     result.error = e;
                 }
             } else {
-                result.error = Error(Error::SystemError, "couldn't read temp file!");
+            #if USE_WINE
+                // On Wine, the child process (wine) might exit with 0
+                // even though the grandchild (= host) has crashed.
+                // The missing temp file is the only indicator we have...
+                if (arch() == CpuArch::pe_amd64 || arch() == CpuArch::pe_i386){
+                    result.error = Error(Error::Crash);
+                } else
+            #endif
+                {
+                    result.error = Error(Error::SystemError, "couldn't read temp file!");
+                }
             }
         } else if (code == EXIT_FAILURE) {
             // get error from temp file
