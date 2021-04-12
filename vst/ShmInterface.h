@@ -1,6 +1,6 @@
 #pragma once
 
-// only for VST_HOST_SYSTEM
+// for VST_HOST_SYSTEM
 #include "Interface.h"
 
 #include <stdint.h>
@@ -14,6 +14,17 @@
 // In fact, this is the very reason why we have to compile
 // the host with wineg++ in the first place (instead of just
 // using a regular Windows build).
+//
+
+#ifndef USE_SHM_FUTEX
+# if VST_HOST_SYSTEM == VST_LINUX
+  // unnamed semaphores don't work for IPC between apps compiled
+  // for different CPU architectures, so we have to use a futex instead.
+#  define USE_SHM_FUTEX 1
+# else
+#  define USE_SHM_FUTEX 0
+# endif
+#endif
 
 namespace vst {
 
@@ -24,14 +35,20 @@ class ShmChannel {
     // immutable data
     struct Header {
         uint32_t size;
-        uint32_t offset; // = sizeof(Header) = 128
+        uint32_t offset; // = sizeof(Header) = 128 resp. 64
         uint32_t type;
         char name[20];
+    #if USE_SHM_FUTEX
+        std::atomic<uint32_t> event1{0};
+        std::atomic<uint32_t> event2{0};
+        char padding[24];
+    #else
         // holds event/semaphore names (Windows/macOS)
         // or semaphore objects (Linux)
         char event1[32];
         char event2[32];
-        char reserved[32];
+        char padding[32];
+    #endif
     };
     // mutable data
     struct Data {
@@ -103,7 +120,7 @@ class ShmChannel {
     uint32_t rdhead_ = 0;
     uint32_t wrhead_ = 0;
     // helper methods
-    void initEvent(Handle& event, const char *data);
+    void initEvent(Handle& event, void *data);
     void postEvent(void *event);
     void waitEvent(void *event);
 };

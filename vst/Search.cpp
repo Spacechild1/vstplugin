@@ -67,7 +67,8 @@ const char * getBundleBinaryPath(){
 
 #ifdef _WIN32
 # if USE_BRIDGE
-   #define PROGRAMFILES(x) "%ProgramW6432%\\" x, "%ProgramFiles(x86)%\\" x
+   // 64-bit folder first (in case we try to find a single plugin)
+#  define PROGRAMFILES(x) "%ProgramW6432%\\" x, "%ProgramFiles(x86)%\\" x
 # else
 #  ifdef _WIN64 // 64 bit
 #   define PROGRAMFILES(x) "%ProgramFiles%\\" x
@@ -112,6 +113,7 @@ static std::vector<const char *> defaultSearchPaths = {
 };
 
 #if USE_WINE
+// 64-bit folder first (in case we try to find a single plugin)
 # define PROGRAMFILES(x) "/drive_c/Program Files/" x, "/drive_c/Program Files (x86)/" x
 
 static std::vector<const char *> defaultWineSearchPaths = {
