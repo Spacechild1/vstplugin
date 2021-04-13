@@ -217,37 +217,50 @@ void PluginBridge::checkStatus(bool wait){
         DWORD code = 0;
         if (GetExitCodeProcess(pi_.hProcess, &code)){
             if (code == EXIT_SUCCESS){
-                LOG_DEBUG("host process exited successfully");
+                LOG_DEBUG("Watchdog: subprocess exited successfully");
             } else if (code == EXIT_FAILURE){
                 // LATER get the actual Error from the child process.
-                LOG_ERROR("host process exited with failure");
+                LOG_WARNING("Watchdog: subprocess exited with failure");
             } else {
-                LOG_ERROR("host process crashed!");
+                LOG_WARNING("Watchdog: subprocess crashed!");
             }
         } else {
-            LOG_ERROR("couldn't retrieve exit code for host process!");
+            LOG_ERROR("Watchdog: couldn't retrieve exit code for subprocess!");
         }
     } else {
-        LOG_ERROR("WaitForSingleObject() failed");
+        LOG_ERROR("Watchdog: WaitForSingleObject() failed: "
+                  + errorMessage(GetLastError()));
     }
 #else
-    int code = -1;
     int status = 0;
-    if (waitpid(pid_, &status, wait ? 0 : WNOHANG) == 0){
+    auto ret = waitpid(pid_, &status, wait ? 0 : WNOHANG);
+    if (ret == 0){
         return; // still running
-    }
-    if (WIFEXITED(status)) {
-        code = WEXITSTATUS(status);
-        if (code == EXIT_SUCCESS){
-            LOG_DEBUG("host process exited successfully");
-        } else if (code == EXIT_FAILURE){
-            // LATER get the actual Error from the child process.
-            LOG_ERROR("host process exited with failure");
+    } else if (ret > 0){
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code == EXIT_SUCCESS){
+                LOG_DEBUG("Watchdog: subprocess exited successfully");
+            } else if (code == EXIT_FAILURE){
+                // LATER get the actual Error from the child process.
+                LOG_WARNING("Watchdog: subprocess exited with failure");
+            } else {
+                LOG_WARNING("Watchdog: subprocess crashed!");
+            }
+        } else if (WIFSIGNALED(status)){
+            auto sig = WTERMSIG(status);
+            LOG_WARNING("Watchdog: subprocess was terminated with signal "
+                        << sig << " (" << strsignal(sig) << ")");
+        } else if (WIFSTOPPED(status)){
+            LOG_WARNING("Watchdog: subprocess was stopped with signal "
+                        << WSTOPSIG(status));
+        } else if (WIFCONTINUED(status)){
+            LOG_VERBOSE("Watchdog: subprocess continued");
         } else {
-            LOG_ERROR("host process crashed!");
+            LOG_ERROR("Watchdog: unknown status (" << status << ")");
         }
     } else {
-        LOG_ERROR("couldn't get exit status");
+        LOG_ERROR("Watchdog: waitpid() failed: " << errorMessage(errno));
     }
 #endif
 
@@ -357,14 +370,12 @@ RTChannel PluginBridge::getRTChannel(){
             // lock the first spinlock and the plugin server will only
             // use a single thread as well.
 
-            // modulo is optimized to bitwise AND
-            // if maxNumThreads is power of 2!
-            index = counter.load(std::memory_order_acquire)
-                    % maxNumThreads;
+            // modulo is optimized to bitwise AND if maxNumThreads is power of 2!
+            index = counter.load(std::memory_order_acquire) % maxNumThreads;
             if (locks_[index].try_lock()){
                 break;
             }
-            ++counter; // atomic increment
+            counter.fetch_add(1);
         }
         return RTChannel(shm_.getChannel(index + 3),
                          std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));

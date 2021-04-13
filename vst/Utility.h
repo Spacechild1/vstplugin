@@ -168,6 +168,10 @@ std::string fileBaseName(const std::string& path);
 
 std::string errorMessage(int err);
 
+#ifndef _WIN32
+const char *strsignal(int sig);
+#endif
+
 //--------------------------------------------------------------------------------------
 
 enum class CpuArch {

@@ -8,6 +8,7 @@
 #else
 # include <stdlib.h>
 # include <string.h>
+# include <signal.h>
 #endif
 
 #if VST_HOST_SYSTEM != VST_WINDOWS
@@ -314,6 +315,31 @@ std::string errorMessage(int err){
     ss << " [" << err << "]";
     return ss.str();
 }
+
+#ifndef _WIN32
+#define MATCH(x) case x: return #x;
+const char *strsignal(int sig){
+    switch (sig) {
+    MATCH(SIGINT)
+    MATCH(SIGILL)
+    MATCH(SIGABRT)
+    MATCH(SIGFPE)
+    MATCH(SIGSEGV)
+    MATCH(SIGTERM)
+    MATCH(SIGHUP)
+    MATCH(SIGQUIT)
+    MATCH(SIGTRAP)
+    MATCH(SIGKILL)
+    MATCH(SIGBUS)
+    MATCH(SIGSYS)
+    MATCH(SIGPIPE)
+    MATCH(SIGALRM)
+    default:
+        return "unknown";
+    }
+}
+#undef MATCH
+#endif
 
 void setProcessPriority(Priority p){
 #if VST_HOST_SYSTEM == VST_WINDOWS
