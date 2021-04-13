@@ -530,13 +530,18 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
             // just post names of valid plugins
             if (verbose) Print("%s\n", pluginPath.c_str());
             auto numPlugins = factory->numPlugins();
+            // add and post plugins
             if (numPlugins == 1) {
                 addPlugin(factory->getPlugin(0));
             } else {
                 for (int i = 0; i < numPlugins; ++i) {
-                    // add and post plugins
                     addPlugin(factory->getPlugin(i), i, numPlugins);
                 }
+            }
+            // make sure we have the plugin keys!
+            for (int i = 0; i < numPlugins; ++i){
+                auto plugin = factory->getPlugin(i);
+                gPluginManager.addPlugin(makeKey(*plugin), plugin);
             }
         } else {
             // probe (will post results and add plugins)

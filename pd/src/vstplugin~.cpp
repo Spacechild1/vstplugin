@@ -670,6 +670,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
             // just post paths of valid plugins
             PdLog<async> log(PD_DEBUG, "%s", factory->path().c_str());
             auto numPlugins = factory->numPlugins();
+            // post and add plugins
             if (numPlugins == 1){
                 addPlugin(*factory->getPlugin(0));
             } else {
@@ -677,6 +678,14 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
                 for (int i = 0; i < numPlugins; ++i){
                     addPlugin(*factory->getPlugin(i), i, numPlugins);
                 }
+            }
+            // make sure we have the plugin keys!
+            for (int i = 0; i < numPlugins; ++i){
+                auto plugin = factory->getPlugin(i);
+                auto key = makeKey(*plugin);
+                gPluginManager.addPlugin(key, plugin);
+                bash_name(key); // also add bashed version!
+                gPluginManager.addPlugin(key, plugin);
             }
         } else {
             // probe (will post results and add plugins)
