@@ -480,7 +480,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                 // On Wine, the child process (wine) might exit with 0
                 // even though the grandchild (= host) has crashed.
                 // The missing temp file is the only indicator we have...
-                if (arch() == CpuArch::pe_amd64 || arch() == CpuArch::pe_i386){
+                if (desc->arch() == CpuArch::pe_amd64 || desc->arch() == CpuArch::pe_i386){
                     result.error = Error(Error::Crash);
                 } else
             #endif
