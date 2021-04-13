@@ -21,6 +21,7 @@ struct PluginInfo final {
 
     void setFactory(std::shared_ptr<const IFactory> factory);
     const std::string& path() const { return path_; }
+    CpuArch arch() const;
     // create new instances
     // throws an Error exception on failure!
     IPlugin::ptr create(bool editor, bool threaded, RunMode mode = RunMode::Auto) const;

@@ -121,6 +121,11 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     factory_ = std::move(factory);
 }
 
+CpuArch PluginInfo::arch() const {
+    auto factory = factory_.lock();
+    return factory ? factory->arch() : CpuArch::unknown;
+}
+
 // ThreadedPlugin.cpp
 IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
 
