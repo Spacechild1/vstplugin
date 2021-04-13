@@ -2794,6 +2794,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     if (save){
         writeIniFile();
     }
+#if 1
+    // filter duplicate/stale plugins
+    plugins.erase(std::remove_if(plugins.begin(), plugins.end(), [](auto& p){
+        return gPluginManager.findPlugin(makeKey(*p)) != p;
+    }), plugins.end());
+#endif
     // write new info to file (only for local Servers) or buffer
     if (data->path[0]) {
         // write to file
