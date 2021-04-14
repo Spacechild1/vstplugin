@@ -653,7 +653,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
                     it++;
                 }
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
     };
 
