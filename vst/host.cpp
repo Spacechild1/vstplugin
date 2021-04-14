@@ -7,6 +7,13 @@
 
 #include <stdlib.h>
 
+#if !defined(_WIN32) || defined(__WINE__)
+# define USE_ALARM 1
+# include <signal.h>
+#else
+# define USE_ALARM 0
+#endif
+
 using namespace vst;
 
 #ifndef USE_WMAIN
@@ -36,10 +43,20 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 int probe(const std::string& pluginPath, int pluginIndex,
-          const std::string& filePath)
+          const std::string& filePath, float timeout)
 {
     setProcessPriority(Priority::Low);
     setThreadPriority(Priority::Low);
+
+#if USE_ALARM
+    if (timeout > 0){
+        signal(SIGALRM, [](int){
+            LOG_WARNING("probe timed out");
+            std::exit(EXIT_FAILURE);
+        });
+        alarm(timeout + 0.5); // round up
+    }
+#endif
 
     LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
@@ -111,8 +128,13 @@ int main(int argc, const char *argv[]) {
                 index = -1; // non-numeric argument
             }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
-
-            return probe(path, index, file);
+            float timeout;
+            try {
+                timeout = argc > 3 ? std::stof(argv[3]) : 0.f;
+            } catch (...){
+                timeout = 0.f;
+            }
+            return probe(path, index, file, timeout);
         }
     #if USE_BRIDGE
         else if (verb == "bridge" && argc >= 2){

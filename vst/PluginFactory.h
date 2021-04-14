@@ -4,6 +4,12 @@
 #include "PluginInfo.h"
 #include "Utility.h"
 
+// probe timeout in seconds
+// 0: infinite
+#ifndef PROBE_TIMEOUT
+# define PROBE_TIMEOUT 10
+#endif
+
 namespace vst {
 
 class PluginFactory :

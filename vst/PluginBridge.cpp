@@ -252,9 +252,11 @@ void PluginBridge::checkStatus(bool wait){
             LOG_WARNING("Watchdog: subprocess was terminated with signal "
                         << sig << " (" << strsignal(sig) << ")");
         } else if (WIFSTOPPED(status)){
+            auto sig = WTERMSIG(status);
             LOG_WARNING("Watchdog: subprocess was stopped with signal "
-                        << WSTOPSIG(status));
+                        << sig << " (" << strsignal(sig) << ")");
         } else if (WIFCONTINUED(status)){
+            // FIXME what should be do here?
             LOG_VERBOSE("Watchdog: subprocess continued");
         } else {
             LOG_ERROR("Watchdog: unknown status (" << status << ")");

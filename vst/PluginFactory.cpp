@@ -344,6 +344,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     std::string tmpPath = ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
     std::string hostApp = getHostApp(arch_);
+    // for non-blocking timeout
+    auto start = std::chrono::system_clock::now();
 #ifdef _WIN32
     // get absolute path to host app
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
@@ -370,19 +372,34 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         throw Error(Error::SystemError, ss.str());
     }
     auto wait = [pi, nonblocking](DWORD& code){
-        auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : INFINITE);
+        const DWORD timeout = (PROBE_TIMEOUT > 0) ? PROBE_TIMEOUT * 1000 : INFINITE;
+        auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : timeout);
         if (res == WAIT_TIMEOUT){
-            return false;
+            if (nonblocking){
+                return false;
+            } else {
+                if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
+                    LOG_DEBUG("terminated hanging subprocess");
+                } else {
+                    LOG_ERROR("couldn't terminate hanging subprocess: "
+                              << errorMessage(GetLastError()));
+                }
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                std::stringstream msg;
+                msg << "subprocess timed out after " << PROBE_TIMEOUT << " seconds!";
+                throw Error(Error::SystemError, msg.str());
+            }
         } else if (res == WAIT_OBJECT_0){
             if (!GetExitCodeProcess(pi.hProcess, &code)){
                 CloseHandle(pi.hProcess);
                 CloseHandle(pi.hThread);
-                throw Error(Error::SystemError, "couldn't retrieve exit code for host process!");
+                throw Error(Error::SystemError, "couldn't retrieve exit code for subprocess!");
             }
         } else {
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
-            throw Error(Error::SystemError, "couldn't wait for host process!");
+            throw Error(Error::SystemError, "WaitForSingleObject() failed: " + errorMessage(GetLastError()));
         }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -391,6 +408,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
 #else // Unix
     // get absolute path to host app
     std::string hostPath = getModuleDirectory() + "/" + hostApp;
+    // timeout
+    auto timeout = std::to_string(PROBE_TIMEOUT);
     // fork
     pid_t pid = fork();
     if (pid == -1) {
@@ -406,31 +425,27 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
-        // arguments: host probe <plugin_path> <plugin_id> <file_path>
+        // arguments: host probe <plugin_path> <plugin_id> <file_path> [timeout]
     #if USE_WINE
         if (arch_ == CpuArch::pe_i386 || arch_ == CpuArch::pe_amd64){
-            // the wine command can be set with a environment variable
-            const char *winecmd = getenv("VSTPLUGIN_WINE");
-            if (!winecmd){
-                winecmd = "wine";
-            }
+            const char *winecmd = getWineCommand();
             // use PATH!
-            if (execlp(winecmd, winecmd, hostPath.c_str(), "probe",
-                       path().c_str(), idString, tmpPath.c_str(), nullptr) < 0) {
+            if (execlp(winecmd, winecmd, hostPath.c_str(), "probe", path().c_str(),
+                       idString, tmpPath.c_str(), timeout.c_str(), nullptr) < 0) {
                 // LATER redirect child stderr to parent stdin
                 LOG_ERROR("couldn't run 'wine' (" << errorMessage(errno) << ")");
             }
         } else
     #endif
-        if (execl(hostPath.c_str(), hostApp.c_str(), "probe",
-                  path().c_str(), idString, tmpPath.c_str(), nullptr) < 0) {
+        if (execl(hostPath.c_str(), hostApp.c_str(), "probe", path().c_str(),
+                  idString, tmpPath.c_str(), timeout.c_str(), nullptr) < 0) {
             // write error to temp file
             int err = errno;
             File file(tmpPath, File::WRITE);
             if (file.is_open()){
                 file << static_cast<int>(Error::SystemError) << "\n";
-                file << "couldn't open host process " << hostApp
-                     << " (" << errorMessage(err) << ")\n";
+                file << "couldn't run subprocess " << hostApp
+                     << ": " << errorMessage(err) << "\n";
             }
         }
         std::exit(EXIT_FAILURE);
@@ -443,28 +458,83 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         }
         if (WIFEXITED(status)) {
             code = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)){
+            auto sig = WTERMSIG(status);
+            std::stringstream msg;
+            msg << "subprocess was terminated with signal "
+               << sig << " (" << strsignal(sig) << ")";
+            throw Error(Error::SystemError, msg.str());
+        } else if (WIFSTOPPED(status)){
+            auto sig = WSTOPSIG(status);
+            std::stringstream msg;
+            msg << "subprocess was stopped with signal "
+               << sig << " (" << strsignal(sig) << ")";
+            throw Error(Error::SystemError, msg.str());
+        } else if (WIFCONTINUED(status)){
+            // FIXME what should be do here?
+            throw Error(Error::SystemError, "subprocess continued");
         } else {
-            code = -1;
+            std::stringstream msg;
+            msg << "unknown exit status (" << status << ")";
+            throw Error(Error::SystemError, msg.str());
         }
         return true;
     };
 #endif
     return [desc=std::move(desc),
             tmpPath=std::move(tmpPath),
-            wait=std::move(wait)]
+            wait=std::move(wait),
+        #ifdef _WIN32
+            pi,
+        #else
+            pid,
+        #endif
+            start]
             (ProbeResult& result){
     #ifdef _WIN32
         DWORD code;
     #else
         int code;
     #endif
+        result.plugin = desc;
+        result.total = 1;
         // wait for process to finish
         // (returns false when nonblocking and still running)
-        if (!wait(code)){
-            return false;
+        try {
+            if (!wait(code)){
+                if (PROBE_TIMEOUT > 0) {
+                    auto now = std::chrono::system_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
+                    auto elapsed = duration.count() * 0.001;
+                    if (elapsed > PROBE_TIMEOUT){
+                    #ifdef _WIN32
+                        if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
+                            LOG_DEBUG("terminated hanging subprocess");
+                        } else {
+                            LOG_ERROR("couldn't terminate hanging subprocess: "
+                                      << errorMessage(GetLastError()));
+                        }
+                        CloseHandle(pi.hProcess);
+                        CloseHandle(pi.hThread);
+                    #else
+                        if (kill(pid, SIGTERM) == 0){
+                            LOG_DEBUG("terminated hanging subprocess");
+                        } else {
+                            LOG_ERROR("couldn't terminate hanging subprocess: "
+                                      << errorMessage(errno));
+                        }
+                    #endif
+                        std::stringstream msg;
+                        msg << "subprocess timed out after " << PROBE_TIMEOUT << " seconds!";
+                        throw Error(Error::SystemError, msg.str());
+                    }
+                }
+                return false;
+            }
+        } catch (const Error& e){
+            result.error = e;
+            return true;
         }
-        result.plugin = std::move(desc);
-        result.total = 1;
         /// LOG_DEBUG("return code: " << ret);
         TmpFile file(tmpPath); // removes the file on destruction
         if (code == EXIT_SUCCESS) {
@@ -481,7 +551,12 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                 // even though the grandchild (= host) has crashed.
                 // The missing temp file is the only indicator we have...
                 if (desc->arch() == CpuArch::pe_amd64 || desc->arch() == CpuArch::pe_i386){
+                #if 1
+                    result.error = Error(Error::SystemError,
+                                         "couldn't read temp file (plugin crashed?)");
+                #else
                     result.error = Error(Error::Crash);
+                #endif
                 } else
             #endif
                 {
