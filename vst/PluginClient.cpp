@@ -475,7 +475,13 @@ int PluginClient::getLatencySamples(){
 void PluginClient::setListener(IPluginListener::ptr listener) {
     listener_ = listener;
     if (listener){
-        bridge_->addUIClient(id_, listener);
+        if (bridge_->alive()){
+            bridge_->addUIClient(id_, listener);
+        } else {
+            // in case the plugin has crashed during setup,
+            // but we didn't have a chance to get a notification
+            listener->pluginCrashed();
+        }
     } else {
         bridge_->removeUIClient(id_);
     }

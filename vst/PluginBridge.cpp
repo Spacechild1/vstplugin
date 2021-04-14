@@ -278,6 +278,7 @@ void PluginBridge::checkStatus(bool wait){
 
     if (wasAlive){
         // notify all clients
+        ScopedLock lock(clientMutex_);
         for (auto& it : clients_){
             auto client = it.second.lock();
             if (client){
