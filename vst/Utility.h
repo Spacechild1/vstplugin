@@ -52,7 +52,7 @@
 #define LOGLEVEL 0
 #endif
 
-#define DO_LOG(x) (vst::Log() << x)
+#define DO_LOG(x) do { vst::Log() << x; } while(false)
 
 #if LOGLEVEL >= 0
 #define LOG_ERROR(x) DO_LOG(x)
