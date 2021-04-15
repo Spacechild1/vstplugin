@@ -15,15 +15,49 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
   set/get the plugin state as raw data to build your own preset management
 * MIDI input/output
 * basic sequencing support (for arpeggiators, sequencers etc.)
-* bit bridging and sandboxing
+* bit-bridging and sandboxing
+* use Windows plugins on Linux (with Wine)
 * multithreading
-
-**NOTE:** It is now possible to load 32-bit VST plugins with a 64-bit version of [vstplugin~] / VSTPlugin.scx and vice versa,
-but the required bit bridging is experimental and incurs some CPU overhead.
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
 Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues
+
+---
+
+### Bridging/sandboxing
+
+Since v0.4 it is possible to run 32-bit VST plugins with a 64-bit version of Pd/Supercollider and vice versa.
+
+If vstplugin finds a native and a bridged plugin with the same name, the latter one is ignored.
+
+#### Windows
+
+On Windows, this is very useful if you want to keep using your old 32-bit plugins (which might never see an update).
+
+By default, vstplugin always searches for plugins in the 32-bit and 64-bit VST directories.
+
+#### macOS
+
+On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 (Catalina)
+dropped 32-bit support. However, in the future bit bridging might become necessary again when audio software
+is ported to ARM for the new M1 MacBooks.
+
+#### Linux
+
+On Linux, classic bit-bridging is not very common because plugins are either open source, so they can be built from source,
+or they are recent enough to provide 64-bit versions.
+
+However, the plugin bridge can be used to run Windows plugins on Linux! You need to have Wine installed on your system.
+Unfortunately, there are several different Wine versions (stable, development, staging, etc.) and they are not 100% compatible.
+The binaries that are available at https://git.iem.at/pd/vstplugin/-/releases are built against 'wine-stable' as shipped with Debian.
+If you want to use a newer Wine version, you might have to build vstplugin from source.
+
+vstplugin searches for plugins in the standard Windows VST directories inside the 'drive_c' directory of your Wine folder
+The default Wine folder is '~/.wine' and can be overriden with the $WINEPREFIX environment variable;
+the default Wine loader is 'wine' and can be overriden with the $WINEPREFIX environment variable.
+
+WARNING: The Wine plugin bridge is still experimental and some plugins won't work as expected.
 
 ---
 

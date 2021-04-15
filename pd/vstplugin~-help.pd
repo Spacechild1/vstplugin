@@ -705,7 +705,7 @@ to build your own preset management in Pd:, f 49;
 #X restore 274 510 pd preset;
 #X f 17;
 #X msg 216 295 print;
-#N canvas 513 68 786 701 search 0;
+#N canvas 513 68 823 678 search 0;
 #X obj 18 551 s \$0-msg;
 #X msg 67 406 info;
 #X msg 71 474 info \$1;
@@ -780,53 +780,47 @@ to build your own preset management in Pd:, f 49;
 #X text 162 378 clear and delete cache file;
 #X msg 36 303 search -n;
 #X text 104 304 search but don't update the cache file;
-#X obj 394 500 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 394 506 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 398 503 NOTE:;
-#X text 393 652 [vstpluginbrowser] uses [search -a( by default to avoid
-freezing Pd for an indeterminate amount of time., f 56;
+#X text 398 509 NOTE:;
 #X msg 43 328 search_stop;
 #X text 125 327 stop the current (asynchronous) search;
 #X text 48 152 responds with a series of;
-#X msg 205 153 plugin <key>;
-#X text 287 153 messages;
+#X msg 209 152 plugin <key>;
+#X text 292 152 messages;
 #X text 48 173 and a final;
 #X msg 122 173 search_done;
 #X text 198 173 message;
-#X text 394 580 The reason is that every plugin has to probed in a
-seperate process to catch bad plugins.;
-#X text 393 609 However \, subsequent searches in the same directory
+#X text 393 611 However \, subsequent searches in the same directory
 will be almost instantaneous because the plugin info is read from the
-cache file., f 56;
-#X text 392 447 Incompatible plugins automatically run in a shared
+cache file., f 68;
+#X text 392 466 Incompatible plugins automatically run in a shared
 subprocess (= "bit bridging") \, which incurs some CPU overhead.,
-f 54;
-#X text 84 590 [vstplugin~ -s];
-#X text 86 608 The search is guaranteed to run only once \, even if
-several objects receive this flag., f 44;
-#X text 85 550 You can also use the -s flag to perform a search in
-the standard VST directories on object creation:, f 42;
+f 62;
+#X text 15 606 [vstplugin~ -s];
+#X text 17 624 The search is guaranteed to run only once \, even if
+several objects receive this flag., f 51;
+#X text 16 577 You can also use the -s flag to perform a search in
+the standard VST directories on object creation:, f 52;
 #X text 99 196 Alternatively \, you can provide a list of user search
 paths. Relative paths are resolved to the current patch directory.
 , f 41;
 #X text 97 258 This prevents Pd from freezing until the search has
-finished and you can see the progress in the console., f 37;
+finished and you can see the progress in the console., f 41;
 #X text 98 239 search asynchronously.;
 #X text 138 453 the info method will output the following messages:
 , f 27;
-#X text 17 60 Whitespace in names is replaced by underscores.;
+#X text 17 59 Whitespace in names is replaced by underscores.;
 #X text 16 78 Search results are stored in a cache file \, so you only
 have to search once in the beginning and everytime you add new plugins.
 , f 56;
-#X text 17 30 After a plugin search \, you can simply refer to plugins
+#X text 16 27 After a plugin search \, you can simply refer to plugins
 by their name \, e.g. in the [open( message., f 55;
 #X text 69 130 search in the standard VST directories;
-#X text 392 416 Since v0.4 you can use 32-bit plugins on a 64-bit Pd
-and vice versa!, f 54;
-#X text 394 526 The first search in a directory might take from a couple
+#X text 393 537 The first search in a directory might take from a couple
 of seconds to several minutes \, depending on the number and type of
 plugins (shell plugins like Waves contain hundreds of sub-plugins!)
-, f 57;
+, f 68;
 #X text 405 167 NOTE: "%ProgramFiles%" refers to either "Program Files"
 (64-bit) or "Program Files (x86)" (32-bit), f 56;
 #X obj 408 83 cnv 15 40 20 empty empty empty 20 12 0 14 -233017 -66577
@@ -852,6 +846,12 @@ plugins (shell plugins like Waves contain hundreds of sub-plugins!)
 #X text 408 372 VST3:;
 #X text 459 332 /usr/lib/vst /usr/local/lib/vst, f 20;
 #X text 457 367 /usr/lib/vst3 /usr/local/lib/vst3 ~/.vst3, f 20;
+#X text 392 434 EXPERIMENTAL: Since v0.5 you can also run Windows plugins
+in Linux with Wine (see the README for more information)., f 67;
+#X text 392 415 Since v0.4 you can run 32-bit plugins in 64-bit Pd
+and vice versa!, f 66;
+#X text 394 579 Every plugin is probed in a seperate process to catch
+bad plugins without crashing Pd., f 67;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 2 0;
@@ -864,11 +864,11 @@ plugins (shell plugins like Waves contain hundreds of sub-plugins!)
 #X connect 24 0 0 0;
 #X connect 25 0 0 0;
 #X connect 27 0 0 0;
-#X connect 32 0 0 0;
+#X connect 31 0 0 0;
 #X restore 394 510 pd search;
 #X f 14;
 #X text 392 488 search + info;
-#N canvas 261 35 994 523 open 0;
+#N canvas 261 35 1010 512 open 0;
 #X obj 483 327 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
 #X obj 483 348 openpanel;
@@ -931,22 +931,22 @@ by underscores \, so that the symbol can be easily typed in Pd (e.g.
 'Awesome Reverb' becomes 'Awesome_Reverb').;
 #X text 566 131 Plug-ins can be opened in 2 ways:;
 #X text 568 155 a) by key:;
-#X text 564 303 b) By file path:;
+#X text 568 303 b) By file path:;
 #X text 583 239 Generally \, keys can only be used after a search (see
 the 'search' method). Search results are cached in a file \, so you
 only need to search once in the beginning and everytime you add a new
-plug-in., f 49;
-#X text 583 323 Both absolute and relative paths are allowed. Relative
+plug-in., f 67;
+#X text 587 323 Both absolute and relative paths are allowed. Relative
 paths are searched like abstractions. If that fails \, the standard
-VST search paths are searched *recursively* (see [pd search]), f 58
+VST search paths are searched *recursively* (see [pd search]), f 67
 ;
-#X text 583 375 For VST2 plug-ins the extension (.dll \, .so \, .vst)
+#X text 587 366 For VST2 plug-ins the extension (.dll \, .so \, .vst)
 can be omitted \, but for VST3 plug-ins the '.vst3' extension is mandatory.
-, f 58;
-#X text 572 420 NOTE: Opening by file path doesn't work if the module
+, f 66;
+#X text 586 398 NOTE: Opening by file path doesn't work if the module
 contains several plug-ins (VST2 shell plug-ins or certain VST3 plug-ins)!
 , f 65;
-#X text 571 448 Also \, file names may differ between platforms \,
+#X text 585 428 Also \, file names may differ between platforms \,
 while keys are always platform independent., f 63;
 #X text 529 26 By default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
