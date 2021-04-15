@@ -538,7 +538,7 @@ struct HostAttribute {
     HostAttribute(HostAttribute&& other);
     ~HostAttribute();
     HostAttribute& operator =(const HostAttribute& other) = delete; // LATER
-    HostAttribute& operator =(HostAttribute&& other) = delete; // LATER
+    HostAttribute& operator =(HostAttribute&& other);
     // data
     union v
     {

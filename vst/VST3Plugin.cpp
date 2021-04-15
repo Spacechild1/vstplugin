@@ -727,10 +727,13 @@ tresult VST3Plugin::disconnect(Vst::IConnectionPoint *other){
 }
 
 void printMessage(Vst::IMessage *message){
-    LOG_DEBUG("got message: " << message->getMessageID());
     auto msg = dynamic_cast<HostMessage *>(message);
     if (msg){
+    #if LOGLEVEL > 2
         msg->print();
+    #endif
+    } else {
+        LOG_DEBUG("Message: " << message->getMessageID());
     }
 }
 
@@ -2446,15 +2449,25 @@ HostAttribute::HostAttribute(const char * data, uint32 n) : size(n), type(kBinar
 }
 
 HostAttribute::HostAttribute(HostAttribute&& other){
+    type = other.type;
+    size = other.size;
+    v = other.v;
+    // leave other empty
+    other.size = 0;
+    other.v.b = nullptr; // also strings
+}
+
+HostAttribute& HostAttribute::operator=(HostAttribute&& other){
     if (size > 0){
-        delete[] v.b;
+        delete[] v.b; // also strings
     }
     type = other.type;
     size = other.size;
     v = other.v;
     // leave other empty
     other.size = 0;
-    other.v.b = nullptr; // works for strings as well
+    other.v.b = nullptr; // also strings
+    return *this;
 }
 
 HostAttribute::~HostAttribute(){
@@ -2543,19 +2556,27 @@ void HostAttributeList::print(){
         auto& attr = it.second;
         switch (attr.type){
         case HostAttribute::kInteger:
-            LOG_VERBOSE(id << ": " << attr.v.i);
+            DO_LOG(id << ": " << attr.v.i);
             break;
         case HostAttribute::kFloat:
-            LOG_VERBOSE(id << ": " << attr.v.f);
+            DO_LOG(id << ": " << attr.v.f);
+        {
+            auto ptr = (const uint8_t *)&attr.v.f;
+            char buf[sizeof(double) * 3 + 1];
+            for (size_t i = 0; i < sizeof(double); ++i){
+                sprintf(&buf[i * 3], "%02X", (uint32_t)ptr[i]);
+            }
+            DO_LOG(buf);
+        }
             break;
         case HostAttribute::kString:
-            LOG_VERBOSE(id << ": " << convertString(attr.v.s));
+            DO_LOG(id << ": " << convertString(attr.v.s));
             break;
         case HostAttribute::kBinary:
-            LOG_VERBOSE(id << ": [binary]");
+            DO_LOG(id << ": [binary]");
             break;
         default:
-            LOG_VERBOSE(id << ": ?");
+            DO_LOG(id << ": ?");
             break;
         }
     }
@@ -2575,6 +2596,7 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
 }
 
 void HostMessage::print(){
+    DO_LOG("Message: " << messageID_);
     if (attributes_){
         attributes_->print();
     }
