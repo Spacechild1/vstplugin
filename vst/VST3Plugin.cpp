@@ -757,31 +757,7 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
         maxBlockSize = 64;
     }
 
-#if !SMTG_PLATFORM_64 && (SMTG_OS_LINUX || defined(__WINE__))
-    // 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
-    // on an 8 byte boundary, so Vst::ProcessSetup has a size of 20 bytes.
-    // For Linux plugins this is not a problem, because they are compiled
-    // with the same alignment requirements, but if we want to run Windows
-    // plugins compiled with MSVC/MinGW, we have to manually insert the
-    // necessary padding...
-    static_assert(sizeof(Vst::ProcessSetup) == 20, "unexpected size for Vst::ProcessSetup");
-#else
-    static_assert(sizeof(Vst::ProcessSetup) == 24, "unexpected size for Vst::ProcessSetup");
-#endif
-
-#if defined(__WINE__) && !SMTG_PLATFORM_64
-    // Vst::ProcessSetup with padding for 32-bit Wine (see above)
-    struct MyProcessSetup {
-        int32 processMode;
-        int32 symbolicSampleSize;
-        int32 maxSamplesPerBlock;
-        int32 padding;
-        Vst::SampleRate sampleRate;
-    } setup;
-    static_assert(sizeof(setup) == 24, "unexpected size for padded ProcessSetup");
-#else
-    Vst::ProcessSetup setup;
-#endif
+    MyProcessSetup setup;
     setup.processMode = Vst::kRealtime;
     setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     setup.maxSamplesPerBlock = maxBlockSize;
@@ -811,19 +787,6 @@ void VST3Plugin::doProcess(ProcessData& inData){
     assert(inData.numOutputs > 0);
 #endif
 
-    // check alignment (see VST3Plugin::setupProcessing)
-#if SMTG_PLATFORM_64
-    static_assert(sizeof(Vst::ProcessData) == 80, "unexpected size for Vst::ProcessData");
-    static_assert(sizeof(Vst::AudioBusBuffers) == 24, "unexpected size for Vst::AudioBusBuffers");
-#else
-    static_assert(sizeof(Vst::ProcessData) == 48, "unexpected size for Vst::ProcessData");
-  #if SMTG_OS_LINUX || defined(__WINE__)
-    static_assert(sizeof(Vst::AudioBusBuffers) == 16, "unexpected size for Vst::AudioBusBuffers");
-  #else
-    static_assert(sizeof(Vst::AudioBusBuffers) == 24, "unexpected size for Vst::AudioBusBuffers");
-  #endif
-#endif
-    static_assert(sizeof(MyAudioBusBuffers) == 24, "unexpected size for MyAudioBusBuffers");
     // process data
     MyProcessData data;
     data.processMode = Vst::kRealtime;

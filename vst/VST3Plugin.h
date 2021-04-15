@@ -46,6 +46,103 @@ const ChunkID& getChunkID (ChunkType type);
 
 using namespace Steinberg;
 
+#if !SMTG_PLATFORM_64 && defined(__WINE__)
+// 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
+// on an 8 byte boundary, so Vst::ProcessSetup has a size of 20 bytes.
+// For Linux plugins this is not a problem, because they are compiled
+// with the same alignment requirements, but if we want to run Windows
+// plugins compiled with MSVC/MinGW, we have to manually insert the
+// necessary padding...
+
+#define FIX_STRUCT_PADDING 1
+
+// force struct packing
+# pragma pack(push, 1)
+
+// Vst::ProcessSetup
+struct MyProcessSetup {
+    int32 processMode;
+    int32 symbolicSampleSize;
+    int32 maxSamplesPerBlock;
+    int32 padding;
+    Vst::SampleRate sampleRate;
+};
+static_assert(sizeof(MyProcessSetup) == 24,
+              "unexpected size for MyProcessSetup");
+
+// Vst::AudioBusBuffers
+struct MyAudioBusBuffers {
+    int32 numChannels;
+    int32 padding1;
+    uint64 silenceFlags;
+    union
+    {
+        Vst::Sample32** channelBuffers32;
+        Vst::Sample64** channelBuffers64;
+    };
+    int32 padding2;
+};
+static_assert(sizeof(MyAudioBusBuffers) == 24,
+              "unexpected size for MyAudioBusBuffers");
+
+// Vst::ProcessData
+struct MyProcessData
+{
+    int32 processMode;
+    int32 symbolicSampleSize;
+    int32 numSamples;
+    int32 numInputs;
+    int32 numOutputs;
+    MyAudioBusBuffers* inputs;
+    MyAudioBusBuffers* outputs;
+
+    Vst::IParameterChanges* inputParameterChanges;
+    Vst::IParameterChanges* outputParameterChanges;
+    Vst::IEventList* inputEvents;
+    Vst::IEventList* outputEvents;
+    Vst::ProcessContext* processContext;
+};
+static_assert(sizeof(MyProcessData) == 48,
+              "unexpected size for MyProcessData");
+
+// force struct packing
+# pragma pack(pop)
+
+#else // 32-bit Wine
+
+# define FIX_STRUCT_PADDING 0
+
+using MyProcessSetup = Vst::ProcessSetup;
+using MyAudioBusBuffers = Vst::AudioBusBuffers;
+using MyProcessData = Vst::ProcessData;
+
+// check struct sizes
+# if SMTG_PLATFORM_64
+static_assert(sizeof(Vst::ProcessSetup) == 24,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::ProcessData) == 80,
+              "unexpected size for Vst::ProcessData");
+static_assert(sizeof(Vst::AudioBusBuffers) == 24,
+              "unexpected size for Vst::AudioBusBuffers");
+# else // SMTG_PLATFORM_64
+static_assert(sizeof(Vst::ProcessData) == 48,
+              "unexpected size for Vst::ProcessData");
+#  if SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessSetup) == 20,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::AudioBusBuffers) == 16,
+              "unexpected size for Vst::AudioBusBuffers");
+#  else // SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessSetup) == 24,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::AudioBusBuffers) == 24,
+              "unexpected size for Vst::AudioBusBuffers");
+#  endif // SMTG_OS_LINUX
+# endif // SMTG_PLATFORM_64
+
+#endif // 32-bit Wine
+
+
 #define MY_IMPLEMENT_QUERYINTERFACE(Interface)                            \
 tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override  \
 {                                                                         \
@@ -320,39 +417,6 @@ class VST3Plugin final :
     int getTailSize() const;
     bool hasBypass() const;
 
-#if defined(__WINE__) && !SMTG_PLATFORM_64
-    // Vst::AudioBusBuffers with padding for 32-bit Wine
-    struct MyAudioBusBuffers {
-        int32 numChannels;
-        int32 padding1;
-        uint64 silenceFlags;
-        union
-        {
-            Vst::Sample32** channelBuffers32;
-            Vst::Sample64** channelBuffers64;
-        };
-        int32 padding2;
-    };
-    struct MyProcessData
-    {
-        int32 processMode;
-        int32 symbolicSampleSize;
-        int32 numSamples;
-        int32 numInputs;
-        int32 numOutputs;
-        MyAudioBusBuffers* inputs;
-        MyAudioBusBuffers* outputs;
-
-        Vst::IParameterChanges* inputParameterChanges;
-        Vst::IParameterChanges* outputParameterChanges;
-        Vst::IEventList* inputEvents;
-        Vst::IEventList* outputEvents;
-        Vst::ProcessContext* processContext;
-    };
-#else
-    using MyAudioBusBuffers = Vst::AudioBusBuffers;
-    using MyProcessData = Vst::ProcessData;
-#endif
     template<typename T>
     void doProcess(ProcessData& inData);
     template<typename T>
