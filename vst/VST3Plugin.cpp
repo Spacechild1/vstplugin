@@ -743,12 +743,38 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 }
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+
+#if !SMTG_PLATFORM_64 && (SMTG_OS_LINUX || defined(__WINE__))
+    // 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
+    // on an 8 byte boundary, so Vst::ProcessSetup has a size of 20 bytes.
+    // For Linux plugins this is not a problem, because they are compiled
+    // with the same alignment requirements, but if we want to run Windows
+    // plugins compiled with MSVC/MinGW, we have to manually insert the
+    // necessary padding...
+    static_assert(sizeof(Vst::ProcessSetup) == 20, "unexpected size for Vst::ProcessSetup");
+#else
+    static_assert(sizeof(Vst::ProcessSetup) == 24, "unexpected size for Vst::ProcessSetup");
+#endif
+
+#if defined(__WINE__) && !SMTG_PLATFORM_64
+    // Vst::ProcessSetup with padding for 32-bit Wine (see above)
+    struct MyProcessSetup {
+        int32 processMode;
+        int32 symbolicSampleSize;
+        int32 maxSamplesPerBlock;
+        int32 padding;
+        Vst::SampleRate sampleRate;
+    } setup;
+    static_assert(sizeof(setup) == 24, "unexpected size for padded ProcessSetup");
+#else
     Vst::ProcessSetup setup;
+#endif
     setup.processMode = Vst::kRealtime;
+    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     setup.maxSamplesPerBlock = maxBlockSize;
     setup.sampleRate = sampleRate;
-    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
-    processor_->setupProcessing(setup);
+
+    processor_->setupProcessing(reinterpret_cast<Vst::ProcessSetup&>(setup));
 
     context_.sampleRate = sampleRate;
     // update project time in samples (assumes the tempo is valid for the whole project)
@@ -772,14 +798,27 @@ void VST3Plugin::doProcess(ProcessData& inData){
     assert(inData.numOutputs > 0);
 #endif
 
+    // check alignment (see VST3Plugin::setupProcessing)
+#if SMTG_PLATFORM_64
+    static_assert(sizeof(Vst::ProcessData) == 80, "unexpected size for Vst::ProcessData");
+    static_assert(sizeof(Vst::AudioBusBuffers) == 24, "unexpected size for Vst::AudioBusBuffers");
+#else
+    static_assert(sizeof(Vst::ProcessData) == 48, "unexpected size for Vst::ProcessData");
+  #if SMTG_OS_LINUX || defined(__WINE__)
+    static_assert(sizeof(Vst::AudioBusBuffers) == 16, "unexpected size for Vst::AudioBusBuffers");
+  #else
+    static_assert(sizeof(Vst::AudioBusBuffers) == 24, "unexpected size for Vst::AudioBusBuffers");
+  #endif
+#endif
     // process data
-    Vst::ProcessData data;
-    data.numSamples = inData.numSamples;
+    MyProcessData data;
+    data.processMode = Vst::kRealtime;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
+    data.numSamples = inData.numSamples;
     data.processContext = &context_;
     // prepare input
     data.numInputs = inData.numInputs;
-    data.inputs = (Vst::AudioBusBuffers *)alloca(sizeof(Vst::AudioBusBuffers) * inData.numInputs);
+    data.inputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numInputs);
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
         bus.silenceFlags = 0;
@@ -788,7 +827,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
     }
     // prepare output
     data.numOutputs = inData.numOutputs;
-    data.outputs = (Vst::AudioBusBuffers *)alloca(sizeof(Vst::AudioBusBuffers) * inData.numOutputs);
+    data.outputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numOutputs);
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
         bus.silenceFlags = 0;
@@ -836,7 +875,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
-        processor_->process(data);
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
     } else {
         bypassProcess<T>(inData, data, bypassState, bypassRamp);
     }
@@ -882,7 +921,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
 }
 
 template<typename T>
-void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
+void VST3Plugin::bypassProcess(ProcessData& inData, MyProcessData& data,
                                Bypass state, bool ramp)
 {
     if (bypassSilent_ && !ramp){
@@ -893,7 +932,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
 
     // make temporary input vector - don't touch the original vector!
     data.inputs = (data.numInputs > 0) ?
-                (Vst::AudioBusBuffers *)(alloca(sizeof(Vst::AudioBusBuffers) * data.numInputs))
+                (MyAudioBusBuffers *)(alloca(sizeof(MyAudioBusBuffers) * data.numInputs))
               : nullptr;
     for (int i = 0; i < data.numInputs; ++i){
         auto nin = inData.inputs[i].numChannels;
@@ -956,7 +995,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
 
     if (ramp) {
         // process <-> bypass transition
-        processor_->process(data);
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
 
         if (state == Bypass::Soft){
             // soft bypass
@@ -1019,7 +1058,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
         }
     } else {
         // continue to process with empty input till all outputs are silent
-        processor_->process(data);
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
 
         // check for silence (RMS < ca. -80dB)
         auto isBusSilent = [](auto bus, auto nchannels, auto nsamples){

@@ -319,10 +319,45 @@ class VST3Plugin final :
      bool hasTail() const;
      int getTailSize() const;
      bool hasBypass() const;
+
+#if defined(__WINE__) && !SMTG_PLATFORM_64
+    // Vst::AudioBusBuffers with padding for 32-bit Wine
+    struct MyAudioBusBuffers {
+        int32 numChannels;
+        int32 padding1;
+        uint64 silenceFlags;
+        union
+        {
+            Vst::Sample32** channelBuffers32;
+            Vst::Sample64** channelBuffers64;
+        };
+        int32 padding2;
+    };
+    static_assert(sizeof(MyAudioBusBuffers) == 24, "unexpected size for padded AudioBusBuffers");
+    struct MyProcessData
+    {
+        int32 processMode;
+        int32 symbolicSampleSize;
+        int32 numSamples;
+        int32 numInputs;
+        int32 numOutputs;
+        MyAudioBusBuffers* inputs;
+        MyAudioBusBuffers* outputs;
+
+        Vst::IParameterChanges* inputParameterChanges;
+        Vst::IParameterChanges* outputParameterChanges;
+        Vst::IEventList* inputEvents;
+        Vst::IEventList* outputEvents;
+        Vst::ProcessContext* processContext;
+    };
+#else
+    using MyAudioBusBuffers = Vst::AudioBusBuffers;
+    using MyProcessData = Vst::ProcessData;
+#endif
     template<typename T>
     void doProcess(ProcessData& inData);
     template<typename T>
-    void bypassProcess(ProcessData& inData, Vst::ProcessData& data,
+    void bypassProcess(ProcessData& inData, MyProcessData& data,
                        Bypass state, bool ramp);
     void handleEvents();
     void handleOutputParameterChanges();

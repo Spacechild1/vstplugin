@@ -111,8 +111,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
         UIThread::callSync([&](){
-            plugin_->setupProcessing(cmd.setup.sampleRate,
-                                     maxBlockSize_, precision_);
+            plugin_->setupProcessing(cmd.setup.sampleRate, maxBlockSize_, precision_);
         });
         updateBuffer();
         break;

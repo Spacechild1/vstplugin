@@ -84,6 +84,11 @@ ShmChannel::ShmChannel(Type type, int32_t size,
                        const std::string& name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
 {
+#if USE_SHM_FUTEX
+    static_assert(sizeof(Header) == 64, "bad size for Header");
+#else
+    static_assert(sizeof(Header) == 128, "bad size for Header");
+#endif
     auto total = sizeof(Header) + sizeof(Data) + size;
     totalSize_ = align_to(total, alignment);
 }
