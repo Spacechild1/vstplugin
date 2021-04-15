@@ -823,6 +823,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
     static_assert(sizeof(Vst::AudioBusBuffers) == 24, "unexpected size for Vst::AudioBusBuffers");
   #endif
 #endif
+    static_assert(sizeof(MyAudioBusBuffers) == 24, "unexpected size for MyAudioBusBuffers");
     // process data
     MyProcessData data;
     data.processMode = Vst::kRealtime;

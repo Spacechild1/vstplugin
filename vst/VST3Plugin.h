@@ -333,7 +333,6 @@ class VST3Plugin final :
         };
         int32 padding2;
     };
-    static_assert(sizeof(MyAudioBusBuffers) == 24, "unexpected size for padded AudioBusBuffers");
     struct MyProcessData
     {
         int32 processMode;

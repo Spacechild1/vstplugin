@@ -19,6 +19,7 @@
 # include <stdio.h>
 # include <dlfcn.h>
 # include <sys/wait.h>
+# include <signal.h>
 #endif
 
 #include <thread>

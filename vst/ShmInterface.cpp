@@ -336,7 +336,7 @@ void ShmChannel::initEvent(Handle& event, void *data){
     // named semaphore
     if (owner_){
         // create semaphore and return an error if it already exists
-        event.reset(sem_open(data, O_CREAT | O_EXCL, 0755, 0));
+        event.reset(sem_open((const char *)data, O_CREAT | O_EXCL, 0755, 0));
         SHM_DEBUG("ShmChannel: created semaphore " << (const char *)data);
     } else {
         // open an existing semaphore
