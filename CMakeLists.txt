@@ -247,13 +247,14 @@ endif()
 # vst library
 include_directories(vst)
 
-if (TRUE)
-    set(VST "vst")
-    set(LIBS ${VST} ${VST_LIBS})
+# don't build libvst when building the 32-bit wine host only!
+if (BUILD_HOST OR NOT BUILD_WINE)
+    set(LIBVST "vst")
+    set(LIBS ${LIBVST} ${VST_LIBS})
 endif()
 if (BUILD_HOST32)
-    set(VST32 "vst32")
-    set(LIBS32 ${VST32} ${VST_LIBS})
+    set(LIBVST32 "vst32")
+    set(LIBS32 ${LIBVST32} ${VST_LIBS})
 endif()
 
 add_subdirectory(vst)
