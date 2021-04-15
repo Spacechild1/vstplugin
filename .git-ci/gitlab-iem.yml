@@ -29,7 +29,8 @@ variables:
 # as they should be, instead they are resolved to the source directory *before* getting passed to CMake.
 .script:cmake: &script_cmake
   - prefix="$(pwd)/${CI_JOB_NAME%_*}"
-  - cmake -H. -Bbuild -DCMAKE_INSTALL_PREFIX="${prefix}"
+  - cmake -H. -Bbuild ${TARGETARCH:+-DCMAKE_CXX_COMPILER=${TARGETARCH}-g++}
+   -DCMAKE_INSTALL_PREFIX="${prefix}"
    -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSTATIC_LIBS=${STATIC_LIBS} -DWINE=${WINE}
    -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST=${BUILD_HOST} -DBUILD_HOST32=${BUILD_HOST32}
    -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
@@ -75,10 +76,10 @@ variables:
     WINE: 1
   only:
     variables:
-      - $JOBS == "all"
+      - $JOBS == "all" || $JOBS == "linux"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
-      make cmake wget git libx11-dev puredata-dev puredata
+      make cmake wget git libx11-dev${TARGETDEBARCH:+:}${TARGETDEBARCH} puredata-dev puredata
     - *script_deps
     - *script_cmake
 
@@ -118,7 +119,7 @@ variables:
     HOST32: 1
   only:
     variables:
-      - $JOBS == "all"
+      - $JOBS == "all" || $JOBS == "macos"
   before_script:
     - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}.mac.tar.gz
     - rm -rf /Applications/Pd*.app/
@@ -138,7 +139,7 @@ variables:
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
   only:
     variables:
-      - $JOBS == "all"
+      - $JOBS == "all" || $JOBS == "windows"
   before_script:
     - pacman --noconfirm -S cmake
     - wget -q -O Pd.zip ${PD_URL}
