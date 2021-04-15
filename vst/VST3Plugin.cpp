@@ -746,6 +746,16 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 }
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+    LOG_DEBUG("VST3Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
+              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
+    if (sampleRate <= 0){
+        LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
+        sampleRate = 44100;
+    }
+    if (maxBlockSize <= 0){
+        LOG_ERROR("setupProcessing: block size must be greater than 0!");
+        maxBlockSize = 64;
+    }
 
 #if !SMTG_PLATFORM_64 && (SMTG_OS_LINUX || defined(__WINE__))
     // 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
@@ -1371,13 +1381,18 @@ void VST3Plugin::setTempoBPM(double tempo){
     if (tempo > 0){
         context_.tempo = tempo;
     } else {
-        LOG_ERROR("tempo must be greater than 0!");
+        LOG_ERROR("setTempoBPM: tempo must be greater than 0!");
     }
 }
 
 void VST3Plugin::setTimeSignature(int numerator, int denominator){
-    context_.timeSigNumerator = numerator;
-    context_.timeSigDenominator = denominator;
+    if (numerator > 0 && denominator > 0){
+        context_.timeSigNumerator = numerator;
+        context_.timeSigDenominator = denominator;
+    } else {
+        LOG_ERROR("setTimeSignature: bad time signature "
+                  << numerator << "/" << denominator);
+    }
 }
 
 void VST3Plugin::setTransportPlaying(bool play){

@@ -232,10 +232,10 @@ class VST3Plugin final :
     // IRunLoop
     tresult PLUGIN_API registerEventHandler (Linux::IEventHandler* handler,
                                              Linux::FileDescriptor fd) override;
-	tresult PLUGIN_API unregisterEventHandler (Linux::IEventHandler* handler) override;
-	tresult PLUGIN_API registerTimer (Linux::ITimerHandler* handler,
+    tresult PLUGIN_API unregisterEventHandler (Linux::IEventHandler* handler) override;
+    tresult PLUGIN_API registerTimer (Linux::ITimerHandler* handler,
                                       Linux::TimerInterval milliseconds) override;
-	tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
+    tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
 #endif
 
     const PluginInfo& info() const override { return *info_; }
@@ -312,13 +312,13 @@ class VST3Plugin final :
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  private:
-     int getNumParameters() const;
-     int getNumPrograms() const;
-     bool hasEditor() const;
-     bool hasPrecision(ProcessPrecision precision) const;
-     bool hasTail() const;
-     int getTailSize() const;
-     bool hasBypass() const;
+    int getNumParameters() const;
+    int getNumPrograms() const;
+    bool hasEditor() const;
+    bool hasPrecision(ProcessPrecision precision) const;
+    bool hasTail() const;
+    int getTailSize() const;
+    bool hasBypass() const;
 
 #if defined(__WINE__) && !SMTG_PLATFORM_64
     // Vst::AudioBusBuffers with padding for 32-bit Wine
