@@ -50,14 +50,9 @@ using namespace Steinberg;
 // 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
 // on an 8 byte boundary, so Vst::ProcessSetup has a size of 20 bytes.
 // For Linux plugins this is not a problem, because they are compiled
-// with the same alignment requirements, but if we want to run Windows
-// plugins compiled with MSVC/MinGW, we have to manually insert the
-// necessary padding...
-
-#define FIX_STRUCT_PADDING 1
-
-// force struct packing
-# pragma pack(push, 1)
+// with the same alignment/padding requirements, but if we want to run
+// Windows plugins compiled with MSVC/MinGW, we have to manually add the
+// necessary padding and alignment...
 
 // Vst::ProcessSetup
 struct MyProcessSetup {
@@ -66,7 +61,8 @@ struct MyProcessSetup {
     int32 maxSamplesPerBlock;
     int32 padding;
     Vst::SampleRate sampleRate;
-};
+} __attribute__((packed, aligned(8) ));
+
 static_assert(sizeof(MyProcessSetup) == 24,
               "unexpected size for MyProcessSetup");
 
@@ -81,7 +77,8 @@ struct MyAudioBusBuffers {
         Vst::Sample64** channelBuffers64;
     };
     int32 padding2;
-};
+} __attribute__((packed, aligned(8) ));
+
 static_assert(sizeof(MyAudioBusBuffers) == 24,
               "unexpected size for MyAudioBusBuffers");
 
@@ -101,16 +98,12 @@ struct MyProcessData
     Vst::IEventList* inputEvents;
     Vst::IEventList* outputEvents;
     Vst::ProcessContext* processContext;
-};
+} __attribute__((packed, aligned(8) ));
+
 static_assert(sizeof(MyProcessData) == 48,
               "unexpected size for MyProcessData");
 
-// force struct packing
-# pragma pack(pop)
-
 #else // 32-bit Wine
-
-# define FIX_STRUCT_PADDING 0
 
 using MyProcessSetup = Vst::ProcessSetup;
 using MyAudioBusBuffers = Vst::AudioBusBuffers;
