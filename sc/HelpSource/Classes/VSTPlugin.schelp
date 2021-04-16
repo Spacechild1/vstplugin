@@ -9,6 +9,7 @@ This UGen represents a single VST plugin instance on the link::Classes/Server::.
 
 VSTPlugin also has class methods to scan a Server for plugins and cache the info in the Client, see link::#Plugin Management::.
 
+
 CLASSMETHODS::
 
 PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prAddPlugin, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, kr, platformExtension, reset
@@ -306,19 +307,13 @@ and can be retrieved with its key (see link::#Plugin Management::).
 
 If a plugin can't be probed ("... failed!") it either means it's not a valid VST plugin, dependencies are missing or it has the wrong CPU architecture (and can't be bridged).
 
-note::Since v0.4 you can run 32-bit plugins on a 64-bit Server and vice verca!
-
-Incompatible plugins will automatically run in a shared subprocess (= bit bridging), which incurs some CPU overhead. Bridging can also be explictly enabled for regular plugins, see the code::mode:: argument in link::Classes/VSTPluginController#-open::.::
-
-A new search doesn't automatically clear the dictionary, but existing keys are overwritten.
-You can clear the dictionary explicitly with link::#*clear::.
+A new search doesn't automatically clear the dictionary, but existing keys are overwritten. You can clear the dictionary explicitly with link::#*clear::.
 
 For efficiency, search results are written to a cache file (on the Server's computer) to significantly speed up subsequent searches
 (cached plugins don't have to probed again). Many DAWs use a similar strategy. If you want to search directories without updating the cache, set code::save:: to code::false::.
 
 NOTE::
-The very first search in a directory usually takes a couple of seconds, but if you have many (heavy) plugins, the process can take significantly longer.
-However, subsequent searches will be almost instantaneous (because of the cache file).
+The very first search in a directory usually takes a couple of seconds, but if you have many (heavy) plugins, the process can take significantly longer. However, subsequent searches will finish very quickly because the info has been cached.
 ::
 
 WARNING::
@@ -437,6 +432,18 @@ RETURNS:: the message for a emphasis::clear:: command (see link::#*clear::).
 DISCUSSION::
 
 Sending the message to the Server will emphasis::not:: clear the Client plugin dictionary!
+
+
+subsection:: Bridging and Sandboxing
+
+Usually, you can only run plugins with the same CPU architecture as the host application.
+
+Since VSTPlugin v0.4, however, it is possible to run 32-bit plugins on a 64-bit Server and vice versa! Such incompatible plugins will automatically run in a shared subprocess (= bit bridging), which incurs some CPU overhead.
+
+Since VSTPlugin v0.5 it is also possible to run Windows plugins on Linux with Wine. See the README for more information.
+
+note::Bridging/sandboxing can also be explictly enabled for native plugins, see the code::mode:: argument in link::Classes/VSTPluginController#-open::.::
+
 
 
 INSTANCEMETHODS::

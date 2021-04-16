@@ -441,6 +441,7 @@ table::
 ## \bridge || run the plugin in a shared subprocess. This uses less memory and possibly less CPU, but if one plugin crashes, it will inevitably take down all other plugins in the same process.
 ::
 note::All run modes except for code::\auto:: incur some fixed CPU overhead, which is less significant for larger blocksizes (see link::Classes/ServerOptions#-blockSize:: or the code::blockSize:: argument in link::Classes/VSTPlugin#-ar::).::
+See also link::Classes/VSTPlugin#Bridging and Sandboxing::.
 
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).

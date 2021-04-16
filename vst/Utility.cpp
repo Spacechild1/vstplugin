@@ -1,19 +1,39 @@
 #include "Utility.h"
 
 #ifdef _WIN32
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 # include <windows.h>
+#else
+# include <stdlib.h>
+# include <string.h>
+# include <signal.h>
+#endif
+
+#if VST_HOST_SYSTEM != VST_WINDOWS
+// thread priority
+#include <pthread.h>
+#endif
+
+#if USE_STDFS
 # include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
-#else
-// just because of Clang on macOS doesn't ship <experimental/filesystem>...
+# ifndef _WIN32
+#  define widen(x) x
+# endif
+#elif VST_HOST_SYSTEM != VST_WINDOWS
+# include <dirent.h>
 # include <unistd.h>
-# include <string.h>
+# include <strings.h>
+# include <sys/wait.h>
 # include <sys/stat.h>
 # include <sys/types.h>
 # ifndef ACCESSPERMS
 #  define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
 # endif
-# include <pthread.h>
+#else
+# error "must use std::filesystem on Windows!"
 #endif
 
 #include <sstream>
@@ -129,7 +149,7 @@ std::string expandPath(const char *path) {
 #endif
 
 bool pathExists(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     return fs::exists(widen(path), e);
 #else
@@ -139,7 +159,7 @@ bool pathExists(const std::string& path){
 }
 
 bool isFile(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     return fs::is_regular_file(widen(path));
 #else
     struct stat stbuf;
@@ -148,7 +168,7 @@ bool isFile(const std::string& path){
 }
 
 bool isDirectory(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     return fs::is_directory(widen(path), e);
 #else
@@ -158,7 +178,7 @@ bool isDirectory(const std::string& path){
 }
 
 bool removeFile(const std::string& path){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     fs::remove(widen(path), e);
     if (e){
@@ -170,7 +190,7 @@ bool removeFile(const std::string& path){
 #else
     int result = remove(path.c_str());
     if (result != 0){
-        LOG_ERROR(errorMessage(result));
+        LOG_ERROR(errorMessage(errno));
         return false;
     } else {
         return true;
@@ -179,7 +199,7 @@ bool removeFile(const std::string& path){
 }
 
 bool renameFile(const std::string& from, const std::string& to){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code e;
     fs::rename(widen(from), widen(to), e);
     if (e){
@@ -200,7 +220,7 @@ bool renameFile(const std::string& from, const std::string& to){
 }
 
 bool createDirectory(const std::string& dir){
-#ifdef _WIN32
+#if USE_STDFS
     std::error_code err;
     return fs::create_directory(widen(dir), err);
 #else
@@ -235,10 +255,12 @@ std::string fileName(const std::string& path){
     }
 }
 
+// include the dot!
 std::string fileExtension(const std::string& path){
-    auto dot = path.find_last_of('.');
+    auto name = fileName(path);
+    auto dot = name.find_last_of('.');
     if (dot != std::string::npos){
-        return path.substr(dot + 1);
+        return name.substr(dot);
     } else {
         return "";
     }
@@ -294,8 +316,33 @@ std::string errorMessage(int err){
     return ss.str();
 }
 
+#ifndef _WIN32
+#define MATCH(x) case x: return #x;
+const char *strsignal(int sig){
+    switch (sig) {
+    MATCH(SIGINT)
+    MATCH(SIGILL)
+    MATCH(SIGABRT)
+    MATCH(SIGFPE)
+    MATCH(SIGSEGV)
+    MATCH(SIGTERM)
+    MATCH(SIGHUP)
+    MATCH(SIGQUIT)
+    MATCH(SIGTRAP)
+    MATCH(SIGKILL)
+    MATCH(SIGBUS)
+    MATCH(SIGSYS)
+    MATCH(SIGPIPE)
+    MATCH(SIGALRM)
+    default:
+        return "unknown";
+    }
+}
+#undef MATCH
+#endif
+
 void setProcessPriority(Priority p){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     auto priorityClass = (p == Priority::High) ?
                 HIGH_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS;
     if (!SetPriorityClass(GetCurrentProcess(), priorityClass)){
@@ -305,7 +352,7 @@ void setProcessPriority(Priority p){
 }
 
 void setThreadPriority(Priority p){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     auto thread = GetCurrentThread();
     // set the thread priority
     auto threadPriority = (p == Priority::High) ?

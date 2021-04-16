@@ -52,7 +52,7 @@
 #define LOGLEVEL 0
 #endif
 
-#define DO_LOG(x) (vst::Log() << x)
+#define DO_LOG(x) do { vst::Log() << x; } while(false)
 
 #if LOGLEVEL >= 0
 #define LOG_ERROR(x) DO_LOG(x)
@@ -168,6 +168,10 @@ std::string fileBaseName(const std::string& path);
 
 std::string errorMessage(int err);
 
+#ifndef _WIN32
+const char *strsignal(int sig);
+#endif
+
 //--------------------------------------------------------------------------------------
 
 enum class CpuArch {
@@ -177,7 +181,12 @@ enum class CpuArch {
     arm,
     aarch64,
     ppc,
-    ppc64
+    ppc64,
+#ifndef _WIN32
+    // PE executables (for Wine support)
+    pe_i386,
+    pe_amd64
+#endif
 };
 
 CpuArch getHostCpuArchitecture();
@@ -201,7 +210,7 @@ public:
         WRITE
     };
     File(const std::string& path, Mode mode = READ)
-#if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9)
+#if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9) && !defined(__WINE__)
     // UTF-16 file names supported by MSVC and newer GCC versions
         : std::fstream(vst::widen(path).c_str(),
 #else
@@ -231,6 +240,7 @@ public:
 };
 
 //----------------------------------------------------------------------------------------
+
 enum class Priority {
     Low,
     High

@@ -1,8 +1,8 @@
 #include "WindowWin32.h"
+#include "PluginInfo.h"
 #include "Utility.h"
 
 #include <cstring>
-#include <process.h>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 
@@ -119,9 +119,12 @@ EventLoop::EventLoop(){
     wcex.cbSize = sizeof(WNDCLASSEXW);
     wcex.lpfnWndProc = Window::procedure;
     wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
+#ifndef __WINE__
+    // FIXME this causes linker errors on Wine (undefined reference to 'ExtractIconW')
     wchar_t exeFileName[MAX_PATH];
     GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
     wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
+#endif
     if (!RegisterClassExW(&wcex)){
         LOG_WARNING("couldn't register window class!");
     } else {

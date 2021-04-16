@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Interface.h"
+#include "PluginInfo.h"
 #include "Sync.h"
 
 #include <array>

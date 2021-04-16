@@ -36,6 +36,19 @@ bool PluginManager::isException(const std::string& path) const {
 void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
     WriteLock lock(mutex_);
     int index = plugin->bridged() ? BRIDGED : NATIVE;
+#if USE_WINE
+    if (index == BRIDGED){
+        // prefer 64-bit Wine plugins
+        auto it = plugins_[index].find(key);
+        if (it != plugins_[index].end()){
+            if (it->second->arch() == CpuArch::pe_amd64 &&
+                    plugin->arch() == CpuArch::pe_i386) {
+                LOG_DEBUG("ignore 32-bit Windows DLL");
+                return;
+            }
+        }
+    }
+#endif
     // LOG_DEBUG("add plugin " << key << ((index == BRIDGED) ? " [bridged]" : ""));
     plugins_[index][key] = std::move(plugin);
 }

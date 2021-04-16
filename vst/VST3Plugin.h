@@ -46,6 +46,96 @@ const ChunkID& getChunkID (ChunkType type);
 
 using namespace Steinberg;
 
+#if !SMTG_PLATFORM_64 && defined(__WINE__)
+// 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
+// on an 8 byte boundary, so Vst::ProcessSetup has a size of 20 bytes.
+// For Linux plugins this is not a problem, because they are compiled
+// with the same alignment/padding requirements, but if we want to run
+// Windows plugins compiled with MSVC/MinGW, we have to manually add the
+// necessary padding and alignment...
+
+// Vst::ProcessSetup
+struct MyProcessSetup {
+    int32 processMode;
+    int32 symbolicSampleSize;
+    int32 maxSamplesPerBlock;
+    int32 padding;
+    Vst::SampleRate sampleRate;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyProcessSetup) == 24,
+              "unexpected size for MyProcessSetup");
+
+// Vst::AudioBusBuffers
+struct MyAudioBusBuffers {
+    int32 numChannels;
+    int32 padding1;
+    uint64 silenceFlags;
+    union
+    {
+        Vst::Sample32** channelBuffers32;
+        Vst::Sample64** channelBuffers64;
+    };
+    int32 padding2;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyAudioBusBuffers) == 24,
+              "unexpected size for MyAudioBusBuffers");
+
+// Vst::ProcessData
+struct MyProcessData
+{
+    int32 processMode;
+    int32 symbolicSampleSize;
+    int32 numSamples;
+    int32 numInputs;
+    int32 numOutputs;
+    MyAudioBusBuffers* inputs;
+    MyAudioBusBuffers* outputs;
+
+    Vst::IParameterChanges* inputParameterChanges;
+    Vst::IParameterChanges* outputParameterChanges;
+    Vst::IEventList* inputEvents;
+    Vst::IEventList* outputEvents;
+    Vst::ProcessContext* processContext;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyProcessData) == 48,
+              "unexpected size for MyProcessData");
+
+#else // 32-bit Wine
+
+using MyProcessSetup = Vst::ProcessSetup;
+using MyAudioBusBuffers = Vst::AudioBusBuffers;
+using MyProcessData = Vst::ProcessData;
+
+// check struct sizes
+# if SMTG_PLATFORM_64
+static_assert(sizeof(Vst::ProcessSetup) == 24,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::ProcessData) == 80,
+              "unexpected size for Vst::ProcessData");
+static_assert(sizeof(Vst::AudioBusBuffers) == 24,
+              "unexpected size for Vst::AudioBusBuffers");
+# else // SMTG_PLATFORM_64
+static_assert(sizeof(Vst::ProcessData) == 48,
+              "unexpected size for Vst::ProcessData");
+#  if SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessSetup) == 20,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::AudioBusBuffers) == 16,
+              "unexpected size for Vst::AudioBusBuffers");
+#  else // SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessSetup) == 24,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::AudioBusBuffers) == 24,
+              "unexpected size for Vst::AudioBusBuffers");
+#  endif // SMTG_OS_LINUX
+# endif // SMTG_PLATFORM_64
+
+#endif // 32-bit Wine
+
+
 #define MY_IMPLEMENT_QUERYINTERFACE(Interface)                            \
 tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override  \
 {                                                                         \
@@ -232,10 +322,10 @@ class VST3Plugin final :
     // IRunLoop
     tresult PLUGIN_API registerEventHandler (Linux::IEventHandler* handler,
                                              Linux::FileDescriptor fd) override;
-	tresult PLUGIN_API unregisterEventHandler (Linux::IEventHandler* handler) override;
-	tresult PLUGIN_API registerTimer (Linux::ITimerHandler* handler,
+    tresult PLUGIN_API unregisterEventHandler (Linux::IEventHandler* handler) override;
+    tresult PLUGIN_API registerTimer (Linux::ITimerHandler* handler,
                                       Linux::TimerInterval milliseconds) override;
-	tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
+    tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
 #endif
 
     const PluginInfo& info() const override { return *info_; }
@@ -312,17 +402,18 @@ class VST3Plugin final :
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  private:
-     int getNumParameters() const;
-     int getNumPrograms() const;
-     bool hasEditor() const;
-     bool hasPrecision(ProcessPrecision precision) const;
-     bool hasTail() const;
-     int getTailSize() const;
-     bool hasBypass() const;
+    int getNumParameters() const;
+    int getNumPrograms() const;
+    bool hasEditor() const;
+    bool hasPrecision(ProcessPrecision precision) const;
+    bool hasTail() const;
+    int getTailSize() const;
+    bool hasBypass() const;
+
     template<typename T>
     void doProcess(ProcessData& inData);
     template<typename T>
-    void bypassProcess(ProcessData& inData, Vst::ProcessData& data,
+    void bypassProcess(ProcessData& inData, MyProcessData& data,
                        Bypass state, bool ramp);
     void handleEvents();
     void handleOutputParameterChanges();
@@ -503,7 +594,7 @@ struct HostAttribute {
     HostAttribute(HostAttribute&& other);
     ~HostAttribute();
     HostAttribute& operator =(const HostAttribute& other) = delete; // LATER
-    HostAttribute& operator =(HostAttribute&& other) = delete; // LATER
+    HostAttribute& operator =(HostAttribute&& other);
     // data
     union v
     {

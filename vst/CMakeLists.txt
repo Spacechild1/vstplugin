@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.8)
 
 set(SRC "Interface.h" "PluginCommand.h" "Utility.h" "Utility.cpp"
-    "PluginInfo.cpp" "ThreadedPlugin.h" "ThreadedPlugin.cpp" 
+    "PluginInfo.h" "PluginInfo.cpp" "ThreadedPlugin.h" "ThreadedPlugin.cpp"
     "PluginManager.h" "PluginManager.cpp" "Search.cpp" "CpuArch.cpp"
     "PluginFactory.h" "PluginFactory.cpp" "Module.cpp"  "Sync.cpp")
 
@@ -30,22 +30,22 @@ if (BRIDGE)
 endif()
 
 # platform specific VST sources and defines
-if (LINUX)
-    add_definitions(-DTARGET_API_MAC_CARBON=1 -DDL_OPEN=1 -DUSE_X11=1)
-    list(APPEND SRC "WindowX11.h" "WindowX11.cpp")
-endif()
-if (MINGW OR WIN32)
+if (WIN32 OR BUILD_WINE)
     list(APPEND SRC "WindowWin32.h" "WindowWin32.cpp")
-endif()
-if (APPLE)
+elseif (LINUX)
+    add_definitions(-DTARGET_API_MAC_CARBON=1)
+    list(APPEND SRC "WindowX11.h" "WindowX11.cpp")
+elseif (APPLE)
     add_definitions(-fno-objc-arc)
     list(APPEND SRC "WindowCocoa.h" "WindowCocoa.mm")
 endif()
 
 # static library
 
-add_library(${VST} STATIC ${SRC})
-if (BUILD_HOST32)
-    add_library(${VST32} STATIC ${SRC})
-    target_compile_options(${VST32} PUBLIC "-m32")
+if (LIBVST)
+    add_library(${LIBVST} STATIC ${SRC})
+endif()
+if (LIBVST32)
+    add_library(${LIBVST32} STATIC ${SRC})
+    target_compile_options(${LIBVST32} PUBLIC "-m32")
 endif()

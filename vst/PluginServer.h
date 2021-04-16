@@ -9,8 +9,13 @@
 #include <atomic>
 #include <vector>
 
-#ifdef _WIN32
-# include <Windows.h>
+// On Wine, checking the parent process works
+// better with the native host system API
+#if VST_HOST_SYSTEM == VST_WINDOWS
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 #else
 # include <sys/types.h>
 # include <unistd.h>
@@ -126,7 +131,7 @@ class PluginServer {
 
     PluginHandle *findPlugin(uint32_t id);
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     HANDLE parent_ = 0;
 #else
     int parent_ = -1;

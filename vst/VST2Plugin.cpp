@@ -298,6 +298,8 @@ intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *p, float op
 }
 
 void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+    LOG_DEBUG("VST2Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
+              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
     if (sampleRate > 0){
         dispatch(effSetSampleRate, 0, 0, NULL, sampleRate);
         if (sampleRate != timeInfo_.sampleRate){
@@ -305,9 +307,13 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
             setTransportPosition(0);
         }
     } else {
-        LOG_WARNING("setSampleRate: sample rate must be greater than 0!");
+        LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
     }
-    dispatch(effSetBlockSize, 0, maxBlockSize);
+    if (maxBlockSize > 0){
+        dispatch(effSetBlockSize, 0, maxBlockSize);
+    } else {
+        LOG_ERROR("setupProcessing: block size be greater than 0!");
+    }
     dispatch(effSetProcessPrecision, 0,
              precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
 }
@@ -681,7 +687,8 @@ void VST2Plugin::setTimeSignature(int numerator, int denominator){
         timeInfo_.timeSigDenominator = denominator;
         timeInfo_.flags |= kVstTransportChanged;
     } else {
-        LOG_WARNING("setTimeSignature: bad time signature!");
+        LOG_WARNING("setTimeSignature: bad time signature "
+                    << numerator << "/" << denominator << "!");
     }
 }
 

@@ -111,8 +111,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
         UIThread::callSync([&](){
-            plugin_->setupProcessing(cmd.setup.sampleRate,
-                                     maxBlockSize_, precision_);
+            plugin_->setupProcessing(cmd.setup.sampleRate, maxBlockSize_, precision_);
         });
         updateBuffer();
         break;
@@ -599,11 +598,12 @@ static PluginManager gPluginManager;
 
 PluginServer::PluginServer(int pid, const std::string& shmPath)
 {
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     parent_ = OpenProcess(SYNCHRONIZE, FALSE, pid);
 #else
     parent_ = pid;
 #endif
+    LOG_DEBUG("PluginServer: parent " << parent_);
 
     shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);
@@ -611,27 +611,31 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     // check version (for now it must match exactly)
     int major, minor, patch;
     shm_->getVersion(major, minor, patch);
-    if (!(major == VERSION_MAJOR && minor == VERSION_MINOR
-          && patch == VERSION_PATCH)){
+    if (major == VERSION_MAJOR && minor == VERSION_MINOR
+          && patch == VERSION_PATCH) {
+        LOG_DEBUG("version: " << major << "." << minor << "." << patch);
+    } else {
        throw Error(Error::PluginError, "host app version mismatch");
     }
     // setup UI event loop
-    UIThread::setup();
     LOG_DEBUG("PluginServer: setup event loop");
+    UIThread::setup();
     // install UI poll function
+    LOG_DEBUG("PluginServer: add UI poll function");
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginServer *>(x)->pollUIThread();
     }, this);
-    LOG_DEBUG("PluginServer: add UI poll function");
     // create threads
     running_ = true;
 
+    LOG_DEBUG("PluginServer: create threads");
     for (int i = 2; i < shm_->numChannels(); ++i){
         auto thread = std::thread(&PluginServer::runThread,
                                   this, &shm_->getChannel(i));
         threads_.push_back(std::move(thread));
     }
-    LOG_DEBUG("PluginServer: create threads");
+
+    LOG_DEBUG("PluginServer: ready");
 }
 
 PluginServer::~PluginServer(){
@@ -642,7 +646,7 @@ PluginServer::~PluginServer(){
     }
     LOG_DEBUG("free PluginServer");
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     CloseHandle(parent_);
 #endif
 }
@@ -685,25 +689,40 @@ void PluginServer::pollUIThread(){
 }
 
 void PluginServer::checkParentAlive(){
-#ifdef _WIN32
-    if (WaitForSingleObject(parent_, 0) != WAIT_TIMEOUT){
-        quit();
-    }
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    bool alive = WaitForSingleObject(parent_, 0) == WAIT_TIMEOUT;
 #else
-    if (getppid() != parent_){
+    auto parent = getppid();
+  #ifndef __WINE__
+    bool alive = parent == parent_;
+  #else
+    // We can't do this on Wine, because we might have been
+    // forked in a Wine launcher app.
+    // At least we can check for 1 (= reparented to init).
+    // NOTE that this is not 100% reliable, that's why we
+    // don't use this method for the other hosts.
+    bool alive = parent != 1;
+  #endif
+#endif
+    if (!alive){
+        LOG_WARNING("parent (" << parent_ << ") terminated!");
+    #if VST_HOST_SYSTEM != VST_WINDOWS
+        LOG_DEBUG("new parent ID: " << parent);
+    #endif
         quit();
     }
-#endif
 }
 
 void PluginServer::runThread(ShmChannel *channel){
     // raise thread priority for audio thread!
     setThreadPriority(Priority::High);
-    // while (running_) wait for requests
-    // dispatch requests to plugin
+
+    // while running, wait for requests and dispatch to plugin
     // Quit command -> quit()
     for (;;){
+        // LOG_DEBUG(channel->name() << ": wait");
         channel->wait();
+        // LOG_DEBUG(channel->name() << ": wake up");
 
         channel->reset();
 
@@ -713,6 +732,7 @@ void PluginServer::runThread(ShmChannel *channel){
             handleCommand(*channel, *reinterpret_cast<const ShmCommand *>(msg));
         } else if (!running_) {
             // thread got woken up after quit message
+            LOG_DEBUG(channel->name() << ": quit");
             break;
         } else {
             LOG_ERROR("PluginServer: '" << channel->name()
@@ -788,6 +808,8 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
         }
         result.info = gPluginManager.readPlugin(file);
     }
+
+    LOG_DEBUG("PluginServer: did read plugin info");
 
     if (!result.info){
         // shouldn't happen...

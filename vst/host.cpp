@@ -1,4 +1,5 @@
 #include "Interface.h"
+#include "PluginInfo.h"
 #include "Utility.h"
 #if USE_BRIDGE
 #include "PluginServer.h"
@@ -6,10 +7,25 @@
 
 #include <stdlib.h>
 
+#if !defined(_WIN32) || defined(__WINE__)
+# define USE_ALARM 1
+# include <signal.h>
+#else
+# define USE_ALARM 0
+#endif
+
 using namespace vst;
 
-#ifndef _WIN32
- #define shorten(x) x
+#ifndef USE_WMAIN
+# ifdef _WIN32
+#  define USE_WMAIN 1
+# else
+#  define USE_WMAIN 0
+# endif
+#endif
+
+#if !USE_WMAIN
+# define shorten(x) x
 #endif
 
 void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& path){
@@ -27,10 +43,20 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
 int probe(const std::string& pluginPath, int pluginIndex,
-          const std::string& filePath)
+          const std::string& filePath, float timeout)
 {
     setProcessPriority(Priority::Low);
     setThreadPriority(Priority::Low);
+
+#if USE_ALARM
+    if (timeout > 0){
+        signal(SIGALRM, [](int){
+            LOG_WARNING("probe timed out");
+            std::exit(EXIT_FAILURE);
+        });
+        alarm(timeout + 0.5); // round up
+    }
+#endif
 
     LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
@@ -83,7 +109,7 @@ int bridge(int pid, const std::string& path){
 }
 #endif
 
-#ifdef _WIN32
+#if USE_WMAIN
 int wmain(int argc, const wchar_t *argv[]){
 #else
 int main(int argc, const char *argv[]) {
@@ -102,8 +128,13 @@ int main(int argc, const char *argv[]) {
                 index = -1; // non-numeric argument
             }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
-
-            return probe(path, index, file);
+            float timeout;
+            try {
+                timeout = argc > 3 ? std::stof(argv[3]) : 0.f;
+            } catch (...){
+                timeout = 0.f;
+            }
+            return probe(path, index, file, timeout);
         }
     #if USE_BRIDGE
         else if (verb == "bridge" && argc >= 2){

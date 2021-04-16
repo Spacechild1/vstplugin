@@ -72,7 +72,10 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 
 namespace vst {
 
-#ifdef _WIN32
+// On Wine std::wstring_convert would throw an exception
+// when using wchar_t, although it has the same size as char16_t.
+// Maybe because of some template specialization? Dunno...
+#if defined(_WIN32) && !defined(__WINE__)
 using unichar = wchar_t;
 #else
 using unichar = char16_t;
@@ -81,6 +84,9 @@ using unichar = char16_t;
 using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
 
 static StringCoverter& stringConverter(){
+#ifdef _WIN32
+    static_assert(sizeof(wchar_t) == sizeof(char16_t), "bad size for wchar_t!");
+#endif
 #ifdef __MINGW32__
     // because of a mingw32 bug, destructors of thread_local STL objects segfault...
     thread_local auto conv = new StringCoverter;
@@ -92,16 +98,24 @@ static StringCoverter& stringConverter(){
 }
 
 std::string convertString (const Vst::String128 str){
-    return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
+    try {
+        return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
+    } catch (const std::range_error& e){
+        throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
+    }
 }
 
 bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
     if (src.size() < 128){
-        auto wstr = stringConverter().from_bytes(src);
-        for (int i = 0; i < (int)wstr.size(); ++i){
-            dst[i] = wstr[i];
+        try {
+            auto wstr = stringConverter().from_bytes(src);
+            for (int i = 0; i < (int)wstr.size(); ++i){
+                dst[i] = wstr[i];
+            }
+            dst[src.size()] = 0;
+        } catch (const std::range_error& e){
+            throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
         }
-        dst[src.size()] = 0;
         return true;
     } else {
         return false;
@@ -713,10 +727,13 @@ tresult VST3Plugin::disconnect(Vst::IConnectionPoint *other){
 }
 
 void printMessage(Vst::IMessage *message){
-    LOG_DEBUG("got message: " << message->getMessageID());
     auto msg = dynamic_cast<HostMessage *>(message);
     if (msg){
+    #if LOGLEVEL > 2
         msg->print();
+    #endif
+    } else {
+        LOG_DEBUG("Message: " << message->getMessageID());
     }
 }
 
@@ -729,12 +746,24 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 }
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
-    Vst::ProcessSetup setup;
+    LOG_DEBUG("VST3Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
+              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
+    if (sampleRate <= 0){
+        LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
+        sampleRate = 44100;
+    }
+    if (maxBlockSize <= 0){
+        LOG_ERROR("setupProcessing: block size must be greater than 0!");
+        maxBlockSize = 64;
+    }
+
+    MyProcessSetup setup;
     setup.processMode = Vst::kRealtime;
+    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     setup.maxSamplesPerBlock = maxBlockSize;
     setup.sampleRate = sampleRate;
-    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
-    processor_->setupProcessing(setup);
+
+    processor_->setupProcessing(reinterpret_cast<Vst::ProcessSetup&>(setup));
 
     context_.sampleRate = sampleRate;
     // update project time in samples (assumes the tempo is valid for the whole project)
@@ -759,13 +788,14 @@ void VST3Plugin::doProcess(ProcessData& inData){
 #endif
 
     // process data
-    Vst::ProcessData data;
-    data.numSamples = inData.numSamples;
+    MyProcessData data;
+    data.processMode = Vst::kRealtime;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
+    data.numSamples = inData.numSamples;
     data.processContext = &context_;
     // prepare input
     data.numInputs = inData.numInputs;
-    data.inputs = (Vst::AudioBusBuffers *)alloca(sizeof(Vst::AudioBusBuffers) * inData.numInputs);
+    data.inputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numInputs);
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
         bus.silenceFlags = 0;
@@ -774,7 +804,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
     }
     // prepare output
     data.numOutputs = inData.numOutputs;
-    data.outputs = (Vst::AudioBusBuffers *)alloca(sizeof(Vst::AudioBusBuffers) * inData.numOutputs);
+    data.outputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numOutputs);
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
         bus.silenceFlags = 0;
@@ -822,7 +852,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
-        processor_->process(data);
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
     } else {
         bypassProcess<T>(inData, data, bypassState, bypassRamp);
     }
@@ -868,7 +898,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
 }
 
 template<typename T>
-void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
+void VST3Plugin::bypassProcess(ProcessData& inData, MyProcessData& data,
                                Bypass state, bool ramp)
 {
     if (bypassSilent_ && !ramp){
@@ -879,7 +909,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
 
     // make temporary input vector - don't touch the original vector!
     data.inputs = (data.numInputs > 0) ?
-                (Vst::AudioBusBuffers *)(alloca(sizeof(Vst::AudioBusBuffers) * data.numInputs))
+                (MyAudioBusBuffers *)(alloca(sizeof(MyAudioBusBuffers) * data.numInputs))
               : nullptr;
     for (int i = 0; i < data.numInputs; ++i){
         auto nin = inData.inputs[i].numChannels;
@@ -942,7 +972,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
 
     if (ramp) {
         // process <-> bypass transition
-        processor_->process(data);
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
 
         if (state == Bypass::Soft){
             // soft bypass
@@ -1005,7 +1035,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, Vst::ProcessData& data,
         }
     } else {
         // continue to process with empty input till all outputs are silent
-        processor_->process(data);
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
 
         // check for silence (RMS < ca. -80dB)
         auto isBusSilent = [](auto bus, auto nchannels, auto nsamples){
@@ -1315,13 +1345,18 @@ void VST3Plugin::setTempoBPM(double tempo){
     if (tempo > 0){
         context_.tempo = tempo;
     } else {
-        LOG_ERROR("tempo must be greater than 0!");
+        LOG_ERROR("setTempoBPM: tempo must be greater than 0!");
     }
 }
 
 void VST3Plugin::setTimeSignature(int numerator, int denominator){
-    context_.timeSigNumerator = numerator;
-    context_.timeSigDenominator = denominator;
+    if (numerator > 0 && denominator > 0){
+        context_.timeSigNumerator = numerator;
+        context_.timeSigDenominator = denominator;
+    } else {
+        LOG_ERROR("setTimeSignature: bad time signature "
+                  << numerator << "/" << denominator);
+    }
 }
 
 void VST3Plugin::setTransportPlaying(bool play){
@@ -2393,15 +2428,25 @@ HostAttribute::HostAttribute(const char * data, uint32 n) : size(n), type(kBinar
 }
 
 HostAttribute::HostAttribute(HostAttribute&& other){
+    type = other.type;
+    size = other.size;
+    v = other.v;
+    // leave other empty
+    other.size = 0;
+    other.v.b = nullptr; // also strings
+}
+
+HostAttribute& HostAttribute::operator=(HostAttribute&& other){
     if (size > 0){
-        delete[] v.b;
+        delete[] v.b; // also strings
     }
     type = other.type;
     size = other.size;
     v = other.v;
     // leave other empty
     other.size = 0;
-    other.v.b = nullptr; // works for strings as well
+    other.v.b = nullptr; // also strings
+    return *this;
 }
 
 HostAttribute::~HostAttribute(){
@@ -2490,19 +2535,27 @@ void HostAttributeList::print(){
         auto& attr = it.second;
         switch (attr.type){
         case HostAttribute::kInteger:
-            LOG_VERBOSE(id << ": " << attr.v.i);
+            DO_LOG(id << ": " << attr.v.i);
             break;
         case HostAttribute::kFloat:
-            LOG_VERBOSE(id << ": " << attr.v.f);
+            DO_LOG(id << ": " << attr.v.f);
+        {
+            auto ptr = (const uint8_t *)&attr.v.f;
+            char buf[sizeof(double) * 3 + 1];
+            for (size_t i = 0; i < sizeof(double); ++i){
+                sprintf(&buf[i * 3], "%02X", (uint32_t)ptr[i]);
+            }
+            DO_LOG(buf);
+        }
             break;
         case HostAttribute::kString:
-            LOG_VERBOSE(id << ": " << convertString(attr.v.s));
+            DO_LOG(id << ": " << convertString(attr.v.s));
             break;
         case HostAttribute::kBinary:
-            LOG_VERBOSE(id << ": [binary]");
+            DO_LOG(id << ": [binary]");
             break;
         default:
-            LOG_VERBOSE(id << ": ?");
+            DO_LOG(id << ": ?");
             break;
         }
     }
@@ -2522,6 +2575,7 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
 }
 
 void HostMessage::print(){
+    DO_LOG("Message: " << messageID_);
     if (attributes_){
         attributes_->print();
     }

@@ -3,6 +3,9 @@
 #include "Interface.h"
 #include "Sync.h"
 
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 #include <windows.h>
 #include <mutex>
 #include <functional>

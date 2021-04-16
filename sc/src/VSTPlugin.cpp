@@ -510,7 +510,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                     it++;
                 }
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
     };
 
@@ -530,13 +530,18 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
             // just post names of valid plugins
             if (verbose) Print("%s\n", pluginPath.c_str());
             auto numPlugins = factory->numPlugins();
+            // add and post plugins
             if (numPlugins == 1) {
                 addPlugin(factory->getPlugin(0));
             } else {
                 for (int i = 0; i < numPlugins; ++i) {
-                    // add and post plugins
                     addPlugin(factory->getPlugin(i), i, numPlugins);
                 }
+            }
+            // make sure we have the plugin keys!
+            for (int i = 0; i < numPlugins; ++i){
+                auto plugin = factory->getPlugin(i);
+                gPluginManager.addPlugin(makeKey(*plugin), plugin);
             }
         } else {
             // probe (will post results and add plugins)
@@ -2789,6 +2794,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     if (save){
         writeIniFile();
     }
+#if 1
+    // filter duplicate/stale plugins
+    plugins.erase(std::remove_if(plugins.begin(), plugins.end(), [](auto& p){
+        return gPluginManager.findPlugin(makeKey(*p)) != p;
+    }), plugins.end());
+#endif
     // write new info to file (only for local Servers) or buffer
     if (data->path[0]) {
         // write to file

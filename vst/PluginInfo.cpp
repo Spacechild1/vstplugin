@@ -1,4 +1,4 @@
-#include "Interface.h"
+#include "PluginInfo.h"
 #include "Utility.h"
 #include "Sync.h"
 
@@ -121,6 +121,11 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     factory_ = std::move(factory);
 }
 
+CpuArch PluginInfo::arch() const {
+    auto factory = factory_.lock();
+    return factory ? factory->arch() : CpuArch::unknown;
+}
+
 // ThreadedPlugin.cpp
 IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
 
@@ -201,6 +206,51 @@ static void conformPath(std::string& path){
     }
 }
 
+void PluginInfo::addParameter(Param param){
+    auto index = parameters.size();
+    // inverse mapping
+    paramMap_[param.name] = index;
+#if USE_VST3
+    // index -> ID mapping
+    indexToIdMap_[index] = param.id;
+    // ID -> index mapping
+    idToIndexMap_[param.id] = index;
+#endif
+    // add parameter
+    parameters.push_back(std::move(param));
+}
+
+int PluginInfo::findParam(const std::string& key) const {
+    auto it = paramMap_.find(key);
+    if (it != paramMap_.end()){
+        return it->second;
+    } else {
+        return -1;
+    }
+}
+
+#if USE_VST3
+uint32_t PluginInfo::getParamID(int index) const {
+    auto it = indexToIdMap_.find(index);
+    if (it != indexToIdMap_.end()){
+        return it->second;
+    }
+    else {
+        return 0; // throw?
+    }
+}
+
+int PluginInfo::getParamIndex(uint32_t _id) const {
+    auto it = idToIndexMap_.find(_id);
+    if (it != idToIndexMap_.end()){
+        return it->second;
+    }
+    else {
+        return -1; // not automatable
+    }
+}
+#endif
+
 void PluginInfo::scanPresets(){
     const std::vector<PresetType> presetTypes = {
 #if defined(_WIN32)
@@ -217,8 +267,8 @@ void PluginInfo::scanPresets(){
         if (pathExists(folder)){
             vst::search(folder, [&](const std::string& path){
                 auto ext = fileExtension(path);
-                if ((type_ == PluginType::VST3 && ext != "vstpreset") ||
-                    (type_ == PluginType::VST2 && ext != "fxp" && ext != "FXP")){
+                if ((type_ == PluginType::VST3 && ext != ".vstpreset") ||
+                    (type_ == PluginType::VST2 && ext != ".fxp" && ext != ".FXP")){
                     return;
                 }
                 Preset preset;

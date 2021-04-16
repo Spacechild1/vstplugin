@@ -32,7 +32,13 @@ class VST2Factory final : public PluginFactory {
  private:
     void doLoad();
     std::unique_ptr<VST2Plugin> doCreate(PluginInfo::const_ptr desc) const;
-    using EntryPoint = AEffect *(*)(audioMasterCallback);
+    // Although calling convention specifiers like __cdecl and __stdcall
+    // should be meaningless on x86-64 platforms, Wine apparantely treats
+    // them as a hint that a function (pointer) uses the Microsoft x64 calling
+    // convention instead of System V! I couldn't find any documentation
+    // to confirm this, but it seems to work in practice. Otherwise,
+    // calling the entry point would crash immediately with stack corruption.
+    using EntryPoint = AEffect *(VSTCALLBACK *)(audioMasterCallback);
     EntryPoint entry_;
 };
 
