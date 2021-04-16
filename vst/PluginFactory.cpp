@@ -1,5 +1,8 @@
 #include "PluginFactory.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "FileUtils.h"
+#include "MiscUtils.h"
 #if USE_VST2
  #include "VST2Plugin.h"
 #endif

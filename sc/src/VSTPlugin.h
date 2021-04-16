@@ -1,9 +1,13 @@
 #pragma once
 
 #include "SC_PlugIn.hpp"
+
 #include "Interface.h"
 #include "PluginManager.h"
-#include "Utility.h"
+#include "FileUtils.h"
+#include "MiscUtils.h"
+#include "LockfreeFifo.h"
+#include "Log.h"
 #include "Sync.h"
 #include "rt_shared_ptr.hpp"
 

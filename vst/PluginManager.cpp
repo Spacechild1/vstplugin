@@ -1,5 +1,7 @@
 #include "PluginManager.h"
-#include "Utility.h"
+
+#include "FileUtils.h"
+#include "Log.h"
 
 #include <fstream>
 #include <cstdlib>

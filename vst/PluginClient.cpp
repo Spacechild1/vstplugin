@@ -1,5 +1,8 @@
 #include "PluginClient.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "MiscUtils.h"
+#include "FileUtils.h"
 
 #include <algorithm>
 #include <sstream>

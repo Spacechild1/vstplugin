@@ -1,6 +1,7 @@
-#include "Interface.h"
 #include "VST2Plugin.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "MiscUtils.h"
 
 #include <fstream>
 #include <cmath>

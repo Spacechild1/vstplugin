@@ -1,6 +1,8 @@
 #include "WindowWin32.h"
+
 #include "PluginInfo.h"
-#include "Utility.h"
+#include "Log.h"
+#include "MiscUtils.h"
 
 #include <cstring>
 

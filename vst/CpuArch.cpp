@@ -1,5 +1,8 @@
+#include "CpuArch.h"
+
 #include "Interface.h"
-#include "Utility.h"
+#include "FileUtils.h"
+#include "Log.h"
 
 #ifdef _WIN32
 # ifndef NOMINMAX

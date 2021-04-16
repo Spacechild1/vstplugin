@@ -1,6 +1,7 @@
 #include "ShmInterface.h"
-#include "Interface.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "MiscUtils.h"
 
 #include <cstring>
 

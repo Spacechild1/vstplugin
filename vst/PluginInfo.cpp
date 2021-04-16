@@ -1,5 +1,9 @@
 #include "PluginInfo.h"
-#include "Utility.h"
+
+#include "CpuArch.h"
+#include "MiscUtils.h"
+#include "FileUtils.h"
+#include "Log.h"
 #include "Sync.h"
 
 #include <algorithm>

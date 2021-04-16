@@ -1,9 +1,9 @@
 #include "PluginBridge.h"
 
-#include "Utility.h"
 #include "PluginCommand.h"
-
-#include <sstream>
+#include "Log.h"
+#include "CpuArch.h"
+#include "MiscUtils.h"
 
 namespace vst {
 

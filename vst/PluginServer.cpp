@@ -1,16 +1,16 @@
 #include "PluginServer.h"
+
 #include "ShmInterface.h"
 #include "PluginManager.h"
+#include "Log.h"
+#include "FileUtils.h"
+#include "MiscUtils.h"
 
 #include <cassert>
 #include <cstring>
 #include <sstream>
 
 namespace vst {
-
-static void sleep(int s){
-    std::this_thread::sleep_for(std::chrono::seconds(s));
-}
 
 /*///////////////// PluginHandleListener ///////*/
 

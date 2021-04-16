@@ -1,6 +1,8 @@
 #include "WindowX11.h"
+
 #include "PluginInfo.h"
-#include "Utility.h"
+#include "MiscUtils.h"
+#include "Log.h"
 
 #include <cstring>
 #include <cassert>

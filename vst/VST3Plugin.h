@@ -1,7 +1,8 @@
 #pragma once
+
 #include "Interface.h"
-#include "Utility.h"
 #include "PluginFactory.h"
+#include "LockfreeFifo.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"

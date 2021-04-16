@@ -3,7 +3,8 @@
 #include "Interface.h"
 #include "PluginCommand.h"
 #include "Sync.h"
-#include "Utility.h"
+#include "Bus.h"
+#include "LockfreeFifo.h"
 
 #include <thread>
 #include <atomic>

@@ -1,6 +1,10 @@
 #include "ThreadedPlugin.h"
 
+#include "Log.h"
+#include "MiscUtils.h"
+
 #include <string.h>
+#include <fstream>
 #include <assert.h>
 
 #if 0

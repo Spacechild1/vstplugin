@@ -1,5 +1,8 @@
 #include "VST3Plugin.h"
 
+#include "Log.h"
+#include "FileUtils.h"
+
 #if SMTG_OS_LINUX
   #include "WindowX11.h"
 #endif

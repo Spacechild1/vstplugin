@@ -1,5 +1,8 @@
 #include "Interface.h"
-#include "Utility.h"
+
+#include "MiscUtils.h"
+#include "FileUtils.h"
+#include "Log.h"
 
 #if USE_STDFS
 # include <experimental/filesystem>

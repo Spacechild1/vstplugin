@@ -1,5 +1,6 @@
 #include "Sync.h"
-#include "Utility.h"
+
+#include "Log.h"
 
 #if VST_HOST_SYSTEM == VST_WINDOWS
 # ifndef NOMINMAX

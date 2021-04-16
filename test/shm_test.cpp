@@ -1,5 +1,6 @@
 #include "Interface.h"
-#include "Utility.h"
+#include "Log.h"
+#include "MiscUtils.h"
 #include "ShmInterface.h"
 
 #include "plf_nanotimer/plf_nanotimer.h"

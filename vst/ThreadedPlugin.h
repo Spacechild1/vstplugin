@@ -2,8 +2,9 @@
 
 #include "Interface.h"
 #include "Sync.h"
-#include "Utility.h"
 #include "DeferredPlugin.h"
+#include "LockfreeFifo.h"
+#include "Bus.h"
 
 #include <thread>
 

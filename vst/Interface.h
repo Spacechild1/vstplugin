@@ -158,6 +158,8 @@ struct ProcessData {
     ProcessPrecision precision;
 };
 
+void bypass(ProcessData& data);
+
 class IPlugin {
  public:
     using ptr = std::unique_ptr<IPlugin>;

@@ -2,7 +2,7 @@
 
 #include "Interface.h"
 #include "PluginInfo.h"
-#include "Utility.h"
+#include "CpuArch.h"
 
 // probe timeout in seconds
 // 0: infinite
