@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Interface.h"
+
 namespace vst {
 
 struct Bus : AudioBus {

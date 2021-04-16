@@ -2,6 +2,9 @@
 
 #include "FileUtils.h"
 #include "Log.h"
+#if USE_WINE
+# include "CpuArch.h"
+#endif
 
 #include <fstream>
 #include <cstdlib>
