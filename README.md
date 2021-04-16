@@ -29,33 +29,33 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 Since v0.4 it is possible to run 32-bit VST plugins with a 64-bit version of Pd/Supercollider and vice versa.
 
-If vstplugin finds a native and a bridged plugin with the same name, the latter one is ignored.
+If *vstplugin* finds a native and a bridged plugin with the same name, the latter one is ignored.
 
 #### Windows
 
-On Windows, this is very useful if you want to keep using your old 32-bit plugins (which might never see an update).
+Bit-bridging is usually used for running old 32-bit plugins - many of which will never see an update - on modern
+64-bit host applications.
 
-By default, vstplugin always searches for plugins in the 32-bit and 64-bit VST directories.
+By default, vstplugin searches for plugins in both `%PROGRAMFILES%` and `%PROGRAMFILES(x86)%`.
 
 #### macOS
 
-On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 (Catalina)
+On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 eventually
 dropped 32-bit support. However, in the future bit bridging might become necessary again when audio software
 is ported to ARM for the new M1 MacBooks.
 
 #### Linux
 
-On Linux, classic bit-bridging is not very common because plugins are either open source, so they can be built from source,
-or they are recent enough to provide 64-bit versions.
+On Linux, classic bit-bridging is not very common because plugins are either open source or they are recent enough to provide 64-bit versions.
 
-However, the plugin bridge can be used to run Windows plugins on Linux! You need to have Wine installed on your system.
+However, since *vstplugin v0.5* it is also possible to run Windows plugins on Linux! For this you need to have Wine installed on your system.
 Unfortunately, there are several different Wine versions (stable, development, staging, etc.) and they are not 100% compatible.
-The binaries that are available at https://git.iem.at/pd/vstplugin/-/releases are built against 'wine-stable' as shipped with Debian.
-If you want to use a newer Wine version, you might have to build vstplugin from source.
+The binaries available at https://git.iem.at/pd/vstplugin/-/releases are built against the standard Wine version shipped with Debian.
+If you want to use a newer Wine version, you might have to build *vstplugin* from source.
 
-vstplugin searches for plugins in the standard Windows VST directories inside the 'drive_c' directory of your Wine folder
-The default Wine folder is '~/.wine' and can be overriden with the $WINEPREFIX environment variable;
-the default Wine loader is 'wine' and can be overriden with the $WINEPREFIX environment variable.
+*vstplugin* searches for plugins in the standard Windows VST directories inside the 'drive_c' directory of your Wine folder
+The default Wine folder is '~/.wine' and the default Wine loader is the `wine` command; both can be overriden with the
+and can be overriden with the `WINEPREFIX` resp. `WINELOADER` environment variables.
 
 WARNING: The Wine plugin bridge is still experimental and some plugins won't work as expected.
 
@@ -103,7 +103,7 @@ When compiling with GCC on Linux or MinGW, we offer the option `STATIC_LIBS` to 
 Static linking helps if you want to share the binaries with other people because they might not have the required library versions installed on their system.
 Dynamic linking, on the other hand, is preferred for destributing via system package managers like "apt".
 
-##### Windows
+#### Windows
 
 If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and vice versa), you have to perform the following steps:
 1) compile the project with a 64-bit compiler (e.g. in a 'build64' folder)
@@ -111,10 +111,10 @@ If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and 
 3) copy the 32-bit 'host.exe' to the 64-bit installation folder and rename it to 'host_i386.exe'
 4) copy the 64-bit 'host.exe' to the 32-bit installation folder and rename it to 'host_amd64.exe'
 
-If you get compilation errors regarding the *SRWLock functions, it means that `_WIN32_WINNT` is set too low.
-The minimum supported version is `0x0600` (= Windows 7). You can easily set it with the `WINVER` variable.
+If you get compilation errors concerning the SRWLock functions, it means that the Windows SDK version (`_WIN32_WINNT`) is set too low.
+The minimum supported version is `0x0600` (= Windows 7); you can easily override it with the `WINVER` CMake variable.
 
-**Warning about 32-bit MinGW**
+##### Warning about 32-bit MinGW
 
 If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
 This only seems to happen if either the plugin or the host (but not both!) link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship additional DLLs.
@@ -123,11 +123,34 @@ In this special case you should run cmake with `-DSTATIC_LIBS=OFF` so that VSTPl
 To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles.
 Yes, it's ridiculous!
 
-
-##### Linux
+#### macOS
 
 You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
-Make sure to install the relevant 32-bit toolchain and libraries!
+Note that the macOS 10.14 SDK dropped support for compiling 32-bit applications; you must use Xcode 9.4 or earlier.
+
+#### Linux
+
+Dependencies: `libx11-dev`
+
+You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`. Make sure to install the relevant 32-bit toolchain and libraries:
+```
+sudo dpkg --add-architecture i386
+sudo apt-get update
+sudo apt-get install libx11-dev:i386 gcc-multilib g++-multilib
+```
+
+##### Wine
+
+To enable Wine support, you need to follow these steps:
+
+1)  For 64-bit Wine install `wine64-tools`;
+    for 32-bit Wine also install `wine32-tools`, `libx11-dev:i386`, `gcc-multilib` and `g++-multilib`.
+2)  Create another build directory, e.g. 'build_wine', and `cd` into it
+3)  Run `cmake .. -DBUILD_WINE=1`; for 32-bit support you also need to specify `-DBUILD_HOST32`.
+4)  Build the project with `cmake --build . -j -v`
+5)  Copy the resulting binaries `host_amd64.exe.so` and (optionally) `host_i386.exe.so` into the final
+    Pd/Supercollider package next to the other `host` app(s).
+
 
 #### Prerequisites:
 
@@ -176,13 +199,13 @@ If you don't want to build the SuperCollider extension, run cmake with `-DSC=OFF
 1)	create a build directory, e.g. "build", next to the topmost "CMakeLists.txt"
 2)	cd into the build directory and run `cmake ..` + the necessary variables
     *or* set the variables in the cmake-gui and click "Configure" + "Generate"
-3)	in the build directory type `make`
+3)	build with `cmake --build . -j -v`
 
-    *MSVC:* open vstplugin.sln with Visual Studio and build the solution.
+    Visual Studio: open `vstplugin.sln` and build the solution.
 
-4)	type `make install` to install
+4)	install with `cmake --build . -v -t install`
 
-    *MSVC:* build the project `INSTALL` to install
+    Visual Studio: build the project `INSTALL`
 
 #### macOS 10.15+
 
