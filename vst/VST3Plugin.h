@@ -48,8 +48,8 @@ const ChunkID& getChunkID (ChunkType type);
 using namespace Steinberg;
 
 #if !SMTG_PLATFORM_64 && defined(__WINE__)
-// There is an important ABI difference between 32-bit GCC
-// (including winegcc!) and MSVC/MinGW regarding struct layout:
+// There is an important ABI difference between 32-bit Linux
+// (gcc, winegcc) and MSVC/MinGW regarding struct layout:
 // The former uses 4 byte alignment for 64-bit data types,
 // like double or int64_t, while the latter uses 8 bytes.
 //
@@ -109,9 +109,35 @@ struct MyAudioBusBuffers {
 static_assert(sizeof(MyAudioBusBuffers) == 24,
               "unexpected size for MyAudioBusBuffers");
 
+struct MyProcessContext
+{
+    uint32 state;
+    int32 padding1;
+    double sampleRate;
+    Vst::TSamples projectTimeSamples;
+    int64 systemTime;
+    Vst::TSamples continousTimeSamples;
+    Vst::TQuarterNotes projectTimeMusic;
+    Vst::TQuarterNotes barPositionMusic;
+    Vst::TQuarterNotes cycleStartMusic;
+    Vst::TQuarterNotes cycleEndMusic;
+    double tempo;
+    int32 timeSigNumerator;
+    int32 timeSigDenominator;
+    Vst::Chord chord;
+    int32 smpteOffsetSubframes;
+    Vst::FrameRate frameRate;
+    int32 samplesToNextClock;
+    int32 padding2;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyProcessContext) == 112,
+              "unexpected size for MyProcessContext");
+
 // Vst::ProcessData
 // This one is only used to avoid casts between
-// Vst::AudioBusBuffers and MyAudioBusBuffers
+// Vst::AudioBusBuffers <-> MyAudioBusBuffers and
+// Vst::ProcessContext <-> MyProcessContext
 struct MyProcessData
 {
     int32 processMode;
@@ -126,7 +152,7 @@ struct MyProcessData
     Vst::IParameterChanges* outputParameterChanges;
     Vst::IEventList* inputEvents;
     Vst::IEventList* outputEvents;
-    Vst::ProcessContext* processContext;
+    MyProcessContext* processContext;
 };
 
 static_assert(sizeof(MyProcessData) == 48,
@@ -137,30 +163,35 @@ static_assert(sizeof(MyProcessData) == 48,
 using MyProcessSetup = Vst::ProcessSetup;
 using MyAudioBusBuffers = Vst::AudioBusBuffers;
 using MyProcessData = Vst::ProcessData;
+using MyProcessContext = Vst::ProcessContext;
 
-// check struct sizes
+// verify struct sizes
+
+// these structs generally differ between 32-bit and 64-bit:
 # if SMTG_PLATFORM_64
-static_assert(sizeof(Vst::ProcessSetup) == 24,
-              "unexpected size for Vst::ProcessSetup");
 static_assert(sizeof(Vst::ProcessData) == 80,
               "unexpected size for Vst::ProcessData");
-static_assert(sizeof(Vst::AudioBusBuffers) == 24,
-              "unexpected size for Vst::AudioBusBuffers");
-# else // SMTG_PLATFORM_64
+# else
 static_assert(sizeof(Vst::ProcessData) == 48,
               "unexpected size for Vst::ProcessData");
-#  if SMTG_OS_LINUX
+# endif
+
+// these structs are only different on 32-bit Linux (x86 System V):
+# if !SMTG_PLATFORM_64 && SMTG_OS_LINUX
 static_assert(sizeof(Vst::ProcessSetup) == 20,
               "unexpected size for Vst::ProcessSetup");
 static_assert(sizeof(Vst::AudioBusBuffers) == 16,
               "unexpected size for Vst::AudioBusBuffers");
-#  else // SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessContext) == 104,
+              "unexpected size for Vst::ProcessContext");
+# else // SMTG_OS_LINUX
 static_assert(sizeof(Vst::ProcessSetup) == 24,
               "unexpected size for Vst::ProcessSetup");
 static_assert(sizeof(Vst::AudioBusBuffers) == 24,
               "unexpected size for Vst::AudioBusBuffers");
-#  endif // SMTG_OS_LINUX
-# endif // SMTG_PLATFORM_64
+static_assert(sizeof(Vst::ProcessContext) == 112,
+              "unexpected size for Vst::ProcessContext");
+# endif // SMTG_OS_LINUX
 
 #endif // 32-bit Wine
 
@@ -458,7 +489,7 @@ class VST3Plugin final :
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     // audio
-    Vst::ProcessContext context_;
+    MyProcessContext context_;
     // automation
     int32 automationState_ = 0; // should better be atomic as well...
     std::atomic_bool automationStateChanged_{false};
