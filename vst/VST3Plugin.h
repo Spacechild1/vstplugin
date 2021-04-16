@@ -48,12 +48,38 @@ const ChunkID& getChunkID (ChunkType type);
 using namespace Steinberg;
 
 #if !SMTG_PLATFORM_64 && defined(__WINE__)
-// 32-bit GCC (including winegcc) doesn't align the 'sampleRate' member
-// on an 8 byte boundary, so Vst::ProcessSetup has a size of 20 bytes.
-// For Linux plugins this is not a problem, because they are compiled
-// with the same alignment/padding requirements, but if we want to run
-// Windows plugins compiled with MSVC/MinGW, we have to manually add the
-// necessary padding and alignment...
+// There is an important ABI difference between 32-bit GCC
+// (including winegcc!) and MSVC/MinGW regarding struct layout:
+// The former uses 4 byte alignment for 64-bit data types,
+// like double or int64_t, while the latter uses 8 bytes.
+//
+// This is not a problem if the data structures are carefully
+// designed (i.e. large data members first), but the VST SDK
+// doesn't bother and instead wrongly relies on #pragma pack
+// (which only specifies the *minimum* alignment).
+//
+// If a struct has a different layout, we can't safely pass it to
+// a Windows plugin from our Linux/winelib host; rather we have to
+// use our own structs with additional padding members to match the
+// expected struct layout.
+//
+// The VST2 SDK is not affected, afaict. 64-bit integers are not
+// used anywhere and only few structs have double members:
+// * VstTimeInfo: all doubles come come first.
+// * VstOfflineTask and VstAudioFile: problematic, but not used.
+//
+// VST3 SDK:
+// Broken:
+// * Vst::ProcessSetup
+// * Vst::AudioBusBuffers
+// * Vst::ProcessContext
+// Ok:
+// * Vst::ParameterInfo
+// * Vst::Event
+// Probably fine, but not used (yet):
+// * Vst::NoteExpressionValueDescription
+// * Vst::NoteExpressionValueEvent
+// * Vst::NoteExpressionTypeInfo
 
 // Vst::ProcessSetup
 struct MyProcessSetup {
@@ -84,6 +110,8 @@ static_assert(sizeof(MyAudioBusBuffers) == 24,
               "unexpected size for MyAudioBusBuffers");
 
 // Vst::ProcessData
+// This one is only used to avoid casts between
+// Vst::AudioBusBuffers and MyAudioBusBuffers
 struct MyProcessData
 {
     int32 processMode;
@@ -99,7 +127,7 @@ struct MyProcessData
     Vst::IEventList* inputEvents;
     Vst::IEventList* outputEvents;
     Vst::ProcessContext* processContext;
-} __attribute__((packed, aligned(8) ));
+};
 
 static_assert(sizeof(MyProcessData) == 48,
               "unexpected size for MyProcessData");
