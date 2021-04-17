@@ -191,6 +191,7 @@ variables:
   before_script:
     - apt-get update && apt-get --no-install-recommends -y install deken git zip
   script:
+    - echo "folders:" $(ls -R .)
 # copy win32 host to win64 package and vice versa
     - if [ -e ./w32 ] && [ -e ./w64 ]; then
         for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
@@ -205,6 +206,7 @@ variables:
           [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PROJECT}/. ./Linux/${x}
         ; done
       ; fi
+      ; copied" ./*/${PROJECT}/*.exe.so
 # HACK: remove Linux_wine folders because we don't want to package them
     - rm -rf ./Linux_wine ./Linux_wine32
 # create zip files for all platform (e.g. vstplugin~_v0.3.0_w32.zip)
@@ -212,11 +214,13 @@ variables:
     - for lib in ${PDLIBNAME} ${SCLIBNAME}; do
         for dir in ./*/$lib; do
           name=${lib}_${CI_COMMIT_REF_NAME}_$(basename "${dir%/$lib}");
+          echo zipping $name ;
           (cd "${dir}/.." && zip -r "../${name}.zip" ./${lib})
         ; done
       ; done
 # create binary deken packages for all platforms
     - rm -f ./*.dek
+    - echo package folders ./*/${PDLIBNAME}
     - deken package --version="${CI_COMMIT_TAG#v}" ./*/${PDLIBNAME}
 # upload deken package (optional)
     - test -z "${CI_COMMIT_TAG}" || test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}" || deken upload --no-source-error ./*.dek
