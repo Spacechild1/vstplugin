@@ -1,13 +1,17 @@
 #pragma once
 
+#include "m_pd.h"
+
 #include "Interface.h"
 #include "PluginManager.h"
-#include "Utility.h"
+#include "LockfreeFifo.h"
+#include "Log.h"
+#include "Bus.h"
+#include "FileUtils.h"
+#include "MiscUtils.h"
 #include "Sync.h"
 
 using namespace vst;
-
-#include "m_pd.h"
 
 #include <memory>
 #include <cstdio>
@@ -21,7 +25,6 @@ using namespace vst;
 #include <type_traits>
 #include <thread>
 #include <mutex>
-#include <condition_variable>
 #include <fcntl.h>
 
 // only try to poll event loop for macOS Pd standalone version
@@ -73,17 +76,21 @@ class t_vstplugin {
     t_canvas *x_canvas; // parent canvas
     int x_blocksize = 64;
     t_float x_sr = 44100;
-    std::vector<t_sample *> x_siginlets;
-    std::vector<t_sample *> x_sigoutlets;
-    std::vector<t_sample *> x_sigauxinlets;
-    std::vector<t_sample *> x_sigauxoutlets;
-    std::vector<char> x_inbuf;
-    std::vector<char> x_auxinbuf;
-    std::vector<char> x_outbuf;
-    std::vector<char> x_auxoutbuf;
-    SharedMutex x_mutex;
+    // signals
+    struct t_signalbus {
+        std::unique_ptr<t_sample *[]> b_signals;
+        std::unique_ptr<void *[]> b_buffers;
+        int b_n = 0;
+    };
+    std::vector<t_signalbus> x_inlets;
+    std::vector<t_signalbus> x_outlets;
+    std::vector<Bus> x_inputs;
+    std::vector<Bus> x_outputs;
+    std::vector<char> x_inbuffer;
+    std::vector<char> x_outbuffer;
     // VST plugin
     IPlugin::ptr x_plugin;
+    Mutex x_mutex;
     t_symbol *x_key = nullptr;
     t_symbol *x_path = nullptr;
     t_symbol *x_preset = nullptr;
@@ -91,9 +98,11 @@ class t_vstplugin {
     bool x_uithread = false;
     bool x_threaded = false;
     bool x_keep = false;
-    int x_commands = 0;
+    bool x_suspended = false;
+    bool x_process = false;
     Bypass x_bypass = Bypass::Off;
-    ProcessPrecision x_precision; // single/double precision
+    ProcessPrecision x_wantprecision; // single/double precision
+    ProcessPrecision x_realprecision;
     double x_lastdsptime = 0;
     std::shared_ptr<t_vsteditor> x_editor;
 #ifdef PDINSTANCE
@@ -104,9 +113,14 @@ class t_vstplugin {
     // helper methods
     void set_param(int index, float param, bool automated);
     void set_param(int index, const char *s, bool automated);
+
     bool check_plugin();
+
     template<bool async>
-    void setup_plugin(IPlugin& plugin);
+    void setup_plugin(IPlugin *plugin, bool uithread);
+
+    void update_buffers();
+
     int get_sample_offset();
 };
 
@@ -154,6 +168,7 @@ class t_vsteditor : public IPluginListener {
         return e_owner->x_plugin ? e_owner->x_plugin->getWindow() : nullptr;
     }
     void set_pos(int x, int y);
+    void set_size(int w, int h);
     // plugin callbacks
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
@@ -200,7 +215,7 @@ private:
     std::vector<t_vstparam> e_params;
     // outgoing messages:
     t_clock *e_clock;
-    SharedMutex e_mutex;
+    Mutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
 
@@ -243,9 +258,9 @@ class t_workqueue {
     LockfreeFifo<t_item, 1024> w_rt_queue;
     // worker thread
     std::thread w_thread;
-    std::mutex w_mutex;
-    std::condition_variable w_cond;
-    bool w_running = true;
+    std::mutex w_mutex; // for cancel
+    Event w_event;
+    std::atomic<bool> w_running{false};
     // polling
     t_clock *w_clock = nullptr;
     static void clockmethod(t_workqueue *w);

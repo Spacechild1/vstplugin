@@ -15,7 +15,7 @@ PRIVATE:: prParse, prBashPath
 
 INSTANCEMETHODS::
 
-PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets, hasEditor, isSynth
+PRIVATE:: prToString, prParamIndexMap, prPresetIndex, prSortPresets, hasEditor, isSynth, numInputs, numAuxInputs, numOutputs, numAuxOutputs
 
 METHOD:: key
 
@@ -57,22 +57,6 @@ METHOD:: id
 
 the unique ID as a hex string, e.g. "6779416F". The size of the id is 4 bytes (max. 8 characters) for VST2 plugins and 16 bytes (max. 32 characters) for VST3 plugins.
 
-METHOD:: numInputs
-
-number of (main) audio inputs
-
-METHOD:: numOutputs
-
-number of (main) audio outputs
-
-METHOD:: numAuxInputs
-
-number of auxiliary audio inputs (VST3 only)
-
-METHOD:: numAuxOutputs
-
-number of auxiliary audio outputs (VST3 only)
-
 METHOD:: editor
 
 whether the plugin has a VST GUI editor
@@ -105,13 +89,26 @@ METHOD:: sysexOutput
 
 whether the plugin accepts SysEx output (undefined for VST3)
 
-METHOD:: parameters
+METHOD:: inputs
+METHOD:: outputs
 
-link::Classes/Array:: of (automatable) parameters. Each parameter is represented as an link::Classes/Event:: containing the following fields:
+link::Classes/Array:: of input/output busses. Each bus is represented as an link::Classes/Event:: with the following fields:
 
 table::
-## name || parameter name
-## label || the unit of measurement (e.g. 'dB')
+## code::\channels:: || number of channels
+## code::\name:: || bus name
+## code::\type:: || bus type (code::\main:: or code::\aux::)
+::
+
+note::VST2 plugins only ever have a single input and output bus.::
+
+METHOD:: parameters
+
+link::Classes/Array:: of (automatable) parameters. Each parameter is represented as an link::Classes/Event:: with the following fields:
+
+table::
+## code::\name:: || parameter name
+## code::\label:: || the unit of measurement (e.g. 'dB')
 ::
 
 More entries might be added later.
@@ -122,7 +119,7 @@ RETURNS:: the number of parameters.
 
 METHOD:: programs
 
-link::Classes/Array:: of built-in plugin programs. Each program is represented as an link::Classes/Event:: which currently only contains a single field 'name'. More entries might be added later.
+link::Classes/Array:: of built-in plugin programs. Each program is represented as an link::Classes/Event:: which currently only contains a single field code::\name::. More entries might be added later.
 
 
 METHOD:: numPrograms
@@ -133,9 +130,9 @@ METHOD:: presets
 
 link::Classes/Array:: of VST presets. Each preset is represented as an link::Classes/Event:: with the following fields:
 table::
-## name || preset name
-## path || file path
-## type || preset type (code::user::, code::userFactory::, code::sharedFactory:: or code::global::)
+## code::\name:: || preset name
+## code::\path:: || file path
+## code::\type:: || preset type (code::user::, code::userFactory::, code::sharedFactory:: or code::global::)
 ::
 More entries might be added later.
 

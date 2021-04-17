@@ -1,14 +1,25 @@
 #include "VST3Plugin.h"
 
+#include "Log.h"
+#include "FileUtils.h"
+
+#if SMTG_OS_LINUX
+  #include "WindowX11.h"
+#endif
+
 #include <cstring>
 #include <algorithm>
 #include <set>
 #include <codecvt>
 #include <locale>
+#include <cassert>
 
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
 DEF_CLASS_IID (IPlugFrame)
+#if SMTG_OS_LINUX
+  DEF_CLASS_IID (Linux::IRunLoop)
+#endif
 DEF_CLASS_IID (IPlugView)
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPluginFactory)
@@ -64,7 +75,10 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 
 namespace vst {
 
-#ifdef _WIN32
+// On Wine std::wstring_convert would throw an exception
+// when using wchar_t, although it has the same size as char16_t.
+// Maybe because of some template specialization? Dunno...
+#if defined(_WIN32) && !defined(__WINE__)
 using unichar = wchar_t;
 #else
 using unichar = char16_t;
@@ -73,6 +87,9 @@ using unichar = char16_t;
 using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
 
 static StringCoverter& stringConverter(){
+#ifdef _WIN32
+    static_assert(sizeof(wchar_t) == sizeof(char16_t), "bad size for wchar_t!");
+#endif
 #ifdef __MINGW32__
     // because of a mingw32 bug, destructors of thread_local STL objects segfault...
     thread_local auto conv = new StringCoverter;
@@ -84,16 +101,24 @@ static StringCoverter& stringConverter(){
 }
 
 std::string convertString (const Vst::String128 str){
-    return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
+    try {
+        return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
+    } catch (const std::range_error& e){
+        throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
+    }
 }
 
 bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
     if (src.size() < 128){
-        auto wstr = stringConverter().from_bytes(src);
-        for (int i = 0; i < (int)wstr.size(); ++i){
-            dst[i] = wstr[i];
+        try {
+            auto wstr = stringConverter().from_bytes(src);
+            for (int i = 0; i < (int)wstr.size(); ++i){
+                dst[i] = wstr[i];
+            }
+            dst[src.size()] = 0;
+        } catch (const std::range_error& e){
+            throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
         }
-        dst[src.size()] = 0;
         return true;
     } else {
         return false;
@@ -128,9 +153,9 @@ void VST3Factory::doLoad(){
     #ifndef __APPLE__
         if (isDirectory(modulePath)){
         #ifdef _WIN32
-            modulePath += "/" + getBundleBinaryPath() + "/" + fileName(path_);
+            modulePath += "/" + std::string(getBundleBinaryPath()) + "/" + fileName(path_);
         #else
-            modulePath += "/" + getBundleBinaryPath() + "/" + fileBaseName(path_) + ".so";
+            modulePath += "/" + std::string(getBundleBinaryPath()) + "/" + fileBaseName(path_) + ".so";
         #endif
         }
     #endif
@@ -216,6 +241,8 @@ PluginInfo::const_ptr VST3Factory::probePlugin(int id) const {
 
 /*///////////////////// ParamValueQeue /////////////////////*/
 
+#if USE_MULTI_POINT_AUTOMATION
+
 ParamValueQueue::ParamValueQueue() {
     values_.reserve(maxNumPoints);
 }
@@ -236,7 +263,8 @@ tresult PLUGIN_API ParamValueQueue::getPoint(int32 index, int32& sampleOffset, V
 }
 tresult PLUGIN_API ParamValueQueue::addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) {
     // iterate in reverse because we likely add values in "chronological" order
-    for (auto it = values_.end(); it-- != values_.begin(); ){
+    for (auto it = values_.end(); it != values_.begin(); ){
+        --it; // decrement here (instead of inside the loop condition) to avoid MSVC debug assertion
         if (sampleOffset > it->sampleOffset){
             // higher sample offset -> insert *after* this point (might actually append)
             if (values_.size() < maxNumPoints){
@@ -267,6 +295,8 @@ tresult PLUGIN_API ParamValueQueue::addPoint (int32 sampleOffset, Vst::ParamValu
     index = 0;
     return kResultOk;
 }
+
+#endif
 
 /*///////////////////// ParameterChanges /////////////////////*/
 
@@ -459,26 +489,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
         throw Error(Error::PluginError, "Couldn't get VST3 processor");
     }
-    // get IO channel count
-    auto getChannelCount = [this](auto media, auto dir, auto type) -> int {
-        auto count = component_->getBusCount(media, dir);
-        for (int i = 0; i < count; ++i){
-            Vst::BusInfo bus;
-            if (component_->getBusInfo(media, dir, i, bus) == kResultTrue
-                && bus.busType == type)
-            // we assume that the first bus is 'main' and the second bus is 'aux'
-            {
-                if ((type == Vst::kMain && i != 0) ||
-                    (type == Vst::kAux && i != 1))
-                {
-                    LOG_WARNING("unexpected bus index");
-                    return 0;
-                }
-                return bus.channelCount;
-            }
-        }
-        return 0;
-    };
+
     // finally set remaining info
     if (info){
         info->setUID(uid);
@@ -491,19 +502,57 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 info->vendor = "Unknown";
             }
         }
-        info->numInputs = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kMain);
-        info->numAuxInputs = getChannelCount(Vst::kAudio, Vst::kInput, Vst::kAux);
-        info->numOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kMain);
-        info->numAuxOutputs = getChannelCount(Vst::kAudio, Vst::kOutput, Vst::kAux);
+        // get input/output busses
+        auto collectBusses = [this](auto dir) {
+            std::vector<PluginInfo::Bus> result;
+            auto count = component_->getBusCount(Vst::kAudio, dir);
+            for (int i = 0; i < count; ++i){
+                Vst::BusInfo busInfo;
+                if (component_->getBusInfo(Vst::kAudio, dir, i, busInfo) == kResultTrue){
+                    PluginInfo::Bus bus;
+                    bus.numChannels = busInfo.channelCount;
+                    bus.label = convertString(busInfo.name);
+                    bus.type = (busInfo.busType == Vst::kAux) ?
+                                PluginInfo::Bus::Aux : PluginInfo::Bus::Main;
+                    result.push_back(std::move(bus));
+                }
+            }
+            return result;
+        };
+
+        info->inputs = collectBusses(Vst::kInput);
+        info->outputs = collectBusses(Vst::kOutput);
+
+        auto countMidiChannels = [this](Vst::BusDirection dir) -> int {
+            auto count = component_->getBusCount(Vst::kEvent, dir);
+            for (int i = 0; i < count; ++i){
+                Vst::BusInfo bus;
+                if (component_->getBusInfo(Vst::kEvent, dir, i, bus) == kResultTrue){
+                    if (bus.busType == Vst::kMain){
+                        return bus.channelCount;
+                    } else {
+                        LOG_DEBUG("got aux MIDI bus!");
+                    }
+                }
+            }
+            return 0;
+        };
+        bool midiInput = countMidiChannels(Vst::kInput);
+        bool midiOutput = countMidiChannels(Vst::kOutput);
+
+        bool isSynth = (info->category.find(Vst::PlugType::kInstrument) != std::string::npos);
+
         uint32_t flags = 0;
-        LOG_DEBUG("has editor: " << hasEditor());
-        flags |= hasEditor();
-        flags |= (info->category.find(Vst::PlugType::kInstrument) != std::string::npos) * PluginInfo::IsSynth;
+
+        flags |= hasEditor() * PluginInfo::HasEditor;
+        flags |= isSynth * PluginInfo::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
-        flags |= hasMidiInput() * PluginInfo::MidiInput;
-        flags |= hasMidiOutput() * PluginInfo::MidiOutput;
+        flags |= midiInput * PluginInfo::MidiInput;
+        flags |= midiOutput * PluginInfo::MidiOutput;
+
         info->flags = flags;
+
         // get parameters
         std::set<Vst::ParamID> params;
         int numParameters = controller_->getParameterCount();
@@ -568,14 +617,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
         info_ = info;
     }
-    numMidiInChannels_ = getChannelCount(Vst::kEvent, Vst::kInput, Vst::kMain);
-    numMidiOutChannels_ = getChannelCount(Vst::kEvent, Vst::kOutput, Vst::kMain);
-    numInputBusses_ = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kInput));
-    numInputChannels_[Main] = getNumInputs();
-    numInputChannels_[Aux] = getNumAuxInputs();
-    numOutputBusses_ = std::min<int>(2, component_->getBusCount(Vst::kAudio, Vst::kOutput));
-    numOutputChannels_[Main] = getNumOutputs();
-    numOutputChannels_[Aux] = getNumAuxOutputs();
 #if 0
     LOG_DEBUG("input busses: " << numInputBusses_ << ", output busses: " << numOutputBusses_);
     LOG_DEBUG("in: " << getNumInputs() << ", auxin: " << getNumAuxInputs()
@@ -596,6 +637,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 }
 
 VST3Plugin::~VST3Plugin(){
+    listener_.reset(); // for some buggy plugins
     window_ = nullptr;
     processor_ = nullptr;
     // destroy controller
@@ -655,6 +697,25 @@ tresult VST3Plugin::restartComponent(int32 flags){
         }
     }
 
+    // restart component might be called before paramCache_ is allocated
+    if ((flags & Vst::kParamValuesChanged) && paramCache_){
+        int n = getNumParameters();
+        auto listener = listener_.lock();
+        // this is no perfect, because we might already change a parameter
+        // before this method gets called on the UI thread.
+        for (int i = 0; i < n; ++i){
+            auto id = info().getParamID(i);
+            auto value = controller_->getParamNormalized(id);
+            if (listener){
+                if (paramCache_[i].value.exchange(value, std::memory_order_relaxed) != value){
+                    listener->parameterAutomated(i, value);
+                }
+            } else {
+                paramCache_[i].value.store(value, std::memory_order_relaxed);
+            }
+        }
+    }
+
     return kResultOk;
 }
 
@@ -669,10 +730,13 @@ tresult VST3Plugin::disconnect(Vst::IConnectionPoint *other){
 }
 
 void printMessage(Vst::IMessage *message){
-    LOG_DEBUG("got message: " << message->getMessageID());
     auto msg = dynamic_cast<HostMessage *>(message);
     if (msg){
+    #if LOGLEVEL > 2
         msg->print();
+    #endif
+    } else {
+        LOG_DEBUG("Message: " << message->getMessageID());
     }
 }
 
@@ -685,12 +749,24 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 }
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
-    Vst::ProcessSetup setup;
+    LOG_DEBUG("VST3Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
+              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
+    if (sampleRate <= 0){
+        LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
+        sampleRate = 44100;
+    }
+    if (maxBlockSize <= 0){
+        LOG_ERROR("setupProcessing: block size must be greater than 0!");
+        maxBlockSize = 64;
+    }
+
+    MyProcessSetup setup;
     setup.processMode = Vst::kRealtime;
+    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     setup.maxSamplesPerBlock = maxBlockSize;
     setup.sampleRate = sampleRate;
-    setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
-    processor_->setupProcessing(setup);
+
+    processor_->setupProcessing(reinterpret_cast<Vst::ProcessSetup&>(setup));
 
     context_.sampleRate = sampleRate;
     // update project time in samples (assumes the tempo is valid for the whole project)
@@ -699,69 +775,63 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     context_.continousTimeSamples = time * sampleRate;
 }
 
-void VST3Plugin::process(ProcessData<float>& data){
-    doProcess(data);
-}
-
-void VST3Plugin::process(ProcessData<double>& data){
-    doProcess(data);
-}
-
-void setAudioBusBuffers(Vst::AudioBusBuffers& bus, float ** vec){
-    bus.channelBuffers32 = vec;
-}
-
-void setAudioBusBuffers(Vst::AudioBusBuffers& bus, double ** vec){
-    bus.channelBuffers64 = vec;
-}
-
-template<typename T>
-void doBypassProcessing(IPlugin::ProcessData<T>& data, T** output, int numOut, T** auxoutput, int numAuxOut){
-    for (int i = 0; i < numOut; ++i){
-        auto out = output[i];
-        if (i < data.numInputs){
-            // copy input to output
-            auto in = data.input[i];
-            std::copy(in, in + data.numSamples, out);
-        } else {
-            std::fill(out, out + data.numSamples, 0); // zero
-        }
-    }
-    for (int i = 0; i < numAuxOut; ++i){
-        auto out = auxoutput[i];
-        if (i < data.numAuxInputs){
-            // copy input to output
-            auto in = data.auxInput[i];
-            std::copy(in, in + data.numSamples, out);
-        } else {
-            std::fill(out, out + data.numSamples, 0); // zero
-        }
+void VST3Plugin::process(ProcessData& data){
+    if (data.precision == ProcessPrecision::Double){
+        doProcess<double>(data);
+    } else {
+        doProcess<float>(data);
     }
 }
 
 template<typename T>
-void VST3Plugin::doProcess(ProcessData<T>& inData){
+void VST3Plugin::doProcess(ProcessData& inData){
+#if 1
+    assert(inData.numInputs > 0);
+    assert(inData.numOutputs > 0);
+#endif
+
     // process data
-    Vst::ProcessData data;
-    Vst::AudioBusBuffers input[2];
-    Vst::AudioBusBuffers output[2];
-    data.numSamples = inData.numSamples;
+    MyProcessData data;
+    data.processMode = Vst::kRealtime;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
-    // we send data for all busses (max. 2 per direction); some might have been deactivated in 'setNumSpeakers'
-    data.numInputs = numInputBusses_;
-    data.numOutputs = numOutputBusses_;
-    data.inputs = input;
-    data.outputs = output;
+    data.numSamples = inData.numSamples;
     data.processContext = &context_;
+    // prepare input
+    data.numInputs = inData.numInputs;
+    data.inputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numInputs);
+    for (int i = 0; i < data.numInputs; ++i){
+        auto& bus = data.inputs[i];
+        bus.silenceFlags = 0;
+        bus.numChannels = inData.inputs[i].numChannels;
+        bus.channelBuffers32 = (Vst::Sample32 **)inData.inputs[i].channelData32;
+    }
+    // prepare output
+    data.numOutputs = inData.numOutputs;
+    data.outputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numOutputs);
+    for (int i = 0; i < data.numOutputs; ++i){
+        auto& bus = data.outputs[i];
+        bus.silenceFlags = 0;
+        bus.numChannels = inData.outputs[i].numChannels;
+        bus.channelBuffers32 = (Vst::Sample32 **)inData.outputs[i].channelData32;
+    }
+
     data.inputEvents = &inputEvents_;
     data.outputEvents = &outputEvents_;
+
     data.inputParameterChanges = &inputParamChanges_;
     data.outputParameterChanges = &outputParamChanges_;
 
-    auto bypassState = bypass_; // do we have to care about bypass?
+    // send parameter changes from editor to processor
+    ParamChange paramChange;
+    while (paramChangesFromGui_.pop(paramChange)){
+        int32 index;
+        auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
+        queue->addPoint(0, paramChange.value, index);
+    }
+
+    // check bypass state
+    auto bypassState = bypass_;
     bool bypassRamp = (bypass_ != lastBypass_);
-    int rampDir = 0;
-    T rampAdvance = 0;
     if (bypassRamp){
         if ((bypass_ == Bypass::Hard || lastBypass_ == Bypass::Hard)){
             // hard bypass: just crossfade to unprocessed input - but keep processing
@@ -773,8 +843,6 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
             // instead of being cut off!
             bypassState = Bypass::Soft;
         }
-        rampDir = bypass_ != Bypass::Off;
-        rampAdvance = (1.f / data.numSamples) * (1 - 2 * rampDir);
     }
     if ((bypassState == Bypass::Hard) && hasBypass()){
         // if we request a hard bypass from a plugin which has its own bypass method,
@@ -784,218 +852,13 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     }
     lastBypass_ = bypass_;
 
-    // create dummy buffers
-    auto indummy = (T *)alloca(sizeof(T) * data.numSamples); // dummy input buffer
-    std::fill(indummy, indummy + data.numSamples, 0); // zero!
-    auto outdummy = (T *)alloca(sizeof(T) * data.numSamples); // (don't have to zero)
-
-    // prepare input buffers
-    auto setInputBuffers = [&](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
-                            auto** inputs, int numIn, auto** outputs, int numOut, auto* dummy){
-        bus.silenceFlags = 0;
-        bus.numChannels = numChannels;
-        for (int i = 0; i < numChannels; ++i){
-            if (i < numIn){
-                switch (bypassState){
-                case Bypass::Soft:
-                    // fade input to produce a smooth tail with no click
-                    if (bypassRamp && i < numOut){
-                        // write fade in/fade out to *output buffer* and use it as the plugin input.
-                        // this works because VST plugins actually work in "replacing" mode.
-                        auto src = inputs[i];
-                        auto dst = vec[i] = outputs[i];
-                        T mix = rampDir;
-                        for (int j = 0; j < inData.numSamples; ++j, mix += rampAdvance){
-                            dst[j] = src[j] * mix;
-                        }
-                    } else {
-                        vec[i] = dummy; // silence
-                    }
-                    break;
-                case Bypass::Hard:
-                    if (bypassRamp){
-                        // point to input (for creating the ramp)
-                        vec[i] = inputs[i];
-                    } else {
-                        vec[i] = dummy; // silence (for flushing the effect)
-                    }
-                    break;
-                default:
-                    // point to input
-                    vec[i] = inputs[i];
-                    break;
-                }
-            } else {
-                vec[i] = dummy; // silence
-            }
-        }
-        setAudioBusBuffers(bus, vec);
-    };
-    // prepare output buffers
-    auto setOutputBuffers = [](Vst::AudioBusBuffers& bus, auto **vec, int numChannels,
-                            auto** outputs, int numOut, auto* dummy){
-        bus.silenceFlags = 0;
-        bus.numChannels = numChannels;
-        for (int i = 0; i < numChannels; ++i){
-            if (i < numOut){
-                vec[i] = outputs[i];
-            } else {
-                vec[i] = dummy; // point to dummy buffer
-            }
-        }
-        setAudioBusBuffers(bus, vec);
-    };
-    // input:
-    auto nin = numInputChannels_[Main];
-    auto invec = (T **)alloca(sizeof(T*) * nin);
-    setInputBuffers(input[Main], invec, nin, (T **)inData.input, inData.numInputs,
-            inData.output, inData.numOutputs, indummy);
-    // aux input:
-    auto nauxin = numInputChannels_[Aux];
-    auto auxinvec = (T **)alloca(sizeof(T*) * nauxin);
-    setInputBuffers(input[Aux], auxinvec, nauxin, (T **)inData.auxInput, inData.numAuxInputs,
-            inData.auxOutput, inData.numAuxOutputs, indummy);
-    // output:
-    auto nout = numOutputChannels_[Main];
-    auto outvec = (T **)alloca(sizeof(T*) * nout);
-    setOutputBuffers(output[Main], outvec, nout, (T **)inData.output, inData.numOutputs, outdummy);
-    // aux output:
-    auto nauxout = numOutputChannels_[Aux];
-    auto auxoutvec = (T **)alloca(sizeof(T*) * nauxout);
-    setOutputBuffers(output[Aux], auxoutvec, nauxout, (T **)inData.auxOutput, inData.numAuxOutputs, outdummy);
-
-    // send parameter changes from editor to processor
-    ParamChange paramChange;
-    while (paramChangesFromGui_.pop(paramChange)){
-        int32 index;
-        auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
-        queue->addPoint(0, paramChange.value, index);
-    }
-
     // process
     if (bypassState == Bypass::Off){
         // ordinary processing
-        processor_->process(data);
-    } else if (bypassRamp) {
-        // process <-> bypass transition
-        processor_->process(data);
-
-        if (bypassState == Bypass::Soft){
-            // soft bypass
-            auto softRamp = [&](auto inputs, auto numIn, auto outputs, auto numOut){
-                for (int i = 0; i < numOut; ++i){
-                    T mix = rampDir;
-                    auto out = outputs[i];
-                    if (i < numIn){
-                        // fade in/out unprocessed input
-                        auto in = inputs[i];
-                        for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                            out[j] += in[j] * (1.f - mix);
-                        }
-                    } else {
-                        // just fade in/out
-                        for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                            out[j] *= mix;
-                        }
-                    }
-                }
-            };
-            softRamp(inData.input, inData.numInputs, outvec, nout);
-            softRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout);
-            if (rampDir){
-                LOG_DEBUG("process -> soft bypass");
-            } else {
-                LOG_DEBUG("soft bypass -> process");
-            }
-        } else {
-            // hard bypass
-            auto hardRamp = [&](auto inputs, auto numIn, auto outputs, auto numOut){
-                for (int i = 0; i < numOut; ++i){
-                   T mix = rampDir;
-                   auto out = outputs[i];
-                   if (i < numIn){
-                       // cross fade between plugin output and unprocessed input
-                       auto in = inputs[i];
-                       for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                           out[j] = out[j] * mix + in[j] * (1.f - mix);
-                       }
-                   } else {
-                       // just fade out
-                       for (int j = 0; j < data.numSamples; ++j, mix += rampAdvance){
-                           out[j] *= mix;
-                       }
-                   }
-                }
-            };
-            hardRamp(inData.input, inData.numInputs, outvec, nout);
-            hardRamp(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout);
-            if (rampDir){
-                LOG_DEBUG("process -> hard bypass");
-            } else {
-                LOG_DEBUG("hard bypass -> process");
-            }
-        }
-    } else if (!bypassSilent_){
-        // continue to process with empty input till the output is silent
-        processor_->process(data);
-        // check for silence (RMS < ca. -80dB)
-        auto isChannelSilent = [](auto buf, auto n){
-            const T threshold = 0.0001;
-            T sum = 0;
-            for (int i = 0; i < n; ++i){
-                T f = buf[i];
-                sum += f * f;
-            }
-            return (sum / n) < (threshold * threshold); // sqrt(sum/n) < threshold
-        };
-        bool silent = true;
-        auto checkBusSilent = [&](auto bus, auto count, auto n){
-            for (int i = 0; i < count; ++i){
-                if (!isChannelSilent(bus[i], n)){
-                    silent = false;
-                    break;
-                }
-            }
-        };
-        checkBusSilent(outvec, nout, data.numSamples);
-        checkBusSilent(auxoutvec, nauxout, data.numSamples);
-        if (silent){
-            LOG_DEBUG("plugin output became silent!");
-        }
-        bypassSilent_ = silent;
-        if (bypassState == Bypass::Soft){
-            auto mix = [](auto** inputs, auto numIn, auto** outputs, auto numOut, auto n){
-                // mix output with unprocessed input
-                for (int i = 0; i < numOut; ++i){
-                    auto out = outputs[i];
-                    if (i < numIn){
-                        auto in = inputs[i];
-                        for (int j = 0; j < n; ++j){
-                            out[j] += in[j];
-                        }
-                    }
-                }
-            };
-            mix(inData.input, inData.numInputs, outvec, nout, inData.numSamples);
-            mix(inData.auxInput, inData.numAuxInputs, auxoutvec, nauxout, inData.numSamples);
-        } else {
-            // overwrite output
-            doBypassProcessing(inData, outvec, nout, auxoutvec, nauxout);
-        }
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
     } else {
-        // simple bypass
-        doBypassProcessing(inData, outvec, getNumOutputs(), auxoutvec, getNumAuxOutputs());
+        bypassProcess<T>(inData, data, bypassState, bypassRamp);
     }
-    // clear remaining outputs
-    auto clearOutputs = [](auto _outputs, int numOutputs, int numChannels, int n){
-        int rem = numOutputs - numChannels;
-        for (int i = 0; i < rem; ++i){
-            auto out = _outputs[numChannels + i];
-            std::fill(out, out + n, 0);
-        }
-    };
-    clearOutputs(inData.output, inData.numOutputs, nout, inData.numSamples);
-    clearOutputs(inData.auxOutput, inData.numAuxOutputs, nauxout, inData.numSamples);
 
     // clear input queues
     inputEvents_.clear();
@@ -1037,6 +900,204 @@ void VST3Plugin::doProcess(ProcessData<T>& inData){
     }
 }
 
+template<typename T>
+void VST3Plugin::bypassProcess(ProcessData& inData, MyProcessData& data,
+                               Bypass state, bool ramp)
+{
+    if (bypassSilent_ && !ramp){
+        // simple bypass
+        bypass(inData);
+        return;
+    }
+
+    // make temporary input vector - don't touch the original vector!
+    data.inputs = (data.numInputs > 0) ?
+                (MyAudioBusBuffers *)(alloca(sizeof(MyAudioBusBuffers) * data.numInputs))
+              : nullptr;
+    for (int i = 0; i < data.numInputs; ++i){
+        auto nin = inData.inputs[i].numChannels;
+        data.inputs[i].channelBuffers32 = nin > 0 ?
+                    (float **)alloca(sizeof(T *) * nin) : nullptr;
+        data.inputs[i].numChannels = nin;
+    }
+
+    // dummy input buffer
+    auto dummy = (T *)alloca(sizeof(T) * data.numSamples);
+    std::fill(dummy, dummy + data.numSamples, 0); // zero!
+
+    int dir;
+    T advance;
+    if (ramp){
+        dir = bypass_ != Bypass::Off;
+        advance = (1.f / data.numSamples) * (1 - 2 * dir);
+    }
+
+    // prepare bypassing
+    for (int i = 0; i < data.numInputs; ++i){
+        auto input = (const T **)data.inputs[i].channelBuffers32;
+        auto nin = data.inputs[i].numChannels;
+
+        if (state == Bypass::Soft){
+            if (ramp && i < data.numOutputs){
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+                // fade input to produce a smooth tail with no click
+                for (int j = 0; j < nin; ++j){
+                    if (j < nout){
+                        // write fade in/fade out to *output buffer* and use it as the plugin input.
+                        // this works because VST plugins actually work in "replacing" mode.
+                        auto in = (const T *)inData.inputs[i].channelData32[j];
+                        auto out = output[j];
+                        T mix = dir;
+                        for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                            out[k] = in[k] * mix;
+                        }
+                        input[j] = output[j];
+                    } else {
+                        input[j] = dummy; // silence
+                    }
+                }
+            } else {
+                for (int j = 0; j < nin; ++j){
+                    input[j] = dummy; // silence
+                }
+            }
+        } else {
+            // hard bypass
+            if (!ramp){
+                // silence (for flushing the effect)
+                for (int j = 0; j < nin; ++j){
+                    input[j] = dummy;
+                }
+            }
+        }
+    }
+
+    if (ramp) {
+        // process <-> bypass transition
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
+
+        if (state == Bypass::Soft){
+            // soft bypass
+            for (int i = 0; i < data.numOutputs; ++i){
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+                auto nin = i < data.numInputs ? data.inputs[i].numChannels : 0;
+
+                for (int j = 0; j < nout; ++j){
+                    T mix = dir;
+                    auto out = output[j];
+                    if (j < nin){
+                        // fade in/out unprocessed (original) input
+                        auto in = (const T *)inData.inputs[i].channelData32[j];
+                        for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                            out[k] += in[k] * (1.f - mix);
+                        }
+                    } else {
+                        // just fade in/out
+                        for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                            out[k] *= mix;
+                        }
+                    }
+                }
+            }
+            if (dir){
+                LOG_DEBUG("process -> soft bypass");
+            } else {
+                LOG_DEBUG("soft bypass -> process");
+            }
+        } else {
+            // hard bypass
+            for (int i = 0; i < data.numOutputs; ++i){
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+                auto nin = i < data.numInputs ? data.inputs[i].numChannels : 0;
+
+                for (int j = 0; j < nout; ++j){
+                    T mix = dir;
+                    auto out = output[j];
+                    if (j < nin){
+                       // cross fade between plugin output and unprocessed (original) input
+                       auto in = (const T *)inData.inputs[i].channelData32[j];
+                       for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                           out[k] = out[k] * mix + in[k] * (1.f - mix);
+                       }
+                   } else {
+                       // just fade in/out
+                       for (int k = 0; k < data.numSamples; ++k, mix += advance){
+                           out[k] *= mix;
+                       }
+                   }
+                }
+            }
+            if (dir){
+                LOG_DEBUG("process -> hard bypass");
+            } else {
+                LOG_DEBUG("hard bypass -> process");
+            }
+        }
+    } else {
+        // continue to process with empty input till all outputs are silent
+        processor_->process(reinterpret_cast<Vst::ProcessData&>(data));
+
+        // check for silence (RMS < ca. -80dB)
+        auto isBusSilent = [](auto bus, auto nchannels, auto nsamples){
+            const T threshold = 0.0001;
+            for (int i = 0; i < nchannels; ++i){
+                auto buf = bus[i];
+                T sum = 0;
+                for (int j = 0; j < nsamples; ++j){
+                    T f = buf[j];
+                    sum += f * f;
+                }
+                if ((sum / nsamples) > (threshold * threshold)){
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        bool silent = true;
+
+        for (int i = 0; i < data.numOutputs; ++i){
+            auto output = (T **)data.outputs[i].channelBuffers32;
+            auto nout = data.outputs[i].numChannels;
+            if (!isBusSilent(output, nout, data.numSamples)){
+                silent = false;
+                break;
+            }
+        }
+
+        if (silent){
+            LOG_DEBUG("plugin output became silent!");
+        }
+        bypassSilent_ = silent;
+
+        if (state == Bypass::Soft){
+            // mix output with unprocessed (original) input
+            for (int i = 0; i < data.numInputs && i < data.numOutputs; ++i){
+                auto input = (const T **)inData.inputs[i].channelData32;
+                auto nin = data.inputs[i].numChannels;
+                auto output = (T **)data.outputs[i].channelBuffers32;
+                auto nout = data.outputs[i].numChannels;
+
+                for (int j = 0; j < nin && j < nout; ++j){
+                    auto in = input[j];
+                    auto out = output[j];
+                    for (int k = 0; k < data.numSamples; ++k){
+                        out[k] += in[k];
+                    }
+                }
+            }
+        } else {
+            // hard bypass: overwrite output - the processing
+            // is only supposed to flush the effect.
+            // (we use the original data!)
+            bypass(inData);
+        }
+    }
+}
+
 #define norm2midi(x) (static_cast<uint8_t>((x) * 127.f) & 127)
 
 void VST3Plugin::handleEvents(){
@@ -1045,7 +1106,14 @@ void VST3Plugin::handleEvents(){
         for (int i = 0; i < outputEvents_.getEventCount(); ++i){
             Vst::Event event;
             outputEvents_.getEvent(i, event);
-            if (event.type != Vst::Event::kDataEvent){
+            if (event.type == Vst::Event::kDataEvent){
+                if (event.data.type == Vst::DataEvent::kMidiSysEx){
+                    SysexEvent e((const char *)event.data.bytes, event.data.size);
+                    listener->sysexEvent(e);
+                } else {
+                    LOG_DEBUG("got unsupported data event");
+                }
+            } else {
                 MidiEvent e;
                 switch (event.type){
                 case Vst::Event::kNoteOffEvent:
@@ -1096,13 +1164,6 @@ void VST3Plugin::handleEvents(){
                     continue;
                 }
                 listener->midiEvent(e);
-            } else {
-                if (event.data.type == Vst::DataEvent::kMidiSysEx){
-                    SysexEvent e((const char *)event.data.bytes, event.data.size);
-                    listener->sysexEvent(e);
-                } else {
-                    LOG_DEBUG("got unsupported data event");
-                }
             }
         }
         outputEvents_.clear();
@@ -1166,22 +1227,6 @@ void VST3Plugin::resume(){
     processor_->setProcessing(true);
 }
 
-int VST3Plugin::getNumInputs() const {
-    return info_->numInputs;
-}
-
-int VST3Plugin::getNumAuxInputs() const {
-    return info_->numAuxInputs;
-}
-
-int VST3Plugin::getNumOutputs() const {
-    return info_->numOutputs;
-}
-
-int VST3Plugin::getNumAuxOutputs() const {
-    return info_->numAuxOutputs;
-}
-
 bool VST3Plugin::hasTail() const {
     return getTailSize() != 0;
 }
@@ -1199,13 +1244,17 @@ void VST3Plugin::setBypass(Bypass state){
     bool haveBypass = bypassID != PluginInfo::NoParamID;
     if (state != bypass_){
         if (state == Bypass::Off){
+            // turn bypass off
             if (haveBypass && (bypass_ == Bypass::Hard)){
                 doSetParameter(bypassID, 0);
+                LOG_DEBUG("plugin bypass off");
             }
             // soft bypass is handled by us
         } else if (bypass_ == Bypass::Off){
+            // turn bypass on
             if (haveBypass && (state == Bypass::Hard)){
                 doSetParameter(bypassID, 1);
+                LOG_DEBUG("plugin bypass on");
             }
             // soft bypass is handled by us
         } else {
@@ -1219,51 +1268,76 @@ void VST3Plugin::setBypass(Bypass state){
 }
 
 static uint64_t makeChannels(int n){
-    return ((uint64_t)1 << n - 1);
+    return ((uint64_t)1 << n) - 1; // don't mess up the brackets!
 }
 
-void VST3Plugin::setNumSpeakers(int in, int out, int auxIn, int auxOut){
-    // NOTE: for convenience, we assume that the first bus is 'main' and the second bus is 'aux',
-    // but this is not necessarily true...
-    LOG_DEBUG("requested bus arrangement: in " << in << ", auxin " << auxIn << ", out " << out << ", auxout " << auxOut);
+void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numOutputs){
+    LOG_DEBUG("requested bus arrangement:");
+    for (int i = 0; i < numInputs; ++i){
+        LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
+    }
+    for (int i = 0; i < numOutputs; ++i){
+        LOG_DEBUG("output bus " << i << ": " << output[i] << "ch");
+    }
 
-    // input busses (max. 2)
-    Vst::SpeakerArrangement inputBusses[2] = {
-        makeChannels(std::min<int>(in, getNumInputs())),
-        makeChannels(std::min<int>(auxIn, getNumAuxInputs()))
+    // input speakers
+    auto numInputSpeakers = std::min<int>(numInputs, info_->numInputs());
+    auto inputSpeakers = numInputSpeakers > 0 ?
+                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numInputSpeakers)
+              : nullptr;
+    for (int i = 0; i < numInputSpeakers; ++i){
+        inputSpeakers[i] = makeChannels(input[i]);
     };
-    // output busses (max. 2)
-    Vst::SpeakerArrangement outputBusses[2] = {
-        makeChannels(std::min<int>(out, getNumOutputs())),
-        makeChannels(std::min<int>(auxOut, getNumAuxOutputs()))
+    // output speakers
+    auto numOutputSpeakers = std::min<int>(numOutputs, info_->numOutputs());
+    auto outputSpeakers = numOutputSpeakers > 0 ?
+                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numOutputSpeakers)
+              : nullptr;
+    for (int i = 0; i < numOutputSpeakers; ++i){
+        outputSpeakers[i] = makeChannels(output[i]);
     };
-    processor_->setBusArrangements(inputBusses, numInputBusses_, outputBusses, numOutputBusses_);
+
+    processor_->setBusArrangements(inputSpeakers, numInputSpeakers,
+                                   outputSpeakers, numOutputSpeakers);
+
     // we have to (de)activate busses *after* setting the bus arrangement.
     // we also retrieve and save the actual bus channel counts.
-    for (int i = 0; i < numInputBusses_; ++i){
-        bool active = i > 0 ? auxIn : in;
-        component_->activateBus(Vst::kAudio, Vst::kInput, i, active);
-        if (processor_->getBusArrangement(Vst::kInput, i, inputBusses[i]) == kResultOk){
-            numInputChannels_[i] = Vst::SpeakerArr::getChannelCount(inputBusses[i]);
-        } else {
-            numInputChannels_[i] = i > 0 ? getNumAuxInputs() : getNumInputs();
-            LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+    auto checkSpeakers = [this](Vst::BusDirection dir, int *speakers, int numSpeakers){
+        auto busCount = component_->getBusCount(Vst::kAudio, dir);
+        for (int i = 0; i < busCount; ++i){
+            if (i < numSpeakers && (speakers[i] > 0)){
+                // check actual channel count
+                Vst::SpeakerArrangement arr;
+                if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
+                    speakers[i] = Vst::SpeakerArr::getChannelCount(arr);
+                } else {
+                    // ?
+                    LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+                }
+                // only activate bus if number of speakers is greater than zero
+                bool active = speakers[i] > 0;
+                component_->activateBus(Vst::kAudio, dir, i, active);
+            } else {
+                // deactive unused bus
+                component_->activateBus(Vst::kAudio, dir, i, false);
+            }
         }
-    }
-    for (int i = 0; i < numOutputBusses_; ++i){
-        bool active = i > 0 ? auxOut : out;
-        component_->activateBus(Vst::kAudio, Vst::kOutput, i, active);
-        if (processor_->getBusArrangement(Vst::kOutput, i, outputBusses[i]) == kResultOk){
-            numOutputChannels_[i] = Vst::SpeakerArr::getChannelCount(outputBusses[i]);
-        } else {
-            numOutputChannels_[i] = i > 0 ? getNumAuxOutputs() : getNumOutputs();
-            LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+        // zero remaining speakers!
+        for (int i = busCount; i < numSpeakers; ++i){
+            speakers[i] = 0;
         }
+    };
+
+    checkSpeakers(Vst::kInput, input, numInputs);
+    checkSpeakers(Vst::kOutput, output, numOutputs);
+
+    LOG_DEBUG("actual bus arrangement:");
+    for (int i = 0; i < numInputs; ++i){
+        LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
     }
-    LOG_DEBUG("actual bus arrangement: in " << numInputChannels_[Main]
-              << ", auxin " << numInputChannels_[Aux]
-              << ", out " << numOutputChannels_[Main]
-              << ", auxout " << numOutputChannels_[Aux]);
+    for (int i = 0; i < numOutputs; ++i){
+        LOG_DEBUG("output bus " << i << ": " << output[i] << "ch");
+    }
 }
 
 int VST3Plugin::getLatencySamples() {
@@ -1274,13 +1348,18 @@ void VST3Plugin::setTempoBPM(double tempo){
     if (tempo > 0){
         context_.tempo = tempo;
     } else {
-        LOG_ERROR("tempo must be greater than 0!");
+        LOG_ERROR("setTempoBPM: tempo must be greater than 0!");
     }
 }
 
 void VST3Plugin::setTimeSignature(int numerator, int denominator){
-    context_.timeSigNumerator = numerator;
-    context_.timeSigDenominator = denominator;
+    if (numerator > 0 && denominator > 0){
+        context_.timeSigNumerator = numerator;
+        context_.timeSigDenominator = denominator;
+    } else {
+        LOG_ERROR("setTimeSignature: bad time signature "
+                  << numerator << "/" << denominator);
+    }
 }
 
 void VST3Plugin::setTransportPlaying(bool play){
@@ -1319,7 +1398,7 @@ void VST3Plugin::setTransportAutomationReading(bool reading){
 
 void VST3Plugin::updateAutomationState(){
     if (window_){
-        automationStateChanged_ = true;
+        automationStateChanged_.store(true, std::memory_order_release);
     } else {
         FUnknownPtr<Vst::IAutomationState> automationState(controller_);
         if (automationState){
@@ -1355,25 +1434,9 @@ double VST3Plugin::getTransportPosition() const {
     return context_.projectTimeMusic;
 }
 
-int VST3Plugin::getNumMidiInputChannels() const {
-    return numMidiInChannels_;
-}
-
-int VST3Plugin::getNumMidiOutputChannels() const {
-    return numMidiOutChannels_;
-}
-
-bool VST3Plugin::hasMidiInput() const {
-    return numMidiInChannels_ != 0;
-}
-
-bool VST3Plugin::hasMidiOutput() const {
-    return numMidiOutChannels_ != 0;
-}
-
 void VST3Plugin::sendMidiEvent(const MidiEvent &event){
     Vst::Event e;
-    e.busIndex = 0;
+    e.busIndex = 0; // LATER allow to choose event bus
     e.sampleOffset = event.delta;
     e.ppqPosition = context_.projectTimeMusic;
     e.flags = Vst::Event::kIsLive;
@@ -1411,7 +1474,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             Vst::ParamID id = Vst::kNoParamId;
             FUnknownPtr<Vst::IMidiMapping> midiMapping(controller_);
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, data1, id) == kResultOk){
-                doSetParameter(id, data2 / 127.f, event.delta);
+                doSetParameter(id, data2 / 127.f, event.delta); // don't use plainParamToNormalized()
             } else {
                 LOG_WARNING("MIDI CC control number " << data1 << " not supported");
             }
@@ -1421,11 +1484,13 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         {
             auto id = info().programChange;
             if (id != PluginInfo::NoParamID){
-                doSetParameter(id, data1 / 127.f);
+                doSetParameter(id, data1 / 127.f); // don't use plainParamToNormalized()
             #if 0
                 program_ = data1;
             #endif
+            #if 0
                 updateParamCache();
+            #endif
             } else {
                 LOG_DEBUG("no program change parameter");
             }
@@ -1494,9 +1559,10 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
         value = controller_->normalizedParamToPlain(id, value);
         value = controller_->plainParamToNormalized(id, value);
     #endif
-        paramCache_[index].value = value;
+        paramCache_[index].value.store(value, std::memory_order_relaxed);
         if (window_){
-            paramCache_[index].changed = true;
+            paramCache_[index].changed.store(true, std::memory_order_relaxed);
+            paramCacheChanged_.store(true, std::memory_order_release);
         } else {
             controller_->setParamNormalized(id, value);
         }
@@ -1532,9 +1598,8 @@ void VST3Plugin::updateParamCache(){
     int n = getNumParameters();
     for (int i = 0; i < n; ++i){
         auto id = info().getParamID(i);
-        paramCache_[i].value = controller_->getParamNormalized(id);
-        // we don't need to tell the GUI to update
-        // paramCache_[i].changed = true;
+        auto value = controller_->getParamNormalized(id);
+        paramCache_[i].value.store(value, std::memory_order_relaxed);
     }
 }
 
@@ -1543,9 +1608,12 @@ void VST3Plugin::setProgram(int program){
         auto id = info().programChange;
         if (id != PluginInfo::NoParamID){
             auto value = controller_->plainParamToNormalized(id, program);
+            LOG_DEBUG("program change value: " << value);
             doSetParameter(id, value);
             program_ = program;
+        #if 0
             updateParamCache();
+        #endif
         } else {
             LOG_DEBUG("no program change parameter");
         }
@@ -1677,8 +1745,7 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             if (component_->setState(&stream) == kResultOk){
                 // also update controller state!
                 stream.setPos(entry.offset); // rewind
-                controller_->setComponentState(&stream); // TODO: make thread-safe
-                updateParamCache();
+                controller_->setComponentState(&stream);
                 LOG_DEBUG("restored component state");
             } else {
                 LOG_WARNING("couldn't restore component state");
@@ -1692,6 +1759,8 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             }
         }
     }
+
+    updateParamCache();
 }
 
 void VST3Plugin::writeProgramFile(const std::string& path){
@@ -1782,10 +1851,40 @@ bool VST3Plugin::hasEditor() const {
 tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
     LOG_DEBUG("resizeView");
     if (window_){
-        window_->setSize(newSize->getWidth(), newSize->getHeight());
+        window_->resize(newSize->getWidth(), newSize->getHeight());
     }
     return view->onSize(newSize);
 }
+
+#if SMTG_OS_LINUX
+tresult VST3Plugin::registerEventHandler(Linux::IEventHandler* handler,
+                                         Linux::FileDescriptor fd) {
+    LOG_DEBUG("registerEventHandler (fd: " << fd << ")");
+    X11::EventLoop::instance().registerEventHandler(fd,
+        [](int fd, void *obj){ static_cast<Linux::IEventHandler *>(obj)->onFDIsSet(fd); }, handler);
+    return kResultOk;
+}
+
+tresult VST3Plugin::unregisterEventHandler(Linux::IEventHandler* handler) {
+    LOG_DEBUG("unregisterEventHandler");
+    X11::EventLoop::instance().unregisterEventHandler(handler);
+    return kResultOk;
+}
+
+tresult VST3Plugin::registerTimer(Linux::ITimerHandler* handler,
+                                  Linux::TimerInterval milliseconds) {
+    LOG_DEBUG("registerTimer (" << milliseconds << " ms)");
+    X11::EventLoop::instance().registerTimer(milliseconds,
+        [](void *obj){ static_cast<Linux::ITimerHandler *>(obj)->onTimer(); }, handler);
+    return kResultOk;
+}
+
+tresult VST3Plugin::unregisterTimer(Linux::ITimerHandler* handler) {
+    LOG_DEBUG("unregisterTimer");
+    X11::EventLoop::instance().unregisterTimer(handler);
+    return kResultOk;
+}
+#endif
 
 void VST3Plugin::openEditor(void * window){
     if (editor_){
@@ -1807,8 +1906,7 @@ void VST3Plugin::openEditor(void * window){
     #endif
         if (result == kResultOk) {
             LOG_DEBUG("opened VST3 editor");
-        }
-        else {
+        } else {
             LOG_ERROR("couldn't open VST3 editor");
         }
     }
@@ -1833,17 +1931,17 @@ void VST3Plugin::closeEditor(){
     editor_ = false;
 }
 
-bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+bool VST3Plugin::getEditorRect(Rect& rect) const {
     if (!view_){
         view_ = controller_->createView("editor");
     }
     if (view_){
-        ViewRect rect;
-        if (view_->getSize(&rect) == kResultOk){
-            left = rect.left;
-            top = rect.top;
-            right = rect.right;
-            bottom = rect.bottom;
+        ViewRect r;
+        if (view_->getSize(&r) == kResultOk){
+            rect.x = r.left;
+            rect.y = r.top;
+            rect.w = r.right - r.left;
+            rect.h = r.bottom - r.top;
             return true;
         }
     }
@@ -1852,14 +1950,15 @@ bool VST3Plugin::getEditorRect(int &left, int &top, int &right, int &bottom) con
 
 void VST3Plugin::updateEditor(){
     // automatable parameters
-    int n = getNumParameters();
-    for (int i = 0; i < n; ++i){
-        bool expected = true;
-        if (paramCache_[i].changed.compare_exchange_strong(expected, false)){
-            auto id = info().getParamID(i);
-            float value = paramCache_[i].value;
-            LOG_DEBUG("update parameter " << id << ": " << value);
-            controller_->setParamNormalized(id, value);
+    if (paramCacheChanged_.exchange(false, std::memory_order_acquire)){
+        int n = getNumParameters();
+        for (int i = 0; i < n; ++i){
+            if (paramCache_[i].changed.exchange(false, std::memory_order_relaxed)){
+                auto id = info().getParamID(i);
+                float value = paramCache_[i].value.load(std::memory_order_relaxed);
+                LOG_DEBUG("update parameter " << id << ": " << value);
+                controller_->setParamNormalized(id, value);
+            }
         }
     }
     // non-automatable parameters (e.g. VU meter)
@@ -1868,8 +1967,7 @@ void VST3Plugin::updateEditor(){
         controller_->setParamNormalized(p.id, p.value);
     }
     // automation state
-    bool expected = true;
-    if (automationStateChanged_.compare_exchange_strong(expected, false)){
+    if (automationStateChanged_.exchange(false, std::memory_order_acquire)){
         FUnknownPtr<Vst::IAutomationState> automationState(controller_);
         if (automationState){
             LOG_DEBUG("update automation state");
@@ -2333,15 +2431,25 @@ HostAttribute::HostAttribute(const char * data, uint32 n) : size(n), type(kBinar
 }
 
 HostAttribute::HostAttribute(HostAttribute&& other){
+    type = other.type;
+    size = other.size;
+    v = other.v;
+    // leave other empty
+    other.size = 0;
+    other.v.b = nullptr; // also strings
+}
+
+HostAttribute& HostAttribute::operator=(HostAttribute&& other){
     if (size > 0){
-        delete[] v.b;
+        delete[] v.b; // also strings
     }
     type = other.type;
     size = other.size;
     v = other.v;
     // leave other empty
     other.size = 0;
-    other.v.b = nullptr; // works for strings as well
+    other.v.b = nullptr; // also strings
+    return *this;
 }
 
 HostAttribute::~HostAttribute(){
@@ -2430,19 +2538,27 @@ void HostAttributeList::print(){
         auto& attr = it.second;
         switch (attr.type){
         case HostAttribute::kInteger:
-            LOG_VERBOSE(id << ": " << attr.v.i);
+            DO_LOG(id << ": " << attr.v.i);
             break;
         case HostAttribute::kFloat:
-            LOG_VERBOSE(id << ": " << attr.v.f);
+            DO_LOG(id << ": " << attr.v.f);
+        {
+            auto ptr = (const uint8_t *)&attr.v.f;
+            char buf[sizeof(double) * 3 + 1];
+            for (size_t i = 0; i < sizeof(double); ++i){
+                sprintf(&buf[i * 3], "%02X", (uint32_t)ptr[i]);
+            }
+            DO_LOG(buf);
+        }
             break;
         case HostAttribute::kString:
-            LOG_VERBOSE(id << ": " << convertString(attr.v.s));
+            DO_LOG(id << ": " << convertString(attr.v.s));
             break;
         case HostAttribute::kBinary:
-            LOG_VERBOSE(id << ": [binary]");
+            DO_LOG(id << ": [binary]");
             break;
         default:
-            LOG_VERBOSE(id << ": ?");
+            DO_LOG(id << ": ?");
             break;
         }
     }
@@ -2462,6 +2578,7 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
 }
 
 void HostMessage::print(){
+    DO_LOG("Message: " << messageID_);
     if (attributes_){
         attributes_->print();
     }

@@ -1,8 +1,10 @@
 #include "WindowWin32.h"
-#include "Utility.h"
+
+#include "PluginInfo.h"
+#include "Log.h"
+#include "MiscUtils.h"
 
 #include <cstring>
-#include <process.h>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 
@@ -22,26 +24,27 @@ void run(){
 }
 
 void quit(){
-    gQuitEvent_.signal();
+    gQuitEvent_.set();
 }
 
-bool isCurrentThread(){
+bool isCurrentThread() {
     return Win32::EventLoop::instance().checkThread();
 }
 
+bool available() { return true; }
+
 void poll(){}
 
+bool sync(){
+    return Win32::EventLoop::instance().sync();
+}
+
 bool callSync(Callback cb, void *user){
-    if (UIThread::isCurrentThread()){
-        cb(user);
-        return true;
-    } else {
-        return Win32::EventLoop::instance().sendMessage(Win32::WM_CALL, (void *)cb, user);
-    }
+    return Win32::EventLoop::instance().callSync(cb, user);
 }
 
 bool callAsync(Callback cb, void *user){
-    return Win32::EventLoop::instance().postMessage(Win32::WM_CALL, (void *)cb, user);
+    return Win32::EventLoop::instance().callAsync(cb, user);
 }
 
 int32_t addPollFunction(PollFunction fn, void *context){
@@ -55,6 +58,8 @@ void removePollFunction(int32_t handle){
 } // UIThread
 
 namespace Win32 {
+
+/*/////////////////// EventLoop //////////////////////*/
 
 EventLoop& EventLoop::instance(){
     static EventLoop thread;
@@ -80,23 +85,24 @@ DWORD EventLoop::run(void *user){
             LOG_ERROR("GetMessage: error");
             break;
         }
-        // LOG_DEBUG("got message " << msg.message);
-
-        if (msg.message == WM_CALL){
+        auto type = msg.message;
+        if (type == WM_CALL){
             LOG_DEBUG("WM_CALL");
             auto cb = (UIThread::Callback)msg.wParam;
             auto data = (void *)msg.lParam;
             cb(data);
+        } else if (type == WM_SYNC){
+            LOG_DEBUG("WM_SYNC");
             obj->notify();
-        } else if ((msg.message == WM_TIMER) && (msg.hwnd == NULL)
+        } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
                    && (msg.wParam == timer)) {
             // call poll functions
             std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
             for (auto& it : obj->pollFunctions_){
                 it.second();
             }
-            // LOG_VERBOSE("call poll functions.");
         } else {
+            // LOG_DEBUG("dispatch message " << msg.message);
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
@@ -115,9 +121,12 @@ EventLoop::EventLoop(){
     wcex.cbSize = sizeof(WNDCLASSEXW);
     wcex.lpfnWndProc = Window::procedure;
     wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
+#ifndef __WINE__
+    // FIXME this causes linker errors on Wine (undefined reference to 'ExtractIconW')
     wchar_t exeFileName[MAX_PATH];
     GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
     wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
+#endif
     if (!RegisterClassExW(&wcex)){
         LOG_WARNING("couldn't register window class!");
     } else {
@@ -154,15 +163,47 @@ bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
     return PostThreadMessage(threadID_, msg, (WPARAM)data1, (LPARAM)data2);
 }
 
-bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
-    std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
-    if (postMessage(msg, data1, data2)){
-        LOG_DEBUG("waiting...");
-        event_.wait();
-        LOG_DEBUG("done");
+bool EventLoop::callAsync(UIThread::Callback cb, void *user){
+    if (UIThread::isCurrentThread()){
+        cb(user);
         return true;
     } else {
-        return false;
+        return postMessage(WM_CALL, (void *)cb, (void *)user);
+    }
+}
+
+bool EventLoop::callSync(UIThread::Callback cb, void *user){
+    if (UIThread::isCurrentThread()){
+        cb(user);
+        return true;
+    } else {
+        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
+        if (postMessage(WM_CALL, (void *)cb, (void *)user)
+                && postMessage(WM_SYNC))
+        {
+            LOG_DEBUG("waiting...");
+            event_.wait();
+            LOG_DEBUG("done");
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
+bool EventLoop::sync(){
+    if (UIThread::isCurrentThread()){
+        return true;
+    } else {
+        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
+        if (postMessage(WM_SYNC)){
+            LOG_DEBUG("waiting...");
+            event_.wait();
+            LOG_DEBUG("done");
+            return true;
+        } else {
+            return false;
+        }
     }
 }
 
@@ -180,49 +221,19 @@ void EventLoop::removePollFunction(UIThread::Handle handle){
 }
 
 void EventLoop::notify(){
-    event_.signal();
+    event_.set();
 }
 
+/*///////////////////////// Window ///////////////////////////*/
+
 Window::Window(IPlugin& plugin)
-    : plugin_(&plugin)
-{
-    // no maximize box if plugin view can't be resized
-    DWORD dwStyle = plugin.canResize() ? WS_OVERLAPPEDWINDOW : WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX;
-    hwnd_ = CreateWindowW(
-          VST_EDITOR_CLASS_NAME, L"Untitled",
-          dwStyle, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-          NULL, NULL, NULL, NULL
-    );
-    LOG_DEBUG("created Window");
-    // set window title
-    SetWindowTextW(hwnd_, widen(plugin.info().name).c_str());
-    // get window dimensions from plugin
-    int left = 100, top = 100, right = 400, bottom = 400;
-    if (!plugin_->getEditorRect(left, top, right, bottom)){
-        // HACK for plugins which don't report the window size without the editor being opened
-        LOG_DEBUG("couldn't get editor rect!");
-        plugin_->openEditor(hwnd_);
-        plugin_->getEditorRect(left, top, right, bottom);
-        plugin_->closeEditor();
-    }
-    LOG_DEBUG("window size: " << (right - left) << " * " << (bottom - top));
-    RECT rc = { left, top, right, bottom };
-    // adjust window dimensions for borders and menu
-    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
-    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
-    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
-    AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-    // set window dimensions
-    MoveWindow(hwnd_, left, top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-    // set user data
-    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
+    : plugin_(&plugin) {
+    // cache for buggy plugins!
+    canResize_ = plugin_->canResize();
 }
 
 Window::~Window(){
-    KillTimer(hwnd_, timerID);
-    plugin_->closeEditor();
-    DestroyWindow(hwnd_);
-    LOG_DEBUG("destroyed Window");
+    doClose();
 }
 
 LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
@@ -230,7 +241,6 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
 
     switch (Msg){
     case WM_CLOSE: // intercept close event!
-    case WM_CLOSE_EDITOR:
     {
         if (window){
             window->doClose();
@@ -239,66 +249,24 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
         }
         return true;
     }
-    case WM_OPEN_EDITOR:
+    case WM_SIZING:
     {
+        LOG_DEBUG("WM_SIZING");
         if (window){
-            window->doOpen();
+            window->onSizing(*(RECT *)lParam);
         } else {
             LOG_ERROR("bug GetWindowLongPtr");
         }
         return true;
     }
-    case WM_EDITOR_POS:
-    {
-        RECT rc;
-        if (GetWindowRect(hWnd, &rc)){
-            MoveWindow(hWnd, wParam, lParam, rc.right - rc.left, rc.bottom - rc.top, TRUE);
-        }
-        return true;
-    }
-    case WM_EDITOR_SIZE:
-    {
-        RECT rc, client;
-        if (GetWindowRect(hWnd, &rc) && GetClientRect(hWnd, &client)){
-            int w = wParam + (rc.right - rc.left) - (client.right - client.left);
-            int h = lParam + (rc.bottom - rc.top) - (client.bottom - client.top);
-            MoveWindow(hWnd, rc.left, rc.top, w, h, TRUE);
-        }
-        return true;
-    }
-    case WM_SIZING:
-    {
-        auto newRect = (RECT *)lParam;
-        RECT oldRect;
-        if (GetWindowRect(hWnd, &oldRect)){
-            if (window && window->plugin()->canResize()){
-                RECT clientRect;
-                if (GetClientRect(hWnd, &clientRect)){
-                    int dw = (oldRect.right - oldRect.left) - (clientRect.right - clientRect.left);
-                    int dh = (oldRect.bottom - oldRect.top) - (clientRect.bottom - clientRect.top);
-                    int width = (newRect->right - newRect->left) - dw;
-                    int height = (newRect->bottom - newRect->top) - dh;
-                #if 0
-                    // validate requested size
-                    window->plugin()->checkEditorSize(width, height);
-                    // TODO: adjust window size
-                #endif
-                    // editor is resized by WM_SIZE (see below)
-                }
-            } else {
-                // bash to old size
-                *newRect = oldRect;
-            }
-        }
-        return true;
-    }
     case WM_SIZE:
     {
+        LOG_DEBUG("WM_SIZE");
         if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED){
-            int w = LOWORD(lParam);
-            int h = HIWORD(lParam);
-            if (window) {
-                window->plugin()->resizeEditor(w, h);
+            if (window){
+                window->onSize(LOWORD(lParam), HIWORD(lParam));
+            } else {
+                LOG_ERROR("bug GetWindowLongPtr");
             }
         }
         return true;
@@ -319,38 +287,221 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
 }
 
 void Window::open(){
-    PostMessage(hwnd_, WM_OPEN_EDITOR, 0, 0);
+    EventLoop::instance().callAsync([](void *x){
+        static_cast<Window *>(x)->doOpen();
+    }, this);
 }
 
 void Window::doOpen(){
-    ShowWindow(hwnd_, SW_RESTORE);
+    if (hwnd_){
+        // just show the window
+        ShowWindow(hwnd_, SW_MINIMIZE);
+        ShowWindow(hwnd_, SW_RESTORE);
+        BringWindowToTop(hwnd_);
+        LOG_DEBUG("Win32: restore");
+        return;
+    }
+
+    // no maximize box if plugin view can't be resized
+    DWORD dwStyle = canResize_ ?
+                WS_OVERLAPPEDWINDOW :
+                (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
+    // already set 'hwnd_' in the beginning because openEditor()
+    // might implicitly call setSize()!
+    hwnd_ = CreateWindowW(
+          VST_EDITOR_CLASS_NAME, L"Untitled",
+          dwStyle, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+          NULL, NULL, NULL, NULL
+    );
+    LOG_DEBUG("Win32: created Window");
+    // set window title
+    SetWindowTextW(hwnd_, widen(plugin_->info().name).c_str());
+    // set user data
+    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
+
+    // set window coordinates
+    bool didOpen = false;
+    if (canResize_ && rect_.valid()){
+        LOG_DEBUG("Win32: restore editor size");
+        // restore from cached rect
+        // NOTE: restoring the size doesn't work if openEditor()
+        // calls setSize() in turn! I've tried various workarounds,
+        // like setting a flag and bashing the size in setSize(),
+        // but they all cause weirdness...
+    } else {
+        // get window dimensions from plugin
+        Rect r;
+        if (!plugin_->getEditorRect(r)){
+            // HACK for plugins which don't report the window size
+            // without the editor being opened
+            LOG_DEBUG("couldn't get editor rect!");
+            plugin_->openEditor(hwnd_);
+            plugin_->getEditorRect(r);
+            didOpen = true;
+        }
+        LOG_DEBUG("editor size: " << r.w << " * " << r.h);
+        rect_.w = r.w;
+        rect_.h = r.h;
+        adjustSize_ = true; // !
+    }
+
+    updateFrame();
+
+    // open VST editor
+    if (!didOpen){
+        plugin_->openEditor(hwnd_);
+    }
+
+    // show window
+#if 0
+    SetForegroundWindow(hwnd_);
+    ShowWindow(hwnd_, SW_SHOW);
     BringWindowToTop(hwnd_);
-    plugin_->openEditor(getHandle());
+#else
+    ShowWindow(hwnd_, SW_MINIMIZE);
+    ShowWindow(hwnd_, SW_RESTORE);
+#endif
+
     SetTimer(hwnd_, timerID, EventLoop::updateInterval, &updateEditor);
+
+    LOG_DEBUG("Win32: setup Window done");
 }
 
 void Window::close(){
-    PostMessage(hwnd_, WM_CLOSE_EDITOR, 0, 0);
+    EventLoop::instance().callAsync([](void *x){
+        static_cast<Window *>(x)->doClose();
+    }, this);
 }
 
 void Window::doClose(){
-    KillTimer(hwnd_, timerID);
-    plugin_->closeEditor();
-    ShowWindow(hwnd_, SW_HIDE);
+    if (hwnd_){
+        RECT rc;
+        if (GetWindowRect(hwnd_, &rc)){
+            // cache position and size
+            rect_.x = rc.left;
+            rect_.y = rc.top;
+            rect_.w = rc.right - rc.left;
+            rect_.h = rc.bottom - rc.top;
+            adjustSize_ = false; // !
+        }
+
+        KillTimer(hwnd_, timerID);
+
+        plugin_->closeEditor();
+
+        DestroyWindow(hwnd_);
+        hwnd_ = NULL;
+        LOG_DEBUG("Win32: destroyed Window");
+    }
 }
 
 void Window::setPos(int x, int y){
-    PostMessage(hwnd_, WM_EDITOR_POS, x, y);
+    EventLoop::instance().callAsync([](void *user){
+        auto cmd = static_cast<Command *>(user);
+        auto owner = cmd->owner;
+        // update position
+        owner->rect_.x = cmd->x;
+        owner->rect_.y = cmd->y;
+        if (owner->hwnd_){
+            owner->updateFrame();
+        }
+        delete cmd;
+    }, new Command { this, x, y });
 }
 
+// client rect size!
 void Window::setSize(int w, int h){
-    LOG_DEBUG("new size: " << w << ", " << h);
-    PostMessage(hwnd_, WM_EDITOR_SIZE, w, h);
+    LOG_DEBUG("setSize: " << w << ", " << h);
+    EventLoop::instance().callAsync([](void *user){
+        auto cmd = static_cast<Command *>(user);
+        auto owner = cmd->owner;
+        if (owner->canResize_){
+            // update and adjust size
+            owner->rect_.w = cmd->x;
+            owner->rect_.h = cmd->y;
+            owner->adjustSize_ = true; // !
+            if (owner->hwnd_){
+                owner->saveCurrentPosition(); // !
+                owner->updateFrame();
+            }
+        }
+
+        delete cmd;
+    }, new Command { this, w, h });
+}
+
+// client rect size!
+void Window::resize(int w, int h){
+    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    // should only be called if the window is open
+    if (hwnd_){
+        saveCurrentPosition(); // !
+        // update and adjust size
+        rect_.w = w;
+        rect_.h = h;
+        adjustSize_ = true; // !
+        updateFrame();
+    }
+}
+
+void Window::saveCurrentPosition(){
+    // get actual position
+    RECT rc;
+    if (GetWindowRect(hwnd_, &rc)){
+        rect_.x = rc.left;
+        rect_.y = rc.top;
+    }
+}
+
+void Window::updateFrame(){
+    if (adjustSize_){
+        // adjust window dimensions for borders and menu
+        const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
+        const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
+        const BOOL fMenu = GetMenu(hwnd_) != nullptr;
+        RECT rc = { rect_.x, rect_.y, rect_.x + rect_.w, rect_.y + rect_.h };
+        AdjustWindowRectEx(&rc, style, fMenu, exStyle);
+        rect_.w = rc.right - rc.left;
+        rect_.h = rc.bottom - rc.top;
+        adjustSize_ = false;
+    }
+    LOG_DEBUG("Win32: update frame, pos: " << rect_.x << ", " << rect_.y
+              << ", size: " << rect_.w << ", " << rect_.h);
+    MoveWindow(hwnd_, rect_.x, rect_.y, rect_.w, rect_.h, TRUE);
 }
 
 void Window::update(){
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (hwnd_){
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
 }
+
+void Window::onSizing(RECT& newRect){
+    // only called when resizing is enabled!
+#if 0
+    RECT rc;
+    if (GetClientRect(hwnd_, &rc)){
+        int dw = rect_.w - (rc.right - rc.left);
+        int dh = rect_.h - (rc.bottom - rc.top);
+        int w = rect_.w - dw;
+        int h = rect_.h - dh;
+        // validate requested size
+        window->plugin()->checkEditorSize(w, w);
+        // TODO: adjust window size
+        // editor is resized by WM_SIZE (see Window::procedure)
+    }
+#endif
+}
+
+// client rect size!
+void Window::onSize(int w, int h){
+    plugin_->resizeEditor(w, h);
+    rect_.w = w;
+    rect_.h = h;
+    adjustSize_ = true;
+    LOG_DEBUG("Win32: size changed: " << w << ", " << h);
+}
+
 } // Win32
 
 IWindow::ptr IWindow::create(IPlugin &plugin){

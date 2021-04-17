@@ -1,7 +1,14 @@
 #pragma once
 
 #include "Interface.h"
-#include "Utility.h"
+#include "PluginInfo.h"
+#include "CpuArch.h"
+
+// probe timeout in seconds
+// 0: infinite
+#ifndef PROBE_TIMEOUT
+# define PROBE_TIMEOUT 10
+#endif
 
 namespace vst {
 

@@ -19,15 +19,13 @@ VSTPlugin : MultiOutUGen {
 			pluginDict[Server.default] = IdentityDictionary.new;
 		}
 	}
-	*ar { arg input, numOut=1, bypass=0, params, id, info, auxInput, numAuxOut=0, blockSize;
+	*ar { arg input, numOut=1, bypass=0, params, id, info, blockSize;
 		input = input.asArray;
-		auxInput = auxInput.asArray;
 		params = params.asArray;
 		params.size.odd.if {
 			MethodError("'params' must be pairs of param index/name + value", this).throw;
 		};
-		^this.multiNewList([\audio, id, info, numOut, numAuxOut, blockSize, bypass, input.size]
-			++ input ++ params.size.div(2) ++ params ++ auxInput.size ++ auxInput);
+		^this.multiNewList([\audio, id, info, blockSize, bypass, input.size, numOut, params.size.div(2)] ++ input ++ params);
 	}
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
@@ -75,6 +73,11 @@ VSTPlugin : MultiOutUGen {
 	}
 	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
 		server = server ?? Server.default;
+		server.serverRunning.not.if {
+			"VSTPlugin.search requires the Server to be running!".warn;
+			action.value;
+			^this;
+		};
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
 		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, parallel, action) }
@@ -147,6 +150,11 @@ VSTPlugin : MultiOutUGen {
 	*stopSearchMsg { ^['/cmd', '/vst_search_stop']; }
 	*probe { arg server, path, key, wait = -1, action;
 		server = server ?? Server.default;
+		server.serverRunning.not.if {
+			"VSTPlugin.probe requires the Server to be running!".warn;
+			action.value;
+			^this;
+		};
 		path = path.asString.standardizePath;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
@@ -283,24 +291,27 @@ VSTPlugin : MultiOutUGen {
 		^[key.stripWhiteSpace.asSymbol, value.stripWhiteSpace ];
 	}
 	*prParseIni { arg stream;
-		var results, onset, line, n, indices, last = 0;
+		var line, n, indices, last = 0;
 		var major = 0, minor = 0, bugfix = 0;
 		// get version
 		line = this.prGetLine(stream, true);
 		(line == "[version]").if {
 			#major, minor, bugfix = this.prGetLine(stream).split($.).collect(_.asInteger);
+			// there was a breaking change between 0.4 and 0.5
+			// (introduction of audio input/output busses)
+			((major == 0) && (minor < 5)).if {
+			    Error("The plugin cache file is incompatible with this version. Please perform a new search!").throw;
+			};
 			line = this.prGetLine(stream, true);
 		};
 		(line != "[plugins]").if { Error("missing [plugins] header").throw };
 		// get number of plugins
 		line = this.prGetLine(stream, true);
 		n = this.prParseCount(line);
-		results = Array.newClear(n);
 		// now deserialize plugins
-		n.do { arg i;
-			results[i] = VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
+		^n.collect {
+			VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
 		};
-		^results;
 	}
 	*prGetInfo { arg server, key, wait, action;
 		var info, dict = pluginDict[server];
@@ -327,43 +338,83 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	// instance methods
-	init { arg id, info, numOut, numAuxOut, blockSize, bypass ... args;
-		var numInputs, inputArray, numParams, paramArray, numAuxInputs, auxInputArray, offset=0;
+	init { arg id, info, blockSize, bypass, numIn, numOut, numParams ... args;
+		var numInputs, numOutputs, pluginInputs, inputArray, outputArray, paramArray, ugenOutputs, numUgenOutputs;
 		// store id and info (both optional)
 		this.id = id !? { id.asSymbol }; // !
 		this.info = (info.notNil && info.isKindOf(VSTPluginDesc).not).if {
 			// try to get plugin from default server
 			VSTPlugin.plugins[info.asSymbol] ?? { MethodError("can't find plugin '%' (did you forget to call VSTPlugin.search?)".format(info), this).throw; };
 		} { info };
-		// main inputs
-		numInputs = args[offset];
-		(numInputs > 0).if {
-			inputArray = args[(offset+1)..(offset+numInputs)];
-			(inputArray.size != numInputs).if { MethodError("bug: input array size mismatch!", this).throw };
-			inputArray.do { arg item, i;
-				(item.rate != \audio).if {
-					MethodError("input % (%) is not audio rate".format(i, item), this).throw;
-				};
-			};
+		// catch bugs with existing code before v0.5 ('auxInputs' and 'numAuxOut' arguments)
+		(blockSize.notNil && blockSize.isNumber.not).if {
+			MethodError("bad value for 'blockSize': %".format(blockSize), this).throw;
 		};
-		offset = offset + 1 + numInputs;
+		// plugin inputs
+		(numIn > 0).if {
+			inputArray = [];
+			numInputs = 0;
+			pluginInputs = args[0..(numIn-1)];
+			pluginInputs[0].isKindOf(Ref).if {
+				// multi-bus input
+				// the array must contain a single array Ref!
+				(pluginInputs.size != 1).if { MethodError("bad input array!", this).throw };
+				// get Array from Ref
+				pluginInputs = pluginInputs[0].value;
+				// make flat array of bus count + bus channels
+				// "inputs:".postln;
+				pluginInputs.do { arg bus, count;
+					bus = bus.asArray;
+					inputArray = inputArray.add(bus.size);
+					bus.do { arg item, i;
+						(item.rate != \audio).if {
+							MethodError("input % (%) in bus % is not audio rate".format(i, item, count), this).throw;
+						};
+						inputArray = inputArray.add(item);
+					};
+					numInputs = numInputs + 1;
+					// "[%] %".format(count, bus).postln;
+				};
+			} {
+				// single-bus input
+				// make array of channel count + channels
+				(pluginInputs.size != numIn).if {
+					MethodError("bug: input array size mismatch!", this).throw;
+				};
+				inputArray = inputArray.add(pluginInputs.size);
+				pluginInputs.do { arg item, i;
+					(item.rate != \audio).if {
+						MethodError("input % (%) is not audio rate".format(i, item), this).throw;
+					};
+					inputArray = inputArray.add(item);
+				};
+				numInputs = 1;
+				// "inputs: %".format(pluginInputs).postln;
+			}
+		} {
+		    // no inputs
+			inputArray = [];
+			numInputs = 0;
+			// "inputs: none".postln;
+		};
+
+		// plugin outputs
+		// can be a single Number or Array Ref; both are turned into an Array of channel numbers
+		outputArray = numOut.value.asArray.collect { arg item, i;
+			// check that the item is a number >= 0! 'nil' is treated as 0.
+			item.notNil.if {
+				item.isNumber.if { item.max(0) }
+				{ MethodError("bad value for output % (%)".format(i, item), this) }
+			} { 0 };
+		};
+		numOutputs = outputArray.size;
+		numUgenOutputs = outputArray.sum.max(1); // total number of outputs (at least 1!)
+		// "outputs: %".format(outputArray).postln;
+
 		// parameter controls
-		numParams = args[offset];
 		(numParams > 0).if {
-			paramArray = args[(offset+1)..(offset+(numParams*2))];
+			paramArray = args[numIn..(numIn + (numParams*2) - 1)];
 			(paramArray.size != (numParams*2)).if { MethodError("bug: param array size mismatch!", this).throw };
-		};
-		offset = offset + 1 + (numParams*2);
-		// aux inputs
-		numAuxInputs = args[offset];
-		(numAuxInputs > 0).if {
-			auxInputArray = args[(offset+1)..(offset+numAuxInputs)];
-			(auxInputArray.size != numAuxInputs).if { MethodError("bug: aux input array size mismatch!", this).throw };
-			auxInputArray.do { arg item, i;
-				(item.rate != \audio).if {
-					MethodError("aux input % (%) is not audio rate".format(i, item), this).throw;
-				};
-			};
 		};
 		// substitute parameter names with indices
 		paramArray.pairsDo { arg param, value, i;
@@ -379,10 +430,21 @@ VSTPlugin : MultiOutUGen {
 				}
 			};
 		};
+		// "parameters: %".format(paramArray).postln;
+
+		// check block size type to catch possible errors with older clients (before the API break)
+		blockSize.isNumber.not.if { MethodError("bad value for 'blockSize' parameter", this) };
+
 		// reassemble UGen inputs (in correct order)
-		inputs = [numOut, blockSize ?? { 0 }, bypass, numInputs] ++ inputArray
-		    ++ numAuxInputs ++ auxInputArray ++ numParams ++ paramArray;
-		^this.initOutputs(numOut + numAuxOut, rate);
+		// first argument is 'flags'!
+		inputs = [0, blockSize ?? { 0 }, bypass, numInputs, numOutputs, numParams] ++ inputArray ++ outputArray ++ paramArray;
+		// "ugen inputs: %".format(inputs).postln;
+
+		ugenOutputs = this.initOutputs(numUgenOutputs, rate);
+		(numOutputs > 1).if {
+			// return Array of busses
+			^ugenOutputs.clumps(outputArray);
+		} { ^ugenOutputs }
 	}
 	optimizeGraph {
 		// This is called exactly once during SynthDef construction!

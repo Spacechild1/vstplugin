@@ -1,113 +1,158 @@
 #include "Sync.h"
-#include "Utility.h"
 
-#ifdef _WIN32
+#include "Log.h"
+
+#if VST_HOST_SYSTEM == VST_WINDOWS
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 # include <windows.h>
 # include <malloc.h>
 #else
 # include <stdlib.h>
 #endif
 
+#include <climits>
+
+// for PaddedSpinLock
+// Intel
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+  #define CPU_INTEL
+  #include <immintrin.h>
+#endif
+// ARM
+#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
+  #define CPU_ARM
+  #include <intrinsics.h>
+#endif
+
 namespace vst {
 
-/*/////////////////// Event ////////////////////*/
+/*/////////////////// SyncCondition ////////////////////*/
 
-Event::Event(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    event_ = CreateEvent(nullptr, 0, 0, nullptr);
-#elif defined(__APPLE__)
-    sem_ = dispatch_semaphore_create(0);
+SyncCondition::SyncCondition(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    InitializeConditionVariable((PCONDITION_VARIABLE)&condition_);
+    InitializeSRWLock((PSRWLOCK)&mutex_);
 #else // pthreads
+    pthread_mutex_init(&mutex_, 0);
+    pthread_cond_init(&condition_, 0);
+#endif
+}
+
+SyncCondition::~SyncCondition(){
+#if VST_HOST_SYSTEM != VST_WINDOWS
+    pthread_mutex_destroy(&mutex_);
+    pthread_cond_destroy(&condition_);
+#endif
+}
+
+void SyncCondition::set(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
+    state_ = true;
+    ReleaseSRWLockExclusive((PSRWLOCK)&mutex_);
+
+    WakeConditionVariable((PCONDITION_VARIABLE)&condition_);
+#else
+    pthread_mutex_lock(&mutex_);
+    state_ = true;
+    pthread_mutex_unlock(&mutex_);
+
+    pthread_cond_signal(&condition_);
+#endif
+}
+
+void SyncCondition::wait(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    AcquireSRWLockExclusive((PSRWLOCK)&mutex_);
+    while (!state_){
+        SleepConditionVariableSRW((PCONDITION_VARIABLE)&condition_,
+                                  (PSRWLOCK)&mutex_, INFINITE, 0);
+    }
+    state_ = false;
+    ReleaseSRWLockExclusive((PSRWLOCK)&mutex_);
+#else
+    pthread_mutex_lock(&mutex_);
+    while (!state_){
+        pthread_cond_wait(&condition_, &mutex_);
+    }
+    state_ = false;
+    pthread_mutex_unlock(&mutex_);
+#endif
+}
+
+/*/////////////////// Semaphore ////////////////////*/
+
+Semaphore::Semaphore(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    sem_ = CreateSemaphoreA(0, 0, INT_MAX, 0);
+#elif VST_HOST_SYSTEM == VST_MACOS
+    semaphore_create(mach_task_self(), &sem_, SYNC_POLICY_FIFO, 0);
+#else // Linux
     sem_init(&sem_, 0, 0);
 #endif
-#endif // USE_PLATFORM_EVENT
 }
 
-Event::~Event(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    CloseHandle(event_);
-#elif defined(__APPLE__)
-    dispatch_release(sem_);
-#else // pthreads
+Semaphore::~Semaphore(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    CloseHandle(sem_);
+#elif VST_HOST_SYSTEM == VST_MACOS
+    semaphore_destroy(mach_task_self(), sem_);
+#else // Linux
     sem_destroy(&sem_);
 #endif
-#endif // USE_PLATFORM_EVENT
 }
 
-void Event::signal(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    SetEvent(event_);
-#elif defined(__APPLE__)
-    dispatch_semaphore_signal(sem_);
-#else
+void Semaphore::post(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    ReleaseSemaphore(sem_, 1, 0);
+#elif VST_HOST_SYSTEM == VST_MACOS
+    semaphore_signal(sem_);
+#else // Linux
     sem_post(&sem_);
 #endif
-#else // USE_PLATFORM_EVENT
-    std::lock_guard<std::mutex> lock(mutex_);
-    state_ = true;
-    condition_.notify_one();
-#endif
 }
 
-void Event::wait(){
-#if USE_PLATFORM_EVENT
-#if defined(_WIN32)
-    WaitForSingleObject(event_, INFINITE);
-#elif defined(__APPLE__)
-    dispatch_semaphore_wait(sem_, DISPATCH_TIME_FOREVER);
-#else
-    sem_wait(&sem_);
-#endif
-#else // USE_PLATFORM_EVENT
-    std::unique_lock<std::mutex> lock(mutex_);
-    condition_.wait(lock, [this](){ return state_; });
-    state_ = false;
+void Semaphore::wait(){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    WaitForSingleObject(sem_, INFINITE);
+#elif VST_HOST_SYSTEM == VST_MACOS
+    semaphore_wait(sem_);
+#else // Linux
+    while (sem_wait(&sem_) == -1 && errno == EINTR) continue;
 #endif
 }
 
 /*///////////////////// SpinLock ////////////////////////*/
 
-SpinLock::SpinLock(){
-    static_assert(sizeof(SpinLock) == CACHELINE_SIZE, "");
+void SpinLock::yield(){
+#if defined(CPU_INTEL)
+    _mm_pause();
+#elif defined(CPU_ARM)
+    __yield();
+#else // fallback
+    std::this_thread::sleep_for(std::chrono::microseconds(0));
+#endif
+}
+
+/*///////////////////// PaddedSpinLock ////////////////////////*/
+
+PaddedSpinLock::PaddedSpinLock(){
+    static_assert(sizeof(PaddedSpinLock) == CACHELINE_SIZE, "");
     if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
-        LOG_WARNING("SpinLock is not properly aligned!");
+        LOG_WARNING("PaddedSpinLock is not properly aligned!");
     }
 }
 
-void SpinLock::lock(){
-    // only try to modify the shared state if the lock seems to be available.
-    // this should prevent unnecessary cache invalidation.
-    do {
-        while (locked_.load(std::memory_order_relaxed)){
-        #if defined(CPU_INTEL)
-            _mm_pause();
-        #elif defined(CPU_ARM)
-            __yield();
-        #else // fallback
-            std::this_thread::sleep_for(std::chrono::microseconds(0));
-        #endif
-        }
-    } while (locked_.exchange(true, std::memory_order_acquire));
-}
-
-bool SpinLock::try_lock(){
-    return !locked_.exchange(true, std::memory_order_acquire);
-}
-
-void SpinLock::unlock(){
-    locked_.store(false, std::memory_order_release);
-}
-
 #if __cplusplus < 201703L
-void* SpinLock::operator new(size_t size){
-#ifdef _WIN32
-    void *ptr = _aligned_malloc(size, alignof(SpinLock));
+void* PaddedSpinLock::operator new(size_t size){
+    // Wine doesn't seem to have _aligned_malloc/_aligned_free
+#if defined(_WIN32) && !defined(__WINE__)
+    void *ptr = _aligned_malloc(size, alignof(PaddedSpinLock));
 #else
     void *ptr = nullptr;
-    posix_memalign(&ptr, alignof(SpinLock), size);
+    posix_memalign(&ptr, alignof(PaddedSpinLock), size);
     if (!ptr){
         LOG_WARNING("posix_memalign() failed");
         ptr = malloc(size);
@@ -119,48 +164,50 @@ void* SpinLock::operator new(size_t size){
     return ptr;
 }
 
-void SpinLock::operator delete(void* ptr){
-#ifdef _WIN32
+void PaddedSpinLock::operator delete(void* ptr){
+    // see above
+#if defined(_WIN32) && !defined(__WINE__)
     _aligned_free(ptr);
 #else
     std::free(ptr);
 #endif
 }
 
-void *SpinLock::operator new[](size_t size){
-    return SpinLock::operator new(size);
+void *PaddedSpinLock::operator new[](size_t size){
+    return PaddedSpinLock::operator new(size);
 }
 
-void SpinLock::operator delete[](void *ptr){
-    return SpinLock::operator delete(ptr);
+void PaddedSpinLock::operator delete[](void *ptr){
+    return PaddedSpinLock::operator delete(ptr);
 }
 #endif
 
 /*////////////////////// SharedMutex ///////////////////*/
 
-#ifdef _WIN32
-SharedMutex::SharedMutex() {
-    InitializeSRWLock((PSRWLOCK)& rwlock_);
+#if VST_HOST_SYSTEM == VST_WINDOWS
+
+Mutex::Mutex() {
+    InitializeSRWLock((PSRWLOCK)& lock_);
 }
 // exclusive
-void SharedMutex::lock() {
-    AcquireSRWLockExclusive((PSRWLOCK)&rwlock_);
+void Mutex::lock() {
+    AcquireSRWLockExclusive((PSRWLOCK)&lock_);
 }
-bool SharedMutex::try_lock() {
-    return TryAcquireSRWLockExclusive((PSRWLOCK)&rwlock_);
+bool Mutex::try_lock() {
+    return TryAcquireSRWLockExclusive((PSRWLOCK)&lock_);
 }
-void SharedMutex::unlock() {
-    ReleaseSRWLockExclusive((PSRWLOCK)&rwlock_);
+void Mutex::unlock() {
+    ReleaseSRWLockExclusive((PSRWLOCK)&lock_);
 }
 // shared
 void SharedMutex::lock_shared() {
-    AcquireSRWLockShared((PSRWLOCK)&rwlock_);
+    AcquireSRWLockShared((PSRWLOCK)&lock_);
 }
 bool SharedMutex::try_lock_shared() {
-    return TryAcquireSRWLockShared((PSRWLOCK)&rwlock_);
+    return TryAcquireSRWLockShared((PSRWLOCK)&lock_);
 }
 void SharedMutex::unlock_shared() {
-    ReleaseSRWLockShared((PSRWLOCK)&rwlock_);
+    ReleaseSRWLockShared((PSRWLOCK)&lock_);
 }
 
 #endif

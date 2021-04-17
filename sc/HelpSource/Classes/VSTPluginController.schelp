@@ -1,12 +1,14 @@
 TITLE:: VSTPluginController
 summary:: Client-side representation of a VSTPlugin UGen instance
 categories:: Server>Abstractions
-related:: Classes/VSTPlugin, Classes/VSTPluginDesc, Classes/VSTPluginGui, Classes/VSTPluginMIDIProxy, Guides/HOA_IEM, Reference/VSTPlugin-UGen-Documentation
+related:: Classes/VSTPlugin, Classes/VSTPluginDesc, Classes/VSTPluginGui, Classes/VSTPluginMIDIProxy, Guides/HOA_IEM
 
 DESCRIPTION::
 
 This class is used to control a specific link::Classes/VSTPlugin:: instance in a link::Classes/Synth::, so you can
-open plugins, automate parameters, change programs, send MIDI messages, etc. Have a look at the examples at the bottom!
+open plugins, automate parameters, change programs, send MIDI messages, etc.
+
+Have a look at the examples at the bottom!
 
 Subsection:: Introduction
 
@@ -40,6 +42,10 @@ VSTPlugin.search;
 
 // show the generic plugin GUI:
 ~fx.gui;
+
+// show the VST editor:
+~fx.editor;
+
 // etc.
 ::
 
@@ -70,7 +76,17 @@ SynthDef(\insert2, { arg bus;
 ~fx.eq.open("myEq");
 ~fx.chorus.open("myChorus");
 )
+
 // etc.
+::
+
+With JITLib you have to use link::Classes/VSTPluginNodeProxyController:::
+
+code::
+(
+Ndef(\foo, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
+~fx = VSTPluginNodeProxyController(Ndef(\foo)).open("myFX");
+)
 ::
 
 subsection:: Parameter Automation
@@ -186,7 +202,7 @@ list::
 
 code::
 // load a plugin
-~fx.open("/path/to/plugin", editor: true);
+~fx.open("/path/to/plugin");
 // open the VST editor window
 ~fx.editor;
 ::
@@ -196,8 +212,8 @@ note:: On macOS this only works in SuperCollider 3.11 or above!::
 ## a generic Qt GUI which can be opened in a new Window or embedded into existing views:
 code::
 // load a plugin
-~fx.open("/path/to/plugin");
-// create a Window with the plugin GUI
+~fx.open("/path/to/plugin", editor: false);
+// open the plugin GUI in a Window
 ~fx.gui;
 ::
 You can change parameters by moving the sliders or entering values into the text fields (don't supported by all plugins).
@@ -205,9 +221,29 @@ Additionally, you can browse for plugins, select programs and read/write preset 
 See link::#-gui:: and link::Classes/VSTPluginGui:: for more information.
 ::
 
+subsection:: Scheduling
+
+Generally, emphasis::synchronous:: methods, like link::#-set:: or link::#-map::, simply send an OSC message to the Server. This is fine for interactive use, but if you need accurate timing, commands have to be scheduled as OSC bundles (see also link::Guides/ServerTiming::).
+
+Here are two basic ways how to schedule methods with Server latency:
+code::
+// asking the object for the message
+~fx = VSTPluginController(Synth(\foo));
+s.sendBundle(s.latency, ~fx.setMsg(0, 0.5));
+s.sendBundle(s.latency, ~fx.midi.noteOn(0, 60, 100));
+
+// using automatic bundling
+s.bind {
+	~fx.set(0, 0.5);
+	~fx.midi.noteOn(0, 60, 100);
+};
+::
+
+
 subsection:: Sequencing
 
-VSTPlugin defines two custom event types, which makes it easy to use with link::Classes/Pbind::. Like most other event types, commands are scheduled as bundles with Server latency taken into account.
+VSTPlugin defines two custom Event types which can be used in link::Classes/Pbind::.
+Like with (most) other Event types, commands are scheduled as OSC bundles with Server latency.
 
 definitionlist::
 ## code::\vst_set::
@@ -256,33 +292,35 @@ table::
 ## code::\progNum:: || program number for code::\program::
 ## code::\array:: || UInt8Array for code::\sysex::
 ::
-The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy:: and link::Classes/MIDIOut::.
+The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy::.
+
+note::Always prefer code::\vst_midi:: over code::\midi:: because the latter doesn't schedule OSC bundles!::
 
 See link::#VST Instruments:: for examples.
 ::
 
-note::
+strong::Tip:::
 You can play Pbinds of type code::\vst_midi:: and code::\vst_set:: in parallel with link::Classes/Ppar::.
-::
+
 
 subsection:: Realtime Safety
 
 VSTPlugin tries its best to be as realtime safe as possible. Plugins are always opened/closed asynchronously in the NRT thread.
-Some methods, like link::#-reset:: or link::#-readProgram::, offer two options via the code::async:: parameter:
+Some methods, like link::#-loadPreset:: and link::#-savePreset::, offer two options via the code::async:: parameter:
 
-code::async: false:: means that the plugin method is simply called on the RT thread.
-Depending on the plugin, this might be just fine - or block the Server. You have to test yourself.
+numberedlist::
+## code::async: true:: means that the plugin method is called on the NRT resp. UI thread and will never block the Server. However, plugin processing is temporarily suspended and you can't call other methods until the command has finished.
+## code::async: false:: means that the plugin method is simply called on the RT thread. The advantage is that the command is performed synchronously and plugin processing doesn't have to be suspended. Depending on the plugin, this might be just fine - or block the Server. You have to test yourself!
+::
 
-code::async: true:: means that the plugin method is called on the NRT thread.
-The UGen is temporarily "suspended", so it won't accept other messages until the command has finished.
-Also, the plugin itself might be bypassed for a short time, but it will never block the Server!
+note:: If the plugin is opened with the VST GUI editor, the code::async:: option is automatically set to code::true:: because of thread safety concerns.::
 
 CLASSMETHODS::
 
 PRIVATE:: guiClass, msg2string, prFindPlugins
 
 METHOD:: new
-Create a new VSTPluginController.
+Create a new VSTPluginController for a given Synth.
 
 ARGUMENT:: synth
 the link::Classes/Synth:: containing the link::Classes/VSTPlugin:: you want to control.
@@ -302,7 +340,7 @@ DISCUSSION::
 Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
 
 METHOD:: collect
-Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginControllers, with IDs used as keys.
+Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginControllers, with their IDs used as keys.
 This is useful if you have a SynthDef containing several VSTPlugin instances.
 
 ARGUMENT:: synth
@@ -341,7 +379,7 @@ SynthDef.new(\test, { arg bus = 0;
 INSTANCEMETHODS::
 
 PRIVATE:: prFree, prCheckPlugin, prCheckLocal, prClear, init, prQuery, prQueryParams, prQueryPrograms
-PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, paramCache, prMakeOscFunc
+PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, prMakeOscFunc
 
 
 METHOD:: open
@@ -402,7 +440,8 @@ table::
 ## \sandbox || run the plugin in a dedicated subprocess. This means that the plugin can safely crash without taking down the whole Server! This is useful for buggy plugins or safe experimentation.
 ## \bridge || run the plugin in a shared subprocess. This uses less memory and possibly less CPU, but if one plugin crashes, it will inevitably take down all other plugins in the same process.
 ::
-note::Any run mode except for code::\auto:: incurs some fixed CPU overhead, which is less significant for larger blocksizer (see link::Classes/ServerOptions#-blockSize::).::
+note::All run modes except for code::\auto:: incur some fixed CPU overhead, which is less significant for larger blocksizes (see link::Classes/ServerOptions#-blockSize:: or the code::blockSize:: argument in link::Classes/VSTPlugin#-ar::).::
+See also link::Classes/VSTPlugin#Bridging and Sandboxing::.
 
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
@@ -447,12 +486,22 @@ open the plugin browser dialog.
 
 METHOD:: editor
 METHOD:: editorMsg
-shows/hide the VST editor window.
+show/hide the VST editor window.
 
 DISCUSSION::
-The plugin has to be opened with emphasis::editor:: set to code::true::.
+The plugin has to be opened with code::editor: true::.
 
 note::On macOS this only works on SuperCollider 3.11 and above!::
+
+METHOD:: moveEditor
+METHOD:: moveEditorMsg
+move the editor window to the given position.
+
+METHOD:: resizeEditor
+METHOD:: resizeEditorMsg
+resize the editor window to the given width and height.
+
+note::This only works for VST3 plugins with a resizable editor.::
 
 METHOD:: gui
 creates a generic Qt GUI (see link::Classes/VSTPluginGui::).
@@ -490,13 +539,7 @@ ARGUMENT:: async
 see link::#Realtime Safety::.
 
 DISCUSSION::
-Generally, emphasis::reset:: might not be realtime-safe, e.g. if it involves O(n) operations like clearing a large delay line.
-
-If this is a problem you can try to reset it asynchronously (in the non-realtime thread).
-
-warning::
-Some plugins crash when being reset in the non-realtime thread, so use with care!
-::
+Depending on the plugin, emphasis::reset:: can involve expensive operations, like clearing a large delay line, and might not be realtime-safe, so be careful with setting code::async:: to code::false::.
 
 METHOD:: synth
 returns:: the link::Classes/Synth:: containing the currently controlled link::Classes/VSTPlugin:: instance.
@@ -661,6 +704,9 @@ The action receives the parameter index and value. This can be helpful if you wa
 note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
 In that case it is not possible to determine which parameter has been automated manually.::
 
+METHOD:: parameterCache
+An Array containing the current state (code::[value, display]::) of each parameter. Only valid if a plugin is currently loaded!
+
 subsection:: Programs
 
 VST plugins often contain factory presets which are called emphasis::programs::.
@@ -678,6 +724,9 @@ METHOD:: programName
 METHOD:: programNameMsg
 
 get/set the name of the current program (VST2 only).
+
+METHOD:: programCache
+An Array containing the current name of each program. Only valid if a plugin is currently loaded!
 
 subsection:: Presets
 
@@ -704,7 +753,7 @@ an action which is called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
 
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The file IO itself is always performed asynchronously!::
 
 METHOD:: loadPresetMsg
@@ -767,7 +816,7 @@ an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
 
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The file/buffer IO itself is always performed asynchronously!::
 
 METHOD:: writeBank
@@ -823,7 +872,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
 METHOD:: getProgramData
@@ -855,7 +904,7 @@ ARGUMENT:: action
 an action to be called with code::this:: and a Boolean (success/fail).
 
 ARGUMENT:: async
-where to execute the plugin method, see link::#Realtime Safety::.
+where to perform the plugin method, see link::#Realtime Safety::.
 note::The data transfer itself is always performed asynchronously!::
 
 METHOD:: receiveProgramData
@@ -883,18 +932,9 @@ it is not 100% reliable when using UDP.
 subsection:: MIDI
 
 METHOD:: midi
-send MIDI messages to the plugin via a proxy class.
+MIDI interface for VSTPluginController.
 
 RETURNS:: an instance of link::Classes/VSTPluginMIDIProxy::.
-
-DISCUSSION::
-link::Classes/VSTPluginMIDIProxy:: mimicks the interface of link::Classes/MIDIOut:: and can be used interchangeably. This is very useful in conjunction with link::Classes/Pbind::s of event type code::\midi::.
-
-note::
-MIDI pitches can be Floats! The fractional part is converted to cents and passed as the code::detune:: argument to link::#-sendMidi::. This is not part of the MIDI standard and not all VST instruments actually support it!
-::
-
-All methods have a corresponding code::*Msg:: version which returns raw OSC messages; they can be scheduled sample accurately when sent as bundles!
 
 
 METHOD:: sendMidi
@@ -963,8 +1003,7 @@ table::
 
 METHOD:: vendorMethod
 METHOD:: vendorMethodMsg
-access special functionality of a plugin which is not available via the standard parameter interface.
-Generally, you have to know what you're doing. Check the documentation of the plugin to see what data it expects
+Access special functionality of a plugin which is not available via the standard parameter interface. Check the documentation of the plugin to see what kind of data it expects.
 
 ARGUMENT:: index
 an Integer.
@@ -979,7 +1018,7 @@ ARGUMENT:: action
 will be called with an Integer result. The meaning depends on the VST plugin.
 
 ARGUMENT:: async
-whether the method call should be executed in the NRT thread (true) or in the RT thread (false), see link::#Realtime Safety::.
+see link::#Realtime Safety::.
 
 EXAMPLES::
 

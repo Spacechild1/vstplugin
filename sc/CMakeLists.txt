@@ -17,25 +17,29 @@ include_directories(${SC_INCLUDEDIR}/common)
 
 # Installation path
 # install directory:
-if (WIN32 OR MINGW)
+if (WIN32)
     set(SC_INSTALLDIR "${LOCALAPPDATA}/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
 elseif(APPLE)
     set(SC_INSTALLDIR "~/Library/Application Support/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
 else()
     set(SC_INSTALLDIR "~/.local/share/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
 endif()
+if (NOT SC_INSTALLDIR)
+    # HACK: force relative path!
+    set(SC_INSTALLDIR ".")
+endif()
 message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
 
 # plugin extension
 set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
-if(APPLE OR MINGW OR WIN32)
+if(APPLE OR WIN32)
 set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
 endif()
 
 option(SUPERNOVA "Build plugins for supernova" OFF)
 if (SUPERNOVA)
-	# for <nova-tt/spin_lock.h>
-	include_directories(${SC_INCLUDEDIR}/external_libraries/nova-tt)
+    # for <nova-tt/spin_lock.h>
+    include_directories(${SC_INCLUDEDIR}/external_libraries/nova-tt)
     # for <boost/atomic.hpp>
     include_directories(${SC_INCLUDEDIR}/external_libraries/boost)
 endif()
@@ -54,7 +58,9 @@ if(SUPERNOVA)
 endif()
 
 # installation
-add_dependencies(${PROJECT} ${HOST})
+if (HOST)
+    add_dependencies(${PROJECT} ${HOST})
+endif()
 if (HOST32)
     add_dependencies(${PROJECT} ${HOST32})
 endif()
@@ -63,11 +69,13 @@ install(TARGETS ${PROJECT} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 if (SUPERNOVA)
     install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
-install(PROGRAMS "${HOST_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+if (HOST)
+    install(PROGRAMS "${HOST_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+endif()
 if (HOST32)
     install(PROGRAMS "${HOST32_PATH}" DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
 endif()
 install(DIRECTORY classes DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
-install(DIRECTORY Help DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
+install(DIRECTORY doc DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
 install(DIRECTORY HelpSource DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
 install(FILES "../README.md" "../LICENSE.txt" DESTINATION "${SC_INSTALLDIR}/${PROJECT}")

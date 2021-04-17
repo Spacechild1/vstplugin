@@ -1,9 +1,13 @@
 #include "Interface.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "MiscUtils.h"
 
 #ifdef _WIN32
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 # include <windows.h>
-# include <process.h>
 #elif defined(__APPLE__)
 # include <CoreFoundation/CoreFoundation.h>
 #else
@@ -27,7 +31,8 @@
 
 namespace vst {
 
-#ifdef _WIN32
+#if defined(_WIN32)
+
 class ModuleWin32 : public IModule {
  public:
     typedef bool (PLUGIN_API* InitFunc)();
@@ -58,9 +63,9 @@ class ModuleWin32 : public IModule {
  private:
     HMODULE handle_;
 };
-#endif
 
-#ifdef __APPLE__
+#elif defined(__APPLE__)
+
 class ModuleApple : public IModule {
  public:
     typedef bool (PLUGIN_API *InitFunc) (CFBundleRef);
@@ -117,9 +122,9 @@ class ModuleApple : public IModule {
  private:
     CFBundleRef bundle_;
 };
-#endif
 
-#if DL_OPEN
+#else
+
 class ModuleSO : public IModule {
  public:
     typedef bool (PLUGIN_API* InitFunc) (void*);
@@ -154,20 +159,18 @@ class ModuleSO : public IModule {
  private:
     void *handle_;
 };
+
 #endif
 
 // exceptions can propogate from the Module's constructor!
 std::unique_ptr<IModule> IModule::load(const std::string& path){
-#ifdef _WIN32
+#if defined(_WIN32)
     return std::make_unique<ModuleWin32>(path);
-#endif
-#if defined __APPLE__
+#elif defined __APPLE__
     return std::make_unique<ModuleApple>(path);
-#endif
-#if DL_OPEN
+#else
     return std::make_unique<ModuleSO>(path);
 #endif
-    return nullptr;
 }
 
 } // vst

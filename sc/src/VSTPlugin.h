@@ -1,15 +1,20 @@
 #pragma once
 
 #include "SC_PlugIn.hpp"
+
 #include "Interface.h"
 #include "PluginManager.h"
-#include "Utility.h"
+#include "FileUtils.h"
+#include "MiscUtils.h"
+#include "LockfreeFifo.h"
+#include "Log.h"
 #include "Sync.h"
 #include "rt_shared_ptr.hpp"
 
 using namespace vst;
 
 #include <thread>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,18 +43,16 @@ struct CloseCmdData : CmdData {
 // cache all relevant info so we don't have to touch
 // the VSTPlugin instance during the async command.
 struct OpenCmdData : CmdData {
-    const PluginInfo *info;
     IPlugin::ptr plugin;
-    Error error;
     bool editor;
     bool threaded;
     RunMode mode;
     double sampleRate;
     int blockSize;
     int numInputs;
-    int numAuxInputs;
     int numOutputs;
-    int numAuxOutputs;
+    int *inputs;
+    int *outputs;
     // flexible array for RT memory
     int size = 0;
     char path[1];
@@ -59,6 +62,17 @@ struct PluginCmdData : CmdData {
     union {
         int i;
         float f;
+    };
+};
+
+struct WindowCmdData : CmdData {
+    union {
+        int x;
+        int width;
+    };
+    union {
+        int y;
+        int height;
     };
 };
 
@@ -134,17 +148,25 @@ public:
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
     bool check(bool loud = true) const;
-    bool suspended() const { return suspended_; }
+    bool isSuspended() const { return suspended_; }
+    void suspend() { suspended_ = true; }
     void resume() { suspended_ = false; }
-    WriteLock scopedLock();
+    Lock scopedLock();
     bool tryLock();
     void unlock();
+
     void open(const char* path, bool editor,
               bool threaded, RunMode mode);
     void doneOpen(OpenCmdData& msg);
     void close();
+    template<bool retain=true>
+    void doClose();
+
     void showEditor(bool show);
+    void setEditorPos(int x, int y);
+    void setEditorSize(int w, int h);
     void reset(bool async);
+
     // param
     void setParam(int32 index, float value);
     void setParam(int32 index, const char* display);
@@ -154,6 +176,7 @@ public:
     void mapParam(int32 index, int32 bus, bool audio = false);
     void unmapParam(int32 index);
     void unmapAll();
+
     // program/bank
     void setProgram(int32 index);
     void setProgramName(const char* name);
@@ -162,22 +185,27 @@ public:
     void readPreset(T dest, bool async);
     template<bool bank, typename T>
     void writePreset(T dest, bool async);
+
     // midi
     void sendMidiMsg(int32 status, int32 data1, int32 data2, float detune = 0.f);
     void sendSysexMsg(const char* data, int32 n);
+
     // transport
     void setTempo(float bpm);
     void setTimeSig(int32 num, int32 denom);
     void setTransportPlaying(bool play);
     void setTransportPos(float pos);
     void getTransportPos();
+
     // advanced
     void canDo(const char* what);
     void vendorSpecific(int32 index, int32 value, size_t size,
         const char* data, float opt, bool async);
+
     // node reply
     void sendMsg(const char* cmd, float f);
     void sendMsg(const char* cmd, int n, const float* data);
+
     // helper functions
     bool sendProgramName(int32 num); // unchecked
     void sendCurrentProgramName();
@@ -186,10 +214,18 @@ public:
     int32 latencySamples() const;
     void sendLatencyChange(int nsamples);
     void sendPluginCrash();
+
     // perform sequenced command
-    template<bool owner = true, typename T>
+    template<bool retain = true, typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
+
+    // misc
+    bool hasEditor() const {
+        return editor_;
+    }
+    void update();
+    void handleEvents();
 private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
@@ -201,46 +237,88 @@ private:
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
-    SharedMutex mutex_;
+    Mutex mutex_;
+    // events
+    struct ParamChange {
+        int index; // parameter index or EventType (negative)
+        float value;
+    };
+    LockfreeFifo<ParamChange, 16> paramQueue_;
+    SpinLock paramQueueWriteLock_;
 };
 
 class VSTPlugin : public SCUnit {
     friend class VSTPluginDelegate;
     friend struct PluginCmdData;
-    static const uint32 MagicInitialized = 0x7ff05554; // signalling NaN
-    static const uint32 MagicQueued = 0x7ff05555; // signalling NaN
 public:
     VSTPlugin();
     ~VSTPlugin();
-    bool initialized();
+    // HACK to check if the class has been fully constructed. See "runUnitCommand".
+    bool initialized() const {
+        return mSpecialIndex & Initialized;
+    }
+    bool valid() const {
+        return mSpecialIndex & Valid;
+    }
     void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
     void runUnitCmds();
     VSTPluginDelegate& delegate() { return *delegate_;  }
 
     void next(int inNumSamples);
+
     int getBypass() const { return (int)in0(2); }
 
     int blockSize() const;
 
-    int numInChannels() const { return (int)in0(3); }
-    int numAuxInChannels() const {
-        return (int)in0(auxInChannelOnset_ - 1);
-    }
-    int numOutChannels() const { return (int)in0(0); }
-    int numAuxOutChannels() const { return numOutputs() - numOutChannels(); }
+    int reblockPhase() const;
 
-    int numParameterControls() const { return (int)in0(parameterControlOnset_ - 1); }
+    struct Bus {
+        float **channelData = nullptr;
+        int numChannels = 0;
+    };
+
+    int numInputBusses() const {
+        return numUgenInputs_;
+    }
+    int numOutputBusses() const {
+        return numUgenOutputs_;
+    }
+    const Bus * inputBusses() const {
+        return ugenInputs_;
+    }
+    const Bus * outputBusses() const {
+        return ugenOutputs_;
+    }
 
     void map(int32 index, int32 bus, bool audio);
     void unmap(int32 index);
     void clearMapping();
 
-    void update();
+    void setupPlugin(const int *inputs, int numInputs,
+                     const int *outputs, int numOutputs);
 private:
+    void setInvalid() { mSpecialIndex &= ~Valid; }
+
     float readControlBus(uint32 num);
+
+    template<bool output>
+    void setupBusses(Bus *& busses, int& numBusses,
+                     int count, int& onset);
+
+    void initReblocker(int reblockSize);
+    bool updateReblocker(int numSamples);
+    void freeReblocker();
+
+    void performBypass(const Bus *ugenInputs, int numInputs,
+                       int numSamples, int phase);
+
+    void bypassRemaining(const Bus *ugenInputs, int numInputs,
+                         int numSamples, int phase);
+
+    static const int Initialized = 1;
+    static const int UnitCmdQueued = 2;
+    static const int Valid = 4;
     // data members
-    volatile uint32 initialized_ = MagicInitialized; // set by constructor
-    volatile uint32 queued_; // set to MagicQueued when queuing unit commands
     struct UnitCmdQueueItem {
         UnitCmdQueueItem *next;
         UnitCmdFunc fn;
@@ -251,21 +329,30 @@ private:
 
     rt::shared_ptr<VSTPluginDelegate> delegate_;
 
+    int numUgenInputs_ = 0;
+    int numUgenOutputs_ = 0;
+    int numPluginInputs_ = 0;
+    int numPluginOutputs_ = 0;
+    Bus *ugenInputs_ = nullptr;
+    Bus *ugenOutputs_ = nullptr;
+    AudioBus *pluginInputs_ = nullptr;
+    AudioBus *pluginOutputs_ = nullptr;
+    float *dummyBuffer_ = nullptr;
+
     struct Reblock {
         int blockSize;
         int phase;
-        float **input;
-        float **auxInput;
-        float **output;
-        float **auxOutput;
+        int numInputs;
+        int numOutputs;
+        Bus *inputs;
+        Bus *outputs;
         float *buffer;
     };
 
     Reblock *reblock_ = nullptr;
 
-    static const int inChannelOnset_ = 4;
-    int auxInChannelOnset_ = 0;
-    int parameterControlOnset_ = 0;
+    int numParameterControls_ = 0;
+    Wire ** parameterControls_ = nullptr;
 
     struct Mapping {
         enum BusType {
@@ -293,13 +380,7 @@ private:
     Mapping** paramMapping_ = nullptr;
     Bypass bypass_ = Bypass::Off;
 
-    // threading
-    struct ParamChange {
-        int index; // parameter index or EventType (negative)
-        float value;
-    };
-    LockfreeFifo<ParamChange, 16> paramQueue_;
-    SharedMutex paramQueueMutex_; // for writers
+    void printMapping();
 };
 
 

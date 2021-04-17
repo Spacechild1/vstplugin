@@ -1,5 +1,7 @@
 #include "vstplugin~.h"
 
+#include <cassert>
+
 #undef pd_class
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
@@ -92,19 +94,20 @@ t_workqueue::t_workqueue(){
     #ifdef PDINSTANCE
         pd_setinstance(w_instance);
     #endif
+        w_running.store(true);
 
-        std::unique_lock<std::mutex> lock(w_mutex);
+        while (w_running.load()) {
+            w_event.wait();
 
-        while (w_running) {
-            w_cond.wait(lock);
-
+            std::unique_lock<std::mutex> lock(w_mutex); // for cancel
             t_item item;
             while (w_nrt_queue.pop(item)){
                 if (item.workfn){
                     item.workfn(item.data);
                 }
                 while (!w_rt_queue.push(item)){
-                    // unlock to avoid dead-locks, e.g. if the RT thread blocks on cancel().
+                    // prevent possible dead lock when
+                    // RT thread blocks in cancel() method
                     lock.unlock();
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     lock.lock();
@@ -124,11 +127,10 @@ t_workqueue::t_workqueue(){
 
 t_workqueue::~t_workqueue(){
 #if WORK_QUEUE_JOIN
-    {
-        std::lock_guard<std::mutex> lock(w_mutex);
-        w_running = false;
-        w_cond.notify_all();
-    }
+    w_running.store(false);
+
+    // wake up and join thread
+    w_event.set();
     if (w_thread.joinable()){
         w_thread.join();
     }
@@ -154,7 +156,7 @@ void t_workqueue::dopush(void *owner, void *data, t_fun<void> workfn,
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         post("vstplugin~: work queue blocked!");
     }
-    w_cond.notify_all();
+    w_event.set();
 }
 
 // cancel all running commands belonging to owner
@@ -233,6 +235,33 @@ static std::string toHex(T u){
     return buf;
 }
 
+template<typename T>
+void defer(const T& fn, bool uithread){
+    // call NRT method on the correct thread
+    if (uithread){
+        bool result = true;
+        Error err;
+        bool ok = UIThread::callSync([&](){
+            try {
+                fn();
+            } catch (const Error& e){
+                err = e;
+                result = false;
+            }
+        });
+        if (ok){
+            if (!result){
+                throw err;
+            }
+            return;
+        } else {
+            LOG_ERROR("UIThread::callSync() failed");
+        }
+    }
+    // call on this thread
+    fn();
+}
+
 /*---------------------- search/probe ----------------------------*/
 
 static PluginManager gPluginManager;
@@ -253,10 +282,10 @@ static std::string getSettingsDir(){
 #endif
 }
 
-static SharedMutex gFileLock;
+static Mutex gFileLock;
 
 static void readIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     auto path = getSettingsDir() + "/" CACHE_FILE;
     if (pathExists(path)){
         verbose(PD_DEBUG, "read cache file %s", path.c_str());
@@ -269,7 +298,7 @@ static void readIniFile(){
 }
 
 static void writeIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
@@ -450,6 +479,7 @@ static std::string makeKey(const PluginInfo& desc){
 }
 
 static void addFactory(const std::string& path, IFactory::ptr factory){
+    // LOG_DEBUG("add factory: " << path << " (" << cpuArchToString(factory->arch()) << ")");
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
@@ -623,7 +653,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
                     it++;
                 }
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
     };
 
@@ -640,6 +670,7 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
             // just post paths of valid plugins
             PdLog<async> log(PD_DEBUG, "%s", factory->path().c_str());
             auto numPlugins = factory->numPlugins();
+            // post and add plugins
             if (numPlugins == 1){
                 addPlugin(*factory->getPlugin(0));
             } else {
@@ -647,6 +678,14 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
                 for (int i = 0; i < numPlugins; ++i){
                     addPlugin(*factory->getPlugin(i), i, numPlugins);
                 }
+            }
+            // make sure we have the plugin keys!
+            for (int i = 0; i < numPlugins; ++i){
+                auto plugin = factory->getPlugin(i);
+                auto key = makeKey(*plugin);
+                gPluginManager.addPlugin(key, plugin);
+                bash_name(key); // also add bashed version!
+                gPluginManager.addPlugin(key, plugin);
             }
         } else {
             // probe (will post results and add plugins)
@@ -779,13 +818,13 @@ void t_vsteditor::post_event(const t_event& event){
         // prevents a possible deadlock with plugins that use a mutex for synchronization
         // between UI thread and processing thread.
         // Calling pd_getdspstate() is not really thread-safe, though...
+    #ifdef PDINSTANCE
+        pd_setinstance(e_owner->x_pdinstance);
+    #endif
         if (pd_getdspstate()){
             e_needclock.store(true); // set the clock in the perform routine
         } else {
             // lock the Pd scheduler
-        #ifdef PDINSTANCE
-            pd_setinstance(e_owner->x_pdinstance);
-        #endif
             sys_lock();
             clock_delay(e_clock, 0);
             sys_unlock();
@@ -991,9 +1030,7 @@ void t_vsteditor::setup(){
 
 void t_vsteditor::update(){
     if (!e_owner->check_plugin()) return;
-    if (window()){
-        window()->update();
-    } else if (e_canvas) {
+    if (pd_gui()) {
         int n = e_owner->x_plugin->info().numParameters();
         for (int i = 0; i < n; ++i){
             param_changed(i, e_owner->x_plugin->getParameter(i));
@@ -1012,8 +1049,7 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
 }
 
 void t_vsteditor::flush_queues(){
-    bool expected = true;
-    if (e_needclock.compare_exchange_strong(expected, false)){
+    if (e_needclock.exchange(false)){
         clock_delay(e_clock, 0);
     }
 }
@@ -1040,6 +1076,25 @@ void t_vsteditor::set_pos(int x, int y){
             (float)x, (float)y, (float)x + width_, (float)y + height_);
         send_vmess(gensym("vis"), "i", 0);
         send_vmess(gensym("vis"), "i", 1);
+    }
+}
+
+void t_vsteditor::set_size(int w, int h){
+    w = std::max(w, 100);
+    h = std::max(h, 100);
+    auto win = window();
+    if (win){
+        win->setSize(w, h);
+    } else if (e_canvas) {
+        // LATER get the real canvas position
+        int x = 20;
+        int y = 20;
+        send_vmess(gensym("setbounds"), "ffff",
+            (float)x, (float)y, (float)x + w, (float)y + h);
+        send_vmess(gensym("vis"), "i", 0);
+        send_vmess(gensym("vis"), "i", 1);
+        width_ = w;
+        height_ = h;
     }
 }
 
@@ -1203,7 +1258,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         }
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
-            bundlePath = getBundleBinaryPath().c_str();
+            bundlePath = getBundleBinaryPath();
         #ifdef _WIN32
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
                      path.c_str(), bundlePath, fileName(path).c_str());
@@ -1280,51 +1335,64 @@ struct t_close_data : t_command_data<t_close_data> {
     bool uithread;
 };
 
-template<bool async>
-static void vstplugin_close_do(t_close_data *x){
-    // we can't check for x->plugin->getWindow() because
-    // the plugin might have been opened on the UI thread
-    // but doesn't have an editor!
-    if (x->uithread){
-        // synchronous!
-        UIThread::callSync([](void *y){
-            static_cast<t_close_data *>(y)->plugin = nullptr;
-        }, x);
-    }
-    // if not destructed already
-    x->plugin = nullptr;
-}
-
 static void vstplugin_close(t_vstplugin *x){
-    if (x->x_plugin){
-        if (x->x_commands > 0){
-            pd_error(x, "%s: can't close plugin - temporarily suspended!",
-                     classname(x));
-            return;
-        }
-        // stop receiving events from plugin
-        x->x_plugin->setListener(nullptr);
-        // make sure to release the plugin on the same thread where it was opened!
-        // this is necessary to avoid crashes or deadlocks with certain plugins.
-        if (x->x_async){
-            auto data = new t_close_data();
-            data->plugin = std::move(x->x_plugin);
-            data->uithread = x->x_uithread;
-            t_workqueue::get()->push(x, data, vstplugin_close_do<true>, nullptr);
-        } else {
-            t_close_data data;
-            data.plugin = std::move(x->x_plugin);
-            data.uithread = x->x_uithread;
-            vstplugin_close_do<false>(&data);
-        }
-        x->x_plugin = nullptr;
-        x->x_editor->vis(false);
-        x->x_key = nullptr;
-        x->x_path = nullptr;
-        x->x_preset = nullptr;
-        // notify
-        outlet_anything(x->x_messout, gensym("close"), 0, nullptr);
+    if (!x->x_plugin){
+        return;
     }
+    if (x->x_suspended){
+        pd_error(x, "%s: can't close plugin - temporarily suspended!",
+                 classname(x));
+        return;
+    }
+#if 0
+    x->x_plugin->setListener(nullptr);
+#endif
+    // make sure to release the plugin on the same thread where it was opened!
+    // this is necessary to avoid crashes or deadlocks with certain plugins.
+    if (x->x_async){
+        // NOTE: if we close the plugin asynchronously and the plugin editor
+        // is opened, it can happen that an event is sent from the UI thread,
+        // e.g. when automating parameters in the plugin UI.
+        // Since those events come from the UI thread, unsetting the listener
+        // here in the audio thread would create a race condition.
+        // Instead, we unset the listener implicitly when we close the plugin.
+        // However, this is dangerous if we close the plugin asynchronously
+        // immediately before or inside ~t_vstplugin.
+        // We can't sync with the plugin closing on the UI thread, as the
+        // actual close request is issued on the NRT thread and can execute
+        // *after* ~t_vstplugin. We *could* wait for all pending NRT commands
+        // to finish, but that's a bit overkill. Instead we close the editor
+        // *here* and sync with the UI thread in ~t_vstplugin, assuming that
+        // the plugin can't send UI events without the editor.
+        auto window = x->x_plugin->getWindow();
+        if (window){
+            window->close(); // see above
+        }
+
+        auto data = new t_close_data();
+        data->plugin = std::move(x->x_plugin);
+        data->uithread = x->x_uithread;
+        t_workqueue::get()->push(x, data,
+            [](t_close_data *x){
+                defer([&](){
+                    x->plugin = nullptr;
+                }, x->uithread);
+            }, nullptr);
+    } else {
+        defer([&](){
+            x->x_plugin = nullptr;
+        }, x->x_uithread);
+    }
+
+    x->x_plugin = nullptr;
+    x->x_process = false;
+    x->x_editor->vis(false);
+    x->x_key = nullptr;
+    x->x_path = nullptr;
+    x->x_preset = nullptr;
+
+    // notify
+    outlet_anything(x->x_messout, gensym("close"), 0, nullptr);
 }
 
 
@@ -1332,9 +1400,7 @@ static void vstplugin_close(t_vstplugin *x){
 
 struct t_open_data : t_command_data<t_open_data> {
     t_symbol *path;
-    const PluginInfo *info;
     IPlugin::ptr plugin;
-    Error error;
     bool editor;
     bool threaded;
     RunMode mode;
@@ -1349,40 +1415,29 @@ static void vstplugin_open_do(t_open_data *x){
         pd_error(x->owner, "%s: can't open '%s'", classname(x->owner), x->path->s_name);
         return;
     }
-    // open the new VST plugin
     try {
+        // make sure to only request the plugin UI if the
+        // plugin supports it and we have an event loop
+        if (x->editor &&
+                !(info->editor() && UIThread::available())){
+            x->editor = false;
+            LOG_DEBUG("can't use plugin UI!");
+        }
         if (x->editor){
-            x->info = info;
             LOG_DEBUG("create plugin in UI thread");
-            bool ok = UIThread::callSync([](void *y){
-                auto d = (t_open_data *)y;
-                try {
-                    d->plugin = d->info->create(true, d->threaded, d->mode);
-                } catch (const Error& e){
-                    d->error = e;
-                }
-            }, x);
-
-            if (ok){
-                if (x->plugin){
-                    LOG_DEBUG("done");
-                } else {
-                    throw x->error;
-                }
-            } else {
-                // couldn't dispatch to UI thread (probably not available).
-                // create plugin without window
-                x->plugin = info->create(false, x->threaded, x->mode);
-            }
         } else {
-            x->plugin = info->create(false, x->threaded, x->mode);
+            LOG_DEBUG("create plugin in NRT thread");
         }
-        if (x->plugin){
+        defer([&](){
+            // create plugin
+            x->plugin = info->create(x->editor, x->threaded, x->mode);
+            // setup plugin
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
-            LockGuard lock(x->owner->x_mutex);
-            x->owner->setup_plugin<async>(*x->plugin);
-        }
-    } catch (const Error& e) {
+            ScopedLock lock(x->owner->x_mutex);
+            x->owner->setup_plugin<async>(x->plugin.get(), x->editor);
+        }, x->editor);
+        LOG_DEBUG("done");
+    } catch (const Error & e) {
         // shouldn't happen...
         PdScopedLock<async> lock;
         pd_error(x->owner, "%s: couldn't open '%s': %s",
@@ -1393,6 +1448,18 @@ static void vstplugin_open_do(t_open_data *x){
 static void vstplugin_open_done(t_open_data *x){
     if (x->plugin){
         x->owner->x_plugin = std::move(x->plugin);
+        x->owner->x_uithread = x->editor; // remember *where* we opened the plugin
+        x->owner->x_threaded = x->threaded;
+
+        // after setting the plugin!
+        x->owner->update_buffers();
+
+        // do it here instead of vstplugin_open_do() to avoid race condition
+        // with "bypass" method
+        if (x->owner->x_bypass != Bypass::Off){
+            x->owner->x_plugin->setBypass(x->owner->x_bypass);
+        }
+
         auto& info = x->owner->x_plugin->info();
         // store key (mainly needed for preset change notification)
         x->owner->x_key = gensym(makeKey(info).c_str());
@@ -1402,7 +1469,9 @@ static void vstplugin_open_done(t_open_data *x){
         x->owner->x_plugin->setListener(x->owner->x_editor);
         // update Pd editor
         x->owner->x_editor->setup();
+
         verbose(PD_DEBUG, "opened '%s'", info.name.c_str());
+
         // report initial latency
         t_atom a;
         int latency = x->owner->x_plugin->getLatencySamples();
@@ -1462,7 +1531,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
     // don't open while async command is running
-    if (x->x_commands > 0){
+    if (x->x_suspended){
         pd_error(x, "%s: can't open plugin - temporarily suspended!",
                  classname(x));
         return;
@@ -1507,8 +1576,7 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         open_done(&data);
     }
     x->x_async = async; // remember *how* we openend the plugin
-    x->x_uithread = editor; // remember *where* we opened the plugin
-    x->x_threaded = threaded;
+    // NOTE: don't set 'x_uithread' already because 'editor' value might change
 }
 
 static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
@@ -1544,10 +1612,17 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     sendInfo(x, "category", info->category);
     sendInfo(x, "version", info->version);
     sendInfo(x, "sdkversion", info->sdkVersion);
-    sendInfo(x, "inputs", info->numInputs);
-    sendInfo(x, "outputs", info->numOutputs);
-    sendInfo(x, "auxinputs", info->numAuxInputs);
-    sendInfo(x, "auxoutputs", info->numAuxOutputs);
+    // deprecated
+#if 1
+    sendInfo(x, "inputs", info->numInputs() > 0 ?
+                 info->inputs[0].numChannels : 0);
+    sendInfo(x, "outputs", info->numOutputs() > 0 ?
+                 info->outputs[0].numChannels : 0);
+    sendInfo(x, "auxinputs", info->numInputs() > 1 ?
+                 info->inputs[1].numChannels : 0);
+    sendInfo(x, "auxoutputs", info->numOutputs() > 1 ?
+                 info->outputs[1].numChannels : 0);
+#endif
     sendInfo(x, "id", ("0x"+info->uniqueID));
     sendInfo(x, "editor", info->editor());
     sendInfo(x, "synth", info->synth());
@@ -1576,7 +1651,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     int index = 0;
     intptr_t value = 0;
 
-        // get integer argument as number or hex string
+    // get integer argument as number or hex string
     auto getInt = [&](int which, auto& var){
         if (argc > which){
             if (argv->a_type == A_SYMBOL){
@@ -1603,7 +1678,13 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
             data[i] = atom_getfloat(argv + j);
         }
     }
-    intptr_t result = x->x_plugin->vendorSpecific(index, value, data.get(), opt);
+
+    intptr_t result;
+    // call on UI thread if we have the plugin UI!
+    defer([&](){
+        result = x->x_plugin->vendorSpecific(index, value, data.get(), opt);
+    }, x->x_uithread);
+
     t_atom msg[2];
     SETFLOAT(&msg[0], result);
     SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
@@ -1614,6 +1695,8 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
 static void vstplugin_print(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
+    bool vst3 = info.type() == PluginType::VST3;
+
     post("---");
     post("name: %s", info.name.c_str());
     post("type: %s%s%s", info.sdkVersion.c_str(),
@@ -1623,14 +1706,32 @@ static void vstplugin_print(t_vstplugin *x){
     post("path: %s", info.path().c_str());
     post("vendor: %s", info.vendor.c_str());
     post("category: %s", info.category.c_str());
-    post("input channels: %d", info.numInputs);
-    post("output channels: %d", info.numOutputs);
-    if (info.numAuxInputs > 0){
-        post("aux input channels: %d", info.numAuxInputs);
-    }
-    if (info.numAuxOutputs > 0){
-        post("aux output channels: %d", info.numAuxOutputs);
-    }
+
+    auto postBusses = [](auto& busses, auto what, auto vst3){
+        if (busses.size() > 0){
+            if (vst3){
+                post("%s:", what);
+                for (auto& bus : busses){
+                    auto type = (bus.type == PluginInfo::Bus::Aux) ?
+                                "aux" : "main";
+                    post("  [%s] '%s' %dch", type,
+                         bus.label.c_str(), bus.numChannels);
+                }
+            } else {
+                // always a single bus (no additional info)!
+                if (busses[0].numChannels > 0){
+                    post("%s: %dch", what, busses[0].numChannels);
+                } else {
+                    post("%s: none", what);
+                }
+            }
+        } else {
+            post("%s: none", what);
+        }
+    };
+    postBusses(info.inputs, "inputs", vst3);
+    postBusses(info.outputs, "outputs", vst3);
+
     post("parameters: %d", info.numParameters());
     post("programs: %d", info.numPrograms());
     post("presets: %d", info.numPresets());
@@ -1672,30 +1773,34 @@ struct t_reset_data : t_command_data<t_reset_data> {};
 
 static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
-    if (f){
-        // async
+    bool async = f;
+    if (async){
         auto data = new t_reset_data();
         data->owner = x;
-        x->x_commands++;
         t_workqueue::get()->push(x, data,
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
-                // protect against vstplugin_dsp() and vstplugin_save()
-                LockGuard lock(x->owner->x_mutex);
-                plugin->suspend();
-                plugin->resume();
+                defer([&](){
+                    // protect against vstplugin_dsp() and vstplugin_save()
+                    ScopedLock lock(x->owner->x_mutex);
+                    plugin->suspend();
+                    plugin->resume();
+                }, x->owner->x_uithread);
             },
             [](t_reset_data *x){
-                x->owner->x_commands--;
+                x->owner->x_suspended = false;
                 outlet_anything(x->owner->x_messout,
                                 gensym("reset"), 0, nullptr);
             }
         );
+        x->x_suspended = true;
     } else {
         // protect against concurrent reads/writes
-        LockGuard lock(x->x_mutex);
-        x->x_plugin->suspend();
-        x->x_plugin->resume();
+        defer([&](){
+            ScopedLock lock(x->x_mutex);
+            x->x_plugin->suspend();
+            x->x_plugin->resume();
+        }, x->x_uithread);
         outlet_anything(x->x_messout, gensym("reset"), 0, nullptr);
     }
 }
@@ -1709,6 +1814,11 @@ static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
 static void vstplugin_pos(t_vstplugin *x, t_floatarg x_, t_floatarg y_){
     if (!x->check_plugin()) return;
     x->x_editor->set_pos(x_, y_);
+}
+
+static void vstplugin_size(t_vstplugin *x, t_floatarg w, t_floatarg h){
+    if (!x->check_plugin()) return;
+    x->x_editor->set_size(w, h);
 }
 
 static void vstplugin_click(t_vstplugin *x){
@@ -1771,6 +1881,84 @@ static void vstplugin_transport_get(t_vstplugin *x){
     t_atom a;
     SETFLOAT(&a, x->x_plugin->getTransportPosition());
     outlet_anything(x->x_messout, gensym("transport"), 1, &a);
+}
+
+/*//////////////////////////////////// inputs/outputs //////////////////////////////////////*/
+
+enum class t_direction {
+    in,
+    out
+};
+
+// get bus info (index + nchannels + name + type ...)
+template<t_direction dir>
+static void vstplugin_bus_doinfo(const PluginInfo& info, int index, t_outlet *outlet){
+    auto& bus = (dir == t_direction::out) ?
+                info.outputs[index] : info.inputs[index];
+    auto vst3 = info.type() == PluginType::VST3;
+    t_atom msg[4];
+    SETFLOAT(&msg[0], index);
+    SETFLOAT(&msg[1], bus.numChannels);
+    if (vst3){
+        SETSYMBOL(&msg[2], gensym(bus.label.c_str()));
+        SETSYMBOL(&msg[3], (bus.type == PluginInfo::Bus::Aux) ?
+                    gensym("aux") : gensym("main"));
+    }
+    // LATER add more info
+    auto sel = (dir == t_direction::out) ?
+                gensym("output_info") : gensym("input_info");
+    outlet_anything(outlet, sel, vst3 ? 4 : 2, msg);
+}
+
+template<t_direction dir>
+static void vstplugin_bus_info(t_vstplugin *x, t_floatarg f){
+    if (!x->check_plugin()) return;
+    int index = f;
+    auto& info = x->x_plugin->info();
+    if (index >= 0 && index < info.numInputs()){
+        vstplugin_bus_doinfo<dir>(info, index, x->x_messout);
+    } else {
+        auto what = (dir == t_direction::out) ? "output" : "input";
+        pd_error(x, "%s: %s bus index %d out of range!",
+                 classname(x), what, index);
+    }
+}
+
+// number of inputs/outputs
+static void vstplugin_input_count(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    t_atom msg;
+    SETFLOAT(&msg, x->x_plugin->info().numInputs());
+    outlet_anything(x->x_messout, gensym("input_count"), 1, &msg);
+}
+
+static void vstplugin_output_count(t_vstplugin *x){
+    if (!x->check_plugin()) return;
+    t_atom msg;
+    SETFLOAT(&msg, x->x_plugin->info().numOutputs());
+    outlet_anything(x->x_messout, gensym("output_count"), 1, &msg);
+}
+
+// list busses (index + info)
+template<t_direction dir>
+static void vstplugin_bus_list(t_vstplugin *x, t_symbol *s){
+    const PluginInfo *info = nullptr;
+    if (*s->s_name){
+        auto path = s->s_name;
+        if (!(info = queryPlugin<false>(x, path))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!",
+                     classname(x), path);
+            return;
+        }
+    } else {
+        if (!x->check_plugin()) return;
+        info = &x->x_plugin->info();
+    }
+    int n = (dir == t_direction::out) ?
+                info->numOutputs() : info->numInputs();
+    for (int i = 0; i < n; ++i){
+        vstplugin_bus_doinfo<dir>(*info, i, x->x_messout);
+    }
 }
 
 /*------------------------------------ parameters ------------------------------------------*/
@@ -2051,6 +2239,7 @@ struct t_preset_data : t_command_data<t_preset_data> {
 };
 
 // set program/bank data (list of bytes)
+// TODO: make this asynchronous!
 template<t_preset type>
 static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
@@ -2061,13 +2250,13 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     try {
-        {
-            LockGuard lock(x->x_mutex); // avoid concurrent reads/writes
+        defer([&](){
+            ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
                 x->x_plugin->readProgramData(buffer);
-        }
+        }, x->x_uithread);
         x->x_editor->update();
     } catch (const Error& e) {
         pd_error(x, "%s: couldn't set %s data: %s",
@@ -2076,18 +2265,19 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
 }
 
 // get program/bank data
+// TODO: make this asynchronous!
 template<t_preset type>
 static void vstplugin_preset_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     try {
-        {
-            LockGuard lock(x->x_mutex); // avoid concurrent reads/writes
+       defer([&](){
+            ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
                 x->x_plugin->writeProgramData(buffer);
-        }
+        }, x->x_uithread);
     } catch (const Error& e){
         pd_error(x, "%s: couldn't get %s data: %s",
                  classname(x), presetName(type), e.what());
@@ -2143,14 +2333,14 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         buffer.resize(file.tellg());
         file.seekg(0, std::ios_base::beg);
         file.read(&buffer[0], buffer.size());
-        {
+        defer([&](){
             // protect against vstplugin_dsp() and vstplugin_save()
-            LockGuard lock(x->x_mutex);
+            ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
                 x->x_plugin->readProgramData(buffer);
-        }
+        }, x->x_uithread);
         data->success = true;
     } catch (const Error& e) {
         PdScopedLock<async> lock;
@@ -2164,7 +2354,7 @@ template<t_preset type, bool async>
 static void vstplugin_preset_read_done(t_preset_data *data){
     if (async){
         // command finished
-        data->owner->x_commands--;
+        data->owner->x_suspended = false;
     }
     // *now* update
     data->owner->x_editor->update();
@@ -2176,15 +2366,16 @@ static void vstplugin_preset_read_done(t_preset_data *data){
 }
 
 template<t_preset type>
-static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float async){
+static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float f){
     if (!x->check_plugin()) return;
+    bool async = f;
     if (async){
         auto data = new t_preset_data();
         data->owner = x;
         data->path = s->s_name;
-        x->x_commands++;
         t_workqueue::get()->push(x, data, vstplugin_preset_read_do<type, true>,
                                  vstplugin_preset_read_done<type, true>);
+        x->x_suspended = true;
     } else {
         t_preset_data data;
         data.owner = x;
@@ -2214,13 +2405,13 @@ static void vstplugin_preset_write_do(t_preset_data *data){
             buffer.reserve(1024);
         }
         // protect against vstplugin_dsp() and vstplugin_save()
-        {
-            LockGuard lock(x->x_mutex);
+        defer([&](){
+            ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
                 x->x_plugin->writeProgramData(buffer);
-        }
+        }, x->x_uithread);
         // write data to file
         vst::File file(data->path, File::WRITE);
         if (!file.is_open()){
@@ -2243,7 +2434,7 @@ template<t_preset type, bool async>
 static void vstplugin_preset_write_done(t_preset_data *data){
     if (async){
         // command finished
-        data->owner->x_commands--;
+        data->owner->x_suspended = false;
     }
     if (type == PRESET){
         if (data->success){
@@ -2276,8 +2467,9 @@ static void vstplugin_preset_write_done(t_preset_data *data){
 }
 
 template<t_preset type>
-static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg async){
+static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg f){
     if (!x->check_plugin()) return;
+    bool async = f;
     // get the full path here because it's relatively cheap,
     // otherwise we would have to lock Pd in the NRT thread
     // (like we do in vstplugin_preset_read)
@@ -2287,9 +2479,9 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg async
         auto data = new t_preset_data();
         data->owner = x;
         data->path = path;
-        x->x_commands++;
         t_workqueue::get()->push(x, data, vstplugin_preset_write_do<type, true>,
                                  vstplugin_preset_write_done<type, true>);
+        x->x_suspended = true;
     } else {
         t_preset_data data;
         data.owner = x;
@@ -2536,10 +2728,10 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data->path = std::move(preset.path);
         data->type = preset.type;
         data->add = add;
-        x->x_commands++;
         t_workqueue::get()->push(x, data,
                                  vstplugin_preset_write_do<PRESET, true>,
                                  vstplugin_preset_write_done<PRESET, true>);
+        x->x_suspended = true;
     } else {
         t_save_data data;
         data.owner = x;
@@ -2688,10 +2880,8 @@ void t_vstplugin::set_param(int index, const char *s, bool automated){
 
 bool t_vstplugin::check_plugin(){
     if (x_plugin){
-        if (x_commands == 0){
+        if (!x_suspended){
             return true;
-        } else if (x_commands < 0){
-            bug("t_vstplugin::check_plugin()");
         } else {
             pd_error(this, "%s: temporarily suspended!", classname(this));
         }
@@ -2702,33 +2892,184 @@ bool t_vstplugin::check_plugin(){
 }
 
 template<bool async>
-void t_vstplugin::setup_plugin(IPlugin& plugin){
-    plugin.suspend();
+void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
     // check if precision is actually supported
-    auto precision = x_precision;
-    if (!plugin.info().hasPrecision(precision)){
-        if (plugin.info().hasPrecision(ProcessPrecision::Single)){
+    if (plugin->info().hasPrecision(x_wantprecision)){
+        x_realprecision = x_wantprecision;
+        x_process = true;
+    } else {
+        if (plugin->info().hasPrecision(ProcessPrecision::Single)){
             PdScopedLock<async> lock;
             post("%s: '%s' doesn't support double precision, using single precision instead",
-                 classname(this), plugin.info().name.c_str());
-            precision = ProcessPrecision::Single;
-        } else if (plugin.info().hasPrecision(ProcessPrecision::Double)){
+                 classname(this), plugin->info().name.c_str());
+            x_realprecision = ProcessPrecision::Single;
+            x_process = true;
+        } else if (plugin->info().hasPrecision(ProcessPrecision::Double)){
             PdScopedLock<async> lock;
             post("%s: '%s' doesn't support single precision, using double precision instead",
-                 classname(this), plugin.info().name.c_str());
-            precision = ProcessPrecision::Double;
+                 classname(this), plugin->info().name.c_str());
+            x_realprecision = ProcessPrecision::Double;
+            x_process = true;
         } else {
             PdScopedLock<async> lock;
             post("%s: '%s' doesn't support single or double precision, bypassing",
-                classname(this), plugin.info().name.c_str());
+                classname(this), plugin->info().name.c_str());
+            x_process = false;
         }
     }
-    plugin.setupProcessing(x_sr, x_blocksize, precision);
-    plugin.setNumSpeakers(x_siginlets.size(), x_sigoutlets.size(),
-                           x_sigauxinlets.size(), x_sigauxoutlets.size());
-    plugin.resume();
-    if (x_bypass != Bypass::Off){
-        plugin.setBypass(x_bypass);
+
+    defer([&](){
+        plugin->suspend();
+        plugin->setupProcessing(x_sr, x_blocksize, x_realprecision);
+
+        // we need at least one input/output bus!
+        auto numInlets = (int)x_inlets.size();
+        auto numInputs = std::max<int>(numInlets, 1);
+        auto input = (int *)alloca(numInputs * sizeof(int));
+        input[0] = 0; // if no inlets
+        for (int i = 0; i < numInlets; ++i){
+            input[i] = x_inlets[i].b_n;
+        }
+
+        auto numOutlets = (int)x_outlets.size();
+        auto numOutputs = std::max<int>(numOutlets, 1);
+        auto output = (int *)alloca(numOutputs * sizeof(int));
+        output[0] = 0; // if no outlets
+        for (int i = 0; i < numOutlets; ++i){
+            output[i] = x_outlets[i].b_n;
+        }
+
+        plugin->setNumSpeakers(input, numInputs, output, numOutputs);
+
+    #if 1
+        // HACK for buggy VST3 plugins which segfault on excess busses (e.g. mda)
+        auto trim = [](auto speakers, auto& count, const char *what){
+            // trim trailing empty busses, but keep at least one bus!
+            for (int i = count - 1; i > 0; --i){
+                if (speakers[i] == 0){
+                    LOG_DEBUG("trim empty " << what << " bus " << i);
+                    --count;
+                } else {
+                    break;
+                }
+            }
+        };
+        trim(input, numInputs, "input");
+        trim(output, numOutputs, "output");
+    #endif
+
+        x_inputs.resize(numInputs);
+        for (int i = 0; i < numInputs; ++i){
+            x_inputs[i] = Bus(input[i]);
+        }
+
+        x_outputs.resize(numOutputs);
+        for (int i = 0; i < numOutputs; ++i){
+            x_outputs[i] = Bus(output[i]);
+        }
+
+        plugin->resume();
+    }, uithread);
+}
+
+void t_vstplugin::update_buffers(){
+    int samplesize;
+    if (x_plugin) {
+        samplesize = (x_realprecision == ProcessPrecision::Double) ?
+                    sizeof(double) : sizeof(float);
+    } else {
+        samplesize = sizeof(t_sample);
+    }
+    int channelsize = samplesize * x_blocksize;
+
+    // prepare inlets
+    // NOTE: we always have to buffer the inlets!
+    int ninchannels = 0;
+    for (int i = 0; i < (int)x_inlets.size(); ++i){
+        ninchannels += x_inlets[i].b_n;
+    }
+    ninchannels++; // extra dummy buffer
+    x_inbuffer.resize(ninchannels * channelsize);
+    auto inbuf = x_inbuffer.data();
+    auto indummy = (inbuf += channelsize);
+    memset(indummy, 0, channelsize); // zero!
+    // set inlet buffer pointers
+    for (auto& inlets : x_inlets){
+        for (int i = 0; i < inlets.b_n; ++i, inbuf += channelsize){
+            inlets.b_buffers[i] = inbuf;
+        }
+    }
+
+    // prepare outlets
+    // NOTE: only buffer the outlets if Pd and VST plugin
+    // use a different float size!
+    bool needbuffer = (samplesize != sizeof(t_sample));
+    int noutchannels = 0;
+    if (needbuffer){
+        for (int i = 0; i < (int)x_outlets.size(); ++i){
+            noutchannels += x_outlets[i].b_n;
+        }
+    }
+    noutchannels++; // extra dummy buffer
+    x_outbuffer.resize(noutchannels * channelsize);
+    auto outbuf = x_inbuffer.data();
+    auto outdummy = (outbuf += channelsize);
+    if (needbuffer){
+        // set outlet buffer pointers
+        for (auto& outlets : x_outlets){
+            for (int i = 0; i < outlets.b_n; ++i, outbuf += channelsize){
+                outlets.b_buffers[i] = outbuf;
+            }
+        }
+    }
+
+    // set plugin inputs
+    for (int i = 0; i < (int)x_inputs.size(); ++i){
+        auto& input = x_inputs[i];
+        if (i < (int)x_inlets.size()){
+            auto& inlets = x_inlets[i];
+            for (int j = 0; j < input.numChannels; ++j){
+                if (j < inlets.b_n){
+                    // point to inlet buffer
+                    input.channelData32[j] = (float *)inlets.b_buffers[j];
+                } else {
+                    // point to dummy
+                    input.channelData32[j] = (float *)indummy;
+                }
+            }
+        } else {
+            // point all channels to dummy
+            for (int j = 0; j < input.numChannels; ++j){
+                input.channelData32[j] = (float *)indummy;
+            }
+        }
+    }
+
+    // set plugin outputs
+    for (int i = 0; i < (int)x_outputs.size(); ++i){
+        auto& output = x_outputs[i];
+        if (i < (int)x_outlets.size()){
+            auto& outlets = x_outlets[i];
+            for (int j = 0; j < output.numChannels; ++j){
+                if (j < outlets.b_n){
+                    if (needbuffer){
+                        // point to outlet buffer
+                        output.channelData32[j] = (float *)outlets.b_buffers[j];
+                    } else {
+                        // point to outlet
+                        output.channelData32[j] = (float *)outlets.b_signals[j];
+                    }
+                } else {
+                    // point to dummy
+                    output.channelData32[j] = (float *)outdummy;
+                }
+            }
+        } else {
+            // point all channels to dummy
+            for (int j = 0; j < output.numChannels; ++j){
+                output.channelData32[j] = (float *)outdummy;
+            }
+        }
     }
 }
 
@@ -2750,12 +3091,62 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
                 ProcessPrecision::Double : ProcessPrecision::Single;
     t_symbol *file = nullptr; // plugin to open (optional)
     bool editor = false; // open plugin with VST editor?
+    std::vector<int> inputs;
+    std::vector<int> outputs;
+
+    auto parseBusses = [this](t_atom *& argv, int& argc, const char *flag){
+        std::vector<int> result;
+        argv++; argc--;
+
+        if (argc > 0 && argv->a_type == A_FLOAT){
+            int n = argv->a_w.w_float;
+            argv++; argc--;
+            for (int i = 0; i < n; ++i){
+                if (argc > 0){
+                    if (argv->a_type == A_FLOAT){
+                        int chn = argv->a_w.w_float;
+                        if (chn < 0){
+                            pd_error(this, "%s: negative channel number for bus %d",
+                                     classname(this), i);
+                            chn = 0;
+                        }
+                        result.push_back(argv->a_w.w_float);
+                    } else {
+                        pd_error(this, "%s: bad channel argument %s for bus %d",
+                                 classname(this), atom_getsymbol(argv)->s_name, i);
+                    }
+                    argv++; argc--;
+                } else {
+                    pd_error(this, "%s: missing channel argument for bus %d",
+                             classname(this), i);
+                }
+            }
+        } else {
+            pd_error(this, "%s: too few arguments for %s flag",
+                     classname(this), flag);
+        }
+        // we need at least a single bus!
+        if (result.empty()){
+            result.push_back(0);
+        }
+        return result;
+    };
 
     while (argc && argv->a_type == A_SYMBOL){
         const char *flag = argv->a_w.w_symbol->s_name;
         if (*flag == '-'){
             if (!strcmp(flag, "-n")){
                 gui = false;
+            } else if (!strcmp(flag, "-i")){
+                inputs = parseBusses(argv, argc, "-i");
+                // we always have at least 1 inlet because of CLASS_MAINSIGNALIN
+                if (inputs[0] == 0){
+                    inputs[0] = 1;
+                }
+                continue; // !
+            } else if (!strcmp(flag, "-o")){
+                outputs = parseBusses(argv, argc, "-o");
+                continue; // !
             } else if (!strcmp(flag, "-k")){
                 x_keep = true;
             } else if (!strcmp(flag, "-e")){
@@ -2782,22 +3173,43 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             break;
         }
     }
-    // inputs (default: 2)
-    int in = 2;
-    if (argc > 0){
-            // min. 1 because of CLASS_MAINSIGNALIN
-        in = std::max<int>(1, atom_getfloat(argv));
-    }
-    // outputs (default: 2)
-    int out = 2;
-    if (argc > 1){
-        out = std::max<int>(0, atom_getfloat(argv + 1));
-    }
-    // optional aux inputs/outputs
-    int auxin = atom_getfloatarg(2, argc, argv);
-    int auxout = atom_getfloatarg(3, argc, argv);
 
-    x_precision = precision;
+    // inputs (default: 2), only if -i hasn't been used!
+    if (inputs.empty()){
+        // min. 1 because of CLASS_MAINSIGNALIN
+        int in = argc > 0 ?
+            std::max<int>(1, atom_getfloat(argv)) : 2;
+        inputs.push_back(in);
+    }
+    LOG_DEBUG("inputs:");
+    for (int i = 0; i < inputs.size(); ++i){
+        LOG_DEBUG("  bus " << (i + 1) << ": " << inputs[i] << "ch");
+    }
+
+    // outputs (default: 2), only if -o hasn't been used!
+    if (outputs.empty()){
+        int out = argc > 1 ?
+            std::max<int>(0, atom_getfloat(argv + 1)) : 2;
+        outputs.push_back(out);
+    }
+    LOG_DEBUG("outputs:");
+    for (int i = 0; i < outputs.size(); ++i){
+        LOG_DEBUG("  bus " << (i + 1) << ": " << outputs[i] << "ch");
+    }
+
+    // (legacy) optional aux inputs/outputs
+    // just add them to busses because they should not
+    // be used together with the -i and -o flags
+    int auxin = std::max<int>(0, atom_getfloatarg(2, argc, argv));
+    if (auxin > 0){
+        inputs.push_back(auxin);
+    }
+    int auxout = std::max<int>(0, atom_getfloatarg(3, argc, argv));
+    if (auxout > 0){
+        outputs.push_back(auxout);
+    }
+
+    x_wantprecision = precision;
     x_canvas = canvas_getcurrent();
     x_editor = std::make_shared<t_vsteditor>(*this, gui);
 #ifdef PDINSTANCE
@@ -2805,20 +3217,35 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 #endif
 
     // inlets (we already have a main inlet!)
-    int totalin = in + auxin - 1;
-    while (totalin--){
+    int totalin = 0;
+    for (auto& in : inputs){
+        totalin += in;
+        t_signalbus bus;
+        bus.b_n = in;
+        bus.b_signals = std::make_unique<t_sample *[]>(in);
+        bus.b_buffers = std::make_unique<void *[]>(in);
+        x_inlets.push_back(std::move(bus));
+    }
+    // we already have a main inlet!
+    while (--totalin){
         inlet_new(&x_obj, &x_obj.ob_pd, &s_signal, &s_signal);
     }
-    x_siginlets.resize(in);
-    x_sigauxinlets.resize(auxin);
     // outlets:
-    int totalout = out + auxout;
+    int totalout = 0;
+    for (auto& out : outputs){
+        totalout += out;
+        t_signalbus bus;
+        bus.b_n = out;
+        bus.b_signals = std::make_unique<t_sample *[]>(out);
+        bus.b_buffers = std::make_unique<void *[]>(out);
+        x_outlets.push_back(std::move(bus));
+    }
+    // we already have a main inlet!
     while (totalout--){
         outlet_new(&x_obj, &s_signal);
     }
-    x_sigoutlets.resize(out);
-    x_sigauxoutlets.resize(auxout);
-    x_messout = outlet_new(&x_obj, 0); // additional message outlet
+    // additional message outlet
+    x_messout = outlet_new(&x_obj, 0);
 
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
@@ -2845,6 +3272,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         vstplugin_open_done(&data);
         x_uithread = editor; // !
         x_threaded = threaded;
+        x_async = false;
         x_path = file; // HACK: set symbol for vstplugin_loadbang
     }
 
@@ -2859,18 +3287,28 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
 static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     auto x = pd_new(vstplugin_class);
-        // placement new
-    new (x) t_vstplugin(argc, argv);
-    return x;
+    return new (x) t_vstplugin(argc, argv); // placement new
 }
 
 // destructor
 t_vstplugin::~t_vstplugin(){
-    vstplugin_close(this);
-    vstplugin_search_stop(this);
-    if (x_commands > 0){
+    // first make sure that there are no pending async commands!
+    // NOTE that this doesn't affect pending close commands,
+    // because they can't be issued while the plugin is suspended.
+    if (x_suspended){
         t_workqueue::get()->cancel(this);
+        x_suspended = false; // for vstplugin_close()!
     }
+    vstplugin_search_stop(this);
+
+    vstplugin_close(this);
+
+    // Sync with UI thread if we're closing asynchronously,
+    // see comment in vstplugin_close().
+    if (x_async && x_uithread){
+        UIThread::sync();
+    }
+
     LOG_DEBUG("vstplugin free");
 
     pd_unbind(&x_obj.ob_pd, gensym(glob_recv_name));
@@ -2887,131 +3325,134 @@ static void vstplugin_free(t_vstplugin *x){
 template<typename TFloat>
 static void vstplugin_doperform(t_vstplugin *x, int n){
     auto plugin = x->x_plugin.get();
-    auto invec = (TFloat **)alloca(sizeof(TFloat *) * x->x_siginlets.size());
-    auto outvec = (TFloat **)alloca(sizeof(TFloat *) * x->x_sigoutlets.size());
-    auto auxinvec = (TFloat **)alloca(sizeof(TFloat *) * x->x_sigauxinlets.size());
-    auto auxoutvec = (TFloat **)alloca(sizeof(TFloat *) * x->x_sigauxoutlets.size());
 
-    auto prepareInput = [](auto vec, auto& inlets, auto buf, int k){
-        for (size_t i = 0; i < inlets.size(); ++i, buf += k){
-            // copy from Pd inlets into buffer
-            if (i < inlets.size()){
-                t_sample *in = inlets[i];
-                if (std::is_same<t_sample, TFloat>::value){
-                    std::copy(in, in + k, buf);
-                } else {
-                    for (int j = 0; j < k; ++j){
-                        buf[j] = in[j]; // convert from t_sample to TFloat!
-                    }
-                }
-            }
-            vec[i] = buf; // point to buffer
-        }
-    };
-    prepareInput(invec, x->x_siginlets, (TFloat *)x->x_inbuf.data(), n);
-    prepareInput(auxinvec, x->x_sigauxinlets, (TFloat *)x->x_auxinbuf.data(), n);
-
-        // prepare output buffer
-    auto prepareOutput = [](auto vec, auto& outlets, auto buf, int k){
-        for (size_t i = 0; i < outlets.size(); ++i, buf += k){
-                // if t_sample and TFloat are the same, we can directly point to the outlet.
-            if (std::is_same<t_sample, TFloat>::value){
-                vec[i] = (TFloat *)outlets[i]; // have to trick the compiler (C++ 17 has constexpr if)
-            } else {
-                vec[i] = buf; // otherwise point to buffer
+    // first copy inlets into buffer
+    // we have to do this even if the plugin uses the same float type
+    // because inlets and outlets can alias!
+    for (auto& inlets : x->x_inlets){
+        for (int i = 0; i < inlets.b_n; ++i){
+            auto src = inlets.b_signals[i];
+            auto dst = (TFloat *)inlets.b_buffers[i];
+            // NOTE: use a plain for-loop because we might need to
+            // convert from t_sample to TFloat!
+            for (int j = 0; j < n; ++j){
+                dst[j] = src[j];
             }
         }
-    };
-    prepareOutput(outvec, x->x_sigoutlets, (TFloat *)x->x_outbuf.data(), n);
-    prepareOutput(auxoutvec, x->x_sigauxoutlets, (TFloat *)x->x_auxoutbuf.data(), n);
+    }
 
-        // process
-    IPlugin::ProcessData<TFloat> data;
-    data.input = (const TFloat **)invec;
-    data.auxInput = (const TFloat **)auxinvec;
-    data.output = outvec;
-    data.auxOutput = auxoutvec;
+    // process
+    ProcessData data;
     data.numSamples = n;
-    data.numInputs = x->x_siginlets.size();
-    data.numOutputs = x->x_sigoutlets.size();
-    data.numAuxInputs = x->x_sigauxinlets.size();
-    data.numAuxOutputs = x->x_sigauxoutlets.size();
+    data.precision = x->x_realprecision;
+    data.inputs = x->x_inputs.data();
+    data.numInputs = x->x_inputs.size();
+    data.outputs = x->x_outputs.data();
+    data.numOutputs = x->x_outputs.size();
+
     plugin->process(data);
 
     if (!std::is_same<t_sample, TFloat>::value){
-            // copy output buffer to Pd outlets
-        auto copyBuffer = [](auto vec, auto& outlets, int k){
-            for (int i = 0; i < (int)outlets.size(); ++i){
-                TFloat *src = vec[i];
-                t_sample *dst = outlets[i];
-                for (int j = 0; j < k; ++j){
-                    dst[j] = src[j]; // converts from TFloat to t_sample!
+        // copy output buffer to Pd outlets
+        for (auto& outlets : x->x_outlets){
+            for (int i = 0; i < outlets.b_n; ++i){
+                auto src = (TFloat *)outlets.b_buffers[i];
+                auto dst = outlets.b_signals[i];
+                // NOTE: use a plain for-loop!
+                for (int j = 0; j < n; ++j){
+                    dst[j] = src[j];
                 }
             }
-        };
-            // copy output buffer to Pd outlets
-        copyBuffer(outvec, x->x_sigoutlets, n);
-        copyBuffer(auxoutvec, x->x_sigauxoutlets, n);
+        }
+    }
+
+    // zero/bypass remaining outlets
+    int ninlets = x->x_inlets.size();
+    int noutlets = x->x_outlets.size();
+    int ninputs = x->x_inputs.size();
+    int noutputs = x->x_outputs.size();
+    for (int i = 0; i < noutlets; ++i){
+        auto& outlets = x->x_outlets[i];
+        int onset = (i < noutputs) ?
+                    x->x_outputs[i].numChannels : 0;
+        for (int j = onset; j < outlets.b_n; ++j){
+            auto out = outlets.b_signals[j];
+            // only bypass if a) there is a corresponding inlet
+            // and b) that inlet isn't used by the plugin
+            if (i < ninlets && j < x->x_inlets[i].b_n &&
+                !(i < ninputs && j < x->x_inputs[i].numChannels))
+            {
+                // NOTE: use a plain for-loop because we might need to
+                // convert TFloat to t_sample!
+                auto in = (const TFloat *)x->x_inlets[i].b_buffers[j];
+                for (int k = 0; k < n; ++k){
+                    out[k] = in[k];
+                }
+            } else {
+                // zero
+                std::fill(out, out + n, 0);
+            }
+        }
     }
 }
 
 static t_int *vstplugin_perform(t_int *w){
     t_vstplugin *x = (t_vstplugin *)(w[1]);
     int n = (int)(w[2]);
-    auto plugin = x->x_plugin.get();
-    auto precision = x->x_precision;
     x->x_lastdsptime = clock_getlogicaltime();
 
-    bool doit = plugin != nullptr;
-    if (doit){
-        // check processing precision (single or double)
-        if (!plugin->info().hasPrecision(precision)){
-            if (plugin->info().hasPrecision(ProcessPrecision::Single)){
-                precision = ProcessPrecision::Single;
-            } else if (plugin->info().hasPrecision(ProcessPrecision::Double)){
-                precision = ProcessPrecision::Double;
-            } else {
-                doit = false; // maybe some VST2 MIDI plugins
-            }
-        }
-        // if async command is running, try to lock the mutex or bypass on failure
-        if (x->x_commands > 0){
-            if (!(doit = x->x_mutex.try_lock())){
-                LOG_DEBUG("couldn't lock mutex");
-            }
+    // checking only x_process wouldn't be thread-safe!
+    auto process = (x->x_plugin != nullptr) && x->x_process;
+    // if async command is running, try to lock the mutex or bypass on failure
+    if (x->x_suspended){
+        process = x->x_mutex.try_lock();
+        if (!process){
+            LOG_DEBUG("couldn't lock mutex");
         }
     }
-    if (doit){
-        if (precision == ProcessPrecision::Double){
+    if (process){
+        if (x->x_realprecision == ProcessPrecision::Double){
             vstplugin_doperform<double>(x, n);
         } else { // single precision
             vstplugin_doperform<float>(x, n);
         }
-        if (x->x_commands > 0){
+        if (x->x_suspended){
             x->x_mutex.unlock();
         }
     } else {
-        auto copyInput = [](auto& inlets, auto buf, auto numSamples){
-            // copy inlets into temporary buffer (because inlets and outlets can alias!)
-            for (size_t i = 0; i < inlets.size(); ++i, buf += numSamples){
-                std::copy(inlets[i], inlets[i] + numSamples, buf);
+        // bypass/zero
+        // first copy all inlets into temporary buffer
+        // because inlets and outlets can alias!
+        for (auto& inlets : x->x_inlets){
+            for (int i = 0; i < inlets.b_n; ++i){
+                auto chn = inlets.b_signals[i];
+                std::copy(chn, chn + n, (t_sample *)inlets.b_buffers[i]);
             }
-        };
-        auto writeOutput = [](auto& outlets, auto buf, auto numInputs, auto numSamples){
-            for (size_t i = 0; i < outlets.size(); ++i, buf += numSamples){
-                if (i < numInputs){
-                    std::copy(buf, buf + numSamples, outlets[i]); // copy
-                } else {
-                    std::fill(outlets[i], outlets[i] + numSamples, 0); // zero
+        }
+        // now copy inlets to corresponding outlets
+        for (int i = 0; i < (int)x->x_outlets.size(); ++i){
+            auto& outlets = x->x_outlets[i];
+            if (i < (int)x->x_inlets.size()){
+                auto& inlets = x->x_inlets[i];
+                for (int j = 0; j < outlets.b_n; ++j){
+                    if (j < inlets.b_n){
+                        // copy buffer to outlet
+                        auto chn = (const t_sample *)inlets.b_buffers[j];
+                        std::copy(chn, chn + n, outlets.b_signals[j]);
+                    } else {
+                        // zero outlet
+                        auto chn = outlets.b_signals[j];
+                        std::fill(chn, chn + n, 0);
+                    }
+                }
+            } else {
+                // zero whole bus
+                for (int j = 0; j < outlets.b_n; ++j){
+                    auto chn = outlets.b_signals[j];
+                    std::fill(chn, chn + n, 0);
                 }
             }
-        };
-        // first copy both inputs and aux inputs!
-        copyInput(x->x_siginlets, (t_sample *)x->x_inbuf.data(), n);
-        copyInput(x->x_sigauxinlets, (t_sample *)x->x_auxinbuf.data(), n);
-        // now write to output
-        writeOutput(x->x_sigoutlets, (t_sample*)x->x_inbuf.data(), x->x_siginlets.size(), n);
-        writeOutput(x->x_sigauxoutlets, (t_sample*)x->x_auxinbuf.data(), x->x_sigauxinlets.size(), n);
+        }
     }
 
     x->x_editor->flush_queues();
@@ -3048,7 +3489,7 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
         // protect against concurrent vstplugin_open_do()
-        LockGuard lock(x->x_mutex);
+        ScopedLock lock(x->x_mutex);
         // 1) plugin
         if (x->x_editor->vst_gui()){
             binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
@@ -3061,7 +3502,9 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
         binbuf_addsemi(bb);
         // 3) program data
         std::string buffer;
-        x->x_plugin->writeProgramData(buffer);
+        defer([&](){
+            x->x_plugin->writeProgramData(buffer);
+        }, x->x_uithread);
         int n = buffer.size();
         if (n){
             binbuf_addv(bb, "ss", gensym("#A"), gensym("program_data_set"));
@@ -3082,43 +3525,40 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
 
 // dsp callback
 static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
-    int blocksize = sp[0]->s_n;
-    t_float sr = sp[0]->s_sr;
-    dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)blocksize);
+    int oldblocksize = x->x_blocksize;
+    int oldsr = x->x_sr;
+    x->x_blocksize = sp[0]->s_n;
+    x->x_sr = sp[0]->s_sr;
+
+    dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)x->x_blocksize);
+
+    // update signal vectors
+    auto ptr = sp;
+    for (auto& inlets : x->x_inlets){
+        for (int i = 0; i < inlets.b_n; ++i){
+            inlets.b_signals[i] = (*ptr++)->s_vec;
+        }
+    }
+    for (auto& outlets : x->x_outlets){
+        for (int i = 0; i < outlets.b_n; ++i){
+            outlets.b_signals[i] = (*ptr++)->s_vec;
+        }
+    }
+
     // protect against concurrent vstplugin_open_do()
-    LockGuard lock(x->x_mutex);
+    ScopedLock lock(x->x_mutex);
     // only reset plugin if blocksize or samplerate has changed
-    if (x->x_plugin && (blocksize != x->x_blocksize || sr != x->x_sr)){
-        x->setup_plugin<false>(*x->x_plugin);
-        if (x->x_threaded && blocksize != x->x_blocksize){
+    if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr))) {
+        // calls update_buffers() internally!
+        x->setup_plugin<false>(x->x_plugin.get(), x->x_uithread);
+        if (x->x_threaded && (x->x_blocksize != oldblocksize)){
             // queue(!) latency change notification
             x->x_editor->latencyChanged(x->x_plugin->getLatencySamples());
         }
+    } else {
+        // just update buffers (also needed for bypassing!)
+        x->update_buffers();
     }
-    x->x_blocksize = blocksize;
-    x->x_sr = sr;
-    // update signal vectors and buffers
-    int k = 0;
-    // main in:
-    for (auto it = x->x_siginlets.begin(); it != x->x_siginlets.end(); ++it){
-        *it = sp[k++]->s_vec;
-    }
-    x->x_inbuf.resize(x->x_siginlets.size() * sizeof(double) * blocksize); // large enough for double precision
-    // aux in:
-    for (auto it = x->x_sigauxinlets.begin(); it != x->x_sigauxinlets.end(); ++it){
-        *it = sp[k++]->s_vec;
-    }
-    x->x_auxinbuf.resize(x->x_sigauxinlets.size() * sizeof(double) * blocksize);
-    // main out:
-    for (auto it = x->x_sigoutlets.begin(); it != x->x_sigoutlets.end(); ++it){
-        *it = sp[k++]->s_vec;
-    }
-    x->x_outbuf.resize(x->x_sigoutlets.size() * sizeof(double) * blocksize);
-    // aux out:
-    for (auto it = x->x_sigauxoutlets.begin(); it != x->x_sigauxoutlets.end(); ++it){
-        *it = sp[k++]->s_vec;
-    }
-    x->x_auxoutbuf.resize(x->x_sigauxoutlets.size() * sizeof(double) * blocksize);
 }
 
 // setup function
@@ -3148,6 +3588,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_DEFFLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_pos, gensym("pos"), A_FLOAT, A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_size, gensym("size"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_click, gensym("click"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_info, gensym("info"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
@@ -3164,6 +3605,13 @@ EXPORT void vstplugin_tilde_setup(void){
 #endif
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_set, gensym("transport_set"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_transport_get, gensym("transport_get"), A_NULL);
+    // inputs/outputs
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_info<t_direction::in>, gensym("input_info"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_list<t_direction::in>, gensym("input_list"), A_DEFSYM, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_input_count, gensym("input_count"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_info<t_direction::out>, gensym("output_info"), A_FLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_bus_list<t_direction::out>, gensym("output_list"), A_DEFSYM, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_output_count, gensym("output_count"), A_NULL);
     // parameters
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_set, gensym("param_set"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_param_get, gensym("param_get"), A_GIMME, A_NULL);
@@ -3213,7 +3661,7 @@ EXPORT void vstplugin_tilde_setup(void){
 
     t_workqueue::init();
 
-    post("vstplugin~ %s", getVersionString().c_str());
+    post("vstplugin~ %s", getVersionString());
 
     // read cached plugin info
     readIniFile();

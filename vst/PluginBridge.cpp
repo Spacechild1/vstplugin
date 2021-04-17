@@ -1,9 +1,9 @@
 #include "PluginBridge.h"
 
-#include "Utility.h"
 #include "PluginCommand.h"
-
-#include <sstream>
+#include "Log.h"
+#include "CpuArch.h"
+#include "MiscUtils.h"
 
 namespace vst {
 
@@ -81,7 +81,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
             snprintf(buf, sizeof(buf), "rt%d", i+1);
             shm_.addChannel(ShmChannel::Request, rtRequestSize, buf);
         }
-        locks_ = std::make_unique<SpinLock[]>(maxNumThreads);
+        locks_ = std::make_unique<PaddedSpinLock[]>(maxNumThreads);
     } else {
         // --- sandboxed plugin ---
         // a single rt channel (which also doubles as the nrt channel)
@@ -94,6 +94,8 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // spawn host process
     std::string hostApp = getHostApp(arch);
 #ifdef _WIN32
+    // get process Id
+    auto parent = GetCurrentProcessId();
     // get absolute path to host app
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
@@ -102,7 +104,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // spaces in file names.
     std::stringstream cmdLineStream;
     cmdLineStream << hostApp << " bridge "
-                  << GetCurrentProcessId() << " \"" << shm_.path() << "\"";
+                  << parent << " \"" << shm_.path() << "\"";
     // LOG_DEBUG(cmdLineStream.str());
     auto cmdLine = widen(cmdLineStream.str());
 
@@ -123,10 +125,13 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
+    auto child = pi_.dwProcessId;
 #else // Unix
+    // get parent Id
+    auto parent = getpid();
+    auto parentStr = std::to_string(parent);
     // get absolute path to host app
     std::string hostPath = getModuleDirectory() + "/" + hostApp;
-    auto parent = std::to_string(getpid());
     // fork
     pid_ = fork();
     if (pid_ == -1) {
@@ -143,16 +148,29 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host.exe bridge <parent_pid> <shm_path>
+    #if USE_WINE
+        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+            // run in Wine
+            auto winecmd = getWineCommand();
+            // use PATH!
+            if (execlp(winecmd, winecmd, hostPath.c_str(), "bridge",
+                      parentStr.c_str(), shm_.path().c_str(), nullptr) < 0){
+                LOG_ERROR("couldn't run '" << winecmd << "' (" << errorMessage(errno) << ")");
+            }
+        } else
+    #endif
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  parent.c_str(), shm_.path().c_str(), 0) < 0){
+                  parentStr.c_str(), shm_.path().c_str(), nullptr) < 0){
             // LATER redirect child stderr to parent stdin
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }
         std::exit(EXIT_FAILURE);
     }
+    auto child = pid_;
 #endif
     alive_ = true;
-    LOG_DEBUG("PluginBridge: spawned subprocess");
+    LOG_DEBUG("PluginBridge: spawned subprocess (child: " << child
+              << ", parent: " << parent);
 
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginBridge *>(x)->pollUIThread();
@@ -188,7 +206,7 @@ PluginBridge::~PluginBridge(){
 
 void PluginBridge::checkStatus(bool wait){
     // already dead, no need to check
-    if (!alive_){
+    if (!alive_.load()){
         return;
     }
 #ifdef _WIN32
@@ -199,35 +217,52 @@ void PluginBridge::checkStatus(bool wait){
         DWORD code = 0;
         if (GetExitCodeProcess(pi_.hProcess, &code)){
             if (code == EXIT_SUCCESS){
-                LOG_DEBUG("host process exited successfully");
+                LOG_DEBUG("Watchdog: subprocess exited successfully");
             } else if (code == EXIT_FAILURE){
-                LOG_ERROR("host process exited with failure");
+                // LATER get the actual Error from the child process.
+                LOG_WARNING("Watchdog: subprocess exited with failure");
             } else {
-                LOG_ERROR("host process crashed!");
+                LOG_WARNING("Watchdog: subprocess crashed!");
             }
         } else {
-            LOG_ERROR("couldn't retrieve exit code for host process!");
+            LOG_ERROR("Watchdog: couldn't retrieve exit code for subprocess!");
         }
     } else {
-        LOG_ERROR("WaitForSingleObject() failed");
+        LOG_ERROR("Watchdog: WaitForSingleObject() failed: "
+                  + errorMessage(GetLastError()));
     }
 #else
-    int code = -1;
     int status = 0;
-    if (waitpid(pid_, &status, wait ? 0 : WNOHANG) == 0){
+    auto ret = waitpid(pid_, &status, wait ? 0 : WNOHANG);
+    if (ret == 0){
         return; // still running
-    }
-    if (WIFEXITED(status)) {
-        code = WEXITSTATUS(status);
-        if (code == EXIT_SUCCESS){
-            LOG_DEBUG("host process exited successfully");
-        } else if (code == EXIT_FAILURE){
-            LOG_ERROR("host process exited with failure");
+    } else if (ret > 0){
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code == EXIT_SUCCESS){
+                LOG_DEBUG("Watchdog: subprocess exited successfully");
+            } else if (code == EXIT_FAILURE){
+                // LATER get the actual Error from the child process.
+                LOG_WARNING("Watchdog: subprocess exited with failure");
+            } else {
+                LOG_WARNING("Watchdog: subprocess crashed!");
+            }
+        } else if (WIFSIGNALED(status)){
+            auto sig = WTERMSIG(status);
+            LOG_WARNING("Watchdog: subprocess was terminated with signal "
+                        << sig << " (" << strsignal(sig) << ")");
+        } else if (WIFSTOPPED(status)){
+            auto sig = WTERMSIG(status);
+            LOG_WARNING("Watchdog: subprocess was stopped with signal "
+                        << sig << " (" << strsignal(sig) << ")");
+        } else if (WIFCONTINUED(status)){
+            // FIXME what should be do here?
+            LOG_VERBOSE("Watchdog: subprocess continued");
         } else {
-            LOG_ERROR("host process crashed!");
+            LOG_ERROR("Watchdog: unknown status (" << status << ")");
         }
     } else {
-        LOG_ERROR("couldn't get exit status");
+        LOG_ERROR("Watchdog: waitpid() failed: " << errorMessage(errno));
     }
 #endif
 
@@ -243,6 +278,7 @@ void PluginBridge::checkStatus(bool wait){
 
     if (wasAlive){
         // notify all clients
+        ScopedLock lock(clientMutex_);
         for (auto& it : clients_){
             auto client = it.second.lock();
             if (client){
@@ -254,18 +290,18 @@ void PluginBridge::checkStatus(bool wait){
 
 void PluginBridge::addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client){
     LOG_DEBUG("PluginBridge: add client " << id);
-    LockGuard lock(clientMutex_);
+    ScopedLock lock(clientMutex_);
     clients_.emplace(id, client);
 }
 
 void PluginBridge::removeUIClient(uint32_t id){
     LOG_DEBUG("PluginBridge: remove client " << id);
-    LockGuard lock(clientMutex_);
+    ScopedLock lock(clientMutex_);
     clients_.erase(id);
 }
 
 void PluginBridge::postUIThread(const ShmUICommand& cmd){
-    // LockGuard lock(uiMutex_);
+    // ScopedLock lock(uiMutex_);
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
     auto& channel = shm_.getChannel(0);
     if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
@@ -285,7 +321,7 @@ void PluginBridge::pollUIThread(){
     while (channel.readMessage(buffer, size)){
         auto cmd = (const ShmUICommand *)buffer;
         // find client with matching ID
-        LockGuard lock(clientMutex_);
+        ScopedLock lock(clientMutex_);
 
         auto client = findClient(cmd->id);
         if (client){
@@ -337,17 +373,15 @@ RTChannel PluginBridge::getRTChannel(){
             // lock the first spinlock and the plugin server will only
             // use a single thread as well.
 
-            // modulo is optimized to bitwise AND
-            // if maxNumThreads is power of 2!
-            index = counter.load(std::memory_order_acquire)
-                    % maxNumThreads;
+            // modulo is optimized to bitwise AND if maxNumThreads is power of 2!
+            index = counter.load(std::memory_order_acquire) % maxNumThreads;
             if (locks_[index].try_lock()){
                 break;
             }
-            ++counter; // atomic increment
+            counter.fetch_add(1);
         }
         return RTChannel(shm_.getChannel(index + 3),
-                         std::unique_lock<SpinLock>(locks_[index], std::adopt_lock));
+                         std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
     } else {
         // channel 2 is both NRT and RT channel
         return RTChannel(shm_.getChannel(2));
@@ -357,7 +391,7 @@ RTChannel PluginBridge::getRTChannel(){
 NRTChannel PluginBridge::getNRTChannel(){
     if (locks_){
         return NRTChannel(shm_.getChannel(2),
-                          std::unique_lock<SharedMutex>(nrtMutex_));
+                          std::unique_lock<Mutex>(nrtMutex_));
     } else {
         // channel 2 is both NRT and RT channel
         return NRTChannel(shm_.getChannel(2));
@@ -399,9 +433,13 @@ WatchDog::WatchDog(){
 
             // wait for a new process to be added
             //
-            // NOTE: we have to put both the check and wait at the end,
-            // because the thread is created concurrently with the first item
-            // and 'running_' might be set to false during this_thread::sleep_for().
+            // NOTE: we have to put both the check and wait at the end!
+            // Since the thread is created concurrently with the first process,
+            // the process might be registered *before* the thread starts,
+            // causing the latter to wait on the condition variable instead of
+            // entering the poll loop.
+            // Also, 'running_' might be set to false while we're sleeping in the
+            // poll loop, which means that we would wait on the condition forever.
             if (running_){
                 LOG_DEBUG("WatchDog: waiting...");
                 condition_.wait(lock);
@@ -434,10 +472,7 @@ void WatchDog::registerProcess(PluginBridge::ptr process){
     LOG_DEBUG("WatchDog: register process");
     std::lock_guard<std::mutex> lock(mutex_);
     processes_.push_back(process);
-    // wake up if process list has been empty!
-    if (processes_.size() == 1){
-        condition_.notify_one();
-    }
+    condition_.notify_one();
 }
 
 } // vst

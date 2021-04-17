@@ -1,16 +1,16 @@
 #include "PluginServer.h"
+
 #include "ShmInterface.h"
 #include "PluginManager.h"
+#include "Log.h"
+#include "FileUtils.h"
+#include "MiscUtils.h"
 
 #include <cassert>
 #include <cstring>
 #include <sstream>
 
 namespace vst {
-
-static void sleep(int s){
-    std::this_thread::sleep_for(std::chrono::seconds(s));
-}
 
 /*///////////////// PluginHandleListener ///////*/
 
@@ -92,14 +92,6 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
         sendParam(channel, i, value, false);
     }
 
-    // default channels
-    numInputs_ = plugin_->info().numInputs;
-    numOutputs_ = plugin_->info().numOutputs;
-    numAuxInputs_ = plugin_->info().numAuxInputs;
-    numAuxOutputs_ = plugin_->info().numAuxOutputs;
-
-    updateBuffer();
-
     // set listener
     proxy_ = std::make_shared<PluginHandleListener>(*this);
     plugin_->setListener(proxy_);
@@ -118,68 +110,129 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         LOG_DEBUG("PluginHandle: setupProcessing");
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
-        plugin_->setupProcessing(cmd.setup.sampleRate,
-                                 maxBlockSize_, precision_);
+        UIThread::callSync([&](){
+            plugin_->setupProcessing(cmd.setup.sampleRate, maxBlockSize_, precision_);
+        });
         updateBuffer();
         break;
     case Command::SetNumSpeakers:
+    {
         LOG_DEBUG("PluginHandle: setNumSpeakers");
-        numInputs_ = cmd.speakers.in;
-        numOutputs_ = cmd.speakers.out;
-        numAuxInputs_ = cmd.speakers.auxin;
-        numAuxOutputs_ = cmd.speakers.auxout;
-        plugin_->setNumSpeakers(numInputs_, numOutputs_,
-                                numAuxInputs_, numAuxOutputs_);
+        int numInputs = cmd.speakers.numInputs;
+        int numOutputs = cmd.speakers.numOutputs;
+        auto speakers = cmd.speakers.speakers;
+        auto input = (int *)alloca(sizeof(int) * numInputs);
+        std::copy(speakers, speakers + numInputs, input);
+        auto output = (int *)alloca(sizeof(int) * numOutputs);
+        std::copy(speakers + numInputs,
+                  speakers + numInputs + numOutputs, output);
+
+        UIThread::callSync([&](){
+            plugin_->setNumSpeakers(input, numInputs, output, numOutputs);
+        });
+
+        // create input busses
+        inputs_ = std::make_unique<Bus[]>(numInputs);
+        numInputs_ = numInputs;
+        for (int i = 0; i < numInputs; ++i){
+            inputs_[i] = Bus(input[i]);
+        }
+        // create output busses
+        outputs_ = std::make_unique<Bus[]>(numOutputs);
+        numOutputs_ = numOutputs;
+        for (int i = 0; i < numOutputs; ++i){
+            outputs_[i] = Bus(output[i]);
+        }
+
         updateBuffer();
+
+        // send actual speaker arrangement
+        channel.clear(); // !
+
+        int size = sizeof(uint32_t) * (numInputs_ + numOutputs_);
+        auto totalSize = CommandSize(ShmCommand, speakers, size);
+        auto reply = (ShmCommand *)alloca(totalSize);
+        reply->type = Command::SpeakerArrangement;
+        reply->speakers.numInputs = numInputs;
+        reply->speakers.numOutputs = numOutputs;
+        // copy input and output arrangements
+        for (int i = 0; i < numInputs; ++i){
+            reply->speakers.speakers[i] = input[i];
+        }
+        for (int i = 0; i < numOutputs; ++i){
+            reply->speakers.speakers[i + numInputs] = output[i];
+        }
+
+        addReply(channel, reply, totalSize);
+
         break;
+    }
     case Command::Suspend:
         LOG_DEBUG("PluginHandle: suspend");
-        plugin_->suspend();
+        UIThread::callSync([&](){
+            plugin_->suspend();
+        });
         break;
     case Command::Resume:
         LOG_DEBUG("PluginHandle: resume");
-        plugin_->resume();
+        UIThread::callSync([&](){
+            plugin_->resume();
+        });
         break;
     case Command::ReadProgramFile:
-        plugin_->readProgramFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->readProgramFile(cmd.buffer.data);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankFile:
-        plugin_->readBankFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->readBankFile(cmd.buffer.data);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, true);
         break;
     case Command::ReadProgramData:
-        plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
+        UIThread::callSync([&](){
+            plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankData:
-        plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
+        UIThread::callSync([&](){
+            plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
+        });
         channel.clear(); // !
         sendParameterUpdate(channel);
-        sendProgramUpdate(channel, false);
+        sendProgramUpdate(channel, true);
         break;
     case Command::WriteProgramFile:
-        plugin_->writeProgramFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->writeProgramFile(cmd.buffer.data);
+        });
         break;
     case Command::WriteBankFile:
-        plugin_->writeBankFile(cmd.buffer.data);
+        UIThread::callSync([&](){
+            plugin_->writeBankFile(cmd.buffer.data);
+        });
         break;
     case Command::WriteProgramData:
     case Command::WriteBankData:
     {
         // get data
         std::string buffer;
-        if (cmd.type == Command::WriteBankData){
-            plugin_->writeBankData(buffer);
-        } else {
-            plugin_->writeProgramData(buffer);
-        }
+        UIThread::callSync([&](){
+            if (cmd.type == Command::WriteBankData){
+                plugin_->writeBankData(buffer);
+            } else {
+                plugin_->writeProgramData(buffer);
+            }
+        });
         // send data
         channel.clear(); // !
 
@@ -230,12 +283,32 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
 }
 
 void PluginHandle::updateBuffer(){
-    auto sampleSize = precision_ == ProcessPrecision::Double ?
-                sizeof(double) : sizeof(float);
-    auto totalSize = (numInputs_ + numOutputs_ + numAuxInputs_ + numAuxOutputs_)
-            * maxBlockSize_ * sampleSize;
-    buffer_.clear(); // force zero
-    buffer_.resize(totalSize);
+    int total = 0;
+    for (int i = 0; i < numInputs_; ++i){
+        total += inputs_[i].numChannels;
+    }
+    for (int i = 0; i < numOutputs_; ++i){
+        total += outputs_[i].numChannels;
+    }
+    const int incr = maxBlockSize_ *
+        (precision_ == ProcessPrecision::Double ? sizeof(double) : sizeof(float));
+    buffer_.clear(); // force zero initialization
+    buffer_.resize(total * incr);
+    // set buffer vectors
+    auto buf = buffer_.data();
+    auto setBuffers = [](auto& busses, int count, auto& bufptr, int incr){
+        for (int i = 0; i < count; ++i){
+            auto& bus = busses[i];
+            for (int j = 0; j < bus.numChannels; ++j){
+                bus.channelData32[j] = (float *)bufptr; // float* and double* have the same size
+                bufptr += incr;
+            }
+        }
+    };
+    setBuffers(inputs_, numInputs_, buf, incr);
+    setBuffers(outputs_, numOutputs_, buf, incr);
+
+    assert((buf - buffer_.data()) == buffer_.size());
 }
 
 void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
@@ -249,55 +322,40 @@ void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
 
 template<typename T>
 void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
-    IPlugin::ProcessData<T> data;
-    data.numSamples = cmd.process.numSamples;
+    assert(cmd.process.numInputs == numInputs_);
+    assert(cmd.process.numOutputs == numOutputs_);
 
-    data.numInputs = cmd.process.numInputs;
-    data.input = (const T**)alloca(sizeof(T*) * data.numInputs);
-    data.numOutputs = cmd.process.numOutputs;
-    data.output = (T**)alloca(sizeof(T*) * data.numOutputs);
-    data.numAuxInputs = cmd.process.numAuxInputs;
-    data.auxInput = (const T**)alloca(sizeof(T*) * data.numAuxInputs);
-    data.numAuxOutputs = cmd.process.numAuxOutpus;
-    data.auxOutput = (T**)alloca(sizeof(T*) * data.numAuxOutputs);
+    ProcessData data;
+    data.numSamples = cmd.process.numSamples;
+    data.precision = (ProcessPrecision)cmd.process.precision;
+    data.numInputs = numInputs_;
+    data.inputs = inputs_.get();
+    data.numOutputs = numOutputs_;
+    data.outputs = outputs_.get();
 
     // read audio input data
-    auto bufptr = (T *)buffer_.data();
+    for (int i = 0; i < data.numInputs; ++i){
+        auto& bus = data.inputs[i];
+        // LOG_DEBUG("PluginClient: read audio bus " << i << " with "
+        //     << bus.numChannels << " channels");
 
-    auto readAudio = [&](auto vec, auto numChannels){
-//        LOG_DEBUG("PluginClient: read audio bus with "
-//                  << numChannels << " channels");
-        for (int i = 0; i < numChannels; ++i){
-            const char *bytes;
+        // read channels
+        for (int j = 0; j < bus.numChannels; ++j){
+            auto chn = (T *)bus.channelData32[j];
+            const char* msg;
             size_t size;
-            if (channel.getMessage(bytes, size)){
+            if (channel.getMessage(msg, size)){
                 // size can be larger because of message
                 // alignment - don't use in std::copy!
                 assert(size >= data.numSamples * sizeof(T));
-
-                auto chn = (const T *)bytes;
-                std::copy(chn, chn + data.numSamples, bufptr);
-
+                auto buf = (const float *)msg;
+                std::copy(buf, buf + data.numSamples, chn);
             } else {
-                std::fill(bufptr, bufptr + data.numSamples, 0);
-                LOG_ERROR("PluginHandle: missing audio input channel " << i);
+                std::fill(chn, chn + data.numSamples, 0);
+                LOG_ERROR("PluginClient: missing channel " << j
+                          << " for audio input bus " << i);
             }
-            vec[i] = bufptr;
-            bufptr += data.numSamples;
         }
-    };
-
-    readAudio(data.input, data.numInputs);
-    readAudio(data.auxInput, data.numAuxInputs);
-
-    // set output pointers
-    for (int i = 0; i < data.numOutputs; ++i){
-        data.output[i] = bufptr;
-        bufptr += data.numSamples;
-    }
-    for (int i = 0; i < data.numAuxOutputs; ++i){
-        data.auxOutput[i] = bufptr;
-        bufptr += data.numSamples;
     }
 
     // read and dispatch commands
@@ -309,13 +367,13 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     // send audio output data
     channel.clear(); // !
 
+    // send output busses
     for (int i = 0; i < data.numOutputs; ++i){
-        channel.addMessage((const char *)data.output[i],
-                           sizeof(T) * data.numSamples);
-    }
-    for (int i = 0; i < data.numAuxOutputs; ++i){
-        channel.addMessage((const char *)data.auxOutput[i],
-                           sizeof(T) * data.numSamples);
+        auto& bus = data.outputs[i];
+        // write all channels sequentially to avoid additional copying.
+        for (int j = 0; j < bus.numChannels; ++j){
+            channel.addMessage((const char *)bus.channelData32[j], sizeof(T) * data.numSamples);
+        }
     }
 
     // send events
@@ -481,7 +539,7 @@ void PluginHandle::sendParameterUpdate(ShmChannel& channel){
 
 void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
     auto sendProgramName = [&](int index, const std::string& name){
-        auto size = sizeof(ShmCommand) + name.size() + 1;
+        auto size  = CommandSize(ShmCommand, programName, name.size() + 1);
         auto reply = (ShmCommand *)alloca(size);
         reply->type = Command::ProgramNameIndexed;
         reply->programName.index = index;
@@ -504,7 +562,9 @@ void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
         }
     } else {
         // send current program name
-        sendProgramName(plugin_->getProgram(), plugin_->getProgramName());
+        if (plugin_->info().numPrograms() > 0){
+            sendProgramName(plugin_->getProgram(), plugin_->getProgramName());
+        }
     }
 }
 
@@ -538,11 +598,12 @@ static PluginManager gPluginManager;
 
 PluginServer::PluginServer(int pid, const std::string& shmPath)
 {
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     parent_ = OpenProcess(SYNCHRONIZE, FALSE, pid);
 #else
     parent_ = pid;
 #endif
+    LOG_DEBUG("PluginServer: parent " << parent_);
 
     shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);
@@ -550,27 +611,31 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     // check version (for now it must match exactly)
     int major, minor, patch;
     shm_->getVersion(major, minor, patch);
-    if (!(major == VERSION_MAJOR && minor == VERSION_MINOR
-          && patch == VERSION_PATCH)){
+    if (major == VERSION_MAJOR && minor == VERSION_MINOR
+          && patch == VERSION_PATCH) {
+        LOG_DEBUG("version: " << major << "." << minor << "." << patch);
+    } else {
        throw Error(Error::PluginError, "host app version mismatch");
     }
     // setup UI event loop
-    UIThread::setup();
     LOG_DEBUG("PluginServer: setup event loop");
+    UIThread::setup();
     // install UI poll function
+    LOG_DEBUG("PluginServer: add UI poll function");
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginServer *>(x)->pollUIThread();
     }, this);
-    LOG_DEBUG("PluginServer: add UI poll function");
     // create threads
     running_ = true;
 
+    LOG_DEBUG("PluginServer: create threads");
     for (int i = 2; i < shm_->numChannels(); ++i){
         auto thread = std::thread(&PluginServer::runThread,
                                   this, &shm_->getChannel(i));
         threads_.push_back(std::move(thread));
     }
-    LOG_DEBUG("PluginServer: create threads");
+
+    LOG_DEBUG("PluginServer: ready");
 }
 
 PluginServer::~PluginServer(){
@@ -581,7 +646,7 @@ PluginServer::~PluginServer(){
     }
     LOG_DEBUG("free PluginServer");
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     CloseHandle(parent_);
 #endif
 }
@@ -624,23 +689,40 @@ void PluginServer::pollUIThread(){
 }
 
 void PluginServer::checkParentAlive(){
-#ifdef _WIN32
-    if (WaitForSingleObject(parent_, 0) != WAIT_TIMEOUT){
-        quit();
-    }
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    bool alive = WaitForSingleObject(parent_, 0) == WAIT_TIMEOUT;
 #else
-    if (getppid() != parent_){
+    auto parent = getppid();
+  #ifndef __WINE__
+    bool alive = parent == parent_;
+  #else
+    // We can't do this on Wine, because we might have been
+    // forked in a Wine launcher app.
+    // At least we can check for 1 (= reparented to init).
+    // NOTE that this is not 100% reliable, that's why we
+    // don't use this method for the other hosts.
+    bool alive = parent != 1;
+  #endif
+#endif
+    if (!alive){
+        LOG_WARNING("parent (" << parent_ << ") terminated!");
+    #if VST_HOST_SYSTEM != VST_WINDOWS
+        LOG_DEBUG("new parent ID: " << parent);
+    #endif
         quit();
     }
-#endif
 }
 
 void PluginServer::runThread(ShmChannel *channel){
-    // while (running_) wait for requests
-    // dispatch requests to plugin
+    // raise thread priority for audio thread!
+    setThreadPriority(Priority::High);
+
+    // while running, wait for requests and dispatch to plugin
     // Quit command -> quit()
     for (;;){
+        // LOG_DEBUG(channel->name() << ": wait");
         channel->wait();
+        // LOG_DEBUG(channel->name() << ": wake up");
 
         channel->reset();
 
@@ -650,6 +732,7 @@ void PluginServer::runThread(ShmChannel *channel){
             handleCommand(*channel, *reinterpret_cast<const ShmCommand *>(msg));
         } else if (!running_) {
             // thread got woken up after quit message
+            LOG_DEBUG(channel->name() << ": quit");
             break;
         } else {
             LOG_ERROR("PluginServer: '" << channel->name()
@@ -726,6 +809,8 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
         result.info = gPluginManager.readPlugin(file);
     }
 
+    LOG_DEBUG("PluginServer: did read plugin info");
+
     if (!result.info){
         // shouldn't happen...
         throw Error(Error::PluginError, "plugin info out of date!");
@@ -792,7 +877,7 @@ void PluginServer::quit(){
 
     // properly destruct all remaining plugins
     // on the UI thread (in case the parent crashed)
-    LockGuard lock(pluginMutex_);
+    WriteLock lock(pluginMutex_);
     if (!plugins_.empty()){
         UIThread::callSync([](void *x){
             static_cast<PluginServer *>(x)->plugins_.clear();

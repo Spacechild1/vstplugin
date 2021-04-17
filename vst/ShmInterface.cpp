@@ -1,20 +1,29 @@
 #include "ShmInterface.h"
-#include "Interface.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "MiscUtils.h"
 
 #include <cstring>
 
-#ifdef _WIN32
-# include <Windows.h>
+#if VST_HOST_SYSTEM == VST_WINDOWS
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 #else
 # include <unistd.h>
 # include <sys/types.h>
 # include <fcntl.h>
 # include <sys/shm.h>
 # include <sys/mman.h>
-# include <semaphore.h>
-# ifdef __APPLE_
-#  include <sys/stat.h>
+# if USE_SHM_FUTEX
+#  include <sys/syscall.h>
+#  include <linux/futex.h>
+# else // semaphore
+#  include <semaphore.h>
+#  if VST_HOST_SYSTEM == VST_MACOS
+#   include <sys/stat.h>
+#  endif
 # endif
 #endif
 
@@ -26,6 +35,44 @@
 
 namespace vst {
 
+#if USE_SHM_FUTEX
+int futex(std::atomic<uint32_t>* uaddr, int futex_op, uint32_t val,
+          const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
+{
+    return syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
+}
+
+void futex_wait(std::atomic<uint32_t>* futexp)
+{
+    for (;;) {
+        // is futex available?
+        uint32_t expected = 1;
+        if (futexp->compare_exchange_strong(expected, 0)){
+            // success
+            break;
+        }
+        // not available - wait
+        auto ret = futex(futexp, FUTEX_WAIT, 0, nullptr, nullptr, 0);
+        if (ret < 0 && errno != EAGAIN){
+            throw Error(Error::SystemError,
+                        "futex_wait() failed: " + errorMessage(errno));
+        }
+    }
+}
+
+void futex_post(std::atomic<uint32_t>* futexp)
+{
+   uint32_t expected = 0;
+   if (futexp->compare_exchange_strong(expected, 1)) {
+       // wake one waiter
+       if (futex(futexp, FUTEX_WAKE, 1, nullptr, nullptr, 0) < 0) {
+           throw Error(Error::SystemError,
+                       "futex_post() failed: " + errorMessage(errno));
+       }
+   }
+}
+#endif
+
 constexpr size_t align_to(size_t s, size_t alignment){
     auto mask = alignment - 1;
     return (s + mask) & ~mask;
@@ -35,24 +82,30 @@ constexpr size_t align_to(size_t s, size_t alignment){
 
 
 ShmChannel::ShmChannel(Type type, int32_t size,
-                                         const std::string& name)
+                       const std::string& name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
 {
+#if USE_SHM_FUTEX
+    static_assert(sizeof(Header) == 64, "bad size for Header");
+#else
+    static_assert(sizeof(Header) == 128, "bad size for Header");
+#endif
     auto total = sizeof(Header) + sizeof(Data) + size;
     totalSize_ = align_to(total, alignment);
 }
 
 void ShmChannel::HandleDeleter::operator ()(void *handle){
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     // SHM_DEBUG("close event " << handle);
     CloseHandle((HANDLE)handle);
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     sem_close((sem_t *)handle);
 #endif
+    // nothing to do on Linux!
 }
 
 ShmChannel::~ShmChannel(){
-#if !defined(_WIN32) && !defined(__APPLE__)
+#if VST_HOST_SYSTEM == VST_LINUX && !USE_SHM_FUTEX
     // only destroy the semaphore once!
     if (owner_){
         if (eventA_){
@@ -216,6 +269,7 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         header_->offset = sizeof(Header);
         header_->type = type_;
         snprintf(header_->name, sizeof(header_->name), "%s", name_.c_str());
+    #if VST_HOST_SYSTEM == VST_WINDOWS || VST_HOST_SYSTEM == VST_MACOS
         // POSIX expects leading slash
         snprintf(header_->event1, sizeof(header_->event1),
                  "/vst_shm_%p_%da", &shm, num);
@@ -225,16 +279,19 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         } else {
             header_->event2[0] = '\0';
         }
+    #endif
     } else {
+        if (header_->offset != sizeof(Header)){
+            throw Error(Error::SystemError, "shared memory interface not compatible (wrong header size)!");
+        }
         totalSize_ = header_->size;
         type_ = (Type)header_->type;
         name_ = header_->name;
     }
-    initEvent(eventA_, header_->event1);
+    initEvent(eventA_, &header_->event1);
     if (type_ == Request){
-        initEvent(eventB_, header_->event2);
+        initEvent(eventB_, &header_->event2);
     }
-
     if (owner_){
         // placement new
         data_ = new (data + header_->offset) Data();
@@ -249,56 +306,59 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
               << ", start address = " << (void *)data);
 }
 
-void ShmChannel::initEvent(Handle& event, const char *data){
+void ShmChannel::initEvent(Handle& event, void *data){
     // SHM_DEBUG("ShmChannel: init event " << which);
-#if defined(_WIN32)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     // named Event
     if (owner_){
-        event.reset(CreateEventA(0, 0, 0, data));
+        event.reset(CreateEventA(0, 0, 0, (const char *)data));
         if (event){
             if (GetLastError() != ERROR_ALREADY_EXISTS){
-                SHM_DEBUG("ShmChannel: created Event " << data);
+                SHM_DEBUG("ShmChannel: created Event " << (const char *)data);
             } else {
                 throw Error(Error::SystemError,
                             "CreateEvent() failed - already exists!");
             }
         } else {
-            throw Error(Error::SystemError, "CreateEvent() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "CreateEvent() failed: "
+                        + errorMessage(GetLastError()));
         }
     } else {
-        event.reset(OpenEventA(EVENT_ALL_ACCESS, 0, data));
+        event.reset(OpenEventA(EVENT_ALL_ACCESS, 0, (const char *)data));
         if (event){
-            SHM_DEBUG("ShmChannel: opened Event " << data);
+            SHM_DEBUG("ShmChannel: opened Event " << (const char *)data);
         } else {
-            throw Error(Error::SystemError, "OpenEvent() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "OpenEvent() failed: "
+                        + errorMessage(GetLastError()));
         }
     }
     SHM_DEBUG("create event " << event.get());
-#elif defined(__APPLE__)
+#elif VST_HOST_SYSTEM == VST_MACOS
     // named semaphore
     if (owner_){
-        SHM_DEBUG("ShmChannel: created semaphore " << data);
         // create semaphore and return an error if it already exists
-        event.reset(sem_open(data, O_CREAT | O_EXCL, 0755, 0));
+        event.reset(sem_open((const char *)data, O_CREAT | O_EXCL, 0755, 0));
+        SHM_DEBUG("ShmChannel: created semaphore " << (const char *)data);
     } else {
         // open an existing semaphore
-        event.reset(sem_open(data, 0, 0, 0, 0));
+        event.reset(sem_open((const char *)data, 0, 0, 0, 0));
+        SHM_DEBUG("ShmChannel: created semaphore " << (const char *)data);
     }
     if (event.get() == SEM_FAILED){
-        throw Error(Error::SystemError, "sem_open() failed with "
-                    + std::string(strerror(errno)));
+        throw Error(Error::SystemError, "sem_open() failed: "
+                    + errorMessage(errno));
     }
-    SHM_DEBUG("ShmChannel: opened semaphore " << data);
+#elif USE_SHM_FUTEX
+    event.reset(data);
 #else
     // unnamed semaphore in shared memory segment
-    event.reset((void *)data);
+    static_assert(sizeof(sem_t) <= sizeof(Header::event1), "event structure too small!");
+    event.reset(data);
     if (owner_){
         // only init the semaphore once!
         if (sem_init((sem_t *)data, 1, 0) != 0){
             throw Error(Error::SystemError, "sem_init() failed: "
-                        + std::string(strerror(errno)));
+                        + errorMessage(errno));
         }
         SHM_DEBUG("ShmChannel: created semaphore");
     }
@@ -306,34 +366,38 @@ void ShmChannel::initEvent(Handle& event, const char *data){
 }
 
 void ShmChannel::postEvent(void *event){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     if (!SetEvent((HANDLE)event)){
-        throw Error(Error::SystemError, "SetEvent() failed with "
-                    + std::to_string(GetLastError()));
+        throw Error(Error::SystemError, "SetEvent() failed: "
+                    + errorMessage(GetLastError()));
     }
+#elif USE_SHM_FUTEX
+    futex_post(static_cast<std::atomic<uint32_t>*>(event));
 #else
     if (sem_post((sem_t *)event) != 0){
         throw Error(Error::SystemError, "sem_post() failed: "
-                    + std::string(strerror(errno)));
+                    + errorMessage(errno));
     }
 #endif
 }
 
 void ShmChannel::waitEvent(void *event){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     auto result = WaitForSingleObject(event, INFINITE);
     if (result != WAIT_OBJECT_0){
         if (result == WAIT_ABANDONED){
             LOG_ERROR("WaitForSingleObject() failed! Event abandoned");
         } else {
-            throw Error(Error::SystemError, "WaitForSingleObject() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "WaitForSingleObject() failed: "
+                        + errorMessage(GetLastError()));
         }
     }
+#elif USE_SHM_FUTEX
+    futex_wait(static_cast<std::atomic<uint32_t>*>(event));
 #else
     if (sem_wait((sem_t *)event) != 0){
         throw Error(Error::SystemError, "sem_wait() failed: "
-                    + std::string(strerror(errno)));
+                    + errorMessage(errno));
     }
 #endif
 }
@@ -402,6 +466,8 @@ void ShmInterface::create(){
     snprintf(path, sizeof(path), "/vst_shm_%p", this);
 
     openShm(path, true);
+    SHM_DEBUG("ShmInterface: created " << path);
+    SHM_DEBUG("total size: " << size_);
 
     auto header = reinterpret_cast<Header *>(data_);
     memset(header, 0, sizeof(Header));
@@ -441,10 +507,10 @@ void ShmInterface::openShm(const std::string &path, bool create){
         }
     }
 
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     HANDLE hMapFile;
     if (create){
-        hMapFile = CreateFileMapping(
+        hMapFile = CreateFileMappingA(
             INVALID_HANDLE_VALUE,    // use paging file
             NULL,                    // default security
             PAGE_READWRITE,          // read/write access
@@ -454,8 +520,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
 
         if (!hMapFile)
         {
-            throw Error(Error::SystemError, "CreateFileMapping() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "CreateFileMapping() failed: "
+                        + errorMessage(GetLastError()));
         }
     } else {
         hMapFile = OpenFileMappingA(
@@ -464,8 +530,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
             path.c_str());         // name of mapping object
 
         if (!hMapFile){
-            throw Error(Error::SystemError, "OpenFileMapping() failed with "
-                        + std::to_string(GetLastError()));
+            throw Error(Error::SystemError, "OpenFileMapping() failed: "
+                        + errorMessage(GetLastError()));
         }
     }
     void *data = MapViewOfFile(hMapFile, // handle to map object
@@ -483,8 +549,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
 
     if (!data){
         CloseHandle(hMapFile);
-        throw Error(Error::SystemError, "MapViewOfFile() failed with "
-                    + std::to_string(GetLastError()));
+        throw Error(Error::SystemError, "MapViewOfFile() failed: "
+                    + errorMessage(GetLastError()));
     }
 
     // try to lock the file to physical memory
@@ -500,16 +566,16 @@ void ShmInterface::openShm(const std::string &path, bool create){
             maxSize += totalSize;
         }
        if (!SetProcessWorkingSetSize(GetCurrentProcess(), minSize, maxSize)){
-            LOG_WARNING("ShmInterface: SetProcessWorkingSetSize() failed with "
+            LOG_WARNING("ShmInterface: SetProcessWorkingSetSize() failed: "
                         << GetLastError());
         }
     } else {
-        LOG_WARNING("ShmInterface: GetProcessWorkingSetSize() failed with "
+        LOG_WARNING("ShmInterface: GetProcessWorkingSetSize() failed: "
                     << GetLastError());
     }
     // now we can attempt to lock the memory
     if (!VirtualLock(data, totalSize)){
-        LOG_WARNING("ShmInterface: VirtualLock() failed with "
+        LOG_WARNING("ShmInterface: VirtualLock() failed: "
                     << GetLastError());
     }
 #else
@@ -520,16 +586,16 @@ void ShmInterface::openShm(const std::string &path, bool create){
         fd = shm_open(path.c_str(), O_RDWR, 0666);
     }
     if (fd < 0){
-        throw Error(Error::SystemError, "shm_open() failed with "
-                    + std::string(strerror(errno)));
+        throw Error(Error::SystemError, "shm_open() failed: "
+                    + errorMessage(errno));
     }
     if (create){
         // configure size of shared memory object
         if (ftruncate(fd, totalSize) != 0){
             ::close(fd);
             shm_unlink(path.c_str());
-            throw Error(Error::SystemError, "ftruncate() failed with "
-                        + std::string(strerror(errno)));
+            throw Error(Error::SystemError, "ftruncate() failed: "
+                        + errorMessage(errno));
         }
     }
     // memory map the shared memory object
@@ -549,13 +615,13 @@ void ShmInterface::openShm(const std::string &path, bool create){
         if (create){
             shm_unlink(path.c_str());
         }
-        throw Error(Error::SystemError, "mmap() failed with "
-                    + std::string(strerror(errno)));
+        throw Error(Error::SystemError, "mmap() failed: "
+                    + errorMessage(errno));
     }
 #if 1
     // try to lock the file to physical memory
     if (mlock(data, totalSize) != 0){
-        LOG_WARNING("ShmInterface: mlock() failed with "
+        LOG_WARNING("ShmInterface: mlock() failed: "
                     << strerror(errno));
     }
 #endif
@@ -565,7 +631,7 @@ void ShmInterface::openShm(const std::string &path, bool create){
     // success!
     path_ = path;
     owner_ = create;
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     hMapFile_ = hMapFile;
 #endif
     data_ = (char *)data;
@@ -579,7 +645,7 @@ void ShmInterface::openShm(const std::string &path, bool create){
 }
 
 void ShmInterface::closeShm(){
-#ifdef _WIN32
+#if VST_HOST_SYSTEM == VST_WINDOWS
     if (data_){
         UnmapViewOfFile(data_);
     }
@@ -602,9 +668,10 @@ void ShmInterface::closeShm(){
 }
 
 void ShmInterface::getVersion(int& major, int& minor, int& patch) const {
-    major = reinterpret_cast<const Header *>(data_)->versionMajor;
-    minor = reinterpret_cast<const Header *>(data_)->versionMinor;
-    patch = reinterpret_cast<const Header *>(data_)->versionPatch;
+    auto header = reinterpret_cast<const Header *>(data_);
+    major = header->versionMajor;
+    minor = header->versionMinor;
+    patch = header->versionPatch;
 }
 
 } // vst

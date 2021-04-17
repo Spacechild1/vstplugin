@@ -8,10 +8,8 @@ VSTPluginDesc {
 	var <>version;
 	var <>sdkVersion;
 	var <>id;
-	var <>numInputs;
-	var <>numOutputs;
-	var <>numAuxInputs;
-	var <>numAuxOutputs;
+	var <>inputs;
+	var <>outputs;
 	var <>parameters;
 	var <>programs;
 	var <>presets;
@@ -27,7 +25,7 @@ VSTPluginDesc {
 	var <>bridged;
 	// private fields
 	var <>prParamIndexMap;
-	// legacy methods
+	// deprecated methods
 	isSynth {
 		this.deprecated(thisMethod, this.class.findMethod(\synth));
 		^this.synth;
@@ -35,6 +33,22 @@ VSTPluginDesc {
 	hasEditor {
 		this.deprecated(thisMethod, this.class.findMethod(\editor));
 		^this.editor;
+	}
+	numInputs {
+		this.deprecated(thisMethod, this.class.findMethod(\inputs));
+		^inputs[0] !? _.channels ?? 0;
+	}
+	numOutputs {
+		this.deprecated(thisMethod, this.class.findMethod(\outputs));
+		^outputs[0] !? _.channels ?? 0;
+	}
+	numAuxInputs {
+		this.deprecated(thisMethod, this.class.findMethod(\inputs));
+		^inputs[1] !? _.channels ?? 0;
+	}
+	numAuxOutputs {
+		this.deprecated(thisMethod, this.class.findMethod(\outputs));
+		^outputs[1] !? _.channels ?? 0;
 	}
 	// public methods
 	numParameters { ^parameters.size; }
@@ -117,7 +131,7 @@ VSTPluginDesc {
 			}
 		};
 		this.prSortPresets(false);
-		this.changed('/presets');
+		this.changed(\presets);
 	}
 	presetFolder { arg type = \user;
 		var folder, vst3 = this.sdkVersion.find("VST 3").notNil;
@@ -209,7 +223,7 @@ VSTPluginDesc {
 			}
 		};
 		presets = presets.insert(index, preset);
-		this.changed('/presets');
+		this.changed(\presets);
 		^index;
 	}
 	deletePreset { arg preset;
@@ -219,7 +233,7 @@ VSTPluginDesc {
 			(result.type == \user).if {
 				File.delete(result.path).if {
 					presets.remove(result);
-					this.changed('/presets');
+					this.changed(\presets);
 					^true;
 				} {
 					("couldn't delete preset file" + result.path).error;
@@ -249,7 +263,7 @@ VSTPluginDesc {
 					result.name = name;
 					result.path = newPath;
 					this.prSortPresets;
-					this.changed('/presets');
+					this.changed(\presets);
 					^true;
 				} { "preset '%' already exists!".format(name).error; }
 			} { "preset '%' not writeable!".format(result.name).error }
@@ -259,84 +273,95 @@ VSTPluginDesc {
 	// private methods
 	*prParse { arg stream, versionMajor, versionMinor, versionBugfix;
 		var info = VSTPluginDesc.new;
-		var parameters, indexMap, programs, keys;
-		var line, key, value, onset, n, f, flags, plugin = false;
+		// are we dealing with a future version?
+		var future = versionMajor.notNil.if {
+			(versionMajor > VSTPlugin.versionMajor) ||
+			((versionMajor == VSTPlugin.versionMajor) && (versionMinor > VSTPlugin.versionMinor))
+		} { false };
+		// convert hex string to integer
 		var hex2int = #{ arg str;
 			str.toUpper.ascii.reverse.sum { arg c, i;
 				(c >= 65).if { (c - 55) << (i * 4);	}
 				{ (c - 48) << (i * 4); }
 			}
 		};
-		var future = versionMajor.notNil.if {
-			(versionMajor > VSTPlugin.versionMajor) ||
-			((versionMajor == VSTPlugin.versionMajor) && (versionMinor > VSTPlugin.versionMinor))
-		} { false };
+		// collect input/output bus Array
+		var collectBusses = #{ arg stream;
+			var line = VSTPlugin.prGetLine(stream);
+			var n = VSTPlugin.prParseCount(line);
+			n.collect {
+				var channels, type, name;
+				line = VSTPlugin.prGetLine(stream);
+				#channels, type, name = line.split($,);
+				(
+					channels: channels.asInteger,
+					type: (type.asInteger == 1).if { \aux } { \main },
+					name: name.stripWhiteSpace
+					// more info later...
+				)
+			};
+		};
+		// get first (significant) line and check for [plugin] header
+		var line = VSTPlugin.prGetLine(stream, true);
+		(line != "[plugin]").if {
+			Error("missing [plugin] header").throw;
+		};
 		// default values:
-		info.numAuxInputs = 0;
-		info.numAuxOutputs = 0;
 		info.presets = [];
-		{
+		loop {
+			var line, n, key, value, flags;
 			line = VSTPlugin.prGetLine(stream, true);
 			line ?? { Error("EOF reached").throw };
 			// line.postln;
 			switch(line,
-				"[plugin]", { plugin = true; },
 				"[parameters]",
 				{
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
-					parameters = Array.newClear(n);
-					indexMap = IdentityDictionary.new;
-					n.do { arg i;
+					info.parameters = n.collect {
 						var name, label;
 						line = VSTPlugin.prGetLine(stream);
 						#name, label = line.split($,);
-						parameters[i] = (
+						(
 							name: name.stripWhiteSpace,
 							label: label.stripWhiteSpace
 							// id (ignore)
 							// more info later...
-						);
+						)
 					};
-					info.parameters = parameters;
-					parameters.do { arg param, index;
-						indexMap[param.name.asSymbol] = index;
-					};
-					info.prParamIndexMap = indexMap;
+					// map parameter names to indices for fast lookup
+					info.prParamIndexMap = info.parameters.collectAs({ arg param, i; param.name.asSymbol -> i }, IdentityDictionary);
+				},
+				"[inputs]",
+				{
+					info.inputs = collectBusses.value(stream);
+				},
+				"[outputs]",
+				{
+					info.outputs = collectBusses.value(stream);
 				},
 				"[programs]",
 				{
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
-					programs = Array.newClear(n);
-					n.do { arg i;
+					info.programs = n.collect {
 						var name = VSTPlugin.prGetLine(stream);
-						programs[i] = (name: name); // more info later
+						(name: name); // more info later
 					};
-					info.programs = programs;
 				},
 				"[keys]",
 				{
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
-					keys = Array.newClear(n);
-					n.do { arg i;
-						keys[i] = VSTPlugin.prGetLine(stream);
-					};
-					// take the first (primary) key
-					info.key = keys[0].asSymbol;
+					// collect all keys, but only take the first (primary) key
+					info.key = n.collect({
+						VSTPlugin.prGetLine(stream);
+					})[0].asSymbol;
 					// *** EXIT POINT ***
 					^info;
 				},
 				{
 					// plugin
-					plugin.not.if {
-						future.if {
-							"VSTPluginDesc: unknown data in .ini file (%)".format(line).warn;
-						} {
-							Error("bad data (%)".format(line)).throw;
-						}
-					};
 					#key, value = VSTPlugin.prParseKeyValuePair(line);
 					switch(key,
 						\path, { info.path = value },
@@ -346,50 +371,55 @@ VSTPluginDesc {
 						\version, { info.version = value },
 						\sdkversion, { info.sdkVersion = value },
 						\id, { info.id = value },
-						\inputs, { info.numInputs = value.asInteger },
-						\outputs, { info.numOutputs = value.asInteger },
-						\auxinputs, { info.numAuxInputs = value.asInteger },
-						\auxoutputs, { info.numAuxOutputs = value.asInteger },
 						\pgmchange, {}, // ignore
 						\bypass, {}, // ignore
 						\flags,
 						{
-							f = hex2int.(value);
-							flags = Array.fill(9, {arg i; ((f >> i) & 1).asBoolean });
-							info.editor = flags[0];
-							info.synth = flags[1];
-							info.singlePrecision = flags[2];
-							info.doublePrecision = flags[3];
-							info.midiInput = flags[4];
-							info.midiOutput = flags[5];
-							info.sysexInput = flags[6];
-							info.sysexOutput = flags[7];
-							info.bridged = flags[8];
+							flags = hex2int.(value);
+							[\editor, \synth, \singlePrecision, \doublePrecision, \midiInput, \midiOutput, \sysexInput, \sysexOutput, \bridged].do { arg item, i;
+								info.slotPut(item, ((flags >> i) & 1).asBoolean)
+							}
 						},
 						{
 							future.if {
-								"VSTPluginDesc: unknown key '%' in .ini file".format(key).warn;
+								"VSTPluginDesc: unknown key '%'".format(key).warn;
 							} {
 								Error("bad key '%'".format(key)).throw;
 							}
 						}
-					);
-				},
-			);
-		}.loop;
+					)
+				}
+			)
+		}
+	}
+	prParsePlugin { arg stream, future;
+
 	}
 	prToString { arg sep = $\n;
-		var s = "name: %".format(this.name) ++ sep
+		var vst3 = this.sdkVersion.find("VST 3").notNil;
+		var inputs, outputs;
+		var toString = { arg busses;
+			var result = busses.collect({ arg bus;
+				vst3.if {
+					"[%] '%' %ch".format(bus.type, bus.name, bus.channels)
+				} { "%ch".format(bus.channels) }
+			}).join(sep);
+			(busses.size > 1).if {
+				sep ++ result;
+			} { result }
+		};
+		inputs = toString.value(this.inputs);
+		outputs = toString.value(this.outputs);
+
+		^ "name: %".format(this.name) ++ sep
 		++ "type: %%%".format(this.sdkVersion,
 			this.synth.if { " (synth)" } { "" }, this.bridged.if { " [bridged]" } { "" }) ++ sep
 		++ "path: %".format(this.path) ++ sep
 		++ "vendor: %".format(this.vendor) ++ sep
 		++ "category: %".format(this.category) ++ sep
 		++ "version: %".format(this.version) ++ sep
-		++ "input channels: %".format(this.numInputs) ++ sep
-		++ ((this.numAuxInputs > 0).if { "aux input channels: %".format(this.numAuxInputs) ++ sep } {""})
-		++ "output channels: %".format(this.numOutputs) ++ sep
-		++ ((this.numAuxOutputs > 0).if { "aux output channels: %".format(this.numAuxOutputs) ++ sep } {""})
+		++ "inputs: %".format(inputs) ++ sep
+		++ "outputs: %".format(outputs) ++ sep
 		++ "parameters: %".format(this.numParameters) ++ sep
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "presets: %".format(this.numPresets) ++ sep
@@ -400,7 +430,5 @@ VSTPluginDesc {
 		++ "MIDI output: %".format(this.midiOutput)
 		// ++ "sysex input: %".format(this.sysexInput) ++ sep
 		// ++ "sysex output: %".format(this.sysexOutput) ++ sep
-		;
-		^s;
 	}
 }

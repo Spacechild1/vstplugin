@@ -62,18 +62,14 @@ VSTPlugin.search(verbose: false);
 
 // create ambisonic master section
 (
-{
-	// bus + group
-	~ambiMasterBus = Bus.audio(s, ~numChannels);
-	~ambiMasterGroup = Group.new;
-	s.sync;
-	// binaural decoder (writes to master output)
-	~decoder = VSTPluginController(Synth(\binauralDecoder, [\bus, ~ambiMasterBus, \out, 0],
-		target: ~ambiMasterGroup, addAction: \addToTail)).open("BinauralDecoder");
-	s.sync;
-	// a group for ambisonic master effects
-	~ambiMasterFXGroup = Group.before(~decoder.synth);
-}.fork;
+// bus + group
+~ambiMasterBus = Bus.audio(s, ~numChannels);
+~ambiMasterGroup = Group.new;
+// binaural decoder (writes to master output)
+~decoder = VSTPluginController(Synth(\binauralDecoder, [\bus, ~ambiMasterBus, \out, 0],
+	target: ~ambiMasterGroup, addAction: \addToTail)).open("BinauralDecoder");
+// a group for ambisonic master effects
+~ambiMasterFXGroup = Group.before(~decoder.synth);
 )
 
 // create ambisonic busses
@@ -84,28 +80,22 @@ VSTPlugin.search(verbose: false);
 ~ambiGroup = Array.newClear(~numBus);
 ~encoder = Array.newClear(~numBus);
 ~numBus.do { arg i;
-	{
-		~ambiBus[i] = Bus.audio(s, ~numChannels);
-		~ambiGroup[i] = Group.before(~ambiMasterGroup);
-		s.sync;
-		// sound source (head)
-		Synth.new(\test, [\out, ~ambiBus[i], \vol, 1.0 / ~numBus], ~ambiGroup[i], addAction: \addToHead);
+	~ambiBus[i] = Bus.audio(s, ~numChannels);
+	~ambiGroup[i] = Group.before(~ambiMasterGroup);
+	// sound source (head)
+	Synth.new(\test, [\out, ~ambiBus[i], \vol, 1.0 / ~numBus], ~ambiGroup[i], addAction: \addToHead);
+	// encoder (after sound source)
+	~encoder[i] = VSTPluginController(Synth(\stereoEncoder, [\bus, ~ambiBus[i], \out, ~ambiMasterBus],
+		target: ~ambiGroup[i], addAction: \addToTail));
+	// open plugin and randomize azimuth
+	~encoder[i].open("StereoEncoder", action: { arg self; self.set(6, rand(1.0)) }); // 6 -> azimuth
+	// throw to master section (after encoder)
+	Synth(\ambiThrow, [\from, ~ambiBus[i], \to, ~ambiMasterBus], target: ~ambiGroup[i], addAction: \addToTail);
 
-		// encoder (after sound source)
-		~encoder[i] = VSTPluginController(Synth(\stereoEncoder, [\bus, ~ambiBus[i], \out, ~ambiMasterBus],
-			target: ~ambiGroup[i], addAction: \addToTail));
-		// open plugin and randomize azimuth
-		~encoder[i].open("StereoEncoder", action: { arg self; self.set(6, rand(1.0)) }); // 6 -> azimuth
-
-		// throw to master section (after encoder)
-		Synth(\ambiThrow, [\from, ~ambiBus[i], \to, ~ambiMasterBus], target: ~ambiGroup[i], addAction: \addToTail);
-
-		// you can add more sound sources to the head of the group, stereo FX *before* the encoder and ambi FX *after* the encoder:
-		// sound source, [sound source] ..., [stereo FX], [stereo FX], ..., ENCODER, [ambi FX], [ambi FX], ..., THROW
-	}.fork;
+	// you can add more sound sources to the head of the group, stereo FX *before* the encoder and ambi FX *after* the encoder:
+	// sound source, [sound source] ..., [stereo FX], [stereo FX], ..., ENCODER, [ambi FX], [ambi FX], ..., THROW
 }
 )
-s.queryAllNodes;
 
 // randomize source positions
 ~encoder.do(_.set(6, rand(1.0))) // 6 -> azimuth

@@ -63,8 +63,7 @@ T* CmdData::create(World *world, int size) {
     if (data) {
         new (data)T();
         return (T*)data;
-    }
-    else {
+    } else {
         LOG_ERROR("RTAlloc failed!");
         return nullptr;
     }
@@ -74,7 +73,9 @@ T* CmdData::create(World *world, int size) {
 bool CmdData::alive() const {
     auto b = owner->alive();
     if (!b) {
-        LOG_WARNING("VSTPlugin: freed during background task");
+        LOG_WARNING("WARNING: VSTPlugin freed during background task");
+        // see setOwner()
+        owner->doClose();
     }
     return b;
 }
@@ -141,6 +142,34 @@ int string2floatArray(const std::string& src, float *dest, int maxSize) {
     }
 }
 
+template<typename T>
+void defer(const T& fn, bool uithread){
+    // defer function call to the correct thread
+    if (uithread){
+        bool result;
+        Error err;
+        bool ok = UIThread::callSync([&](){
+            try {
+                fn();
+                result = true;
+            } catch (const Error& e){
+                err = e;
+                result = false;
+            }
+        });
+        if (ok){
+            if (!result){
+                throw err;
+            }
+            return;
+        } else {
+            LOG_ERROR("UIThread::callSync() failed");
+        }
+    }
+    // call on this thread
+    fn();
+}
+
 // search and probe
 static std::atomic_bool gSearching {false};
 
@@ -162,10 +191,10 @@ static std::string getSettingsDir(){
 #endif
 }
 
-static SharedMutex gFileLock;
+static Mutex gFileLock;
 
 static void readIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     auto path = getSettingsDir() + "/" CACHE_FILE;
     if (pathExists(path)){
         LOG_VERBOSE("read cache file " << path.c_str());
@@ -178,7 +207,7 @@ static void readIniFile(){
 }
 
 static void writeIniFile(){
-    LockGuard lock(gFileLock);
+    ScopedLock lock(gFileLock);
     try {
         auto dir = getSettingsDir();
         if (!pathExists(dir)){
@@ -481,7 +510,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                     it++;
                 }
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
     };
 
@@ -501,17 +530,20 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
             // just post names of valid plugins
             if (verbose) Print("%s\n", pluginPath.c_str());
             auto numPlugins = factory->numPlugins();
+            // add and post plugins
             if (numPlugins == 1) {
                 addPlugin(factory->getPlugin(0));
-            }
-            else {
+            } else {
                 for (int i = 0; i < numPlugins; ++i) {
-                    // add and post plugins
                     addPlugin(factory->getPlugin(i), i, numPlugins);
                 }
             }
-        }
-        else {
+            // make sure we have the plugin keys!
+            for (int i = 0; i < numPlugins; ++i){
+                auto plugin = factory->getPlugin(i);
+                gPluginManager.addPlugin(makeKey(*plugin), plugin);
+            }
+        } else {
             // probe (will post results and add plugins)
             if (parallel){
                 futures.push_back(probePluginAsync(pluginPath, verbose));
@@ -539,150 +571,131 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 
 // -------------------- VSTPlugin ------------------------ //
 
-
-
 VSTPlugin::VSTPlugin(){
-    // UGen inputs: nout, flags, bypass, nin, inputs..., nauxin, auxinputs..., nparam, params...
-    assert(numInputs() >= 5);
-    // out
-    int nout = numOutChannels();
-    LOG_DEBUG("out: " << nout);
-    assert(!(nout < 0 || nout > numOutputs()));
-    // in
-    auto nin = numInChannels();
-    LOG_DEBUG("in: " << nin);
-    assert(nin >= 0);
-    // aux in
-    auxInChannelOnset_ = inChannelOnset_ + nin + 1;
-    assert(auxInChannelOnset_ > inChannelOnset_ && auxInChannelOnset_ < numInputs());
-    auto nauxin = numAuxInChannels(); // computed from auxInChannelsOnset_
-    LOG_DEBUG("aux in: " << nauxin);
-    assert(nauxin >= 0);
-    // aux out
-    auto nauxout = numAuxOutChannels();
-    // parameter controls
-    parameterControlOnset_ = auxInChannelOnset_ + nauxin + 1;
-    assert(parameterControlOnset_ > auxInChannelOnset_ && parameterControlOnset_ <= numInputs());
-    auto numParams = numParameterControls(); // computed from parameterControlsOnset_
-    LOG_DEBUG("parameters: " << numParams);
-    assert(numParams >= 0);
-    assert((parameterControlOnset_ + numParams * 2) <= numInputs());
- 
-    // create delegate after member initialization!
-    delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
-
-    set_calc_function<VSTPlugin, &VSTPlugin::next>();
-
-    // create reblocker after setting the calc function (to avoid 1 sample computation)!
+    // Ugen inputs:
+    //   flags, blocksize, bypass, ninputs, noutputs, nparams, inputs..., outputs..., params...
+    //     input: nchannels, chn1, chn2, ...
+    //     output: nchannels
+    //     params: index, value
+    assert(numInputs() >= 6);
+    // int flags = in0(0);
     int reblockSize = in0(1);
-    if (reblockSize > bufferSize()){
-        auto reblock = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
-        if (reblock){
-            memset(reblock, 0, sizeof(Reblock)); // set all pointers to NULL!
-            // make sure that block size is power of 2
-            int n = 1;
-            while (n < reblockSize){
-               n *= 2;
-            }
-            reblock->blockSize = n;
-            // allocate buffer
-            int total = nin + nout + nauxin + nauxout;
-            if ((total == 0) ||
-                (reblock->buffer = (float *)RTAlloc(mWorld, sizeof(float) * total * n)))
-            {
-                auto bufptr = reblock->buffer;
-                std::fill(bufptr, bufptr + (total * n), 0);
-                // allocate and assign channel vectors
-                auto makeVec = [&](auto& vec, int nchannels){
-                    if (nchannels > 0){
-                        vec = (float **)RTAlloc(mWorld, sizeof(float *) * nchannels);
-                        if (!vec){
-                            LOG_ERROR("RTAlloc failed!");
-                            return false;
-                        }
-                        for (int i = 0; i < nchannels; ++i, bufptr += n){
-                            vec[i] = bufptr;
-                        }
-                    }
-                    return true;
-                };
-                if (makeVec(reblock->input, nin)
-                    && makeVec(reblock->output, nout)
-                    && makeVec(reblock->auxInput, nauxin)
-                    && makeVec(reblock->auxOutput, nauxout))
-                {
-                    // start phase at one block before end, so that the first call
-                    // to the perform routine will trigger plugin processing.
-                    reblock->phase = n - bufferSize();
-                    reblock_ = reblock;
-                } else {
-                    // clean up
-                    RTFreeSafe(mWorld, reblock->input);
-                    RTFreeSafe(mWorld, reblock->output);
-                    RTFreeSafe(mWorld, reblock->auxInput);
-                    RTFreeSafe(mWorld, reblock->auxOutput);
-                    RTFreeSafe(mWorld, reblock->buffer);
-                    RTFree(mWorld, reblock);
-                }
-            } else {
-                LOG_ERROR("RTAlloc failed!");
-                RTFree(mWorld, reblock);
-            }
+    // int bypass = in0(2);
+    int nin = in0(3);
+    assert(nin >= 0);
+    int nout = in0(4);
+    assert(nout >= 0);
+    int nparams = in0(5);
+    assert(nparams >= 0);
+
+    int onset = 6;
+
+    // setup input/output busses
+    setupBusses<false>(ugenInputs_, numUgenInputs_, nin, onset);
+    setupBusses<true>(ugenOutputs_, numUgenOutputs_, nout, onset);
+
+    // parameter controls
+    assert((onset + nparams * 2) == numInputs());
+    parameterControls_ = mInput + onset;
+    numParameterControls_ = nparams;
+
+    // Ugen input/output busses must not be nullptr!
+    if (ugenInputs_ && ugenOutputs_){
+        // create delegate
+        delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
+        if (delegate_){
+            mSpecialIndex |= Valid;
         } else {
             LOG_ERROR("RTAlloc failed!");
         }
+    } else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+
+    // create reblocker (if needed)
+    if (valid() && reblockSize > bufferSize()){
+        initReblocker(reblockSize);
+    }
+
+    // create dummy buffer
+    size_t dummyBlocksize = reblock_ ? reblock_->blockSize : bufferSize();
+    auto dummyBufsize = dummyBlocksize * 2 * sizeof(float);
+    dummyBuffer_ = (float *)RTAlloc(mWorld, dummyBufsize);
+    if (dummyBuffer_){
+        memset(dummyBuffer_, 0, dummyBufsize); // !
+    } else {
+        LOG_ERROR("RTAlloc failed!");
+        setInvalid();
     }
 
     // run queued unit commands
-    if (queued_ == MagicQueued) {
+    if (mSpecialIndex & UnitCmdQueued) {
         auto item = unitCmdQueue_;
         while (item) {
-            sc_msg_iter args(item->size, item->data);
-            // swallow the first 3 arguments
-            args.geti(); // node ID
-            args.geti(); // ugen index
-            args.gets(); // unit command name
-            (item->fn)((Unit*)this, &args);
+            if (delegate_){
+                sc_msg_iter args(item->size, item->data);
+                // swallow the first 3 arguments
+                args.geti(); // node ID
+                args.geti(); // ugen index
+                args.gets(); // unit command name
+                (item->fn)((Unit*)this, &args);
+            }
             auto next = item->next;
             RTFree(mWorld, item);
             item = next;
         }
     }
+
+    mSpecialIndex |= Initialized; // !
+
+    mCalcFunc = [](Unit *unit, int numSamples){
+        static_cast<VSTPlugin *>(unit)->next(numSamples);
+    };
+    // don't run the calc function, instead just set
+    // the first samples of each UGen output to zero
+    for (int i = 0; i < numOutputs(); ++i){
+        out0(i) = 0;
+    }
+
     LOG_DEBUG("created VSTPlugin instance");
 }
 
 VSTPlugin::~VSTPlugin(){
     clearMapping();
+
     RTFreeSafe(mWorld, paramState_);
     RTFreeSafe(mWorld, paramMapping_);
-    if (reblock_){
-        RTFreeSafe(mWorld, reblock_->input);
-        RTFreeSafe(mWorld, reblock_->output);
-        RTFreeSafe(mWorld, reblock_->auxInput);
-        RTFreeSafe(mWorld, reblock_->auxOutput);
-        RTFreeSafe(mWorld, reblock_->buffer);
-        RTFree(mWorld, reblock_);
+
+    RTFreeSafe(mWorld, ugenInputs_);
+    RTFreeSafe(mWorld, ugenOutputs_);
+
+    // plugin input buffers
+    for (int i = 0; i < numPluginInputs_; ++i){
+        RTFreeSafe(mWorld, pluginInputs_[i].channelData32);
     }
-    // both variables are volatile, so the compiler is not allowed to optimize it away!
-    initialized_ = 0;
-    queued_ = 0;
+    RTFreeSafe(mWorld, pluginInputs_);
+    // plugin output buffers
+    for (int i = 0; i < numPluginOutputs_; ++i){
+        RTFreeSafe(mWorld, pluginOutputs_[i].channelData32);
+    }
+    RTFreeSafe(mWorld, pluginOutputs_);
+
+    RTFreeSafe(mWorld, dummyBuffer_);
+
+    freeReblocker();
+
     // tell the delegate that we've been destroyed!
     delegate_->setOwner(nullptr);
     delegate_ = nullptr; // release our reference
     LOG_DEBUG("destroyed VSTPlugin");
 }
 
-// HACK to check if the class has been fully constructed. See "runUnitCommand".
-bool VSTPlugin::initialized() {
-    return (initialized_ == MagicInitialized);
-}
-
 // Terrible hack to enable sending unit commands right after /s_new
 // although the UGen constructor hasn't been called yet. See "runUnitCommand".
 void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
-    if (queued_ != MagicQueued) {
+    if (!(mSpecialIndex & UnitCmdQueued)) {
         unitCmdQueue_ = nullptr;
-        queued_ = MagicQueued;
+        mSpecialIndex |= UnitCmdQueued;
     }
     auto item = (UnitCmdQueueItem *)RTAlloc(mWorld, sizeof(UnitCmdQueueItem) + args->size);
     if (item) {
@@ -695,8 +708,7 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
             auto tail = unitCmdQueue_;
             while (tail->next) tail = tail->next;
             tail->next = item;
-        }
-        else {
+        } else {
             unitCmdQueue_ = item;
         }
     }
@@ -720,29 +732,304 @@ float VSTPlugin::readControlBus(uint32 num) {
         RELEASE_BUS_CONTROL(num);
         return value;
 #undef unit
-    }
-    else {
+    } else {
         return 0.f;
     }
 }
 
+template<bool output>
+void VSTPlugin::setupBusses(Bus *& busses, int& numBusses,
+                            int count, int& onset)
+{
+    auto out = mOutBuf;
+    auto end = mOutBuf + numOutputs();
+    if (count > 0){
+        auto result = (Bus *)RTAlloc(mWorld, sizeof(Bus) * count);
+        if (result){
+            for (int i = 0; i < count; ++i){
+                assert(onset < numInputs());
+                auto& bus = result[i];
+                bus.numChannels = in0(onset);
+                onset++;
+                if (output){
+                    bus.channelData = out;
+                    out += bus.numChannels;
+                    assert(onset <= numInputs());
+                } else {
+                    bus.channelData = mInBuf + onset;
+                    onset += bus.numChannels;
+                    assert(out <= end);
+                }
+            }
+
+            busses = result;
+            numBusses = count;
+        } else {
+            busses = nullptr;
+            numBusses = 0;
+        }
+    } else {
+        // at least 1 (empty) bus
+        auto result = (Bus *)RTAlloc(mWorld, sizeof(Bus));
+        if (result){
+            result[0].channelData = nullptr;
+            result[0].numChannels = 0;
+
+            busses = result;
+            numBusses = 1;
+        } else {
+            busses = nullptr;
+            numBusses = 0;
+        }
+    }
+}
+
+void VSTPlugin::initReblocker(int reblockSize){
+    LOG_DEBUG("reblocking from " << bufferSize()
+        << " to " << reblockSize << " samples");
+    reblock_ = (Reblock *)RTAlloc(mWorld, sizeof(Reblock));
+    if (reblock_){
+        memset(reblock_, 0, sizeof(Reblock)); // init!
+
+        // make sure that block size is power of 2
+        reblock_->blockSize = NEXTPOWEROFTWO(reblockSize);
+
+        // allocate input/output busses
+        // NOTE: we always have at least one input and output bus!
+        reblock_->inputs = (Bus*)RTAlloc(mWorld, sizeof(Bus) * numUgenInputs_);
+        reblock_->numInputs = reblock_->inputs ? numUgenInputs_ : 0;
+
+        reblock_->outputs = (Bus*)RTAlloc(mWorld, sizeof(Bus) * numUgenOutputs_);
+        reblock_->numOutputs = reblock_->outputs ? numUgenOutputs_ : 0;
+
+        if (!(reblock_->inputs && reblock_->outputs)){
+            LOG_ERROR("RTAlloc failed!");
+            freeReblocker();
+            return;
+        }
+
+        // set and count channel numbers
+        int totalNumChannels = 0;
+        for (int i = 0; i < numUgenInputs_; ++i){
+            auto numChannels = ugenInputs_[i].numChannels;
+            reblock_->inputs[i].numChannels = numChannels;
+            reblock_->inputs[i].channelData = nullptr;
+            totalNumChannels += numChannels;
+        }
+        for (int i = 0; i < numUgenOutputs_; ++i){
+            auto numChannels = ugenOutputs_[i].numChannels;
+            reblock_->outputs[i].numChannels = numChannels;
+            reblock_->outputs[i].channelData = nullptr;
+            totalNumChannels += numChannels;
+        }
+        if (totalNumChannels == 0){
+            // nothing to do
+            return;
+        }
+
+        // allocate buffer
+        int bufsize = sizeof(float) * totalNumChannels * reblock_->blockSize;
+        reblock_->buffer = (float *)RTAlloc(mWorld, bufsize);
+
+        if (reblock_->buffer){
+            auto bufptr = reblock_->buffer;
+            // zero
+            memset(bufptr, 0, bufsize);
+            // allocate and assign channel vectors
+            auto initBusses = [&](Bus * busses, int count, int blockSize){
+                for (int i = 0; i < count; ++i){
+                    auto& bus = busses[i];
+                    if (bus.numChannels > 0) {
+                        bus.channelData = (float**)RTAlloc(mWorld, sizeof(float*) * bus.numChannels);
+                        if (bus.channelData) {
+                            for (int j = 0; j < bus.numChannels; ++j, bufptr += blockSize) {
+                                bus.channelData[j] = bufptr;
+                            }
+                        } else {
+                            bus.numChannels = 0; // !
+                            return false; // bail
+                        }
+                    }
+                }
+                return true;
+            };
+            if (initBusses(reblock_->inputs, reblock_->numInputs, reblock_->blockSize)
+                && initBusses(reblock_->outputs, reblock_->numOutputs, reblock_->blockSize))
+            {
+                // start phase at one block before end, so that the first call
+                // to the perform routine will trigger plugin processing.
+                reblock_->phase = reblock_->blockSize - bufferSize();
+            } else {
+                LOG_ERROR("RTAlloc failed!");
+                freeReblocker();
+            }
+        } else {
+            LOG_ERROR("RTAlloc failed!");
+            freeReblocker();
+        }
+    } else {
+        LOG_ERROR("RTAlloc failed!");
+    }
+}
+
+bool VSTPlugin::updateReblocker(int numSamples){
+    // read input
+    for (int i = 0; i < numUgenInputs_; ++i){
+        auto& inputs = ugenInputs_[i];
+        auto reblockInputs = reblock_->inputs[i].channelData;
+        for (int j = 0; j < inputs.numChannels; ++j){
+            auto src = inputs.channelData[j];
+            auto dst = reblockInputs[j] + reblock_->phase;
+            std::copy(src, src + numSamples, dst);
+        }
+    }
+
+    reblock_->phase += numSamples;
+
+    if (reblock_->phase >= reblock_->blockSize){
+        assert(reblock_->phase == reblock_->blockSize);
+        reblock_->phase = 0;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void VSTPlugin::freeReblocker(){
+    if (reblock_){
+        for (int i = 0; i < reblock_->numInputs; ++i){
+            RTFreeSafe(mWorld, reblock_->inputs[i].channelData);
+        }
+        for (int i = 0; i < reblock_->numOutputs; ++i){
+            RTFreeSafe(mWorld, reblock_->outputs[i].channelData);
+        }
+        RTFreeSafe(mWorld, reblock_->inputs);
+        RTFreeSafe(mWorld, reblock_->outputs);
+        RTFree(mWorld, reblock_);
+    }
+}
+
 // update data (after loading a new plugin)
-void VSTPlugin::update() {
-    paramQueue_.clear();
-    clearMapping();
-    int n = delegate().plugin()->info().numParameters();
-    // parameter states
-    {
-        float* result = nullptr;
-        if (n > 0) {
-            // Scsynth's RTRealloc doesn't return nullptr for size == 0
-            result = (float*)RTRealloc(mWorld, paramState_, n * sizeof(float));
-            if (!result) {
-                LOG_ERROR("RTRealloc failed!");
+void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
+                            const int *outputs, int numOutputs)
+{
+    delegate().update();
+
+#if 1
+    // HACK for buggy VST3 plugins which segfault on excess busses (e.g. mda)
+    auto trim = [](const int *speakers, int& count, const char *what){
+        // trim trailing empty busses, but keep at least one bus!
+        for (int i = count - 1; i > 0; --i){
+            if (speakers[i] == 0){
+                LOG_DEBUG("trim empty " << what << " bus " << i);
+                --count;
+            } else {
+                break;
             }
         }
+    };
+    trim(inputs, numInputs, "input");
+    trim(outputs, numOutputs, "output");
+#endif
+
+    auto inDummy = dummyBuffer_;
+    auto outDummy = dummyBuffer_ +
+            (reblock_ ? reblock_->blockSize : bufferSize());
+
+    auto setupBuffers = [this](
+            AudioBus *& pluginBusses, int &pluginBusCount,
+            Bus *ugenBusses, int ugenBusCount,
+            const int *speakers, int numSpeakers, float *dummy)
+    {
+        // free excess bus channels
+        for (int i = numSpeakers; i < pluginBusCount; ++i){
+            RTFreeSafe(mWorld, pluginBusses[i].channelData32);
+            // if the following RTRealloc fails!
+            pluginBusses[i].channelData32 = nullptr;
+            pluginBusses[i].numChannels = 0;
+        }
+        // numSpeakers is always > 0, so a nullptr means RTRealloc failed!
+        auto result = (AudioBus*)RTRealloc(mWorld, pluginBusses, numSpeakers);
+        if (!result) {
+            return false; // bail!
+        }
+        // init new busses, in case a subsequent RTRealloc call fails!
+        for (int i = pluginBusCount; i < numSpeakers; ++i) {
+            result[i].channelData32 = nullptr;
+            result[i].numChannels = 0;
+        }
+        // now we can update the bus array
+        pluginBusses = result;
+        pluginBusCount = numSpeakers;
+        // (re)allocate and set channels
+        for (int i = 0; i < numSpeakers; ++i) {
+            auto& bus = pluginBusses[i];
+            auto channelCount = speakers[i];
+            // we only need to update if the channel count has changed!
+            if (bus.numChannels != channelCount) {
+                if (channelCount > 0) {
+                    // try to resize array
+                    auto result = (float**)RTRealloc(mWorld, bus.channelData32, channelCount);
+                    if (!result) {
+                        return false; // bail!
+                    }
+                    // now update bus
+                    bus.channelData32 = result;
+                    bus.numChannels = channelCount;
+                    // set channels
+                    auto ugenChannels = i < ugenBusCount ? ugenBusses[i].numChannels : 0;
+                    for (int j = 0; j < bus.numChannels; ++j) {
+                        if (j < ugenChannels) {
+                            bus.channelData32[j] = ugenBusses[i].channelData[j];
+                        } else {
+                            // point to dummy buffer!
+                            bus.channelData32[j] = dummy;
+                        }
+                    }
+                } else {
+                    // free old array!
+                    RTFreeSafe(mWorld, bus.channelData32);
+                    bus.channelData32 = nullptr;
+                    bus.numChannels = 0;
+                }
+            }
+        }
+        return true;
+    };
+
+    if (reblock_){
+        if (!setupBuffers(pluginInputs_, numPluginInputs_,
+                          reblock_->inputs, reblock_->numInputs,
+                          inputs, numInputs, inDummy) ||
+            !setupBuffers(pluginOutputs_, numPluginOutputs_,
+                          reblock_->outputs, reblock_->numOutputs,
+                          outputs, numOutputs, outDummy))
+        {
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
+        }
+    } else {
+        if (!setupBuffers(pluginInputs_, numPluginInputs_,
+                          ugenInputs_, numUgenInputs_,
+                          inputs, numInputs, inDummy) ||
+            !setupBuffers(pluginOutputs_, numPluginOutputs_,
+                          ugenOutputs_, numUgenOutputs_,
+                          outputs, numOutputs, outDummy))
+        {
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
+        }
+    }
+
+    clearMapping();
+
+    // parameter states
+    int numParams = delegate().plugin()->info().numParameters();
+    if (numParams > 0) {
+        auto result = (float*)RTRealloc(mWorld,
+            paramState_, numParams * sizeof(float));
         if (result) {
-            for (int i = 0; i < n; ++i) {
+            for (int i = 0; i < numParams; ++i) {
             #if 0
                 // breaks floating point comparison on GCC with -ffast-math
                 result[i] = std::numeric_limits<float>::quiet_NaN();
@@ -752,39 +1039,42 @@ void VSTPlugin::update() {
             }
             paramState_ = result;
         } else {
-            RTFreeSafe(mWorld, paramState_);
-            paramState_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
         }
+    } else {
+        RTFreeSafe(mWorld, paramState_);
+        paramState_ = nullptr;
     }
+
     // parameter mapping
-    {
-        Mapping** result = nullptr;
-        if (n > 0) {
-            result = (Mapping **)RTRealloc(mWorld, paramMapping_, n * sizeof(Mapping*));
-            if (!result) {
-                LOG_ERROR("RTRealloc failed!");
-            }
-        }
+    if (numParams > 0){
+        auto result = (Mapping **)RTRealloc(mWorld,
+            paramMapping_, numParams * sizeof(Mapping*));
         if (result) {
-            for (int i = 0; i < n; ++i) {
+            for (int i = 0; i < numParams; ++i) {
                 result[i] = nullptr;
             }
             paramMapping_ = result;
         } else {
-            RTFreeSafe(mWorld, paramMapping_);
-            paramMapping_ = nullptr;
+            LOG_ERROR("RTRealloc failed!");
+            setInvalid();
         }
+    } else {
+        RTFreeSafe(mWorld, paramMapping_);
+        paramMapping_ = nullptr;
     }
 }
 
 #if 1
-#define PRINT_MAPPING \
-    LOG_DEBUG("mappings:"); \
-    for (auto mapping = paramMappingList_; mapping; mapping = mapping->next){ \
-        LOG_DEBUG(mapping->index << " -> " << mapping->bus() << " (" << mapping->type() << ")"); \
+void VSTPlugin::printMapping(){
+    LOG_DEBUG("mappings:");
+    for (auto mapping = paramMappingList_; mapping; mapping = mapping->next){
+        LOG_DEBUG(mapping->index << " -> " << mapping->bus() << " (" << mapping->type() << ")");
     }
+}
 #else
-#define PRINT_MAPPING
+void VSTPlugin::printMapping() {}
 #endif
 
 void VSTPlugin::map(int32 index, int32 bus, bool audio) {
@@ -801,14 +1091,13 @@ void VSTPlugin::map(int32 index, int32 bus, bool audio) {
             }
             paramMappingList_ = mapping;
             paramMapping_[index] = mapping;
-        }
-        else {
+        } else {
             LOG_ERROR("RTAlloc failed!");
             return;
         }
     }
     mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
-    PRINT_MAPPING
+    printMapping();
 }
 
 void VSTPlugin::unmap(int32 index) {
@@ -817,8 +1106,7 @@ void VSTPlugin::unmap(int32 index) {
         // remove from linked list
         if (mapping->prev) {
             mapping->prev->next = mapping->next;
-        }
-        else { // head
+        } else { // head
             paramMappingList_ = mapping->next;
         }
         if (mapping->next) {
@@ -827,7 +1115,7 @@ void VSTPlugin::unmap(int32 index) {
         RTFree(mWorld, mapping);
         paramMapping_[index] = nullptr;
     }
-    PRINT_MAPPING
+    printMapping();
 }
 
 // perform routine
@@ -836,13 +1124,18 @@ void VSTPlugin::next(int inNumSamples) {
     // for Supernova the "next" routine might be called in a different thread - each time!
     delegate_->rtThreadID_ = std::this_thread::get_id();
 #endif
+    if (!valid()){
+        ClearUnitOutputs(this, inNumSamples);
+        return;
+    }
+
     auto plugin = delegate_->plugin();
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
-    bool suspended = delegate_->suspended();
+    bool suspended = delegate_->isSuspended();
     if (process && suspended){
         // Whenever an asynchronous command is executing, the plugin is temporarily
         // suspended. This is mainly for blocking other commands until the async
-        // command has finished. The actual critical section is protected by mutex.
+        // command has finished. The actual critical section is protected by a mutex.
         // We use tryLock() and bypass on failure, so we don't block the whole Server.
         process = delegate_->tryLock();
         if (!process){
@@ -854,15 +1147,14 @@ void VSTPlugin::next(int inNumSamples) {
         auto vst3 = plugin->info().type() == PluginType::VST3;
 
         // check bypass state
-        Bypass bypass = Bypass::Off;
+        Bypass bypass;
         int inBypass = getBypass();
-        if (inBypass > 0) {
-            if (inBypass == 1) {
-                bypass = Bypass::Hard;
-            }
-            else {
-                bypass = Bypass::Soft;
-            }
+        if (inBypass > 1) {
+            bypass = Bypass::Soft;
+        } else if (inBypass == 1){
+            bypass = Bypass::Hard;
+        } else {
+            bypass = Bypass::Off;
         }
         if (bypass != bypass_) {
             plugin->setBypass(bypass);
@@ -872,6 +1164,7 @@ void VSTPlugin::next(int inNumSamples) {
         // parameter automation
         // (check paramState_ in case RTAlloc failed)
         if (paramState_) {
+            int sampleOffset = reblockPhase();
             // automate parameters with mapped control busses
             int nparams = plugin->info().numParameters();
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
@@ -879,35 +1172,33 @@ void VSTPlugin::next(int inNumSamples) {
                 auto type = m->type();
                 uint32 num = m->bus();
                 assert(index < nparams);
-                // Control Bus mapping
                 if (type == Mapping::Control) {
+                    // Control Bus mapping
                     float value = readControlBus(num);
                     if (value != paramState_[index]) {
-                        plugin->setParameter(index, value);
+                        plugin->setParameter(index, value, sampleOffset);
                         paramState_[index] = value;
                     }
-                }
-                // Audio Bus mapping
-                else if (num < mWorld->mNumAudioBusChannels){
+                } else if (num < mWorld->mNumAudioBusChannels){
+                    // Audio Bus mapping
                 #define unit this
                     float last = paramState_[index];
                     float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
                     ACQUIRE_BUS_AUDIO_SHARED(num);
-                    // VST3: sample accurate
                     if (vst3) {
+                        // VST3: sample accurate
                         for (int i = 0; i < inNumSamples; ++i) {
                             float value = bus[i];
                             if (value != last) {
-                                plugin->setParameter(index, value, i); // sample offset!
+                                plugin->setParameter(index, value, sampleOffset + i);
                                 last = value;
                             }
                         }
-                    }
-                    // VST2: pick the first sample
-                    else {
+                    } else {
+                        // VST2: pick the first sample
                         float value = *bus;
                         if (value != last) {
-                            plugin->setParameter(index, value);
+                            plugin->setParameter(index, value); // no offset
                             last = value;
                         }
                     }
@@ -917,43 +1208,41 @@ void VSTPlugin::next(int inNumSamples) {
                 }
             }
             // automate parameters with UGen inputs
-            auto numControls = numParameterControls();
+            auto numControls = numParameterControls_;
             for (int i = 0; i < numControls; ++i) {
-                int k = 2 * i + parameterControlOnset_;
-                int index = in0(k);
+                auto control = parameterControls_ + i * 2;
+                int index = control[0]->mBuffer[0];
                 // only if index is not out of range and the parameter is not mapped to a bus
                 // (a negative index effectively deactivates the parameter control)
                 if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
-                    auto calcRate = mInput[k + 1]->mCalcRate;
-                    // audio rate
+                    auto calcRate = control[1]->mCalcRate;
+                    auto buffer = control[1]->mBuffer;
                     if (calcRate == calc_FullRate) {
+                        // audio rate
                         float last = paramState_[index];
-                        auto buf = in(k + 1);
                         // VST3: sample accurate
                         if (vst3) {
                             for (int i = 0; i < inNumSamples; ++i) {
-                                float value = buf[i];
+                                float value = buffer[i];
                                 if (value != last) {
-                                    plugin->setParameter(index, value, i); // sample offset!
+                                    plugin->setParameter(index, value, sampleOffset + i);
                                     last = value;
                                 }
                             }
-                        }
-                        // VST2: pick the first sample
-                        else {
-                            float value = *buf;
+                        } else {
+                            // VST2: pick the first sample
+                            float value = buffer[0];
                             if (value != last) {
-                                plugin->setParameter(index, value);
+                                plugin->setParameter(index, value); // no offset
                                 last = value;
                             }
                         }
                         paramState_[index] = last;
-                    }
-                    // control rate
-                    else {
-                        float value = in0(k + 1);
+                    } else {
+                        // control rate
+                        float value = buffer[0];
                         if (value != paramState_[index]) {
-                            plugin->setParameter(index, value);
+                            plugin->setParameter(index, value, sampleOffset);
                             paramState_[index] = value;
                         }
                     }
@@ -961,134 +1250,121 @@ void VSTPlugin::next(int inNumSamples) {
             }
         }
         // process
-        IPlugin::ProcessData<float> data;
+        ProcessData data;
+        data.precision = ProcessPrecision::Single;
+        data.numInputs = numPluginInputs_;
+        data.inputs = pluginInputs_;
+        data.numOutputs = numPluginOutputs_;
+        data.outputs = pluginOutputs_;
 
         if (reblock_){
-            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
-                for (int i = 0; i < nchannels; ++i){
-                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
-                }
-            };
-            auto writeOutput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
-                for (int i = 0; i < nchannels; ++i){
-                    auto src = from[i] + phase;
-                    std::copy(src, src + nsamples, to[i]);
-                }
-            };
-
-            data.numInputs = numInChannels();
-            data.numOutputs = numOutChannels();
-            data.numAuxInputs = numAuxInChannels();
-            data.numAuxOutputs = numAuxOutChannels();
-
-            readInput(mInBuf + inChannelOnset_, reblock_->input, data.numInputs,
-                        inNumSamples, reblock_->phase);
-            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, data.numAuxInputs,
-                        inNumSamples, reblock_->phase);
-
-            reblock_->phase += inNumSamples;
-
-            if (reblock_->phase >= reblock_->blockSize){
-                assert(reblock_->phase == reblock_->blockSize);
-                reblock_->phase = 0;
-
-                data.input = data.numInputs > 0 ? (const float **)reblock_->input : nullptr;
-                data.output = data.numOutputs > 0 ? reblock_->output : nullptr;
-                data.auxInput = data.numAuxInputs > 0 ? (const float **)reblock_->auxInput : nullptr;
-                data.auxOutput = data.numAuxOutputs > 0 ? reblock_->auxOutput : nullptr;
+            if (updateReblocker(inNumSamples)){
                 data.numSamples = reblock_->blockSize;
 
                 plugin->process(data);
             }
 
-            writeOutput(reblock_->output, mOutBuf, data.numOutputs,
-                        inNumSamples, reblock_->phase);
-            writeOutput(reblock_->auxOutput, mOutBuf + numOutChannels(), data.numAuxOutputs,
-                        inNumSamples, reblock_->phase);
+            // write reblocker output
+            for (int i = 0; i < numUgenOutputs_ && i < numPluginOutputs_; ++i){
+                int ugenChannels = ugenOutputs_[i].numChannels;
+                int pluginChannels = pluginOutputs_[i].numChannels;
+                for (int j = 0; j < ugenChannels && j < pluginChannels; ++j){
+                    auto src = reblock_->outputs[i].channelData[j] + reblock_->phase;
+                    auto dst = ugenOutputs_[i].channelData[j];
+                    std::copy(src, src + inNumSamples, dst);
+                }
+            }
+
+            // zero/bypass remaining Ugen inputs/outputs
+            bypassRemaining(reblock_->inputs, reblock_->numInputs, inNumSamples, reblock_->phase);
         } else {
-            data.numInputs = numInChannels();
-            data.input = data.numInputs > 0 ? (const float **)(mInBuf + inChannelOnset_) : nullptr;
-            data.numOutputs = numOutChannels();
-            data.output = data.numOutputs > 0 ? mOutBuf : nullptr;
-            data.numAuxInputs = numAuxInChannels();
-            data.auxInput = data.numAuxInputs > 0 ? (const float **)(mInBuf + auxInChannelOnset_) : nullptr;
-            data.numAuxOutputs = numAuxOutChannels();
-            data.auxOutput = data.numAuxOutputs > 0 ? mOutBuf + numOutChannels() : nullptr;
             data.numSamples = inNumSamples;
 
             plugin->process(data);
+
+            // zero/bypass remaining Ugen inputs/outputs
+            bypassRemaining(ugenInputs_, numUgenInputs_, inNumSamples, 0);
         }
 
         // send parameter automation notification posted from the GUI thread [or NRT thread]
-        ParamChange p;
-        while (paramQueue_.pop(p)){
-            if (p.index >= 0){
-                delegate_->sendParameterAutomated(p.index, p.value);
-            } else if (p.index == VSTPluginDelegate::LatencyChange){
-                delegate_->sendLatencyChange(p.value);
-            } else if (p.index == VSTPluginDelegate::PluginCrash){
-                delegate_->sendPluginCrash();
-            }
-        }
+        delegate().handleEvents();
+
         if (suspended){
-            delegate_->unlock();
+            delegate_->unlock(); // !
+        }
+    } else {
+        // bypass
+        if (reblock_){
+            // we have to update the reblocker, so that we can stop bypassing
+            // anytime and always have valid input data.
+            updateReblocker(inNumSamples);
+
+            performBypass(reblock_->inputs, reblock_->numInputs, inNumSamples, reblock_->phase);
+        } else {
+            performBypass(ugenInputs_, numUgenInputs_, inNumSamples, 0);
         }
     }
-    else {
-        // bypass (copy input to output and zero remaining output channels)
-        auto doBypass = [](auto input, int nin, auto output, int nout, int n, int phase) {
-            for (int i = 0; i < nout; ++i) {
-                if (i < nin) {
-                    auto src = input[i] + phase;
-                    std::copy(src, src + n, output[i]);
-                }
-                else {
-                    std::fill(output[i], output[i] + n, 0); // zero
+}
+
+void VSTPlugin::performBypass(const Bus *ugenInputs, int numInputs,
+                              int numSamples, int phase)
+{
+    for (int i = 0; i < numUgenOutputs_; ++i){
+        auto& outputs = ugenOutputs_[i];
+        if (i < numInputs){
+            auto& inputs = ugenInputs[i];
+            for (int j = 0; j < outputs.numChannels; ++j){
+                if (j < inputs.numChannels){
+                    // copy input to output
+                    auto chn = inputs.channelData[j] + phase;
+                    std::copy(chn, chn + numSamples, outputs.channelData[j]);
+                } else {
+                    // zero outlet
+                    auto chn = outputs.channelData[j];
+                    std::fill(chn, chn + numSamples, 0);
                 }
             }
-        };
-
-        if (reblock_){
-            // we have to copy the inputs to the reblocker, so that we
-            // can stop bypassing anytime and always have valid input data.
-            auto readInput = [](float ** from, float ** to, int nchannels, int nsamples, int phase){
-                for (int i = 0; i < nchannels; ++i){
-                    std::copy(from[i], from[i] + nsamples, to[i] + phase);
-                }
-            };
-
-            readInput(mInBuf + inChannelOnset_, reblock_->input, numInChannels(),
-                      inNumSamples, reblock_->phase);
-            readInput(mInBuf + auxInChannelOnset_, reblock_->auxInput, numAuxInChannels(),
-                      inNumSamples, reblock_->phase);
-
-            // advance phase before bypassing to keep delay!
-            reblock_->phase += inNumSamples;
-
-            if (reblock_->phase >= reblock_->blockSize){
-                assert(reblock_->phase == reblock_->blockSize);
-                reblock_->phase = 0;
-            }
-
-            // input -> output
-            doBypass(reblock_->input, numInChannels(), mOutBuf, numOutChannels(),
-                     inNumSamples, reblock_->phase);
-            // aux input -> aux output
-            doBypass(reblock_->auxInput, numAuxInChannels(), mOutBuf + numOutChannels(),
-                     numAuxOutChannels(), inNumSamples, reblock_->phase);
         } else {
-            // input -> output
-            doBypass(mInBuf + inChannelOnset_, numInChannels(), mOutBuf, numOutChannels(),
-                     inNumSamples, 0);
-            // aux input -> aux output
-            doBypass(mInBuf + auxInChannelOnset_, numAuxInChannels(), mOutBuf + numOutChannels(),
-                     numAuxOutChannels(), inNumSamples, 0);
+            // zero whole bus
+            for (int j = 0; j < outputs.numChannels; ++j){
+                auto chn = outputs.channelData[j];
+                std::fill(chn, chn + numSamples, 0);
+            }
+        }
+    }
+}
+
+void VSTPlugin::bypassRemaining(const Bus *ugenInputs, int numInputs,
+                                int numSamples, int phase)
+{
+    for (int i = 0; i < numUgenOutputs_; ++i){
+        auto& ugenOutputs = ugenOutputs_[i];
+        int onset = (i < numPluginOutputs_) ?
+            pluginOutputs_[i].numChannels : 0;
+        for (int j = onset; j < ugenOutputs.numChannels; ++j){
+            auto out = ugenOutputs.channelData[j];
+            // only bypass if a) there is a corresponding UGen input
+            // and b) that input isn't used by the plugin
+            if (i < numInputs && j < ugenInputs[i].numChannels &&
+                !(i < numPluginInputs_ && j < pluginInputs_[i].numChannels))
+            {
+                // copy input to output
+                auto in = ugenInputs[i].channelData[j] + phase;
+                std::copy(in, in + numSamples, out);
+            } else {
+                // zero output
+                std::fill(out, out + numSamples, 0);
+            }
         }
     }
 }
 
 int VSTPlugin::blockSize() const {
     return reblock_ ? reblock_->blockSize : bufferSize();
+}
+
+int VSTPlugin::reblockPhase() const {
+    return reblock_ ? reblock_->phase : 0;
 }
 
 //------------------- VSTPluginDelegate ------------------------------//
@@ -1100,7 +1376,11 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
-    close();
+    // Closing the plugin in the destructor is unsafe.
+    // In practice, the plugin should have already been
+    // closed by setOwner(nullptr) or CmdData::alive().
+    // NOTE that we must *not* retain ourself!
+    doClose<false>();
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
 
@@ -1113,6 +1393,19 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
     if (owner) {
         // cache some members
         world_ = owner->mWorld;
+    } else {
+        // Schedule for closing, but keep delegate alive.
+        // This makes sure that we don't get deleted while
+        // the plugin sends an event, see doClose().
+        // NOTE that can't do this while we have a pending
+        // command because it would create a race condition:
+        // doClose() immediately moves the plugin, but the
+        // command might try to access it in the NRT stage.
+        // Instead, the command will call alive(), which
+        // in turn will schedule a close command.
+        if (!isSuspended()){
+            doClose();
+        }
     }
     owner_ = owner;
 }
@@ -1125,9 +1418,9 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
             sendParameterAutomated(index, value);
         }
     } else {
-        // from GUI thread [or NRT thread] - push to queue
-        LockGuard lock(owner_->paramQueueMutex_);
-        if (!(owner_->paramQueue_.emplace(index, value))){
+        // from UI/NRT thread - push to queue
+        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+        if (!(paramQueue_.emplace(index, value))){
             LOG_DEBUG("param queue overflow");
         }
     }
@@ -1138,24 +1431,19 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
     if (std::this_thread::get_id() == rtThreadID_) {
         sendLatencyChange(nsamples);
     } else {
-        // from GUI thread [or NRT thread] - push to queue
-        LockGuard lock(owner_->paramQueueMutex_);
-        if (!(owner_->paramQueue_.emplace(LatencyChange, (float)nsamples))){
+        // from UI/NRT thread - push to queue
+        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+        if (!(paramQueue_.emplace(LatencyChange, (float)nsamples))){
             LOG_DEBUG("param queue overflow");
         }
     }
 }
 
 void VSTPluginDelegate::pluginCrashed(){
-    // RT thread
-    if (std::this_thread::get_id() == rtThreadID_) {
-        sendPluginCrash();
-    } else {
-        // from GUI thread [or NRT thread] - push to queue
-        LockGuard lock(owner_->paramQueueMutex_);
-        if (!(owner_->paramQueue_.emplace(PluginCrash, 0.f))){
-            LOG_DEBUG("param queue overflow");
-        }
+    // From the watch dog thread.
+    std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+    if (!(paramQueue_.emplace(PluginCrash, 0.f))){
+        LOG_DEBUG("param queue overflow");
     }
 }
 
@@ -1203,8 +1491,25 @@ bool VSTPluginDelegate::check(bool loud) const {
     return true;
 }
 
-WriteLock VSTPluginDelegate::scopedLock(){
-    return WriteLock(mutex_);
+void VSTPluginDelegate::update(){
+    paramQueue_.clear();
+}
+
+void VSTPluginDelegate::handleEvents(){
+    ParamChange p;
+    while (paramQueue_.pop(p)){
+        if (p.index >= 0){
+            sendParameterAutomated(p.index, p.value);
+        } else if (p.index == VSTPluginDelegate::LatencyChange){
+            sendLatencyChange(p.value);
+        } else if (p.index == VSTPluginDelegate::PluginCrash){
+            sendPluginCrash();
+        }
+    }
+}
+
+Lock VSTPluginDelegate::scopedLock(){
+    return Lock(mutex_);
 }
 
 bool VSTPluginDelegate::tryLock() {
@@ -1217,34 +1522,37 @@ void VSTPluginDelegate::unlock() {
 
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::close() {
-    if (plugin_) {
-        LOG_DEBUG("about to close");
-        // owner_ == nullptr -> close() called as result of this being the last reference,
-        // otherwise we check if there is more than one reference.
-        if (owner_ && !owner_->delegate_.unique()) {
-            LOG_WARNING("VSTPlugin: can't close plugin while commands are still running");
-            // will be closed by the command's cleanup function
-            return;
-        }
+    if (!check()) return;
+    LOG_DEBUG("about to close");
+    doClose();
+}
+
+template<bool retain>
+void VSTPluginDelegate::doClose(){
+    if (plugin_){
         auto cmdData = CmdData::create<CloseCmdData>(world());
         if (!cmdData) {
             return;
         }
-        // unset listener!
-        plugin_->setListener(nullptr);
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
-        // don't set owner!
-        doCmd<false>(cmdData, [](World *world, void* inData) {
+        // NOTE: the plugin might send an event between here
+        // and the NRT stage, e.g. when automating parameters
+        // in the plugin UI. Since the events come from the
+        // UI thread, we must not unset the listener in the
+        // audio thread, otherwise we have a race condition.
+        // Instead, we keep the delegate alive with 'retain=true'
+        // until the plugin has been closed.
+        // See setOwner(), alive() and ~VSTPluginDelegate().
+    #if 0
+        data->plugin->setListener(nullptr);
+    #endif
+        doCmd<retain>(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
-            if (data->editor) {
-                // synchronous!
-                UIThread::callSync([](void *y){
-                    static_cast<CloseCmdData *>(y)->plugin = nullptr;
-                }, data);
-            }
-            // if not destructed
-            data->plugin = nullptr;
+            // release plugin on the correct thread
+            defer([&](){
+                data->plugin = nullptr;
+            }, data->editor);
             return false; // done
         });
         plugin_ = nullptr;
@@ -1255,53 +1563,49 @@ bool cmdOpen(World *world, void* cmdData) {
     LOG_DEBUG("cmdOpen");
     // initialize GUI backend (if needed)
     auto data = (OpenCmdData *)cmdData;
+    // check if RTAlloc failed
+    if (!data->inputs || !data->outputs){
+        return true; // continue
+    }
     // create plugin in main thread
     auto info = queryPlugin(data->path);
     if (info) {
         try {
-            if (data->editor) {
-                data->info = info;
+            // make sure to only request the plugin UI if the
+            // plugin supports it and we have an event loop
+            if (data->editor &&
+                    !(info->editor() && UIThread::available())){
+                data->editor = false;
+                LOG_DEBUG("can't use plugin UI!");
+            }
+            if (data->editor){
                 LOG_DEBUG("create plugin in UI thread");
-                bool ok = UIThread::callSync([](void *y){
-                    auto d = (OpenCmdData *)y;
-                    try {
-                        d->plugin = d->info->create(true, d->threaded, d->mode);
-                    } catch (const Error& e){
-                        d->error = e;
-                    }
-                }, data);
-
-                if (ok){
-                    if (data->plugin){
-                        LOG_DEBUG("done");
-                    } else {
-                        throw data->error;
-                    }
-                } else {
-                    // couldn't dispatch to UI thread (probably not available).
-                    // create plugin without window
-                    data->plugin = info->create(false, data->threaded, data->mode);
-                }
+            } else {
+                LOG_DEBUG("create plugin in NRT thread");
             }
-            else {
-                data->plugin = info->create(false, data->threaded, data->mode);
-            }
-            if (data->plugin){
-                // we only access immutable members of owner!
+            defer([&](){
+                // create plugin
+                LOG_DEBUG("create plugin");
+                data->plugin = info->create(data->editor, data->threaded, data->mode);
+                // setup plugin
+                LOG_DEBUG("suspend");
+                data->plugin->suspend();
                 if (info->hasPrecision(ProcessPrecision::Single)) {
+                    LOG_DEBUG("setupProcessing");
                     data->plugin->setupProcessing(data->sampleRate, data->blockSize,
                                                   ProcessPrecision::Single);
-                }
-                else {
+                } else {
                     LOG_WARNING("VSTPlugin: plugin '" << info->name <<
                                 "' doesn't support single precision processing - bypassing!");
                 }
-                data->plugin->setNumSpeakers(data->numInputs, data->numOutputs,
-                                             data->numAuxInputs, data->numAuxOutputs);
+                LOG_DEBUG("setNumSpeakers");
+                data->plugin->setNumSpeakers(data->inputs, data->numInputs,
+                                             data->outputs, data->numOutputs);
+                LOG_DEBUG("resume");
                 data->plugin->resume();
-            }
-        }
-        catch (const Error & e) {
+            }, data->editor);
+            LOG_DEBUG("done");
+        } catch (const Error & e) {
             LOG_ERROR(e.what());
         }
     }
@@ -1317,13 +1621,18 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         sendMsg("/vst_open", 0);
         return;
     }
-    close();
+    if (isSuspended()){
+        LOG_WARNING("VSTPlugin: temporarily suspended!");
+        sendMsg("/vst_open", 0);
+        return;
+    }
+    doClose();
     if (plugin_) {
+        // shouldn't happen...
         LOG_ERROR("ERROR: couldn't close current plugin!");
         sendMsg("/vst_open", 0);
         return;
     }
-
 #ifdef SUPERNOVA
     if (threaded){
         LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
@@ -1340,19 +1649,37 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         cmdData->mode = mode;
         cmdData->sampleRate = owner_->sampleRate();
         cmdData->blockSize = owner_->blockSize();
-        cmdData->numInputs = owner_->numInChannels();
-        cmdData->numOutputs = owner_->numOutChannels();
-        cmdData->numAuxInputs = owner_->numAuxInChannels();
-        cmdData->numAuxOutputs = owner_->numAuxOutChannels();
+        // set desired number of inputs
+        cmdData->numInputs = owner_->numInputBusses();
+        cmdData->inputs = (int *)RTAlloc(world_, cmdData->numInputs * sizeof(int));
+        if (cmdData->inputs){
+            for (int i = 0; i < cmdData->numInputs; ++i){
+                cmdData->inputs[i] = owner_->inputBusses()[i].numChannels;
+            }
+        } else {
+            cmdData->numInputs = 0;
+            LOG_ERROR("RTAlloc failed!");
+        }
+        // set desired number of outputs
+        cmdData->numOutputs = owner_->numOutputBusses();
+        cmdData->outputs = (int *)RTAlloc(world_, cmdData->numOutputs * sizeof(int));
+        if (cmdData->outputs){
+            for (int i = 0; i < cmdData->numOutputs; ++i){
+                cmdData->outputs[i] = owner_->outputBusses()[i].numChannels;
+            }
+        } else {
+            cmdData->numOutputs = 0;
+            LOG_ERROR("RTAlloc failed!");
+        }
 
         doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
             auto data = (OpenCmdData*)cmdData;
             data->owner->doneOpen(*data); // alive() checked in doneOpen!
             return false; // done
         });
-        editor_ = editor;
-        threaded_ = threaded;
+
         isLoading_ = true;
+        // NOTE: don't set 'editor_' already because 'editor' value might change
     } else {
         sendMsg("/vst_open", 0);
     }
@@ -1361,23 +1688,27 @@ void VSTPluginDelegate::open(const char *path, bool editor,
 // "/open" command succeeded/failed - called in the RT thread
 void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     LOG_DEBUG("doneOpen");
+    editor_ = cmd.editor;
+    threaded_ = cmd.threaded;
     isLoading_ = false;
-    // move the plugin even if alive() returns false (so it will be properly released in close())
+    // move the plugin even if alive() returns false
     plugin_ = std::move(cmd.plugin);
     if (!alive()) {
-        LOG_WARNING("VSTPlugin: freed while opening a plugin");
+        LOG_WARNING("WARNING: VSTPlugin freed during 'open'");
+        // properly release the plugin
+        doClose();
         return; // !
     }
     if (plugin_){
         if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
-            Print("WARNING: '%s' doesn't support single precision processing - bypassing!\n",
-                  plugin_->info().name.c_str());
+            LOG_WARNING("WARNING: '" << plugin_->info().name <<
+                "' doesn't support single precision processing - bypassing!");
         }
         LOG_DEBUG("opened " << cmd.path);
+        // setup data structures
+        owner_->setupPlugin(cmd.inputs, cmd.numInputs, cmd.outputs, cmd.numOutputs);
         // receive events from plugin
         plugin_->setListener(shared_from_this());
-        // update data
-        owner_->update();
         // success, window, initial latency
         bool haveWindow = plugin_->getWindow() != nullptr;
         int latency = plugin_->getLatencySamples() + latencySamples();
@@ -1387,6 +1718,10 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
         LOG_WARNING("VSTPlugin: couldn't open " << cmd.path);
         sendMsg("/vst_open", 0);
     }
+
+    // RTAlloc might have failed!
+    RTFreeSafe(world_, cmd.inputs);
+    RTFreeSafe(world_, cmd.outputs);
 }
 
 void VSTPluginDelegate::showEditor(bool show) {
@@ -1399,8 +1734,7 @@ void VSTPluginDelegate::showEditor(bool show) {
                 auto window = data->owner->plugin()->getWindow();
                 if (data->i) {
                     window->open();
-                }
-                else {
+                } else {
                     window->close();
                 }
                 return false; // done
@@ -1409,27 +1743,68 @@ void VSTPluginDelegate::showEditor(bool show) {
     }
 }
 
+void VSTPluginDelegate::setEditorPos(int x, int y) {
+    if (plugin_ && plugin_->getWindow()) {
+        auto cmdData = CmdData::create<WindowCmdData>(world());
+        if (cmdData) {
+            cmdData->x = x;
+            cmdData->y = y;
+            doCmd(cmdData, [](World * inWorld, void* inData) {
+                auto data = (WindowCmdData*)inData;
+                auto window = data->owner->plugin()->getWindow();
+                window->setPos(data->x, data->y);
+                return false; // done
+            });
+        }
+    }
+}
+
+void VSTPluginDelegate::setEditorSize(int w, int h){
+    if (plugin_ && plugin_->getWindow()) {
+        auto cmdData = CmdData::create<WindowCmdData>(world());
+        if (cmdData) {
+            cmdData->width = w;
+            cmdData->height = h;
+            doCmd(cmdData, [](World * inWorld, void* inData) {
+                auto data = (WindowCmdData*)inData;
+                auto window = data->owner->plugin()->getWindow();
+                window->setSize(data->width, data->height);
+                return false; // done
+            });
+        }
+    }
+}
+
 void VSTPluginDelegate::reset(bool async) {
     if (check()) {
+    #if 1
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async) {
             // reset in the NRT thread
-            suspended_ = true; // suspend
+            suspend(); // suspend
             doCmd(CmdData::create<PluginCmdData>(world()),
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
-                    auto lock = data->owner->scopedLock();
-                    data->owner->plugin()->suspend();
-                    data->owner->plugin()->resume();
+                    defer([&](){
+                        auto lock = data->owner->scopedLock();
+                        data->owner->plugin()->suspend();
+                        data->owner->plugin()->resume();
+                    }, data->owner->hasEditor());
                     return true; // continue
                 },
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
-                    data->owner->suspended_ = false; // resume
+                    if (!data->alive()) return false;
+                    data->owner->resume();
                     return false; // done
                 }
             );
-        }
-        else {
+        } else {
             // reset in the RT thread
             auto lock = scopedLock(); // avoid concurrent read/writes
             plugin_->suspend();
@@ -1446,14 +1821,14 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
             rtThreadID_ = std::this_thread::get_id();
 #endif
             paramSet_ = true;
-            plugin_->setParameter(index, value, owner_->mWorld->mSampleOffset);
+            int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
+            plugin_->setParameter(index, value, sampleOffset);
             float newValue = plugin_->getParameter(index);
             owner_->paramState_[index] = newValue;
             sendParameter(index, newValue);
             owner_->unmap(index);
             paramSet_ = false;
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1467,7 +1842,8 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             rtThreadID_ = std::this_thread::get_id();
 #endif
             paramSet_ = true;
-            if (!plugin_->setParameter(index, display, owner_->mWorld->mSampleOffset)) {
+            int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
+            if (!plugin_->setParameter(index, display, sampleOffset)) {
                 LOG_WARNING("VSTPlugin: couldn't set parameter " << index << " to " << display);
             }
             float newValue = plugin_->getParameter(index);
@@ -1475,8 +1851,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             sendParameter(index, newValue);
             owner_->unmap(index);
             paramSet_ = false;
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1490,25 +1865,24 @@ void VSTPluginDelegate::queryParams(int32 index, int32 count) {
             for (int i = 0; i < count; ++i) {
                 sendParameter(index + i, plugin_->getParameter(index + i));
             }
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
 }
 
 void VSTPluginDelegate::getParam(int32 index) {
+    float msg[2] = { (float)index, 0.f };
+
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            float value = plugin_->getParameter(index);
-            sendMsg("/vst_set", value);
-            return;
-        }
-        else {
+            msg[1] = plugin_->getParameter(index); // value
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
-    sendMsg("/vst_set", -1);
+
+    sendMsg("/vst_set", 2, msg);
 }
 
 void VSTPluginDelegate::getParams(int32 index, int32 count) {
@@ -1520,13 +1894,14 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
             } else {
                 count = std::min<int32>(count, nparam - index);
             }
-            const int bufsize = count + 1;
+            const int bufsize = count + 2; // for index + count
             if (bufsize * sizeof(float) < MAX_OSC_PACKET_SIZE){
                 float *buf = (float *)alloca(sizeof(float) * bufsize);
-                buf[0] = count;
+                buf[0] = index;
+                buf[1] = count;
                 for (int i = 0; i < count; ++i) {
                     float value = plugin_->getParameter(i + index);
-                    buf[i + 1] = value;
+                    buf[i + 2] = value;
                 }
                 sendMsg("/vst_setn", bufsize, buf);
                 return;
@@ -1538,15 +1913,16 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
-    sendMsg("/vst_setn", 0); // send count 0
+    // send empty reply (count = 0)
+    float msg[2] = { (float)index, 0.f };
+    sendMsg("/vst_setn", 2, msg);
 }
 
 void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
             owner_->map(index, bus, audio);
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1556,8 +1932,7 @@ void VSTPluginDelegate::unmapParam(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
             owner_->unmap(index);
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
     }
@@ -1574,8 +1949,7 @@ void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numPrograms()) {
             plugin_->setProgram(index);
-        }
-        else {
+        } else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
     }
@@ -1633,8 +2007,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
             buffer.resize(file.tellg());
             file.seekg(0, std::ios_base::beg);
             file.read(&buffer[0], buffer.size());
-        }
-        else {
+        } else {
             // from buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);
             writeBuffer(sndbuf, buffer);
@@ -1642,14 +2015,15 @@ bool cmdReadPreset(World* world, void* cmdData) {
         if (async) {
             // load preset now
             // NOTE: we avoid readProgram() to minimize the critical section
-            auto lock = data->owner->scopedLock();
-            if (bank)
-                plugin->readBankData(buffer);
-            else
-                plugin->readProgramData(buffer);
+            defer([&](){
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->readBankData(buffer);
+                else
+                    plugin->readProgramData(buffer);
+            }, data->owner->hasEditor());
         }
-    }
-    catch (const Error& e) {
+    } catch (const Error& e) {
         Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
@@ -1683,8 +2057,7 @@ bool cmdReadPresetDone(World *world, void *cmdData){
         owner->sendMsg("/vst_bank_read", data->result);
         // a bank change also sets the current program number!
         owner->sendMsg("/vst_program_index", owner->plugin()->getProgram());
-    }
-    else {
+    } else {
         owner->sendMsg("/vst_program_read", data->result);
     }
     // the program name has most likely changed
@@ -1696,8 +2069,15 @@ bool cmdReadPresetDone(World *world, void *cmdData){
 template<bool bank, typename T>
 void VSTPluginDelegate::readPreset(T dest, bool async){
     if (check()){
+    #if 1
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async){
-            suspended_ = true;
+            suspend();
         }
         doCmd(PresetCmdData::create(world(), dest, async),
             cmdReadPreset<bank>, cmdReadPresetDone<bank>, PresetCmdData::nrtFree);
@@ -1725,11 +2105,13 @@ bool cmdWritePreset(World *world, void *cmdData){
             // so we keep the critical section as short as possible.
             buffer.reserve(1024);
             // get and write preset data
-            auto lock = data->owner->scopedLock();
-            if (bank)
-                plugin->writeBankData(buffer);
-            else
-                plugin->writeProgramData(buffer);
+            defer([&](){
+                auto lock = data->owner->scopedLock();
+                if (bank)
+                    plugin->writeBankData(buffer);
+                else
+                    plugin->writeProgramData(buffer);
+            }, data->owner->hasEditor());
         }
         if (data->bufnum < 0) {
             // write data to file
@@ -1738,15 +2120,13 @@ bool cmdWritePreset(World *world, void *cmdData){
                 throw Error("couldn't create file " + std::string(data->path));
             }
             file.write(buffer.data(), buffer.size());
-        }
-        else {
+        } else {
             // to buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);
             data->freeData = sndbuf->data; // to be freed in stage 4
             allocReadBuffer(sndbuf, buffer);
         }
-    }
-    catch (const Error & e) {
+    } catch (const Error & e) {
         Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
         result = false;
     }
@@ -1772,8 +2152,15 @@ template<bool bank, typename T>
 void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
         auto data = PresetCmdData::create(world(), dest, async);
+    #if 1
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async){
-            suspended_ = true;
+            suspend();
         } else {
             try {
                 auto lock = scopedLock(); // avoid concurrent read/write
@@ -1792,8 +2179,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
     fail:
         if (bank) {
             sendMsg("/vst_bank_write", 0);
-        }
-        else {
+        } else {
             sendMsg("/vst_program_write", 0);
         }
     }
@@ -1802,7 +2188,8 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
 // midi
 void VSTPluginDelegate::sendMidiMsg(int32 status, int32 data1, int32 data2, float detune) {
     if (check()) {
-        plugin_->sendMidiEvent(MidiEvent(status, data1, data2, world_->mSampleOffset, detune));
+        int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
+        plugin_->sendMidiEvent(MidiEvent(status, data1, data2, sampleOffset, detune));
     }
 }
 void VSTPluginDelegate::sendSysexMsg(const char *data, int32 n) {
@@ -1853,21 +2240,33 @@ void VSTPluginDelegate::canDo(const char *what) {
 
 bool cmdVendorSpecific(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
-    auto result = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
-    data->index = result; // save result
+    defer([&](){
+        data->index = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
+    }, data->owner->hasEditor());
     return true;
 }
 
 bool cmdVendorSpecificDone(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
     if (!data->alive()) return false;
+    data->owner->resume(); // resume
     data->owner->sendMsg("/vst_vendor_method", (float)(data->index));
     return false; // done
 }
 
 void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async) {
     if (check()) {
+        // some calls might be safe to do on the RT thread
+        // and the user might not want to suspend processing.
+    #if 0
+        // force async if we have a plugin UI to avoid
+        // race conditions with concurrent UI updates.
+        if (editor_){
+            async = true;
+        }
+    #endif
         if (async) {
+            suspend();
             auto cmdData = CmdData::create<VendorCmdData>(world(), size);
             if (cmdData) {
                 cmdData->index = index;
@@ -1877,8 +2276,7 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
                 memcpy(cmdData->data, data, size);
                 doCmd(cmdData, cmdVendorSpecific, cmdVendorSpecificDone);
             }
-        }
-        else {
+        } else {
             auto result = plugin_->vendorSpecific(index, value, (void *)data, opt);
             sendMsg("/vst_vendor_method", (float)result);
         }
@@ -1957,8 +2355,7 @@ void VSTPluginDelegate::sendPluginCrash(){
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
     if (owner_){
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
-    }
-    else {
+    } else {
         LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
     }
 }
@@ -1966,8 +2363,7 @@ void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
 void VSTPluginDelegate::sendMsg(const char *cmd, int n, const float *data) {
     if (owner_) {
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, n, data);
-    }
-    else {
+    } else {
         LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
     }
 }
@@ -1990,15 +2386,12 @@ void cmdRTfree(World *world, void * cmdData) {
     }
 }
 
-// if 'owner' parameter is false, we don't store a pointer to this and we don't touch the ref count.
-// this is mainly for close(), where we don't touch any shared state because we might get called
-// in the destructor!
-template<bool owner, typename T>
+template<bool retain, typename T>
 void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
     AsyncStageFn stage3, AsyncStageFn stage4) {
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
-        if (owner) {
+        if (retain){
             cmdData->owner = shared_from_this();
         }
         DoAsynchronousCommand(world(),
@@ -2028,8 +2421,7 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
 
     if (path) {
         unit->delegate().open(path, editor, threaded, mode);
-    }
-    else {
+    } else {
         LOG_WARNING("vst_open: expecting string argument!");
     }
 }
@@ -2046,6 +2438,18 @@ void vst_reset(VSTPlugin *unit, sc_msg_iter *args) {
 void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
     bool show = args->geti();
     unit->delegate().showEditor(show);
+}
+
+void vst_pos(VSTPlugin* unit, sc_msg_iter *args) {
+    int x = args->geti();
+    int y = args->geti();
+    unit->delegate().setEditorPos(x, y);
+}
+
+void vst_size(VSTPlugin* unit, sc_msg_iter *args) {
+    int w = args->geti();
+    int h = args->geti();
+    unit->delegate().setEditorSize(w, h);
 }
 
 // helper function
@@ -2077,12 +2481,10 @@ void vst_set(VSTPlugin* unit, sc_msg_iter *args) {
             if (vst_param_index(unit, args, index)) {
                 if (args->nextTag() == 's') {
                     unit->delegate().setParam(index, args->gets());
-                }
-                else {
+                } else {
                     unit->delegate().setParam(index, args->getf());
                 }
-            }
-            else {
+            } else {
                 args->getf(); // swallow arg
             }
         }
@@ -2099,13 +2501,11 @@ void vst_setn(VSTPlugin* unit, sc_msg_iter *args) {
                 for (int i = 0; i < count; ++i) {
                     if (args->nextTag() == 's') {
                         unit->delegate().setParam(index + i, args->gets());
-                    }
-                    else {
+                    } else {
                         unit->delegate().setParam(index + i, args->getf());
                     }
                 }
-            }
-            else {
+            } else {
                 int32 count = args->geti();
                 while (count--) {
                     args->getf(); // swallow args
@@ -2127,8 +2527,7 @@ void vst_get(VSTPlugin* unit, sc_msg_iter *args) {
     int32 index = -1;
     if (vst_param_index(unit, args, index)) {
         unit->delegate().getParam(index);
-    }
-    else {
+    } else {
         unit->delegate().sendMsg("/vst_set", -1);
     }
 }
@@ -2139,8 +2538,7 @@ void vst_getn(VSTPlugin* unit, sc_msg_iter *args) {
     if (vst_param_index(unit, args, index)) {
         int32 count = args->geti();
         unit->delegate().getParams(index, count);
-    }
-    else {
+    } else {
         unit->delegate().sendMsg("/vst_setn", -1);
     }
 }
@@ -2155,8 +2553,7 @@ void vst_domap(VSTPlugin* unit, sc_msg_iter* args, bool audio) {
                 for (int i = 0; i < numChannels; ++i) {
                     unit->delegate().mapParam(index + i, bus + i, audio);
                 }
-            }
-            else {
+            } else {
                 args->geti(); // swallow bus
                 args->geti(); // swallow numChannels
             }
@@ -2184,8 +2581,7 @@ void vst_unmap(VSTPlugin* unit, sc_msg_iter *args) {
                     unit->delegate().unmapParam(index);
                 }
             } while (args->remain() > 0);
-        }
-        else {
+        } else {
             unit->delegate().unmapAll();
         }
     }
@@ -2207,8 +2603,7 @@ void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
     const char *name = args->gets();
     if (name) {
         unit->delegate().setProgramName(name);
-    }
-    else {
+    } else {
         LOG_WARNING("vst_program_name: expecting string argument!");
     }
 }
@@ -2218,8 +2613,7 @@ void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
         const char* name = args->gets(); // file name
         bool async = args->geti();
         unit->delegate().readPreset<false>(name, async);
-    }
-    else {
+    } else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
@@ -2235,8 +2629,7 @@ void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
         const char* name = args->gets(); // file name
         bool async = args->geti();
         unit->delegate().writePreset<false>(name, async);
-    }
-    else {
+    } else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
@@ -2269,8 +2662,7 @@ void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
         const char* name = args->gets(); // file name
         bool async = args->geti();
         unit->delegate().writePreset<true>(name, async);
-    }
-    else {
+    } else {
         int32 buf = args->geti(); // buf num
         bool async = args->geti();
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
@@ -2402,6 +2794,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     if (save){
         writeIniFile();
     }
+#if 1
+    // filter duplicate/stale plugins
+    plugins.erase(std::remove_if(plugins.begin(), plugins.end(), [](auto& p){
+        return gPluginManager.findPlugin(makeKey(*p)) != p;
+    }), plugins.end());
+#endif
     // write new info to file (only for local Servers) or buffer
     if (data->path[0]) {
         // write to file
@@ -2413,12 +2811,10 @@ bool cmdSearch(World *inWorld, void* cmdData) {
             for (auto& plugin : plugins) {
                 serializePlugin(file, *plugin);
             }
-        }
-        else {
+        } else {
             LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
         }
-    }
-    else if (data->bufnum >= 0) {
+    } else if (data->bufnum >= 0) {
         // write to buffer
         auto buf = World_GetNRTBuf(inWorld, data->bufnum);
         data->freeData = buf->data; // to be freed in stage 4
@@ -2644,14 +3040,15 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 // system callbacks during the "next" routine (which would be dangerous anyway).
 
 // Another problem is that the Server doesn't zero any RT memory for performance reasons.
-// This means we can't check for 0 or nullptrs... The current solution is to set the
-// "initialized_" member to some magic value in the constructor. In the destructor we zero the
-// field to protected against cases where the next VSTPlugin instance we be allocated at the same address.
-// The member has to be volate to ensure that the compiler doesn't eliminate any stores!
+// This means we can't check for 0 or nullptrs... The current solution is to (ab)use 'specialIndex',
+// which *is* set to zero.
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
     if (unit->initialized()) {
-        fn(unit, args); // the constructor has been called, so we can savely run the command
+        // the constructor has been called, so we can savely run the command
+        if (unit->valid()){
+            fn(unit, args);
+        }
     } else {
         unit->queueUnitCmd((UnitCmdFunc)fn, args); // queue it
     }
@@ -2670,6 +3067,8 @@ PluginLoad(VSTPlugin) {
     UnitCmd(close);
     UnitCmd(reset);
     UnitCmd(vis);
+    UnitCmd(pos);
+    UnitCmd(size);
     UnitCmd(set);
     UnitCmd(setn);
     UnitCmd(param_query);
@@ -2702,7 +3101,7 @@ PluginLoad(VSTPlugin) {
 
     setLogFunction(SCLog);
 
-    Print("VSTPlugin %s\n", getVersionString().c_str());
+    Print("VSTPlugin %s\n", getVersionString());
     // read cached plugin info
     readIniFile();
 }

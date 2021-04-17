@@ -1,5 +1,8 @@
 #include "PluginClient.h"
-#include "Utility.h"
+
+#include "Log.h"
+#include "MiscUtils.h"
+#include "FileUtils.h"
 
 #include <algorithm>
 #include <sstream>
@@ -59,8 +62,10 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
 
     auto chn = bridge_->getNRTChannel();
     if (chn.addCommand(cmd, cmdSize)){
+        LOG_DEBUG("PluginClient: wait for Server");
         chn.send();
     } else {
+        LOG_DEBUG("PluginClient: send info via tmp file");
         // info too large, try transmit via tmp file
         std::stringstream ss;
         ss << getTmpDirectory() << "/vst_" << (void *)this;
@@ -78,18 +83,21 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
                         "PluginClient: couldn't send plugin info");
         }
 
+        LOG_DEBUG("PluginClient: wait for Server");
         chn.send(); // tmp file is still in scope!
-    }
-
-    // collect replies
-    const ShmCommand *reply;
-    while (chn.getReply(reply)){
-        dispatchReply(*reply);
     }
 
     // in case the process has already crashed during creation...
     if (!bridge_->alive()){
         throw Error(Error::PluginError, "plugin crashed");
+    }
+
+    LOG_DEBUG("PluginClient: plugin created");
+
+    // collect replies (after check!)
+    const ShmCommand *reply;
+    while (chn.getReply(reply)){
+        dispatchReply(*reply);
     }
 
     LOG_DEBUG("PluginClient: done!");
@@ -145,28 +153,9 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
 }
 
 template<typename T>
-void PluginClient::doProcess(ProcessData<T>& data){
+void PluginClient::doProcess(ProcessData& data){
     if (!check()){
-        // bypass
-        // LATER also use this for *hard* bypass
-        // (but still send parameters?)
-        auto bypass = [](auto input, auto nin,
-                auto output, auto nout, auto nsamples){
-            for (int i = 0; i < nout; ++i){
-                if (i < nin){
-                    std::copy(input[i], input[i] + nsamples, output[i]);
-                } else {
-                    std::fill(output[i], output[i] + nsamples, 0);
-                }
-            }
-        };
-
-        bypass(data.input, data.numInputs,
-               data.output, data.numOutputs, data.numSamples);
-
-        bypass(data.auxInput, data.numAuxInputs,
-               data.auxOutput, data.numAuxOutputs, data.numSamples);
-
+        bypass(data);
         commands_.clear(); // avoid commands piling up!
         return;
     }
@@ -178,27 +167,21 @@ void PluginClient::doProcess(ProcessData<T>& data){
     // send process command
     ShmCommand cmd(Command::Process);
     cmd.id = id();
+    cmd.process.numSamples = data.numSamples;
+    cmd.process.precision = (uint16_t)data.precision;
     cmd.process.numInputs = data.numInputs;
     cmd.process.numOutputs = data.numOutputs;
-    cmd.process.numAuxInputs = data.numAuxInputs;
-    cmd.process.numAuxOutpus = data.numAuxOutputs;
-    cmd.process.numSamples = data.numSamples;
 
     channel.AddCommand(cmd, process);
 
-    // write audio data
-    // since we have sent the number of channels in the "Process" command,
-    // we can simply write all channels sequentially to avoid additional copying.
-    auto sendBus = [&](const T** bus, int numChannels){
-        // LOG_DEBUG("PluginClient: send audio bus with "
-        //          << numChannels << " channels");
-        for (int i = 0; i < numChannels; ++i){
-            channel.addCommand(bus[i], sizeof(T) * data.numSamples);
+    // send input busses
+    for (int i = 0; i < data.numInputs; ++i){
+        auto& bus = data.inputs[i];
+        // write all channels sequentially to avoid additional copying.
+        for (int j = 0; j < bus.numChannels; ++j){
+            channel.addCommand((const T *)bus.channelData32[j], sizeof(T) * data.numSamples);
         }
-    };
-
-    sendBus(data.input, data.numInputs);
-    sendBus(data.auxInput, data.numAuxInputs);
+    }
 
     // add commands (parameter changes, MIDI messages, etc.)
     // LOG_DEBUG("PluginClient: send commands");
@@ -208,28 +191,35 @@ void PluginClient::doProcess(ProcessData<T>& data){
     // LOG_DEBUG("PluginClient: wait");
     channel.send();
 
-    // read audio data
-    // here we simply read all channels sequentially.
-    auto readBus = [&](T** bus, int numChannels){
-        // LOG_DEBUG("PluginClient: receive audio bus with "
-        //          << numChannels << " channels");
-        for (int i = 0; i < numChannels; ++i){
-            const T* chn;
+    // check if host is still alive
+    if (!check()){
+        bypass(data);
+        commands_.clear(); // avoid commands piling up!
+        return;
+    }
+
+    // read output busses
+    for (int i = 0; i < data.numOutputs; ++i){
+        auto& bus = data.outputs[i];
+        // LOG_DEBUG("PluginClient: read audio bus " << i << " with "
+        //     << bus.numChannels << " channels");
+        // read channels
+        for (int j = 0; j < bus.numChannels; ++j){
+            auto chn = (T *)bus.channelData32[j];
+            const T* reply;
             size_t size;
-            if (channel.getReply(chn, size)){
+            if (channel.getReply(reply, size)){
                 // size can be larger because of message
                 // alignment - don't use in std::copy!
                 assert(size >= data.numSamples * sizeof(T));
-                std::copy(chn, chn + data.numSamples, bus[i]);
+                std::copy(reply, reply + data.numSamples, chn);
             } else {
-                std::fill(bus[i], bus[i] + data.numSamples, 0);
-                LOG_ERROR("PluginClient: missing audio output channel " << i);
+                std::fill(chn, chn + data.numSamples, 0);
+                LOG_ERROR("PluginClient: missing channel " << j
+                          << " for audio output bus " << i);
             }
         }
-    };
-
-    readBus(data.output, data.numOutputs);
-    readBus(data.auxOutput, data.numAuxOutputs);
+    }
 
     // get replies (parameter changes, MIDI messages, etc.)
     // LOG_DEBUG("PluginClient: read replies");
@@ -329,8 +319,10 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
         break;
     }
     case Command::ProgramNameIndexed:
-        programCache_[reply.programName.index]
-                = reply.programName.name;
+        if (info().numPrograms() > 0){
+            programCache_[reply.programName.index]
+                    = reply.programName.name;
+        }
         break;
     case Command::ProgramNumber:
         program_ = reply.i;
@@ -374,12 +366,12 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
     }
 }
 
-void PluginClient::process(ProcessData<float>& data){
-    doProcess(data);
-}
-
-void PluginClient::process(ProcessData<double>& data){
-    doProcess(data);
+void PluginClient::process(ProcessData& data){
+    if (data.precision == ProcessPrecision::Double){
+        doProcess<double>(data);
+    } else {
+        doProcess<float>(data);
+    }
 }
 
 void PluginClient::suspend(){
@@ -411,23 +403,72 @@ void PluginClient::resume(){
     chn.checkError();
 }
 
-void PluginClient::setNumSpeakers(int in, int out, int auxin, int auxout){
+void PluginClient::setNumSpeakers(int *input, int numInputs,
+                                  int *output, int numOutputs){
     if (!check()){
         return;
     }
 
-    LOG_DEBUG("PluginClient: setNumSpeakers");
-    ShmCommand cmd(Command::SetNumSpeakers, id());
-    cmd.speakers.in = in;
-    cmd.speakers.auxin = auxin;
-    cmd.speakers.out = out;
-    cmd.speakers.auxout = auxout;
+    LOG_DEBUG("requested bus arrangement:");
+    for (int i = 0; i < numInputs; ++i){
+        LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
+    }
+    for (int i = 0; i < numOutputs; ++i){
+        LOG_DEBUG("output bus " << i << ": " << output[i] << "ch");
+    }
+
+    int size = sizeof(int32_t) * (numInputs + numOutputs);
+    auto totalSize = CommandSize(ShmCommand, speakers, size);
+    auto cmd = (ShmCommand *)alloca(totalSize);
+    new (cmd) ShmCommand(Command::SetNumSpeakers, id());
+    cmd->speakers.numInputs = numInputs;
+    cmd->speakers.numOutputs = numOutputs;
+    // copy input and output arrangements
+    for (int i = 0; i < numInputs; ++i){
+        cmd->speakers.speakers[i] = input[i];
+    }
+    for (int i = 0; i < numOutputs; ++i){
+        cmd->speakers.speakers[i + numInputs] = output[i];
+    }
 
     auto chn = bridge().getNRTChannel();
-    chn.AddCommand(cmd, speakers);
+    chn.addCommand(cmd, totalSize);
     chn.send();
 
-    chn.checkError();
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
+
+    // get reply
+    const ShmCommand* reply;
+    if (chn.getReply(reply)){
+        if (reply->type == Command::SpeakerArrangement){
+            // get actual input and output arrangements
+            assert(reply->speakers.numInputs == numInputs);
+            assert(reply->speakers.numOutputs == numOutputs);
+            for (int i = 0; i < numInputs; ++i){
+                input[i] = reply->speakers.speakers[i];
+            }
+            for (int i = 0; i < numOutputs; ++i){
+                output[i] = reply->speakers.speakers[i + numInputs];
+            }
+        } else if (reply->type == Command::Error){
+            reply->throwError();
+        } else {
+            LOG_ERROR("setNumSpeakers: unknown reply");
+        }
+    } else {
+        LOG_ERROR("setNumSpeakers: missing reply!");
+    }
+
+    LOG_DEBUG("actual bus arrangement:");
+    for (int i = 0; i < numInputs; ++i){
+        LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
+    }
+    for (int i = 0; i < numOutputs; ++i){
+        LOG_DEBUG("output bus " << i << ": " << output[i] << "ch");
+    }
 }
 
 int PluginClient::getLatencySamples(){
@@ -437,7 +478,13 @@ int PluginClient::getLatencySamples(){
 void PluginClient::setListener(IPluginListener::ptr listener) {
     listener_ = listener;
     if (listener){
-        bridge_->addUIClient(id_, listener);
+        if (bridge_->alive()){
+            bridge_->addUIClient(id_, listener);
+        } else {
+            // in case the plugin has crashed during setup,
+            // but we didn't have a chance to get a notification
+            listener->pluginCrashed();
+        }
     } else {
         bridge_->removeUIClient(id_);
     }
@@ -535,6 +582,11 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     chn.addCommand(cmd, totalSize);
     chn.send();
 
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
+
     // get replies
     const ShmCommand* reply;
     while (chn.getReply(reply)){
@@ -552,6 +604,11 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, empty);
     chn.send();
+
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
 
     const ShmCommand *reply;
     if (chn.getReply(reply)){
@@ -587,7 +644,7 @@ void PluginClient::closeEditor(){
     FORBIDDEN_METHOD("closeEditor")
 }
 
-bool PluginClient::getEditorRect(int &left, int &top, int &right, int &bottom) const {
+bool PluginClient::getEditorRect(Rect& rect) const {
     FORBIDDEN_METHOD("getEditorRect")
 }
 
@@ -657,10 +714,6 @@ WindowClient::WindowClient(PluginClient& plugin)
 
 WindowClient::~WindowClient(){}
 
-void* WindowClient::getHandle() {
-    return nullptr;
-}
-
 void WindowClient::open(){
     LOG_DEBUG("WindowOpen");
     ShmUICommand cmd(Command::WindowOpen, plugin_->id());
@@ -687,10 +740,6 @@ void WindowClient::setSize(int w, int h){
     cmd.windowSize.width = w;
     cmd.windowSize.height = h;
     plugin_->bridge().postUIThread(cmd);
-}
-
-void WindowClient::update(){
-    // ignore
 }
 
 } // vst

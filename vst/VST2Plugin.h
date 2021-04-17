@@ -32,7 +32,13 @@ class VST2Factory final : public PluginFactory {
  private:
     void doLoad();
     std::unique_ptr<VST2Plugin> doCreate(PluginInfo::const_ptr desc) const;
-    using EntryPoint = AEffect *(*)(audioMasterCallback);
+    // Although calling convention specifiers like __cdecl and __stdcall
+    // should be meaningless on x86-64 platforms, Wine apparantely treats
+    // them as a hint that a function (pointer) uses the Microsoft x64 calling
+    // convention instead of System V! I couldn't find any documentation
+    // to confirm this, but it seems to work in practice. Otherwise,
+    // calling the entry point would crash immediately with stack corruption.
+    using EntryPoint = AEffect *(VSTCALLBACK *)(audioMasterCallback);
     EntryPoint entry_;
 };
 
@@ -54,12 +60,12 @@ class VST2Plugin final : public IPlugin {
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-    void process(ProcessData<float>& data) override;
-    void process(ProcessData<double>& data) override;
+    void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
     void setBypass(Bypass state) override;
-    void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
+    void setNumSpeakers(int *input, int numInputs,
+                        int *output, int numOutputs) override;
     int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override {
@@ -104,7 +110,7 @@ class VST2Plugin final : public IPlugin {
 
     void openEditor(void *window) override;
     void closeEditor() override;
-    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    bool getEditorRect(Rect& rect) const override;
     void updateEditor() override;
     void checkEditorSize(int &width, int &height) const override;
     void resizeEditor(int width, int height) override;
@@ -152,7 +158,10 @@ class VST2Plugin final : public IPlugin {
         // processing
     void preProcess(int nsamples);
     template<typename T, typename TProc>
-    void doProcessing(ProcessData<T>& data, TProc processRoutine);
+    void doProcess(ProcessData& data, TProc processRoutine);
+    template<typename T, typename TProc>
+    void bypassProcess(ProcessData& data, TProc processRoutine,
+                       Bypass state, bool ramp);
     void postProcess(int nsample);
         // process VST events from plugin
     void processEvents(VstEvents *events);
@@ -168,8 +177,6 @@ class VST2Plugin final : public IPlugin {
     std::weak_ptr<IPluginListener> listener_;
         // processing
     int latency_ = 0;
-    int numInputChannels_ = 0;
-    int numOutputChannels_ = 0;
     VstTimeInfo timeInfo_;
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;

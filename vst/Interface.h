@@ -7,18 +7,23 @@
 #include <functional>
 #include <memory>
 
-#include <mutex>
-
-// for intptr_t
-#ifdef _MSC_VER
-#ifdef _WIN64
-typedef __int64 intptr_t;
-#else
-typedef __int32 intptr_t;
-#endif
-typedef unsigned int uint32_t;
-#else
 #include <stdint.h>
+
+#define VST_WINDOWS 0
+#define VST_MACOS 1
+#define VST_LINUX 2
+
+// overriden when building Wine!
+#ifndef VST_HOST_SYSTEM
+# if defined(_WIN32)
+#  define VST_HOST_SYSTEM VST_WINDOWS
+# elif defined(__APPLE__)
+#  define VST_HOST_SYSTEM VST_MACOS
+# elif defined(__linux__)
+#  define VST_HOST_SYSTEM VST_LINUX
+# else
+#  error "unsupported host system"
+# endif
 #endif
 
 #ifndef USE_VST2
@@ -29,25 +34,44 @@ typedef unsigned int uint32_t;
 #define USE_VST3 1
 #endif
 
-#ifndef USE_BRIDGE
-#define USE_BRIDGE 0
+#if defined(__WINE__)
+# define USE_BRIDGE 1
+#else
+# ifndef USE_BRIDGE
+#  define USE_BRIDGE 1
+# endif
+#endif
+
+#if defined(__WINE__)
+# define USE_WINE 0
+#elif defined(_WIN32) && USE_WINE
+# error "USE_WINE cannot be set on Windows!"
+#else
+# ifndef USE_WINE
+#  define USE_WINE 0
+# endif
+#endif
+
+// older clang versions don't ship std::filesystem
+#ifndef USE_STDFS
+# if defined(_WIN32)
+#  define USE_STDFS 1
+# else
+#  define USE_STDFS 0
+# endif
 #endif
 
 namespace vst {
 
 const int VERSION_MAJOR = 0;
-const int VERSION_MINOR = 4;
-const int VERSION_PATCH = 1;
-const int VERSION_PRERELEASE = 0;
+const int VERSION_MINOR = 5;
+const int VERSION_PATCH = 0;
+const int VERSION_PRERELEASE = 1;
 
-std::string getVersionString();
+const char * getVersionString();
 
 using LogFunction = void (*)(const char *);
 void setLogFunction(LogFunction f);
-
-class SharedMutex;
-class WriteLock;
-class ReadLock;
 
 struct MidiEvent {
     MidiEvent(char _status = 0, char _data1 = 0, char _data2 = 0,
@@ -102,8 +126,39 @@ enum class PluginType {
     VST3
 };
 
+struct Rect {
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+
+    bool valid() const {
+        return w > 0 && h > 0;
+    }
+};
+
 struct PluginInfo;
+
 class IWindow;
+
+struct AudioBus {
+    int numChannels;
+    union {
+        float **channelData32;
+        double **channelData64;
+    };
+};
+
+struct ProcessData {
+    const AudioBus *inputs;
+    AudioBus *outputs;
+    int numInputs;
+    int numOutputs;
+    int numSamples;
+    ProcessPrecision precision;
+};
+
+void bypass(ProcessData& data);
 
 class IPlugin {
  public:
@@ -114,25 +169,12 @@ class IPlugin {
 
     virtual const PluginInfo& info() const = 0;
 
-    template<typename T>
-    struct ProcessData {
-        const T **input = nullptr;
-        const T **auxInput = nullptr;
-        T **output = nullptr;
-        T **auxOutput = nullptr;
-        int numInputs = 0;
-        int numOutputs = 0;
-        int numAuxInputs = 0;
-        int numAuxOutputs = 0;
-        int numSamples = 0;
-    };
     virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
-    virtual void process(ProcessData<float>& data) = 0;
-    virtual void process(ProcessData<double>& data) = 0;
+    virtual void process(ProcessData& data) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;
     virtual void setBypass(Bypass state) = 0;
-    virtual void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) = 0;
+    virtual void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) = 0;
     virtual int getLatencySamples() = 0;
 
     virtual void setListener(IPluginListener::ptr listener) = 0;
@@ -181,7 +223,7 @@ class IPlugin {
 
     virtual void openEditor(void *window) = 0;
     virtual void closeEditor() = 0;
-    virtual bool getEditorRect(int &left, int &top, int &right, int &bottom) const = 0;
+    virtual bool getEditorRect(Rect& rect) const = 0;
     virtual void updateEditor() = 0;
     virtual void checkEditorSize(int& width, int& height) const = 0;
     virtual void resizeEditor(int width, int height) = 0;
@@ -225,207 +267,6 @@ enum class RunMode {
     Sandbox,
     Native,
     Bridge
-};
-
-struct PluginInfo final {
-    static const uint32_t NoParamID = 0xffffffff;
-
-    using ptr = std::shared_ptr<PluginInfo>;
-    using const_ptr = std::shared_ptr<const PluginInfo>;
-
-    PluginInfo(std::shared_ptr<const IFactory> f);
-    ~PluginInfo();
-    PluginInfo(const PluginInfo&) = delete;
-    void operator =(const PluginInfo&) = delete;
-
-    void setFactory(std::shared_ptr<const IFactory> factory);
-    const std::string& path() const { return path_; }
-    // create new instances
-    // throws an Error exception on failure!
-    IPlugin::ptr create(bool editor, bool threaded, RunMode mode = RunMode::Auto) const;
-    // read/write plugin description
-    void serialize(std::ostream& file) const;
-    void deserialize(std::istream& file, int versionMajor = VERSION_MAJOR,
-                     int versionMinor = VERSION_MINOR, int versionPatch = VERSION_PATCH);
-#if USE_VST2
-    void setUniqueID(int _id); // VST2
-    int getUniqueID() const {
-        return id_.id;
-    }
-#endif
-#if USE_VST3
-    void setUID(const char *uid); // VST3
-    const char* getUID() const {
-        return id_.uid;
-    }
-#endif
-    struct SubPlugin {
-        std::string name;
-        int id;
-    };
-    using SubPluginList = std::vector<SubPlugin>;
-    SubPluginList subPlugins;
-
-    PluginType type() const { return type_; }
-    // info data
-    std::string uniqueID;
-    std::string name;
-    std::string vendor;
-    std::string category;
-    std::string version;
-    std::string sdkVersion;
-    int numInputs = 0;
-    int numAuxInputs = 0;
-    int numOutputs = 0;
-    int numAuxOutputs = 0;
-#if USE_VST3
-    uint32_t programChange = NoParamID; // no param
-    uint32_t bypass = NoParamID; // no param
-#endif
-    // parameters
-    struct Param {
-        std::string name;
-        std::string label;
-        uint32_t id = 0;
-    };
-    std::vector<Param> parameters;
-    void addParameter(Param param){
-        auto index = parameters.size();
-        // inverse mapping
-        paramMap_[param.name] = index;
-    #if USE_VST3
-        // index -> ID mapping
-        indexToIdMap_[index] = param.id;
-        // ID -> index mapping
-        idToIndexMap_[param.id] = index;
-    #endif
-        // add parameter
-        parameters.push_back(std::move(param));
-    }
-
-    void addParamAlias(int index, const std::string& key){
-        paramMap_[key] = index;
-    }
-    int findParam(const std::string& key) const {
-        auto it = paramMap_.find(key);
-        if (it != paramMap_.end()){
-            return it->second;
-        } else {
-            return -1;
-        }
-    }
-#if USE_VST3
-    // get VST3 parameter ID from index
-    uint32_t getParamID(int index) const {
-        auto it = indexToIdMap_.find(index);
-        if (it != indexToIdMap_.end()){
-            return it->second;
-        }
-        else {
-            return 0; // throw?
-        }
-    }
-    // get index from VST3 parameter ID
-    int getParamIndex(uint32_t _id) const {
-        auto it = idToIndexMap_.find(_id);
-        if (it != idToIndexMap_.end()){
-            return it->second;
-        }
-        else {
-            return -1; // not automatable
-        }
-    }
-#endif
-    int numParameters() const {
-        return parameters.size();
-    }
-    // presets
-    void scanPresets();
-    int numPresets() const { return presets.size(); }
-    int findPreset(const std::string& name) const;
-    Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
-    int addPreset(Preset preset);
-    bool removePreset(int index, bool del = true);
-    bool renamePreset(int index, const std::string& newName);
-    std::string getPresetFolder(PresetType type, bool create = false) const;
-    PresetList presets;
-    // for thread-safety (if needed)
-    WriteLock writeLock();
-    ReadLock readLock() const;
-    // default programs
-    std::vector<std::string> programs;
-    int numPrograms() const {
-        return programs.size();
-    }
-    bool editor() const {
-        return flags & HasEditor;
-    }
-    bool synth() const {
-        return flags & IsSynth;
-    }
-    bool singlePrecision() const {
-        return flags & SinglePrecision;
-    }
-    bool doublePrecision() const {
-        return flags & DoublePrecision;
-    }
-    bool hasPrecision(ProcessPrecision precision) const {
-        if (precision == ProcessPrecision::Double) {
-            return doublePrecision();
-        }
-        else {
-            return singlePrecision();
-        }
-    }
-    bool midiInput() const {
-        return flags & MidiInput;
-    }
-    bool midiOutput() const {
-        return flags & MidiOutput;
-    }
-    bool sysexInput() const {
-        return flags & SysexInput;
-    }
-    bool sysexOutput() const {
-        return flags & SysexOutput;
-    }
-    bool bridged() const {
-        return flags & Bridged;
-    }
-    // flags
-    enum Flags {
-        HasEditor = 1 << 0,
-        IsSynth = 1 << 1,
-        SinglePrecision = 1 << 2,
-        DoublePrecision = 1 << 3,
-        MidiInput = 1 << 4,
-        MidiOutput = 1 << 5,
-        SysexInput = 1 << 6,
-        SysexOutput = 1 << 7,
-        Bridged = 1 << 8
-    };
-    uint32_t flags = 0;
- private:
-    std::weak_ptr<const IFactory> factory_;
-    std::string path_;
-    // param name to param index
-    std::unordered_map<std::string, int> paramMap_;
-#if USE_VST3
-    // param index to ID (VST3 only)
-    std::unordered_map<int, uint32_t> indexToIdMap_;
-    // param ID to index (VST3 only)
-    std::unordered_map<uint32_t, int> idToIndexMap_;
-#endif
-    PluginType type_;
-    union ID {
-        char uid[16];
-        int32_t id;
-    };
-    ID id_;
-    // helper methods
-    void sortPresets(bool userOnly = true);
-    mutable std::unique_ptr<SharedMutex> mutex;
-    mutable bool didCreatePresetFolder = false;
 };
 
 class IModule {
@@ -472,7 +313,7 @@ class Error : public std::exception {
 };
 
 struct ProbeResult {
-    PluginInfo::ptr plugin;
+    std::shared_ptr<PluginInfo> plugin;
     Error error;
     int index = 0;
     int total = 0;
@@ -494,17 +335,17 @@ class IFactory {
     // throws an Error exception on failure!
     static IFactory::ptr load(const std::string& path, bool probe = false);
 
-    virtual ~IFactory(){}
-    virtual void addPlugin(PluginInfo::ptr desc) = 0;
-    virtual PluginInfo::const_ptr getPlugin(int index) const = 0;
-    virtual PluginInfo::const_ptr findPlugin(const std::string& name) const = 0;
+    virtual ~IFactory() {}
+    virtual void addPlugin(std::shared_ptr<PluginInfo> desc) = 0;
+    virtual std::shared_ptr<const PluginInfo> getPlugin(int index) const = 0;
+    virtual std::shared_ptr<const PluginInfo> findPlugin(const std::string& name) const = 0;
     virtual int numPlugins() const = 0;
 
     void probe(ProbeCallback callback){
         probeAsync(false)(std::move(callback));
     }
     virtual ProbeFuture probeAsync(bool nonblocking) = 0;
-    virtual PluginInfo::const_ptr probePlugin(int id) const = 0;
+    virtual std::shared_ptr<const PluginInfo> probePlugin(int id) const = 0;
 
     bool valid() const { return numPlugins() > 0; }
 
@@ -525,7 +366,13 @@ const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
 
-const std::string& getBundleBinaryPath();
+const char * getBundleBinaryPath();
+
+#if USE_WINE
+const char * getWineCommand();
+
+const char * getWineFolder();
+#endif
 
 class IWindow {
  public:
@@ -536,13 +383,15 @@ class IWindow {
 
     virtual ~IWindow() {}
 
-    virtual void* getHandle() = 0; // get system-specific handle to the window
-
+    // user methods
     virtual void open() = 0;
     virtual void close() = 0;
     virtual void setPos(int x, int y) = 0;
     virtual void setSize(int w, int h) = 0;
+
+    // plugin methods
     virtual void update() {}
+    virtual void resize(int w, int h) = 0;
 };
 
 namespace UIThread {
@@ -559,9 +408,20 @@ namespace UIThread {
 
     bool isCurrentThread();
 
+    bool available();
+
     using Callback = void (*)(void *);
 
+    bool sync();
+
     bool callSync(Callback cb, void *user);
+
+    template<typename T>
+    bool callSync(const T& fn){
+        return callSync([](void *x){
+            (*static_cast<const T *>(x))();
+        }, (void *)&fn);
+    }
 
     bool callAsync(Callback cb, void *user);
 

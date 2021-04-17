@@ -1,12 +1,16 @@
 #include "Interface.h"
-#include "Utility.h"
+#include "Log.h"
+#include "MiscUtils.h"
 #include "ShmInterface.h"
 
 #include "plf_nanotimer/plf_nanotimer.h"
 
 #ifdef _WIN32
 # define APPNAME "shm_test.exe"
-# include <Windows.h>
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 #else
 # define APPNAME "shm_test"
 # include <unistd.h>

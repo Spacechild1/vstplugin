@@ -13,7 +13,10 @@
 #include <thread>
 
 #ifdef _WIN32
-#include "Windows.h"
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+#include "windows.h"
 #else
 # include <unistd.h>
 # include <stdio.h>
@@ -69,8 +72,8 @@ struct _Channel {
 
 #define AddCommand(cmd, field) addCommand(&(cmd), (cmd).headerSize + sizeof((cmd).field))
 
-using RTChannel = _Channel<SpinLock>;
-using NRTChannel = _Channel<SharedMutex>;
+using RTChannel = _Channel<PaddedSpinLock>;
+using NRTChannel = _Channel<Mutex>;
 
 /*//////////////////////////// PluginBridge ///////////////////////////*/
 
@@ -121,12 +124,12 @@ class PluginBridge final
 #else
     pid_t pid_;
 #endif
-    std::unique_ptr<SpinLock[]> locks_;
+    std::unique_ptr<PaddedSpinLock[]> locks_;
     std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;
-    SharedMutex clientMutex_;
-    SharedMutex nrtMutex_;
+    Mutex clientMutex_;
+    Mutex nrtMutex_;
     // unnecessary, as all IWindow methods should be called form the same thread
-    // SharedMutex uiMutex_;
+    // Mutex uiMutex_;
     UIThread::Handle pollFunction_;
 
     void pollUIThread();

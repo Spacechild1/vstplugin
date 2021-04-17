@@ -1,0 +1,213 @@
+TITLE:: VSTPluginNodeProxyController
+summary:: VSTPluginController for JITLib
+categories:: JITLib
+related:: Classes/VSTPlugin
+
+DESCRIPTION::
+This class is used to control a specific link::Classes/VSTPlugin:: instance in a link::Classes/NodeProxy::, so you can
+open plugins, automate parameters, change programs, send MIDI messages, etc.
+
+Have a look at the examples at the bottom!
+
+note::Don't use any NodeProxy crossfading methods, like link::Classes/NodeProxy#-xset::, because this would close the actual VST plugin and invalidate the corresponding controller.
+
+(The reason is that JITLib implements crossfading by creating a new Synth on the Server and destroying the old one.)::
+
+warning::link::Classes/NodeProxy#-<<>:: and link::Classes/NodeProxy#-<>>:: call code::xset:: internally. Use code::set(\in, ...):: instead!::
+
+SUBSECTION:: NodeProxy roles
+
+To use VSTPlugin in a NodeProxy, you have to use one the following link::Reference/NodeProxy_roles:::
+
+definitionlist::
+## code::\vst:: || a UGen graph function containing one or more VSTPlugin instances.
+code::
+Ndef(\test, \vst -> { VSTPlugin.ar(nil, 2) });
+::
+## code::\vstDef:: || the name of a SynthDef containing one or more VSTPlugin instances
+code::
+SynthDef(\vsti, { |out| Out.ar(out, VSTPlugin.ar(nil, 2)) }).add;
+
+Ndef(\test, \vstDef -> \vsti);
+::
+## code::\vstFilter:: || like code::\filter:: (use the proxy`s own bus as the input)
+code::
+Ndef(\vst)[0] = { WhiteNoise.ar(0.1) ! 2 };
+Ndef(\vst)[1] = \vstFilter -> { |in| VSTPlugin.ar(in, 2) };
+::
+::
+
+
+CLASSMETHODS::
+
+METHOD:: new
+Create a new VSTPluginNodeProxyController for a given NodeProxy.
+
+ARGUMENT:: proxy
+the link::Classes/NodeProxy::.
+
+ARGUMENT:: index
+the source index.
+
+ARGUMENT:: id
+a Symbol which uniquely identifies the link::Classes/VSTPlugin:: in the link::Classes/SynthDef::.
+
+note::If this is the only VSTPlugin instance in the SynthDef, the code::id:: argument can be omitted.::
+
+ARGUMENT:: wait
+the default wait time, see link::Classes/VSTPluginController#-wait::.
+
+DISCUSSION::
+Initially, no VST plugin is loaded and the UGen is automatically bypassed (i.e. the input is just passed through).
+
+
+METHOD:: collect
+Same as link::#-new::, but returns an link::Classes/Event:: of VSTPluginNodeProxyControllers, with their IDs used as keys.
+This is useful if you have a SynthDef containing several VSTPlugin instances.
+
+ARGUMENT:: proxy
+the NodeProxy, see link::#-new::
+
+ARGUMENT:: index
+the source index
+
+ARGUMENT:: ids
+an Array of IDs referring to link::Classes/VSTPlugin:: instances in the link::Classes/SynthDef::, or code::nil:: (= collect all).
+
+ARGUMENT:: wait
+the default wait time, see link::Classes/VSTPluginController#-wait::.
+
+DISCUSSION::
+code::
+(
+Ndef(\vst, \vst -> {
+	var sig = WhiteNoise.ar(0.1) ! 2;
+	sig = VSTPlugin.ar(sig, 2, id: \fx1);
+	sig = VSTPlugin.ar(sig, 2, id: \fx2);
+}).play;
+
+~fx = VSTPluginNodeProxyController.collect(Ndef(\vst));
+~fx.fx1.open("GChorus", editor: true);
+~fx.fx2.open("GDelay", editor: true);
+)
+::
+
+PRIVATE:: initProxyAndCondition, checkIfStarted
+
+INSTANCEMETHODS::
+
+METHOD:: sendMsg
+
+METHOD:: proxy
+
+EXAMPLES::
+
+code::
+VSTPlugin.search;
+
+// ------------
+// a) Filter white noise through a VST plugin
+(
+Ndef(\test, \vst -> { VSTPlugin.ar(WhiteNoise.ar(0.1) ! 2, 2) }).play;
+
+~fx = VSTPluginNodeProxyController(Ndef(\test)).open("GChorus", editor: true, action: _.set('R Phase', 0.3, \Mix, 0.5));
+)
+
+~fx.editor; // open the VST plugin editor
+
+// automate parameters with a Pbind of type \vst_set
+(
+Pdef(\auto, Pbind(
+	\type, \vst_set,
+    \vst, ~fx, // VSTPluginNodeProxyController
+	\params, [\Depth, \Freq],
+	\Depth, Pwhite(0.1, 0.9),
+    \Freq, Pseq([0.1, 0.2, 0.5, 0.9], inf),
+	\dur, Prand([0.25, 0.5, 1], inf)
+)).play;
+)
+
+Pdef(\auto).stop;
+Pdef(\auto).play;
+
+// ------------
+// b) For more flexibility, let's split it into seperate sources; the first source is filtered by the second source
+(
+Ndef(\test)[0] = { WhiteNoise.ar(0.1) ! 2 };
+Ndef(\test)[1] = \vstFilter -> { |in| VSTPlugin.ar(in, 2) };
+Ndef(\test).play;
+
+// We want to control the source at index 1!
+~fx = VSTPluginNodeProxyController(Ndef(\test), 1).open("GChorus", editor: true);
+)
+
+// ------------
+// c) Let's go one step further and use seperate NodeProxies
+(
+Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
+Ndef(\fx, \vst -> { VSTPlugin.ar(\in.ar(0 ! 2), 2) });
+// Route \white to \fx. (Don't use '<>>' or '<<>'!)
+Ndef(\fx).set(\in, Ndef(\white));
+Ndef(\fx).play;
+
+~fx = VSTPluginNodeProxyController(Ndef(\fx)).open("GChorus", editor: true);
+)
+
+// Now it's possible to change the routing on the fly:
+(
+Ndef(\pink, { PinkNoise.ar(0.1) ! 2 });
+Ndef(\fx).set(\in, Ndef(\pink));
+)
+
+// ------------
+// d) If you look at the last example, you might notice that the VSTPlugin function will always be the same, so it makes sense to use a SynthDef instead! Most of the time the following SynthDefs should be sufficient:
+
+(
+// mono insert FX
+SynthDef(\vst_fx_mono, { |out| Out.ar(out, VSTPlugin.ar(\in.ar(0), 1)) }).add;
+
+// stereo insert FX
+SynthDef(\vst_fx_stereo, { |out| Out.ar(out, VSTPlugin.ar(\in.ar(0 ! 2), 2)) }).add;
+
+// VST instrument (stereo)
+SynthDef(\vsti, { |out| Out.ar(out, VSTPlugin.ar(nil, 2)) }).add;
+)
+
+// Now let's rewrite c) by using the \vstDef role:
+(
+Ndef(\white, { WhiteNoise.ar(0.1) ! 2 });
+Ndef(\fx, \vstDef -> \vst_fx_stereo);
+// Route \white to \fx. (Don't use '<>>' or '<<>'!)
+Ndef(\fx).set(\in, Ndef(\white));
+Ndef(\fx).play;
+
+~fx = VSTPluginNodeProxyController(Ndef(\fx)).open("GChorus", editor: true);
+)
+
+// ------------
+// e) Creating a VST instrument is simple:
+(
+// This needs the \vsti SynthDef above!
+Ndef(\inst, \vstDef -> \vsti).play;
+~inst = VSTPluginNodeProxyController(Ndef(\inst)).open("Dexed", editor: true, action: _.program_(1));
+Ndef(\inst).play;
+)
+
+~inst.editor;
+
+// Now play some notes with a Pbind of type \vst_midi
+(
+Pdef(\seq, Pbind(
+	\type, \vst_midi,
+    \vst, ~inst,
+    \midinote, Pseq(#[0, 2, 4, 7], inf) + Pwhite(-12, 12).stutter(Pwhite(4, 16)) + 60,
+    \dur, Prand(#[0.125, 0.25, 0.5], inf),
+    \legato, Pexprand(0.5, 1.0, inf),
+    \amp, Pexprand(0.5, 1.0, inf)
+)).play;
+)
+// Pause/resume/end the Pbind.
+Pdef(\seq).stop;
+Pdef(\seq).play;
+
+::

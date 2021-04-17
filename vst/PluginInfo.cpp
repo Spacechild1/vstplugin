@@ -1,5 +1,9 @@
-#include "Interface.h"
-#include "Utility.h"
+#include "PluginInfo.h"
+
+#include "CpuArch.h"
+#include "MiscUtils.h"
+#include "FileUtils.h"
+#include "Log.h"
 #include "Sync.h"
 
 #include <algorithm>
@@ -8,16 +12,22 @@
 
 namespace vst {
 
-std::string getVersionString(){
-    std::stringstream ss;
-    ss << VERSION_MAJOR << "." << VERSION_MINOR;
-    if (VERSION_PATCH > 0){
-        ss << "." << VERSION_PATCH;
-    }
-    if (VERSION_PRERELEASE > 0){
-        ss << "-pre" << VERSION_PRERELEASE;
-    }
-    return ss.str();
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+const char * getVersionString(){
+    static std::string version = [](){
+        std::stringstream ss;
+        ss << VERSION_MAJOR << "." << VERSION_MINOR;
+        if (VERSION_PATCH > 0){
+            ss << "." << VERSION_PATCH;
+        }
+        if (VERSION_PRERELEASE > 0){
+            ss << "-pre" << VERSION_PRERELEASE;
+        }
+        return ss.str();
+    }();
+    return version.c_str();
 }
 
 /*////////////////////// preset ///////////////////////*/
@@ -115,6 +125,11 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     factory_ = std::move(factory);
 }
 
+CpuArch PluginInfo::arch() const {
+    auto factory = factory_.lock();
+    return factory ? factory->arch() : CpuArch::unknown;
+}
+
 // ThreadedPlugin.cpp
 IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
 
@@ -195,6 +210,51 @@ static void conformPath(std::string& path){
     }
 }
 
+void PluginInfo::addParameter(Param param){
+    auto index = parameters.size();
+    // inverse mapping
+    paramMap_[param.name] = index;
+#if USE_VST3
+    // index -> ID mapping
+    indexToIdMap_[index] = param.id;
+    // ID -> index mapping
+    idToIndexMap_[param.id] = index;
+#endif
+    // add parameter
+    parameters.push_back(std::move(param));
+}
+
+int PluginInfo::findParam(const std::string& key) const {
+    auto it = paramMap_.find(key);
+    if (it != paramMap_.end()){
+        return it->second;
+    } else {
+        return -1;
+    }
+}
+
+#if USE_VST3
+uint32_t PluginInfo::getParamID(int index) const {
+    auto it = indexToIdMap_.find(index);
+    if (it != indexToIdMap_.end()){
+        return it->second;
+    }
+    else {
+        return 0; // throw?
+    }
+}
+
+int PluginInfo::getParamIndex(uint32_t _id) const {
+    auto it = idToIndexMap_.find(_id);
+    if (it != idToIndexMap_.end()){
+        return it->second;
+    }
+    else {
+        return -1; // not automatable
+    }
+}
+#endif
+
 void PluginInfo::scanPresets(){
     const std::vector<PresetType> presetTypes = {
 #if defined(_WIN32)
@@ -211,8 +271,8 @@ void PluginInfo::scanPresets(){
         if (pathExists(folder)){
             vst::search(folder, [&](const std::string& path){
                 auto ext = fileExtension(path);
-                if ((type_ == PluginType::VST3 && ext != "vstpreset") ||
-                    (type_ == PluginType::VST2 && ext != "fxp" && ext != "FXP")){
+                if ((type_ == PluginType::VST3 && ext != ".vstpreset") ||
+                    (type_ == PluginType::VST2 && ext != ".fxp" && ext != ".FXP")){
                     return;
                 }
                 Preset preset;
@@ -406,6 +466,16 @@ static std::string bashString(std::string name){
 #define toHex(x) std::hex << (x) << std::dec
 #define fromHex(x) std::stol(x, 0, 16); // hex
 
+void writeBusses(std::ostream& file, const std::vector<PluginInfo::Bus>& vec){
+    int n = vec.size();
+    file << "n=" << n << "\n";
+    for (int i = 0; i < n; ++i){
+        file << vec[i].numChannels << ","
+             << (int)vec[i].type << ","
+             << bashString(vec[i].label) << "\n";
+    }
+}
+
 void PluginInfo::serialize(std::ostream& file) const {
     // list sub plugins (only when probing)
     if (!subPlugins.empty()){
@@ -424,14 +494,6 @@ void PluginInfo::serialize(std::ostream& file) const {
     file << "category=" << category << "\n";
     file << "version=" << version << "\n";
     file << "sdkversion=" << sdkVersion << "\n";
-    file << "inputs=" << numInputs << "\n";
-    if (numAuxInputs > 0){
-        file << "auxinputs=" << numAuxInputs << "\n";
-    }
-    file << "outputs=" << numOutputs << "\n";
-    if (numAuxOutputs > 0){
-        file << "auxoutputs=" << numAuxOutputs << "\n";
-    }
     file << "flags=" << toHex(flags) << "\n";
 #if USE_VST3
     if (programChange != NoParamID){
@@ -441,12 +503,19 @@ void PluginInfo::serialize(std::ostream& file) const {
         file << "bypass=" << toHex(bypass) << "\n";
     }
 #endif
+    // inputs
+    file << "[inputs]\n";
+    writeBusses(file, inputs);
+    // outputs
+    file << "[outputs]\n";
+    writeBusses(file, outputs);
     // parameters
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
         file << bashString(param.name) << ","
-             << param.label << "," << toHex(param.id) << "\n";
+             << bashString(param.label) << ","
+             << toHex(param.id) << "\n";
     }
     // programs
     file << "[programs]\n";
@@ -545,6 +614,22 @@ int getCount(const std::string& line){
     }
 }
 
+std::vector<PluginInfo::Bus> readBusses(std::istream& file){
+    std::vector<PluginInfo::Bus> result;
+    std::string line;
+    std::getline(file, line);
+    int n = getCount(line);
+    while (n-- && std::getline(file, line)){
+        auto args = splitString(line, ',');
+        PluginInfo::Bus bus;
+        bus.numChannels = std::stol(args[0]);
+        bus.type = (PluginInfo::Bus::Type)std::stol(args[1]);
+        bus.label = ltrim(args[2]);
+        result.push_back(std::move(bus));
+    }
+    return result;
+}
+
 void PluginInfo::deserialize(std::istream& file, int versionMajor,
                              int versionMinor, int versionBugfix) {
     // first check for sections, then for keys!
@@ -555,6 +640,10 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
     while (getLine(file, line)){
         if (line == "[plugin]"){
             start = true;
+        } else if (line == "[inputs]"){
+            inputs = readBusses(file);
+        } else if (line == "[outputs]"){
+            outputs = readBusses(file);
         } else if (line == "[parameters]"){
             parameters.clear();
             std::getline(file, line);
@@ -633,10 +722,6 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                 MATCH("category", category)
                 MATCH("version", version)
                 MATCH("sdkversion", sdkVersion)
-                MATCH("inputs", numInputs)
-                MATCH("auxinputs", numAuxInputs)
-                MATCH("outputs", numOutputs)
-                MATCH("auxoutputs", numAuxOutputs)
             #if USE_VST3
                 MATCH("pgmchange", programChange)
                 MATCH("bypass", bypass)
@@ -652,14 +737,13 @@ void PluginInfo::deserialize(std::istream& file, int versionMajor,
                         throw Error("unknown key: " + key);
                     }
                 }
-            }
-            catch (const std::invalid_argument& e) {
+            } catch (const Error&){
+                throw; // rethrow
+            } catch (const std::invalid_argument& e) {
                 throw Error("invalid argument for key '" + key + "': " + value);
-            }
-            catch (const std::out_of_range& e) {
+            } catch (const std::out_of_range& e) {
                 throw Error("out of range argument for key '" + key + "': " + value);
-            }
-            catch (const std::exception& e){
+            } catch (const std::exception& e){
                 throw Error("unknown error: " + std::string(e.what()));
             }
         } else {

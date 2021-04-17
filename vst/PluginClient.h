@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Interface.h"
+#include "PluginInfo.h"
 #include "DeferredPlugin.h"
 #include "PluginBridge.h"
 
@@ -24,11 +25,10 @@ class PluginClient final : public DeferredPlugin {
     uint32_t id() const { return id_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-    void process(ProcessData<float>& data) override;
-    void process(ProcessData<double>& data) override;
+    void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
-    void setNumSpeakers(int in, int out, int auxIn = 0, int auxOut = 0) override;
+    void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override;
@@ -67,7 +67,7 @@ class PluginClient final : public DeferredPlugin {
 
     void openEditor(void *window) override;
     void closeEditor() override;
-    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    bool getEditorRect(Rect& rect) const override;
     void updateEditor() override;
     void checkEditorSize(int& width, int& height) const override;
     void resizeEditor(int width, int height) override;
@@ -117,7 +117,7 @@ class PluginClient final : public DeferredPlugin {
         commands_.push_back(cmd);
     }
     template<typename T>
-    void doProcess(ProcessData<T>& data);
+    void doProcess(ProcessData& data);
     void sendCommands(RTChannel& channel);
     void dispatchReply(const ShmCommand &reply);
 };
@@ -127,13 +127,14 @@ class WindowClient : public IWindow {
     WindowClient(PluginClient &plugin);
     ~WindowClient();
 
-    void* getHandle() override; // get system-specific handle to the window
-
     void open() override;
     void close() override;
     void setPos(int x, int y) override;
     void setSize(int w, int h) override;
-    void update() override;
+
+    void resize(int w, int h) override {
+        // ignore
+    }
  private:
     PluginClient *plugin_;
 };

@@ -48,16 +48,17 @@ struct Command {
         WindowSetSize,
         // events/replies
         PluginData, // 35
+        SpeakerArrangement,
         ProgramNumber,
         ProgramName,
         ProgramNameIndexed,
-        ParameterUpdate, // 39
+        ParameterUpdate, // 40
         ParamAutomated,
         LatencyChanged,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error, // 44
+        Error, // 45
         Process,
         Quit
     };
@@ -187,24 +188,22 @@ struct ShmCommand {
         } plugin;
         // process
         struct {
-            uint8_t numInputs;
-            uint8_t numOutputs;
-            uint8_t numAuxInputs;
-            uint8_t numAuxOutpus;
-            uint32_t numSamples;
+            uint16_t numSamples;
+            uint16_t precision;
+            uint16_t numInputs;
+            uint16_t numOutputs;
         } process;
         // setup processing
         struct {
             float sampleRate;
-            uint32_t maxBlockSize;
-            uint32_t precision;
+            uint16_t maxBlockSize;
+            uint16_t precision;
         } setup;
         // setup speakers
         struct {
-            uint8_t in;
-            uint8_t out;
-            uint8_t auxin;
-            uint8_t auxout;
+            uint16_t numInputs;
+            uint16_t numOutputs;
+            uint32_t speakers[1];
         } speakers;
         // error
         struct {

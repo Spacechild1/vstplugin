@@ -1,7 +1,8 @@
 #pragma once
+
 #include "Interface.h"
-#include "Utility.h"
 #include "PluginFactory.h"
+#include "LockfreeFifo.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
@@ -46,6 +47,155 @@ const ChunkID& getChunkID (ChunkType type);
 
 using namespace Steinberg;
 
+#if !SMTG_PLATFORM_64 && defined(__WINE__)
+// There is an important ABI difference between 32-bit Linux
+// (gcc, winegcc) and MSVC/MinGW regarding struct layout:
+// The former uses 4 byte alignment for 64-bit data types,
+// like double or int64_t, while the latter uses 8 bytes.
+//
+// This is not a problem if the data structures are carefully
+// designed (i.e. large data members first), but the VST SDK
+// doesn't bother and instead wrongly relies on #pragma pack
+// (which only specifies the *minimum* alignment).
+//
+// If a struct has a different layout, we can't safely pass it to
+// a Windows plugin from our Linux/winelib host; rather we have to
+// use our own structs with additional padding members to match the
+// expected struct layout.
+//
+// The VST2 SDK is not affected, afaict. 64-bit integers are not
+// used anywhere and only few structs have double members:
+// * VstTimeInfo: all doubles come come first.
+// * VstOfflineTask and VstAudioFile: problematic, but not used.
+//
+// VST3 SDK:
+// Broken:
+// * Vst::ProcessSetup
+// * Vst::AudioBusBuffers
+// * Vst::ProcessContext
+// Ok:
+// * Vst::ParameterInfo
+// * Vst::Event
+// Probably fine, but not used (yet):
+// * Vst::NoteExpressionValueDescription
+// * Vst::NoteExpressionValueEvent
+// * Vst::NoteExpressionTypeInfo
+
+// Vst::ProcessSetup
+struct MyProcessSetup {
+    int32 processMode;
+    int32 symbolicSampleSize;
+    int32 maxSamplesPerBlock;
+    int32 padding;
+    Vst::SampleRate sampleRate;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyProcessSetup) == 24,
+              "unexpected size for MyProcessSetup");
+
+// Vst::AudioBusBuffers
+struct MyAudioBusBuffers {
+    int32 numChannels;
+    int32 padding1;
+    uint64 silenceFlags;
+    union
+    {
+        Vst::Sample32** channelBuffers32;
+        Vst::Sample64** channelBuffers64;
+    };
+    int32 padding2;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyAudioBusBuffers) == 24,
+              "unexpected size for MyAudioBusBuffers");
+
+struct MyProcessContext
+{
+    uint32 state;
+    int32 padding1;
+    double sampleRate;
+    Vst::TSamples projectTimeSamples;
+    int64 systemTime;
+    Vst::TSamples continousTimeSamples;
+    Vst::TQuarterNotes projectTimeMusic;
+    Vst::TQuarterNotes barPositionMusic;
+    Vst::TQuarterNotes cycleStartMusic;
+    Vst::TQuarterNotes cycleEndMusic;
+    double tempo;
+    int32 timeSigNumerator;
+    int32 timeSigDenominator;
+    Vst::Chord chord;
+    int32 smpteOffsetSubframes;
+    Vst::FrameRate frameRate;
+    int32 samplesToNextClock;
+    int32 padding2;
+} __attribute__((packed, aligned(8) ));
+
+static_assert(sizeof(MyProcessContext) == 112,
+              "unexpected size for MyProcessContext");
+
+// Vst::ProcessData
+// This one is only used to avoid casts between
+// Vst::AudioBusBuffers <-> MyAudioBusBuffers and
+// Vst::ProcessContext <-> MyProcessContext
+struct MyProcessData
+{
+    int32 processMode;
+    int32 symbolicSampleSize;
+    int32 numSamples;
+    int32 numInputs;
+    int32 numOutputs;
+    MyAudioBusBuffers* inputs;
+    MyAudioBusBuffers* outputs;
+
+    Vst::IParameterChanges* inputParameterChanges;
+    Vst::IParameterChanges* outputParameterChanges;
+    Vst::IEventList* inputEvents;
+    Vst::IEventList* outputEvents;
+    MyProcessContext* processContext;
+};
+
+static_assert(sizeof(MyProcessData) == 48,
+              "unexpected size for MyProcessData");
+
+#else // 32-bit Wine
+
+using MyProcessSetup = Vst::ProcessSetup;
+using MyAudioBusBuffers = Vst::AudioBusBuffers;
+using MyProcessData = Vst::ProcessData;
+using MyProcessContext = Vst::ProcessContext;
+
+// verify struct sizes
+
+// these structs generally differ between 32-bit and 64-bit:
+# if SMTG_PLATFORM_64
+static_assert(sizeof(Vst::ProcessData) == 80,
+              "unexpected size for Vst::ProcessData");
+# else
+static_assert(sizeof(Vst::ProcessData) == 48,
+              "unexpected size for Vst::ProcessData");
+# endif
+
+// these structs are only different on 32-bit Linux (x86 System V):
+# if !SMTG_PLATFORM_64 && SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessSetup) == 20,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::AudioBusBuffers) == 16,
+              "unexpected size for Vst::AudioBusBuffers");
+static_assert(sizeof(Vst::ProcessContext) == 104,
+              "unexpected size for Vst::ProcessContext");
+# else // SMTG_OS_LINUX
+static_assert(sizeof(Vst::ProcessSetup) == 24,
+              "unexpected size for Vst::ProcessSetup");
+static_assert(sizeof(Vst::AudioBusBuffers) == 24,
+              "unexpected size for Vst::AudioBusBuffers");
+static_assert(sizeof(Vst::ProcessContext) == 112,
+              "unexpected size for Vst::ProcessContext");
+# endif // SMTG_OS_LINUX
+
+#endif // 32-bit Wine
+
+
 #define MY_IMPLEMENT_QUERYINTERFACE(Interface)                            \
 tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override  \
 {                                                                         \
@@ -85,6 +235,12 @@ class VST3Factory final : public PluginFactory {
 };
 
 //----------------------------------------------------------------------
+
+#ifndef USE_MULTI_POINT_AUTOMATION
+#define USE_MULTI_POINT_AUTOMATION 0
+#endif
+
+#if USE_MULTI_POINT_AUTOMATION
 class ParamValueQueue: public Vst::IParamValueQueue {
  public:
     static const int maxNumPoints = 64;
@@ -108,6 +264,34 @@ class ParamValueQueue: public Vst::IParamValueQueue {
     std::vector<Value> values_;
     Vst::ParamID id_ = Vst::kNoParamId;
 };
+#else
+class ParamValueQueue: public Vst::IParamValueQueue {
+ public:
+    MY_IMPLEMENT_QUERYINTERFACE(Vst::IParamValueQueue)
+    DUMMY_REFCOUNT_METHODS
+
+    void setParameterId(Vst::ParamID id){
+        id_ = id;
+    }
+    Vst::ParamID PLUGIN_API getParameterId() override { return id_; }
+    int32 PLUGIN_API getPointCount() override { return 1; }
+    tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, Vst::ParamValue& value) override {
+        sampleOffset = sampleOffset_;
+        value = value_;
+        return kResultOk;
+    }
+    tresult PLUGIN_API addPoint (int32 sampleOffset, Vst::ParamValue value, int32& index) override {
+        sampleOffset_ = sampleOffset;
+        value_ = value;
+        index = 0;
+        return kResultOk;
+    }
+ protected:
+    Vst::ParamID id_ = Vst::kNoParamId;
+    int32 sampleOffset_;
+    Vst::ParamValue value_;
+};
+#endif
 
 //----------------------------------------------------------------------
 class ParameterChanges: public Vst::IParameterChanges {
@@ -160,12 +344,24 @@ class VST3Plugin final :
         public Vst::IComponentHandler,
         public Vst::IConnectionPoint,
         public IPlugFrame
+    #if SMTG_OS_LINUX
+        , public Linux::IRunLoop
+    #endif
 {
  public:
     VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
     ~VST3Plugin();
 
-    MY_IMPLEMENT_QUERYINTERFACE(Vst::IComponentHandler)
+    tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override {
+        QUERY_INTERFACE (_iid, obj, FUnknown::iid, Vst::IComponentHandler)
+        QUERY_INTERFACE (_iid, obj, Vst::IComponentHandler::iid, Vst::IComponentHandler)
+        QUERY_INTERFACE (_iid, obj, IPlugFrame::iid, IPlugFrame)
+    #if SMTG_OS_LINUX
+        QUERY_INTERFACE (_iid, obj, Linux::IRunLoop::iid, Linux::IRunLoop)
+    #endif
+        *obj = nullptr;
+        return kNoInterface;
+    }
     DUMMY_REFCOUNT_METHODS
 
     // IComponentHandler
@@ -182,16 +378,25 @@ class VST3Plugin final :
     // IPlugFrame
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;
 
+#if SMTG_OS_LINUX
+    // IRunLoop
+    tresult PLUGIN_API registerEventHandler (Linux::IEventHandler* handler,
+                                             Linux::FileDescriptor fd) override;
+    tresult PLUGIN_API unregisterEventHandler (Linux::IEventHandler* handler) override;
+    tresult PLUGIN_API registerTimer (Linux::ITimerHandler* handler,
+                                      Linux::TimerInterval milliseconds) override;
+    tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
+#endif
+
     const PluginInfo& info() const override { return *info_; }
     PluginInfo::const_ptr getInfo() const { return info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
-    void process(ProcessData<float>& data) override;
-    void process(ProcessData<double>& data) override;
+    void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
     void setBypass(Bypass state) override;
-    void setNumSpeakers(int in, int out, int auxIn, int auxOut) override;
+    void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override;
 
     void setListener(IPluginListener::ptr listener) override {
@@ -235,7 +440,7 @@ class VST3Plugin final :
 
     void openEditor(void *window) override;
     void closeEditor() override;
-    bool getEditorRect(int &left, int &top, int &right, int &bottom) const override;
+    bool getEditorRect(Rect& rect) const override;
     void updateEditor() override;
     void checkEditorSize(int &width, int &height) const override;
     void resizeEditor(int width, int height) override;
@@ -257,23 +462,19 @@ class VST3Plugin final :
     void addBinary(const char* id, const char *data, size_t size) override;
     void endMessage() override;
  private:
-     int getNumInputs() const;
-     int getNumAuxInputs() const;
-     int getNumOutputs() const;
-     int getNumAuxOutputs() const;
-     int getNumParameters() const;
-     int getNumPrograms() const;
-     bool hasEditor() const;
-     bool hasPrecision(ProcessPrecision precision) const;
-     bool hasTail() const;
-     int getTailSize() const;
-     bool hasBypass() const;
-     int getNumMidiInputChannels() const;
-     int getNumMidiOutputChannels() const;
-     bool hasMidiInput() const;
-     bool hasMidiOutput() const;
+    int getNumParameters() const;
+    int getNumPrograms() const;
+    bool hasEditor() const;
+    bool hasPrecision(ProcessPrecision precision) const;
+    bool hasTail() const;
+    int getTailSize() const;
+    bool hasBypass() const;
+
     template<typename T>
-    void doProcess(ProcessData<T>& inData);
+    void doProcess(ProcessData& inData);
+    template<typename T>
+    void bypassProcess(ProcessData& inData, MyProcessData& data,
+                       Bypass state, bool ramp);
     void handleEvents();
     void handleOutputParameterChanges();
     void updateAutomationState();
@@ -288,15 +489,7 @@ class VST3Plugin final :
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     // audio
-    enum BusType {
-        Main = 0,
-        Aux = 1
-    };
-    int numInputBusses_ = 0;
-    int numInputChannels_[2]; // main + aux
-    int numOutputBusses_ = 0;
-    int numOutputChannels_[2]; // main + aux
-    Vst::ProcessContext context_;
+    MyProcessContext context_;
     // automation
     int32 automationState_ = 0; // should better be atomic as well...
     std::atomic_bool automationStateChanged_{false};
@@ -307,21 +500,15 @@ class VST3Plugin final :
     // midi
     EventList inputEvents_;
     EventList outputEvents_;
-    int numMidiInChannels_ = 0;
-    int numMidiOutChannels_ = 0;
     // parameters
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;
     struct ParamState {
-        ParamState()
-            : value(0.f), changed(false) {}
-        // copy ctor is needed so we can use it in a vector
-        ParamState(const ParamState& other)
-            : value(other.value.load()), changed(other.changed.load()) {}
-        std::atomic<float> value;
-        std::atomic<bool> changed;
+        std::atomic<float> value{0.f};
+        std::atomic<bool> changed{false};
     };
     std::unique_ptr<ParamState[]> paramCache_;
+    std::atomic<bool> paramCacheChanged_{false};
     struct ParamChange {
         ParamChange() : id(0), value(0) {}
         ParamChange(Vst::ParamID _id, Vst::ParamValue _value)
@@ -467,7 +654,7 @@ struct HostAttribute {
     HostAttribute(HostAttribute&& other);
     ~HostAttribute();
     HostAttribute& operator =(const HostAttribute& other) = delete; // LATER
-    HostAttribute& operator =(HostAttribute&& other) = delete; // LATER
+    HostAttribute& operator =(HostAttribute&& other);
     // data
     union v
     {
@@ -487,10 +674,10 @@ public:
     virtual ~HostObject() {}
 
     uint32 PLUGIN_API addRef() override {
-        return ++refcount_;
+        return refcount_.fetch_add(1, std::memory_order_relaxed) + 1;
     }
     uint32 PLUGIN_API release() override {
-        auto res = --refcount_;
+        auto res = refcount_.fetch_sub(1, std::memory_order_acq_rel) - 1;
         if (res == 0){
             delete this;
         }

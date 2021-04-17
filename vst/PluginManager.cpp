@@ -1,5 +1,10 @@
 #include "PluginManager.h"
-#include "Utility.h"
+
+#include "FileUtils.h"
+#include "Log.h"
+#if USE_WINE
+# include "CpuArch.h"
+#endif
 
 #include <fstream>
 #include <cstdlib>
@@ -36,6 +41,20 @@ bool PluginManager::isException(const std::string& path) const {
 void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
     WriteLock lock(mutex_);
     int index = plugin->bridged() ? BRIDGED : NATIVE;
+#if USE_WINE
+    if (index == BRIDGED){
+        // prefer 64-bit Wine plugins
+        auto it = plugins_[index].find(key);
+        if (it != plugins_[index].end()){
+            if (it->second->arch() == CpuArch::pe_amd64 &&
+                    plugin->arch() == CpuArch::pe_i386) {
+                LOG_DEBUG("ignore 32-bit Windows DLL");
+                return;
+            }
+        }
+    }
+#endif
+    // LOG_DEBUG("add plugin " << key << ((index == BRIDGED) ? " [bridged]" : ""));
     plugins_[index][key] = std::move(plugin);
 }
 
@@ -84,6 +103,14 @@ void PluginManager::read(const std::string& path, bool update){
                         versionBugfix = std::strtol(pos, &pos, 10);
                     }
                 }
+                // there was a breaking change between 0.4 and 0.5
+                // (introduction of audio input/output busses)
+                if ((versionMajor < VERSION_MAJOR)
+                        || (versionMajor == 0 && versionMinor < 5)){
+                    throw Error(Error::PluginError,
+                                "The plugin cache file is incompatible with this version. "
+                                "Please perform a new search!");
+                }
             }
         } else if (line == "[plugins]"){
             std::getline(file, line);
@@ -92,22 +119,23 @@ void PluginManager::read(const std::string& path, bool update){
                 // read a single plugin description
                 auto plugin = doReadPlugin(file, versionMajor,
                                            versionMinor, versionBugfix);
-                if (plugin){
-                    // collect keys
-                    std::vector<std::string> keys;
-                    std::string line;
-                    while (getLine(file, line)){
-                        if (line == "[keys]"){
-                            std::getline(file, line);
-                            int n = getCount(line);
-                            while (n-- && std::getline(file, line)){
-                                keys.push_back(std::move(line));
-                            }
-                            break;
-                        } else {
-                            throw Error("bad format");
+                // always collect keys, otherwise reading the cache file
+                // would throw an error if a plugin had been removed
+                std::vector<std::string> keys;
+                std::string line;
+                while (getLine(file, line)){
+                    if (line == "[keys]"){
+                        std::getline(file, line);
+                        int n = getCount(line);
+                        while (n-- && std::getline(file, line)){
+                            keys.push_back(std::move(line));
                         }
+                        break;
+                    } else {
+                        throw Error("bad format");
                     }
+                }
+                if (plugin){
                     // store plugin at keys
                     for (auto& key : keys){
                         int index = plugin->bridged() ? BRIDGED : NATIVE;
@@ -134,7 +162,7 @@ void PluginManager::read(const std::string& path, bool update){
         try {
             doWrite(path);
         } catch (const Error& e){
-            throw Error("couldn't update cache file");
+            throw Error("couldn't update cache file: " + std::string(e.what()));
         }
         LOG_VERBOSE("updated cache file");
     }
@@ -152,7 +180,12 @@ PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int vers
                                                   int versionMinor, int versionPatch){
     // deserialize plugin
     auto desc = std::make_shared<PluginInfo>(nullptr);
-    desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
+    try {
+        desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
+    } catch (const Error& e){
+        LOG_ERROR("couldn't deserialize plugin info for '" << desc->name << "': " << e.what());
+        return nullptr;
+    }
 
     // load the factory (if not loaded already) to verify that the plugin still exists
     IFactory::ptr factory;
@@ -162,8 +195,8 @@ PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int vers
             factories_[desc->path()] = factory;
         } catch (const Error& e){
             // this probably happens when the plugin has been (re)moved
-            LOG_ERROR("couldn't load '" << desc->name <<
-                      "' (" << desc->path() << "): " << e.what());
+            LOG_WARNING("couldn't load '" << desc->name <<
+                        "' (" << desc->path() << "): " << e.what());
             return nullptr; // skip plugin
         }
     } else {

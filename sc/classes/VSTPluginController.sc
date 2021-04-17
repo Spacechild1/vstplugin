@@ -15,10 +15,11 @@ VSTPluginController {
 	var <>sysexReceived;
 	var <>latencyChanged;
 	var <>pluginCrashed;
+	// for dependants
+	var <parameterCache;
+	var <programCache;
 	// private
 	var oscFuncs;
-	var <paramCache; // only for dependants
-	var <programNames; // only for dependants
 	var currentPreset; // the current preset
 	var window; // do we have a VST editor?
 	var loading; // are we currently loading a plugin?
@@ -126,30 +127,11 @@ VSTPluginController {
 		^super.new.init(synth, desc.index, wait, info);
 	}
 	*collect { arg synth, ids, synthDef, wait= -1;
-		var result = ();
-		var makeOne = { arg desc;
+		var plugins = this.prFindPlugins(synth, synthDef);
+		^this.prCollect(plugins, ids, { arg desc;
 			var info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
 			super.new.init(synth, desc.index, wait, info);
-		};
-		var plugins = this.prFindPlugins(synth, synthDef);
-		ids.notNil.if {
-			ids.do { arg key;
-				var value;
-				key = key.asSymbol; // !
-				value = plugins.at(key);
-				value.notNil.if {
-					result.put(key, makeOne.(value));
-				} { "can't find VSTPlugin with ID %".format(key).warn; }
-			}
-		} {
-			// empty Array or nil -> get all plugins, except those without ID (shouldn't happen)
-			plugins.pairsDo { arg key, value;
-				(key.class == Symbol).if {
-					result.put(key, makeOne.(value));
-				} { "ignoring VSTPlugin without ID".warn; }
-			}
-		};
-		^result;
+		});
 	}
 	*prFindPlugins { arg synth, synthDef;
 		var desc, metadata, plugins;
@@ -164,6 +146,28 @@ VSTPluginController {
 		(plugins.size == 0).if { MethodError("SynthDef '%' doesn't contain a VSTPlugin!".format(synth.defName), this).throw; };
 		^plugins;
 	}
+	*prCollect { arg plugins, ids, fn;
+		var result = ();
+		ids.notNil.if {
+			ids.do { arg key;
+				var value;
+				key = key.asSymbol; // !
+				value = plugins.at(key);
+				value.notNil.if {
+					result.put(key, fn.(value));
+				} { "can't find VSTPlugin with ID %".format(key).warn; }
+			}
+		} {
+			// empty Array or nil -> get all plugins, except those without ID (shouldn't happen)
+			plugins.pairsDo { arg key, value;
+				(key.class == Symbol).if {
+					result.put(key, fn.(value));
+				} { "ignoring VSTPlugin without ID".warn; }
+			}
+		};
+		^result;
+	}
+
 	init { arg synth, index, wait, info;
 		this.synth = synth;
 		this.synthIndex = index;
@@ -183,27 +187,27 @@ VSTPluginController {
 				display = this.class.msg2string(msg, 5);
 			};
 			// cache parameter value
-			(index < paramCache.size).if {
-				paramCache[index] = [value, display];
+			(index < parameterCache.size).if {
+				parameterCache[index] = [value, display];
 				// notify dependants
-				this.changed('/param', index, value, display);
+				this.changed(\param, index, value, display);
 			} { "parameter index % out of range!".format(index).warn };
 		}, '/vst_param'));
 		// current program:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			program = msg[3].asInteger;
 			// notify dependants
-			this.changed('/program_index', program);
+			this.changed(\program_index, program);
 		}, '/vst_program_index'));
 		// program name:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			var index, name;
 			index = msg[3].asInteger;
 			name = this.class.msg2string(msg, 4);
-			(index < programNames.size).if {
-				programNames[index] = name;
+			(index < programCache.size).if {
+				programCache[index] = name;
 				// notify dependants
-				this.changed('/program_name', index, name);
+				this.changed(\program_name, index, name);
 			} { "program number % out of range!".format(index).warn };
 		}, '/vst_program'));
 		// parameter automated:
@@ -212,17 +216,20 @@ VSTPluginController {
 			index = msg[3].asInteger;
 			value = msg[4].asFloat;
 			parameterAutomated.value(index, value);
+			this.changed(\automated, index, value);
 		}, '/vst_auto'));
 		// latency changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			latency = msg[3].asInteger;
 			latencyChanged.value(latency);
+			this.changed(\latency, latency);
 		}, '/vst_latency'));
 		// plugin crashed
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			"plugin '%' crashed".format(this.info.name).warn;
 			this.close;
 			pluginCrashed.value;
+			this.changed(\crashed);
 		}, '/vst_crash'));
 		// MIDI received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -244,7 +251,7 @@ VSTPluginController {
 			func.free;
 		};
 		this.prClear;
-		this.changed('/free');
+		this.changed(\free);
 	}
 	prCheckPlugin { arg method;
 		this.loaded.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
@@ -264,6 +271,19 @@ VSTPluginController {
 	editorMsg { arg show=true;
 		^this.makeMsg('/vis', show.asInteger);
 	}
+	moveEditor { arg x, y;
+		^this.sendMsg('/pos', x.asInteger, y.asInteger);
+	}
+	moveEditorMsg { arg x, y;
+		^this.makeMsg('/pos', x.asInteger, y.asInteger);
+	}
+	resizeEditor { arg w, h;
+		^this.sendMsg('/size', w.asInteger, h.asInteger);
+	}
+	resizeEditorMsg { arg w, h;
+		^this.makeMsg('/size', w.asInteger, h.asInteger);
+	}
+	haveEditor { ^window; }
 	gui { arg parent, bounds, params=true;
 		^this.class.guiClass.new(this).gui(parent, bounds, params);
 	}
@@ -276,7 +296,7 @@ VSTPluginController {
 		};
 		browser.front;
 	}
-	open { arg path, editor=false, verbose=false, action, multiThreading=false, mode;
+	open { arg path, editor=true, verbose=false, action, multiThreading=false, mode;
 		var intMode = 0;
 		loading.if {
 			"already opening!".error;
@@ -315,10 +335,10 @@ VSTPluginController {
 						latency = msg[5].asInteger;
 						this.info = info; // now set 'info' property
 						info.addDependant(this);
-						paramCache = Array.fill(info.numParameters, [0, nil]);
+						parameterCache = Array.fill(info.numParameters, [0, nil]);
 						program = 0;
 						// copy default program names (might change later when loading banks)
-						programNames = info.programs.collect(_.name);
+						programCache = info.programs.collect(_.name);
 						// only query parameters if we have dependants!
 						(this.dependants.size > 0).if {
 							this.prQueryParams;
@@ -330,7 +350,7 @@ VSTPluginController {
 						"couldn't open '%'".format(path).error;
 					};
 					loading = false;
-					this.changed('/open', path, loaded);
+					this.changed(\open, path, loaded);
 					action.value(this, loaded);
 					// report latency (if loaded)
 					latency !? { latencyChanged.value(latency); }
@@ -368,7 +388,7 @@ VSTPluginController {
 	prClear {
 		info !? { info.removeDependant(this) };
 		window = false; latency = nil; info = nil;
-		paramCache = nil; programNames = nil; didQuery = false;
+		parameterCache = nil; programCache = nil; didQuery = false;
 		program = nil; currentPreset = nil; loading = false;
 	}
 	addDependant { arg dependant;
@@ -379,7 +399,7 @@ VSTPluginController {
 		super.addDependant(dependant);
 	}
 	update { arg who, what ... args;
-		((who === info) and: { what == '/presets' }).if {
+		((who === info) and: { what == \presets }).if {
 			currentPreset !? {
 				info.prPresetIndex(currentPreset).isNil.if {
 					currentPreset = nil;
@@ -391,7 +411,7 @@ VSTPluginController {
 	close {
 		this.sendMsg('/close');
 		this.prClear;
-		this.changed('/close');
+		this.changed(\close);
 	}
 	closeMsg {
 		^this.makeMsg('/close');
@@ -427,17 +447,39 @@ VSTPluginController {
 		^this.makeMsg('/setn', *nargs);
 	}
 	get { arg index, action;
+		var name;
+		// We need to match the reply message against the 'index'
+		// argument to avoid responding to other 'get' requests.
+		// Although the UGen can handle parameter names, we must
+		// first resolve it, because the reply message only
+		// includes the parameter *index* (as a float).
+		index.isNumber.not.if {
+			name = index;
+			index = info.findParamIndex(index);
+			index ?? {
+				MethodError("unknown parameter '%'".format(name), this).throw;
+			};
+		};
 		this.prMakeOscFunc({ arg msg;
-			// msg: address, nodeID, index, value
-			action.value(msg[3]); // only pass value
-		}, '/vst_set').oneShot;
+			// msg: address, nodeID, synthIndex, index, value
+			action.value(msg[4]); // only pass value
+		}, '/vst_set', index.asFloat).oneShot;
 		this.sendMsg('/get', index);
 	}
 	getn { arg index = 0, count = -1, action;
+		var name;
+		// see comment in 'get'
+		index.isNumber.not.if {
+			name = index;
+			index = info.findParamIndex(index);
+			index ?? {
+				MethodError("unknown parameter '%'".format(name), this).throw;
+			};
+		};
 		this.prMakeOscFunc({ arg msg;
-			// msg: address, nodeID, index, count, values...
-			action.value(msg[4..]); // only pass values
-		}, '/vst_setn').oneShot;
+			// msg: address, nodeID, synthIndex, index, count, values...
+			action.value(msg[5..]); // only pass values
+		}, '/vst_setn', index.asFloat).oneShot;
 		this.sendMsg('/getn', index, count);
 	}
 	map { arg ... args;
@@ -529,7 +571,7 @@ VSTPluginController {
 			success.if {
 				index = info.addPreset(name, path);
 				currentPreset = info.presets[index];
-				this.changed('/preset_save', index);
+				this.changed(\preset_save, index);
 			} { "couldn't save preset '%'".format(name).error };
 			action.value(self, success);
 		}, async);
@@ -546,7 +588,7 @@ VSTPluginController {
 				index = info.prPresetIndex(result);
 				index.notNil.if {
 					currentPreset = result;
-					this.changed('/preset_load', index);
+					this.changed(\preset_load, index);
 				} {
 					"preset '%' has been removed!".format(result.name).error;
 				};
@@ -641,7 +683,7 @@ VSTPluginController {
 	}
 	programName {
 		this.program.notNil.if {
-			^programNames[this.program];
+			^programCache[this.program];
 		} { ^nil };
 	}
 	programName_ { arg name;
@@ -873,14 +915,14 @@ VSTPluginController {
 		}, '/vst_can_do').oneShot;
 		this.sendMsg('/can_do', what);
 	}
-	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=false;
+	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=true;
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3].asInteger);
 		}, '/vst_vendor_method').oneShot;
 		this.sendMsg('/vendor_method', index.asInteger, value.asInteger,
 			ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}
-	vendorMethodMsg { arg index=0, value=0, ptr, opt=0.0, action, async=false;
+	vendorMethodMsg { arg index=0, value=0, ptr, opt=0.0, action, async=true;
 		^this.makeMsg('/vendor_method', index.asInteger, value.asInteger,
 			ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}
@@ -891,8 +933,8 @@ VSTPluginController {
 	makeMsg { arg cmd ... args;
 		^['/u_cmd', synth.nodeID, synthIndex, cmd] ++ args;
 	}
-	prMakeOscFunc { arg func, path;
-		^OSCFunc(func, path, synth.server.addr, argTemplate: [synth.nodeID, synthIndex]);
+	prMakeOscFunc { arg func, path ... argTemplate;
+		^OSCFunc(func, path, synth.server.addr, argTemplate: [synth.nodeID, synthIndex] ++ argTemplate);
 	}
 	*msg2string { arg msg, onset=0;
 		// format: len, chars...
@@ -933,6 +975,13 @@ VSTPluginMIDIProxy {
 
 	*new { arg theOwner;
 		^super.new.owner_(theOwner);
+	}
+	// dummy setter/getter for compatibility with MIDIOut
+	latency { ^0; }
+	latency_ {
+		"Calling 'latency' on VSTPluginMIDIProxy has no effect.\n"
+		"If you want to schedule MIDI messages on the Server, use Server.bind or similar methods.".warn;
+		^this;
 	}
 	write { arg len, hiStatus, loStatus, a=0, b=0, detune;
 		owner.sendMidi(hiStatus bitOr: loStatus, a, b, detune);
