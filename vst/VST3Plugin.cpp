@@ -1268,7 +1268,7 @@ void VST3Plugin::setBypass(Bypass state){
 }
 
 static uint64_t makeChannels(int n){
-    return ((uint64_t)1 << n - 1);
+    return ((uint64_t)1 << n) - 1; // don't mess up the brackets!
 }
 
 void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numOutputs){
