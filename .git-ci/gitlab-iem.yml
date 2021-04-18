@@ -117,7 +117,7 @@ variables:
      - osx
   variables:
     SUPERNOVA: 1
-    HOST32: 1
+    BUILD_HOST32: 1
   only:
     variables:
       - $JOBS == "all" || $JOBS == "macos"

@@ -177,7 +177,7 @@ static_assert(sizeof(Vst::ProcessData) == 48,
 # endif
 
 // these structs are only different on 32-bit Linux (x86 System V):
-# if !SMTG_PLATFORM_64 && SMTG_OS_LINUX
+# if !SMTG_PLATFORM_64 && !SMTG_OS_WINDOWS
 static_assert(sizeof(Vst::ProcessSetup) == 20,
               "unexpected size for Vst::ProcessSetup");
 static_assert(sizeof(Vst::AudioBusBuffers) == 16,
