@@ -46,6 +46,16 @@ const std::vector<const char *>& getPluginExtensions() {
     return platformExtensions;
 }
 
+bool hasPluginExtension(const std::string& path){
+    auto ext = fileExtension(path);
+    for (auto& e : platformExtensions){
+        if (ext == e){
+            return true;
+        }
+    }
+    return false;
+}
+
 const char * getBundleBinaryPath(){
     auto path =
 #if defined(_WIN32)
@@ -196,16 +206,17 @@ static bool isDirectory(const std::string& dir, dirent *entry){
 // recursively search for a VST plugin in a directory. returns empty string on failure.
 std::string find(const std::string &dir, const std::string &path){
     std::string relpath = path;
-#ifdef _WIN32
-    const char *ext = ".dll";
-#elif defined(__APPLE__)
-    const char *ext = ".vst";
-#else // Linux/BSD/etc.
-    const char *ext = ".so";
-#endif
-    if (relpath.find(".vst3") == std::string::npos && relpath.find(ext) == std::string::npos){
-        relpath += ext;
+    // if the path has no file extension, assume VST2 plugin
+    if (fileExtension(relpath).empty()){
+    #ifdef _WIN32
+        relpath += ".dll";
+    #elif defined(__APPLE__)
+        relpath += ".vst";
+    #else // Linux/BSD/etc.
+        relpath += ".so";
+    #endif
     }
+    LOG_DEBUG("try to find " << relpath);
 #if USE_STDFS
     try {
         auto wdir = widen(dir);
@@ -234,7 +245,9 @@ std::string find(const std::string &dir, const std::string &path){
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
 
     std::string file = root + "/" + relpath;
+    // LOG_DEBUG("try " << file);
     if (pathExists(file)){
+        // LOG_DEBUG("found " << absPath << "!");
         return file; // success
     }
     // continue recursively
@@ -246,7 +259,9 @@ std::string find(const std::string &dir, const std::string &path){
                 if (isDirectory(dirname, entry)){
                     std::string d = dirname + "/" + entry->d_name;
                     std::string absPath = d + "/" + relpath;
+                    // LOG_DEBUG("try " << absPath);
                     if (pathExists(absPath)){
+                        // LOG_DEBUG("found " << absPath << "!");
                         result = absPath;
                         break;
                     } else {
@@ -265,11 +280,6 @@ std::string find(const std::string &dir, const std::string &path){
 
 // recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full absolute path.
 void search(const std::string &dir, std::function<void(const std::string&)> fn, bool filter) {
-    // extensions
-    std::unordered_set<std::string> extensions;
-    for (auto& ext : platformExtensions) {
-        extensions.insert(ext);
-    }
     // search recursively
 #if USE_STDFS
   #ifdef _WIN32
@@ -291,9 +301,8 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
             for (auto& entry : iter) {
                 // check the extension
                 auto path = entry.path();
-                auto ext = path.extension().u8string();
-                if (extensions.count(ext)) {
-                    // found a VST2 plugin (file or bundle)
+                if (hasPluginExtension(path.u8string())){
+                    // found a VST plugin file or bundle
                     fn(path.u8string());
                 } else if (fs::is_directory(path)){
                     // otherwise search it if it's a directory
@@ -323,15 +332,12 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
                 std::string name(entry->d_name);
                 std::string absPath = dirname + "/" + name;
                 // check the extension
-                std::string ext;
-                auto extPos = name.find_last_of('.');
-                if (extPos != std::string::npos){
-                    ext = name.substr(extPos);
-                }
-                if (extensions.count(ext)){
+                if (hasPluginExtension(absPath)){
+                    LOG_DEBUG("found " << absPath);
                     // found a VST2 plugin (file or bundle)
                     fn(absPath);
                 } else if (isDirectory(dirname, entry)){
+                    LOG_DEBUG("searching in " << absPath);
                     // otherwise search it if it's a directory
                     searchDir(absPath);
                 } else if (!filter && isFile(absPath)){

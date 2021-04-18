@@ -421,23 +421,22 @@ static bool isAbsolutePath(const std::string& path) {
     return false;
 }
 
-// resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
+// resolves relative path to an existing plugin in the VST search paths.
 // returns empty string on failure!
 static std::string resolvePath(std::string path) {
     if (isAbsolutePath(path)) {
         return path; // success
     }
-#ifdef _WIN32
-    const char* ext = ".dll";
-#elif defined(__APPLE__)
-    const char* ext = ".vst";
-#else
-    const char* ext = ".so";
-#endif
-    if (path.find(".vst3") == std::string::npos && path.find(ext) == std::string::npos) {
-        path += ext;
+    if (fileExtension(path).empty()){
+        // no extension: assume VST2 plugin
+    #ifdef _WIN32
+        path += ".dll";
+    #elif defined(__APPLE__)
+        path += ".vst";
+    #else // Linux/BSD/etc.
+        path += ".so";
+    #endif
     }
-    // otherwise try default VST paths
     for (auto& vstpath : getDefaultSearchPaths()) {
         auto result = vst::find(vstpath, path);
         if (!result.empty()) return result; // success

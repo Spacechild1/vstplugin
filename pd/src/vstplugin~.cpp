@@ -1225,17 +1225,18 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
     if (!sys_isabsolutepath(s.c_str())){
         bool vst3 = false;
         std::string path = s;
-    #ifdef _WIN32
-        const char *ext = ".dll";
-    #elif defined(__APPLE__)
-        const char *ext = ".vst";
-    #else // Linux/BSD/etc.
-        const char *ext = ".so";
-    #endif
-        if (path.find(".vst3") != std::string::npos){
+        auto ext = fileExtension(path);
+        if (ext == ".vst3"){
             vst3 = true;
-        } else if (path.find(ext) == std::string::npos){
-            path += ext;
+        } else if (ext.empty()){
+            // no extension: assume VST2 plugin
+        #ifdef _WIN32
+            path += ".dll";
+        #elif defined(__APPLE__)
+            path += ".vst";
+        #else // Linux/BSD/etc.
+            path += ".so";
+        #endif
         }
             // first try canvas search paths
         char fullPath[MAXPDSTRING];
@@ -1285,7 +1286,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
             }
             result = buf; // success
         } else {
-                // otherwise try default VST paths
+            // otherwise try default VST paths
             for (auto& vstpath : getDefaultSearchPaths()){
                 result = vst::find(vstpath, path);
                 if (!result.empty()) break; // success

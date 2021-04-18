@@ -366,6 +366,8 @@ const std::vector<std::string>& getDefaultSearchPaths();
 
 const std::vector<const char *>& getPluginExtensions();
 
+bool hasPluginExtension(const std::string& path);
+
 const char * getBundleBinaryPath();
 
 #if USE_WINE

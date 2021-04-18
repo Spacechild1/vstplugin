@@ -57,7 +57,16 @@ bool pathExists(const std::string& path){
     return fs::exists(widen(path), e);
 #else
     struct stat stbuf;
-    return stat(path.c_str(), &stbuf) == 0;
+    auto ret = stat(path.c_str(), &stbuf);
+    if (ret == 0){
+        return true;
+    } else {
+    #if 0
+        LOG_DEBUG(path << ": stat failed: "
+                  << errorMessage(errno));
+    #endif
+        return false;
+    }
 #endif
 }
 

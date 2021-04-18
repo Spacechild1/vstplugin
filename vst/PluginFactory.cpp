@@ -114,16 +114,9 @@ std::string getHostApp(CpuArch arch){
 /*///////////////////// IFactory ////////////////////////*/
 
 IFactory::ptr IFactory::load(const std::string& path, bool probe){
-    // default platform extension:
-#ifdef _WIN32
-    const char *ext = ".dll";
-#elif defined(__APPLE__)
-    const char *ext = ".vst";
-#else // Linux/BSD/etc.
-    const char *ext = ".so";
-#endif
     // LOG_DEBUG("IFactory: loading " << path);
-    if (path.find(".vst3") != std::string::npos){
+    auto ext = fileExtension(path);
+    if (ext == ".vst3"){
     #if USE_VST3
         if (!pathExists(path)){
             throw Error(Error::ModuleError, "No such file");
@@ -135,18 +128,15 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
     } else {
     #if USE_VST2
         std::string realPath = path;
-        auto hasExtension = [](const std::string& path){
-            auto e1 = fileExtension(path);
-            for (auto& e2 : getPluginExtensions()){
-                if (e1 == e2){
-                    return true;
-                }
-            }
-            return false;
-        };
-        // if we have no extension, we assume the default platform extension.
-        if (!hasExtension(path)){
-            realPath += ext;
+        if (ext.empty()){
+            // no extension: assume VST2 plugin
+        #ifdef _WIN32
+            realPath += ".dll";
+        #elif defined(__APPLE__)
+            realPath += ".vst";
+        #else // Linux/BSD/etc.
+            realPath += ".so";
+        #endif
         }
         if (!pathExists(realPath)){
             throw Error(Error::ModuleError, "No such file");
