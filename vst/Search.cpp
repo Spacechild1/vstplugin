@@ -30,7 +30,7 @@ static std::vector<const char *> platformExtensions = {
     ".dll",
  #endif // Windows or Wine
  #ifndef _WIN32 // Unix
-  #ifdef __APPLE_
+  #ifdef __APPLE__
     ".vst",
   #else
     ".so",
