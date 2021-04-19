@@ -297,7 +297,7 @@ f 51;
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#N canvas 254 63 840 477 creation 0;
+#N canvas 254 63 859 598 creation 0;
 #X text 24 282 -sp: prefer single precision (default on single precision
 Pd), f 62;
 #X text 24 300 -dp: prefer double precision (default on double precision
@@ -310,9 +310,9 @@ Pd), f 62;
 #X text 14 400 nin \, nout:;
 #X text 83 401 the number of input and output channels (default is
 2), f 55;
-#X obj 428 277 cnv 15 100 20 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 435 412 cnv 15 100 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 455 131 [vstplugin~];
+#X text 461 132 [vstplugin~];
 #X text 57 355 open a plugin on creation (see the 'open' message),
 f 27;
 #X obj 15 389 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
@@ -321,7 +321,7 @@ f 27;
 -k]);
 #X text 25 319 -s: search in the standard VST directories (see [pd
 search]);
-#X text 453 354 "GChorus" might be a plugin name or a file in your
+#X text 460 489 "GChorus" might be a plugin name or a file in your
 search paths (see 'search'), f 51;
 #X text 26 127 -e \, -t \, -p \, -b: see [open( method.;
 #X text 25 264 -n: don't use any editor GUI (reduce memory usage),
@@ -331,37 +331,50 @@ f 62;
 #X text 14 107 flags:;
 #X text 25 196 -i: input bus arrangement (advanced);
 #X text 25 231 -o: output bus arrangement (advanced);
-#X text 433 306 [vstplugin~ -e GChorus];
-#X text 453 326 open the VST2 plugin "GChorus" with the VST editor
+#X text 440 441 [vstplugin~ -e GChorus];
+#X text 460 461 open the VST2 plugin "GChorus" with the VST editor
 GUI and 2 input and 2 output channels., f 49;
-#X text 455 404 open the VST3 version of "GChorus" with the Pd editor
+#X text 462 539 open the VST3 version of "GChorus" with the Pd editor
 and 1 input and 1 output channels., f 49;
-#X text 432 386 [vstplugin~ GChorus.vst3 1 1];
-#X obj 433 22 cnv 15 160 20 empty empty empty 20 12 0 14 -233017 -66577
+#X text 439 521 [vstplugin~ GChorus.vst3 1 1];
+#X obj 434 19 cnv 15 160 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 433 77 VST2 plugins only support a single input and output
+#X text 438 78 VST2 plugins only support a single input and output
 bus \, but VST3 plugins can have any number of busses., f 57;
-#X text 432 112 The defaul is one input and output bus with 2 channels
+#X text 438 113 The defaul is one input and output bus with 2 channels
 each:;
-#X text 434 152 You can change the number of channels with creation
+#X text 440 152 You can change the number of channels with creation
 arguments:, f 62;
-#X text 438 24 About inputs and outputs;
-#X text 454 170 [vstplugin~ 1 2];
-#X text 435 279 More examples:;
+#X text 439 21 About inputs and outputs;
+#X text 460 170 [vstplugin~ 1 2];
+#X text 442 414 More examples:;
 #X obj 13 19 cnv 15 140 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 20 21 Creation arguments:;
 #X text 50 166 NOTE: for large \, complex plugins this can lead to
 a significant increase in patch file size., f 47;
 #X text 35 79 [flags...] \, [file] \, [nin \, nout];
-#X text 435 48 Generally \, VST plugins use input and output busses
+#X text 438 49 Generally \, VST plugins use input and output busses
 where each bus itself can have several channels.;
-#X text 592 169 = input: 1ch | output: 2ch;
-#X text 462 212 [vstplugin~ -i 2 2 1 -o 3 2 4 2];
-#X text 478 244 output1: 2ch \, output2: 4ch \, output3: 2ch;
-#X text 466 229 = input1: 2ch \, input2: 1ch;
-#X text 434 193 If you need more busses \, you have to use the -i and/or
--o flag:, f 64;
+#X text 598 169 = input: 1ch | output: 2ch;
+#X text 462 266 [vstplugin~ 2 6];
+#X text 441 303 With the -i and -o flags \, you have more control over
+the bus arrangement. You can pick a subset of channels for each bus
+or skip busses (with 0).;
+#X text 441 345 For example \, with the same plugin as above:;
+#X text 471 381 = input1: 2ch \, output1: 2ch \, output2: -- \, output3:
+1ch, f 56;
+#X obj 437 196 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X obj 437 290 cnv 2 400 2 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 440 208 In the case of several input or output busses \, the
+inlets resp. outlets are automatically distributed over several busses.
+, f 65;
+#X text 441 236 For example \, if a plugin has one stereo input bus
+and 3 stereo output busses \, you can simply do the following:, f
+63;
+#X text 466 363 [vstplugin~ -i 1 2 -o 3 2 0 1];
 #X restore 23 74 pd creation arguments;
 #N canvas 361 4 1180 776 preset 0;
 #X obj 817 393 s \$0-msg;
