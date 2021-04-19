@@ -90,24 +90,24 @@ class t_vstplugin {
     std::vector<char> x_outbuffer;
     // VST plugin
     IPlugin::ptr x_plugin;
+    std::shared_ptr<t_vsteditor> x_editor;
     Mutex x_mutex;
-    t_symbol *x_key = nullptr;
-    t_symbol *x_path = nullptr;
-    t_symbol *x_preset = nullptr;
+    bool x_process = false;
     bool x_async = false;
     bool x_uithread = false;
     bool x_threaded = false;
     bool x_keep = false;
     bool x_suspended = false;
-    bool x_process = false;
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_wantprecision; // single/double precision
     ProcessPrecision x_realprecision;
     double x_lastdsptime = 0;
-    std::shared_ptr<t_vsteditor> x_editor;
 #ifdef PDINSTANCE
     t_pdinstance *x_pdinstance = nullptr; // keep track of the instance we belong to
 #endif
+    t_symbol *x_key = nullptr;
+    t_symbol *x_path = nullptr;
+    t_symbol *x_preset = nullptr;
     // search
     t_search_data * x_search_data = nullptr;
     // helper methods
@@ -156,6 +156,9 @@ class t_vsteditor : public IPluginListener {
     void param_changed(int index, float value, bool automated = false);
     // flush parameter, MIDI and sysex queues
     void flush_queues();
+    // safely defer to UI thread
+    template<bool async, typename T>
+    void defer_safe(const T& fn, bool uithread);
     // show/hide window
     void vis(bool v);
     bool pd_gui() const {
@@ -218,6 +221,7 @@ private:
     Mutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
+    std::atomic_bool e_locked {false};
 
     std::vector<t_event> e_events;
     bool e_tick = false;

@@ -823,8 +823,9 @@ void t_vsteditor::post_event(const t_event& event){
     #endif
         if (pd_getdspstate()){
             e_needclock.store(true); // set the clock in the perform routine
-        } else {
-            // lock the Pd scheduler
+        } else if (!e_locked.load()) {
+            // lock the Pd scheduler, but only if we're not currently deferring
+            // to the UI thread from the main thread!
             sys_lock();
             clock_delay(e_clock, 0);
             sys_unlock();
@@ -1050,6 +1051,20 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
 
 void t_vsteditor::flush_queues(){
     if (e_needclock.exchange(false)){
+        clock_delay(e_clock, 0);
+    }
+}
+
+template<bool async, typename T>
+void t_vsteditor::defer_safe(const T& fn, bool uithread){
+    if (!async){
+        e_locked.store(true);
+    }
+    // call on UI thread if we have the plugin UI!
+    defer(fn, uithread);
+    if (!async){
+        e_locked.store(false);
+        // in case we couldn't set clock in post_event()!
         clock_delay(e_clock, 0);
     }
 }
@@ -1429,7 +1444,7 @@ static void vstplugin_open_do(t_open_data *x){
         } else {
             LOG_DEBUG("create plugin in NRT thread");
         }
-        defer([&](){
+        x->owner->x_editor->defer_safe<async>([&](){
             // create plugin
             x->plugin = info->create(x->editor, x->threaded, x->mode);
             // setup plugin
@@ -1681,8 +1696,7 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     }
 
     intptr_t result;
-    // call on UI thread if we have the plugin UI!
-    defer([&](){
+    x->x_editor->defer_safe<false>([&](){
         result = x->x_plugin->vendorSpecific(index, value, data.get(), opt);
     }, x->x_uithread);
 
@@ -1781,7 +1795,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
         t_workqueue::get()->push(x, data,
             [](t_reset_data *x){
                 auto& plugin = x->owner->x_plugin;
-                defer([&](){
+                x->owner->x_editor->defer_safe<true>([&](){
                     // protect against vstplugin_dsp() and vstplugin_save()
                     ScopedLock lock(x->owner->x_mutex);
                     plugin->suspend();
@@ -1797,7 +1811,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
         x->x_suspended = true;
     } else {
         // protect against concurrent reads/writes
-        defer([&](){
+        x->x_editor->defer_safe<false>([&](){
             ScopedLock lock(x->x_mutex);
             x->x_plugin->suspend();
             x->x_plugin->resume();
@@ -2251,7 +2265,7 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
         buffer[i] = (unsigned char)atom_getfloat(argv + i);
     }
     try {
-        defer([&](){
+        x->x_editor->defer_safe<false>([&](){
             ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
@@ -2272,7 +2286,7 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
     if (!x->check_plugin()) return;
     std::string buffer;
     try {
-       defer([&](){
+       x->x_editor->defer_safe<false>([&](){
             ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
@@ -2334,7 +2348,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         buffer.resize(file.tellg());
         file.seekg(0, std::ios_base::beg);
         file.read(&buffer[0], buffer.size());
-        defer([&](){
+        x->x_editor->defer_safe<async>([&](){
             // protect against vstplugin_dsp() and vstplugin_save()
             ScopedLock lock(x->x_mutex);
             if (type == BANK)
@@ -2406,7 +2420,7 @@ static void vstplugin_preset_write_do(t_preset_data *data){
             buffer.reserve(1024);
         }
         // protect against vstplugin_dsp() and vstplugin_save()
-        defer([&](){
+        x->x_editor->defer_safe<async>([&](){
             ScopedLock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
@@ -2919,7 +2933,7 @@ void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
         }
     }
 
-    defer([&](){
+    x_editor->defer_safe<async>([&](){
         plugin->suspend();
         plugin->setupProcessing(x_sr, x_blocksize, x_realprecision);
 
