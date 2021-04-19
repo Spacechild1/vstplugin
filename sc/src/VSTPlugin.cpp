@@ -743,7 +743,7 @@ void VSTPlugin::setupBusses(Bus *& busses, int& numBusses,
     auto out = mOutBuf;
     auto end = mOutBuf + numOutputs();
     if (count > 0){
-        auto result = (Bus *)RTAlloc(mWorld, sizeof(Bus) * count);
+        auto result = (Bus *)RTAlloc(mWorld, count * sizeof(Bus));
         if (result){
             for (int i = 0; i < count; ++i){
                 assert(onset < numInputs());
@@ -795,10 +795,10 @@ void VSTPlugin::initReblocker(int reblockSize){
 
         // allocate input/output busses
         // NOTE: we always have at least one input and output bus!
-        reblock_->inputs = (Bus*)RTAlloc(mWorld, sizeof(Bus) * numUgenInputs_);
+        reblock_->inputs = (Bus*)RTAlloc(mWorld, numUgenInputs_ * sizeof(Bus));
         reblock_->numInputs = reblock_->inputs ? numUgenInputs_ : 0;
 
-        reblock_->outputs = (Bus*)RTAlloc(mWorld, sizeof(Bus) * numUgenOutputs_);
+        reblock_->outputs = (Bus*)RTAlloc(mWorld, numUgenOutputs_ * sizeof(Bus));
         reblock_->numOutputs = reblock_->outputs ? numUgenOutputs_ : 0;
 
         if (!(reblock_->inputs && reblock_->outputs)){
@@ -839,7 +839,7 @@ void VSTPlugin::initReblocker(int reblockSize){
                 for (int i = 0; i < count; ++i){
                     auto& bus = busses[i];
                     if (bus.numChannels > 0) {
-                        bus.channelData = (float**)RTAlloc(mWorld, sizeof(float*) * bus.numChannels);
+                        bus.channelData = (float**)RTAlloc(mWorld, bus.numChannels * sizeof(float*));
                         if (bus.channelData) {
                             for (int j = 0; j < bus.numChannels; ++j, bufptr += blockSize) {
                                 bus.channelData[j] = bufptr;
@@ -948,7 +948,8 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
             pluginBusses[i].numChannels = 0;
         }
         // numSpeakers is always > 0, so a nullptr means RTRealloc failed!
-        auto result = (AudioBus*)RTRealloc(mWorld, pluginBusses, numSpeakers);
+        auto result = (AudioBus*)RTRealloc(mWorld,
+            pluginBusses, numSpeakers * sizeof(AudioBus));
         if (!result) {
             return false; // bail!
         }
@@ -968,7 +969,8 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
             if (bus.numChannels != channelCount) {
                 if (channelCount > 0) {
                     // try to resize array
-                    auto result = (float**)RTRealloc(mWorld, bus.channelData32, channelCount);
+                    auto result = (float**)RTRealloc(mWorld,
+                        bus.channelData32, channelCount * sizeof(float *));
                     if (!result) {
                         return false; // bail!
                     }
