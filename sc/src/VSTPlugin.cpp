@@ -783,6 +783,90 @@ void VSTPlugin::setupBusses(Bus *& busses, int& numBusses,
     }
 }
 
+bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
+                             Bus *ugenBusses, int ugenBusCount,
+                             const int *speakers, int numSpeakers, float *dummy)
+{
+    // free excess bus channels
+    for (int i = numSpeakers; i < pluginBusCount; ++i){
+        RTFreeSafe(mWorld, pluginBusses[i].channelData32);
+        // if the following RTRealloc fails!
+        pluginBusses[i].channelData32 = nullptr;
+        pluginBusses[i].numChannels = 0;
+    }
+    // numSpeakers is always > 0, so a nullptr means RTRealloc failed!
+    auto result = (AudioBus*)RTRealloc(mWorld,
+        pluginBusses, numSpeakers * sizeof(AudioBus));
+    if (!result) {
+        return false; // bail!
+    }
+    // init new busses, in case a subsequent RTRealloc call fails!
+    for (int i = pluginBusCount; i < numSpeakers; ++i) {
+        result[i].channelData32 = nullptr;
+        result[i].numChannels = 0;
+    }
+    // now we can update the bus array
+    pluginBusses = result;
+    pluginBusCount = numSpeakers;
+    // (re)allocate plugin busses
+    for (int i = 0; i < numSpeakers; ++i) {
+        auto& bus = pluginBusses[i];
+        auto channelCount = speakers[i];
+        // we only need to update if the channel count has changed!
+        if (bus.numChannels != channelCount) {
+            if (channelCount > 0) {
+                // try to resize array
+                auto result = (float**)RTRealloc(mWorld,
+                    bus.channelData32, channelCount * sizeof(float *));
+                if (!result) {
+                    return false; // bail!
+                }
+                bus.channelData32 = result;
+                bus.numChannels = channelCount;
+            } else {
+                // free old array!
+                RTFreeSafe(mWorld, bus.channelData32);
+                bus.channelData32 = nullptr;
+                bus.numChannels = 0;
+            }
+        }
+    }
+    // set channels
+    if (ugenBusCount > 1){
+        // associate ugen busses with plugin busses
+        for (int i = 0; i < pluginBusCount; ++i) {
+            auto& bus = pluginBusses[i];
+            auto ugenChannels = i < ugenBusCount ? ugenBusses[i].numChannels : 0;
+            for (int j = 0; j < bus.numChannels; ++j) {
+                if (j < ugenChannels) {
+                    bus.channelData32[j] = ugenBusses[i].channelData[j];
+                } else {
+                    // point to dummy buffer!
+                    bus.channelData32[j] = dummy;
+                }
+            }
+        }
+    } else {
+        // distribute ugen channels over plugin busses
+        assert(ugenBusCount == 1);
+        auto channels = ugenBusses[0].channelData;
+        auto numChannels = ugenBusses[0].numChannels;
+        int index = 0;
+        for (int i = 0; i < pluginBusCount; ++i) {
+            auto& bus = pluginBusses[i];
+            for (int j = 0; j < bus.numChannels; ++j, ++index) {
+                if (index < numChannels) {
+                    bus.channelData32[j] = channels[index];
+                } else {
+                    // point to dummy buffer!
+                    bus.channelData32[j] = dummy;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 void VSTPlugin::initReblocker(int reblockSize){
     LOG_DEBUG("reblocking from " << bufferSize()
         << " to " << reblockSize << " samples");
@@ -914,7 +998,7 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
 {
     delegate().update();
 
-#if 1
+#if 0
     // HACK for buggy VST3 plugins which segfault on excess busses (e.g. mda)
     auto trim = [](const int *speakers, int& count, const char *what){
         // trim trailing empty busses, but keep at least one bus!
@@ -934,69 +1018,6 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
     auto inDummy = dummyBuffer_;
     auto outDummy = dummyBuffer_ +
             (reblock_ ? reblock_->blockSize : bufferSize());
-
-    auto setupBuffers = [this](
-            AudioBus *& pluginBusses, int &pluginBusCount,
-            Bus *ugenBusses, int ugenBusCount,
-            const int *speakers, int numSpeakers, float *dummy)
-    {
-        // free excess bus channels
-        for (int i = numSpeakers; i < pluginBusCount; ++i){
-            RTFreeSafe(mWorld, pluginBusses[i].channelData32);
-            // if the following RTRealloc fails!
-            pluginBusses[i].channelData32 = nullptr;
-            pluginBusses[i].numChannels = 0;
-        }
-        // numSpeakers is always > 0, so a nullptr means RTRealloc failed!
-        auto result = (AudioBus*)RTRealloc(mWorld,
-            pluginBusses, numSpeakers * sizeof(AudioBus));
-        if (!result) {
-            return false; // bail!
-        }
-        // init new busses, in case a subsequent RTRealloc call fails!
-        for (int i = pluginBusCount; i < numSpeakers; ++i) {
-            result[i].channelData32 = nullptr;
-            result[i].numChannels = 0;
-        }
-        // now we can update the bus array
-        pluginBusses = result;
-        pluginBusCount = numSpeakers;
-        // (re)allocate and set channels
-        for (int i = 0; i < numSpeakers; ++i) {
-            auto& bus = pluginBusses[i];
-            auto channelCount = speakers[i];
-            // we only need to update if the channel count has changed!
-            if (bus.numChannels != channelCount) {
-                if (channelCount > 0) {
-                    // try to resize array
-                    auto result = (float**)RTRealloc(mWorld,
-                        bus.channelData32, channelCount * sizeof(float *));
-                    if (!result) {
-                        return false; // bail!
-                    }
-                    // now update bus
-                    bus.channelData32 = result;
-                    bus.numChannels = channelCount;
-                    // set channels
-                    auto ugenChannels = i < ugenBusCount ? ugenBusses[i].numChannels : 0;
-                    for (int j = 0; j < bus.numChannels; ++j) {
-                        if (j < ugenChannels) {
-                            bus.channelData32[j] = ugenBusses[i].channelData[j];
-                        } else {
-                            // point to dummy buffer!
-                            bus.channelData32[j] = dummy;
-                        }
-                    }
-                } else {
-                    // free old array!
-                    RTFreeSafe(mWorld, bus.channelData32);
-                    bus.channelData32 = nullptr;
-                    bus.numChannels = 0;
-                }
-            }
-        }
-        return true;
-    };
 
     if (reblock_){
         if (!setupBuffers(pluginInputs_, numPluginInputs_,
@@ -1600,8 +1621,68 @@ bool cmdOpen(World *world, void* cmdData) {
                                 "' doesn't support single precision processing - bypassing!");
                 }
                 LOG_DEBUG("setNumSpeakers");
-                data->plugin->setNumSpeakers(data->inputs, data->numInputs,
-                                             data->outputs, data->numOutputs);
+
+                // prepare input busses
+                {
+                    auto& pluginInputs = data->plugin->info().inputs;
+                    if (data->numInputs > 1){
+                        LOG_DEBUG("associate ugen inputs");
+                        // associate ugen input busses with plugin input busses.
+                        // we need at least one input bus!
+                        auto numInputs = std::max<int>(1, std::min<int>(pluginInputs.size(), data->numInputs));
+                        data->realInputs.resize(numInputs);
+                        for (int i = 0; i < numInputs; ++i){
+                            data->realInputs[i] = data->inputs[i];
+                        }
+                    } else {
+                        assert(data->numInputs == 1);
+                        LOG_DEBUG("distribute ugen inputs");
+                        // distribute ugen inputs over plugin input busses
+                        auto remaining = data->inputs[0];
+                        for (int i = 0; i < (int)pluginInputs.size() && remaining > 0; ++i){
+                            auto chn = std::min<int>(remaining, pluginInputs[i].numChannels);
+                            data->realInputs.push_back(chn);
+                            remaining -= chn;
+                        }
+                        // we need at least one input bus!
+                        if (data->realInputs.empty()){
+                            data->realInputs.push_back(0);
+                        }
+                    }
+                }
+
+                // prepare output busses
+                {
+                    auto& pluginOutputs = data->plugin->info().outputs;
+                    if (data->numOutputs > 1){
+                        LOG_DEBUG("associate ugen outputs");
+                        // associate ugen output busses with plugin output busses.
+                        // we need at least one output bus!
+                        auto numOutputs = std::max<int>(1, std::min<int>(pluginOutputs.size(), data->numOutputs));
+                        data->realOutputs.resize(numOutputs);
+                        for (int i = 0; i < numOutputs; ++i){
+                            data->realOutputs[i] = data->outputs[i];
+                        }
+                    } else {
+                        assert(data->numOutputs == 1);
+                        LOG_DEBUG("distribute ugen inputs");
+                        // distribute ugen inputs over plugin input busses
+                        auto remaining = data->outputs[0];
+                        for (int i = 0; i < (int)pluginOutputs.size() && remaining > 0; ++i){
+                            auto chn = std::min<int>(remaining, pluginOutputs[i].numChannels);
+                            data->realOutputs.push_back(chn);
+                            remaining -= chn;
+                        }
+                        // we need at least one input bus!
+                        if (data->realOutputs.empty()){
+                            data->realOutputs.push_back(0);
+                        }
+                    }
+                }
+
+                data->plugin->setNumSpeakers(data->realInputs.data(), data->realInputs.size(),
+                                             data->realOutputs.data(), data->realOutputs.size());
+
                 LOG_DEBUG("resume");
                 data->plugin->resume();
             }, data->editor);
@@ -1650,7 +1731,7 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         cmdData->mode = mode;
         cmdData->sampleRate = owner_->sampleRate();
         cmdData->blockSize = owner_->blockSize();
-        // set desired number of inputs
+        // copy ugen input busses
         cmdData->numInputs = owner_->numInputBusses();
         cmdData->inputs = (int *)RTAlloc(world_, cmdData->numInputs * sizeof(int));
         if (cmdData->inputs){
@@ -1661,7 +1742,7 @@ void VSTPluginDelegate::open(const char *path, bool editor,
             cmdData->numInputs = 0;
             LOG_ERROR("RTAlloc failed!");
         }
-        // set desired number of outputs
+        // copy ugen outputs busses
         cmdData->numOutputs = owner_->numOutputBusses();
         cmdData->outputs = (int *)RTAlloc(world_, cmdData->numOutputs * sizeof(int));
         if (cmdData->outputs){
@@ -1673,11 +1754,20 @@ void VSTPluginDelegate::open(const char *path, bool editor,
             LOG_ERROR("RTAlloc failed!");
         }
 
-        doCmd(cmdData, cmdOpen, [](World *world, void *cmdData){
-            auto data = (OpenCmdData*)cmdData;
-            data->owner->doneOpen(*data); // alive() checked in doneOpen!
-            return false; // done
-        });
+        doCmd(cmdData, cmdOpen,
+            [](World *world, void *cmdData){
+                auto data = (OpenCmdData*)cmdData;
+                data->owner->doneOpen(*data); // alive() checked in doneOpen!
+                return true; // continue
+            },
+            [](World *world, void *cmdData){
+                auto data = (OpenCmdData*)cmdData;
+                // free vectors in NRT thread!
+                data->realInputs = std::vector<int>{};
+                data->realOutputs = std::vector<int>{};
+                return false; // done
+            }
+        );
 
         isLoading_ = true;
         // NOTE: don't set 'editor_' already because 'editor' value might change
@@ -1707,7 +1797,8 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
         }
         LOG_DEBUG("opened " << cmd.path);
         // setup data structures
-        owner_->setupPlugin(cmd.inputs, cmd.numInputs, cmd.outputs, cmd.numOutputs);
+        owner_->setupPlugin(cmd.realInputs.data(), cmd.realInputs.size(),
+                            cmd.realOutputs.data(), cmd.realOutputs.size());
         // receive events from plugin
         plugin_->setListener(shared_from_this());
         // success, window, initial latency

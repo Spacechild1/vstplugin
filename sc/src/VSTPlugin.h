@@ -53,6 +53,8 @@ struct OpenCmdData : CmdData {
     int numOutputs;
     int *inputs;
     int *outputs;
+    std::vector<int> realInputs;
+    std::vector<int> realOutputs;
     // flexible array for RT memory
     int size = 0;
     char path[1];
@@ -304,6 +306,10 @@ private:
     template<bool output>
     void setupBusses(Bus *& busses, int& numBusses,
                      int count, int& onset);
+
+    bool setupBuffers(AudioBus *& pluginBusses, int& pluginBusCount,
+                      Bus *ugenBusses, int ugenBusCount,
+                      const int *speakers, int numSpeakers, float *dummy);
 
     void initReblocker(int reblockSize);
     bool updateReblocker(int numSamples);

@@ -20,7 +20,7 @@ create a UGen instance.
 ARGUMENT:: input
 The UGen inputs for the plugin to process.
 
-In case of a emphasis::single:: input bus (most plugins), you can pass
+Possible types:
 list::
 ## a single UGen (= mono)
 code::
@@ -31,13 +31,20 @@ code::
 VSTPlugin.ar([ SinOsc.ar(100), SinOsc.ar(200) ]);
 ::
 ## code::nil:: (= no input, e.g. VST instruments).
+## an Array link::Classes/Ref:: (= multi-bus, see below)
 ::
 
-If you want to use emphasis::multiple:: input busses, you have to pass a link::Classes/Ref:: to an Array of inputs. You can skip a bus with 0 or code::nil::.
+emphasis::Multiple input busses::
+
+Some VST3 plugins have multiple input busses. If you pass an Array of UGens, they will be automatically distributed over several busses.
+
+___
+
+Alternatively, you can pass a link::Classes/Ref:: to an Array of inputs. This allows you to pick a subset of channels for each bus. Also, you can skip a bus with 0 or code::nil::.
 
 code::
-// bus1: mono, bus2: stereo, bus3: -, bus4: 3ch
-VSTPlugin.ar(`[ SinOsc.ar(100), [ SinOsc.ar(100), SinOsc.ar(200) ], nil, [ SinOsc.ar(300), SinOsc.ar(400), SinOsc.ar(500) ] ]);
+// bus 0: 2ch, bus 1: -, bus 2: 1ch
+VSTPlugin.ar(`[ [ SinOsc.ar(100), SinOsc.ar(200) ], nil, SinOsc.ar(300) ]);
 ::
 
 note::You can check the available input busses with link::Classes/VSTPluginDesc#-inputs::.::
@@ -45,7 +52,7 @@ note::You can check the available input busses with link::Classes/VSTPluginDesc#
 ARGUMENT:: numOut
 The number of output channels.
 
-In case of a emphasis::single:: output bus (most plugins), this must be a fixed number greater than 0.
+In the simple case, this is a fixed number greater than 0.
 
 The result is either a single link::Classes/OutputProxy:: (mono) or an Array of OutputProxies (stereo/multichannel), just like a regular link::Classes/MultiOutUGen::.
 
@@ -56,20 +63,25 @@ VSTPlugin.ar(numOut: 1);
 VSTPlugin.ar(numOutput: 2);
 ::
 
----
 
-If you want to use emphasis::multiple:: output busses, you have to pass a link::Classes/Ref:: to an Array of channel numbers. You can skip a bus with 0 or code::nil::.
+emphasis::Multiple output busses::
+
+If the plugin has multiple output busses, the UGen outputs will be automatically distributed over several busses.
+
+___
+
+Alternatively, you can pass a link::Classes/Ref:: to an Array of channel numbers. This allows you to pick a subset of channels for each bus. Also, you can skip a bus with 0 or code::nil::.
 
 The result is an Array of output busses, where each bus is an Array of link::Classes/OutputProxy::.
 
 note::Skipped output busses are omitted from the Array!::
 
 code::
-// bus1: stereo, bus2: mono, bus3: -, bus4: 4ch
-var sig = VSTPlugin.ar(numOut: `[2, 1, nil, 4]);
-Out.ar(0, sig[0]); // do something with bus1
-Out.ar(4, sig[2]); // do something with bus4 (bus3 is omitted!)
-Out.ar(8, sig.flat); // output all bus channels in a row
+// bus 0: 2ch, bus 1: -, bus 2: 1ch
+var sig = VSTPlugin.ar(numOut: `[2, nil, 1]);
+sig[0]; // bus 0 [ OutputProxy, OutputProxy ]
+sig[1]; // bus 2 (bus 1 is omitted!) [ OutputProxy ]
+sig.flat; // all bus channels in a row
 ::
 
 note::You can check the available output busses with link::Classes/VSTPluginDesc#-outputs::.::
