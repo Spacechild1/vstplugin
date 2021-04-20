@@ -10,6 +10,16 @@
 # define PROBE_TIMEOUT 10
 #endif
 
+// for testing we don't want to load hundreds of sub plugins
+// #define PLUGIN_LIMIT 50
+
+// We probe sub-plugins asynchronously with "futures".
+// Each future spawns a subprocess and then waits for the results.
+#define PROBE_FUTURES 8 // max. number of futures to wait for
+
+// The sleep interval when probing several plugins in a factory asynchronously
+#define PROBE_SLEEP_MS 2
+
 namespace vst {
 
 class PluginFactory :
