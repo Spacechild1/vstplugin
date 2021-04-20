@@ -22,27 +22,32 @@ LIST::
 section:: Code
 
 code::
+(
+// search for plugins
+VSTPlugin.search(verbose: false);
+)
+
 // SynthDefs
 (
 ~order = 3; // set this to the order you want
 ~numChannels = ((~order + 1)**2).asInteger;
 // binaural decoder (~numChannels -> 2) - reads from 'bus' and sums into 'out'
-SynthDef.new(\binauralDecoder, {arg bus, out = 0;
+SynthDef.new(\binauralDecoder, { | bus, out = 0 |
 	Out.ar(out, VSTPlugin.ar(In.ar(bus, ~numChannels), 2));
 }).add;
 
 // stereo encoder (2 -> ~numChannels) - replaces stereo signal with ambisonics signal
-SynthDef.new(\stereoEncoder, {arg bus = 0;
+SynthDef.new(\stereoEncoder, { | bus = 0 |
 	ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), ~numChannels));
 }).add;
 
 // ambisonics insert FX (replaces input with output)
-SynthDef.new(\ambiFX, {arg bus = 0, bypass;
+SynthDef.new(\ambiFX, { | bus = 0, bypass |
 	ReplaceOut.ar(bus, VSTPlugin.ar(In.ar(bus, 2), ~numChannels, bypass));
 }).add;
 
 // helper Synth (throws audio from ambi bus to ambi master bus)
-SynthDef.new(\ambiThrow, {arg from, to;
+SynthDef.new(\ambiThrow, { | from, to |
 	Out.ar(to, In.ar(from, ~numChannels));
 }).add;
 
@@ -50,14 +55,11 @@ SynthDef.new(\ambiThrow, {arg from, to;
 ~buf = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
 
 // play a sound file (in different rates)
-SynthDef(\test, { arg out = 0, vol = 1.0;
+SynthDef(\test, { | out = 0, vol = 1.0 |
     Out.ar(out,
 		PlayBuf.ar(2, ~buf, BufRateScale.kr(~buf), rate: Rand(0.5, 2), loop: 1) * vol;
     )
 }).add;
-
-// search for plugins
-VSTPlugin.search(verbose: false);
 )
 
 // create ambisonic master section
@@ -79,16 +81,16 @@ VSTPlugin.search(verbose: false);
 ~ambiBus = Array.newClear(~numBus);
 ~ambiGroup = Array.newClear(~numBus);
 ~encoder = Array.newClear(~numBus);
-~numBus.do { arg i;
+~numBus.do { |i|
 	~ambiBus[i] = Bus.audio(s, ~numChannels);
 	~ambiGroup[i] = Group.before(~ambiMasterGroup);
 	// sound source (head)
 	Synth.new(\test, [\out, ~ambiBus[i], \vol, 1.0 / ~numBus], ~ambiGroup[i], addAction: \addToHead);
 	// encoder (after sound source)
-	~encoder[i] = VSTPluginController(Synth(\stereoEncoder, [\bus, ~ambiBus[i], \out, ~ambiMasterBus],
+	~encoder[i] = VSTPluginController(Synth(\stereoEncoder, [\bus, ~ambiBus[i]],
 		target: ~ambiGroup[i], addAction: \addToTail));
 	// open plugin and randomize azimuth
-	~encoder[i].open("StereoEncoder", action: { arg self; self.set(6, rand(1.0)) }); // 6 -> azimuth
+	~encoder[i].open("StereoEncoder", action: { |self| self.set(6, rand(1.0)) }); // 6 -> azimuth
 	// throw to master section (after encoder)
 	Synth(\ambiThrow, [\from, ~ambiBus[i], \to, ~ambiMasterBus], target: ~ambiGroup[i], addAction: \addToTail);
 
@@ -100,15 +102,17 @@ VSTPlugin.search(verbose: false);
 // randomize source positions
 ~encoder.do(_.set(6, rand(1.0))) // 6 -> azimuth
 
-// move around manually with the GUI:
+// move around manually with the SC GUI:
 ~encoder.do(_.gui);
+// move around with the VST editor:
+~encoder.do(_.editor);
 
 // modulate azimuth values with random LFOs:
 (
 ~lfoGroup = Group.new;
-~lfoBus = { Bus.control } ! ~numBus;
-~lfo = { arg i; { arg rate = 0.5; LFNoise1.kr(rate, 0.5, 0.5) }.play(~lfoGroup, ~lfoBus[i]) } ! ~numBus;
-~encoder.do { arg enc, i; enc.map(6, ~lfoBus[i]) }; // map azimuth parameter (nr. 6) to control bus
+~lfoBus = ~numBus.collect { Bus.control };
+~lfo = ~numBus.collect { |i| { | rate = 0.5 | LFNoise1.kr(rate, 0.5, 0.5) }.play(~lfoGroup, ~lfoBus[i]) };
+~encoder.do { | enc, i | enc.map(6, ~lfoBus[i]) }; // map azimuth parameter (nr. 6) to control bus
 )
 
 ~lfoGroup.set(\rate, exprand(0.1, 4.0));  // change LFO rates
