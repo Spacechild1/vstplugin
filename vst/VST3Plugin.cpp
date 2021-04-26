@@ -10,6 +10,7 @@
 #include <cstring>
 #include <algorithm>
 #include <set>
+#include <cmath>
 #include <codecvt>
 #include <locale>
 #include <cassert>
@@ -388,12 +389,12 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     : info_(std::move(desc))
 {
     memset(&context_, 0, sizeof(context_));
-    context_.state = Vst::ProcessContext::kContTimeValid
+    context_.state = Vst::ProcessContext::kContTimeValid | Vst::ProcessContext::kSystemTimeValid
             | Vst::ProcessContext::kProjectTimeMusicValid | Vst::ProcessContext::kBarPositionValid
             | Vst::ProcessContext::kCycleValid | Vst::ProcessContext::kTempoValid
             | Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kClockValid
             | Vst::ProcessContext::kSmpteValid;
-    context_.sampleRate = 1;
+    context_.sampleRate = 44100;
     context_.tempo = 120;
     context_.timeSigNumerator = 4;
     context_.timeSigDenominator = 4;
@@ -768,11 +769,13 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
 
     processor_->setupProcessing(reinterpret_cast<Vst::ProcessSetup&>(setup));
 
-    context_.sampleRate = sampleRate;
-    // update project time in samples (assumes the tempo is valid for the whole project)
-    double time = context_.projectTimeMusic / context_.tempo * 60.f;
-    context_.projectTimeSamples = time * sampleRate;
-    context_.continousTimeSamples = time * sampleRate;
+    // only update if sample rate has changed
+    if (sampleRate != context_.sampleRate){
+        auto ratio = sampleRate / context_.sampleRate;
+        context_.projectTimeSamples = (double)context_.projectTimeSamples * ratio;
+        context_.continousTimeSamples = (double)context_.continousTimeSamples * ratio;
+        context_.sampleRate = sampleRate;
+    }
 }
 
 void VST3Plugin::process(ProcessData& data){
@@ -870,17 +873,18 @@ void VST3Plugin::doProcess(ProcessData& inData){
 
     // update time info (if playing)
     if (context_.state & Vst::ProcessContext::kPlaying){
+        // first advance time
         context_.continousTimeSamples += data.numSamples;
         context_.projectTimeSamples += data.numSamples;
-        double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
-        // advance project time in bars
         double delta = data.numSamples / context_.sampleRate;
+        context_.systemTime += delta * 1e9;
         double beats = delta * context_.tempo / 60.0;
         context_.projectTimeMusic += beats;
         // bar start: simply round project time (in bars) down to bar length
-        double barLength = context_.timeSigNumerator * context_.timeSigDenominator / 4.0;
-        context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / barLength) * barLength;
+        double beatsPerBar = context_.timeSigNumerator / context_.timeSigDenominator * 4.0;
+        context_.barPositionMusic = static_cast<int64_t>(context_.projectTimeMusic / beatsPerBar) * beatsPerBar;
         // SMPTE offset
+        double projectTimeSeconds = (double)context_.projectTimeSamples / context_.sampleRate;
         double smpteFrames = projectTimeSeconds / context_.frameRate.framesPerSecond;
         double smpteFrameFract = smpteFrames - static_cast<int64_t>(smpteFrames);
         context_.smpteOffsetSubframes = smpteFrameFract * 80; // subframes are 1/80 of a frame
@@ -891,12 +895,10 @@ void VST3Plugin::doProcess(ProcessData& inData){
         if (clockTickFract > 0.5){
             clockTickFract -= 1.0;
         }
-        if (context_.tempo > 0){
-            double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate; // 60.0 / 24.0 = 2.5
-            context_.samplesToNextClock = clockTickFract * samplesPerClock;
-        } else {
-            context_.samplesToNextClock = 0;
-        }
+        assert(context_.tempo > 0);
+        // 60.0 / 24.0 = 2.5
+        double samplesPerClock = (2.5 / context_.tempo) * context_.sampleRate;
+        context_.samplesToNextClock = clockTickFract * samplesPerClock;
     }
 }
 
@@ -1424,7 +1426,7 @@ void VST3Plugin::setTransportCycleEnd(double beat){
 }
 
 void VST3Plugin::setTransportPosition(double beat){
-    context_.projectTimeMusic = beat;
+    context_.projectTimeMusic = std::max(beat, 0.0);
     // update project time in samples (assuming the tempo is valid for the whole "project")
     double time = beat / context_.tempo * 60.0;
     context_.projectTimeSamples = time * context_.sampleRate;

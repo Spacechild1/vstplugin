@@ -303,9 +303,11 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
               << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
     if (sampleRate > 0){
         dispatch(effSetSampleRate, 0, 0, NULL, sampleRate);
+        // only update if sample rate has changed
         if (sampleRate != timeInfo_.sampleRate){
+            auto ratio = sampleRate / timeInfo_.sampleRate;
+            timeInfo_.samplePos = (double)timeInfo_.samplePos * ratio;
             timeInfo_.sampleRate = sampleRate;
-            setTransportPosition(0);
         }
     } else {
         LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
@@ -743,9 +745,9 @@ void VST2Plugin::setTransportCycleEnd(double beat){
 
 void VST2Plugin::setTransportPosition(double beat){
     timeInfo_.ppqPos = std::max(beat, 0.0); // musical position
-    double sec = timeInfo_.ppqPos / timeInfo_.tempo * 60.0;
-    timeInfo_.nanoSeconds = sec * 1e-009; // system time in nanoseconds
-    timeInfo_.samplePos = sec * timeInfo_.sampleRate; // sample position
+    // update project time in samples (assuming the tempo is valid for the whole "project")
+    double time = timeInfo_.ppqPos / timeInfo_.tempo * 60.0;
+    timeInfo_.samplePos = time * timeInfo_.sampleRate; // sample position
     timeInfo_.flags |= kVstTransportChanged;
 }
 
@@ -1326,8 +1328,8 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
     }
     if (flags & kVstBarsValid){
         double beatsPerBar = (double)timeInfo_.timeSigNumerator / (double)timeInfo_.timeSigDenominator * 4.0;
-            // starting position of current bar in beats (e.g. 4.0 for 4.25 in case of 4/4)
-        timeInfo_.barStartPos = std::floor(timeInfo_.ppqPos / beatsPerBar) * beatsPerBar;
+        // starting position of current bar in beats (e.g. 4.0 for 4.25 in case of 4/4)
+        timeInfo_.barStartPos = static_cast<int64_t>(timeInfo_.ppqPos / beatsPerBar) * beatsPerBar;
         DEBUG_TIME_INFO("bar start pos");
     }
     if (flags & kVstCyclePosValid){
@@ -1337,7 +1339,9 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
         DEBUG_TIME_INFO("time signature");
     }
     if (flags & kVstSmpteValid){
-        double frames = timeInfo_.samplePos / timeInfo_.sampleRate / 60.0; // our SMPTE frame rate is 60 fps
+        // our SMPTE frame rate should be 60 fps
+        assert(timeInfo_.smpteFrameRate == kVstSmpte60fps);
+        double frames = timeInfo_.samplePos / timeInfo_.sampleRate / 60.0;
         double fract = frames - static_cast<int64_t>(frames);
         timeInfo_.smpteOffset = fract * 80; // subframes are 1/80 of a frame
         DEBUG_TIME_INFO("SMPTE offset");
@@ -1345,17 +1349,15 @@ VstTimeInfo * VST2Plugin::getTimeInfo(VstInt32 flags){
     if (flags & kVstClockValid){
         // samples to nearest midi clock
         double clockTicks = timeInfo_.ppqPos * 24.0;
-        double fract = clockTicks - (int64_t)clockTicks;
+        double fract = clockTicks - static_cast<int64_t>(clockTicks);
         // get offset to nearest tick -> can be negative!
         if (fract > 0.5){
             fract -= 1.0;
         }
-        if (timeInfo_.tempo > 0){
-            double samplesPerClock = (2.5 / timeInfo_.tempo) * timeInfo_.sampleRate; // 60.0 / 24.0 = 2.5
-            timeInfo_.samplesToNextClock = fract * samplesPerClock;
-        } else {
-            timeInfo_.samplesToNextClock = 0;
-        }
+        assert(timeInfo_.tempo > 0);
+        // 60.0 / 24.0 = 2.5
+        double samplesPerClock = (2.5 / timeInfo_.tempo) * timeInfo_.sampleRate;
+        timeInfo_.samplesToNextClock = fract * samplesPerClock;
         DEBUG_TIME_INFO("MIDI clock offset");
     }
     return &timeInfo_;
