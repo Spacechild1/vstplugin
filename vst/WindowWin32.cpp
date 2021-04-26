@@ -67,6 +67,9 @@ EventLoop& EventLoop::instance(){
 }
 
 DWORD EventLoop::run(void *user){
+    // some plugin UIs (e.g. VSTGUI) need COM!
+    CoInitialize(nullptr);
+
     setThreadPriority(Priority::Low);
 
     auto obj = (EventLoop *)user;
@@ -110,6 +113,9 @@ DWORD EventLoop::run(void *user){
     LOG_DEBUG("quit message loop");
 
     KillTimer(NULL, timer);
+
+    // let's be nice
+    CoUninitialize();
 
     return 0;
 }

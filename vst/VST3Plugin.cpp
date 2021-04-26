@@ -874,6 +874,9 @@ void VST3Plugin::doProcess(ProcessData& inData){
     // update time info (if playing)
     if (context_.state & Vst::ProcessContext::kPlaying){
         // first advance time
+        // NOTE: according to the VST3 SDK hostchecker plugin,
+        // we should always advance the continous sample time
+        // and system time, even if we're not playing...
         context_.continousTimeSamples += data.numSamples;
         context_.projectTimeSamples += data.numSamples;
         double delta = data.numSamples / context_.sampleRate;
