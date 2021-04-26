@@ -255,9 +255,10 @@ PluginFactory::PluginFactory(const std::string &path)
 IFactory::ProbeFuture PluginFactory::probeAsync(bool nonblocking) {
     plugins_.clear();
     pluginMap_.clear();
-    auto f = doProbePlugin(nonblocking);
-    auto self = shared_from_this();
-    return [this, self=std::move(self), f=std::move(f)](ProbeCallback callback){
+    return [this,
+            self = shared_from_this(),
+            f = doProbePlugin(nonblocking)]
+            (ProbeCallback callback){
         // call future
         ProbeResult result;
         if (f(result)){
@@ -338,8 +339,6 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     std::string tmpPath = ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
     std::string hostApp = getHostApp(arch_);
-    // for non-blocking timeout
-    auto start = std::chrono::system_clock::now();
 #ifdef _WIN32
     // get absolute path to host app
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
@@ -483,8 +482,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         #else
             pid,
         #endif
-            start]
-            (ProbeResult& result){
+            start = std::chrono::system_clock::now()]
+            (ProbeResult& result) {
     #ifdef _WIN32
         DWORD code;
     #else
@@ -497,10 +496,30 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         try {
             if (!wait(code)){
                 if (PROBE_TIMEOUT > 0) {
+                    using seconds = std::chrono::duration<double>;
                     auto now = std::chrono::system_clock::now();
-                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
-                    auto elapsed = duration.count() * 0.001;
+                    auto elapsed = std::chrono::duration_cast<seconds>(now - start).count();
                     if (elapsed > PROBE_TIMEOUT){
+                        // IMPORTANT: wait in a loop to check if the subprocess is really stuck!
+                        // note that we're effectively using twice the specified probe time out value.
+                        // maybe just use half the time each?
+                        // LATER find a better way...
+                        LOG_DEBUG(desc->path() << ": check timeout");
+                        auto t1 = std::chrono::system_clock::now();
+                        for (;;){
+                            std::this_thread::sleep_for(std::chrono::milliseconds(PROBE_SLEEP_MS));
+
+                            if (wait(code)){
+                                goto probe_success; // ugly but legal
+                            }
+
+                            auto t2 = std::chrono::system_clock::now();
+                            auto diff = std::chrono::duration_cast<seconds>(t2 - t1).count();
+                            if (diff > PROBE_TIMEOUT){
+                                LOG_DEBUG(desc->path() << ": really timed out!");
+                                break;
+                            }
+                        }
                     #ifdef _WIN32
                         if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
                             LOG_DEBUG("terminated hanging subprocess");
@@ -529,6 +548,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
             result.error = e;
             return true;
         }
+    probe_success:
         /// LOG_DEBUG("return code: " << ret);
         TmpFile file(tmpPath); // removes the file on destruction
         if (code == EXIT_SUCCESS) {
@@ -585,13 +605,6 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     };
 }
 
-// for testing we don't want to load hundreds of sub plugins
-// #define PLUGIN_LIMIT 50
-
-// We probe sub-plugins asynchronously with "futures".
-// Each future spawns a subprocess and then waits for the results.
-#define PROBE_FUTURES 8 // number of futures to wait for
-
 std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
         const PluginInfo::SubPluginList& pluginList, ProbeCallback callback)
 {
@@ -637,7 +650,7 @@ std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
                 it++;
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        std::this_thread::sleep_for(std::chrono::milliseconds(PROBE_SLEEP_MS));
     }
     return results;
 }
