@@ -1,4 +1,4 @@
-vstplugin v0.4.1
+vstplugin v0.5.0
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -22,6 +22,28 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
 Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues
+
+---
+
+### Known issues:
+
+* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above!
+
+* macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above! Otherwise you get a warning if you try to open a plugin with "editor: true".
+
+* macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)... This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
+
+ There are two options work around this issue:
+
+ a) run the plugin in a subprocess (see "-b" and "-p" options)
+
+ b) use my Pd "eventloop" fork (source: https://github.com/Spacechild1/pure-data/tree/eventloop; binaries: https://github.com/Spacechild1/pure-data/releases, e.g. "Pd 0.51-1 event loop"). NOTE: You have tick "Enable event loop" in the "Start up" settings.
+
+* The macOS binaries are not signed/notarized, so the Gatekeeper will complain. See the section 'macOS 10.15+' for workarounds.
+
+* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa. This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format.
+
+* Existing SynthDef files written with v0.4 or below don't work in v0.5, because the UGen structure has changed. You have to recreate them with the new version.
 
 ---
 
@@ -58,26 +80,6 @@ The default Wine folder is '~/.wine' and the default Wine loader is the `wine` c
 and can be overriden with the `WINEPREFIX` resp. `WINELOADER` environment variables.
 
 WARNING: The Wine plugin bridge is still experimental and some plugins won't work as expected.
-
----
-
-### Known issues:
-
-* The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above!
-
-* macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above! Otherwise you get a warning if you try to open a plugin with "editor: true".
-
-* macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)... This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
-
- There are two options work around this issue:
-
- a) run the plugin in a subprocess (see "-b" and "-p" options)
-
- b) use my Pd "eventloop" fork (source: https://github.com/Spacechild1/pure-data/tree/eventloop; binaries: https://github.com/Spacechild1/pure-data/releases, e.g. "Pd 0.51-1 event loop"). NOTE: You have tick "Enable event loop" in the "Start up" settings.
-
-* The macOS binaries are *unsigned*, so you have to workaround the macOS Gatekeeper. See the section "macOS 10.15+" for more information.
-
-* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa because of a mistake in the (de)serialization of VST3 plugin IDs. This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format. But first make sure to clear the plugin cache and do a new search to update the plugin IDs.
 
 ---
 
