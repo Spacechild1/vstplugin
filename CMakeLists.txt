@@ -236,7 +236,7 @@ if (LINUX)
     add_definitions("-fPIC")
     set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 endif()
-if (WIN32)
+if (WIN32 OR BUILD_WINE)
     # for COM
     list(APPEND VST_LIBS "ole32")
 endif()
