@@ -57,15 +57,9 @@ variables:
       - "${CI_JOB_NAME%_snap*}/${SCLIBNAME}"
       - "${CI_JOB_NAME%_snap*}/${PROJECT}"
 
-.snapshot:
-  except:
-    - tags
+.base:
   artifacts:
     expire_in: 1 week
-
-.release:
-  only:
-    - tags
 
 .build:linux: &build_linux
   extends: .build:script
@@ -230,21 +224,21 @@ variables:
 
 
 #######################################################################
-### the actual jobs: (linux,macos,windows)*(release,snapshot)
+### the actual jobs: (linux,macos,windows)*(release)
 
 ### release jobs
 Linux:
   extends:
     - .Linux
-    - .release
+    - .base
 Linux_i386:
   extends:
     - .Linux_i386
-    - .release
+    - .base
 Linux_wine:
   extends:
     - .Linux_wine
-    - .release
+    - .base
 Linux_wine32:
   image: registry.git.iem.at/devtools/docker/debiancross:i386
   extends:
@@ -252,51 +246,16 @@ Linux_wine32:
 Darwin:
   extends:
     - .Darwin
-    - .release
+    - .base
 w32:
   extends:
     - .w32
-    - .release
+    - .base
 w64:
   extends:
     - .w64
-    - .release
+    - .base
 package:
   extends:
     - .package
-    - .release
-
-### snapshot jobs
-Linux_snapshot:
-  extends:
-    - .Linux
-    - .snapshot
-Linux_i386_snapshot:
-  extends:
-    - .Linux_i386
-    - .snapshot
-Linux_wine_snapshot:
-  extends:
-    - .Linux_wine
-    - .snapshot
-Linux_wine32_snapshot:
-  image: registry.git.iem.at/devtools/docker/debiancross:i386
-  extends:
-    - Linux_wine_snapshot
-Darwin_snapshot:
-  extends:
-    - .Darwin
-    - .snapshot
-w32_snapshot:
-  extends:
-    - .w32
-    - .snapshot
-w64_snapshot:
-  extends:
-    - .w64
-    - .snapshot
-package_snapshot:
-  extends:
-    - .package
-    - .snapshot
-
+    - .base
