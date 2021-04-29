@@ -500,26 +500,6 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                     auto now = std::chrono::system_clock::now();
                     auto elapsed = std::chrono::duration_cast<seconds>(now - start).count();
                     if (elapsed > PROBE_TIMEOUT){
-                        // IMPORTANT: wait in a loop to check if the subprocess is really stuck!
-                        // note that we're effectively using twice the specified probe time out value.
-                        // maybe just use half the time each?
-                        // LATER find a better way...
-                        LOG_DEBUG(desc->path() << ": check timeout");
-                        auto t1 = std::chrono::system_clock::now();
-                        for (;;){
-                            std::this_thread::sleep_for(std::chrono::milliseconds(PROBE_SLEEP_MS));
-
-                            if (wait(code)){
-                                goto probe_success; // ugly but legal
-                            }
-
-                            auto t2 = std::chrono::system_clock::now();
-                            auto diff = std::chrono::duration_cast<seconds>(t2 - t1).count();
-                            if (diff > PROBE_TIMEOUT){
-                                LOG_DEBUG(desc->path() << ": really timed out!");
-                                break;
-                            }
-                        }
                     #ifdef _WIN32
                         if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
                             LOG_DEBUG("terminated hanging subprocess");
@@ -548,7 +528,6 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
             result.error = e;
             return true;
         }
-    probe_success:
         /// LOG_DEBUG("return code: " << ret);
         TmpFile file(tmpPath); // removes the file on destruction
         if (code == EXIT_SUCCESS) {

@@ -546,22 +546,20 @@ static IFactory::ptr probePlugin(const std::string& path){
     return nullptr;
 }
 
-using FactoryFuture = std::function<bool(IFactory::ptr&)>;
-
 template<bool async>
 static FactoryFuture probePluginAsync(const std::string& path){
     auto factory = loadFactory<async>(path);
     if (!factory){
-        return [](IFactory::ptr& out) {
+        return FactoryFuture(path, [](IFactory::ptr& out) {
             out = nullptr;
             return true;
-        };
+        });
     }
     try {
         // start probing process
         auto future = factory->probeAsync(true);
         // return future
-        return [=](IFactory::ptr& out) {
+        return FactoryFuture(path, [=](IFactory::ptr& out) {
             // wait for results
             bool done = future([&](const ProbeResult& result){
                 if (result.total > 1){
@@ -594,10 +592,10 @@ static FactoryFuture probePluginAsync(const std::string& path){
             } else {
                 return false;
             }
-        };
+        });
     } catch (const Error& e){
         // return future which prints the error message
-        return [=](IFactory::ptr& out) {
+        return FactoryFuture(path, [=](IFactory::ptr& out) {
             PdLog<async> log(PD_DEBUG, "probing '%s'... ", path.c_str());
             ProbeResult result;
             result.error = e;
@@ -605,7 +603,7 @@ static FactoryFuture probePluginAsync(const std::string& path){
             gPluginManager.addException(path);
             out = nullptr;
             return true;
-        };
+        });
     }
 }
 
@@ -636,8 +634,11 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
 
     std::vector<FactoryFuture> futures;
 
+    auto last = std::chrono::system_clock::now();
+
     auto processFutures = [&](int limit){
         while (futures.size() > limit){
+            bool didSomething = false;
             for (auto it = futures.begin(); it != futures.end(); ){
                 IFactory::ptr factory;
                 if ((*it)(factory)){
@@ -649,8 +650,23 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
                     }
                     // remove future
                     it = futures.erase(it);
+                    didSomething = true;
                 } else {
                     it++;
+                }
+            }
+            auto now = std::chrono::system_clock::now();
+            if (didSomething){
+                last = now;
+            } else {
+                using seconds = std::chrono::duration<double>;
+                auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
+                if (elapsed > 4.0){
+                    for (auto& f : futures){
+                        PdLog<async> log(PD_NORMAL, "waiting for '%s'...", f.path().c_str());
+                    }
+                    // PdLog<async> log(PD_NORMAL, "...");
+                    last = now;
                 }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(2));

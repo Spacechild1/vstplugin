@@ -6,8 +6,13 @@
 
 // probe timeout in seconds
 // 0: infinite
+//
+// we choose a rather large timeout to eliminate
+// false positives. The Pd/SC clients will periodically
+// print a warning that we're still waiting for plugins, so the
+// user can also force quit and remove the offending plugin(s).
 #ifndef PROBE_TIMEOUT
-# define PROBE_TIMEOUT 10
+# define PROBE_TIMEOUT 60
 #endif
 
 // for testing we don't want to load hundreds of sub plugins

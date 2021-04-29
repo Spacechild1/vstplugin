@@ -343,21 +343,19 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
     return nullptr;
 }
 
-using FactoryFuture = std::function<bool(IFactory::ptr&)>;
-
 static FactoryFuture probePluginAsync(const std::string& path, bool verbose) {
     auto factory = loadFactory(path, verbose);
     if (!factory){
-        return [](IFactory::ptr& out) {
+        return FactoryFuture(path, [](IFactory::ptr& out) {
             out = nullptr;
             return true;
-        };
+        });
     }
     // start probing process
     try {
         auto future = factory->probeAsync(true);
         // return future
-        return [=](IFactory::ptr& out) {
+        return FactoryFuture(path, [=](IFactory::ptr& out) {
             // wait for results
             bool done = future([&](const ProbeResult& result) {
                 if (verbose) {
@@ -393,11 +391,10 @@ static FactoryFuture probePluginAsync(const std::string& path, bool verbose) {
             } else {
                 return false;
             }
-        };
-    }
-    catch (const Error& e) {
+        });
+    } catch (const Error& e) {
         // return future which prints the error message
-        return [=](IFactory::ptr& out) {
+        return FactoryFuture(path, [=](IFactory::ptr& out) {
             if (verbose) {
                 Print("probing %s... ", path.c_str());
                 postResult(e);
@@ -405,7 +402,7 @@ static FactoryFuture probePluginAsync(const std::string& path, bool verbose) {
             gPluginManager.addException(path);
             out = nullptr;
             return true;
-        };
+        });
     }
 }
 
@@ -492,8 +489,11 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
 
     std::vector<FactoryFuture> futures;
 
+    auto last = std::chrono::system_clock::now();
+
     auto processFutures = [&](int limit){
         while (futures.size() > limit){
+            bool didSomething = false;
             for (auto it = futures.begin(); it != futures.end(); ){
                 IFactory::ptr factory;
                 if ((*it)(factory)){
@@ -505,8 +505,23 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
                     }
                     // remove future
                     it = futures.erase(it);
+                    didSomething = true;
                 } else {
                     it++;
+                }
+            }
+            auto now = std::chrono::system_clock::now();
+            if (didSomething){
+                last = now;
+            } else {
+                using seconds = std::chrono::duration<double>;
+                auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
+                if (elapsed > 4.0){
+                    for (auto& f : futures){
+                        Print("waiting for '%s'...\n", f.path().c_str());
+                    }
+                    // Print("...\n");
+                    last = now;
                 }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -3013,8 +3028,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                 return false;
             }, 0, 0, cmdRTfree, 0, 0);
         }
-    }
-    else {
+    } else {
         LOG_WARNING("can't clear while searching!");
     }
 }
