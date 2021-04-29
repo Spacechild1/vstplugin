@@ -32,6 +32,7 @@ using namespace vst;
 
 void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& path){
     if (!path.empty()){
+        // this part should be async signal safe
         vst::File file(path, File::WRITE);
         if (file.is_open()) {
             file << static_cast<int>(code) << "\n";
@@ -41,6 +42,11 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
         }
     }
 }
+
+#if USE_ALARM
+static char gFilePath[256];
+static int gTimeout;
+#endif
 
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
@@ -52,11 +58,23 @@ int probe(const std::string& pluginPath, int pluginIndex,
 
 #if USE_ALARM
     if (timeout > 0){
+        snprintf(gFilePath, sizeof(gFilePath), "%s", filePath.c_str());
+        gTimeout = timeout + 0.5; // round up
+
         signal(SIGALRM, [](int){
-            LOG_WARNING("probe timed out");
+        #if 1
+            // not really async safe
+            LOG_DEBUG("probe timed out");
+        #endif
+            // this should be more or less safe
+            char buf[256];
+            snprintf(buf, sizeof(buf),
+                     "subprocess timed out after %d seconds", gTimeout);
+            writeErrorMsg(Error::SystemError, buf, gFilePath);
             std::exit(EXIT_FAILURE);
         });
-        alarm(timeout + 0.5); // round up
+
+        alarm(gTimeout); // round up
     }
 #endif
 
