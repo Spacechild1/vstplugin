@@ -34,15 +34,15 @@ public:
         WRITE
     };
     File(const std::string& path, Mode mode = READ);
-protected:
-    std::string path_;
 };
 
 // RAII class for automatic cleanup
 class TmpFile : public File {
 public:
-    using File::File;
+    TmpFile(const std::string& path, Mode mode = READ);
     ~TmpFile();
+protected:
+    std::string path_;
 };
 
 } // vst

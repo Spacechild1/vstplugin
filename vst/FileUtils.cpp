@@ -201,8 +201,10 @@ File::File(const std::string& path, Mode mode)
     : std::fstream(path,
 #endif
                    ios_base::binary |
-                   (mode == READ ? ios_base::in : (ios_base::out | ios_base::trunc))),
-      path_(path){}
+                   (mode == READ ? ios_base::in : (ios_base::out | ios_base::trunc))) {}
+
+TmpFile::TmpFile(const std::string& path, Mode mode)
+    : File(path, mode), path_(path) {}
 
 TmpFile::~TmpFile(){
     if (is_open()){
