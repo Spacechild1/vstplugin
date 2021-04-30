@@ -430,7 +430,7 @@ VSTPluginGui : ObjectGui {
 	}
 
 	*prMakePluginBrowser { arg model, settings;
-		var window, browser, dir, file, editor, multiThreading, mode, search, path, ok, cancel, status, key, absPath;
+		var window, browser, dir, file, clear, editor, multiThreading, mode, search, path, ok, cancel, status, key, absPath;
 		var showSearch, updatePlugins, plugins, filteredPlugins, server;
 		var applyFilter, stringFilter, vendorFilter, categoryFilter, vst2Filter, vst3Filter, fxFilter, synthFilter, showBridged;
 		server = model.synth.server;
@@ -586,6 +586,13 @@ VSTPluginGui : ObjectGui {
 			}, nil, 1, 0, true, pluginPath);
 		});
 
+		clear = Button.new.states_([["Clear"]])
+		.toolTip_("Clear the plugin cache")
+		.action_({
+			VSTPlugin.clear;
+			updatePlugins.value;
+		});
+
 		// plugin options
 		editor = CheckBox.new(text: "Editor").value_(true);
 
@@ -621,7 +628,7 @@ VSTPluginGui : ObjectGui {
 			HLayout(
 				vst2Filter, vst3Filter, fxFilter, synthFilter, nil, showBridged
 			),
-			HLayout(search, dir, file, nil, status),
+			HLayout(search, dir, file, clear, nil, status),
 			8,
 			HLayout(StaticText.new.string_("Mode:"), mode,
 				editor, multiThreading, nil, cancel, ok)
