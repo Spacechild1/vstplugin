@@ -4,17 +4,6 @@
 #include "PluginInfo.h"
 #include "CpuArch.h"
 
-// probe timeout in seconds
-// 0: infinite
-//
-// we choose a rather large timeout to eliminate
-// false positives. The Pd/SC clients will periodically
-// print a warning that we're still waiting for plugins, so the
-// user can also force quit and remove the offending plugin(s).
-#ifndef PROBE_TIMEOUT
-# define PROBE_TIMEOUT 60
-#endif
-
 // for testing we don't want to load hundreds of sub plugins
 // #define PLUGIN_LIMIT 50
 
@@ -35,7 +24,7 @@ class PluginFactory :
     PluginFactory(const std::string& path);
     virtual ~PluginFactory(){}
 
-    ProbeFuture probeAsync(bool nonblocking) override;
+    ProbeFuture probeAsync(float timeout, bool nonblocking) override;
 
     void addPlugin(PluginInfo::ptr desc) override;
     PluginInfo::const_ptr getPlugin(int index) const override;
@@ -46,10 +35,12 @@ class PluginFactory :
     CpuArch arch() const override { return arch_; }
  protected:
     using ProbeResultFuture = std::function<bool(ProbeResult&)>;
-    ProbeResultFuture doProbePlugin(bool nonblocking);
-    ProbeResultFuture doProbePlugin(const PluginInfo::SubPlugin& subplugin, bool nonblocking);
+    ProbeResultFuture doProbePlugin(float timeout, bool nonblocking);
+    ProbeResultFuture doProbePlugin(const PluginInfo::SubPlugin& subplugin,
+                                    float timeout, bool nonblocking);
     std::vector<PluginInfo::ptr> doProbePlugins(
-            const PluginInfo::SubPluginList& pluginList, ProbeCallback callback);
+            const PluginInfo::SubPluginList& pluginList,
+            float timeout, ProbeCallback callback);
     // data
     std::string path_;
     CpuArch arch_;

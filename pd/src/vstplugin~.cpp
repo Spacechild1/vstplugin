@@ -508,7 +508,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
 }
 
 template<bool async>
-static IFactory::ptr probePlugin(const std::string& path){
+static IFactory::ptr probePlugin(const std::string& path, float timeout){
     auto factory = loadFactory<async>(path);
     if (!factory){
         return nullptr;
@@ -532,7 +532,7 @@ static IFactory::ptr probePlugin(const std::string& path){
                 log << result;
                 consume(std::move(log));
             }
-        });
+        }, timeout);
         if (factory->valid()){
             addFactory(path, factory);
             return factory; // success
@@ -547,7 +547,7 @@ static IFactory::ptr probePlugin(const std::string& path){
 }
 
 template<bool async>
-static FactoryFuture probePluginAsync(const std::string& path){
+static FactoryFuture probePluginAsync(const std::string& path, float timeout){
     auto factory = loadFactory<async>(path);
     if (!factory){
         return FactoryFuture(path, [](IFactory::ptr& out) {
@@ -557,7 +557,7 @@ static FactoryFuture probePluginAsync(const std::string& path){
     }
     try {
         // start probing process
-        auto future = factory->probeAsync(true);
+        auto future = factory->probeAsync(timeout, true);
         // return future
         return FactoryFuture(path, [=](IFactory::ptr& out) {
             // wait for results
@@ -610,8 +610,10 @@ static FactoryFuture probePluginAsync(const std::string& path){
 #define PROBE_FUTURES 8
 
 template<bool async>
-static void searchPlugins(const std::string& path, bool parallel, t_search_data *data = nullptr){
+static void searchPlugins(const std::string& path, float timeout,
+                          bool parallel, t_search_data *data){
     int count = 0;
+
     {
         std::string bashPath = path;
         sys_unbashfilename(&bashPath[0], &bashPath[0]);
@@ -706,10 +708,10 @@ static void searchPlugins(const std::string& path, bool parallel, t_search_data 
         } else {
             // probe (will post results and add plugins)
             if (parallel){
-                futures.push_back(probePluginAsync<async>(pluginPath));
+                futures.push_back(probePluginAsync<async>(pluginPath, timeout));
                 processFutures(PROBE_FUTURES);
             } else {
-                if ((factory = probePlugin<async>(pluginPath))){
+                if ((factory = probePlugin<async>(pluginPath, timeout))){
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i){
                         addPlugin(*factory->getPlugin(i));
@@ -1137,7 +1139,7 @@ template<bool async>
 static void vstplugin_search_do(t_search_data *x){
     for (auto& path : x->paths){
         if (!x->cancel){
-            searchPlugins<async>(path, x->parallel, x); // async
+            searchPlugins<async>(path, x->timeout, x->parallel, x); // async
         } else {
             break;
         }
@@ -1172,6 +1174,7 @@ static void vstplugin_search_done(t_search_data *x){
 }
 
 static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
+    float timeout = 0;
     bool async = false;
     bool parallel = true; // for now, always do a parallel search
     bool update = true; // update cache file
@@ -1189,8 +1192,17 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
                 async = true;
             } else if (!strcmp(flag, "-n")){
                 update = false;
+            } else if (!strcmp(flag, "-t")){
+                argc--; argv++;
+                if (argc > 0 && argv->a_type == A_FLOAT){
+                    timeout = argv->a_w.w_float;
+                } else {
+                    pd_error(x, "%s: missing argument for -t flag", classname(x));
+                    return;
+                }
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
+                return;
             }
             argv++; argc--;
         } else {
@@ -1216,6 +1228,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         auto data = new t_search_data();
         data->owner = x;
         data->paths = std::move(paths);
+        data->timeout = timeout;
         data->parallel = parallel;
         data->update = update;
         x->x_search_data = data;
@@ -1224,6 +1237,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         t_search_data data;
         data.owner = x;
         data.paths = std::move(paths);
+        data.timeout = timeout;
         data.parallel = parallel;
         data.update = update;
         vstplugin_search_do<false>(&data);
@@ -1344,7 +1358,7 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
                     "nor a valid file path", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(abspath))){
             // finally probe plugin
-            if (probePlugin<async>(abspath)){
+            if (probePlugin<async>(abspath, 0)){
                 desc = gPluginManager.findPlugin(abspath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
@@ -3399,7 +3413,8 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
-            searchPlugins<false>(path, true); // synchronous and parallel
+            // synchronous, parallel, no timeout
+            searchPlugins<false>(path, 0, true, nullptr);
         }
     #if 1
         writeIniFile(); // shall we write cache file?

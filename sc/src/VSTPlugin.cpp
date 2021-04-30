@@ -307,7 +307,8 @@ static void postResult(const Error& e){
     }
 }
 
-static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
+static IFactory::ptr probePlugin(const std::string& path,
+                                 float timeout, bool verbose) {
     auto factory = loadFactory(path, verbose);
     if (!factory){
         return nullptr;
@@ -331,7 +332,7 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
                 }
                 postResult(result.error);
             }
-        });
+        }, timeout);
         if (factory->valid()){
             addFactory(path, factory);
             return factory; // success
@@ -343,7 +344,8 @@ static IFactory::ptr probePlugin(const std::string& path, bool verbose) {
     return nullptr;
 }
 
-static FactoryFuture probePluginAsync(const std::string& path, bool verbose) {
+static FactoryFuture probePluginAsync(const std::string& path,
+                                      float timeout, bool verbose) {
     auto factory = loadFactory(path, verbose);
     if (!factory){
         return FactoryFuture(path, [](IFactory::ptr& out) {
@@ -353,7 +355,7 @@ static FactoryFuture probePluginAsync(const std::string& path, bool verbose) {
     }
     // start probing process
     try {
-        auto future = factory->probeAsync(true);
+        auto future = factory->probeAsync(timeout, true);
         // return future
         return FactoryFuture(path, [=](IFactory::ptr& out) {
             // wait for results
@@ -458,7 +460,7 @@ static const PluginInfo* queryPlugin(std::string path) {
                     "nor a valid file path.\n", path.c_str());
         } else if (!(desc = gPluginManager.findPlugin(absPath))){
             // finally probe plugin
-            if (probePlugin(absPath, true)) {
+            if (probePlugin(absPath, 0, true)) {
                 desc = gPluginManager.findPlugin(absPath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
@@ -475,7 +477,7 @@ static const PluginInfo* queryPlugin(std::string path) {
 
 #define PROBE_FUTURES 8
 
-std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
+std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, float timeout,
                                                  bool parallel, bool verbose) {
     Print("searching in '%s'...\n", path.c_str());
     std::vector<PluginInfo::const_ptr> results;
@@ -560,10 +562,10 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path,
         } else {
             // probe (will post results and add plugins)
             if (parallel){
-                futures.push_back(probePluginAsync(pluginPath, verbose));
+                futures.push_back(probePluginAsync(pluginPath, timeout, verbose));
                 processFutures(PROBE_FUTURES);
             } else {
-                if ((factory = probePlugin(pluginPath, verbose))) {
+                if ((factory = probePlugin(pluginPath, timeout, verbose))) {
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i) {
                         addPlugin(factory->getPlugin(i));
@@ -2865,6 +2867,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 bool cmdSearch(World *inWorld, void* cmdData) {
     auto data = (SearchCmdData *)cmdData;
     std::vector<PluginInfo::const_ptr> plugins;
+    float timeout = data->timeout;
     bool useDefault = data->flags & SearchFlags::useDefault;
     bool verbose = data->flags & SearchFlags::verbose;
     bool save = data->flags & SearchFlags::save;
@@ -2890,7 +2893,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     // search for plugins
     for (auto& path : searchPaths) {
         if (gSearching){
-            auto result = searchPlugins(path, parallel, verbose);
+            auto result = searchPlugins(path, timeout, parallel, verbose);
             plugins.insert(plugins.end(), result.begin(), result.end());
         } else {
             save = false; // don't update cache file
@@ -2968,24 +2971,30 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             return;
         }
     }
+    // timeout
+    float timeout = args->getf();
     // collect optional search paths
-    std::pair<const char *, size_t> paths[64];
-    int numPaths = 0;
-    auto pathLen = 0;
-    while (args->remain() && numPaths < 64) {
+    constexpr size_t maxNumPaths = 64;
+    std::pair<const char *, size_t> paths[maxNumPaths];
+    int numPaths = std::min<int>(args->geti(), maxNumPaths);
+    size_t pathLen = 0;
+    for (int i = 0; i < numPaths; ++i) {
         auto s = args->gets();
         if (s) {
             auto len = strlen(s) + 1; // include terminating '\0'
-            paths[numPaths].first = s;
-            paths[numPaths].second = len;
+            paths[i].first = s;
+            paths[i].second = len;
             pathLen += len;
-            ++numPaths;
+        } else {
+            LOG_ERROR("ERROR: wrong number of search paths!");
+            numPaths--;
         }
     }
 
     SearchCmdData *data = CmdData::create<SearchCmdData>(inWorld, pathLen);
     if (data) {
         data->flags = flags;
+        data->timeout = timeout;
         data->bufnum = bufnum; // negative bufnum: don't write search result
         if (filename) {
             snprintf(data->path, sizeof(data->path), "%s", filename);

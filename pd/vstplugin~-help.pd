@@ -1,4 +1,5 @@
-#N canvas 338 51 645 594 10;
+#N struct 1004-button float x float y float id;
+#N canvas 466 101 645 594 10;
 #N canvas 729 204 424 485 output 0;
 #X obj 109 258 nbx 5 14 -100 0 0 0 \$0-vol \$0-vol Volume 0 -8 0 10
 -262144 -1 -1 -100 256;
@@ -98,18 +99,18 @@
 #X connect 15 0 12 1;
 #X coords 0 -1 1 1 70 110 2 100 100;
 #X restore 20 201 pd open;
-#X msg 208 266 close;
-#X msg 224 341 vis \$1;
-#X obj 224 321 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+#X msg 208 281 close;
+#X msg 224 356 vis \$1;
+#X obj 224 336 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 230 387 bypass \$1;
-#X obj 187 468 s \$0-msg;
+#X msg 230 402 bypass \$1;
+#X obj 187 483 s \$0-msg;
 #X obj 27 318 r \$0-msg;
-#X text 255 267 close the plugin;
-#X text 274 341 show/hide editor;
-#X text 257 295 print plugin info to console, f 18;
-#X text 184 490 parameters;
-#X text 273 489 FX programs/banks;
+#X text 255 282 close the plugin;
+#X text 274 356 show/hide editor;
+#X text 257 310 print plugin info to console, f 18;
+#X text 184 505 parameters;
+#X text 273 504 FX programs/banks;
 #N canvas 753 189 627 553 parameter 0;
 #X obj 100 76 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
@@ -191,7 +192,7 @@ parameters \,, f 34;
 #X connect 21 0 9 0;
 #X connect 27 0 20 1;
 #X connect 28 0 6 0;
-#X restore 185 510 pd parameter;
+#X restore 185 525 pd parameter;
 #N canvas 672 104 609 578 midi 0;
 #X obj 33 466 s \$0-msg;
 #X msg 33 34 midi_raw <list>;
@@ -248,9 +249,9 @@ output as;
 #X connect 23 0 0 0;
 #X connect 24 0 0 0;
 #X connect 27 0 0 0;
-#X restore 185 549 pd midi;
+#X restore 185 564 pd midi;
 #X f 13;
-#X text 185 531 MIDI messages;
+#X text 185 546 MIDI messages;
 #N canvas 814 225 481 336 transport 0;
 #X obj 22 299 s \$0-msg;
 #X msg 22 78 tempo \$1;
@@ -290,10 +291,10 @@ f 51;
 #X connect 10 0 12 0;
 #X connect 11 0 0 0;
 #X connect 12 0 0 0;
-#X restore 281 549 pd transport;
+#X restore 281 564 pd transport;
 #X f 16;
-#X text 279 530 transport/timing;
-#X text 292 431 reset the plugin (e.g. clear delay lines);
+#X text 279 545 transport/timing;
+#X text 292 446 reset the plugin (e.g. clear delay lines);
 #X obj 21 342 vstplugin~;
 #X obj 19 10 cnv 15 350 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
@@ -723,15 +724,15 @@ to build your own preset management in Pd:, f 49;
 #X connect 144 0 145 1;
 #X connect 145 0 127 0;
 #X connect 146 0 145 0;
-#X restore 274 510 pd preset;
+#X restore 274 525 pd preset;
 #X f 17;
-#X msg 216 295 print;
-#N canvas 513 68 823 678 search 0;
-#X obj 18 551 s \$0-msg;
-#X msg 67 406 info;
-#X msg 71 474 info \$1;
-#X obj 71 453 openpanel;
-#X obj 71 432 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
+#X msg 216 310 print;
+#N canvas 519 40 823 719 search 0;
+#X obj 18 596 s \$0-msg;
+#X msg 74 451 info;
+#X msg 78 519 info \$1;
+#X obj 78 498 openpanel;
+#X obj 78 477 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
 -1;
 #X text 455 234 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
@@ -787,25 +788,25 @@ to build your own preset management in Pd:, f 49;
 #X msg 19 386 info bridged <f>;
 #X text 132 363 has sysex output (0|1);
 #X text 131 386 is bridged (0|1);
-#X restore 312 457 pd info;
-#X text 106 405 get info about currently loaded plugin;
-#X msg 54 354 search_clear;
-#X text 144 354 clear the plugin dictionary;
-#X text 101 432 get info about any plugin (key or file name);
-#X msg 79 520 info \$1;
-#X symbolatom 79 498 16 0 0 0 - - -;
+#X restore 319 502 pd info;
+#X text 113 450 get info about currently loaded plugin;
+#X msg 61 399 search_clear;
+#X text 151 399 clear the plugin dictionary;
+#X text 108 477 get info about any plugin (key or file name);
+#X msg 86 565 info \$1;
+#X symbolatom 86 543 16 0 0 0 - - -;
 #X msg 18 131 search;
 #X msg 25 201 search <l>;
 #X msg 31 239 search -a;
-#X msg 60 379 search_clear 1;
-#X text 162 378 clear and delete cache file;
-#X msg 36 303 search -n;
-#X text 104 304 search but don't update the cache file;
+#X msg 67 424 search_clear 1;
+#X text 169 423 clear and delete cache file;
+#X msg 43 348 search -n;
+#X text 111 349 search but don't update the cache file;
 #X obj 394 506 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 398 509 NOTE:;
-#X msg 43 328 search_stop;
-#X text 125 327 stop the current (asynchronous) search;
+#X msg 50 373 search_stop;
+#X text 132 372 stop the current (asynchronous) search;
 #X text 48 152 responds with a series of;
 #X msg 209 152 plugin <key>;
 #X text 292 152 messages;
@@ -818,10 +819,10 @@ cache file., f 68;
 #X text 392 466 Incompatible plugins automatically run in a shared
 subprocess (= "bit bridging") \, which incurs some CPU overhead.,
 f 62;
-#X text 15 606 [vstplugin~ -s];
-#X text 17 624 The search is guaranteed to run only once \, even if
+#X text 15 651 [vstplugin~ -s];
+#X text 17 669 The search is guaranteed to run only once \, even if
 several objects receive this flag., f 51;
-#X text 16 577 You can also use the -s flag to perform a search in
+#X text 16 622 You can also use the -s flag to perform a search in
 the standard VST directories on object creation:, f 52;
 #X text 99 196 Alternatively \, you can provide a list of user search
 paths. Relative paths are resolved to the current patch directory.
@@ -829,7 +830,7 @@ paths. Relative paths are resolved to the current patch directory.
 #X text 97 258 This prevents Pd from freezing until the search has
 finished and you can see the progress in the console., f 41;
 #X text 98 239 search asynchronously.;
-#X text 138 453 the info method will output the following messages:
+#X text 145 498 the info method will output the following messages:
 , f 27;
 #X text 17 59 Whitespace in names is replaced by underscores.;
 #X text 16 78 Search results are stored in a cache file \, so you only
@@ -873,6 +874,9 @@ in Linux with Wine (see the README for more information)., f 67;
 and vice versa!, f 66;
 #X text 394 579 Every plugin is probed in a seperate process to catch
 bad plugins without crashing Pd., f 67;
+#X msg 36 305 search -t 10;
+#X text 124 302 Set a timeout (in seconds) for each plugin \, after
+which it is regarded as stuck and ignored. Use with care!, f 38;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 2 0;
@@ -886,9 +890,10 @@ bad plugins without crashing Pd., f 67;
 #X connect 25 0 0 0;
 #X connect 27 0 0 0;
 #X connect 31 0 0 0;
-#X restore 394 510 pd search;
+#X connect 73 0 0 0;
+#X restore 394 525 pd search;
 #X f 14;
-#X text 392 488 search + info;
+#X text 392 503 search + info;
 #N canvas 261 35 1010 512 open 0;
 #X obj 483 327 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
@@ -986,8 +991,8 @@ the -e flag to enable the VST editor., f 45;
 #X connect 22 0 21 1;
 #X connect 23 0 4 0;
 #X connect 24 0 5 0;
-#X restore 199 241 pd open;
-#X text 252 242 open a plugin;
+#X restore 199 256 pd open;
+#X text 252 257 open a plugin;
 #X obj 20 99 cnv 15 60 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
 #X text 22 101 inlets:;
@@ -1044,21 +1049,21 @@ because normal plugins would simply crash Pd., f 53;
 ;
 #X text 91 342 <- click me, f 13;
 #X text 89 319 <- message in;
-#X obj 230 367 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
+#X obj 230 382 hradio 15 1 0 3 empty empty empty 0 -8 0 10 -262144
 -1 -1 0;
-#X text 283 367 bypass;
-#X text 298 389 0: off \, 1: hard \, 2: soft;
+#X text 283 382 bypass;
+#X text 298 404 0: off \, 1: hard \, 2: soft;
 #X obj 382 46 vstpresetbrowser;
 #X obj 382 23 r \$0-out;
 #X obj 382 303 s \$0-msg;
-#X obj 232 412 hradio 15 1 0 2 empty empty empty 0 -8 0 10 -262144
+#X obj 232 427 hradio 15 1 0 2 empty empty empty 0 -8 0 10 -262144
 -1 -1 0;
-#X msg 232 431 reset \$1;
-#X text 271 412 0: synchronous \, 1: asynchronous;
-#X msg 344 455 reset;
-#X text 383 455 when done;
-#X text 293 455 outputs;
-#X text 391 531 more methods;
+#X msg 232 446 reset \$1;
+#X text 271 427 0: synchronous \, 1: asynchronous;
+#X msg 344 470 reset;
+#X text 383 470 when done;
+#X text 293 470 outputs;
+#X text 391 546 more methods;
 #N canvas 525 135 707 489 more 0;
 #N canvas 614 345 519 433 vst2 0;
 #X obj 23 386 s \$0-msg;
@@ -1187,7 +1192,7 @@ GUI!;
 #X connect 39 0 38 0;
 #X connect 44 0 45 0;
 #X connect 45 0 41 0;
-#X restore 394 549 pd more;
+#X restore 394 564 pd more;
 #X f 14;
 #X connect 1 0 19 0;
 #X connect 1 1 19 1;

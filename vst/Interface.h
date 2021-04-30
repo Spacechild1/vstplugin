@@ -341,10 +341,10 @@ class IFactory {
     virtual std::shared_ptr<const PluginInfo> findPlugin(const std::string& name) const = 0;
     virtual int numPlugins() const = 0;
 
-    void probe(ProbeCallback callback){
-        probeAsync(false)(std::move(callback));
+    void probe(ProbeCallback callback, float timeout){
+        probeAsync(timeout, false)(std::move(callback));
     }
-    virtual ProbeFuture probeAsync(bool nonblocking) = 0;
+    virtual ProbeFuture probeAsync(float timeout, bool nonblocking) = 0;
     virtual std::shared_ptr<const PluginInfo> probePlugin(int id) const = 0;
 
     bool valid() const { return numPlugins() > 0; }

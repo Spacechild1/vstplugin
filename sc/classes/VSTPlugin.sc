@@ -71,7 +71,7 @@ VSTPlugin : MultiOutUGen {
 		this.deprecated(thisMethod, this.class.findMethod(\clear));
 		this.clear(server);
 	}
-	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true;
+	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true, timeout=nil;
 		server = server ?? Server.default;
 		server.serverRunning.not.if {
 			"VSTPlugin.search requires the Server to be running!".warn;
@@ -80,10 +80,10 @@ VSTPlugin : MultiOutUGen {
 		};
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, parallel, action) }
-		{ this.prSearchRemote(server, dir, useDefault, verbose, save, parallel, wait, action) };
+		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, parallel, timeout, action) }
+		{ this.prSearchRemote(server, dir, useDefault, verbose, save, parallel, timeout, wait, action) };
 	}
-	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, parallel=true, dest=nil;
+	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, parallel=true, dest=nil, timeout=nil;
 		var flags = 0;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { MethodError("bad type % for 'dir' argument!".format(dir.class), this).throw };
@@ -92,15 +92,16 @@ VSTPlugin : MultiOutUGen {
 		[useDefault, verbose, save, parallel].do { arg value, bit;
 			flags = flags | (value.asBoolean.asInteger << bit);
 		};
+		timeout = timeout !? { timeout.asFloat } ?? 0.0;
 		dest = this.prMakeDest(dest); // nil -> -1 = don't write results
-		^['/cmd', '/vst_search', flags, dest] ++ dir;
+		^['/cmd', '/vst_search', flags, dest, timeout, dir.size] ++ dir;
 	}
-	*prSearchLocal { arg server, dir, useDefault, verbose, save, parallel, action;
+	*prSearchLocal { arg server, dir, useDefault, verbose, save, parallel, timeout, action;
 		{
 			var stream, dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask VSTPlugin to store the search results in a temp file
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, tmpPath));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, tmpPath, timeout));
 			// wait for cmd to finish
 			server.sync;
 			// read file
@@ -120,13 +121,13 @@ VSTPlugin : MultiOutUGen {
 			action.value;
 		}.forkIfNeeded;
 	}
-	*prSearchRemote { arg server, dir, useDefault, verbose, save, parallel, wait, action;
+	*prSearchRemote { arg server, dir, useDefault, verbose, save, parallel, timeout, wait, action;
 		{
 			var dict = pluginDict[server];
 			var buf = Buffer(server); // get free Buffer
 			// ask VSTPlugin to store the search results in this Buffer
 			// (it will allocate the memory for us!)
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, buf));
+			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, buf, timeout));
 			// wait for cmd to finish and update buffer info
 			server.sync;
 			buf.updateInfo({

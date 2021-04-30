@@ -110,6 +110,7 @@ struct SearchCmdData {
     static bool nrtFree(World* world, void* cmdData);
     int32 flags = 0;
     int32 bufnum = -1;
+    float timeout = 0.0;
     void* freeData = nullptr;
     char path[256];
     // flexible array

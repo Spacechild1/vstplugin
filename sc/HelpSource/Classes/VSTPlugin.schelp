@@ -306,11 +306,16 @@ ARGUMENT:: save
 whether the search results should be written to the cache file.
 
 ARGUMENT:: parallel
-whether plugins should be probed in parallel. This can be significantly faster - at the cost of possible audio dropouts (because all CPU cores might be fully utilized).
+whether plugins should be probed in parallel. This can be significantly faster, but it can also make your computer almost unresponsive for the duration of the search (because of the high CPU load).
 
 NOTE::
 Shell plugins like "Waves" are always probed in parallel for performance reasons.
 ::
+
+ARGUMENT:: timeout
+the number of seconds to wait for a single plugin before it is regarded as being stuck and ignored. code::nil:: means no timeout (= default).
+
+If certain plugins seem to get stuck during the search, you can try to set a timeout, so the (next) search can complete. warning::Don't set it too low, or you might get false positives!::
 
 
 DISCUSSION::
@@ -353,6 +358,9 @@ a) String: name of a temp file where the search results should be written to.
 b) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
 on the Server, the Client can then read the data (each float representing a single byte) and free the Buffer.
 The Buffer should be initially empty!
+
+ARGUMENT:: timeout
+(see above)
 
 RETURNS:: the message for a emphasis::search:: command (see link::#*search::).
 

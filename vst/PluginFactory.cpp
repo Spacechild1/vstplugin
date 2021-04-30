@@ -252,13 +252,12 @@ PluginFactory::PluginFactory(const std::string &path)
     }
 }
 
-IFactory::ProbeFuture PluginFactory::probeAsync(bool nonblocking) {
+IFactory::ProbeFuture PluginFactory::probeAsync(float timeout, bool nonblocking) {
     plugins_.clear();
     pluginMap_.clear();
-    return [this,
-            self = shared_from_this(),
-            f = doProbePlugin(nonblocking)]
-            (ProbeCallback callback){
+    return [this, self = shared_from_this(), timeout,
+            f = doProbePlugin(timeout, nonblocking)]
+            (ProbeCallback callback) {
         // call future
         ProbeResult result;
         if (f(result)){
@@ -272,7 +271,8 @@ IFactory::ProbeFuture PluginFactory::probeAsync(bool nonblocking) {
                 }
             } else {
                 // factory contains several subplugins
-                plugins_ = doProbePlugins(result.plugin->subPlugins, callback);
+                plugins_ = doProbePlugins(result.plugin->subPlugins,
+                                          timeout, callback);
             }
             for (auto& desc : plugins_) {
                 pluginMap_[desc->name] = desc;
@@ -315,13 +315,13 @@ int PluginFactory::numPlugins() const {
 // should host.exe inherit file handles and print to stdout/stderr?
 #define PROBE_LOG 0
 
-PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(bool nonblocking){
-    return doProbePlugin(PluginInfo::SubPlugin { "", -1 }, nonblocking);
+PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(float timeout, bool nonblocking){
+    return doProbePlugin(PluginInfo::SubPlugin { "", -1 }, timeout, nonblocking);
 }
 
 // probe a plugin in a seperate process and return the info in a file
 PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
-        const PluginInfo::SubPlugin& sub, bool nonblocking)
+        const PluginInfo::SubPlugin& sub, float timeout, bool nonblocking)
 {
     auto desc = std::make_shared<PluginInfo>(shared_from_this());
     desc->name = sub.name; // necessary for error reporting, will be overriden later
@@ -364,9 +364,9 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
-    auto wait = [pi, nonblocking](DWORD& code){
-        const DWORD timeout = (PROBE_TIMEOUT > 0) ? PROBE_TIMEOUT * 1000 : INFINITE;
-        auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : timeout);
+    auto wait = [pi, timeout, nonblocking](DWORD& code){
+        const DWORD timeoutms = (timeout > 0) ? timeout * 1000 : INFINITE;
+        auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : timeoutms);
         if (res == WAIT_TIMEOUT){
             if (nonblocking){
                 return false;
@@ -380,7 +380,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                 CloseHandle(pi.hProcess);
                 CloseHandle(pi.hThread);
                 std::stringstream msg;
-                msg << "subprocess timed out after " << PROBE_TIMEOUT << " seconds!";
+                msg << "subprocess timed out after " << timeout << " seconds!";
                 throw Error(Error::SystemError, msg.str());
             }
         } else if (res == WAIT_OBJECT_0){
@@ -402,7 +402,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     // get absolute path to host app
     std::string hostPath = getModuleDirectory() + "/" + hostApp;
     // timeout
-    auto timeout = std::to_string(PROBE_TIMEOUT);
+    auto timeoutstr = std::to_string(timeout);
     // fork
     pid_t pid = fork();
     if (pid == -1) {
@@ -424,14 +424,14 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
             const char *winecmd = getWineCommand();
             // use PATH!
             if (execlp(winecmd, winecmd, hostPath.c_str(), "probe", path().c_str(),
-                       idString, tmpPath.c_str(), timeout.c_str(), nullptr) < 0) {
+                       idString, tmpPath.c_str(), timeoutstr.c_str(), nullptr) < 0) {
                 // LATER redirect child stderr to parent stdin
                 LOG_ERROR("couldn't run 'wine' (" << errorMessage(errno) << ")");
             }
         } else
     #endif
         if (execl(hostPath.c_str(), hostApp.c_str(), "probe", path().c_str(),
-                  idString, tmpPath.c_str(), timeout.c_str(), nullptr) < 0) {
+                  idString, tmpPath.c_str(), timeoutstr.c_str(), nullptr) < 0) {
             // write error to temp file
             int err = errno;
             File file(tmpPath, File::WRITE);
@@ -482,6 +482,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         #else
             pid,
         #endif
+            timeout,
             start = std::chrono::system_clock::now()]
             (ProbeResult& result) {
     #ifdef _WIN32
@@ -495,11 +496,11 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         // (returns false when nonblocking and still running)
         try {
             if (!wait(code)){
-                if (PROBE_TIMEOUT > 0) {
+                if (timeout > 0) {
                     using seconds = std::chrono::duration<double>;
                     auto now = std::chrono::system_clock::now();
                     auto elapsed = std::chrono::duration_cast<seconds>(now - start).count();
-                    if (elapsed > PROBE_TIMEOUT){
+                    if (elapsed > timeout){
                     #ifdef _WIN32
                         if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
                             LOG_DEBUG("terminated hanging subprocess");
@@ -518,7 +519,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                         }
                     #endif
                         std::stringstream msg;
-                        msg << "subprocess timed out after " << PROBE_TIMEOUT << " seconds!";
+                        msg << "subprocess timed out after " << timeout << " seconds!";
                         throw Error(Error::SystemError, msg.str());
                     }
                 }
@@ -585,7 +586,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
 }
 
 std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
-        const PluginInfo::SubPluginList& pluginList, ProbeCallback callback)
+        const PluginInfo::SubPluginList& pluginList,
+        float timeout, ProbeCallback callback)
 {
     std::vector<PluginInfo::ptr> results;
     int numPlugins = pluginList.size();
@@ -601,7 +603,7 @@ std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
         // push futures
         while (futures.size() < maxNumFutures && plugin != pluginList.end()){
             try {
-                futures.push_back(doProbePlugin(*plugin++, true));
+                futures.push_back(doProbePlugin(*plugin++, timeout, true));
             } catch (const Error& e){
                 // return error future
                 futures.push_back([=](ProbeResult& result){
