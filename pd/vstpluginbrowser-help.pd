@@ -1,57 +1,61 @@
-#N canvas 410 224 666 481 10;
-#X obj 76 343 vstplugin~;
+#N canvas 410 224 666 521 10;
+#X obj 76 371 vstplugin~;
 #X obj 211 39 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X obj 212 94 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X obj 212 138 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X obj 211 182 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 211 221 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X obj 211 240 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 211 279 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 215 39 search VST directories:;
 #X text 215 94 search user directory:;
 #X text 213 59 recursively search the standard VST directories \, see
 vstplugin~-help.pd → [pd search])., f 48;
-#X text 219 259 select if you want to use the VST editor GUI (the -e
+#X text 219 298 select if you want to use the VST editor GUI (the -e
 flag);
 #X obj 18 10 cnv 20 160 20 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 20 33 search \, show and open available VST plugins, f 25
 ;
-#X text 17 343 use with;
-#X obj 216 276 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
+#X text 17 371 use with;
+#X obj 216 315 cnv 20 280 50 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 215 137 search plug-in file:;
 #X text 24 12 vstpluginbrowser;
 #X text 209 10 (optional) creation arguments: 1) send name;
 #X obj 19 73 vstpluginbrowser \$0-msg;
-#X obj 20 288 r \$0-msg;
-#X obj 19 260 print outlet;
-#X obj 20 311 print receive;
-#X text 76 288 creation argument;
-#X text 215 240 editor;
-#X obj 209 337 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 20 316 r \$0-msg;
+#X obj 19 280 print outlet;
+#X obj 20 339 print receive;
+#X text 76 316 creation argument;
+#X text 215 279 editor;
+#X obj 209 376 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 213 337 async;
-#X text 219 356 select if you want to open the plugin asynchronously
+#X text 213 376 async;
+#X text 219 395 select if you want to open the plugin asynchronously
 ;
 #X text 215 111 recursively search a directory for VST plugins., f
 48;
 #X text 216 156 search a VST plugin file;
-#X text 225 282 NOTE: on macOS the VST editor runs on the audio thread!
+#X text 225 321 NOTE: on macOS the VST editor runs on the audio thread!
 See the README for more information., f 42;
-#X obj 208 378 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 208 417 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 212 378 threaded;
-#X text 218 397 select if you want to use multi-threading;
-#X text 219 201 open the selected VST plugin. This generates an appropiate
+#X text 212 417 threaded;
+#X text 218 436 select if you want to use multi-threading;
+#X text 219 240 open the selected VST plugin. This generates an appropiate
 [open( message for [vstplugin~] \, see vstplugin~-help.pd.;
-#X text 215 181 open;
-#X obj 209 418 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
+#X text 215 220 open;
+#X obj 209 457 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 213 418 mode;
-#X text 219 437 select the run mode (normal/bridge/sandbox);
+#X text 213 457 mode;
+#X text 219 476 select the run mode (normal/bridge/sandbox);
+#X obj 212 179 cnv 15 160 15 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X text 215 178 clear plugin cache;
+#X text 216 197 clear cache file and remove existing plugin info;
 #X connect 17 0 19 0;
 #X connect 18 0 20 0;
