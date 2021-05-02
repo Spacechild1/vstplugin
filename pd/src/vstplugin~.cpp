@@ -2967,92 +2967,71 @@ void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
         plugin->suspend();
         plugin->setupProcessing(x_sr, x_blocksize, x_realprecision);
 
-        int *input = nullptr;
-        int numInputs = 0;
+        auto& pluginInputs = plugin->info().inputs;
+        int numInputs = pluginInputs.size();
+        int *input = (int *)alloca(numInputs * sizeof(int));;
         {
             auto numInlets = (int)x_inlets.size();
-            auto& pluginInputs = plugin->info().inputs;
-            if (numInlets > 1){
-                LOG_DEBUG("associate inlets");
-                // associate inlet busses with plugin input busses.
-                // we need at least one input bus!
-                numInputs = std::max<int>(1, std::min<int>(pluginInputs.size(), numInlets));
-                input = (int *)alloca(numInputs * sizeof(int));
-                for (int i = 0; i < numInputs; ++i){
-                    input[i] = x_inlets[i].b_n;
-                }
-            } else {
-                assert(numInlets == 1);
+            assert(numInlets >= 1);
+            if (numInlets == 1 && numInputs > 1){
                 LOG_DEBUG("distribute inlets");
                 // distribute inlets over plugin input busses
-                input = (int *)alloca((pluginInputs.size() + 1) * sizeof(int));
                 auto remaining = x_inlets[0].b_n;
-                for (int i = 0; i < (int)pluginInputs.size() && remaining > 0; ++i){
-                    auto chn = std::min<int>(remaining, pluginInputs[i].numChannels);
-                    input[i] = chn;
-                    remaining -= chn;
-                    numInputs++;
+                for (int i = 0; i < numInputs; ++i){
+                    if (remaining > 0){
+                        auto chn = std::min<int>(remaining, pluginInputs[i].numChannels);
+                        input[i] = chn;
+                        remaining -= chn;
+                    } else {
+                        input[i] = 0;
+                    }
                 }
-                // we need at least one input bus!
-                if (numInputs == 0){
-                    input[0] = 0;
-                    numInputs = 1;
+            } else {
+                LOG_DEBUG("associate inlets");
+                // associate inlet busses with plugin input busses.
+                for (int i = 0; i < numInputs; ++i){
+                    if (i < numInlets){
+                        input[i] = x_inlets[i].b_n;
+                    } else {
+                        input[i] = 0;
+                    }
                 }
             }
         }
 
-        int *output = nullptr;
-        int numOutputs = 0;
+        auto& pluginOutputs = plugin->info().outputs;
+        int numOutputs = pluginOutputs.size();
+        int *output = (int *)alloca(numOutputs * sizeof(int));
         {
             auto numOutlets = (int)x_outlets.size();
-            auto& pluginOutputs = plugin->info().outputs;
-            if (numOutlets > 1){
-                LOG_DEBUG("associate outlets");
-                // associate outlet busses with plugin busses.
-                // we need at least one output bus!
-                numOutputs = std::max<int>(1, std::min<int>(pluginOutputs.size(), numOutlets));
-                output = (int *)alloca(numOutputs * sizeof(int));
-                for (int i = 0; i < numOutputs; ++i){
-                    output[i] = x_outlets[i].b_n;
-                }
-            } else {
-                assert(numOutlets == 1);
+            assert(numOutlets >= 1);
+            if (numOutlets == 1 && numOutputs > 1){
                 LOG_DEBUG("distribute outlets");
                 // distribute outlets over plugin output busses
-                output = (int *)alloca((pluginOutputs.size() + 1) * sizeof(int));
                 auto remaining = x_outlets[0].b_n;
-                for (int i = 0; i < (int)pluginOutputs.size() && remaining > 0; ++i){
-                    auto chn = std::min<int>(remaining, pluginOutputs[i].numChannels);
-                    output[i] = chn;
-                    remaining -= chn;
-                    numOutputs++;
+                for (int i = 0; i < numOutputs; ++i){
+                    if (remaining > 0){
+                        auto chn = std::min<int>(remaining, pluginOutputs[i].numChannels);
+                        output[i] = chn;
+                        remaining -= chn;
+                    } else {
+                        output[i] = 0;
+                    }
                 }
-                // we need at least one output bus!
-                if (numOutputs == 0){
-                    output[0] = 0;
-                    numOutputs = 1;
+            } else {
+                LOG_DEBUG("associate outlets");
+                // associate outlet busses with plugin busses.
+                for (int i = 0; i < numOutputs; ++i){
+                    if (i < numOutlets){
+                        output[i] = x_outlets[i].b_n;
+                    } else {
+                        output[i] = 0;
+                    }
                 }
             }
         }
 
         plugin->setNumSpeakers(input, numInputs, output, numOutputs);
-
-    #if 0
-        // HACK for buggy VST3 plugins which segfault on excess busses (e.g. mda)
-        auto trim = [](auto speakers, auto& count, const char *what){
-            // trim trailing empty busses, but keep at least one bus!
-            for (int i = count - 1; i > 0; --i){
-                if (speakers[i] == 0){
-                    LOG_DEBUG("trim empty " << what << " bus " << i);
-                    --count;
-                } else {
-                    break;
-                }
-            }
-        };
-        trim(input, numInputs, "input");
-        trim(output, numOutputs, "output");
-    #endif
 
         x_inputs.resize(numInputs);
         for (int i = 0; i < numInputs; ++i){
@@ -3121,8 +3100,34 @@ void t_vstplugin::update_buffers(){
         }
     }
 
+    // NOTE: only distribute inlets/outlets if the plugin has more than one bus,
+    // as a workaround for buggy VST3 plugins which would report a wrong channel count,
+    // like Helm.vst3 or RoughRider2.vst3
+
     // set plugin input
-    if (x_inlets.size() > 1){
+    assert(x_inlets.size() >= 1);
+    if (x_inlets.size() == 1 && x_inputs.size() > 1){
+        LOG_DEBUG("distribute inlets");
+        // distribute inlets over plugin input busses
+        auto& inlets = x_inlets[0].b_buffers;
+        auto numinlets = x_inlets[0].b_n;
+        int index = 0;
+        for (int i = 0; i < (int)x_inputs.size(); ++i){
+            auto& input = x_inputs[i];
+            // LOG_DEBUG("set input bus " << i);
+            for (int j = 0; j < input.numChannels; ++j, ++index){
+                if (index < numinlets){
+                    // point to inlet buffer
+                    // LOG_DEBUG("channel " << j << ": point to buffer");
+                    input.channelData32[j] = (float *)inlets[index];
+                } else {
+                    // point to dummy
+                    // LOG_DEBUG("channel " << j << ": point to dummy");
+                    input.channelData32[j] = (float *)indummy;
+                }
+            }
+        }
+    } else {
         LOG_DEBUG("associate inlets");
         // associate inlet busses with plugin input busses.
         for (int i = 0; i < (int)x_inputs.size(); ++i){
@@ -3149,31 +3154,39 @@ void t_vstplugin::update_buffers(){
                 }
             }
         }
-    } else {
-        LOG_DEBUG("distribute inlets");
-        // distribute inlets over plugin input busses
-        auto& inlets = x_inlets[0].b_buffers;
-        auto numinlets = x_inlets[0].b_n;
-        int index = 0;
-        for (int i = 0; i < (int)x_inputs.size(); ++i){
-            auto& input = x_inputs[i];
-            // LOG_DEBUG("set input bus " << i);
-            for (int j = 0; j < input.numChannels; ++j, ++index){
-                if (index < numinlets){
-                    // point to inlet buffer
-                    // LOG_DEBUG("channel " << j << ": point to buffer");
-                    input.channelData32[j] = (float *)inlets[index];
-                } else {
-                    // point to dummy
-                    // LOG_DEBUG("channel " << j << ": point to dummy");
-                    input.channelData32[j] = (float *)indummy;
-                }
-            }
-        }
     }
 
     // set plugin outputs
-    if (x_outlets.size() > 1){
+    assert(x_outlets.size() >= 1);
+    if (x_outlets.size() == 1 && x_outputs.size() > 1){
+        LOG_DEBUG("distribute outlets");
+        // distribute outlets over plugin output busses
+        auto& outbuffers = x_outlets[0].b_buffers;
+        auto& outsignals = x_outlets[0].b_signals;
+        auto numoutlets = x_outlets[0].b_n;
+        int index = 0;
+        for (int i = 0; i < (int)x_outputs.size(); ++i){
+            auto& output = x_outputs[i];
+            // LOG_DEBUG("set output bus " << i);
+            for (int j = 0; j < output.numChannels; ++j, ++index){
+                if (index < numoutlets){
+                    if (needbuffer){
+                        // point to outlet buffer
+                        // LOG_DEBUG("channel " << j << ": point to buffer");
+                        output.channelData32[j] = (float *)outbuffers[index];
+                    } else {
+                        // point to outlet
+                        // LOG_DEBUG("channel " << j << ": point to signal");
+                        output.channelData32[j] = (float *)outsignals[index];
+                    }
+                } else {
+                    // point to dummy
+                    // LOG_DEBUG("channel " << j << ": point to dummy");
+                    output.channelData32[j] = (float *)outdummy;
+                }
+            }
+        }
+    } else {
         LOG_DEBUG("associate outlets");
         // associate outlet busses with plugin output busses.
         for (int i = 0; i < (int)x_outputs.size(); ++i){
@@ -3201,34 +3214,6 @@ void t_vstplugin::update_buffers(){
             } else {
                 // point all channels to dummy
                 for (int j = 0; j < output.numChannels; ++j){
-                    // LOG_DEBUG("channel " << j << ": point to dummy");
-                    output.channelData32[j] = (float *)outdummy;
-                }
-            }
-        }
-    } else {
-        LOG_DEBUG("distribute outlets");
-        // distribute outlets over plugin output busses
-        auto& outbuffers = x_outlets[0].b_buffers;
-        auto& outsignals = x_outlets[0].b_signals;
-        auto numoutlets = x_outlets[0].b_n;
-        int index = 0;
-        for (int i = 0; i < (int)x_outputs.size(); ++i){
-            auto& output = x_outputs[i];
-            // LOG_DEBUG("set output bus " << i);
-            for (int j = 0; j < output.numChannels; ++j, ++index){
-                if (index < numoutlets){
-                    if (needbuffer){
-                        // point to outlet buffer
-                        // LOG_DEBUG("channel " << j << ": point to buffer");
-                        output.channelData32[j] = (float *)outbuffers[index];
-                    } else {
-                        // point to outlet
-                        // LOG_DEBUG("channel " << j << ": point to signal");
-                        output.channelData32[j] = (float *)outsignals[index];
-                    }
-                } else {
-                    // point to dummy
                     // LOG_DEBUG("channel " << j << ": point to dummy");
                     output.channelData32[j] = (float *)outdummy;
                 }
@@ -3347,7 +3332,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     }
     LOG_DEBUG("inputs:");
     for (int i = 0; i < inputs.size(); ++i){
-        LOG_DEBUG("  bus " << (i + 1) << ": " << inputs[i] << "ch");
+        LOG_DEBUG("  bus " << i << ": " << inputs[i] << "ch");
     }
 
     // outputs (default: 2), only if -o hasn't been used!
@@ -3358,7 +3343,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     }
     LOG_DEBUG("outputs:");
     for (int i = 0; i < outputs.size(); ++i){
-        LOG_DEBUG("  bus " << (i + 1) << ": " << outputs[i] << "ch");
+        LOG_DEBUG("  bus " << i << ": " << outputs[i] << "ch");
     }
 
     // (legacy) optional aux inputs/outputs
@@ -3502,9 +3487,9 @@ static void vstplugin_doperform(t_vstplugin *x, int n){
     ProcessData data;
     data.numSamples = n;
     data.precision = x->x_realprecision;
-    data.inputs = x->x_inputs.data();
+    data.inputs = x->x_inputs.empty() ? nullptr : x->x_inputs.data();
     data.numInputs = x->x_inputs.size();
-    data.outputs = x->x_outputs.data();
+    data.outputs = x->x_outputs.empty() ? nullptr :  x->x_outputs.data();
     data.numOutputs = x->x_outputs.size();
     plugin->process(data);
 

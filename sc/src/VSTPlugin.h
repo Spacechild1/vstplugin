@@ -53,8 +53,8 @@ struct OpenCmdData : CmdData {
     int numOutputs;
     int *inputs;
     int *outputs;
-    std::vector<int> realInputs;
-    std::vector<int> realOutputs;
+    std::vector<int> pluginInputs;
+    std::vector<int> pluginOutputs;
     // flexible array for RT memory
     int size = 0;
     char path[1];
