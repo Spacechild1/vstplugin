@@ -83,9 +83,9 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
     channel.clear(); // !
 
     auto nparams = plugin_->info().numParameters();
-
-    paramState_.reset(new float[nparams]);
-
+    if (nparams > 0){
+        paramState_ = std::make_unique<float[]>(nparams);
+    }
     for (int i = 0; i < nparams; ++i){
         auto value = plugin_->getParameter(i);
         paramState_[i] = value;
@@ -132,13 +132,13 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         });
 
         // create input busses
-        inputs_ = std::make_unique<Bus[]>(numInputs);
+        inputs_ = numInputs > 0 ? std::make_unique<Bus[]>(numInputs) : nullptr;
         numInputs_ = numInputs;
         for (int i = 0; i < numInputs; ++i){
             inputs_[i] = Bus(input[i]);
         }
         // create output busses
-        outputs_ = std::make_unique<Bus[]>(numOutputs);
+        outputs_ = numOutputs > 0 ? std::make_unique<Bus[]>(numOutputs) : nullptr;
         numOutputs_ = numOutputs;
         for (int i = 0; i < numOutputs; ++i){
             outputs_[i] = Bus(output[i]);

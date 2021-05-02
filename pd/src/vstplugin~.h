@@ -79,6 +79,13 @@ class t_vstplugin {
     t_float x_sr = 44100;
     // signals
     struct t_signalbus {
+        t_signalbus() = default;
+        t_signalbus(int n) : b_n(n) {
+            if (n > 0){
+                b_signals = std::make_unique<t_sample *[]>(n);
+                b_buffers = std::make_unique<void *[]>(n);
+            }
+        }
         std::unique_ptr<t_sample *[]> b_signals;
         std::unique_ptr<void *[]> b_buffers;
         int b_n = 0;

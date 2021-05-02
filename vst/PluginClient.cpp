@@ -37,9 +37,12 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bo
     static std::atomic<uint32_t> nextID{0};
     id_ = ++nextID; // atomic increment!
 
-    paramCache_ = std::make_unique<Param[]>(info_->numParameters());
-    programCache_ = std::make_unique<std::string[]>(info_->numPrograms());
-
+    if (info_->numParameters() > 0){
+        paramCache_ = std::make_unique<Param[]>(info_->numParameters());
+    }
+    if (info_->numPrograms() > 0){
+        programCache_ = std::make_unique<std::string[]>(info_->numPrograms());
+    }
     LOG_DEBUG("PluginClient: get plugin bridge");
     if (sandbox){
         bridge_ = PluginBridge::create(factory_->arch());

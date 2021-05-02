@@ -3384,11 +3384,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int totalin = 0;
     for (auto& in : inputs){
         totalin += in;
-        t_signalbus bus;
-        bus.b_n = in;
-        bus.b_signals = std::make_unique<t_sample *[]>(in);
-        bus.b_buffers = std::make_unique<void *[]>(in);
-        x_inlets.push_back(std::move(bus));
+        x_inlets.emplace_back(in);
     }
     // we already have a main inlet!
     while (--totalin){
@@ -3398,11 +3394,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     int totalout = 0;
     for (auto& out : outputs){
         totalout += out;
-        t_signalbus bus;
-        bus.b_n = out;
-        bus.b_signals = std::make_unique<t_sample *[]>(out);
-        bus.b_buffers = std::make_unique<void *[]>(out);
-        x_outlets.push_back(std::move(bus));
+        x_outlets.emplace_back(out);
     }
     // we already have a main inlet!
     while (totalout--){

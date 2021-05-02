@@ -630,7 +630,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     outputParamChanges_.setMaxNumParameters(numParams);
 
     // cache for automatable parameters
-    paramCache_.reset(new ParamState[getNumParameters()]);
+    if (getNumParameters() > 0){
+        paramCache_ = std::make_unique<ParamState[]>(getNumParameters());
+    }
     updateParamCache();
 
     LOG_DEBUG("program change: " << info_->programChange);
@@ -1600,8 +1602,8 @@ int VST3Plugin::getNumParameters() const {
 }
 
 void VST3Plugin::updateParamCache(){
-    int n = getNumParameters();
-    for (int i = 0; i < n; ++i){
+    int nparams = getNumParameters();
+    for (int i = 0; i < nparams; ++i){
         auto id = info().getParamID(i);
         auto value = controller_->getParamNormalized(id);
         paramCache_[i].value.store(value, std::memory_order_relaxed);

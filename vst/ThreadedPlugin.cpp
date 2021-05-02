@@ -366,13 +366,13 @@ void ThreadedPlugin::setNumSpeakers(int *input, int numInputs,
     ScopedLock lock(mutex_);
     plugin_->setNumSpeakers(input, numInputs, output, numOutputs);
     // create input busses
-    inputs_ = std::make_unique<Bus[]>(numInputs);
+    inputs_ = numInputs > 0 ? std::make_unique<Bus[]>(numInputs) : nullptr;
     numInputs_ = numInputs;
     for (int i = 0; i < numInputs; ++i){
         inputs_[i] = Bus(input[i]);
     }
     // create output busses
-    outputs_ = std::make_unique<Bus[]>(numOutputs);
+    outputs_ = numOutputs > 0 ? std::make_unique<Bus[]>(numOutputs) : nullptr;
     numOutputs_ = numOutputs;
     for (int i = 0; i < numOutputs; ++i){
         outputs_[i] = Bus(output[i]);
