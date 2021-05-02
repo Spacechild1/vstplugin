@@ -594,14 +594,15 @@ void VST2Plugin::setBypass(Bypass state){
 }
 
 void VST2Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numOutputs){
-    assert(numInputs > 0);
-    assert(numOutputs > 0);
+    // VST2 plugins only ever have a single input/output bus
+    assert(numInputs == 1);
+    assert(numOutputs == 1);
 
     LOG_DEBUG("requested speaker arrangement: "
-              << *input << " in, " << *output << " out");
+              << input[0] << " in, " << output[0] << " out");
 
-    int numInputSpeakers = std::min<int>(*input, getNumInputs());
-    int numOutputSpeakers = std::min<int>(*output, getNumOutputs());
+    int numInputSpeakers = std::min<int>(input[0], getNumInputs());
+    int numOutputSpeakers = std::min<int>(output[0], getNumOutputs());
 
     auto initSpeakers = [](VstSpeakerArrangement& arr, int num){
         arr.numChannels = num;
@@ -649,19 +650,8 @@ void VST2Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numO
     outputSpeakers = nullptr;
     dispatch(effGetSpeakerArrangement, 0,
              reinterpret_cast<VstIntPtr>(&inputSpeakers), &outputSpeakers);
-
-    // verify speaker arrangements!
-    auto verifySpeakers = [](auto speakerArr, auto defNumSpeakers, auto busses, auto count){
-        if (speakerArr){
-            *busses = speakerArr->numChannels;
-        } else {
-            *busses = defNumSpeakers;
-        }
-        std::fill(busses + 1, busses + count, 0); // zero remaining busses
-    };
-
-    verifySpeakers(inputSpeakers, getNumInputs(), input, numInputs);
-    verifySpeakers(outputSpeakers, getNumOutputs(), output, numOutputs);
+    input[0] = inputSpeakers ? inputSpeakers->numChannels : getNumInputs();
+    output[0] = outputSpeakers ? outputSpeakers->numChannels : getNumOutputs();
 
     if (!(inputSpeakers && outputSpeakers)){
         LOG_DEBUG("(effGetSpeakerArrangement not supported)");

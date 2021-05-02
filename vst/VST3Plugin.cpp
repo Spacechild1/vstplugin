@@ -790,11 +790,6 @@ void VST3Plugin::process(ProcessData& data){
 
 template<typename T>
 void VST3Plugin::doProcess(ProcessData& inData){
-#if 1
-    assert(inData.numInputs > 0);
-    assert(inData.numOutputs > 0);
-#endif
-
     // process data
     MyProcessData data;
     data.processMode = Vst::kRealtime;
@@ -1279,6 +1274,10 @@ static uint64_t makeChannels(int n){
 }
 
 void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numOutputs){
+    // bus count must match!
+    assert(numInputs == info().numInputs());
+    assert(numOutputs == info().numOutputs());
+
     LOG_DEBUG("requested bus arrangement:");
     for (int i = 0; i < numInputs; ++i){
         LOG_DEBUG("input bus " << i << ": " << input[i] << "ch");
@@ -1288,50 +1287,37 @@ void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numO
     }
 
     // input speakers
-    auto numInputSpeakers = std::min<int>(numInputs, info_->numInputs());
-    auto inputSpeakers = numInputSpeakers > 0 ?
-                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numInputSpeakers)
+    auto inputSpeakers = numInputs > 0 ?
+                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numInputs)
               : nullptr;
-    for (int i = 0; i < numInputSpeakers; ++i){
+    for (int i = 0; i < numInputs; ++i){
         inputSpeakers[i] = makeChannels(input[i]);
     };
     // output speakers
-    auto numOutputSpeakers = std::min<int>(numOutputs, info_->numOutputs());
-    auto outputSpeakers = numOutputSpeakers > 0 ?
-                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numOutputSpeakers)
+    auto outputSpeakers = numOutputs > 0 ?
+                (Vst::SpeakerArrangement *)alloca(sizeof(Vst::SpeakerArrangement) * numOutputs)
               : nullptr;
-    for (int i = 0; i < numOutputSpeakers; ++i){
+    for (int i = 0; i < numOutputs; ++i){
         outputSpeakers[i] = makeChannels(output[i]);
     };
 
-    processor_->setBusArrangements(inputSpeakers, numInputSpeakers,
-                                   outputSpeakers, numOutputSpeakers);
+    processor_->setBusArrangements(inputSpeakers, numInputs,
+                                   outputSpeakers, numOutputs);
 
     // we have to (de)activate busses *after* setting the bus arrangement.
     // we also retrieve and save the actual bus channel counts.
-    auto checkSpeakers = [this](Vst::BusDirection dir, int *speakers, int numSpeakers){
-        auto busCount = component_->getBusCount(Vst::kAudio, dir);
-        for (int i = 0; i < busCount; ++i){
-            if (i < numSpeakers && (speakers[i] > 0)){
-                // check actual channel count
-                Vst::SpeakerArrangement arr;
-                if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
-                    speakers[i] = Vst::SpeakerArr::getChannelCount(arr);
-                } else {
-                    // ?
-                    LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
-                }
-                // only activate bus if number of speakers is greater than zero
-                bool active = speakers[i] > 0;
-                component_->activateBus(Vst::kAudio, dir, i, active);
+    auto checkSpeakers = [this](Vst::BusDirection dir, int *busses, int count){
+        for (int i = 0; i < count; ++i){
+            // check actual channel count
+            Vst::SpeakerArrangement arr;
+            if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
+                busses[i] = Vst::SpeakerArr::getChannelCount(arr);
             } else {
-                // deactive unused bus
-                component_->activateBus(Vst::kAudio, dir, i, false);
+                // ?
+                LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
             }
-        }
-        // zero remaining speakers!
-        for (int i = busCount; i < numSpeakers; ++i){
-            speakers[i] = 0;
+            // only activate bus if number of speakers is greater than zero
+            component_->activateBus(Vst::kAudio, dir, i, busses[i] > 0);
         }
     };
 
