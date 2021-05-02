@@ -438,7 +438,7 @@ VSTPlugin : MultiOutUGen {
 
 		// reassemble UGen inputs (in correct order)
 		// first argument is 'flags'!
-		inputs = [0, blockSize ?? { 0 }, bypass, numInputs, numOutputs, numParams] ++ inputArray ++ outputArray ++ paramArray;
+		inputs = [0, blockSize ?? { 0 }, bypass, numInputs] ++ inputArray ++ numOutputs ++ outputArray ++ numParams ++ paramArray;
 		// "ugen inputs: %".format(inputs).postln;
 
 		ugenOutputs = this.initOutputs(numUgenOutputs, rate);

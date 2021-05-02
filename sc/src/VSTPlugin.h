@@ -304,10 +304,6 @@ private:
 
     float readControlBus(uint32 num);
 
-    template<bool output>
-    void setupBusses(Bus *& busses, int& numBusses,
-                     int count, int& onset);
-
     bool setupBuffers(AudioBus *& pluginBusses, int& pluginBusCount,
                       Bus *ugenBusses, int ugenBusCount,
                       const int *speakers, int numSpeakers, float *dummy);

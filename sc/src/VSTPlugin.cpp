@@ -589,7 +589,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, float
 
 VSTPlugin::VSTPlugin(){
     // Ugen inputs:
-    //   flags, blocksize, bypass, ninputs, noutputs, nparams, inputs..., outputs..., params...
+    //   flags, blocksize, bypass, ninputs, inputs..., noutputs, outputs..., nparams, params...
     //     input: nchannels, chn1, chn2, ...
     //     output: nchannels
     //     params: index, value
@@ -597,23 +597,84 @@ VSTPlugin::VSTPlugin(){
     // int flags = in0(0);
     int reblockSize = in0(1);
     // int bypass = in0(2);
-    int nin = in0(3);
-    assert(nin >= 0);
-    int nout = in0(4);
-    assert(nout >= 0);
-    int nparams = in0(5);
-    assert(nparams >= 0);
 
-    int onset = 6;
+    int offset = 3;
 
-    // setup input/output busses
-    setupBusses<false>(ugenInputs_, numUgenInputs_, nin, onset);
-    setupBusses<true>(ugenOutputs_, numUgenOutputs_, nout, onset);
+    // setup input busses
+    {
+        int nin = in0(offset);
+        assert(nin >= 0);
+        offset++;
+        // at least 1 (empty) bus for simplicity
+        ugenInputs_ = (Bus *)RTAlloc(mWorld, std::max<int>(1, nin) * sizeof(Bus));
+        if (ugenInputs_){
+            if (nin > 0){
+                LOG_DEBUG("inputs:");
+                for (int i = 0; i < nin; ++i){
+                    assert(offset < numInputs());
+                    int nchannels = in0(offset);
+                    offset++;
+                    ugenInputs_[i].numChannels = nchannels;
+                    ugenInputs_[i].channelData = mInBuf + offset;
+                    offset += nchannels;
+                    assert(offset <= numInputs());
+                    LOG_DEBUG("  bus " << i << ": " << nchannels << "ch");
+                }
+                numUgenInputs_ = nin;
+            } else {
+                LOG_DEBUG("inputs: none");
+                ugenInputs_[0].channelData = nullptr;
+                ugenInputs_[0].numChannels = 0;
+                numUgenInputs_ = 1;
+            }
+        } else {
+            numUgenInputs_ = 0;
+        }
+    }
+    // setup output busses
+    {
+        int nout = in0(offset);
+        assert(nout >= 0);
+        offset++;
+        auto out = mOutBuf;
+        auto end = mOutBuf + numOutputs();
+        // at least 1 (empty) bus for simplicity
+        ugenOutputs_ = (Bus *)RTAlloc(mWorld, std::max<int>(1, nout) * sizeof(Bus));
+        if (ugenOutputs_){
+            if (nout > 0){
+                LOG_DEBUG("outputs:");
+                for (int i = 0; i < nout; ++i){
+                    assert(offset < numInputs());
+                    int nchannels = in0(offset);
+                    offset++;
+                    ugenOutputs_[i].numChannels = nchannels;
+                    ugenOutputs_[i].channelData = out;
+                    out += nchannels;
+                    assert(out <= end);
+                    LOG_DEBUG("  bus " << i << ": " << nchannels << "ch");
+                }
+                numUgenOutputs_ = nout;
+            } else {
+                LOG_DEBUG("outputs: none");
+                ugenOutputs_[0].channelData = nullptr;
+                ugenOutputs_[0].numChannels = 0;
+                numUgenOutputs_ = 1;
+            }
+        } else {
+            numUgenOutputs_ = 0;
+        }
+    }
 
     // parameter controls
-    assert((onset + nparams * 2) == numInputs());
-    parameterControls_ = mInput + onset;
-    numParameterControls_ = nparams;
+    {
+        int nparams = in0(offset);
+        assert(nparams >= 0);
+        offset++;
+        assert((offset + nparams * 2) == numInputs());
+        parameterControls_ = mInput + offset;
+        numParameterControls_ = nparams;
+        LOG_DEBUG("parameter controls: " << nparams);
+    }
 
     // Ugen input/output busses must not be nullptr!
     if (ugenInputs_ && ugenOutputs_){
@@ -633,7 +694,7 @@ VSTPlugin::VSTPlugin(){
         initReblocker(reblockSize);
     }
 
-    // create dummy buffer
+    // create dummy input/output buffer
     size_t dummyBlocksize = reblock_ ? reblock_->blockSize : bufferSize();
     auto dummyBufsize = dummyBlocksize * 2 * sizeof(float);
     dummyBuffer_ = (float *)RTAlloc(mWorld, dummyBufsize);
@@ -750,53 +811,6 @@ float VSTPlugin::readControlBus(uint32 num) {
 #undef unit
     } else {
         return 0.f;
-    }
-}
-
-template<bool output>
-void VSTPlugin::setupBusses(Bus *& busses, int& numBusses,
-                            int count, int& onset)
-{
-    auto out = mOutBuf;
-    auto end = mOutBuf + numOutputs();
-    if (count > 0){
-        auto result = (Bus *)RTAlloc(mWorld, count * sizeof(Bus));
-        if (result){
-            for (int i = 0; i < count; ++i){
-                assert(onset < numInputs());
-                auto& bus = result[i];
-                bus.numChannels = in0(onset);
-                onset++;
-                if (output){
-                    bus.channelData = out;
-                    out += bus.numChannels;
-                    assert(onset <= numInputs());
-                } else {
-                    bus.channelData = mInBuf + onset;
-                    onset += bus.numChannels;
-                    assert(out <= end);
-                }
-            }
-
-            busses = result;
-            numBusses = count;
-        } else {
-            busses = nullptr;
-            numBusses = 0;
-        }
-    } else {
-        // at least 1 (empty) bus
-        auto result = (Bus *)RTAlloc(mWorld, sizeof(Bus));
-        if (result){
-            result[0].channelData = nullptr;
-            result[0].numChannels = 0;
-
-            busses = result;
-            numBusses = 1;
-        } else {
-            busses = nullptr;
-            numBusses = 0;
-        }
     }
 }
 
