@@ -88,6 +88,7 @@ class Window : public IWindow {
  private:
     void *getHandle();
     void updateFrame();
+    bool canResize();
 
     CocoaEditorWindow * window_ = nullptr;
     IPlugin *plugin_;
@@ -99,6 +100,7 @@ class Window : public IWindow {
     // the very first time and then always returns false, so we cache
     // "true" results.
     bool canResize_ = false;
+    bool didQueryResize_ = false;
     bool loading_ = false;
 
     static std::atomic<int> numWindows_;

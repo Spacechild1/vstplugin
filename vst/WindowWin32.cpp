@@ -233,13 +233,23 @@ void EventLoop::notify(){
 /*///////////////////////// Window ///////////////////////////*/
 
 Window::Window(IPlugin& plugin)
-    : plugin_(&plugin) {
-    // cache for buggy plugins!
-    canResize_ = plugin_->canResize();
-}
+    : plugin_(&plugin) {}
 
 Window::~Window(){
     doClose();
+}
+
+bool Window::canResize(){
+    // cache for buggy plugins!
+    // NOTE: *don't* do this in the constructor, because it
+    // can crash certain VST3 plugins (when destroyed without
+    // having actually opened the editor)
+    if (!didQueryResize_){
+        canResize_ = plugin_->canResize();
+        LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
+        didQueryResize_ = true;
+    }
+    return canResize_;
 }
 
 LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
@@ -309,7 +319,7 @@ void Window::doOpen(){
     }
 
     // no maximize box if plugin view can't be resized
-    DWORD dwStyle = canResize_ ?
+    DWORD dwStyle = canResize() ?
                 WS_OVERLAPPEDWINDOW :
                 (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
     // already set 'hwnd_' in the beginning because openEditor()
@@ -327,7 +337,7 @@ void Window::doOpen(){
 
     // set window coordinates
     bool didOpen = false;
-    if (canResize_ && rect_.valid()){
+    if (canResize() && rect_.valid()){
         LOG_DEBUG("Win32: restore editor size");
         // restore from cached rect
         // NOTE: restoring the size doesn't work if openEditor()
@@ -421,7 +431,7 @@ void Window::setSize(int w, int h){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        if (owner->canResize_){
+        if (owner->canResize()){
             // update and adjust size
             owner->rect_.w = cmd->x;
             owner->rect_.h = cmd->y;

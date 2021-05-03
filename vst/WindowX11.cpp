@@ -453,13 +453,23 @@ void EventLoop::doUnregisterTimer(void *obj){
 /*///////////////// Window ////////////////////*/
 
 Window::Window(Display& display, IPlugin& plugin)
-    : display_(&display), plugin_(&plugin) {
-    // cache for buggy plugins!
-    canResize_ = plugin_->canResize();
-}
+    : display_(&display), plugin_(&plugin) {}
 
 Window::~Window(){
     doClose();
+}
+
+bool Window::canResize(){
+    // cache for buggy plugins!
+    // NOTE: *don't* do this in the constructor, because it
+    // can crash certain VST3 plugins (when destroyed without
+    // having actually opened the editor)
+    if (!didQueryResize_){
+        canResize_ = plugin_->canResize();
+        LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
+        didQueryResize_ = true;
+    }
+    return canResize_;
 }
 
 void Window::open(){
@@ -511,7 +521,7 @@ void Window::doOpen(){
 
     // set window coordinates
     bool didOpen = false;
-    if (canResize_ && rect_.valid()){
+    if (canResize() && rect_.valid()){
         LOG_DEBUG("X11: restore editor size");
         // just restore from cached rect
     } else {
@@ -532,7 +542,7 @@ void Window::doOpen(){
     }
 
     // disable resizing
-    if (!canResize_) {
+    if (!canResize()) {
         LOG_DEBUG("X11: disable resizing");
         setFixedSize(rect_.w, rect_.h);
     } else {
@@ -624,7 +634,7 @@ void Window::setSize(int w, int h){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        if (owner->canResize_){
+        if (owner->canResize()){
             auto window = owner->window_;
             auto display = owner->display_;
             auto& r = cmd->owner->rect_;
@@ -646,7 +656,7 @@ void Window::resize(int w, int h){
     LOG_DEBUG("resized by plugin: " << w << ", " << h);
     // should only be called if the window is open
     if (window_){
-        if (!canResize_){
+        if (!canResize()){
             setFixedSize(w, h);
         }
         XResizeWindow(display_, window_, w, h);
@@ -669,7 +679,7 @@ void Window::onUpdate(){
 void Window::onConfigure(int x, int y, int width, int height){
     LOG_DEBUG("onConfigure: x: "<< x << ", y: " << y
               << ", w: " << width << ", h: " << height);
-    if (canResize_ && (rect_.w != width || rect_.h != height)){
+    if (canResize() && (rect_.w != width || rect_.h != height)){
         LOG_DEBUG("size changed");
         plugin_->resizeEditor(width, height);
         rect_.w = width;

@@ -301,11 +301,7 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
 std::atomic<int> Window::numWindows_{0};
 
 Window::Window(IPlugin& plugin)
-    : plugin_(&plugin) {
-    // cache because of some buggy plugins
-    canResize_ = plugin_->canResize();
-    LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
-}
+    : plugin_(&plugin) {}
 
 Window::~Window(){
     if (window_){
@@ -320,6 +316,19 @@ Window::~Window(){
     #endif
     }
     LOG_DEBUG("Cocoa: destroyed Window");
+}
+
+bool Window::canResize(){
+    // cache for buggy plugins!
+    // NOTE: *don't* do this in the constructor, because it
+    // can crash certain VST3 plugins (when destroyed without
+    // having actually opened the editor)
+    if (!didQueryResize_){
+        canResize_ = plugin_->canResize();
+        LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
+        didQueryResize_ = true;
+    }
+    return canResize_;
 }
 
 void Window::open(){
@@ -340,7 +349,7 @@ void Window::doOpen(){
 
     NSRect frame = NSMakeRect(0, 0, 200, 200);
     NSUInteger style = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask;
-    if (canResize_) {
+    if (canResize()) {
         style |= NSResizableWindowMask;
         LOG_DEBUG("Cocoa: can resize");
     }
@@ -361,7 +370,7 @@ void Window::doOpen(){
         // set window coordinates
         loading_ = true;
         bool didOpen = false;
-        if (canResize_ && rect_.valid()){
+        if (canResize() && rect_.valid()){
             LOG_DEBUG("Cocoa: restore editor size");
         } else {
             // get window dimensions from plugin
@@ -517,7 +526,7 @@ void Window::setSize(int w, int h){
             auto cmd = static_cast<Command *>(user);
             auto owner = cmd->owner;
             // only if we can resize!
-            if (owner->canResize_){
+            if (owner->canResize()){
                 // if the window is visible, cache real position
                 // and adjust y coordinate for height difference!
                 if (owner->getHandle()){
