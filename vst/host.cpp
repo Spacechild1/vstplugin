@@ -44,7 +44,7 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
 }
 
 #if USE_ALARM
-static char gFilePath[256];
+static std::string gFilePath;
 static int gTimeout;
 #endif
 
@@ -58,7 +58,7 @@ int probe(const std::string& pluginPath, int pluginIndex,
 
 #if USE_ALARM
     if (timeout > 0){
-        snprintf(gFilePath, sizeof(gFilePath), "%s", filePath.c_str());
+        gFilePath = filePath;
         gTimeout = timeout + 0.5; // round up
 
         signal(SIGALRM, [](int){
