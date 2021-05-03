@@ -872,9 +872,10 @@ bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
     assert(ugenBusCount >= 1);
     if (ugenBusCount == 1 && pluginBusCount > 1){
         // distribute ugen channels over plugin busses
+        //
         // NOTE: only do this if the plugin has more than one bus,
         // as a workaround for buggy VST3 plugins which would report
-        // a wrong channel count, like Helm.vst3 or RoughRider2.vst3
+        // a wrong default channel count, like Helm.vst3 or RoughRider2.vst3
         auto channels = ugenBusses[0].channelData;
         auto numChannels = ugenBusses[0].numChannels;
         int index = 0;
@@ -1645,67 +1646,48 @@ bool cmdOpen(World *world, void* cmdData) {
                 }
                 LOG_DEBUG("setNumSpeakers");
 
-                // prepare input busses
-                {
-                    assert(data->numInputs >= 1);
-                    auto& pluginInputs = data->plugin->info().inputs;
-                    data->pluginInputs.resize(pluginInputs.size());
-                    if (data->numInputs == 1 && pluginInputs.size() > 1){
-                        LOG_DEBUG("distribute ugen inputs");
-                        // distribute ugen inputs over plugin input busses
-                        auto remaining = data->inputs[0];
-                        for (int i = 0; i < (int)data->pluginInputs.size(); ++i){
-                            if (remaining > 0){
-                                auto chn = std::min<int>(remaining, pluginInputs[i].numChannels);
-                                data->pluginInputs[i] = chn;
-                                remaining -= chn;
-                            } else {
-                                data->pluginInputs[i] = 0;
-                            }
-                        }
-                    } else {
-                        LOG_DEBUG("associate ugen inputs");
-                        // associate ugen input busses with plugin input busses.
-                        for (int i = 0; i < (int)data->pluginInputs.size(); ++i){
-                            if (i < data->numInputs){
-                                data->pluginInputs[i] = data->inputs[i];
-                            } else {
-                                data->pluginInputs[i] = 0;
-                            }
-                        }
-                    }
-                }
+                auto setupSpeakers = [](const auto& pluginBusses,
+                        const int *ugenBusses, int numUgenBusses,
+                        auto& result, const char *what){
+                    assert(numUgenBusses >= 1);
+                    result.resize(pluginBusses.size());
 
-                // prepare output busses
-                {
-                    assert(data->numOutputs >= 1);
-                    auto& pluginOutputs = data->plugin->info().outputs;
-                    data->pluginOutputs.resize(pluginOutputs.size());
-                    if (data->numOutputs == 1 && pluginOutputs.size() > 1){
-                        LOG_DEBUG("distribute ugen outputs");
-                        // distribute ugen outputs over plugin output busses
-                        auto remaining = data->outputs[0];
-                        for (int i = 0; i < (int)data->pluginOutputs.size(); ++i){
+                    if (numUgenBusses == 1 && pluginBusses.size() > 1){
+                        LOG_DEBUG("distribute ugen " << what);
+                        // distribute ugen channels over plugin busses
+                        //
+                        // NOTE: only do this if the plugin has more than one bus,
+                        // as a workaround for buggy VST3 plugins which would report
+                        // a wrong default channel count, like Helm.vst3 or RoughRider2.vst3
+                        auto remaining = ugenBusses[0];
+                        for (int i = 0; i < (int)pluginBusses.size(); ++i){
                             if (remaining > 0){
-                                auto chn = std::min<int>(remaining, pluginOutputs[i].numChannels);
-                                data->pluginOutputs[i] = chn;
+                                auto chn = std::min<int>(remaining, pluginBusses[i].numChannels);
+                                result[i] = chn;
                                 remaining -= chn;
                             } else {
-                                data->pluginOutputs[i] = 0;
+                                result[i] = 0;
                             }
                         }
                     } else {
-                        LOG_DEBUG("associate ugen outputs");
-                        // associate ugen output busses with plugin output busses.
-                        for (int i = 0; i < (int)data->pluginOutputs.size(); ++i){
-                            if (i < data->numOutputs){
-                                data->pluginOutputs[i] = data->outputs[i];
+                        LOG_DEBUG("associate ugen " << what);
+                        // associate ugen input/output busses with plugin input/output busses.
+                        for (int i = 0; i < (int)pluginBusses.size(); ++i){
+                            if (i < numUgenBusses){
+                                result[i] = ugenBusses[i];
                             } else {
-                                data->pluginOutputs[i] = 0;
+                                result[i] = 0;
                             }
                         }
                     }
-                }
+                };
+
+                // prepare input busses
+                setupSpeakers(data->plugin->info().inputs, data->inputs, data->numInputs,
+                              data->pluginInputs, "inputs");
+                // prepare output busses
+                setupSpeakers(data->plugin->info().outputs, data->outputs, data->numOutputs,
+                              data->pluginOutputs, "outputs");
 
                 data->plugin->setNumSpeakers(data->pluginInputs.data(), data->pluginInputs.size(),
                                              data->pluginOutputs.data(), data->pluginOutputs.size());
