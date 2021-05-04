@@ -340,6 +340,19 @@ std::vector<CpuArch> readMach(vst::File& file){
 }
 #endif
 
+// TODO figure out what to do with ARM...
+static const std::vector<const char *> gBundleBinaryPaths = {
+#if defined(_WIN32) || USE_WINE
+    "Contents/x86-win", "Contents/x86_64-win",
+#endif
+#if defined(__APPLE__)
+    "Contents/MacOS",
+#endif
+#if defined(__linux__)
+    "Contents/i386-linux", "Contents/x86_64-linux"
+#endif
+};
+
 // Check a file path or bundle for contained CPU architectures
 // If 'path' is a file, we throw an exception if it is not a library,
 // but if 'path' is a bundle (= directory), we ignore any non-library files
@@ -348,23 +361,22 @@ std::vector<CpuArch> readMach(vst::File& file){
 std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
     std::vector<CpuArch> results;
     if (isDirectory(path)){
-        // plugin bundle: iterate over Contents/* recursively
-        vst::search(path + "/Contents", [&](const std::string& resPath){
-            auto res = getCpuArchitectures(resPath, true); // bundle!
-            results.insert(results.end(), res.begin(), res.end());
-        }, false); // don't filter
+        for (auto& binaryPath : gBundleBinaryPaths){
+            vst::search(path + "/" + binaryPath, [&](const std::string& resPath){
+                auto res = getCpuArchitectures(resPath, true); // bundle!
+                results.insert(results.end(), res.begin(), res.end());
+            }, false); // don't filter
+        }
     } else {
         // ignore files that are not plugins
         auto hasExtension = [](const std::string& path){
+            auto e1 = fileExtension(path);
         #ifdef __APPLE__
             // on Apple, the actual dylib inside the bundle doesn't have
             // a file extension, so we must check for empty extensions!
-            auto e1 = fileExtension(path);
             if (e1.empty()){
                 return true; // accept empty extension
             }
-        #else
-            auto e1 = fileExtension(path);
         #endif
             for (auto& e2 : getPluginExtensions()){
                 if (e1 == e2){
@@ -373,6 +385,7 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
             }
             return false;
         };
+
         if (hasExtension(path)){
             vst::File file(path);
             if (file.is_open()){
@@ -412,7 +425,7 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
                     if (!bundle){
                         throw; // rethrow
                     } else {
-                        LOG_ERROR(path << ": " << e.what());
+                        LOG_WARNING(path << ": " << e.what());
                     }
                 #endif
                 }
@@ -420,7 +433,7 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
                 if (!bundle){
                     throw Error(Error::ModuleError, "couldn't open file");
                 } else {
-                    LOG_ERROR("couldn't open " << path);
+                    LOG_WARNING("couldn't open " << path);
                 }
             }
         }

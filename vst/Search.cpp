@@ -24,7 +24,7 @@ namespace fs = std::experimental::filesystem;
 
 namespace vst {
 
-static std::vector<const char *> platformExtensions = {
+static const std::vector<const char *> platformExtensions = {
 #if USE_VST2
  #if defined(_WIN32) || USE_WINE // Windows or Wine
     ".dll",
@@ -91,7 +91,7 @@ const char * getBundleBinaryPath(){
 # endif // USE_BRIDGE
 #endif // WIN32
 
-static std::vector<const char *> defaultSearchPaths = {
+static const std::vector<const char *> defaultSearchPaths = {
 /*---- VST2 ----*/
 #if USE_VST2
     // macOS

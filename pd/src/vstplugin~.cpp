@@ -1304,6 +1304,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         }
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
+            // NOTE: this doesn't work for bridged plugins (yet)!
             bundlePath = getBundleBinaryPath();
         #ifdef _WIN32
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
