@@ -43,6 +43,7 @@
 #endif
 
 #if defined(__WINE__)
+# undef USE_WINE
 # define USE_WINE 0
 #elif defined(_WIN32) && USE_WINE
 # error "USE_WINE cannot be set on Windows!"

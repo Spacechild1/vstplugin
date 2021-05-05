@@ -334,8 +334,8 @@ endif()
 
 # install wine hosts
 if (BUILD_WINE AND BUILD_HOST)
-    install(PROGRAMS "${HOST_PATH}.exe.so" DESTINATION "${PROJECT}")
+    install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "host_pe_amd64" DESTINATION "${PROJECT}")
 endif()
 if (BUILD_WINE AND BUILD_HOST32)
-    install(PROGRAMS "${HOST32_PATH}.exe.so" DESTINATION "${PROJECT}")
+    install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "host_pe_i386" DESTINATION "${PROJECT}")
 endif()
