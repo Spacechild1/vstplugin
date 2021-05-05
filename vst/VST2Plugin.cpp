@@ -1527,10 +1527,15 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterGetCurrentProcessLevel:
         DEBUG_HOSTCODE("audioMasterGetCurrentProcessLevel");
-        if (UIThread::isCurrentThread()){
-            return kVstProcessLevelUser;
-        } else
-            return kVstProcessLevelRealtime;
+        // make sure that we don't accidentally create the event loop!
+        if (window_){
+            if (UIThread::isCurrentThread()){
+                return kVstProcessLevelUser;
+            } else
+                return kVstProcessLevelRealtime;
+        } else {
+            return kVstProcessLevelUnknown;
+        }
     case audioMasterGetAutomationState:
         DEBUG_HOSTCODE("audioMasterGetAutomationState");
         break;
