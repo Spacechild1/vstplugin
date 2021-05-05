@@ -77,7 +77,7 @@ EventLoop& EventLoop::instance(){
 
 EventLoop::EventLoop() {
     if (!XInitThreads()){
-        LOG_WARNING("XInitThreads failed!");
+        LOG_WARNING("X11: XInitThreads failed!");
     }
     // install error handler, so our program won't die
     // on a bad X11 request
@@ -105,7 +105,7 @@ EventLoop::EventLoop() {
     root_ = XCreateSimpleWindow(display_, DefaultRootWindow(display_),
                 0, 0, 1, 1, 1, 0, 0);
 #endif
-    LOG_DEBUG("created X11 root window: " << root_);
+    LOG_DEBUG("X11: created root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
     // run thread
@@ -218,10 +218,11 @@ void EventLoop::pollFds(){
                 if (it != eventHandlers_.end()){
                     auto& handler = it->second;
                     if (revents & POLLIN){
-                        LOG_DEBUG("fd " << fd << " became ready!");
+                        LOG_DEBUG("X11: fd " << fd << " became ready!");
                         handler.cb(fd, handler.obj);
                     } else {
-                        LOG_ERROR("eventfd " << fd << ": error - removing event handler");
+                        LOG_ERROR("X11: eventfd " << fd
+                                  << ": error - removing event handler");
                         eventHandlers_.erase(fd);
                     }
                 }
@@ -302,9 +303,9 @@ bool EventLoop::sync(){
         pushCommand([](void *x){
             static_cast<EventLoop *>(x)->event_.set();
         }, this);
-        LOG_DEBUG("waiting...");
+        LOG_DEBUG("X11: waiting...");
         event_.wait();
-        LOG_DEBUG("done");
+        LOG_DEBUG("X11: done");
     }
     return true;
 }
@@ -322,9 +323,9 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
             // call the lambda
             (*static_cast<decltype (cmd) *>(x))();
         }, &cmd);
-        LOG_DEBUG("waiting...");
+        LOG_DEBUG("X11: waiting...");
         event_.wait();
-        LOG_DEBUG("done");
+        LOG_DEBUG("X11: done");
     }
     return true;
 }
@@ -412,7 +413,7 @@ void EventLoop::unregisterEventHandler(void *obj){
             ++it;
         }
     }
-    LOG_DEBUG("unregistered " << count << " handlers");
+    LOG_DEBUG("X11: unregistered " << count << " handlers");
 }
 
 void EventLoop::registerTimer(int64_t ms, TimerCallback cb, void *obj){
@@ -447,7 +448,7 @@ void EventLoop::doUnregisterTimer(void *obj){
             ++it;
         }
     }
-    LOG_DEBUG("unregistered " << count << " timers");
+    LOG_DEBUG("X11: unregistered " << count << " timers");
 }
 
 /*///////////////// Window ////////////////////*/
@@ -466,7 +467,7 @@ bool Window::canResize(){
     // having actually opened the editor)
     if (!didQueryResize_){
         canResize_ = plugin_->canResize();
-        LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
+        LOG_DEBUG("X11: can resize: " << (canResize_ ? "yes" : "no"));
         didQueryResize_ = true;
     }
     return canResize_;
@@ -530,12 +531,12 @@ void Window::doOpen(){
         if (!plugin_->getEditorRect(r)){
             // HACK for plugins which don't report the window size
             // without the editor being opened
-            LOG_DEBUG("couldn't get editor rect!");
+            LOG_DEBUG("X11: couldn't get editor rect!");
             plugin_->openEditor(getHandle());
             plugin_->getEditorRect(r);
             didOpen = true;
         }
-        LOG_DEBUG("editor size: " << r.w << " * " << r.h);
+        LOG_DEBUG("X11: editor size: " << r.w << " * " << r.h);
         // only set size!
         rect_.w = r.w;
         rect_.h = r.h;
@@ -556,7 +557,7 @@ void Window::doOpen(){
 
     // open VST editor
     if (!didOpen){
-        LOG_DEBUG("open editor");
+        LOG_DEBUG("X11: open editor");
         plugin_->openEditor(getHandle());
     }
 
@@ -577,7 +578,7 @@ void Window::doClose(){
         LOG_DEBUG("X11: unregister Window");
         EventLoop::instance().unregisterWindow(this);
 
-        LOG_DEBUG("close editor");
+        LOG_DEBUG("X11: close editor");
         plugin_->closeEditor();
 
         XDestroyWindow(display_, window_);
@@ -630,7 +631,7 @@ void Window::setPos(int x, int y){
 }
 
 void Window::setSize(int w, int h){
-    LOG_DEBUG("setSize: " << w << ", " << h);
+    LOG_DEBUG("X11: setSize: " << w << ", " << h);
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
@@ -653,7 +654,7 @@ void Window::setSize(int w, int h){
 }
 
 void Window::resize(int w, int h){
-    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    LOG_DEBUG("X11: resized by plugin: " << w << ", " << h);
     // should only be called if the window is open
     if (window_){
         if (!canResize()){
@@ -677,10 +678,10 @@ void Window::onUpdate(){
 }
 
 void Window::onConfigure(int x, int y, int width, int height){
-    LOG_DEBUG("onConfigure: x: "<< x << ", y: " << y
+    LOG_DEBUG("X11: onConfigure: x: "<< x << ", y: " << y
               << ", w: " << width << ", h: " << height);
     if (canResize() && (rect_.w != width || rect_.h != height)){
-        LOG_DEBUG("size changed");
+        LOG_DEBUG("X11: size changed");
         plugin_->resizeEditor(width, height);
         rect_.w = width;
         rect_.h = height;

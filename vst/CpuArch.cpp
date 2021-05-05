@@ -357,10 +357,13 @@ static const std::vector<const char *> gBundleBinaryPaths = {
 // If 'path' is a file, we throw an exception if it is not a library,
 // but if 'path' is a bundle (= directory), we ignore any non-library files
 // in the 'Contents' subfolder (so the resulting list might be empty).
-// However, we always throw exceptions when we encounter errors.
 std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
     std::vector<CpuArch> results;
     if (isDirectory(path)){
+        // '/Contents' might contain additional subfolders, such as '/Resources',
+        // or '/Frameworks' on macOS, so we should restrict our search to the folders
+        // that contain the actual binaries. This is especially relevant on macOS,
+        // because we can't filter by extension (see below).
         for (auto& binaryPath : gBundleBinaryPaths){
             vst::search(path + "/" + binaryPath, [&](const std::string& resPath){
                 auto res = getCpuArchitectures(resPath, true); // bundle!

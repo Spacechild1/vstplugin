@@ -19,13 +19,13 @@
 }
 
 - (BOOL)windowShouldClose:(id)sender {
-    LOG_DEBUG("window should close");
+    LOG_DEBUG("Cocoa: window should close");
     static_cast<vst::Cocoa::Window *>(owner_)->onClose();
     return YES;
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
-    LOG_DEBUG("window will resize");
+    LOG_DEBUG("Cocoa: window will resize");
     return frameSize;
 }
 
@@ -36,17 +36,17 @@
     // resize editor
     static_cast<vst::Cocoa::Window *>(owner_)->onResize(
         contentRect.size.width, contentRect.size.height);
-    LOG_DEBUG("window did resize");
+    LOG_DEBUG("Cocoa: window did resize");
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
-    LOG_DEBUG("window miniaturized");
+    LOG_DEBUG("Cocoa: window miniaturized");
 }
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
-    LOG_DEBUG("window deminiaturized");
+    LOG_DEBUG("Cocoa: window deminiaturized");
 }
 - (void)windowDidMove:(NSNotification *)notification {
-    LOG_DEBUG("window did move");
+    LOG_DEBUG("Cocoa: window did move");
 }
 - (void)updateEditor {
     static_cast<vst::Cocoa::Window *>(owner_)->updateEditor();
@@ -56,7 +56,7 @@
         if (event.modifierFlags & NSCommandKeyMask){
             auto chars = event.charactersIgnoringModifiers.UTF8String;
             if (chars[0] == 'w'){
-                LOG_DEBUG("Cmd+W");
+                LOG_DEBUG("Cocoa: Cmd+W");
                 [self performClose:nil];
                 return TRUE;
             }
@@ -201,11 +201,11 @@ EventLoop::EventLoop(){
         // create NSApplication in this thread (= main thread)
         // check if someone already created NSApp (just out of curiousity)
         if (NSApp != nullptr){
-            LOG_WARNING("NSApp already initialized!");
+            LOG_WARNING("Cocoa: NSApp already initialized!");
         } else {
             // NSApp will automatically point to the NSApplication singleton
             [NSApplication sharedApplication];
-            LOG_DEBUG("init cocoa event loop (polling)");
+            LOG_DEBUG("Cocoa: init event loop (polling)");
         }
         haveNSApp_ = true;
     } else {
@@ -216,7 +216,7 @@ EventLoop::EventLoop(){
             LOG_WARNING("The host application doesn't have a UI thread (yet?), so I can't show the VST GUI editor.");
             return; // done
         }
-        LOG_DEBUG("init cocoa event loop");
+        LOG_DEBUG("Cocoa: init event loop");
     }
 
     proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
@@ -276,7 +276,7 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
         }
         return true;
     } else {
-        LOG_DEBUG("callSync() failed - no NSApp");
+        LOG_DEBUG("Cocoa: callSync() failed - no NSApp");
         return false;
     }
 }
@@ -291,7 +291,7 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
         }
         return true;
     } else {
-        LOG_DEBUG("callAsync() failed - no NSApp");
+        LOG_DEBUG("Cocoa: callAsync() failed - no NSApp");
         return false;
     }
 }
@@ -325,7 +325,7 @@ bool Window::canResize(){
     // having actually opened the editor)
     if (!didQueryResize_){
         canResize_ = plugin_->canResize();
-        LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
+        LOG_DEBUG("Cocoa: can resize: " << (canResize_ ? "yes" : "no"));
         didQueryResize_ = true;
     }
     return canResize_;
@@ -446,13 +446,13 @@ void Window::onClose(){
         rect_.x = pos.x;
         rect_.y = pos.y;
         adjustPos_ = false; // !
-        LOG_DEBUG("cache pos: " << rect_.x << ", " << rect_.y);
+        LOG_DEBUG("Cocoa: cache pos: " << rect_.x << ", " << rect_.y);
 
         auto size = window_.frame.size;
         rect_.w = size.width;
         rect_.h = size.height;
         adjustSize_ = false; // !
-        LOG_DEBUG("cache size: " << rect_.w << ", " << rect_.h);
+        LOG_DEBUG("Cocoa: cache size: " << rect_.w << ", " << rect_.h);
 
         window_ = nullptr;
 
@@ -477,21 +477,21 @@ void * Window::getHandle(){
 void Window::updateFrame(){
     // first adjust size, because we need it to adjust pos!
     if (adjustSize_){
-        LOG_DEBUG("adjust size: want size " << rect_.w << ", " << rect_.h);
+        LOG_DEBUG("Cocoa: adjust size: want size " << rect_.w << ", " << rect_.h);
         NSRect content = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
         NSRect frame = [window_  frameRectForContentRect:content];
         rect_.w = frame.size.width;
         rect_.h = frame.size.height;
-        LOG_DEBUG("real size " << rect_.w << ", " << rect_.h);
+        LOG_DEBUG("Cocoa: real size " << rect_.w << ", " << rect_.h);
         adjustSize_ = false;
     }
     if (adjustPos_){
-        LOG_DEBUG("adjust pos: want pos " << rect_.x << ", " << rect_.y);
+        LOG_DEBUG("Cocoa: adjust pos: want pos " << rect_.x << ", " << rect_.y);
         // first move the window to the given x coordinate
         [window_ setFrameOrigin:NSMakePoint(rect_.x, rect_.y)];
         // then obtain the screen height.
         auto screenHeight = window_.screen.frame.size.height;
-        LOG_DEBUG("screen height: " << screenHeight);
+        LOG_DEBUG("Cocoa: screen height: " << screenHeight);
         // finally flip y coordinate
         // (don't use the actual frame height yet!)
         rect_.y = screenHeight - (rect_.y + rect_.h);
@@ -520,7 +520,7 @@ void Window::setPos(int x, int y){
 }
 
 void Window::setSize(int w, int h){
-    LOG_DEBUG("setSize: " << w << ", " << h);
+    LOG_DEBUG("Cocoa: setSize: " << w << ", " << h);
     if (w > 0 && h > 0){
         EventLoop::instance().callAsync([](void *user){
             auto cmd = static_cast<Command *>(user);
@@ -559,12 +559,12 @@ void Window::onResize(int w, int h){
 }
 
 void Window::resize(int w, int h){
-    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    LOG_DEBUG("Cocoa: resized by plugin: " << w << ", " << h);
     if (!loading_){
         // cache real position and adjust y coordinate for height difference!
         // the window is visible, so rect_ should already be adjusted.
         auto pos = window_.frame.origin;
-        LOG_DEBUG("pos: " << pos.x << ", " << pos.y);
+        LOG_DEBUG("Cocoa: current pos: " << pos.x << ", " << pos.y);
         NSRect rect = [window_  contentRectForFrameRect:window_.frame];
         rect_.x = pos.x;
         rect_.y = pos.y - (h - rect.size.height);

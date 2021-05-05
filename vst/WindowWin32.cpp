@@ -77,7 +77,7 @@ DWORD EventLoop::run(void *user){
     MSG msg;
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
     obj->notify();
-    LOG_DEBUG("start message loop");
+    LOG_DEBUG("Win32: start message loop");
 
     // setup timer
     auto timer = SetTimer(0, 0, EventLoop::updateInterval, NULL);
@@ -85,17 +85,17 @@ DWORD EventLoop::run(void *user){
     DWORD ret;
     while ((ret = GetMessage(&msg, NULL, 0, 0)) != 0){
         if (ret < 0){
-            LOG_ERROR("GetMessage: error");
+            LOG_ERROR("Win32: GetMessage: error");
             break;
         }
         auto type = msg.message;
         if (type == WM_CALL){
-            LOG_DEBUG("WM_CALL");
+            // LOG_DEBUG("WM_CALL");
             auto cb = (UIThread::Callback)msg.wParam;
             auto data = (void *)msg.lParam;
             cb(data);
         } else if (type == WM_SYNC){
-            LOG_DEBUG("WM_SYNC");
+            // LOG_DEBUG("WM_SYNC");
             obj->notify();
         } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
                    && (msg.wParam == timer)) {
@@ -110,7 +110,7 @@ DWORD EventLoop::run(void *user){
             DispatchMessage(&msg);
         }
     }
-    LOG_DEBUG("quit message loop");
+    LOG_DEBUG("Win32: quit message loop");
 
     KillTimer(NULL, timer);
 
@@ -134,28 +134,28 @@ EventLoop::EventLoop(){
     wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
 #endif
     if (!RegisterClassExW(&wcex)){
-        LOG_WARNING("couldn't register window class!");
+        LOG_WARNING("Win32: couldn't register window class!");
     } else {
-        LOG_DEBUG("registered window class!");
+        LOG_DEBUG("Win32: registered window class!");
     }
     // run thread
     thread_ = CreateThread(NULL, 0, run, this, 0, &threadID_);
     if (!thread_){
-        throw Error("couldn't create UI thread!");
+        throw Error("Win32: couldn't create UI thread!");
     };
     // wait for thread to create message queue
     event_.wait();
-    LOG_DEBUG("message queue created");
+    LOG_DEBUG("Win32: event loop created");
 }
 
 EventLoop::~EventLoop(){
-    LOG_DEBUG("EventLoop: about to quit");
+    LOG_DEBUG("Win32: about to quit");
     if (thread_){
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
-            LOG_DEBUG("joined thread");
+            LOG_DEBUG("Win32: joined thread");
         } else {
-            LOG_ERROR("couldn't post quit message!");
+            LOG_DEBUG("Win32: couldn't post quit message!");
         }
         CloseHandle(thread_);
     }
@@ -187,9 +187,9 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
         if (postMessage(WM_CALL, (void *)cb, (void *)user)
                 && postMessage(WM_SYNC))
         {
-            LOG_DEBUG("waiting...");
+            LOG_DEBUG("Win32: waiting...");
             event_.wait();
-            LOG_DEBUG("done");
+            LOG_DEBUG("Win32: done");
             return true;
         } else {
             return false;
@@ -203,9 +203,9 @@ bool EventLoop::sync(){
     } else {
         std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
         if (postMessage(WM_SYNC)){
-            LOG_DEBUG("waiting...");
+            LOG_DEBUG("Win32: waiting...");
             event_.wait();
-            LOG_DEBUG("done");
+            LOG_DEBUG("Win32: done");
             return true;
         } else {
             return false;
@@ -246,7 +246,7 @@ bool Window::canResize(){
     // having actually opened the editor)
     if (!didQueryResize_){
         canResize_ = plugin_->canResize();
-        LOG_DEBUG("can resize: " << (canResize_ ? "yes" : "no"));
+        LOG_DEBUG("Win32: can resize: " << (canResize_ ? "yes" : "no"));
         didQueryResize_ = true;
     }
     return canResize_;
@@ -261,28 +261,28 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
         if (window){
             window->doClose();
         } else {
-            LOG_ERROR("bug GetWindowLongPtr");
+            LOG_ERROR("Win32: bug GetWindowLongPtr");
         }
         return true;
     }
     case WM_SIZING:
     {
-        LOG_DEBUG("WM_SIZING");
+        LOG_DEBUG("Win32: WM_SIZING");
         if (window){
             window->onSizing(*(RECT *)lParam);
         } else {
-            LOG_ERROR("bug GetWindowLongPtr");
+            LOG_ERROR("Win32: bug GetWindowLongPtr");
         }
         return true;
     }
     case WM_SIZE:
     {
-        LOG_DEBUG("WM_SIZE");
+        LOG_DEBUG("Win32: WM_SIZE");
         if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED){
             if (window){
                 window->onSize(LOWORD(lParam), HIWORD(lParam));
             } else {
-                LOG_ERROR("bug GetWindowLongPtr");
+                LOG_ERROR("Win32: bug GetWindowLongPtr");
             }
         }
         return true;
@@ -298,7 +298,7 @@ void CALLBACK Window::updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time)
         window->plugin_->updateEditor();
         // LOG_DEBUG("update editor");
     } else {
-        LOG_ERROR("bug GetWindowLongPtr");
+        LOG_ERROR("Win32: bug GetWindowLongPtr");
     }
 }
 
@@ -350,12 +350,12 @@ void Window::doOpen(){
         if (!plugin_->getEditorRect(r)){
             // HACK for plugins which don't report the window size
             // without the editor being opened
-            LOG_DEBUG("couldn't get editor rect!");
+            LOG_DEBUG("Win32: couldn't get editor rect!");
             plugin_->openEditor(hwnd_);
             plugin_->getEditorRect(r);
             didOpen = true;
         }
-        LOG_DEBUG("editor size: " << r.w << " * " << r.h);
+        LOG_DEBUG("Win32: editor size: " << r.w << " * " << r.h);
         rect_.w = r.w;
         rect_.h = r.h;
         adjustSize_ = true; // !
@@ -427,7 +427,7 @@ void Window::setPos(int x, int y){
 
 // client rect size!
 void Window::setSize(int w, int h){
-    LOG_DEBUG("setSize: " << w << ", " << h);
+    LOG_DEBUG("Win32: setSize: " << w << ", " << h);
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
@@ -448,7 +448,7 @@ void Window::setSize(int w, int h){
 
 // client rect size!
 void Window::resize(int w, int h){
-    LOG_DEBUG("resized by plugin: " << w << ", " << h);
+    LOG_DEBUG("Win32: resized by plugin: " << w << ", " << h);
     // should only be called if the window is open
     if (hwnd_){
         saveCurrentPosition(); // !
