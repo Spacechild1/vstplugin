@@ -68,11 +68,15 @@ if (WIN32)
     # always use on Windows!
     set(STDFS ON)
 else()
-    if (LINUX AND NOT BUILD_WINE)
-        set(STDFS ON CACHE BOOL "Use std::filesystem")
+    if (LINUX)
+        if (BUILD_WINE)
+            # causes big trouble on Wine...
+            set(STDFS OFF CACHE BOOL "Use std::filesystem" FORCE)
+        else()
+            set(STDFS ON CACHE BOOL "Use std::filesystem")
+        endif()
     else()
-        # not available on older clang version on macOS.
-        # also causes trouble on Wine...
+        # not available on older clang version on macOS
         set(STDFS OFF CACHE BOOL "Use std::filesystem")
     endif()
 endif()
