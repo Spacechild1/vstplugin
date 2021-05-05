@@ -1267,16 +1267,16 @@ SynthDef.new(\my_instrument, { arg out;
 ~score.add([0.0, ~synth[1].newMsg]);
 
 // open VSTi plugins
-~score.add([0.0, ~vst[0].vsti.openMsg("Dexed")]);
-~score.add([0.0, ~vst[1].vsti.openMsg("Dexed")]);
+~score.add([0.0, ~vst[0].vsti.openMsg("Dexed", editor: false)]);
+~score.add([0.0, ~vst[1].vsti.openMsg("Dexed", editor: false)]);
 
 // choose programs
 ~score.add([0.0, ~vst[0].vsti.programMsg(0)]);
 ~score.add([0.0, ~vst[1].vsti.programMsg(1)]);
 
 // open FX plugins
-~score.add([0.0, ~vst[0].fx.openMsg("GDelay")]);
-~score.add([0.0, ~vst[1].fx.openMsg("GChorus")]);
+~score.add([0.0, ~vst[0].fx.openMsg("GDelay", editor: false)]);
+~score.add([0.0, ~vst[1].fx.openMsg("GChorus", editor: false)]);
 
 // set some FX params
 ~score.add([0.0, ~vst[0].fx.setMsg(0, 0.2)]); // delay time
