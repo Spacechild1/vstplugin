@@ -79,11 +79,25 @@ class EventLoop {
     };
     std::unordered_map<int, EventHandler> eventHandlers_;
 
-    struct Timer {
-        void *obj = nullptr;
-        TimerCallback cb;
-        int64_t interval;
-        double elapsed;
+    class Timer {
+    public:
+        Timer(TimerCallback cb, void *obj, double interval)
+            : cb_(cb), obj_(obj), interval_(interval) {}
+        void update(double delta){
+            elapsed_ += delta;
+            while (elapsed_ > interval_){
+                cb_(obj_);
+                elapsed_ -= interval_;
+            }
+        }
+        bool active() const { return cb_ != nullptr; }
+        void invalidate(){ cb_ = nullptr; obj_ = nullptr; }
+        bool match(void *obj) const { return obj == obj_; }
+    private:
+        TimerCallback cb_;
+        void *obj_;
+        double interval_;
+        double elapsed_ = 0;
     };
     std::vector<Timer> timerList_;
 

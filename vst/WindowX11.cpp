@@ -155,17 +155,20 @@ void EventLoop::run(){
         pollFds();
 
         auto now = std::chrono::high_resolution_clock::now();
-        auto delta = std::chrono::duration<double, std::milli>(now - last).count();
+        auto delta = std::chrono::duration<double>(now - last).count();
         last = now;
 
         // handle timers
         // lock because timers can be added from another thread!
         std::unique_lock<std::mutex> lock(mutex_);
-        for (auto& timer : timerList_){
-            timer.elapsed += delta;
-            while (timer.elapsed > (double)timer.interval){
-                timer.cb(timer.obj);
-                timer.elapsed -= (double)timer.interval;
+        for (auto it = timerList_.begin(); it != timerList_.end(); ){
+            auto& timer = *it;
+            if (timer.active()){
+                timer.update(delta);
+                ++it;
+            } else {
+                // remove stale timer
+                it = timerList_.erase(it);
             }
         }
         // handle commands
@@ -426,13 +429,14 @@ void EventLoop::registerTimer(int64_t ms, TimerCallback cb, void *obj){
 }
 
 void EventLoop::doRegisterTimer(int64_t ms, TimerCallback cb, void *obj){
-    timerList_.push_back({ obj, cb, ms, 0.0 });
+    timerList_.emplace_back(cb, obj, (double)ms * 0.001);
 }
 
 void EventLoop::unregisterTimer(void *obj){
 #if 1
     assert(UIThread::isCurrentThread());
 #else
+    // don't do this - can deadlock!
     std::lock_guard<std::mutex> lock(mutex_);
 #endif
     doUnregisterTimer(obj);
@@ -440,12 +444,11 @@ void EventLoop::unregisterTimer(void *obj){
 
 void EventLoop::doUnregisterTimer(void *obj){
     int count = 0;
-    for (auto it = timerList_.begin(); it != timerList_.end(); ){
-        if (it->obj == obj){
-            it = timerList_.erase(it);
+    for (auto& timer : timerList_){
+        if (timer.match(obj)){
+            // don't actually delete here!
+            timer.invalidate();
             count++;
-        } else {
-            ++it;
         }
     }
     LOG_DEBUG("X11: unregistered " << count << " timers");
