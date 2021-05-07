@@ -216,13 +216,13 @@ std::string find(const std::string &dir, const std::string &path){
         relpath += ".so";
     #endif
     }
-    LOG_DEBUG("try to find " << relpath);
+    LOG_DEBUG("try to find " << relpath << " in " << dir);
 #if USE_STDFS
     try {
         auto wdir = widen(dir);
         auto fpath = fs::path(widen(relpath));
         auto file = fs::path(wdir) / fpath;
-        if (fs::is_regular_file(file)){
+        if (fs::exists(file)){
             return file.u8string(); // success
         }
         // continue recursively
