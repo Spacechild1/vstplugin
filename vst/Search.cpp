@@ -205,6 +205,10 @@ static bool isDirectory(const std::string& dir, dirent *entry){
 
 // recursively search for a VST plugin in a directory. returns empty string on failure.
 std::string find(const std::string &dir, const std::string &path){
+    if (!pathExists(dir)){
+        LOG_DEBUG("find: '" << dir << "' doesn't exist");
+        return std::string{};
+    }
     std::string relpath = path;
     // if the path has no file extension, assume VST2 plugin
     if (fileExtension(relpath).empty()){
@@ -236,7 +240,7 @@ std::string find(const std::string &dir, const std::string &path){
             }
         }
     } catch (const fs::filesystem_error& e) {
-        LOG_DEBUG(e.what());
+        LOG_WARNING(e.what());
     };
     return std::string{};
 #else // USE_STDFS
@@ -245,27 +249,23 @@ std::string find(const std::string &dir, const std::string &path){
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
 
     std::string file = root + "/" + relpath;
-    // LOG_DEBUG("try " << file);
     if (pathExists(file)){
-        // LOG_DEBUG("found " << absPath << "!");
         return file; // success
     }
     // continue recursively
     std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
         DIR *directory = opendir(dirname.c_str());
-        struct dirent *entry;
         if (directory){
+            struct dirent *entry;
             while (result.empty() && (entry = readdir(directory))){
                 if (isDirectory(dirname, entry)){
                     std::string d = dirname + "/" + entry->d_name;
                     std::string absPath = d + "/" + relpath;
-                    // LOG_DEBUG("try " << absPath);
                     if (pathExists(absPath)){
-                        // LOG_DEBUG("found " << absPath << "!");
                         result = absPath;
                         break;
                     } else {
-                        // dive into the direcotry
+                        // search directory
                         searchDir(d);
                     }
                 }
@@ -280,7 +280,10 @@ std::string find(const std::string &dir, const std::string &path){
 
 // recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full absolute path.
 void search(const std::string &dir, std::function<void(const std::string&)> fn, bool filter) {
-    // search recursively
+    if (!pathExists(dir)){
+        LOG_DEBUG("search: '" << dir << "' doesn't exist");
+        return;
+    }
 #if USE_STDFS
   #ifdef _WIN32
     std::function<void(const std::wstring&)>
@@ -312,7 +315,7 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
                 }
             }
         } catch (const fs::filesystem_error& e) {
-            LOG_DEBUG(e.what());
+            LOG_WARNING(e.what());
         };
     };
     searchDir(widen(dir));
@@ -320,6 +323,7 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
     // force no trailing slash
     auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
     std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
+        // LOG_DEBUG("searching in " << dirname);
         // search alphabetically (ignoring case)
         struct dirent **dirlist;
         auto sortnocase = [](const struct dirent** a, const struct dirent **b) -> int {
@@ -333,11 +337,9 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
                 std::string absPath = dirname + "/" + name;
                 // check the extension
                 if (hasPluginExtension(absPath)){
-                    LOG_DEBUG("found " << absPath);
                     // found a VST2 plugin (file or bundle)
                     fn(absPath);
                 } else if (isDirectory(dirname, entry)){
-                    LOG_DEBUG("searching in " << absPath);
                     // otherwise search it if it's a directory
                     searchDir(absPath);
                 } else if (!filter && isFile(absPath)){
