@@ -145,14 +145,14 @@ sudo apt-get install libx11-dev:i386 gcc-multilib g++-multilib
 
 To enable Wine support, you need to follow these steps:
 
-1)  For 64-bit Wine install `wine64-tools`;
-    for 32-bit Wine also install `wine32-tools`, `libx11-dev:i386`, `gcc-multilib` and `g++-multilib`.
+1)  For 64-bit Wine, install `wine64-tools` or `wine-[branch]-dev` (depending on the Wine distro);
+    for 32-bit Wine, follow the steps for building the 32-bit host and then install `wine32-tools` or `wine-[branch]-dev`.
 2)  Create another build directory, e.g. 'build_wine', and `cd` into it
-3)  Run `cmake .. -DBUILD_WINE=1 -DCMAKE_INSTALL_PREFIX=<temporary_install_path>`;
-    for 32-bit support you also need to specify `-DBUILD_HOST32=ON`.
+3)  Run CMake with `-DBUILD_WINE=1`; for 32-bit support you also need to add `-DBUILD_HOST32=ON`.
+    `PD_INSTALLDIR` and `SC_INSTALLDIR` should be the same as for the "regular" build.
+    If you don't need the Pd external or SuperCollider extension, add `-DPD=OFF` resp. `-DSC=OFF`.
 4)  Build + install the project with `cmake --build . -j -v -t install`;
-    this will create a subfolder 'vstplugin' containing `host_pe_amd64` and (optionally) `host_pe_i386`
-5)  Copy these files into the final Pd/Supercollider package next to the other `host` app(s).
+    this will install `host_pe_amd64` (and optionally `host_pe_i386`) in the specified directories.
 
 
 #### Prerequisites:

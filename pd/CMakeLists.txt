@@ -49,6 +49,21 @@ if (NOT PD_INSTALLDIR)
 endif()
 message(STATUS "PD_INSTALLDIR: ${PD_INSTALLDIR}")
 
+if (BUILD_WINE)
+    # install wine hosts
+    if (BUILD_HOST)
+        install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "host_pe_amd64"
+            DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+    endif()
+    if (BUILD_HOST32)
+        install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "host_pe_i386"
+            DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+    endif()
+
+    # don't build Pd external
+    return()
+endif()
+
 # plugin extension
 set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
 if (NOT PD_EXTENSION)

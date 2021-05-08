@@ -316,13 +316,13 @@ endif()
 
 # vstplugin~
 option(PD "build Pd external" ON)
-if (PD AND NOT BUILD_WINE)
+if (PD)
     add_subdirectory(pd)
 endif()
 
 # VSTPlugin
 option(SC "build SC plugin" ON)
-if (SC AND NOT BUILD_WINE)
+if (SC)
     add_subdirectory(sc)
 endif()
 
@@ -330,12 +330,4 @@ endif()
 option(TESTSUITE "build test suite" ON)
 if (TESTSUITE)
     add_subdirectory(test)
-endif()
-
-# install wine hosts
-if (BUILD_WINE AND BUILD_HOST)
-    install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "host_pe_amd64" DESTINATION "${PROJECT}")
-endif()
-if (BUILD_WINE AND BUILD_HOST32)
-    install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "host_pe_i386" DESTINATION "${PROJECT}")
 endif()

@@ -55,7 +55,6 @@ variables:
     paths:
       - "${CI_JOB_NAME%_snap*}/${PDLIBNAME}"
       - "${CI_JOB_NAME%_snap*}/${SCLIBNAME}"
-      - "${CI_JOB_NAME%_snap*}/${PROJECT}"
 
 .base:
   artifacts:
@@ -196,8 +195,8 @@ variables:
 # copy Wine hosts to linux package
     - if [ -e ./Linux ]; then
         for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-          [ -e ./Linux_wine ] && cp -r ./Linux_wine/${PROJECT}/. ./Linux/${x};
-          [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PROJECT}/. ./Linux/${x}
+          [ -e ./Linux_wine ] && cp -r ./Linux_wine/${PDLIBNAME}/. ./Linux/${x};
+          [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PDLIBNAME}/. ./Linux/${x}
         ; done
       ; fi
 # HACK: remove Linux_wine folders because we don't want to package them

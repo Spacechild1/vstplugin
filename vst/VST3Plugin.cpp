@@ -2564,7 +2564,7 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
     if (!attributes_){
         attributes_.reset(new HostAttributeList);
     }
-#if LOGLEVEL > 2
+#if 0 && LOGLEVEL > 2
     attributes_->print();
 #endif
     return attributes_.get();
