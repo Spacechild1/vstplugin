@@ -19,6 +19,8 @@ if (VST3)
     include_directories(${VST3DIR}/pluginterfaces/base)
     include_directories(${VST3DIR}/pluginterfaces/vst)
     include_directories(${VST3DIR}/pluginterfaces/gui)
+    # if VST2 SDK is included in VST3 SDK
+    include_directories(${VST3DIR}/pluginterfaces/vst2.x)
     list(APPEND SRC "VST3Plugin.h" "VST3Plugin.cpp")
 endif()
 
