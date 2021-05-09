@@ -14,36 +14,41 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 * preset management: read/write standard VST preset files or
   set/get the plugin state as raw data to build your own preset management
 * MIDI input/output
-* basic sequencing support (for arpeggiators, sequencers etc.)
+* transport and tempo support (for arpeggiators, sequencers, parameters with musical time units, etc.)
 * bit-bridging and sandboxing
 * use Windows plugins on Linux (with Wine)
 * multithreading
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
-Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues
+Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/issues.
 
 ---
 
 ### Known issues:
 
+* The macOS binaries are not signed/notarized, so you will have problems on macOS 10.15 (Catalina) and above.
+  See the section 'macOS 10.15+' for workarounds!
+
 * The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above!
 
-* macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above! Otherwise you get a warning if you try to open a plugin with "editor: true".
+* macOS/SuperCollider: the VST GUI only works on SuperCollider 3.11 and above!
+  Otherwise you get a warning if you try to open a plugin with "editor: true".
 
-* macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)... This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
+* macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)...
+ This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
 
  There are two options work around this issue:
 
  a) run the plugin in a subprocess (see "-b" and "-p" options)
 
- b) use my Pd "eventloop" fork (source: https://github.com/Spacechild1/pure-data/tree/eventloop; binaries: https://github.com/Spacechild1/pure-data/releases, e.g. "Pd 0.51-1 event loop"). NOTE: You have tick "Enable event loop" in the "Start up" settings.
+ b) use my Pd "eventloop" fork (source: https://github.com/Spacechild1/pure-data/tree/eventloop, binaries: https://github.com/Spacechild1/pure-data/releases, e.g. "Pd 0.51-1 event loop").
+    NOTE: You have tick "Enable event loop" in the "Start up" settings.
 
-* The macOS binaries are not signed/notarized, so the Gatekeeper will complain. See the section 'macOS 10.15+' for workarounds.
+* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa.
+  This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions; you're advised to open and save your old VST3 presets to "convert" them to the new format.
 
-* VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa. This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions, so you're advised to open and save your old VST3 presets to "convert" them to the new format.
-
-* Existing SynthDef files written with v0.4 or below don't work in v0.5, because the UGen structure has changed. You have to recreate them with the new version.
+* Existing SynthDef files written with v0.4 or below don't work in v0.5, because the UGen structure has changed; you have to recreate them with the new version.
 
 ---
 
@@ -51,7 +56,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 Since v0.4 it is possible to run 32-bit VST plugins with a 64-bit version of Pd/Supercollider and vice versa.
 
-If *vstplugin* finds a native and a bridged plugin with the same name, the latter one is ignored.
+If *vstplugin* finds a native and a bridged plugin with the same name, the latter is ignored.
 
 #### Windows
 
@@ -62,9 +67,8 @@ By default, vstplugin searches for plugins in both `%PROGRAMFILES%` and `%PROGRA
 
 #### macOS
 
-On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 eventually
-dropped 32-bit support. However, in the future bit bridging might become necessary again when audio software
-is ported to ARM for the new M1 MacBooks.
+On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 eventually dropped 32-bit support.
+However, in the future bit bridging might become necessary again when audio software is ported to ARM for the new M1 MacBooks.
 
 #### Linux
 
@@ -75,11 +79,13 @@ Unfortunately, there are several different Wine versions (stable, development, s
 The binaries available at https://git.iem.at/pd/vstplugin/-/releases are built against the standard Wine version shipped with Debian.
 If you want to use a newer Wine version, you might have to build *vstplugin* from source.
 
-*vstplugin* searches for plugins in the standard Windows VST directories inside the 'drive_c' directory of your Wine folder
-The default Wine folder is '~/.wine' and the default Wine loader is the `wine` command; both can be overriden with the
-and can be overriden with the `WINEPREFIX` resp. `WINELOADER` environment variables.
+*vstplugin* searches for plugins in the standard Windows VST directories inside the 'drive_c' directory of your Wine folder.
+The default Wine folder is '~/.wine' and the default Wine loader is the `wine` command; both can be overriden with the `WINEPREFIX` resp. `WINELOADER` environment variables.
 
-WARNING: The Wine plugin bridge is still experimental and some plugins won't work as expected.
+NOTE: plugins "converted" by LinVst or Yabridge will be automatically preferred over the built-in Wine bridge. Later we might provide an option to change this.
+
+WARNING: The Wine plugin bridge is still experimental and some plugins might not work as expected.
+Please report any problems on the issue tracker (https://git.iem.at/pd/vstplugin/issues), so I can either fix or document them.
 
 ---
 
@@ -105,6 +111,56 @@ When compiling with GCC on Linux or MinGW, we offer the option `STATIC_LIBS` to 
 Static linking helps if you want to share the binaries with other people because they might not have the required library versions installed on their system.
 Dynamic linking, on the other hand, is preferred for destributing via system package managers like "apt".
 
+
+#### Prerequisites:
+
+##### VST SDK:
+
+For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
+
+You should have a folder 'vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x' with the header files 'aeffect.h' and 'affectx.h'.
+
+The VST2 SDK has been officially discontinued by Steinberg. If you have a VST2 license but lost the files, you can get them with '.git-ci/get_vst2.sh'.
+Otherwise you can try free alternatives like 'FST' (https://git.iem.at/zmoelnig/FST.git).
+
+For VST3 support, get the Steinberg VST3 SDK and copy it into /vst.
+You should have a folder 'vst/VST_SDK/VST3_SDK/pluginterfaces'; you don't need the rest of the SDK.
+(If you have git installed, you can easily install it with ./.git-ci/get_vst3.sh)
+
+The default setting is to build with both VST2 and VST3 support.
+If you only want to support a specific version, you can set the `VST2` and `VST3` CMake variables.
+E.g. if you want to compile without VST2 support, run cmake with `-DVST2=OFF`.
+
+In case you already have the VST SDK(s) installed somewhere else on your system,
+you can provide the path to CMake by setting the `VST2DIR` and `VST3DIR` variables.
+
+Because earlier versions of the VST3 SDK also included the VST2 SDK headers,
+the project will also look for the VST2 headers in 'vst/VST_SDK/VST3_SDK/pluginterfaces/vst2.x'.
+
+##### Pd:
+
+Make sure you have Pd installed somewhere. If Pd is not found automatically, you have to do the following:
+
+* Linux and macOS: set `PD_INCLUDEDIR` to the directory containing `m_pd.h`;
+
+* Windows: set `PD_DIR` to your Pd directory (with the subfolders *src/* and *bin/*); this will automatically set `PD_INCLUDEDIR` and `PD_BINDIR`.
+
+By default, *vstplugin~* is installed to the standard externals directory, but you can change it by overriding `PD_INSTALLDIR`.
+
+If you don't want to build the Pd external, set `PD` to `OFF`.
+
+##### SuperCollider:
+
+Get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider).
+`SC_INCLUDEDIR` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
+
+By default, *VSTPlugin* is installed to the standard SuperCollider extensions folder, but you can change it by overriding `SC_INSTALLDIR`.
+
+Set `SUPERNOVA` to `ON` if you want to build VSTPlugin for Supernova.
+
+If you don't want to build the SuperCollider extension, set `SC` to `OFF`.
+
+
 #### Windows
 
 If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and vice versa), you have to perform the following steps:
@@ -121,83 +177,31 @@ The minimum supported version is `0x0600` (= Windows 7); you can easily override
 If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
 This only seems to happen if either the plugin or the host (but not both!) link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship additional DLLs.
 This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider/Pd with MinGW.
-In this special case you should run cmake with `-DSTATIC_LIBS=OFF` so that VSTPlugin/vstplugin~ also link dynamically.
+In this special case you should set `STATIC_LIBS` to `OFF` so that `VSTPlugin` resp. `vstplugin~` are also linked dynamically.
 To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles.
 Yes, it's ridiculous!
+
 
 #### macOS
 
 You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
 Note that the macOS 10.14 SDK dropped support for compiling 32-bit applications; you must use Xcode 9.4 or earlier.
 
+
 #### Linux
 
 Dependencies: `libx11-dev`
 
-You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`. Make sure to install the relevant 32-bit toolchain and libraries:
+You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
+Make sure to install the relevant 32-bit toolchain and libraries:
 ```
 sudo dpkg --add-architecture i386
 sudo apt-get update
 sudo apt-get install libx11-dev:i386 gcc-multilib g++-multilib
 ```
 
-##### Wine
 
-To enable Wine support, you need to follow these steps:
-
-1)  For 64-bit Wine, install `wine64-tools` or `wine-[branch]-dev` (depending on the Wine distro);
-    for 32-bit Wine, follow the steps for building the 32-bit host and then install `wine32-tools` or `wine-[branch]-dev`.
-2)  Create another build directory, e.g. 'build_wine', and `cd` into it
-3)  Run CMake with `-DBUILD_WINE=1`; for 32-bit support you also need to add `-DBUILD_HOST32=ON`.
-    `PD_INSTALLDIR` and `SC_INSTALLDIR` should be the same as for the "regular" build.
-    If you don't need the Pd external or SuperCollider extension, add `-DPD=OFF` resp. `-DSC=OFF`.
-4)  Build + install the project with `cmake --build . -j -v -t install`;
-    this will install `host_pe_amd64` (and optionally `host_pe_i386`) in the specified directories.
-
-
-#### Prerequisites:
-
-##### VST SDK:
-
-For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
-You should have a folder vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x with the header files aeffect.h and affectx.h.
-
-The VST2 SDK has been officially discontinued by Steinberg. If you have a VST2 license but lost the files, you can get them with .git-ci/get_vst2.sh.
-Otherwise you can try free alternatives like FST (https://git.iem.at/zmoelnig/FST.git - copy "fst.h" into vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x and set the 'FST' option to 'ON').
-Use at your own risk!
-
-For VST3 support, get the Steinberg VST3 SDK and copy it into /vst.
-Actually, you only need vst/VST_SDK/VST3_SDK/pluginterfaces/
-(If you have git installed, run ./.git-ci/get_vst3.sh)
-
-The default setting is to build with both VST2 and VST3 support.
-If you only want to support a specific version, you can set the `VST2` and `VST3` variables in the CMake project.
-E.g. if  you want to compile without VST2 support, run cmake with `-DVST2=OFF`.
-
-In case you already have the VST SDK(s) installed somewhere else on your system,
-you can provide the path to CMake by setting the `VST2DIR` and `VST3DIR` variables.
-
-##### Pd:
-
-Make sure you have Pd installed somewhere. If Pd is not found automatically, you can set the paths manually with `-DPD_INCLUDEDIR="/path/to/Pd/src"`.
-On Windows you would also need `-DPD_BINDIR="/path/to/Pd/bin"`; you can set both variables at the same time with `-DPD_DIR="/path/to/Pd"`.
-
-By default, [vstplugin~] is installed in the standard externals directory, but you can override it with `-DPD_INSTALLDIR="/path/to/my/externals"`.
-
-If you don't want to build the Pd external, run cmake with `-DPD=OFF`.
-
-##### SuperCollider:
-
-Get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider).
-`SC_INCLUDEDIR` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
-
-With `-DSC_INSTALLDIR="/path/to/my/extensions"` you can choose the installation directory, which would typically be your SuperCollider extensions folder.
-
-Set `SUPERNOVA` to `ON` if you want to build VSTPlugin for Supernova.
-
-If you don't want to build the SuperCollider extension, run cmake with `-DSC=OFF`.
-
-#### Build:
+#### Build project:
 
 1)	create a build directory, e.g. "build", next to the topmost "CMakeLists.txt"
 2)	cd into the build directory and run `cmake ..` + the necessary variables
@@ -210,7 +214,22 @@ If you don't want to build the SuperCollider extension, run cmake with `-DSC=OFF
 
     Visual Studio: build the project `INSTALL`
 
-#### macOS 10.15+
+
+#### Build Wine host:
+
+To enable Wine support on Linux, you need to follow these steps:
+
+1)  For 64-bit Wine, install `wine64-tools` or `wine-[branch]-dev` (depending on the Wine distro);
+    for 32-bit Wine, follow the steps for building the 32-bit host on Linux and then install `wine32-tools` or `wine-[branch]-dev`.
+2)  Create another build directory, e.g. 'build_wine', and `cd` into it.
+3)  Set `BUILD_WINE` to `ON`.
+   `PD_INSTALLDIR` and `SC_INSTALLDIR` should be the same as for the regular build.
+    If you don't need the Pd external or SuperCollider extension, set `PD` resp. `SC` to `OFF`.
+4)  Build + install the project with `cmake --build . -j -v -t install`;
+    this will install `host_pe_amd64` (and optionally `host_pe_i386`) in the specified directories.
+
+
+### macOS 10.15+
 
 How to workaround macOS GateKeeper (many thanks to Joseph Anderson):
 
@@ -239,9 +258,3 @@ It is a good idea to go ahead and clear the plugin cache, in case some quarantin
 SC: boot the SuperCollider Server, then evaluate: `VSTPlugin.clear`
 
 PD: open `vstplugin~-help.pd`, visit `[pd search]` and click the `[clear 1(` message.
-
----
-
-### Final words
-
-Now comes the mystery.
