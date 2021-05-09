@@ -404,7 +404,8 @@ VSTPlugin : MultiOutUGen {
 		outputArray = numOut.value.asArray.collect { arg item, i;
 			// check that the item is a number >= 0! 'nil' is treated as 0.
 			item.notNil.if {
-				item.isNumber.if { item.max(0) }
+				// must be Integer!
+				item.isNumber.if { item.max(0).asInteger }
 				{ MethodError("bad value for output % (%)".format(i, item), this) }
 			} { 0 };
 		};
