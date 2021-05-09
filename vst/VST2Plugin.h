@@ -4,16 +4,8 @@
 #include "Interface.h"
 #include "PluginFactory.h"
 
-#ifndef USE_FST
-# define USE_FST 0
-#endif
-
-#if USE_FST
-# include "fst.h"
-#else
-# define VST_FORCE_DEPRECATED 0
-# include "aeffectx.h"
-#endif
+#define VST_FORCE_DEPRECATED 0
+#include "aeffectx.h"
 
 namespace vst {
 

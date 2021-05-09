@@ -172,11 +172,6 @@ if (VST2)
     message(STATUS "Build with VST2 support")
     message(STATUS "VST2DIR: ${VST2DIR}")
 endif()
-option(FST "Use FST instead of the official VST2 SDK")
-if (FST)
-    add_definitions(-DUSE_FST=1)
-    message(STATUS "Using FST")
-endif()
 
 # VST3 SDK
 option(VST3 "Enable VST3 plug-ins" ON)
