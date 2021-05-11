@@ -64,8 +64,13 @@ if (BUILD_WINE)
     return()
 endif()
 
+# multi-instance support
+option(PD_MULTI_INSTANCE "Pd multi-instance support (for libpd)" OFF)
+message(STATUS "Pd multi-instance support: ${PD_MULTI_INSTANCE}")
+
 # plugin extension
 set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
+set(PD_EXTENSION "" CACHE STRING "Pd plugin extension")
 if (NOT PD_EXTENSION)
     if (WIN32)
         set(CMAKE_SHARED_MODULE_SUFFIX ".dll")
@@ -77,7 +82,7 @@ if (NOT PD_EXTENSION)
 else()
     set(CMAKE_SHARED_MODULE_SUFFIX ".${PD_EXTENSION}")
 endif()
-message(STATUS "PD_EXTENSION: ${CMAKE_SHARED_MODULE_SUFFIX}")
+message(STATUS "Pd extension: ${CMAKE_SHARED_MODULE_SUFFIX}")
 
 if (MINGW)
     set(CMAKE_EXECUTABLE_SUFFIX ".exe")
@@ -88,6 +93,9 @@ add_library(${PROJECT} MODULE ${SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
 target_link_libraries(${PROJECT} ${LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
+if (PD_MULTI_INSTANCE)
+    target_compile_definitions(${PROJECT} PUBLIC -DPDINSTANCE)
+endif()
 
 # platform specific definitions and options
 if (WIN32)
