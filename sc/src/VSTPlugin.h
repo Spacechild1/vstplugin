@@ -3,7 +3,7 @@
 #include "SC_PlugIn.hpp"
 
 #include "Interface.h"
-#include "PluginManager.h"
+#include "PluginDictionary.h"
 #include "FileUtils.h"
 #include "MiscUtils.h"
 #include "LockfreeFifo.h"

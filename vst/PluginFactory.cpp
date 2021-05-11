@@ -277,14 +277,14 @@ IFactory::ProbeFuture PluginFactory::probeAsync(float timeout, bool nonblocking)
     };
 }
 
-void PluginFactory::addPlugin(PluginInfo::ptr desc){
+void PluginFactory::addPlugin(PluginDesc::ptr desc){
     if (!pluginMap_.count(desc->name)){
         plugins_.push_back(desc);
         pluginMap_[desc->name] = desc;
     }
 }
 
-PluginInfo::const_ptr PluginFactory::getPlugin(int index) const {
+PluginDesc::const_ptr PluginFactory::getPlugin(int index) const {
     if (index >= 0 && index < (int)plugins_.size()){
         return plugins_[index];
     } else {
@@ -292,7 +292,7 @@ PluginInfo::const_ptr PluginFactory::getPlugin(int index) const {
     }
 }
 
-PluginInfo::const_ptr PluginFactory::findPlugin(const std::string& name) const {
+PluginDesc::const_ptr PluginFactory::findPlugin(const std::string& name) const {
     auto it = pluginMap_.find(name);
     if (it != pluginMap_.end()){
         return it->second;
@@ -309,14 +309,14 @@ int PluginFactory::numPlugins() const {
 #define PROBE_LOG 0
 
 PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(float timeout, bool nonblocking){
-    return doProbePlugin(PluginInfo::SubPlugin { "", -1 }, timeout, nonblocking);
+    return doProbePlugin(PluginDesc::SubPlugin { "", -1 }, timeout, nonblocking);
 }
 
 // probe a plugin in a seperate process and return the info in a file
 PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
-        const PluginInfo::SubPlugin& sub, float timeout, bool nonblocking)
+        const PluginDesc::SubPlugin& sub, float timeout, bool nonblocking)
 {
-    auto desc = std::make_shared<PluginInfo>(shared_from_this());
+    auto desc = std::make_shared<PluginDesc>(shared_from_this());
     desc->name = sub.name; // necessary for error reporting, will be overriden later
     // turn id into string
     char idString[12];
@@ -327,7 +327,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     }
     // create temp file path
     std::stringstream ss;
-    // desc address should be unique as long as PluginInfos are retained.
+    // desc address should be unique as long as PluginDesc instances are retained.
     ss << getTmpDirectory() << "/vst_" << desc.get();
     std::string tmpPath = ss.str();
     // LOG_DEBUG("temp path: " << tmpPath);
@@ -578,11 +578,11 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     };
 }
 
-std::vector<PluginInfo::ptr> PluginFactory::doProbePlugins(
-        const PluginInfo::SubPluginList& pluginList,
+std::vector<PluginDesc::ptr> PluginFactory::doProbePlugins(
+        const PluginDesc::SubPluginList& pluginList,
         float timeout, ProbeCallback callback)
 {
-    std::vector<PluginInfo::ptr> results;
+    std::vector<PluginDesc::ptr> results;
     int numPlugins = pluginList.size();
 #ifdef PLUGIN_LIMIT
     numPlugins = std::min<int>(numPlugins, PLUGIN_LIMIT);

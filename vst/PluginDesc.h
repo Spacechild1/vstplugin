@@ -8,16 +8,16 @@ class SharedMutex;
 class WriteLock;
 class ReadLock;
 
-struct PluginInfo final {
+struct PluginDesc final {
     static const uint32_t NoParamID = 0xffffffff;
 
-    using ptr = std::shared_ptr<PluginInfo>;
-    using const_ptr = std::shared_ptr<const PluginInfo>;
+    using ptr = std::shared_ptr<PluginDesc>;
+    using const_ptr = std::shared_ptr<const PluginDesc>;
 
-    PluginInfo(std::shared_ptr<const IFactory> f);
-    ~PluginInfo();
-    PluginInfo(const PluginInfo&) = delete;
-    void operator =(const PluginInfo&) = delete;
+    PluginDesc(std::shared_ptr<const IFactory> f);
+    ~PluginDesc();
+    PluginDesc(const PluginDesc&) = delete;
+    void operator =(const PluginDesc&) = delete;
 
     void setFactory(std::shared_ptr<const IFactory> factory);
     const std::string& path() const { return path_; }

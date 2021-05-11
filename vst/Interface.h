@@ -138,7 +138,7 @@ struct Rect {
     }
 };
 
-struct PluginInfo;
+struct PluginDesc;
 
 class IWindow;
 
@@ -168,7 +168,7 @@ class IPlugin {
 
     virtual ~IPlugin(){}
 
-    virtual const PluginInfo& info() const = 0;
+    virtual const PluginDesc& info() const = 0;
 
     virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
     virtual void process(ProcessData& data) = 0;
@@ -314,7 +314,7 @@ class Error : public std::exception {
 };
 
 struct ProbeResult {
-    std::shared_ptr<PluginInfo> plugin;
+    std::shared_ptr<PluginDesc> plugin;
     Error error;
     int index = 0;
     int total = 0;
@@ -337,16 +337,16 @@ class IFactory {
     static IFactory::ptr load(const std::string& path, bool probe = false);
 
     virtual ~IFactory() {}
-    virtual void addPlugin(std::shared_ptr<PluginInfo> desc) = 0;
-    virtual std::shared_ptr<const PluginInfo> getPlugin(int index) const = 0;
-    virtual std::shared_ptr<const PluginInfo> findPlugin(const std::string& name) const = 0;
+    virtual void addPlugin(std::shared_ptr<PluginDesc> desc) = 0;
+    virtual std::shared_ptr<const PluginDesc> getPlugin(int index) const = 0;
+    virtual std::shared_ptr<const PluginDesc> findPlugin(const std::string& name) const = 0;
     virtual int numPlugins() const = 0;
 
     void probe(ProbeCallback callback, float timeout){
         probeAsync(timeout, false)(std::move(callback));
     }
     virtual ProbeFuture probeAsync(float timeout, bool nonblocking) = 0;
-    virtual std::shared_ptr<const PluginInfo> probePlugin(int id) const = 0;
+    virtual std::shared_ptr<const PluginDesc> probePlugin(int id) const = 0;
 
     bool valid() const { return numPlugins() > 0; }
 

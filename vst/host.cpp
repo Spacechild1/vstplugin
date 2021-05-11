@@ -1,5 +1,5 @@
 #include "Interface.h"
-#include "PluginInfo.h"
+#include "PluginDesc.h"
 #include "Log.h"
 #include "FileUtils.h"
 #include "MiscUtils.h"

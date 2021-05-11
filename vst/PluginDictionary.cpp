@@ -1,4 +1,4 @@
-#include "PluginManager.h"
+#include "PluginDictionary.h"
 
 #include "FileUtils.h"
 #include "Log.h"
@@ -13,12 +13,12 @@
 
 namespace vst {
 
-void PluginManager::addFactory(const std::string& path, IFactory::ptr factory) {
+void PluginDictionary::addFactory(const std::string& path, IFactory::ptr factory) {
     WriteLock lock(mutex_);
     factories_[path] = std::move(factory);
 }
 
-IFactory::const_ptr PluginManager::findFactory(const std::string& path) const {
+IFactory::const_ptr PluginDictionary::findFactory(const std::string& path) const {
     ReadLock lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
@@ -28,17 +28,17 @@ IFactory::const_ptr PluginManager::findFactory(const std::string& path) const {
     }
 }
 
-void PluginManager::addException(const std::string &path){
+void PluginDictionary::addException(const std::string &path){
     WriteLock lock(mutex_);
     exceptions_.insert(path);
 }
 
-bool PluginManager::isException(const std::string& path) const {
+bool PluginDictionary::isException(const std::string& path) const {
     ReadLock lock(mutex_);
     return exceptions_.count(path) != 0;
 }
 
-void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plugin) {
+void PluginDictionary::addPlugin(const std::string& key, PluginDesc::const_ptr plugin) {
     WriteLock lock(mutex_);
     int index = plugin->bridged() ? BRIDGED : NATIVE;
 #if USE_WINE
@@ -58,7 +58,7 @@ void PluginManager::addPlugin(const std::string& key, PluginInfo::const_ptr plug
     plugins_[index][key] = std::move(plugin);
 }
 
-PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
+PluginDesc::const_ptr PluginDictionary::findPlugin(const std::string& key) const {
     ReadLock lock(mutex_);
     // first try to find native plugin
     auto it = plugins_[NATIVE].find(key);
@@ -73,7 +73,7 @@ PluginInfo::const_ptr PluginManager::findPlugin(const std::string& key) const {
     return nullptr;
 }
 
-void PluginManager::clear() {
+void PluginDictionary::clear() {
     WriteLock lock(mutex_);
     factories_.clear();
     for (auto& plugins : plugins_){
@@ -85,7 +85,7 @@ void PluginManager::clear() {
 bool getLine(std::istream& stream, std::string& line);
 int getCount(const std::string& line);
 
-void PluginManager::read(const std::string& path, bool update){
+void PluginDictionary::read(const std::string& path, bool update){
     ReadLock lock(mutex_);
     int versionMajor = 0, versionMinor = 0, versionBugfix = 0;
     bool outdated = false;
@@ -170,16 +170,16 @@ void PluginManager::read(const std::string& path, bool update){
               << "." << versionMinor << "." << versionBugfix);
 }
 
-PluginInfo::const_ptr PluginManager::readPlugin(std::istream& stream){
+PluginDesc::const_ptr PluginDictionary::readPlugin(std::istream& stream){
     WriteLock lock(mutex_);
     return doReadPlugin(stream, VERSION_MAJOR,
                         VERSION_MINOR, VERSION_PATCH);
 }
 
-PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int versionMajor,
+PluginDesc::const_ptr PluginDictionary::doReadPlugin(std::istream& stream, int versionMajor,
                                                   int versionMinor, int versionPatch){
     // deserialize plugin
-    auto desc = std::make_shared<PluginInfo>(nullptr);
+    auto desc = std::make_shared<PluginDesc>(nullptr);
     try {
         desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
     } catch (const Error& e){
@@ -217,18 +217,18 @@ PluginInfo::const_ptr PluginManager::doReadPlugin(std::istream& stream, int vers
     return desc;
 }
 
-void PluginManager::write(const std::string &path) const {
+void PluginDictionary::write(const std::string &path) const {
     WriteLock lock(mutex_);
     doWrite(path);
 }
 
-void PluginManager::doWrite(const std::string& path) const {
+void PluginDictionary::doWrite(const std::string& path) const {
     File file(path, File::WRITE);
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
     }
     // inverse mapping (plugin -> keys)
-    std::unordered_map<PluginInfo::const_ptr, std::vector<std::string>> pluginMap;
+    std::unordered_map<PluginDesc::const_ptr, std::vector<std::string>> pluginMap;
     for (auto& plugins : plugins_){
         for (auto& it : plugins){
             pluginMap[it.second].push_back(it.first);

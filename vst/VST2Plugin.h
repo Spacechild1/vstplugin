@@ -18,12 +18,12 @@ class VST2Factory final : public PluginFactory {
     VST2Factory(const std::string& path, bool probe);
     ~VST2Factory();
     // probe a single plugin
-    PluginInfo::const_ptr probePlugin(int id) const override;
+    PluginDesc::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
     IPlugin::ptr create(const std::string& name) const override;
  private:
     void doLoad();
-    std::unique_ptr<VST2Plugin> doCreate(PluginInfo::const_ptr desc) const;
+    std::unique_ptr<VST2Plugin> doCreate(PluginDesc::const_ptr desc) const;
     // Although calling convention specifiers like __cdecl and __stdcall
     // should be meaningless on x86-64 platforms, Wine apparantely treats
     // them as a hint that a function (pointer) uses the Microsoft x64 calling
@@ -42,11 +42,11 @@ class VST2Plugin final : public IPlugin {
     static VstIntPtr VSTCALLBACK hostCallback(AEffect *plugin, VstInt32 opcode,
         VstInt32 index, VstIntPtr value, void *p, float opt);
 
-    VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginInfo::const_ptr desc);
+    VST2Plugin(AEffect* plugin, IFactory::const_ptr f, PluginDesc::const_ptr desc);
     ~VST2Plugin();
 
-    const PluginInfo& info() const override { return *info_; }
-    PluginInfo::const_ptr getInfo() const { return info_; }
+    const PluginDesc& info() const override { return *info_; }
+    PluginDesc::const_ptr getInfo() const { return info_; }
 
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
@@ -164,7 +164,7 @@ class VST2Plugin final : public IPlugin {
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
-    PluginInfo::const_ptr info_;
+    PluginDesc::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
         // processing

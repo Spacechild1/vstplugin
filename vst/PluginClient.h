@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Interface.h"
-#include "PluginInfo.h"
+#include "PluginDesc.h"
 #include "DeferredPlugin.h"
 #include "PluginBridge.h"
 
@@ -9,10 +9,10 @@ namespace vst {
 
 class PluginClient final : public DeferredPlugin {
  public:
-    PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox);
+    PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bool sandbox);
     virtual ~PluginClient();
 
-    const PluginInfo& info() const override {
+    const PluginDesc& info() const override {
         return *info_;
     }
 
@@ -94,7 +94,7 @@ class PluginClient final : public DeferredPlugin {
     void endMessage() override;
  protected:
     IFactory::const_ptr factory_; // just to ensure lifetime
-    PluginInfo::const_ptr info_;
+    PluginDesc::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     PluginBridge::ptr bridge_;

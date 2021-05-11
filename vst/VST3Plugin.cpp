@@ -183,7 +183,7 @@ void VST3Factory::doLoad(){
             if (factory_->getClassInfo(i, &ci) == kResultTrue){
                 /// LOG_DEBUG("\t" << ci.name << ", " << ci.category);
                 if (!strcmp(ci.category, kVstAudioEffectClass)){
-                    subPlugins_.push_back(PluginInfo::SubPlugin { ci.name, i });
+                    subPlugins_.push_back(PluginDesc::SubPlugin { ci.name, i });
                     subPluginMap_[ci.name] = i;
                 }
             } else {
@@ -217,7 +217,7 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name) const {
     return std::make_unique<VST3Plugin>(factory_, index, shared_from_this(), desc);
 }
 
-PluginInfo::const_ptr VST3Factory::probePlugin(int id) const {
+PluginDesc::const_ptr VST3Factory::probePlugin(int id) const {
     const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
 
     if (subPlugins_.empty()){
@@ -228,7 +228,7 @@ PluginInfo::const_ptr VST3Factory::probePlugin(int id) const {
     if (id < 0){
         if (subPlugins_.size() > 1){
             // only write list of subplugins
-            auto desc = std::make_shared<PluginInfo>(nullptr);
+            auto desc = std::make_shared<PluginDesc>(nullptr);
             desc->subPlugins = subPlugins_;
             return desc;
         } else {
@@ -385,7 +385,7 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
-VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc)
+VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginDesc::const_ptr desc)
     : info_(std::move(desc))
 {
     memset(&context_, 0, sizeof(context_));
@@ -401,7 +401,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     context_.frameRate.framesPerSecond = 60; // just pick one
 
     // are we probing?
-    auto info = !info_ ? std::make_shared<PluginInfo>(f) : nullptr;
+    auto info = !info_ ? std::make_shared<PluginDesc>(f) : nullptr;
     TUID uid;
     PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
@@ -505,16 +505,16 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
         // get input/output busses
         auto collectBusses = [this](auto dir) {
-            std::vector<PluginInfo::Bus> result;
+            std::vector<PluginDesc::Bus> result;
             auto count = component_->getBusCount(Vst::kAudio, dir);
             for (int i = 0; i < count; ++i){
                 Vst::BusInfo busInfo;
                 if (component_->getBusInfo(Vst::kAudio, dir, i, busInfo) == kResultTrue){
-                    PluginInfo::Bus bus;
+                    PluginDesc::Bus bus;
                     bus.numChannels = busInfo.channelCount;
                     bus.label = convertString(busInfo.name);
                     bus.type = (busInfo.busType == Vst::kAux) ?
-                                PluginInfo::Bus::Aux : PluginInfo::Bus::Main;
+                                PluginDesc::Bus::Aux : PluginDesc::Bus::Main;
                     result.push_back(std::move(bus));
                 }
             }
@@ -545,12 +545,12 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 
         uint32_t flags = 0;
 
-        flags |= hasEditor() * PluginInfo::HasEditor;
-        flags |= isSynth * PluginInfo::IsSynth;
-        flags |= hasPrecision(ProcessPrecision::Single) * PluginInfo::SinglePrecision;
-        flags |= hasPrecision(ProcessPrecision::Double) * PluginInfo::DoublePrecision;
-        flags |= midiInput * PluginInfo::MidiInput;
-        flags |= midiOutput * PluginInfo::MidiOutput;
+        flags |= hasEditor() * PluginDesc::HasEditor;
+        flags |= isSynth * PluginDesc::IsSynth;
+        flags |= hasPrecision(ProcessPrecision::Single) * PluginDesc::SinglePrecision;
+        flags |= hasPrecision(ProcessPrecision::Double) * PluginDesc::DoublePrecision;
+        flags |= midiInput * PluginDesc::MidiInput;
+        flags |= midiOutput * PluginDesc::MidiOutput;
 
         info->flags = flags;
 
@@ -558,7 +558,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         std::set<Vst::ParamID> params;
         int numParameters = controller_->getParameterCount();
         for (int i = 0; i < numParameters; ++i){
-            PluginInfo::Param param;
+            PluginDesc::Param param;
             Vst::ParameterInfo pi;
             if (controller_->getParameterInfo(i, pi) == kResultTrue){
                 // some plugins have duplicate parameters... why?
@@ -1238,12 +1238,12 @@ int VST3Plugin::getTailSize() const {
 }
 
 bool VST3Plugin::hasBypass() const {
-    return info().bypass != PluginInfo::NoParamID;
+    return info().bypass != PluginDesc::NoParamID;
 }
 
 void VST3Plugin::setBypass(Bypass state){
     auto bypassID = info().bypass;
-    bool haveBypass = bypassID != PluginInfo::NoParamID;
+    bool haveBypass = bypassID != PluginDesc::NoParamID;
     if (state != bypass_){
         if (state == Bypass::Off){
             // turn bypass off
@@ -1476,7 +1476,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
     case 0xc0: // program change
         {
             auto id = info().programChange;
-            if (id != PluginInfo::NoParamID){
+            if (id != PluginDesc::NoParamID){
                 doSetParameter(id, data1 / 127.f); // don't use plainParamToNormalized()
             #if 0
                 program_ = data1;
@@ -1599,7 +1599,7 @@ void VST3Plugin::updateParamCache(){
 void VST3Plugin::setProgram(int program){
     if (program >= 0 && program < getNumPrograms()){
         auto id = info().programChange;
-        if (id != PluginInfo::NoParamID){
+        if (id != PluginDesc::NoParamID){
             auto value = controller_->plainParamToNormalized(id, program);
             LOG_DEBUG("program change value: " << value);
             doSetParameter(id, value);

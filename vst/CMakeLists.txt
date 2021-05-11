@@ -1,8 +1,8 @@
 cmake_minimum_required (VERSION 2.8)
 
 set(SRC "Interface.h" "PluginCommand.h" "MiscUtils.h" "MiscUtils.cpp"
-    "PluginInfo.h" "PluginInfo.cpp" "ThreadedPlugin.h" "ThreadedPlugin.cpp"
-    "PluginManager.h" "PluginManager.cpp" "CpuArch.h" "CpuArch.cpp"
+    "PluginDesc.h" "PluginDesc.cpp" "ThreadedPlugin.h" "ThreadedPlugin.cpp"
+    "PluginDictionary.h" "PluginDictionary.cpp" "CpuArch.h" "CpuArch.cpp"
     "PluginFactory.h" "PluginFactory.cpp" "Sync.h" "Sync.cpp" "Search.cpp"
     "FileUtils.h" "FileUtils.cpp" "Module.cpp" "LockfreeFifo.h" "Bus.h")
 

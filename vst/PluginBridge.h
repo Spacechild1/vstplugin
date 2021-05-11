@@ -29,7 +29,7 @@
 
 namespace vst {
 
-struct PluginInfo;
+struct PluginDesc;
 enum class CpuArch;
 
 /*/////////////////////// RTChannel / NRTChannel ////////////////////////*/

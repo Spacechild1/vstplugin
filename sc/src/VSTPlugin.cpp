@@ -173,7 +173,7 @@ void defer(const T& fn, bool uithread){
 // search and probe
 static std::atomic_bool gSearching {false};
 
-static PluginManager gPluginManager;
+static PluginDictionary gPluginDict;
 
 #define SETTINGS_DIR ".VSTPlugin"
 // so that 64-bit and 32-bit installations can co-exist!
@@ -199,7 +199,7 @@ static void readIniFile(){
     if (pathExists(path)){
         LOG_VERBOSE("read cache file " << path.c_str());
         try {
-            gPluginManager.read(path);
+            gPluginDict.read(path);
         } catch (const Error& e){
             LOG_ERROR("ERROR: couldn't read cache file: " << e.what());
         }
@@ -215,7 +215,7 @@ static void writeIniFile(){
                 throw Error("couldn't create directory " + dir);
             }
         }
-        gPluginManager.write(dir + "/" CACHE_FILE);
+        gPluginDict.write(dir + "/" CACHE_FILE);
     } catch (const Error& e){
         LOG_ERROR("couldn't write cache file: " << e.what());
     }
@@ -223,7 +223,7 @@ static void writeIniFile(){
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
-static std::string makeKey(const PluginInfo& desc) {
+static std::string makeKey(const PluginDesc& desc) {
     if (desc.type() == PluginType::VST3){
         return desc.name + ".vst3";
     } else {
@@ -231,7 +231,7 @@ static std::string makeKey(const PluginInfo& desc) {
     }
 }
 
-void serializePlugin(std::ostream& os, const PluginInfo& desc) {
+void serializePlugin(std::ostream& os, const PluginDesc& desc) {
     desc.serialize(os);
     os << "[keys]\n";
     os << "n=1\n";
@@ -243,11 +243,11 @@ void serializePlugin(std::ostream& os, const PluginInfo& desc) {
 static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     IFactory::ptr factory;
 
-    if (gPluginManager.findFactory(path)) {
+    if (gPluginDict.findFactory(path)) {
         LOG_ERROR("ERROR: bug in 'loadFactory'");
         return nullptr;
     }
-    if (gPluginManager.isException(path)) {
+    if (gPluginDict.isException(path)) {
         if (verbose) {
             Print("'%s' is black-listed.\n", path.c_str());
         }
@@ -259,7 +259,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     } catch (const Error& e){
         // always print error
         Print("ERROR: couldn't load '%s': %s\n", path.c_str(), e.what());
-        gPluginManager.addException(path);
+        gPluginDict.addException(path);
         return nullptr;
     }
 
@@ -270,17 +270,17 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1) {
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path(), plugin);
-        gPluginManager.addPlugin(path, plugin);
+        gPluginDict.addPlugin(plugin->path(), plugin);
+        gPluginDict.addPlugin(path, plugin);
     }
-    gPluginManager.addFactory(path, factory);
+    gPluginDict.addFactory(path, factory);
     for (int i = 0; i < factory->numPlugins(); ++i) {
         auto plugin = factory->getPlugin(i);
     #if 0
         // search for presets
-        const_cast<PluginInfo&>(*plugin).scanPresets();
+        const_cast<PluginDesc&>(*plugin).scanPresets();
     #endif
-        gPluginManager.addPlugin(makeKey(*plugin), plugin);
+        gPluginDict.addPlugin(makeKey(*plugin), plugin);
     }
 }
 
@@ -340,7 +340,7 @@ static IFactory::ptr probePlugin(const std::string& path,
     } catch (const Error& e){
         if (verbose) postResult(e);
     }
-    gPluginManager.addException(path);
+    gPluginDict.addException(path);
     return nullptr;
 }
 
@@ -386,7 +386,7 @@ static FactoryFuture probePluginAsync(const std::string& path,
                     addFactory(path, factory);
                     out = factory; // success
                 } else {
-                    gPluginManager.addException(path);
+                    gPluginDict.addException(path);
                     out = nullptr;
                 }
                 return true;
@@ -401,7 +401,7 @@ static FactoryFuture probePluginAsync(const std::string& path,
                 Print("probing %s... ", path.c_str());
                 postResult(e);
             }
-            gPluginManager.addException(path);
+            gPluginDict.addException(path);
             out = nullptr;
             return true;
         });
@@ -444,24 +444,24 @@ static std::string resolvePath(std::string path) {
 }
 
 // query a plugin by its key or file path and probe if necessary.
-static const PluginInfo* queryPlugin(std::string path) {
+static const PluginDesc* queryPlugin(std::string path) {
 #ifdef _WIN32
     for (auto& c : path) {
         if (c == '\\') c = '/';
     }
 #endif
     // query plugin
-    auto desc = gPluginManager.findPlugin(path);
+    auto desc = gPluginDict.findPlugin(path);
     if (!desc) {
         // try as file path
         auto absPath = resolvePath(path);
         if (absPath.empty()){
             Print("'%s' is neither an existing plugin name "
                     "nor a valid file path.\n", path.c_str());
-        } else if (!(desc = gPluginManager.findPlugin(absPath))){
+        } else if (!(desc = gPluginDict.findPlugin(absPath))){
             // finally probe plugin
             if (probePlugin(absPath, 0, true)) {
-                desc = gPluginManager.findPlugin(absPath);
+                desc = gPluginDict.findPlugin(absPath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
                 if (!desc){
@@ -477,12 +477,12 @@ static const PluginInfo* queryPlugin(std::string path) {
 
 #define PROBE_FUTURES 8
 
-std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, float timeout,
+std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float timeout,
                                                  bool parallel, bool verbose) {
     Print("searching in '%s'...\n", path.c_str());
-    std::vector<PluginInfo::const_ptr> results;
+    std::vector<PluginDesc::const_ptr> results;
 
-    auto addPlugin = [&](PluginInfo::const_ptr plugin, int which = 0, int n = 0){
+    auto addPlugin = [&](PluginDesc::const_ptr plugin, int which = 0, int n = 0){
         if (verbose && n > 0) {
             Print("\t[%d/%d] %s\n", which + 1, n, plugin->name.c_str());
         }
@@ -541,7 +541,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, float
         }
 #endif
         // check if module has already been loaded
-        auto factory = gPluginManager.findFactory(pluginPath);
+        auto factory = gPluginDict.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
             if (verbose) Print("%s\n", pluginPath.c_str());
@@ -557,7 +557,7 @@ std::vector<PluginInfo::const_ptr> searchPlugins(const std::string & path, float
             // make sure we have the plugin keys!
             for (int i = 0; i < numPlugins; ++i){
                 auto plugin = factory->getPlugin(i);
-                gPluginManager.addPlugin(makeKey(*plugin), plugin);
+                gPluginDict.addPlugin(makeKey(*plugin), plugin);
             }
         } else {
             // probe (will post results and add plugins)
@@ -2860,7 +2860,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
 // recursively search directories for VST plugins.
 bool cmdSearch(World *inWorld, void* cmdData) {
     auto data = (SearchCmdData *)cmdData;
-    std::vector<PluginInfo::const_ptr> plugins;
+    std::vector<PluginDesc::const_ptr> plugins;
     float timeout = data->timeout;
     bool useDefault = data->flags & SearchFlags::useDefault;
     bool verbose = data->flags & SearchFlags::verbose;
@@ -2901,7 +2901,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 #if 1
     // filter duplicate/stale plugins
     plugins.erase(std::remove_if(plugins.begin(), plugins.end(), [](auto& p){
-        return gPluginManager.findPlugin(makeKey(*p)) != p;
+        return gPluginDict.findPlugin(makeKey(*p)) != p;
     }), plugins.end());
 #endif
     // write new info to file (only for local Servers) or buffer
@@ -3027,7 +3027,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                     // remove cache file
                     removeFile(getSettingsDir() + "/" CACHE_FILE);
                 }
-                gPluginManager.clear();
+                gPluginDict.clear();
                 return false;
             }, 0, 0, cmdRTfree, 0, 0);
         }

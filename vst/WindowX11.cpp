@@ -1,6 +1,6 @@
 #include "WindowX11.h"
 
-#include "PluginInfo.h"
+#include "PluginDesc.h"
 #include "MiscUtils.h"
 #include "Log.h"
 

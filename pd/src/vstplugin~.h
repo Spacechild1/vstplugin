@@ -3,7 +3,7 @@
 #include "m_pd.h"
 
 #include "Interface.h"
-#include "PluginManager.h"
+#include "PluginDictionary.h"
 #include "LockfreeFifo.h"
 #include "Log.h"
 #include "Bus.h"

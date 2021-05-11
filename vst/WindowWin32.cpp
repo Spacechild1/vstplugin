@@ -1,6 +1,6 @@
 #include "WindowWin32.h"
 
-#include "PluginInfo.h"
+#include "PluginDesc.h"
 #include "Log.h"
 #include "MiscUtils.h"
 

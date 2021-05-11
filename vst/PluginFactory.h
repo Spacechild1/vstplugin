@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Interface.h"
-#include "PluginInfo.h"
+#include "PluginDesc.h"
 #include "CpuArch.h"
 
 // for testing we don't want to load hundreds of sub plugins
@@ -26,9 +26,9 @@ class PluginFactory :
 
     ProbeFuture probeAsync(float timeout, bool nonblocking) override;
 
-    void addPlugin(PluginInfo::ptr desc) override;
-    PluginInfo::const_ptr getPlugin(int index) const override;
-    PluginInfo::const_ptr findPlugin(const std::string& name) const override;
+    void addPlugin(PluginDesc::ptr desc) override;
+    PluginDesc::const_ptr getPlugin(int index) const override;
+    PluginDesc::const_ptr findPlugin(const std::string& name) const override;
     int numPlugins() const override;
 
     const std::string& path() const override { return path_; }
@@ -36,17 +36,17 @@ class PluginFactory :
  protected:
     using ProbeResultFuture = std::function<bool(ProbeResult&)>;
     ProbeResultFuture doProbePlugin(float timeout, bool nonblocking);
-    ProbeResultFuture doProbePlugin(const PluginInfo::SubPlugin& subplugin,
+    ProbeResultFuture doProbePlugin(const PluginDesc::SubPlugin& subplugin,
                                     float timeout, bool nonblocking);
-    std::vector<PluginInfo::ptr> doProbePlugins(
-            const PluginInfo::SubPluginList& pluginList,
+    std::vector<PluginDesc::ptr> doProbePlugins(
+            const PluginDesc::SubPluginList& pluginList,
             float timeout, ProbeCallback callback);
     // data
     std::string path_;
     CpuArch arch_;
     std::unique_ptr<IModule> module_;
-    std::vector<PluginInfo::ptr> plugins_;
-    std::unordered_map<std::string, PluginInfo::ptr> pluginMap_;
+    std::vector<PluginDesc::ptr> plugins_;
+    std::unordered_map<std::string, PluginDesc::ptr> pluginMap_;
 };
 
 } // vst

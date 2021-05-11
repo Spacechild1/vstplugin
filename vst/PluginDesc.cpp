@@ -1,4 +1,4 @@
-#include "PluginInfo.h"
+#include "PluginDesc.h"
 
 #include "CpuArch.h"
 #include "MiscUtils.h"
@@ -105,17 +105,17 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
 #endif
 }
 
-/*///////////////////// PluginInfo /////////////////////*/
+/*///////////////////// PluginDesc /////////////////////*/
 
-PluginInfo::PluginInfo(std::shared_ptr<const IFactory> f){
+PluginDesc::PluginDesc(std::shared_ptr<const IFactory> f){
     if (f){
         setFactory(std::move(f));
     }
 }
 
-PluginInfo::~PluginInfo(){}
+PluginDesc::~PluginDesc(){}
 
-void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
+void PluginDesc::setFactory(std::shared_ptr<const IFactory> factory){
     if (path_.empty()){
         path_ = factory->path();
     }
@@ -125,7 +125,7 @@ void PluginInfo::setFactory(std::shared_ptr<const IFactory> factory){
     factory_ = std::move(factory);
 }
 
-CpuArch PluginInfo::arch() const {
+CpuArch PluginDesc::arch() const {
     auto factory = factory_.lock();
     return factory ? factory->arch() : CpuArch::unknown;
 }
@@ -139,7 +139,7 @@ IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& n
                                bool editor, bool sandbox);
 #endif
 
-IPlugin::ptr PluginInfo::create(bool editor, bool threaded, RunMode mode) const {
+IPlugin::ptr PluginDesc::create(bool editor, bool threaded, RunMode mode) const {
     std::shared_ptr<const IFactory> factory = factory_.lock();
     if (!factory){
         return nullptr;
@@ -168,7 +168,7 @@ IPlugin::ptr PluginInfo::create(bool editor, bool threaded, RunMode mode) const 
 }
 
 #if USE_VST2
-void PluginInfo::setUniqueID(int _id){
+void PluginDesc::setUniqueID(int _id){
     type_ = PluginType::VST2;
     char buf[9];
     // should we write in little endian?
@@ -180,7 +180,7 @@ void PluginInfo::setUniqueID(int _id){
 #endif
 
 #if USE_VST3
-void PluginInfo::setUID(const char *uid){
+void PluginDesc::setUID(const char *uid){
     type_ = PluginType::VST3;
     char buf[33];
     for (int i = 0; i < 16; ++i){
@@ -193,11 +193,11 @@ void PluginInfo::setUID(const char *uid){
 }
 #endif
 
-WriteLock PluginInfo::writeLock(){
+WriteLock PluginDesc::writeLock(){
     return WriteLock(*mutex);
 }
 
-ReadLock PluginInfo::readLock() const {
+ReadLock PluginDesc::readLock() const {
     return ReadLock(*mutex);
 }
 
@@ -210,7 +210,7 @@ static void conformPath(std::string& path){
     }
 }
 
-void PluginInfo::addParameter(Param param){
+void PluginDesc::addParameter(Param param){
     auto index = parameters.size();
     // inverse mapping
     paramMap_[param.name] = index;
@@ -224,7 +224,7 @@ void PluginInfo::addParameter(Param param){
     parameters.push_back(std::move(param));
 }
 
-int PluginInfo::findParam(const std::string& key) const {
+int PluginDesc::findParam(const std::string& key) const {
     auto it = paramMap_.find(key);
     if (it != paramMap_.end()){
         return it->second;
@@ -234,7 +234,7 @@ int PluginInfo::findParam(const std::string& key) const {
 }
 
 #if USE_VST3
-uint32_t PluginInfo::getParamID(int index) const {
+uint32_t PluginDesc::getParamID(int index) const {
     auto it = indexToIdMap_.find(index);
     if (it != indexToIdMap_.end()){
         return it->second;
@@ -244,7 +244,7 @@ uint32_t PluginInfo::getParamID(int index) const {
     }
 }
 
-int PluginInfo::getParamIndex(uint32_t _id) const {
+int PluginDesc::getParamIndex(uint32_t _id) const {
     auto it = idToIndexMap_.find(_id);
     if (it != idToIndexMap_.end()){
         return it->second;
@@ -255,7 +255,7 @@ int PluginInfo::getParamIndex(uint32_t _id) const {
 }
 #endif
 
-void PluginInfo::scanPresets(){
+void PluginDesc::scanPresets(){
     const std::vector<PresetType> presetTypes = {
 #if defined(_WIN32)
         PresetType::User, PresetType::UserFactory, PresetType::SharedFactory
@@ -298,7 +298,7 @@ void PluginInfo::scanPresets(){
 #endif
 }
 
-void PluginInfo::sortPresets(bool userOnly){
+void PluginDesc::sortPresets(bool userOnly){
     // don't lock! private method
     auto it1 = presets.begin();
     auto it2 = it1;
@@ -313,7 +313,7 @@ void PluginInfo::sortPresets(bool userOnly){
     });
 }
 
-int PluginInfo::findPreset(const std::string &name) const {
+int PluginDesc::findPreset(const std::string &name) const {
     for (int i = 0; i < presets.size(); ++i){
         if (presets[i].name == name){
             return i;
@@ -322,7 +322,7 @@ int PluginInfo::findPreset(const std::string &name) const {
     return -1;
 }
 
-bool PluginInfo::removePreset(int index, bool del){
+bool PluginDesc::removePreset(int index, bool del){
     if (index >= 0 && index < presets.size()
             && presets[index].type == PresetType::User
             && (!del || removeFile(presets[index].path))){
@@ -332,7 +332,7 @@ bool PluginInfo::removePreset(int index, bool del){
     return false;
 }
 
-bool PluginInfo::renamePreset(int index, const std::string& newName){
+bool PluginDesc::renamePreset(int index, const std::string& newName){
     // make preset before creating the lock!
     if (index >= 0 && index < presets.size()
             && presets[index].type == PresetType::User){
@@ -369,7 +369,7 @@ static std::string bashPath(std::string path){
     return path;
 }
 
-int PluginInfo::addPreset(Preset preset) {
+int PluginDesc::addPreset(Preset preset) {
     auto it = presets.begin();
     // insert lexicographically
     while (it != presets.end() && it->type == PresetType::User){
@@ -388,7 +388,7 @@ int PluginInfo::addPreset(Preset preset) {
     return index;
 }
 
-Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
+Preset PluginDesc::makePreset(const std::string &name, PresetType type) const {
     Preset preset;
     auto folder = getPresetFolder(type, true);
     if (!folder.empty()){
@@ -400,7 +400,7 @@ Preset PluginInfo::makePreset(const std::string &name, PresetType type) const {
     return preset;
 }
 
-std::string PluginInfo::getPresetFolder(PresetType type, bool create) const {
+std::string PluginDesc::getPresetFolder(PresetType type, bool create) const {
     auto location = getPresetLocation(type, type_);
     if (!location.empty()){
         auto vendorFolder = location + "/" + bashPath(vendor);
@@ -466,7 +466,7 @@ static std::string bashString(std::string name){
 #define toHex(x) std::hex << (x) << std::dec
 #define fromHex(x) std::stol(x, 0, 16); // hex
 
-void writeBusses(std::ostream& file, const std::vector<PluginInfo::Bus>& vec){
+void writeBusses(std::ostream& file, const std::vector<PluginDesc::Bus>& vec){
     int n = vec.size();
     file << "n=" << n << "\n";
     for (int i = 0; i < n; ++i){
@@ -476,7 +476,7 @@ void writeBusses(std::ostream& file, const std::vector<PluginInfo::Bus>& vec){
     }
 }
 
-void PluginInfo::serialize(std::ostream& file) const {
+void PluginDesc::serialize(std::ostream& file) const {
     // list sub plugins (only when probing)
     if (!subPlugins.empty()){
         file << "[subplugins]\n";
@@ -614,23 +614,23 @@ int getCount(const std::string& line){
     }
 }
 
-std::vector<PluginInfo::Bus> readBusses(std::istream& file){
-    std::vector<PluginInfo::Bus> result;
+std::vector<PluginDesc::Bus> readBusses(std::istream& file){
+    std::vector<PluginDesc::Bus> result;
     std::string line;
     std::getline(file, line);
     int n = getCount(line);
     while (n-- && std::getline(file, line)){
         auto args = splitString(line, ',');
-        PluginInfo::Bus bus;
+        PluginDesc::Bus bus;
         bus.numChannels = std::stol(args[0]);
-        bus.type = (PluginInfo::Bus::Type)std::stol(args[1]);
+        bus.type = (PluginDesc::Bus::Type)std::stol(args[1]);
         bus.label = ltrim(args[2]);
         result.push_back(std::move(bus));
     }
     return result;
 }
 
-void PluginInfo::deserialize(std::istream& file, int versionMajor,
+void PluginDesc::deserialize(std::istream& file, int versionMajor,
                              int versionMinor, int versionBugfix) {
     // first check for sections, then for keys!
     bool start = false;

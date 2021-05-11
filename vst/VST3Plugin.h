@@ -222,7 +222,7 @@ class VST3Factory final : public PluginFactory {
     VST3Factory(const std::string& path, bool probe);
     ~VST3Factory();
     // probe a single plugin
-    PluginInfo::const_ptr probePlugin(int id) const override;
+    PluginDesc::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
     IPlugin::ptr create(const std::string& name) const override;
  private:
@@ -230,7 +230,7 @@ class VST3Factory final : public PluginFactory {
     IPtr<IPluginFactory> factory_;
     // TODO dllExit
     // subplugins
-    PluginInfo::SubPluginList subPlugins_;
+    PluginDesc::SubPluginList subPlugins_;
     std::unordered_map<std::string, int> subPluginMap_;
 };
 
@@ -349,7 +349,7 @@ class VST3Plugin final :
     #endif
 {
  public:
-    VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginInfo::const_ptr desc);
+    VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginDesc::const_ptr desc);
     ~VST3Plugin();
 
     tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override {
@@ -388,8 +388,8 @@ class VST3Plugin final :
     tresult PLUGIN_API unregisterTimer (Linux::ITimerHandler* handler) override;
 #endif
 
-    const PluginInfo& info() const override { return *info_; }
-    PluginInfo::const_ptr getInfo() const { return info_; }
+    const PluginDesc& info() const override { return *info_; }
+    PluginDesc::const_ptr getInfo() const { return info_; }
 
     void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
     void process(ProcessData& data) override;
@@ -485,7 +485,7 @@ class VST3Plugin final :
     IPtr<Vst::IEditController> controller_;
     mutable IPlugView *view_ = nullptr;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
-    PluginInfo::const_ptr info_;
+    PluginDesc::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     // audio

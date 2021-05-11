@@ -31,7 +31,7 @@ IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& n
     return std::move(plugin); // Clang bug
 }
 
-PluginClient::PluginClient(IFactory::const_ptr f, PluginInfo::const_ptr desc, bool sandbox)
+PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bool sandbox)
     : factory_(std::move(f)), info_(std::move(desc))
 {
     static std::atomic<uint32_t> nextID{0};

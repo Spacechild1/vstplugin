@@ -264,7 +264,7 @@ void defer(const T& fn, bool uithread){
 
 /*---------------------- search/probe ----------------------------*/
 
-static PluginManager gPluginManager;
+static PluginDictionary gPluginDict;
 
 #define SETTINGS_DIR ".vstplugin~"
 // so that 64-bit and 32-bit installations can co-exist!
@@ -290,7 +290,7 @@ static void readIniFile(){
     if (pathExists(path)){
         verbose(PD_DEBUG, "read cache file %s", path.c_str());
         try {
-            gPluginManager.read(path);
+            gPluginDict.read(path);
         } catch (const Error& e){
             error("couldn't read cache file: %s", e.what());
         }
@@ -306,7 +306,7 @@ static void writeIniFile(){
                 throw Error("couldn't create directory " + dir);
             }
         }
-        gPluginManager.write(dir + "/" CACHE_FILE);
+        gPluginDict.write(dir + "/" CACHE_FILE);
     } catch (const Error& e){
         error("couldn't write cache file: %s", e.what());
     }
@@ -448,11 +448,11 @@ template<bool async>
 static IFactory::ptr loadFactory(const std::string& path){
     IFactory::ptr factory;
 
-    if (gPluginManager.findFactory(path)){
+    if (gPluginDict.findFactory(path)){
         postBug<async>("loadFactory");
         return nullptr;
     }
-    if (gPluginManager.isException(path)){
+    if (gPluginDict.isException(path)){
         PdLog<async> log(PD_DEBUG, "'%s' is black-listed", path.c_str());
         return nullptr;
     }
@@ -461,7 +461,7 @@ static IFactory::ptr loadFactory(const std::string& path){
         factory = IFactory::load(path);
     } catch (const Error& e){
         PdLog<async> log(PD_ERROR, "couldn't load '%s': %s", path.c_str(), e.what());
-        gPluginManager.addException(path);
+        gPluginDict.addException(path);
         return nullptr;
     }
 
@@ -470,7 +470,7 @@ static IFactory::ptr loadFactory(const std::string& path){
 
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
-static std::string makeKey(const PluginInfo& desc){
+static std::string makeKey(const PluginDesc& desc){
     if (desc.type() == PluginType::VST3){
         return desc.name + ".vst3";
     } else {
@@ -483,10 +483,10 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
     if (factory->numPlugins() == 1){
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginManager.addPlugin(plugin->path(), plugin);
-        gPluginManager.addPlugin(path, plugin);
+        gPluginDict.addPlugin(plugin->path(), plugin);
+        gPluginDict.addPlugin(path, plugin);
     }
-    gPluginManager.addFactory(path, factory);
+    gPluginDict.addFactory(path, factory);
     // add plugins
     for (int i = 0; i < factory->numPlugins(); ++i){
         auto plugin = factory->getPlugin(i);
@@ -495,15 +495,15 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
         for (int j = 0; j < num; ++j){
             auto key = plugin->parameters[j].name;
             bash_name(key);
-            const_cast<PluginInfo&>(*plugin).addParamAlias(j, key);
+            const_cast<PluginDesc&>(*plugin).addParamAlias(j, key);
         }
         // search for presets
-        const_cast<PluginInfo&>(*plugin).scanPresets();
+        const_cast<PluginDesc&>(*plugin).scanPresets();
         // add plugin
         auto key = makeKey(*plugin);
-        gPluginManager.addPlugin(key, plugin);
+        gPluginDict.addPlugin(key, plugin);
         bash_name(key); // also add bashed version!
-        gPluginManager.addPlugin(key, plugin);
+        gPluginDict.addPlugin(key, plugin);
     }
 }
 
@@ -542,7 +542,7 @@ static IFactory::ptr probePlugin(const std::string& path, float timeout){
         result.error = e;
         log << e;
     }
-    gPluginManager.addException(path);
+    gPluginDict.addException(path);
     return nullptr;
 }
 
@@ -585,7 +585,7 @@ static FactoryFuture probePluginAsync(const std::string& path, float timeout){
                     addFactory(path, factory);
                     out = factory; // success
                 } else {
-                    gPluginManager.addException(path);
+                    gPluginDict.addException(path);
                     out = nullptr;
                 }
                 return true;
@@ -600,7 +600,7 @@ static FactoryFuture probePluginAsync(const std::string& path, float timeout){
             ProbeResult result;
             result.error = e;
             log << result;
-            gPluginManager.addException(path);
+            gPluginDict.addException(path);
             out = nullptr;
             return true;
         });
@@ -620,7 +620,7 @@ static void searchPlugins(const std::string& path, float timeout,
         PdLog<async> log(PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
     }
 
-    auto addPlugin = [&](const PluginInfo& plugin, int which = 0, int n = 0){
+    auto addPlugin = [&](const PluginDesc& plugin, int which = 0, int n = 0){
         if (data){
             auto key = makeKey(plugin);
             bash_name(key);
@@ -683,7 +683,7 @@ static void searchPlugins(const std::string& path, float timeout,
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
         // check if module has already been loaded
-        auto factory = gPluginManager.findFactory(pluginPath);
+        auto factory = gPluginDict.findFactory(pluginPath);
         if (factory){
             // just post paths of valid plugins
             PdLog<async> log(PD_DEBUG, "%s", factory->path().c_str());
@@ -701,9 +701,9 @@ static void searchPlugins(const std::string& path, float timeout,
             for (int i = 0; i < numPlugins; ++i){
                 auto plugin = factory->getPlugin(i);
                 auto key = makeKey(*plugin);
-                gPluginManager.addPlugin(key, plugin);
+                gPluginDict.addPlugin(key, plugin);
                 bash_name(key); // also add bashed version!
-                gPluginManager.addPlugin(key, plugin);
+                gPluginDict.addPlugin(key, plugin);
             }
         } else {
             // probe (will post results and add plugins)
@@ -1258,7 +1258,7 @@ static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
         removeFile(getSettingsDir() + "/" CACHE_FILE);
     }
         // clear the plugin description dictionary
-    gPluginManager.clear();
+    gPluginDict.clear();
 }
 
 // resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
@@ -1347,9 +1347,9 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
 
 // query a plugin by its key or file path and probe if necessary.
 template<bool async>
-static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
+static const PluginDesc * queryPlugin(t_vstplugin *x, const std::string& path){
     // query plugin
-    auto desc = gPluginManager.findPlugin(path);
+    auto desc = gPluginDict.findPlugin(path);
     if (!desc){
             // try as file path
         std::string abspath = resolvePath<async>(x->x_canvas, path);
@@ -1357,10 +1357,10 @@ static const PluginInfo * queryPlugin(t_vstplugin *x, const std::string& path){
             PdScopedLock<async> lock;
             verbose(PD_DEBUG, "'%s' is neither an existing plugin name "
                     "nor a valid file path", path.c_str());
-        } else if (!(desc = gPluginManager.findPlugin(abspath))){
+        } else if (!(desc = gPluginDict.findPlugin(abspath))){
             // finally probe plugin
             if (probePlugin<async>(abspath, 0)){
-                desc = gPluginManager.findPlugin(abspath);
+                desc = gPluginDict.findPlugin(abspath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
                 if (!desc){
@@ -1456,7 +1456,7 @@ struct t_open_data : t_command_data<t_open_data> {
 template<bool async>
 static void vstplugin_open_do(t_open_data *x){
     // get plugin info
-    const PluginInfo *info = queryPlugin<async>(x->owner, x->path->s_name);
+    const PluginDesc *info = queryPlugin<async>(x->owner, x->path->s_name);
     if (!info){
         PdScopedLock<async> lock;
         pd_error(x->owner, "%s: can't open '%s'", classname(x->owner), x->path->s_name);
@@ -1642,7 +1642,7 @@ static void sendInfo(t_vstplugin *x, const char *what, int value){
 
 // plugin info (no args: currently loaded plugin, symbol arg: path of plugin to query)
 static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
-    const PluginInfo *info = nullptr;
+    const PluginDesc *info = nullptr;
     if (argc > 0){ // some plugin
         auto path = atom_getsymbol(argv)->s_name;
         if (!(info = queryPlugin<false>(x, path))){
@@ -1758,7 +1758,7 @@ static void vstplugin_print(t_vstplugin *x){
             if (vst3){
                 post("%s:", what);
                 for (auto& bus : busses){
-                    auto type = (bus.type == PluginInfo::Bus::Aux) ?
+                    auto type = (bus.type == PluginDesc::Bus::Aux) ?
                                 "aux" : "main";
                     post("  [%s] '%s' %dch", type,
                          bus.label.c_str(), bus.numChannels);
@@ -1938,7 +1938,7 @@ enum class t_direction {
 
 // get bus info (index + nchannels + name + type ...)
 template<t_direction dir>
-static void vstplugin_bus_doinfo(const PluginInfo& info, int index, t_outlet *outlet){
+static void vstplugin_bus_doinfo(const PluginDesc& info, int index, t_outlet *outlet){
     auto& bus = (dir == t_direction::out) ?
                 info.outputs[index] : info.inputs[index];
     auto vst3 = info.type() == PluginType::VST3;
@@ -1947,7 +1947,7 @@ static void vstplugin_bus_doinfo(const PluginInfo& info, int index, t_outlet *ou
     SETFLOAT(&msg[1], bus.numChannels);
     if (vst3){
         SETSYMBOL(&msg[2], gensym(bus.label.c_str()));
-        SETSYMBOL(&msg[3], (bus.type == PluginInfo::Bus::Aux) ?
+        SETSYMBOL(&msg[3], (bus.type == PluginDesc::Bus::Aux) ?
                     gensym("aux") : gensym("main"));
     }
     // LATER add more info
@@ -1988,7 +1988,7 @@ static void vstplugin_output_count(t_vstplugin *x){
 // list busses (index + info)
 template<t_direction dir>
 static void vstplugin_bus_list(t_vstplugin *x, t_symbol *s){
-    const PluginInfo *info = nullptr;
+    const PluginDesc *info = nullptr;
     if (*s->s_name){
         auto path = s->s_name;
         if (!(info = queryPlugin<false>(x, path))){
@@ -2059,7 +2059,7 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
 }
 
 // get parameter info (name + label + ...)
-static void vstplugin_param_doinfo(const PluginInfo& info, int index, t_outlet *outlet){
+static void vstplugin_param_doinfo(const PluginDesc& info, int index, t_outlet *outlet){
     t_atom msg[3];
     SETFLOAT(&msg[0], index);
     SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
@@ -2090,7 +2090,7 @@ static void vstplugin_param_count(t_vstplugin *x){
 
 // list parameters (index + info)
 static void vstplugin_param_list(t_vstplugin *x, t_symbol *s){
-    const PluginInfo *info = nullptr;
+    const PluginDesc *info = nullptr;
     if (*s->s_name){
         auto path = s->s_name;
         if (!(info = queryPlugin<false>(x, path))){
@@ -2242,7 +2242,7 @@ static void vstplugin_program_count(t_vstplugin *x){
 
 // list all programs (index + name)
 static void vstplugin_program_list(t_vstplugin *x,  t_symbol *s){
-    const PluginInfo *info = nullptr;
+    const PluginDesc *info = nullptr;
     bool local = false;
     if (*s->s_name){
         auto path = s->s_name;
@@ -2495,9 +2495,9 @@ static void vstplugin_preset_write_done(t_preset_data *data){
                 preset.path = y->path;
                 preset.type = y->type;
             #ifdef PDINSTANCE
-                auto wrlock = const_cast<PluginInfo&>(info).writeLock();
+                auto wrlock = const_cast<PluginDesc&>(info).writeLock();
             #endif
-                const_cast<PluginInfo&>(info).addPreset(std::move(preset));
+                const_cast<PluginDesc&>(info).addPreset(std::move(preset));
             #ifdef PDINSTANCE
                 wrlock.unlock();
             #endif
@@ -2551,7 +2551,7 @@ static void vstplugin_preset_count(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("preset_count"), 1, &msg);
 }
 
-static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginInfo& info, int index){
+static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginDesc& info, int index){
 #ifdef PDINSTANCE
     // Note that another Pd instance might modify the preset list while we're iterating and
     // outputting the presets. Since we have to unlock before sending to the outlet to avoid
@@ -2599,7 +2599,7 @@ static void vstplugin_preset_info(t_vstplugin *x, t_floatarg f){
 }
 
 static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
-    const PluginInfo *info = nullptr;
+    const PluginDesc *info = nullptr;
     if (*s->s_name){
         auto path = s->s_name;
         if (!(info = queryPlugin<false>(x, path))){
@@ -2674,7 +2674,7 @@ static int vstplugin_preset_index(t_vstplugin *x, int argc, t_atom *argv, bool l
     return -1;
 }
 
-static bool vstplugin_preset_writeable(t_vstplugin *x, const PluginInfo& info, int index){
+static bool vstplugin_preset_writeable(t_vstplugin *x, const PluginDesc& info, int index){
     bool writeable = info.presets[index].type == PresetType::User;
     if (!writeable){
         pd_error(x, "%s: preset is not writeable!", classname(x));
@@ -2732,7 +2732,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    auto wrlock = const_cast<PluginInfo&>(info).writeLock();
+    auto wrlock = const_cast<PluginDesc&>(info).writeLock();
 #endif
     Preset preset;
     bool add = false;
@@ -2805,7 +2805,7 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    auto wrlock = const_cast<PluginInfo&>(info).writeLock();
+    auto wrlock = const_cast<PluginDesc&>(info).writeLock();
 #endif
 
     auto notify = [&](t_vstplugin *x, bool result){
@@ -2834,7 +2834,7 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     bool update = x->x_preset && (x->x_preset->s_name == info.presets[index].name);
 
     if (vstplugin_preset_writeable(x, info, index)){
-        if (const_cast<PluginInfo&>(info).renamePreset(index, newname->s_name)){
+        if (const_cast<PluginDesc&>(info).renamePreset(index, newname->s_name)){
             if (update){
                 x->x_preset = newname;
             }
@@ -2859,7 +2859,7 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    auto wrlock = const_cast<PluginInfo&>(info).writeLock();
+    auto wrlock = const_cast<PluginDesc&>(info).writeLock();
 #endif
 
     auto notify = [&](t_vstplugin *x, bool result){
@@ -2881,7 +2881,7 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     bool current = x->x_preset && (x->x_preset->s_name == info.presets[index].name);
 
     if (vstplugin_preset_writeable(x, info, index)){
-        if (const_cast<PluginInfo&>(info).removePreset(index)){
+        if (const_cast<PluginDesc&>(info).removePreset(index)){
             if (current){
                 x->x_preset = nullptr;
             }

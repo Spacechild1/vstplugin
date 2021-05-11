@@ -1,7 +1,7 @@
 #include "PluginServer.h"
 
 #include "ShmInterface.h"
-#include "PluginManager.h"
+#include "PluginDictionary.h"
 #include "Log.h"
 #include "FileUtils.h"
 #include "MiscUtils.h"
@@ -594,7 +594,7 @@ bool PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){
 
 /*////////////////// PluginServer ////////////////*/
 
-static PluginManager gPluginManager;
+static PluginDictionary gPluginDict;
 
 PluginServer::PluginServer(int pid, const std::string& shmPath)
 {
@@ -790,7 +790,7 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
     LOG_DEBUG("PluginServer: create plugin " << id);
 
     struct PluginResult {
-        PluginInfo::const_ptr info;
+        PluginDesc::const_ptr info;
         IPlugin::ptr plugin;
         Error error;
     } result;
@@ -799,14 +799,14 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
         // info is transmitted in place
         std::stringstream ss;
         ss << std::string(data, size);
-        result.info = gPluginManager.readPlugin(ss);
+        result.info = gPluginDict.readPlugin(ss);
     } else {
         // info is transmitted via a tmp file
         File file(data);
         if (!file.is_open()){
             throw Error(Error::PluginError, "couldn't read plugin info!");
         }
-        result.info = gPluginManager.readPlugin(file);
+        result.info = gPluginDict.readPlugin(file);
     }
 
     LOG_DEBUG("PluginServer: did read plugin info");
