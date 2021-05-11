@@ -4,10 +4,6 @@
 
 namespace vst {
 
-class SharedMutex;
-class WriteLock;
-class ReadLock;
-
 struct PluginDesc final {
     static const uint32_t NoParamID = 0xffffffff;
 
@@ -114,9 +110,6 @@ struct PluginDesc final {
     bool renamePreset(int index, const std::string& newName);
     std::string getPresetFolder(PresetType type, bool create = false) const;
     PresetList presets;
-    // for thread-safety (if needed)
-    WriteLock writeLock();
-    ReadLock readLock() const;
     // default programs
     std::vector<std::string> programs;
     int numPrograms() const {
@@ -189,7 +182,6 @@ struct PluginDesc final {
     ID id_;
     // helper methods
     void sortPresets(bool userOnly = true);
-    mutable std::unique_ptr<SharedMutex> mutex;
     mutable bool didCreatePresetFolder = false;
 };
 

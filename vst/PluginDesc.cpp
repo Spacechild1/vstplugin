@@ -193,14 +193,6 @@ void PluginDesc::setUID(const char *uid){
 }
 #endif
 
-WriteLock PluginDesc::writeLock(){
-    return WriteLock(*mutex);
-}
-
-ReadLock PluginDesc::readLock() const {
-    return ReadLock(*mutex);
-}
-
 static void conformPath(std::string& path){
     // replace backslashes
     for (auto& c : path){

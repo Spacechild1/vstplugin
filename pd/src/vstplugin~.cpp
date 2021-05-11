@@ -266,6 +266,10 @@ void defer(const T& fn, bool uithread){
 
 static PluginDictionary gPluginDict;
 
+#ifdef PDINSTANCE
+SharedMutex gPresetMutex;
+#endif
+
 #define SETTINGS_DIR ".vstplugin~"
 // so that 64-bit and 32-bit installations can co-exist!
 #if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
@@ -2494,13 +2498,12 @@ static void vstplugin_preset_write_done(t_preset_data *data){
                 preset.name = y->name;
                 preset.path = y->path;
                 preset.type = y->type;
-            #ifdef PDINSTANCE
-                auto wrlock = const_cast<PluginDesc&>(info).writeLock();
-            #endif
-                const_cast<PluginDesc&>(info).addPreset(std::move(preset));
-            #ifdef PDINSTANCE
-                wrlock.unlock();
-            #endif
+                {
+                #ifdef PDINSTANCE
+                    WriteLock lock(gPresetMutex);
+                #endif
+                    const_cast<PluginDesc&>(info).addPreset(std::move(preset));
+                }
                 vstplugin_preset_notify(y->owner);
             }
         }
@@ -2540,14 +2543,13 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg f){
 static void vstplugin_preset_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
-#ifdef PDINSTANCE
-    auto rdlock = info.readLock();
-#endif
     t_atom msg;
-    SETFLOAT(&msg, info.numPresets());
-#ifdef PDINSTANCE
-    rdlock.unlock(); // !
-#endif
+    {
+    #ifdef PDINSTANCE
+        ReadLock lock(gPresetMutex);
+    #endif
+        SETFLOAT(&msg, info.numPresets());
+    }
     outlet_anything(x->x_messout, gensym("preset_count"), 1, &msg);
 }
 
@@ -2557,7 +2559,7 @@ static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginDesc& info, int 
     // outputting the presets. Since we have to unlock before sending to the outlet to avoid
     // deadlocks, I don't see what we can do... maybe add a recursion check?
     // At least we always do a range check.
-    auto rdlock = info.readLock();
+    ReadLock lock(gPresetMutex);
 #endif
     if (index >= 0 && index < info.numPresets()){
         auto& preset = info.presets[index];
@@ -2585,7 +2587,7 @@ static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginDesc& info, int 
         SETSYMBOL(&msg[2], gensym(preset.path.c_str()));
         SETFLOAT(&msg[3], type);
     #ifdef PDINSTANCE
-        rdlock.unlock(); // !
+        lock.unlock(); // !
     #endif
         outlet_anything(x->x_messout, gensym("preset_info"), 4, msg);
     } else {
@@ -2610,15 +2612,15 @@ static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
         if (!x->check_plugin()) return;
         info = &x->x_plugin->info();
     }
-#ifdef PDINSTANCE
-    // see comment in vstplugin_preset_doinfo
-    auto rdlock = info->readLock();
-#endif
-    int n = info->numPresets();
-#ifdef PDINSTANCE
-    rdlock.unlock(); // !
-#endif
-    for (int i = 0; i < n; ++i){
+    int numpresets;
+    {
+    #ifdef PDINSTANCE
+        // see comment in vstplugin_preset_doinfo
+        ReadLock lock(gPresetMutex);
+    #endif
+        numpresets = info->numPresets();
+    }
+    for (int i = 0; i < numpresets; ++i){
         vstplugin_preset_doinfo(x, *info, i);
     }
 }
@@ -2703,26 +2705,26 @@ static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
 static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
-#ifdef PDINSTANCE
-    auto rdlock = info.readLock();
-#endif
-    int index = vstplugin_preset_index(x, argc, argv);
-    if (index < 0){
-        t_atom a;
-        SETFLOAT(&a, 0);
+    t_symbol *path;
+    {
     #ifdef PDINSTANCE
-        rdlock.unlock();
+        ReadLock lock(gPresetMutex);
     #endif
-        outlet_anything(x->x_messout, gensym("preset_load"), 1, &a);
-        return;
-    }
+        int index = vstplugin_preset_index(x, argc, argv);
+        if (index < 0){
+            t_atom a;
+            SETFLOAT(&a, 0);
+        #ifdef PDINSTANCE
+            lock.unlock(); // !
+        #endif
+            outlet_anything(x->x_messout, gensym("preset_load"), 1, &a);
+            return;
+        }
 
-    auto& preset = info.presets[index];
-    x->x_preset = gensym(preset.name.c_str());
-    auto path = gensym(preset.path.c_str());
-#ifdef PDINSTANCE
-    rdlock.unlock();
-#endif
+        auto& preset = info.presets[index];
+        x->x_preset = gensym(preset.name.c_str());
+        path = gensym(preset.path.c_str());
+    }
 
     bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
     vstplugin_preset_read<PRESET>(x, path, async);
@@ -2732,7 +2734,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    auto wrlock = const_cast<PluginDesc&>(info).writeLock();
+    WriteLock lock(gPresetMutex);
 #endif
     Preset preset;
     bool add = false;
@@ -2742,7 +2744,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         t_atom a;
         SETFLOAT(&a, 0);
     #ifdef PDINSTANCE
-        wrlock.unlock();
+        lock.unlock(); // !
     #endif
         outlet_anything(x->x_messout, gensym("preset_save"), 1, &a);
         return;
@@ -2757,7 +2759,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
             t_atom a;
             SETFLOAT(&a, 0);
         #ifdef PDINSTANCE
-            wrlock.unlock();
+            lock.unlock(); // !
         #endif
             outlet_anything(x->x_messout, gensym("preset_save"), 1, &a);
             return;
@@ -2786,7 +2788,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data.type = preset.type;
         data.add = add;
     #ifdef PDINSTANCE
-        wrlock.unlock(); // to avoid deadlock in vstplugin_preset_write_done
+        lock.unlock(); // to avoid deadlock in vstplugin_preset_write_done
     #endif
         vstplugin_preset_write_do<PRESET, false>(&data);
         vstplugin_preset_write_done<PRESET, false>(&data);
@@ -2805,13 +2807,10 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    auto wrlock = const_cast<PluginDesc&>(info).writeLock();
+    WriteLock lock(gPresetMutex);
 #endif
 
-    auto notify = [&](t_vstplugin *x, bool result){
-    #ifdef PDINSTANCE
-       wrlock.unlock();
-    #endif
+    auto notify = [](t_vstplugin *x, bool result){
         t_atom a;
         SETFLOAT(&a, result);
         outlet_anything(x->x_messout, gensym("preset_rename"), 1, &a);
@@ -2820,6 +2819,9 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     // 1) preset
     int index = vstplugin_preset_index(x, (argc > 1), argv);
     if (index < 0){
+    #ifdef PDINSTANCE
+        lock.unlock(); // !
+    #endif
         notify(x, false);
         return;
     }
@@ -2827,6 +2829,9 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     t_symbol *newname = atom_getsymbolarg(1, argc, argv);
     if (!(*newname->s_name)){
         pd_error(x, "%s: bad preset name %s!", classname(x), newname->s_name);
+    #ifdef PDINSTANCE
+        lock.unlock(); // !
+    #endif
         notify(x, false);
         return;
     }
@@ -2838,6 +2843,9 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
             if (update){
                 x->x_preset = newname;
             }
+        #ifdef PDINSTANCE
+            lock.unlock(); // !
+        #endif
             vstplugin_preset_notify(x);
             notify(x, true);
             return; // success
@@ -2859,13 +2867,10 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    auto wrlock = const_cast<PluginDesc&>(info).writeLock();
+    WriteLock lock(gPresetMutex);
 #endif
 
-    auto notify = [&](t_vstplugin *x, bool result){
-    #ifdef PDINSTANCE
-        wrlock.unlock();
-    #endif
+    auto notify = [](t_vstplugin *x, bool result){
         t_atom a;
         SETFLOAT(&a, result);
         outlet_anything(x->x_messout, gensym("preset_delete"), 1, &a);
@@ -2873,6 +2878,9 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
 
     int index = vstplugin_preset_index(x, argc, argv);
     if (index < 0){
+    #ifdef PDINSTANCE
+        lock.unlock(); // !
+    #endif
         notify(x, false);
         return;
     }
@@ -2885,6 +2893,9 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
             if (current){
                 x->x_preset = nullptr;
             }
+        #ifdef PDINSTANCE
+            lock.unlock(); // !
+        #endif
             vstplugin_preset_notify(x);
             notify(x, true);
             return; // success
