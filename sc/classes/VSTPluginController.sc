@@ -299,7 +299,9 @@ VSTPluginController {
 	open { arg path, editor=true, verbose=false, action, multiThreading=false, mode;
 		var intMode = 0;
 		loading.if {
-			"already opening!".error;
+			// should be rather throw an Error?
+			"VSTPluginController: already opening another plugin".warn;
+			action.value(this, false);
 			^this;
 		};
 		loading = true;
@@ -328,7 +330,8 @@ VSTPluginController {
 		VSTPlugin.prGetInfo(synth.server, path, wait, { arg info;
 			info.notNil.if {
 				this.prClear;
-				this.prMakeOscFunc({arg msg;
+				loading = true; // HACK for prClear!
+				this.prMakeOscFunc({ arg msg;
 					var loaded = msg[3].asBoolean;
 					loaded.if {
 						window = msg[4].asBoolean;
