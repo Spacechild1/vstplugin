@@ -15,10 +15,10 @@ Have a look at `VSTPlugin.sc` and `VSTPluginController.sc` in the *classes* fold
 | blockSize    | ir    | desired block size or 0 (= Server block size) |
 | bypass       | ir/kr | bypass state                                  |
 | numInputs    | ir    | number of audio input busses; can be 0        |
-| numOutputs   | ir    | number of audio output busses; can be 0       |
-| numParamCtls | ir    | number of parameter controls; can be 0        |
 | inputBus...  |       | (optional) `<numInputs>` audio input busses   |
+| numOutputs   | ir    | number of audio output busses; can be 0       |
 | outputBus... |       | (optional) `<numOutputs>` audio output busses |
+| numParamCtls | ir    | number of parameter controls; can be 0        |
 | paramCtl...  |       | (optional) `<numParamCtls>` parameter controls   |
 
 *inputBus*
@@ -720,25 +720,33 @@ vendor=<vendor name>\n
 category=<category name>\n
 version=<plugin version string>\n
 sdkversion=<VST SDK version string>\n
-inputs=<max. number of audio inputs>\n
-auxinputs=<max. number of auxiliary inputs>\n // optional
-outputs=<max. number of audio outputs>\n
-auxoutputs=<max. number of auxiliary inputs>\n // optional
 pgmchange=<program change parameter index in hex>\n // optional
 bypass=<bypass parameter index in hex>\n // optional
 flags=<bitset>\n
+[inputs]\n
+n=<input bus count>
+<channel count #0>, <type #0>, <name #0>\n
+<channel count #1>, <type #1>, <name #1>\n
+...
+<channel count #N-1>, <type #N-1>, <name #N-1>\n
+[outputs]\n
+n=<output bus count>
+<channel count #0>, <type #0>, <name #0>\n
+<channel count #1>, <type #1>, <name #1>\n
+...
+<channel count #N-1>, <type #N-1>, <name #N-1>\n
 [parameters]\n
-n=<number of parameters>\n
-<parameter name #0>, <parameter label #0>, <parameter ID #0>\n
-<parameter name #1>, <parameter label #1>, <parameter ID #1>\n
+n=<parameter count>\n
+<name #0>, <label #0>, <ID #0>\n
+<name #1>, <label #1>, <ID #1>\n
 ...
-<parameter name #N-1>, <parameter label #N-1>, <parameter ID #N-1>\n
+<name #N-1>, <label #N-1>, <ID #N-1>\n
 [programs]\n
-n=<number of programs>\n
-<program name #0>\n
-<program name #1>\n
+n=<program count>\n
+<name #0>\n
+<name #1>\n
 ...
-<program name #N-1>\n
+<name #N-1>\n
 [keys]\n
 n=<number of keys>\n
 <key #0>\n
@@ -747,43 +755,61 @@ n=<number of keys>\n
 <key #N-1>\n
 ```
 
+String values, like plugin/parameter/program names, can contain any characters except newlines and commas (those are bashed to a replacement symbol by the UGen).
+
+##### flags
+
 `flags` is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
 | value ||
 | ----- |-|
-| 0x1   | supports the GUI editor
-| 0x2   | is a VST instrument
-| 0x4   | supports single precision processing
-| 0x8   | supports double precision processing
-| 0x10  | has MIDI input
-| 0x20  | has MIDI output
-| 0x40  | has SysEx input
-| 0x80  | has SysEx output
+| 0x001 | supports the GUI editor
+| 0x002 | is a VST instrument
+| 0x004 | supports single precision processing
+| 0x008 | supports double precision processing
+| 0x010 | has MIDI input
+| 0x020 | has MIDI output
+| 0x040 | has SysEx input
+| 0x080 | has SysEx output
+| 0x100 | is bridged
 
-String values, like plugin/parameter/program names, can contain any characters except newlines and commas. (Those are bashed to a replacement symbol by the UGen.)
+##### input/output busses
 
-Each parameter entry takes up a single line and consists of three fields, separated by a comma: `:<parameter name>, <parameber label>, <parameter ID>`.
+Each bus entry takes up a single line and consists of three fields, separated by a comma: `<channel count>, <type>, <name>`.
 
-The parameter label is the unit of measurement (e.g. "dB", "ms", "%"); it can be an empty string!
+`<type>` can be either 0 (= main) or 1 (= aux). `<name` is always empty for VST2 plugins (because they only have a single input/output bus).
+
+##### parameters
+
+Each parameter entry takes up a single line and consists of three fields, separated by a comma: `<name>, <label>, <ID>`.
+
+`<label>` is the unit of measurement (e.g. "dB", "ms", "%"); it can be an empty string!
 
 The parameter ID is a hexidecimal number. For VST 2.x plugins it is the same as the parameter index, but for VST 3.x plugins it can be an arbitrary 32 bit integer.
 
+##### programs
+
 **NOTE**: Program names can be empty strings; this means that empty lines after the `[programs]` section are significant and must not be ignored!
+
 
 Each plugin can be referred to by one or more *keys*. The primary key always comes first in the list.
 
 *EXAMPLE:*
 ```
 [plugin]
-id=6779416F
 path=C:/Program Files/VSTPlugins/GVST/GChorus.dll
+id=6779416F
 name=GChorus
 vendor=GVST
 category=Effect
 version=1200
 sdkversion=VST 2.4
-inputs=2
-outputs=2
-flags=d
+flags=10d
+[inputs]
+n=1
+2,0,
+[outputs]
+n=1
+2,0,
 [parameters]
 n=4
 Depth,cents,0
