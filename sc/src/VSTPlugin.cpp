@@ -2103,13 +2103,20 @@ bool cmdReadPreset(World* world, void* cmdData) {
         if (data->bufnum < 0) {
             // from file
             vst::File file(data->path);
-            if (!file.is_open()){
+            if (file.is_open()){
+                LOG_DEBUG("opened preset file " << data->path);
+            } else {
                 throw Error("couldn't open file " + std::string(data->path));
             }
             file.seekg(0, std::ios_base::end);
             buffer.resize(file.tellg());
             file.seekg(0, std::ios_base::beg);
             file.read(&buffer[0], buffer.size());
+            if (file){
+                LOG_DEBUG("successfully read " << buffer.size() << " bytes");
+            } else {
+                throw Error("couldn't read preset data");
+            }
         } else {
             // from buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);
@@ -2219,10 +2226,18 @@ bool cmdWritePreset(World *world, void *cmdData){
         if (data->bufnum < 0) {
             // write data to file
             vst::File file(data->path, File::WRITE);
-            if (!file.is_open()){
+            if (file.is_open()){
+                LOG_DEBUG("opened preset file " << data->path);
+            } else {
                 throw Error("couldn't create file " + std::string(data->path));
             }
             file.write(buffer.data(), buffer.size());
+            file.flush();
+            if (file){
+                LOG_DEBUG("successfully wrote " << buffer.size() << " bytes");
+            } else {
+                throw Error("couldn't write preset data");
+            }
         } else {
             // to buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);

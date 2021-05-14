@@ -2383,6 +2383,12 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         buffer.resize(file.tellg());
         file.seekg(0, std::ios_base::beg);
         file.read(&buffer[0], buffer.size());
+        if (file){
+            LOG_DEBUG("successfully read " << buffer.size() << " bytes");
+        } else {
+            throw Error("couldn't read preset data");
+        }
+
         x->x_editor->defer_safe<async>([&](){
             // protect against vstplugin_dsp() and vstplugin_save()
             ScopedLock lock(x->x_mutex);
@@ -2391,6 +2397,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
             else
                 x->x_plugin->readProgramData(buffer);
         }, x->x_uithread);
+
         data->success = true;
     } catch (const Error& e) {
         PdScopedLock<async> lock;
@@ -2464,11 +2471,18 @@ static void vstplugin_preset_write_do(t_preset_data *data){
         }, x->x_uithread);
         // write data to file
         vst::File file(data->path, File::WRITE);
-        if (!file.is_open()){
+        if (file.is_open()){
+            LOG_DEBUG("opened preset file " << data->path);
+        } else {
             throw Error("couldn't create file " + std::string(data->path));
         }
         file.write(buffer.data(), buffer.size());
-
+        file.flush();
+        if (file){
+            LOG_DEBUG("successfully wrote " << buffer.size() << " bytes");
+        } else {
+            throw Error("couldn't write preset data");
+        }
         data->success = true;
     } catch (const Error& e){
         PdScopedLock<async> lock;
