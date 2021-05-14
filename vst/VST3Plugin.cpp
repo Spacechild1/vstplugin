@@ -1733,23 +1733,34 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     }
     // get chunk data
     for (auto& entry : entries){
-        stream.setPos(entry.offset);
+        StreamView state(stream.data() + entry.offset, entry.size);
         if (isChunkType(entry.id, Vst::kComponentState)){
-            if (component_->setState(&stream) == kResultOk){
-                // also update controller state!
-                stream.setPos(entry.offset); // rewind
-                controller_->setComponentState(&stream);
+            LOG_DEBUG("set component state");
+            if (component_->setState(&state) == kResultOk){
                 LOG_DEBUG("restored component state");
+                // also update controller state!
+                state.rewind();
+                LOG_DEBUG("set component state for controller");
+                if (controller_->setComponentState(&state) == kResultOk){
+                    LOG_DEBUG("restored component state for controller");
+                } else {
+                    LOG_DEBUG("couldn't restore component state for controller");
+                }
             } else {
                 LOG_WARNING("couldn't restore component state");
             }
         } else if (isChunkType(entry.id, Vst::kControllerState)){
-            // TODO: make thread-safe
-            if (controller_->setState(&stream) == kResultOk){
+            LOG_DEBUG("set controller state");
+            if (controller_->setState(&state) == kResultOk){
                 LOG_DEBUG("restored controller state");
             } else {
                 LOG_WARNING("couldn't restore controller state");
             }
+        } else {
+            char type[5];
+            memcpy(type, entry.id, 4);
+            type[4] = '\0';
+            LOG_WARNING("unsupported chunk type '" << type << "'");
         }
     }
 
@@ -1774,22 +1785,22 @@ void VST3Plugin::writeProgramData(std::string& buffer){
     stream.writeTUID(info().getUID()); // class ID
     stream.writeInt64(0); // skip offset
     // write data
-    auto writeChunk = [&](auto& component, Vst::ChunkType type){
+    auto writeChunk = [&](auto& component, Vst::ChunkType type, const char *what){
         ChunkListEntry entry;
         memcpy(entry.id, Vst::getChunkID(type), sizeof(Vst::ChunkID));
         stream.tell(&entry.offset);
-        // TODO what do for a GUI editor?
-        if (component->getState(&stream) == kResultTrue){
+        LOG_DEBUG("get " << what << " state");
+        if (component->getState(&stream) == kResultOk){
             auto pos = stream.getPos();
             entry.size = pos - entry.offset;
             entries.push_back(entry);
+            LOG_DEBUG("wrote " << what << " state (" << entry.size << " bytes)");
         } else {
-            LOG_DEBUG("couldn't get state");
-            // throw?
+            LOG_DEBUG("couldn't get " << what << " state");
         }
     };
-    writeChunk(component_, Vst::kComponentState);
-    writeChunk(controller_, Vst::kControllerState);
+    writeChunk(component_, Vst::kComponentState, "component");
+    writeChunk(controller_, Vst::kControllerState, "controller");
     // store list offset
     auto listOffset = stream.getPos();
     // write list
