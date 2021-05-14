@@ -477,7 +477,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         LOG_DEBUG("connected component and controller");
     }
     // synchronize state
-    WriteStream stream;
+    MemoryStream stream;
     if (component_->getState(&stream) == kResultTrue){
         stream.rewind();
         if (controller_->setComponentState(&stream) == kResultTrue){
@@ -702,11 +702,11 @@ tresult VST3Plugin::restartComponent(int32 flags){
 
     // restart component might be called before paramCache_ is allocated
     if ((flags & Vst::kParamValuesChanged) && paramCache_){
-        int n = getNumParameters();
+        int nparams = getNumParameters();
         auto listener = listener_.lock();
-        // this is no perfect, because we might already change a parameter
+        // this is not perfect, because we might already change a parameter
         // before this method gets called on the UI thread.
-        for (int i = 0; i < n; ++i){
+        for (int i = 0; i < nparams; ++i){
             auto id = info().getParamID(i);
             auto value = controller_->getParamNormalized(id);
             if (listener){
@@ -1659,7 +1659,7 @@ struct ChunkListEntry {
 };
 
 void VST3Plugin::readProgramData(const char *data, size_t size){
-    ConstStream stream(data, size);
+    StreamView stream(data, size);
     std::vector<ChunkListEntry> entries;
     auto isChunkType = [](Vst::ChunkID id, Vst::ChunkType type){
         return memcmp(id, Vst::getChunkID(type), sizeof(Vst::ChunkID)) == 0;
@@ -1707,12 +1707,12 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
     #endif
         {
         #if LOGLEVEL > 2
-            fprintf(stdout, "preset: ");
+            fprintf(stderr, "preset: ");
             for (int i = 0; i < 16; ++i) {
-                fprintf(stdout, "%02X", (uint8_t)classID[i]);
+                fprintf(stderr, "%02X", (uint8_t)classID[i]);
             }
-            fprintf(stdout, "\nplugin: %s\n", info().uniqueID.c_str());
-            fflush(stdout);
+            fprintf(stderr, "\nplugin: %s\n", info().uniqueID.c_str());
+            fflush(stderr);
         #endif
             throw Error("wrong class ID");
         }
@@ -1768,7 +1768,7 @@ void VST3Plugin::writeProgramFile(const std::string& path){
 
 void VST3Plugin::writeProgramData(std::string& buffer){
     std::vector<ChunkListEntry> entries;
-    WriteStream stream;
+    MemoryStream stream;
     stream.writeChunkID(Vst::getChunkID(Vst::kHeader)); // header
     stream.writeInt32(Vst::kFormatVersion); // version
     stream.writeTUID(info().getUID()); // class ID
@@ -1804,7 +1804,7 @@ void VST3Plugin::writeProgramData(std::string& buffer){
     stream.setPos(Vst::kListOffsetPos);
     stream.writeInt64(listOffset);
     // done
-    stream.transfer(buffer);
+    stream.release(buffer);
 }
 
 void VST3Plugin::readBankFile(const std::string& path){
@@ -2063,22 +2063,31 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
 
 /*///////////////////// BaseStream ///////////////////////*/
 
-tresult BaseStream::read  (void* buffer, int32 numBytes, int32* numBytesRead){
-    int available = size() - cursor_;
-    if (available <= 0){
-        cursor_ = size();
+#define DEBUG_STREAM 0
+
+#if DEBUG_STREAM
+# define LOG_STREAM(x) LOG_DEBUG(x)
+#else
+# define LOG_STREAM(x)
+#endif
+
+tresult BaseStream::read(void* buffer, int32 numBytes, int32* numBytesRead){
+    if (cursor_ < 0){
+        LOG_ERROR("BaseStream: negative cursor!");
+        return kInternalError;
     }
+    int available = size() - cursor_;
     if (numBytes > available){
+        LOG_DEBUG("BaseStream: " << numBytes << " bytes requested, "
+                  << available << " bytes available");
         numBytes = available;
     }
-    if (numBytes > 0){
-        memcpy(buffer, data() + cursor_, numBytes);
-        cursor_ += numBytes;
-    }
+    memcpy(buffer, data() + cursor_, numBytes);
+    cursor_ += numBytes;
     if (numBytesRead){
         *numBytesRead = numBytes;
     }
-    // LOG_DEBUG("BaseStream: read " << numBytes << " bytes");
+    LOG_STREAM("BaseStream: read " << numBytes << " bytes");
     return kResultOk;
 }
 
@@ -2086,35 +2095,40 @@ tresult BaseStream::write (void* buffer, int32 numBytes, int32* numBytesWritten)
     return kNotImplemented;
 }
 
-tresult BaseStream::seek  (int64 pos, int32 mode, int64* result){
-    if (pos < 0){
-        return kInvalidArgument;
-    }
+tresult BaseStream::seek(int64 pos, int32 mode, int64* result){
+    int64_t newPos = -1;
     switch (mode){
     case kIBSeekSet:
-        cursor_ = pos;
+        newPos = pos;
+        LOG_STREAM("BaseStream: seek set " << pos);
         break;
     case kIBSeekCur:
-        cursor_ += pos;
+        newPos = cursor_ + pos;
+        LOG_STREAM("BaseStream: seek cursor " << pos);
         break;
     case kIBSeekEnd:
-        cursor_ = size() + pos;
+        newPos = size() + pos;
+        LOG_STREAM("BaseStream: seek end " << pos);
         break;
     default:
         return kInvalidArgument;
     }
+    if (newPos < 0 || newPos >= size()){
+        LOG_ERROR("BaseStream: seek position out of range!");
+        return kInvalidArgument;
+    }
     // don't have to resize here
     if (result){
-        *result = cursor_;
+        *result = newPos;
     }
-    // LOG_DEBUG("BaseStream: set cursor to " << cursor_);
+    cursor_ = newPos;
     return kResultTrue;
 }
 
-tresult BaseStream::tell  (int64* pos){
+tresult BaseStream::tell(int64* pos){
     if (pos){
         *pos = cursor_;
-        // LOG_DEBUG("BaseStream: told cursor pos");
+        LOG_STREAM("BaseStream: tell");
         return kResultTrue;
     } else {
         return kInvalidArgument;
@@ -2122,11 +2136,8 @@ tresult BaseStream::tell  (int64* pos){
 }
 
 void BaseStream::setPos(int64 pos){
-    if (pos >= 0){
-        cursor_ = pos;
-    } else {
-        cursor_ = 0;
-    }
+    assert(pos >= 0);
+    cursor_ = pos;
 }
 
 int64 BaseStream::getPos() const {
@@ -2250,13 +2261,12 @@ bool BaseStream::readTUID(TUID tuid){
     }
 }
 
-/*///////////////////// ConstStream //////////////////////////*/
+/*///////////////////// StreamView ///////////////////////////*/
 
-ConstStream::ConstStream(const char *data, size_t size){
+StreamView::StreamView(const char *data, size_t size){
     assign(data, size);
 }
-
-void ConstStream::assign(const char *data, size_t size){
+void StreamView::assign(const char *data, size_t size){
     data_ = data;
     size_ = size;
     cursor_ = 0;
@@ -2264,29 +2274,32 @@ void ConstStream::assign(const char *data, size_t size){
 
 /*///////////////////// WriteStream //////////////////////////*/
 
-WriteStream::WriteStream(const char *data, size_t size){
+MemoryStream::MemoryStream(const char *data, size_t size){
     buffer_.assign(data, size);
 }
 
-tresult WriteStream::write (void* buffer, int32 numBytes, int32* numBytesWritten){
+tresult MemoryStream::write (void* buffer, int32 numBytes, int32* numBytesWritten){
+    if (cursor_ < 0){
+        LOG_ERROR("WriteStream: negative cursor!");
+        return kInternalError;
+    }
+    if (numBytes < 0){
+        return kInvalidArgument;
+    }
     int wantSize = cursor_ + numBytes;
     if (wantSize > (int64_t)buffer_.size()){
         buffer_.resize(wantSize);
     }
-    if (cursor_ >= 0 && numBytes > 0){
-        memcpy(&buffer_[cursor_], buffer, numBytes);
-        cursor_ += numBytes;
-    } else {
-        numBytes = 0;
-    }
+    memcpy(&buffer_[cursor_], buffer, numBytes);
+    cursor_ += numBytes;
     if (numBytesWritten){
         *numBytesWritten = numBytes;
     }
-    // LOG_DEBUG("BaseStream: wrote " << numBytes << " bytes");
+    LOG_STREAM("WriteStream: write " << numBytes << " bytes");
     return kResultTrue;
 }
 
-void WriteStream::transfer(std::string &dest){
+void MemoryStream::release(std::string &dest){
     dest = std::move(buffer_);
     cursor_ = 0;
 }

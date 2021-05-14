@@ -577,10 +577,10 @@ class BaseStream : public IBStream {
 
 //-----------------------------------------------------------------------------
 
-class ConstStream : public BaseStream {
+class StreamView : public BaseStream {
  public:
-    ConstStream() = default;
-    ConstStream(const char *data, size_t size);
+    StreamView() = default;
+    StreamView(const char *data, size_t size);
     void assign(const char *data, size_t size);
     // IBStream
     const char * data() const override { return data_; }
@@ -592,14 +592,14 @@ class ConstStream : public BaseStream {
 
 //-----------------------------------------------------------------------------
 
-class WriteStream : public BaseStream {
+class MemoryStream : public BaseStream {
  public:
-    WriteStream() = default;
-    WriteStream(const char *data, size_t size);
+    MemoryStream() = default;
+    MemoryStream(const char *data, size_t size);
     tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
     const char * data() const override { return buffer_.data(); }
     size_t size() const override { return buffer_.size(); }
-    void transfer(std::string& dest);
+    void release(std::string& dest);
 protected:
     std::string buffer_;
 };
