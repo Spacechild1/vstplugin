@@ -1883,9 +1883,9 @@ void VSTPluginDelegate::reset(bool async) {
     #if 1
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
-        if (editor_){
-            async = true;
+        if (editor_ && !async){
             LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            async = true;
         }
     #endif
         if (async) {
@@ -2183,9 +2183,9 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
     #if 1
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
-        if (editor_){
-            async = true;
+        if (editor_ && !async){
             LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            async = true;
         }
     #endif
         if (async){
@@ -2274,9 +2274,9 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
     #if 1
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
-        if (editor_){
-            async = true;
+        if (editor_ && !async){
             LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            async = true;
         }
     #endif
         auto data = PresetCmdData::create(world(), dest, async);
@@ -2382,9 +2382,9 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
     #if 0
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
-        if (editor_){
-            async = true;
+        if (editor_ && !async){
             LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            async = true;
         }
     #endif
         if (async) {
