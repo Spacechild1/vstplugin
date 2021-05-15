@@ -1885,6 +1885,7 @@ void VSTPluginDelegate::reset(bool async) {
         // race conditions with concurrent UI updates.
         if (editor_){
             async = true;
+            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
         }
     #endif
         if (async) {
@@ -2184,6 +2185,7 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
         // race conditions with concurrent UI updates.
         if (editor_){
             async = true;
+            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
         }
     #endif
         if (async){
@@ -2269,14 +2271,15 @@ bool cmdWritePresetDone(World *world, void *cmdData){
 template<bool bank, typename T>
 void VSTPluginDelegate::writePreset(T dest, bool async) {
     if (check()) {
-        auto data = PresetCmdData::create(world(), dest, async);
     #if 1
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
         if (editor_){
             async = true;
+            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
         }
     #endif
+        auto data = PresetCmdData::create(world(), dest, async);
         if (async){
             suspend();
         } else {
@@ -2294,7 +2297,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
         }
         doCmd(data, cmdWritePreset<bank>, cmdWritePresetDone<bank>, PresetCmdData::nrtFree);
     } else {
-    fail:
+fail:
         if (bank) {
             sendMsg("/vst_bank_write", 0);
         } else {
@@ -2381,6 +2384,7 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, co
         // race conditions with concurrent UI updates.
         if (editor_){
             async = true;
+            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
         }
     #endif
         if (async) {
