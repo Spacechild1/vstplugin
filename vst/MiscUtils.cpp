@@ -21,8 +21,6 @@
 
 namespace vst {
 
-using LogFunction = void(*)(const char *);
-
 static LogFunction gLogFunction = nullptr;
 
 void setLogFunction(LogFunction f){
@@ -33,7 +31,7 @@ Log::~Log(){
     stream_ << "\n";
     std::string msg = stream_.str();
     if (gLogFunction){
-        gLogFunction(msg.c_str());
+        gLogFunction(level_, msg.c_str());
     } else {
         std::cerr << msg;
         std::flush(std::cerr);

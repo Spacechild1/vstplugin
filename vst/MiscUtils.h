@@ -37,9 +37,9 @@
 #error No byte order defined
 #endif
 
-#include <string>
-
 #include "Interface.h"
+
+#include <string>
 
 namespace  vst {
 

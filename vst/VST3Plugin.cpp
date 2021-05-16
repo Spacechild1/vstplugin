@@ -2553,29 +2553,23 @@ void HostAttributeList::print(){
     for (auto& it : list_){
         auto& id = it.first;
         auto& attr = it.second;
+        Log log;
+        log << id << ": ";
         switch (attr.type){
         case HostAttribute::kInteger:
-            DO_LOG(id << ": " << attr.v.i);
+            log << attr.v.i;
             break;
         case HostAttribute::kFloat:
-            DO_LOG(id << ": " << attr.v.f);
-        {
-            auto ptr = (const uint8_t *)&attr.v.f;
-            char buf[sizeof(double) * 3 + 1];
-            for (size_t i = 0; i < sizeof(double); ++i){
-                sprintf(&buf[i * 3], "%02X", (uint32_t)ptr[i]);
-            }
-            DO_LOG(buf);
-        }
+            log << attr.v.f;
             break;
         case HostAttribute::kString:
-            DO_LOG(id << ": " << convertString(attr.v.s));
+            log << convertString(attr.v.s);
             break;
         case HostAttribute::kBinary:
-            DO_LOG(id << ": [binary]");
+            log << ": [binary]";
             break;
         default:
-            DO_LOG(id << ": ?");
+            log << ": ?";
             break;
         }
     }
@@ -2595,7 +2589,8 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
 }
 
 void HostMessage::print(){
-    DO_LOG("Message: " << messageID_);
+    Log log;
+    log << "Message: " << messageID_;
     if (attributes_){
         attributes_->print();
     }

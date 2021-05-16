@@ -71,7 +71,8 @@ const int VERSION_PRERELEASE = 4;
 
 const char * getVersionString();
 
-using LogFunction = void (*)(const char *);
+using LogFunction = void (*)(int level, const char *);
+
 void setLogFunction(LogFunction f);
 
 struct MidiEvent {
