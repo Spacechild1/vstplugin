@@ -11,8 +11,32 @@ namespace rt {
     InterfaceTable* interfaceTable;
 }
 
-void SCLog(const char *s){
-    Print("%s", s);
+// TODO: Multiple Server instances would mutually override the verbosity...
+// In practice, this is not a big issue because people mostly use a single Server per process.
+static std::atomic<int> gVerbosity{0};
+
+void setVerbosity(int verbosity){
+    gVerbosity.store(verbosity);
+}
+
+int getVerbosity(){
+    return gVerbosity.load(std::memory_order_relaxed);
+}
+
+void SCLog(int level, const char *s){
+    // verbosity 0: print everything
+    // verbosity -1: only errors
+    // verbosity -2: nothing
+    auto verbosity = getVerbosity();
+    if (verbosity >= 0 || (verbosity == -1 && (level == 0))) {
+        if (level == 0){
+            Print("ERROR: %s", s);
+        } else if (level == 1) {
+            Print("WARNING: %s", s);
+        } else {
+            Print("%s", s);
+        }
+    }
 }
 
 void RTFreeSafe(World *world, void *data){
@@ -73,7 +97,7 @@ T* CmdData::create(World *world, int size) {
 bool CmdData::alive() const {
     auto b = owner->alive();
     if (!b) {
-        LOG_WARNING("WARNING: VSTPlugin freed during background task");
+        LOG_WARNING("VSTPlugin freed during background task");
         // see setOwner()
         owner->doClose();
     }
@@ -197,11 +221,11 @@ static void readIniFile(){
     ScopedLock lock(gFileLock);
     auto path = getSettingsDir() + "/" CACHE_FILE;
     if (pathExists(path)){
-        LOG_VERBOSE("read cache file " << path.c_str());
+        LOG_VERBOSE("read cache file " << path);
         try {
             gPluginDict.read(path);
         } catch (const Error& e){
-            LOG_ERROR("ERROR: couldn't read cache file: " << e.what());
+            LOG_ERROR("couldn't read cache file: " << e.what());
         }
     }
 }
@@ -244,7 +268,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     IFactory::ptr factory;
 
     if (gPluginDict.findFactory(path)) {
-        LOG_ERROR("ERROR: bug in 'loadFactory'");
+        LOG_ERROR("bug in 'loadFactory'");
         return nullptr;
     }
     if (gPluginDict.isException(path)) {
@@ -258,7 +282,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
         factory = IFactory::load(path);
     } catch (const Error& e){
         // always print error
-        Print("ERROR: couldn't load '%s': %s\n", path.c_str(), e.what());
+        LOG_ERROR("couldn't load '" << path << "': " << e.what());
         gPluginDict.addException(path);
         return nullptr;
     }
@@ -314,7 +338,9 @@ static IFactory::ptr probePlugin(const std::string& path,
         return nullptr;
     }
 
-    if (verbose) Print("probing %s... ", path.c_str());
+    if (verbose) {
+        Print("probing %s... ", path.c_str());
+    }
 
     try {
         factory->probe([&](const ProbeResult& result) {
@@ -456,18 +482,16 @@ static const PluginDesc* queryPlugin(std::string path) {
         // try as file path
         auto absPath = resolvePath(path);
         if (absPath.empty()){
-            Print("'%s' is neither an existing plugin name "
-                    "nor a valid file path.\n", path.c_str());
+            LOG_WARNING("'" << path << "' is neither an existing plugin name nor a valid file path.");
         } else if (!(desc = gPluginDict.findPlugin(absPath))){
             // finally probe plugin
-            if (probePlugin(absPath, 0, true)) {
+            if (probePlugin(absPath, 0, getVerbosity() >= 0)) {
                 desc = gPluginDict.findPlugin(absPath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
                 if (!desc){
-                    Print("'%s' contains more than one plugin. "
-                            "Please perform a search and open the desired "
-                            "plugin by its name.\n", absPath.c_str());
+                    LOG_WARNING("'" << absPath << "' contains more than one plugin.\n"
+                                "Please perform a search and open the desired plugin by its name.");
                 }
             }
         }
@@ -479,7 +503,8 @@ static const PluginDesc* queryPlugin(std::string path) {
 
 std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float timeout,
                                                  bool parallel, bool verbose) {
-    Print("searching in '%s'...\n", path.c_str());
+    LOG_VERBOSE("searching in '" << path << "'...");
+
     std::vector<PluginDesc::const_ptr> results;
 
     auto addPlugin = [&](PluginDesc::const_ptr plugin, int which = 0, int n = 0){
@@ -520,9 +545,8 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float
                 auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
                 if (elapsed > 4.0){
                     for (auto& f : futures){
-                        Print("waiting for '%s'...\n", f.path().c_str());
+                        LOG_VERBOSE("waiting for '" << f.path() << "'...");
                     }
-                    // Print("...\n");
                     last = now;
                 }
             }
@@ -544,7 +568,8 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float
         auto factory = gPluginDict.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
-            if (verbose) Print("%s\n", pluginPath.c_str());
+            LOG_VERBOSE(pluginPath);
+
             auto numPlugins = factory->numPlugins();
             // add and post plugins
             if (numPlugins == 1) {
@@ -578,9 +603,9 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float
 
     int numResults = results.size();
     if (numResults == 1){
-        Print("found 1 plugin\n");
+        LOG_VERBOSE("found 1 plugin");
     } else {
-        Print("found %d plugins\n", numResults);
+        LOG_VERBOSE("found " << numResults << " plugins");
     }
     return results;
 }
@@ -1708,7 +1733,7 @@ void VSTPluginDelegate::open(const char *path, bool editor,
                              bool threaded, RunMode mode) {
     LOG_DEBUG("open");
     if (isLoading_) {
-        LOG_WARNING("already loading!");
+        LOG_WARNING("VSTPlugin: already loading!");
         sendMsg("/vst_open", 0);
         return;
     }
@@ -1720,13 +1745,13 @@ void VSTPluginDelegate::open(const char *path, bool editor,
     doClose();
     if (plugin_) {
         // shouldn't happen...
-        LOG_ERROR("ERROR: couldn't close current plugin!");
+        LOG_ERROR("couldn't close current plugin!");
         sendMsg("/vst_open", 0);
         return;
     }
 #ifdef SUPERNOVA
     if (threaded){
-        LOG_WARNING("WARNING: multiprocessing option ignored on Supernova!");
+        LOG_WARNING("multiprocessing option ignored on Supernova!");
         threaded = false;
     }
 #endif
@@ -1796,15 +1821,15 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     // move the plugin even if alive() returns false
     plugin_ = std::move(cmd.plugin);
     if (!alive()) {
-        LOG_WARNING("WARNING: VSTPlugin freed during 'open'");
+        LOG_WARNING("VSTPlugin freed during 'open'");
         // properly release the plugin
         doClose();
         return; // !
     }
     if (plugin_){
         if (!plugin_->info().hasPrecision(ProcessPrecision::Single)) {
-            LOG_WARNING("WARNING: '" << plugin_->info().name <<
-                "' doesn't support single precision processing - bypassing!");
+            LOG_WARNING("'" << plugin_->info().name
+                        << "' doesn't support single precision processing - bypassing!");
         }
         LOG_DEBUG("opened " << cmd.path);
         // setup data structures
@@ -2135,7 +2160,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
             }, data->owner->hasEditor());
         }
     } catch (const Error& e) {
-        Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
+        LOG_ERROR("couldn't read " << (bank ? "bank: " : "program: ") << e.what());
         result = false;
     }
     data->result = result;
@@ -2159,7 +2184,7 @@ bool cmdReadPresetDone(World *world, void *cmdData){
             else
                 owner->plugin()->readProgramData(data->buffer);
         } catch (const Error& e){
-            Print("ERROR: couldn't read %s: %s\n", (bank ? "bank" : "program"), e.what());
+            LOG_ERROR("couldn't read " << (bank ? "bank: " : "program: ") << e.what());
             data->result = 0;
         }
     }
@@ -2247,7 +2272,7 @@ bool cmdWritePreset(World *world, void *cmdData){
             allocReadBuffer(sndbuf, buffer);
         }
     } catch (const Error & e) {
-        Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
+        LOG_ERROR("couldn't write " << (bank ? "bank: " : "program: ") << e.what());
         result = false;
     }
     data->result = result;
@@ -2291,7 +2316,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
                     plugin_->writeProgramData(data->buffer);
                 }
             } catch (const Error& e){
-                Print("ERROR: couldn't write %s: %s\n", (bank ? "bank" : "program"), e.what());
+                LOG_ERROR("couldn't write " << (bank ? "bank: " : "program: ") << e.what());
                 goto fail;
             }
         }
@@ -2524,6 +2549,8 @@ void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
 /*** unit command callbacks ***/
 
 void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
+    setVerbosity(unit->mWorld->mVerbosity);
+
     const char *path = args->gets();
     auto editor = args->geti();
     auto threaded = args->geti();
@@ -2906,7 +2933,8 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     // search for plugins
     for (auto& path : searchPaths) {
         if (gSearching){
-            auto result = searchPlugins(path, timeout, parallel, verbose);
+            auto result = searchPlugins(path, timeout, parallel,
+                                        (verbose && getVerbosity() >= 0));
             plugins.insert(plugins.end(), result.begin(), result.end());
         } else {
             save = false; // don't update cache file
@@ -2965,6 +2993,8 @@ bool cmdSearchDone(World *inWorld, void *cmdData) {
 }
 
 void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
+    setVerbosity(inWorld->mVerbosity);
+
     if (gSearching) {
         LOG_WARNING("already searching!");
         return;
@@ -2999,7 +3029,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             paths[i].second = len;
             pathLen += len;
         } else {
-            LOG_ERROR("ERROR: wrong number of search paths!");
+            LOG_ERROR("wrong number of search paths!");
             numPaths--;
         }
     }
@@ -3071,8 +3101,7 @@ bool cmdProbe(World *inWorld, void *cmdData) {
             else {
                 LOG_ERROR("couldn't write plugin info file '" << data->path << "'!");
             }
-        }
-        else if (data->bufnum >= 0) {
+        } else if (data->bufnum >= 0) {
             // write to buffer
             auto buf = World_GetNRTBuf(inWorld, data->bufnum);
             data->freeData = buf->data; // to be freed in stage 4
@@ -3096,6 +3125,8 @@ bool cmdProbeDone(World* inWorld, void* cmdData) {
 }
 
 void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
+    setVerbosity(inWorld->mVerbosity);
+
     if (gSearching) {
         LOG_WARNING("currently searching!");
         return;
@@ -3140,7 +3171,7 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 /*** plugin entry point ***/
 
 void VSTPlugin_Ctor(VSTPlugin* unit){
-    new(unit)VSTPlugin();
+    new (unit) VSTPlugin();
 }
 
 void VSTPlugin_Dtor(VSTPlugin* unit){
@@ -3229,7 +3260,8 @@ PluginLoad(VSTPlugin) {
 
     setLogFunction(SCLog);
 
-    Print("VSTPlugin %s\n", getVersionString());
+    LOG_VERBOSE("VSTPlugin " << getVersionString());
+
     // read cached plugin info
     readIniFile();
 }
