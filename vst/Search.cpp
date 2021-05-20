@@ -244,15 +244,20 @@ std::string find(const std::string &dir, const std::string &path){
     };
     return std::string{};
 #else // USE_STDFS
-    std::string result;
-    // force no trailing slash
-    auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
+    auto root = dir;
+    // remove trailing slashes
+    while (!root.empty() && root.back() == '/') {
+        root.pop_back();
+    }
 
-    std::string file = root + "/" + relpath;
+    auto file = root + "/" + relpath;
     if (pathExists(file)){
         return file; // success
     }
+
     // continue recursively
+    std::string result;
+
     std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
         DIR *directory = opendir(dirname.c_str());
         if (directory){
@@ -273,7 +278,9 @@ std::string find(const std::string &dir, const std::string &path){
             closedir(directory);
         }
     };
+
     searchDir(root);
+
     return result;
 #endif // USE_STDFS
 }
@@ -320,8 +327,6 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
     };
     searchDir(widen(dir));
 #else // USE_STDFS
-    // force no trailing slash
-    auto root = (dir.back() == '/') ? dir.substr(0, dir.size() - 1) : dir;
     std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {
         // LOG_DEBUG("searching in " << dirname);
         // search alphabetically (ignoring case)
@@ -350,6 +355,13 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
             free(dirlist);
         }
     };
+
+    auto root = dir;
+    // removing trailing slashes
+    while (!root.empty() && root.back() == '/') {
+        root.pop_back();
+    }
+
     searchDir(root);
 #endif // USE_STDFS
 }
