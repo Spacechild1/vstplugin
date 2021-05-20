@@ -100,10 +100,9 @@ struct PresetCmdData : CmdData {
 };
 
 namespace SearchFlags {
-    const int useDefault = 1;
-    const int verbose = 2;
-    const int save = 4;
-    const int parallel = 8;
+    const int verbose = 1;
+    const int save = 2;
+    const int parallel = 4;
 }
 
 struct SearchCmdData {

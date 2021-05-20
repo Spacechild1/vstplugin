@@ -2908,16 +2908,14 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     auto data = (SearchCmdData *)cmdData;
     std::vector<PluginDesc::const_ptr> plugins;
     float timeout = data->timeout;
-    bool useDefault = data->flags & SearchFlags::useDefault;
     bool verbose = data->flags & SearchFlags::verbose;
     bool save = data->flags & SearchFlags::save;
     bool parallel = data->flags & SearchFlags::parallel;
     std::vector<std::string> searchPaths;
-    auto size = data->size;
     auto ptr = data->buf;
     auto onset = ptr;
-    // file paths are seperated by 0
-    while (size--) {
+    // file paths are seperated by '\0'
+    for (int i = 0; i < data->size; ++i) {
         if (*ptr++ == '\0') {
             auto diff = ptr - onset;
             searchPaths.emplace_back(onset, diff - 1); // don't store '\0'!
@@ -2925,7 +2923,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         }
     }
     // use default search paths?
-    if (useDefault) {
+    if (searchPaths.empty()) {
         for (auto& path : getDefaultSearchPaths()) {
             searchPaths.push_back(path);
         }

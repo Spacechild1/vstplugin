@@ -93,20 +93,21 @@ Arguments:
 | type       ||
 | ---------- |-|
 | int        | a bitset of options (see below)
-| int/string | where to write the search results; either a buffer number or a file path. -1 means don't write results.
-| string...  | (optional) user supplied search paths
+| int/string | where to write the search results; either a buffer number or a file path; -1 means don't write results.
+| float      | timeout (the time to wait for each plugin before it is regarded as stuck and ignored); 0.0 means no timeout.
+| int        | the number of user supplied search paths; 0 means none.
+| string...  | (optional) list of user supplied search paths
 
 This will search the given paths recursively for VST plugins, probe them, and write the results to a file or buffer. Valid plugins are stored in a server-side plugin dictionary. If no plugin could be found, the buffer or file will be empty.
 
 The following options can be combined with a bitwise OR operation:
 | value ||
 | ----- |-|
-| 0x1   | use standard VST paths, see below.
-| 0x2   | verbose (print plugin paths and probe results)
-| 0x4   | add search results to cache file.
-| 0x8   | probe in parallel (faster, but might cause audio dropouts because of full CPU utilization)
+| 0x1   | verbose (print plugin paths and probe results)
+| 0x2   | add search results to cache file.
+| 0x4   | probe in parallel (faster, but might cause audio dropouts because of full CPU utilization)
 
-The standard VST search paths are:
+If there are no user supplied search paths, the standard VST search paths are used instead:
 
 - VST 2.x
   - Windows

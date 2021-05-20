@@ -71,7 +71,7 @@ VSTPlugin : MultiOutUGen {
 		this.deprecated(thisMethod, this.class.findMethod(\clear));
 		this.clear(server);
 	}
-	*search { arg server, dir, useDefault=true, verbose=true, wait = -1, action, save=true, parallel=true, timeout=nil;
+	*search { arg server, dir, options, verbose=true, wait = -1, action;
 		server = server ?? Server.default;
 		server.serverRunning.not.if {
 			"VSTPlugin.search requires the Server to be running!".warn;
@@ -80,28 +80,44 @@ VSTPlugin : MultiOutUGen {
 		};
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prSearchLocal(server, dir, useDefault, verbose, save, parallel, timeout, action) }
-		{ this.prSearchRemote(server, dir, useDefault, verbose, save, parallel, timeout, wait, action) };
+		server.isLocal.if { this.prSearchLocal(server, dir, options, verbose, action) }
+		{ this.prSearchRemote(server, dir, options, verbose, wait, action) };
 	}
-	*searchMsg { arg dir, useDefault=true, verbose=false, save=true, parallel=true, dest=nil, timeout=nil;
-		var flags = 0;
+	*searchMsg { arg dir, options, verbose=false, dest=nil;
+		var flags = 0, timeout, save = true, parallel = true;
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { MethodError("bad type % for 'dir' argument!".format(dir.class), this).throw };
 		dir = dir.collect({ arg p; p.asString.standardizePath});
+		// parse options
+		options.notNil.if {
+			// make sure that options is really an dictionary!
+			// this helps to catch errors with existing code because
+			// 'useDefault' has been replaced by 'options' in VSTPlugin v0.5
+			options.isKindOf(IdentityDictionary).not.if {
+				MethodError("bad type % for 'options' argument!".format(options.class), this).throw
+			};
+			options.keysValuesDo { arg key, value;
+				switch(key,
+					\save, { save = value.asBoolean },
+					\parallel, { parallel = value.asBoolean },
+					\timeout, { timeout = value !? { value.asFloat } },
+					{ MethodError("unknown option '%'".format(key), this).throw; }
+				)
+			}
+		};
 		// make flags
-		[useDefault, verbose, save, parallel].do { arg value, bit;
+		[verbose, save, parallel].do { arg value, bit;
 			flags = flags | (value.asBoolean.asInteger << bit);
 		};
-		timeout = timeout !? { timeout.asFloat } ?? 0.0;
 		dest = this.prMakeDest(dest); // nil -> -1 = don't write results
-		^['/cmd', '/vst_search', flags, dest, timeout, dir.size] ++ dir;
+		^['/cmd', '/vst_search', flags, dest, timeout ?? 0.0, dir.size] ++ dir;
 	}
-	*prSearchLocal { arg server, dir, useDefault, verbose, save, parallel, timeout, action;
+	*prSearchLocal { arg server, dir, options, verbose, action;
 		{
 			var stream, dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask VSTPlugin to store the search results in a temp file
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, tmpPath, timeout));
+			server.listSendMsg(this.searchMsg(dir, options, verbose, tmpPath));
 			// wait for cmd to finish
 			server.sync;
 			// read file
@@ -121,13 +137,13 @@ VSTPlugin : MultiOutUGen {
 			action.value;
 		}.forkIfNeeded;
 	}
-	*prSearchRemote { arg server, dir, useDefault, verbose, save, parallel, timeout, wait, action;
+	*prSearchRemote { arg server, dir, options, verbose, wait, action;
 		{
 			var dict = pluginDict[server];
 			var buf = Buffer(server); // get free Buffer
 			// ask VSTPlugin to store the search results in this Buffer
 			// (it will allocate the memory for us!)
-			server.listSendMsg(this.searchMsg(dir, useDefault, verbose, save, parallel, buf, timeout));
+			server.listSendMsg(this.searchMsg(dir, options, verbose, buf));
 			// wait for cmd to finish and update buffer info
 			server.sync;
 			buf.updateInfo({

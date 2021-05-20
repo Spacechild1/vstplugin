@@ -17,6 +17,8 @@ PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote,
 METHOD:: ar
 create a UGen instance.
 
+note::The method signature has changed in v0.5!::
+
 ARGUMENT:: input
 The UGen inputs for the plugin to process.
 
@@ -238,14 +240,17 @@ SUBSECTION:: Searching for plugins
 METHOD:: search
 Scan a local or remote Server for VST plugins and cache the info in the Client.
 
+note::The method signature has changed in v0.5!::
+
 ARGUMENT:: server
-The server to scan for plugins. If the argument is code::nil::, the default Server is used.
+The server to scan for plugins. If code::nil::, the default Server is used.
 
 ARGUMENT:: dir
-An optional Array of directories to search.
 
-ARGUMENT:: useDefault
-Whether to search in the default paths, which currently are:
+an (optional) Array of custom plugin directories.
+
+If code::nil::, the standard VST search paths are used:
+
 table::
 ## VST 2.x ||
 table::
@@ -284,11 +289,35 @@ table::
 
 note::here, emphasis::%ProgramFiles%:: stands for "C:\Program Files" on a 64 bit Server and "C:\Program Files (x86)" on a 32 bit Server.::
 
-ARGUMENT:: verbose
-a Boolean telling if the Server should post a message for each VST plugin being found.
+ARGUMENT:: options
+an (optional) Event with advanced search options.
 
-The message shows the file path, name and probe result. Probing can fail if the file is
-not a VST plugin or if it has the wrong architecture (and cannot be "bridged").
+list::
+## code::\save:: (Boolean)
+
+write results to the cache file (default: true).
+
+## code::\parallel:: (Boolean)
+
+probe plugins in parallel (default: true).
+
+This can be significantly faster, but it can also make your computer almost unresponsive for the duration of the search because of the full CPU utilization.
+
+## code::\timeout:: (Float)
+
+the number of seconds to wait for a single plugin before it is regarded as being stuck and ignored; default is code::nil:: (= no timeout).
+
+::
+
+Example:
+code::
+VSTPlugin.search(options: ( timeout: 20, parallel: false, save: false ))
+::
+
+ARGUMENT:: verbose
+post a message for each found plugin.
+
+The message contains the file path, name and probe result ("ok" or error message).
 
 ARGUMENT:: wait
 The wait time between OSC messages.
@@ -300,23 +329,7 @@ The wait time between OSC messages.
 note::This is only relevant for remote Servers (local Servers will send the plugin description via temp files).::
 
 ARGUMENT:: action
-an action to be called after the search has finished.
-
-ARGUMENT:: save
-whether the search results should be written to the cache file.
-
-ARGUMENT:: parallel
-whether plugins should be probed in parallel. This can be significantly faster, but it can also make your computer almost unresponsive for the duration of the search (because of the high CPU load).
-
-NOTE::
-Shell plugins like "Waves" are always probed in parallel for performance reasons.
-::
-
-ARGUMENT:: timeout
-the number of seconds to wait for a single plugin before it is regarded as being stuck and ignored. code::nil:: means no timeout (= default).
-
-If certain plugins seem to get stuck during the search, you can try to set a timeout, so the (next) search can complete. warning::Don't set it too low, or you might get false positives!::
-
+a function to be called after the search has finished.
 
 DISCUSSION::
 Directories are searched recursively. For each valid VST plugin, the information is stored in a dictionary on the Client
@@ -341,13 +354,9 @@ METHOD:: searchMsg
 
 ARGUMENT:: dir
 (see above)
-ARGUMENT:: useDefault
+ARGUMENT:: options
 (see above)
 ARGUMENT:: verbose
-(see above)
-ARGUMENT:: save
-(see above)
-ARGUMENT:: parallel
 (see above)
 ARGUMENT:: dest
 
@@ -359,15 +368,14 @@ b) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
 on the Server, the Client can then read the data (each float representing a single byte) and free the Buffer.
 The Buffer should be initially empty!
 
-ARGUMENT:: timeout
-(see above)
 
 RETURNS:: the message for a emphasis::search:: command (see link::#*search::).
 
 DISCUSSION::
 
 Sending the message to the Server will emphasis::not:: update any info in the Client!
-Useful for NRT synthesis.
+Mostly useful for NRT synthesis.
+
 
 METHOD:: stopSearch
 Stop a running search.
