@@ -374,7 +374,8 @@ private:
 };
 
 // recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path.
-void search(const std::string& dir, std::function<void(const std::string&)> fn, bool filter = true);
+void search(const std::string& dir, std::function<void(const std::string&)> fn,
+            bool filterByExtension = true, const std::vector<std::string>& excludePaths = {});
 
 // recursively search 'dir' for a VST plugin. returns empty string on failure
 std::string find(const std::string& dir, const std::string& path);

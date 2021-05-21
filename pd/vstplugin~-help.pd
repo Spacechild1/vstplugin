@@ -727,8 +727,8 @@ to build your own preset management in Pd:, f 49;
 #X f 17;
 #X msg 216 310 print;
 #N canvas 518 40 824 681 search 0;
-#X obj 18 624 s \$0-msg;
-#X msg 72 487 info;
+#X obj 18 655 s \$0-msg;
+#X msg 78 533 info;
 #X text 455 234 ~/Library/Audio/Plug-Ins/VST /Library/Audio/Plug-Ins/VST
 , f 33;
 #X text 456 84 %ProgramFiles%/VSTPlugins %ProgramFiles%/Steinberg/VSTPlugins
@@ -783,24 +783,24 @@ to build your own preset management in Pd:, f 49;
 #X msg 19 386 info bridged <f>;
 #X text 132 363 has sysex output (0|1);
 #X text 131 386 is bridged (0|1);
-#X restore 308 542 pd info;
-#X text 111 486 get info about currently loaded plugin;
-#X msg 61 404 search_clear;
-#X text 151 404 clear the plugin dictionary;
-#X msg 76 535 info \$1;
-#X symbolatom 76 513 16 0 0 0 - - -;
+#X restore 314 588 pd info;
+#X text 117 532 get info about currently loaded plugin;
+#X msg 72 459 search_clear;
+#X text 162 459 clear the plugin dictionary;
+#X msg 82 581 info \$1;
+#X symbolatom 82 559 16 0 0 0 - - -;
 #X msg 18 131 search;
 #X msg 25 201 search <l>;
 #X msg 31 239 search -a;
-#X msg 67 433 search_clear 1;
-#X text 169 432 clear and delete cache file;
+#X msg 78 488 search_clear 1;
+#X text 180 487 clear and delete cache file;
 #X msg 43 348 search -n;
 #X text 111 349 search but don't update the cache file;
 #X obj 394 506 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
 #X text 398 509 NOTE:;
-#X msg 50 377 search_stop;
-#X text 132 376 stop the current (asynchronous) search;
+#X msg 61 432 search_stop;
+#X text 143 431 stop the current (asynchronous) search;
 #X text 48 152 responds with a series of;
 #X msg 209 152 plugin <key>;
 #X text 292 152 messages;
@@ -819,7 +819,7 @@ paths. Relative paths are resolved to the current patch directory.
 #X text 97 258 This prevents Pd from freezing until the search has
 finished and you can see the progress in the console., f 41;
 #X text 98 239 search asynchronously.;
-#X text 136 537 the info method will output the following messages:
+#X text 142 583 the info method will output the following messages:
 , f 27;
 #X text 17 59 Whitespace in names is replaced by underscores.;
 #X text 16 78 Search results are stored in a cache file \, so you only
@@ -866,12 +866,15 @@ bad plugins without crashing Pd., f 67;
 #X msg 36 305 search -t 10;
 #X text 124 302 Set a timeout (in seconds) for each plugin \, after
 which it is regarded as stuck and ignored. Use with care!, f 38;
-#X msg 87 575 plugin_list;
-#X text 316 591 messages;
-#X msg 233 591 plugin <key>;
-#X text 169 574 output all cached plugins as a, f 31;
-#X text 169 591 series of;
-#X text 180 513 get info about any plugin;
+#X msg 93 621 plugin_list;
+#X text 322 637 messages;
+#X msg 239 637 plugin <key>;
+#X text 175 620 output all cached plugins as a, f 31;
+#X text 175 637 series of;
+#X text 186 559 get info about any plugin;
+#X msg 49 377 search -x <path>, f 17;
+#X msg 55 404 search -x <path1> -x <path2>;
+#X text 170 376 exclude a subfolder or file;
 #X connect 1 0 0 0;
 #X connect 14 0 0 0;
 #X connect 16 0 0 0;
@@ -884,6 +887,8 @@ which it is regarded as stuck and ignored. Use with care!, f 38;
 #X connect 27 0 0 0;
 #X connect 66 0 0 0;
 #X connect 68 0 0 0;
+#X connect 74 0 0 0;
+#X connect 75 0 0 0;
 #X restore 394 525 pd search;
 #X f 14;
 #X text 392 503 search + info;

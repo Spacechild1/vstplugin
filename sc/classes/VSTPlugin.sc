@@ -84,10 +84,11 @@ VSTPlugin : MultiOutUGen {
 		{ this.prSearchRemote(server, dir, options, verbose, wait, action) };
 	}
 	*searchMsg { arg dir, options, verbose=false, dest=nil;
-		var flags = 0, timeout, save = true, parallel = true;
+		var flags = 0, timeout, save = true, parallel = true, exclude;
+		// search directories
 		dir.isString.if { dir = [dir] };
 		(dir.isNil or: dir.isArray).not.if { MethodError("bad type % for 'dir' argument!".format(dir.class), this).throw };
-		dir = dir.collect({ arg p; p.asString.standardizePath});
+		dir = dir.collect({ arg p; p.asString.standardizePath });
 		// parse options
 		options.notNil.if {
 			// make sure that options is really an dictionary!
@@ -101,16 +102,21 @@ VSTPlugin : MultiOutUGen {
 					\save, { save = value.asBoolean },
 					\parallel, { parallel = value.asBoolean },
 					\timeout, { timeout = value !? { value.asFloat } },
+					\exclude, { exclude = value },
 					{ MethodError("unknown option '%'".format(key), this).throw; }
 				)
 			}
 		};
+		// exclude directories
+		exclude.isString.if { exclude = [exclude] };
+		(exclude.isNil or: exclude.isArray).not.if { MethodError("bad type % for 'exclude' argument!".format(exclude.class), this).throw };
+		exclude = exclude.collect({ arg p; p.asString.standardizePath });
 		// make flags
 		[verbose, save, parallel].do { arg value, bit;
 			flags = flags | (value.asBoolean.asInteger << bit);
 		};
 		dest = this.prMakeDest(dest); // nil -> -1 = don't write results
-		^['/cmd', '/vst_search', flags, dest, timeout ?? 0.0, dir.size] ++ dir;
+		^['/cmd', '/vst_search', flags, dest, timeout ?? 0.0, dir.size] ++ dir ++ exclude.size ++ exclude;
 	}
 	*prSearchLocal { arg server, dir, options, verbose, action;
 		{

@@ -21,6 +21,7 @@ namespace fs = std::experimental::filesystem;
 
 #include <unordered_set>
 #include <cstring>
+#include <algorithm>
 
 namespace vst {
 
@@ -180,7 +181,7 @@ const char * getWineFolder(){
 
 #if !USE_STDFS
 // helper function
-static bool isDirectory(const std::string& dir, dirent *entry){
+static bool isDirectory(const std::string& fullPath, dirent *entry){
     // we don't count "." and ".."
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0){
         return false;
@@ -194,8 +195,7 @@ static bool isDirectory(const std::string& dir, dirent *entry){
 #endif
     {
         struct stat stbuf;
-        std::string path = dir + "/" + entry->d_name;
-        if (stat(path.c_str(), &stbuf) == 0){
+        if (stat(fullPath.c_str(), &stbuf) == 0){
             return S_ISDIR(stbuf.st_mode);
         }
     }
@@ -263,15 +263,15 @@ std::string find(const std::string &dir, const std::string &path){
         if (directory){
             struct dirent *entry;
             while (result.empty() && (entry = readdir(directory))){
-                if (isDirectory(dirname, entry)){
-                    std::string d = dirname + "/" + entry->d_name;
-                    std::string absPath = d + "/" + relpath;
-                    if (pathExists(absPath)){
-                        result = absPath;
+                std::string dir = dirname + "/" + entry->d_name;
+                if (isDirectory(dir, entry)){
+                    std::string fullPath = dir + "/" + relpath;
+                    if (pathExists(fullPath)){
+                        result = fullPath;
                         break;
                     } else {
                         // search directory
-                        searchDir(d);
+                        searchDir(dir);
                     }
                 }
             }
@@ -285,12 +285,76 @@ std::string find(const std::string &dir, const std::string &path){
 #endif // USE_STDFS
 }
 
+#if USE_STDFS
+
+class PathList {
+public:
+    PathList(const std::vector<std::string>& paths){
+        for (auto& path : paths){
+            paths_.emplace_back(widen(path));
+        }
+    }
+    bool contains(const fs::path& path) const {
+        std::error_code e;
+        return std::find_if(paths_.begin(), paths_.end(), [&](auto& p){
+            return fs::equivalent(p, path, e);
+        }) != paths_.end();
+    }
+    bool contains(const std::string& path) const {
+        return contains(fs::path(widen(path)));
+    }
+private:
+    std::vector<fs::path> paths_;
+};
+
+#else
+
+class PathList {
+public:
+    PathList(const std::vector<std::string>& paths){
+        for (auto& path : paths){
+            struct stat buf;
+            if (stat(path.c_str(), &buf) == 0){
+                paths_.emplace_back(buf.st_ino);
+            }
+        }
+    }
+    bool contains(const std::string& path) const {
+        struct stat buf;
+        if (stat(path.c_str(), &buf) == 0){
+            return contains(buf.st_ino);
+        } else {
+            return false;
+        }
+    }
+    bool contains(struct dirent *dir) const {
+        return contains(dir->d_ino);
+    }
+private:
+    bool contains(ino_t inode) const {
+        return std::find_if(paths_.begin(), paths_.end(), [&](auto& in){
+            return in == inode;
+        }) != paths_.end();
+    }
+    std::vector<ino_t> paths_;
+};
+
+#endif
+
 // recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full absolute path.
-void search(const std::string &dir, std::function<void(const std::string&)> fn, bool filter) {
+void search(const std::string &dir, std::function<void(const std::string&)> fn,
+            bool filterByExtension, const std::vector<std::string>& excludePaths) {
     if (!pathExists(dir)){
         LOG_DEBUG("search: '" << dir << "' doesn't exist");
         return;
     }
+
+    PathList excludeList(excludePaths);
+    if (excludeList.contains(dir)){
+        LOG_DEBUG("search: ignore '" << dir << "'");
+        return;
+    }
+
 #if USE_STDFS
   #ifdef _WIN32
     std::function<void(const std::wstring&)>
@@ -309,15 +373,21 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
             fs::directory_iterator iter(dirname, options);
         #endif
             for (auto& entry : iter) {
+                auto& path = entry.path();
+
+                if (excludeList.contains(path)){
+                    LOG_DEBUG("search: ignore '" << path.u8string() << "'");
+                    continue;
+                }
+
                 // check the extension
-                auto path = entry.path();
                 if (hasPluginExtension(path.u8string())){
                     // found a VST plugin file or bundle
                     fn(path.u8string());
                 } else if (fs::is_directory(path)){
                     // otherwise search it if it's a directory
                     searchDir(path);
-                } else if (!filter && fs::is_regular_file(path)){
+                } else if (!filterByExtension && fs::is_regular_file(path)){
                     fn(path.u8string());
                 }
             }
@@ -338,17 +408,22 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn, 
         if (n >= 0) {
             for (int i = 0; i < n; ++i) {
                 auto entry = dirlist[i];
-                std::string name(entry->d_name);
-                std::string absPath = dirname + "/" + name;
+                std::string path = dirname + "/" + entry->d_name;
+
+                if (excludeList.contains(entry)){
+                    LOG_DEBUG("search: ignore '" << path << "'");
+                    continue;
+                }
+
                 // check the extension
-                if (hasPluginExtension(absPath)){
+                if (hasPluginExtension(path)){
                     // found a VST2 plugin (file or bundle)
-                    fn(absPath);
-                } else if (isDirectory(dirname, entry)){
+                    fn(path);
+                } else if (isDirectory(path, entry)){
                     // otherwise search it if it's a directory
-                    searchDir(absPath);
-                } else if (!filter && isFile(absPath)){
-                    fn(absPath);
+                    searchDir(path);
+                } else if (!filterByExtension && isFile(path)){
+                    fn(path);
                 }
                 free(entry);
             }

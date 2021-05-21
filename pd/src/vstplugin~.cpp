@@ -631,8 +631,9 @@ std::vector<t_symbol *> makePluginList(const std::vector<PluginDesc::const_ptr>&
 #define PROBE_FUTURES 8
 
 template<bool async>
-static void searchPlugins(const std::string& path, float timeout,
-                          bool parallel, t_search_data *data){
+static void searchPlugins(const std::string& path, t_search_data *data){
+    bool parallel = data ? data->parallel : true;
+    float timeout = data ? data->timeout : 0.f;
     int count = 0;
 
     {
@@ -739,7 +740,8 @@ static void searchPlugins(const std::string& path, float timeout,
                 }
             }
         }
-    });
+    }, true, data->exclude);
+
     processFutures(0);
 
     if (count == 1){
@@ -1159,7 +1161,7 @@ template<bool async>
 static void vstplugin_search_do(t_search_data *x){
     for (auto& path : x->paths){
         if (!x->cancel){
-            searchPlugins<async>(path, x->timeout, x->parallel, x); // async
+            searchPlugins<async>(path, x); // async
         } else {
             break;
         }
@@ -1193,6 +1195,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     bool parallel = true; // for now, always do a parallel search
     bool update = true; // update cache file
     std::vector<std::string> paths;
+    std::vector<std::string> exclude;
 
     if (x->x_search_data){
         pd_error(x, "%s: already searching!", classname(x));
@@ -1212,6 +1215,17 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
                     timeout = argv->a_w.w_float;
                 } else {
                     pd_error(x, "%s: missing argument for -t flag", classname(x));
+                    return;
+                }
+            } else if (!strcmp(flag, "-x")){
+                argc--; argv++;
+                if (argc > 0 && argv->a_type == A_SYMBOL){
+                    auto sym = atom_getsymbol(argv);
+                    char path[MAXPDSTRING];
+                    canvas_makefilename(x->x_canvas, sym->s_name, path, MAXPDSTRING);
+                    exclude.push_back(path);
+                } else {
+                    pd_error(x, "%s: missing argument for -x flag", classname(x));
                     return;
                 }
             } else {
@@ -1242,6 +1256,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         auto data = new t_search_data();
         data->owner = x;
         data->paths = std::move(paths);
+        data->exclude = std::move(exclude);
         data->timeout = timeout;
         data->parallel = parallel;
         data->update = update;
@@ -1251,6 +1266,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         t_search_data data;
         data.owner = x;
         data.paths = std::move(paths);
+        data.exclude = std::move(exclude);
         data.timeout = timeout;
         data.parallel = parallel;
         data.update = update;
@@ -3370,7 +3386,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     if (search && !gDidSearch){
         for (auto& path : getDefaultSearchPaths()){
             // synchronous, parallel, no timeout
-            searchPlugins<false>(path, 0, true, nullptr);
+            searchPlugins<false>(path, nullptr);
         }
     #if 1
         writeIniFile(); // shall we write cache file?

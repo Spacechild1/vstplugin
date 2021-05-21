@@ -307,11 +307,14 @@ This can be significantly faster, but it can also make your computer almost unre
 
 the number of seconds to wait for a single plugin before it is regarded as being stuck and ignored; default is code::nil:: (= no timeout).
 
+## code::\exclude:: (Array)
+
+a list of directories or files to exclude from the search.
 ::
 
 Example:
 code::
-VSTPlugin.search(options: ( timeout: 20, parallel: false, save: false ))
+VSTPlugin.search(options: ( timeout: 20, parallel: false, save: false, exclude: [ "/plugin/dir/a", "/plugin/dir/b" ]))
 ::
 
 ARGUMENT:: verbose

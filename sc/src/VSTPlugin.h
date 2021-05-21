@@ -112,9 +112,13 @@ struct SearchCmdData {
     float timeout = 0.0;
     void* freeData = nullptr;
     char path[256];
-    // flexible array
-    int size = 0;
-    char buf[1];
+    int32 numSearchPaths = 0;
+    int32 numExcludePaths = 0;
+    // flexibel struct member
+    union {
+        char *pathList[1];
+        char pathBuf[1];
+    };
 };
 
 // This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.

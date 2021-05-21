@@ -501,8 +501,9 @@ static const PluginDesc* queryPlugin(std::string path) {
 
 #define PROBE_FUTURES 8
 
-std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float timeout,
-                                                 bool parallel, bool verbose) {
+std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
+                                                 const std::vector<std::string>& exclude,
+                                                 float timeout, bool parallel, bool verbose) {
     LOG_VERBOSE("searching in '" << path << "'...");
 
     std::vector<PluginDesc::const_ptr> results;
@@ -598,7 +599,8 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string & path, float
                 }
             }
         }
-    });
+    }, true, exclude);
+
     processFutures(0);
 
     int numResults = results.size();
@@ -2912,15 +2914,12 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     bool save = data->flags & SearchFlags::save;
     bool parallel = data->flags & SearchFlags::parallel;
     std::vector<std::string> searchPaths;
-    auto ptr = data->buf;
-    auto onset = ptr;
-    // file paths are seperated by '\0'
-    for (int i = 0; i < data->size; ++i) {
-        if (*ptr++ == '\0') {
-            auto diff = ptr - onset;
-            searchPaths.emplace_back(onset, diff - 1); // don't store '\0'!
-            onset = ptr;
-        }
+    for (int i = 0; i < data->numSearchPaths; ++i){
+        searchPaths.push_back(data->pathList[i]);
+    }
+    std::vector<std::string> excludePaths;
+    for (int i = 0; i < data->numExcludePaths; ++i){
+        excludePaths.push_back(data->pathList[data->numSearchPaths + i]);
     }
     // use default search paths?
     if (searchPaths.empty()) {
@@ -2931,7 +2930,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     // search for plugins
     for (auto& path : searchPaths) {
         if (gSearching){
-            auto result = searchPlugins(path, timeout, parallel,
+            auto result = searchPlugins(path, excludePaths, timeout, parallel,
                                         (verbose && getVerbosity() >= 0));
             plugins.insert(plugins.end(), result.begin(), result.end());
         } else {
@@ -2987,6 +2986,10 @@ bool cmdSearchDone(World *inWorld, void *cmdData) {
         syncBuffer(inWorld, data->bufnum);
     gSearching = false;
     // LOG_DEBUG("search done!");
+    auto n = data->numSearchPaths + data->numExcludePaths;
+    for (int i = 0; i < n; ++i){
+        RTFree(inWorld, data->pathList[i]);
+    }
     return true;
 }
 
@@ -3014,25 +3017,44 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     }
     // timeout
     float timeout = args->getf();
-    // collect optional search paths
-    constexpr size_t maxNumPaths = 64;
-    std::pair<const char *, size_t> paths[maxNumPaths];
-    int numPaths = std::min<int>(args->geti(), maxNumPaths);
-    size_t pathLen = 0;
-    for (int i = 0; i < numPaths; ++i) {
-        auto s = args->gets();
-        if (s) {
-            auto len = strlen(s) + 1; // include terminating '\0'
-            paths[i].first = s;
-            paths[i].second = len;
-            pathLen += len;
-        } else {
-            LOG_ERROR("wrong number of search paths!");
-            numPaths--;
-        }
-    }
+    // collect optional search and exclude paths
+    const int maxNumPaths = 256;
+    char *pathList[maxNumPaths];
+    int numPaths = 0;
 
-    SearchCmdData *data = CmdData::create<SearchCmdData>(inWorld, pathLen);
+    auto collectPaths = [&](){
+        int count = 0;
+        int n = std::min<int>(args->geti(), maxNumPaths - numPaths);
+        for (int i = 0; i < n; ++i) {
+            auto s = args->gets();
+            if (s) {
+                auto len = strlen(s) + 1;
+                auto path = (char *)RTAlloc(inWorld, len);
+                if (path){
+                    memcpy(path, s, len);
+                    pathList[numPaths++] = path;
+                    count++;
+                } else {
+                    LOG_ERROR("RTAlloc failed!");
+                    break;
+                }
+            } else {
+                LOG_ERROR("wrong number of paths!");
+                break;
+            }
+        }
+        return count;
+    };
+
+    int numSearchPaths = collectPaths();
+    LOG_DEBUG("search paths: " << numSearchPaths);
+
+    int numExcludePaths = collectPaths();
+    LOG_DEBUG("exclude paths: " << numExcludePaths);
+
+    assert(numPaths <= maxNumPaths);
+
+    SearchCmdData *data = CmdData::create<SearchCmdData>(inWorld, numPaths * sizeof(char *));
     if (data) {
         data->flags = flags;
         data->timeout = timeout;
@@ -3042,19 +3064,17 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
         } else {
             data->path[0] = '\0'; // empty path: use buffer
         }
-        // now copy search paths into a single buffer (separated by '\0')
-        data->size = pathLen;
-        auto ptr = data->buf;
-        for (int i = 0; i < numPaths; ++i) {
-            auto s = paths[i].first;
-            auto len = paths[i].second;
-            memcpy(ptr, s, len);
-            ptr += len;
-        }
+        data->numSearchPaths = numSearchPaths;
+        data->numExcludePaths = numExcludePaths;
+        memcpy(data->pathList, pathList, numPaths * sizeof(char *));
         // LOG_DEBUG("start search");
         gSearching = true; // before command dispatching! -> NRT mode
         DoAsynchronousCommand(inWorld, replyAddr, "vst_search", data,
             cmdSearch, cmdSearchDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
+    } else {
+        for (int i = 0; i < numPaths; ++i){
+            RTFree(inWorld, pathList[i]);
+        }
     }
 }
 
@@ -3086,7 +3106,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 // query plugin info
 bool cmdProbe(World *inWorld, void *cmdData) {
     auto data = (SearchCmdData *)cmdData;
-    auto desc = queryPlugin(data->buf);
+    auto desc = queryPlugin(data->pathBuf);
     // write info to file or buffer
     if (desc){
         if (data->path[0]) {
@@ -3159,7 +3179,7 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
             data->path[0] = '\0'; // empty path: use buffer
         }
 
-        memcpy(data->buf, path, size); // store plugin path
+        memcpy(data->pathBuf, path, size); // store plugin path
 
         DoAsynchronousCommand(inWorld, replyAddr, "vst_probe",
             data, cmdProbe, cmdProbeDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
