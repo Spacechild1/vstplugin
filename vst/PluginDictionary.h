@@ -23,6 +23,7 @@ class PluginDictionary {
     // plugin descriptions
     void addPlugin(const std::string& key, PluginDesc::const_ptr plugin);
     PluginDesc::const_ptr findPlugin(const std::string& key) const;
+    std::vector<PluginDesc::const_ptr> pluginList() const;
     // remove factories and plugin descriptions
     void clear();
     // (de)serialize

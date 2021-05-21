@@ -73,6 +73,23 @@ PluginDesc::const_ptr PluginDictionary::findPlugin(const std::string& key) const
     return nullptr;
 }
 
+std::vector<PluginDesc::const_ptr> PluginDictionary::pluginList() const {
+    ReadLock lock(mutex_);
+    // inverse mapping (plugin -> keys)
+    std::unordered_set<PluginDesc::const_ptr> pluginSet;
+    for (auto& plugins : plugins_){
+        for (auto& it : plugins){
+            pluginSet.insert(it.second);
+        }
+    }
+    std::vector<PluginDesc::const_ptr> plugins;
+    plugins.reserve(pluginSet.size());
+    for (auto& plugin : pluginSet){
+        plugins.push_back(plugin);
+    }
+    return plugins;
+}
+
 void PluginDictionary::clear() {
     WriteLock lock(mutex_);
     factories_.clear();
