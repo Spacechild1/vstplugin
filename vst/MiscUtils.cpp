@@ -133,9 +133,10 @@ std::string errorMessage(int err){
     buf[0] = 0;
     auto size = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err,
                                     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, 1000, NULL);
-    // omit trailing \r\n
-    if (size > 1 && buf[size-2] == '\r'){
-        buf[size-2] = 0;
+    // omit trailing newlines or carriage returns
+    auto ptr = buf + size - 1;
+    while (size-- && (*ptr == '\r' || *ptr == '\n')){
+        *ptr-- = '\0';
     }
     ss << shorten(buf);
 #else
