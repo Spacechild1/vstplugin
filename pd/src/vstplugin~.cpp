@@ -611,6 +611,23 @@ static FactoryFuture probePluginAsync(const std::string& path, float timeout){
     }
 }
 
+std::vector<t_symbol *> makePluginList(const std::vector<PluginDesc::const_ptr>& plugins){
+    std::vector<t_symbol *> result;
+    // convert plugin names to symbols
+    for (auto& plugin : plugins){
+        auto key = makeKey(*plugin);
+        bash_name(key);
+        result.push_back(gensym(key.c_str()));
+    }
+    // sort plugin symbols alphabetically and case independent
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs){
+        return vst::stringCompare(lhs->s_name, rhs->s_name);
+    });
+    // remove duplicates
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    return result;
+}
+
 #define PROBE_FUTURES 8
 
 template<bool async>
@@ -624,16 +641,14 @@ static void searchPlugins(const std::string& path, float timeout,
         PdLog<async> log(PD_NORMAL, "searching in '%s' ...", bashPath.c_str()); // destroy
     }
 
-    auto addPlugin = [&](const PluginDesc& plugin, int which = 0, int n = 0){
+    auto addPlugin = [&](PluginDesc::const_ptr plugin, int which = 0, int n = 0){
         if (data){
-            auto key = makeKey(plugin);
-            bash_name(key);
-            data->plugins.push_back(gensym(key.c_str()));
+            data->plugins.push_back(plugin);
         }
         // Pd's posting methods have a size limit, so we log each plugin seperately!
         if (n > 0){
             PdLog<async> log(PD_DEBUG, "\t[%d/%d] ", which + 1, n);
-            log << plugin.name;
+            log << plugin->name;
         }
         count++;
     };
@@ -651,7 +666,7 @@ static void searchPlugins(const std::string& path, float timeout,
                     // future finished
                     if (factory){
                         for (int i = 0; i < factory->numPlugins(); ++i){
-                            addPlugin(*factory->getPlugin(i));
+                            addPlugin(factory->getPlugin(i));
                         }
                     }
                     // remove future
@@ -690,15 +705,16 @@ static void searchPlugins(const std::string& path, float timeout,
         auto factory = gPluginDict.findFactory(pluginPath);
         if (factory){
             // just post paths of valid plugins
-            PdLog<async> log(PD_DEBUG, "%s", factory->path().c_str());
+            {
+                PdLog<async> log(PD_DEBUG, "%s", factory->path().c_str());
+            }
             auto numPlugins = factory->numPlugins();
             // post and add plugins
             if (numPlugins == 1){
-                addPlugin(*factory->getPlugin(0));
+                addPlugin(factory->getPlugin(0));
             } else {
-                consume(std::move(log)); // force
                 for (int i = 0; i < numPlugins; ++i){
-                    addPlugin(*factory->getPlugin(i), i, numPlugins);
+                    addPlugin(factory->getPlugin(i), i, numPlugins);
                 }
             }
             // make sure we have the plugin keys!
@@ -718,7 +734,7 @@ static void searchPlugins(const std::string& path, float timeout,
                 if ((factory = probePlugin<async>(pluginPath, timeout))){
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i){
-                        addPlugin(*factory->getPlugin(i));
+                        addPlugin(factory->getPlugin(i));
                     }
                 }
             }
@@ -1148,13 +1164,6 @@ static void vstplugin_search_do(t_search_data *x){
             break;
         }
     }
-    // sort plugin names alphabetically and case independent
-    auto& plugins = x->plugins;
-    std::sort(plugins.begin(), plugins.end(), [](const auto& lhs, const auto& rhs){
-        return vst::stringCompare(lhs->s_name, rhs->s_name);
-    });
-    // remove duplicates
-    plugins.erase(std::unique(plugins.begin(), plugins.end()), plugins.end());
 
     if (x->update && !x->cancel){
         writeIniFile(); // mutex protected
@@ -1169,7 +1178,8 @@ static void vstplugin_search_done(t_search_data *x){
     }
     x->owner->x_search_data = nullptr; // !
     verbose(PD_NORMAL, "search done");
-    for (auto& plugin : x->plugins){
+
+    for (auto& plugin : makePluginList(x->plugins)){
         t_atom msg;
         SETSYMBOL(&msg, plugin);
         outlet_anything(x->owner->x_messout, gensym("plugin"), 1, &msg);
@@ -1263,6 +1273,15 @@ static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
     }
         // clear the plugin description dictionary
     gPluginDict.clear();
+}
+
+static void vstplugin_plugin_list(t_vstplugin *x){
+    auto plugins = gPluginDict.pluginList();
+    for (auto& plugin : makePluginList(plugins)){
+        t_atom msg;
+        SETSYMBOL(&msg, plugin);
+        outlet_anything(x->x_messout, gensym("plugin"), 1, &msg);
+    }
 }
 
 // resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
@@ -3685,6 +3704,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search_stop, gensym("search_stop"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search_clear, gensym("search_clear"), A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_plugin_list, gensym("plugin_list"), A_NULL);
 
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_DEFFLOAT, A_NULL);

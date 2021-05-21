@@ -56,7 +56,7 @@ struct t_command_data {
 
 struct t_search_data : t_command_data<t_search_data> {
     std::vector<std::string> paths;
-    std::vector<t_symbol *> plugins;
+    std::vector<PluginDesc::const_ptr> plugins;
     float timeout;
     bool parallel;
     bool update;
