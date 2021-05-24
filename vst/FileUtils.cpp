@@ -11,8 +11,8 @@
 #endif
 
 #if USE_STDFS
-# include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
+# include <filesystem>
+namespace fs = std::filesystem;
 # ifndef _WIN32
 #  define widen(x) x
 # endif

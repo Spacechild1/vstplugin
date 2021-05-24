@@ -113,7 +113,7 @@ message(STATUS "LOGLEVEL: ${LOGLEVEL}")
 add_definitions(-DLOGLEVEL=${LOGLEVEL})
 
 # compiler flags
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
+if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_definitions(-fvisibility=hidden)
     # disable some warnings
     add_definitions(-Wno-unknown-pragmas -Wno-format-security)
@@ -150,13 +150,24 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
         add_definitions(-march=native)
     endif()
 
-    add_definitions("-std=c++14 -ffast-math -funroll-loops -fomit-frame-pointer")
+    if (STDFS)
+        add_definitions("-std=c++17")
+    else()
+        add_definitions("-std=c++14")
+    endif()
 
-    if(CMAKE_COMPILER_IS_CLANG)
+    add_definitions("-ffast-math -funroll-loops -fomit-frame-pointer")
+
+    if (CMAKE_COMPILER_IS_CLANG)
         add_definitions("-stdlib=libc++")
     endif()
 endif()
-if(MINGW)
+
+if (MSVC)
+    add_definitions("/std:c++17") # for std::filesystem
+endif()
+
+if (MINGW)
     set(CMAKE_CXX_COMPILER g++)
     add_definitions("-mstackrealign")
 endif()
@@ -215,8 +226,15 @@ if (LINUX)
     add_definitions(-DUSE_WINE=$<BOOL:${WINE}>)
 endif()
 
-if (STDFS AND (LINUX OR MINGW OR BUILD_WINE))
-    list(APPEND VST_LIBS "-lstdc++fs")
+if (STDFS)
+    # for GCC 9.1> and Clang 9.0>
+    if (CMAKE_COMPILER_IS_GNUCXX
+            AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.1))
+        list(APPEND VST_LIBS "-lstdc++fs")
+    elseif (CMAKE_COMPILER_IS_CLANG
+            AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0))
+        list(APPEND VST_LIBS "-lc++fs")
+    endif()
 endif()
 
 # platform specific linker flags

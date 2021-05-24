@@ -5,8 +5,8 @@
 #include "Log.h"
 
 #if USE_STDFS
-# include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
+# include <filesystem>
+namespace fs = std::filesystem;
 # ifndef _WIN32
 #  define widen(x) x
 # endif
@@ -345,7 +345,7 @@ private:
 void search(const std::string &dir, std::function<void(const std::string&)> fn,
             bool filterByExtension, const std::vector<std::string>& excludePaths) {
     if (!pathExists(dir)){
-        LOG_DEBUG("search: '" << dir << "' doesn't exist");
+        // LOG_DEBUG("search: '" << dir << "' doesn't exist");
         return;
     }
 
@@ -364,14 +364,8 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn,
     searchDir = [&](const auto& dirname){
         try {
             // LOG_DEBUG("searching in " << shorten(dirname));
-            // strangely, MSVC's directory_iterator doesn't take options
-            // LATER switch to C++17 and get rid of std::experimental
-        #ifdef _MSC_VER
-            fs::directory_iterator iter(dirname);
-        #else
             auto options = fs::directory_options::follow_directory_symlink;
             fs::directory_iterator iter(dirname, options);
-        #endif
             for (auto& entry : iter) {
                 auto& path = entry.path();
 
