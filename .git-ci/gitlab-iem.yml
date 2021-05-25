@@ -191,11 +191,16 @@ variables:
           cp ./w64/$x/host.exe ./w32/$x/host_amd64.exe
         ; done
       ; fi
-# copy Wine hosts to linux package
+# copy Wine hosts to Linux packages
     - if [ -e ./Linux ]; then
         for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
           [ -e ./Linux_wine ] && cp -r ./Linux_wine/${PDLIBNAME}/. ./Linux/${x};
           [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PDLIBNAME}/. ./Linux/${x}
+        ; done
+      ; fi
+    - if [ -e ./Linux_i386 ]; then
+        for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+          [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PDLIBNAME}/. ./Linux_i386/${x}
         ; done
       ; fi
 # HACK: remove Linux_wine folders because we don't want to package them
