@@ -39,6 +39,7 @@
 
 #include <sstream>
 #include <cstring>
+#include <unordered_map>
 
 namespace vst {
 

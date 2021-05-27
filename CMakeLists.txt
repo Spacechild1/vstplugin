@@ -272,7 +272,8 @@ endif()
 # vst library
 include_directories(vst)
 
-# don't build libvst when building the 32-bit wine host only!
+# always build 64-bit libvst except when we only
+# want to build the 32-bit wine host.
 if (BUILD_HOST OR NOT BUILD_WINE)
     set(LIBVST "vst")
     set(LIBS ${LIBVST} ${VST_LIBS})
@@ -287,7 +288,13 @@ add_subdirectory(vst)
 # host
 if (BUILD_HOST)
     if (BUILD_WINE)
-        set(HOST "host_amd64")
+        if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+            set(HOST "host_pe_amd64")
+        elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
+            set(HOST "host_pe_i386")
+        else()
+            message(FATAL_ERROR "unexpected value for CMAKE_SIZEOF_VOID_P")
+        endif()
     else()
         set(HOST "host")
     endif()
@@ -310,7 +317,11 @@ endif()
 if (BUILD_HOST32)
     message(STATUS "Build 32-bit host program")
     # is -m32 always Intel?
-    set(HOST32 "host_i386")
+    if (BUILD_WINE)
+        set(HOST32 "host_pe_i386")
+    else()
+        set(HOST32 "host_i386")
+    endif()
     add_executable(${HOST32} "vst/host.cpp")
     target_compile_options(${HOST32} PUBLIC "-m32")
     target_link_options(${HOST32} PUBLIC "-m32")
@@ -341,6 +352,7 @@ endif()
 
 # testsuite
 option(TESTSUITE "build test suite" ON)
-if (TESTSUITE)
+# HACK: make sure that libvst is available
+if (TESTSUITE AND LIBVST)
     add_subdirectory(test)
 endif()

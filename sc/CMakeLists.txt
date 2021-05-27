@@ -33,11 +33,11 @@ message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
 if (BUILD_WINE)
     # install wine hosts
     if (BUILD_HOST)
-        install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "host_pe_amd64"
+        install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "${HOST}"
             DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
     endif()
     if (BUILD_HOST32)
-        install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "host_pe_i386"
+        install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "${HOST32}"
             DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
     endif()
     # don't build UGens

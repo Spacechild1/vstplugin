@@ -12,7 +12,6 @@ variables:
   PDLIBNAME: vstplugin~
   SCLIBNAME: VSTPlugin
   BUILD_HOST: 1
-  TESTSUITE: 1
 
 ### script snippets
 
@@ -34,7 +33,6 @@ variables:
    -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST=${BUILD_HOST} -DBUILD_HOST32=${BUILD_HOST32}
    -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
    -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}"
-   -DTESTSUITE=${TESTSUITE}
 
 ### build snippets
 .script:make: &script_make
@@ -90,7 +88,6 @@ variables:
   variables:
     STATIC_LIBS: 1
     BUILD_WINE: 1
-    TESTSUITE: 0
   only:
     variables:
       - $JOBS == "all" || $JOBS == "wine"
