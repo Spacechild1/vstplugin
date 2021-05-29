@@ -358,7 +358,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         throw Error(Error::SystemError, ss.str());
     }
     auto wait = [pi, timeout, nonblocking](DWORD& code){
-        const DWORD timeoutms = (timeout > 0) ? timeout * 1000 : INFINITE;
+        // don't remove the DWORD cast!
+        const DWORD timeoutms = (timeout > 0) ? static_cast<DWORD>(timeout * 1000.f) : INFINITE;
         auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : timeoutms);
         if (res == WAIT_TIMEOUT){
             if (nonblocking){
