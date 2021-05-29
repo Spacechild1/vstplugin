@@ -170,32 +170,32 @@ VSTPlugin : MultiOutUGen {
 		server = server ?? Server.default;
 		server.listSendMsg(this.stopSearchMsg);
 	}
-	*stopSearchMsg { ^['/cmd', '/vst_search_stop']; }
-	*probe { arg server, path, key, wait = -1, action;
-		server = server ?? Server.default;
-		server.serverRunning.not.if {
-			"VSTPlugin.probe requires the Server to be running!".warn;
-			action.value;
-			^this;
-		};
-		path = path.asString.standardizePath;
+	*stopSearchMsg {
+		^['/cmd', '/vst_search_stop'];
+	}
+	*prQuery { arg server, path, wait = -1, action;
+		var info;
 		// add dictionary if it doesn't exist yet
 		pluginDict[server].isNil.if { pluginDict[server] = IdentityDictionary.new };
-		server.isLocal.if { this.prProbeLocal(server, path, key, action); }
-		{ this.prProbeRemote(server, path, key, wait, action); };
+		// if the key already exists, return the info;
+		// otherwise query the plugin and store it under the given key
+		info = pluginDict[server][path.asSymbol];
+		info.notNil.if {
+			action.value(info);
+		} {
+			server.isLocal.if { this.prQueryLocal(server, path, action) }
+			{ this.prQueryRemote(server, path, wait, action) }
+		}
 	}
-	*probeMsg { arg path, dest=nil;
-		path = path.asString.standardizePath;
-		dest = this.prMakeDest(dest);
-		// use remote probe (won't write to temp file)!
-		^['/cmd', '/vst_probe', path, dest];
+	*prQueryMsg { arg path, dest;
+		^['/cmd', '/vst_query', path.asString.standardizePath, this.prMakeDest(dest)];
 	}
-	*prProbeLocal { arg server, path, key, action;
-		{
+	*prQueryLocal { arg server, path, action;
+		forkIfNeeded {
 			var stream, info, dict = pluginDict[server];
 			var tmpPath = this.prMakeTmpPath;
 			// ask server to write plugin info to tmp file
-			server.listSendMsg(this.probeMsg(path, tmpPath));
+			server.listSendMsg(this.prQueryMsg(path, tmpPath));
 			// wait for cmd to finish
 			server.sync;
 			// read file (only written if the plugin could be probed)
@@ -208,26 +208,22 @@ VSTPlugin : MultiOutUGen {
 				File.delete(tmpPath).not.if { ("Could not delete tmp file:" + tmpPath).warn };
 				stream.notNil.if {
 					info = VSTPluginDesc.prParse(stream).scanPresets;
-					// store under key
+					// store under key + path
 					this.prAddPlugin(dict, info.key, info);
-					// also store under resolved path and custom key
 					this.prAddPlugin(dict, path, info);
-					key !? {
-						this.prAddPlugin(dict, key, info);
-					}
 				};
 			};
 			// done (on fail, info is nil)
 			action.value(info);
-		}.forkIfNeeded;
+		};
 	}
-	*prProbeRemote { arg server, path, key, wait, action;
-		{
+	*prQueryRemote { arg server, path, wait, action;
+		forkIfNeeded {
 			var dict = pluginDict[server];
 			var buf = Buffer(server); // get free Buffer
 			// ask VSTPlugin to store the probe result in this Buffer
 			// (it will allocate the memory for us!)
-			server.listSendMsg(this.probeMsg(path, buf));
+			server.listSendMsg(this.prQueryMsg(path, buf));
 			// wait for cmd to finish and update buffer info
 			server.sync;
 			buf.updateInfo({
@@ -237,19 +233,15 @@ VSTPlugin : MultiOutUGen {
 					var info;
 					(string.size > 0).if {
 						info = VSTPluginDesc.prParse(CollStream.new(string)).scanPresets;
-						// store under key
+						// store under key + path
 						this.prAddPlugin(dict, info.key, info);
-						// also store under resolved path and custom key
 						this.prAddPlugin(dict, path, info);
-						key !? {
-							this.prAddPlugin(dict, key, info);
-						}
 					};
 					buf.free;
 					action.value(info); // done
 				});
 			});
-		}.forkIfNeeded;
+		}
 	}
 	*readPlugins {
 		var path, stream, dict = IdentityDictionary.new;
@@ -335,14 +327,6 @@ VSTPlugin : MultiOutUGen {
 		^n.collect {
 			VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
 		};
-	}
-	*prGetInfo { arg server, key, wait, action;
-		var info, dict = pluginDict[server];
-		key = key.asSymbol;
-		// if the key already exists, return the info.
-		// otherwise probe the plugin and store it under the given key
-		dict !? { info = dict[key] } !? { action.value(info) }
-		?? { this.probe(server, key, key, wait, action) };
 	}
 	*prMakeTmpPath {
 		^PathName.tmp +/+ "vst_" ++ UniqueID.next;

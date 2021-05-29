@@ -12,7 +12,7 @@ VSTPlugin also has class methods to scan a Server for plugins and cache the info
 
 CLASSMETHODS::
 
-PRIVATE:: prGetInfo, prProbeLocal, prProbeRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prAddPlugin, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, kr, platformExtension, reset
+PRIVATE:: prQuery, prQueryMsg, prQueryLocal, prQueryRemote, prSearchLocal, prSearchRemote, prMakeDest, prMakeTmpPath, prAddPlugin, prParseIni, prParseInfo, prGetLine, prParseCount, prParseKeyValuePair, kr, platformExtension, reset
 
 METHOD:: ar
 create a UGen instance.
@@ -390,53 +390,6 @@ METHOD:: stopSearchMsg
 
 RETURNS:: the message for a emphasis::stopSearch:: command (see link::#*stopSearch::).
 
-METHOD:: probe
-Probe a single VST plugin.
-
-ARGUMENT:: server
-the Server. If code::nil::, the default Server is assumed.
-
-ARGUMENT:: path
-the plugin file path.
-
-ARGUMENT:: key
-an (optional) additional key under which the plugin description is stored.
-
-ARGUMENT:: wait
-the wait time, see link::#*search::.
-
-ARGUMENT:: action
-an action to be evaluated after the search has finished.
-On success, a link::Classes/VSTPluginDesc:: instances is passed, otherwise the argument is code::nil::.
-
-DISCUSSION::
-
-The given plugin file path is probed on the Server (in a seperate process).
-On success, the plugin description is stored under its key, the file path and the (optional) key argument.
-
-This method is used internally by link::Classes/VSTPluginController#-open:: whenever it can't find a key in the plugin dictionary.
-It might be occasionally useful for other purposes.
-
-
-METHOD:: probeMsg
-
-ARGUMENT:: path
-the plugin path (see above)
-ARGUMENT:: dest
-
-a) nil: don't write probe result (the default)
-
-a) String: name of a temp file where the probe result should be written to.
-
-b) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
-on the Server, the Client can then read the data (each float representing a single byte) and free the Buffer.
-The Buffer should be initially empty!
-
-RETURNS:: the message for a emphasis::probe:: command (see link::#*probe::).
-
-DISCUSSION::
-
-Sending this message to the Server will emphasis::not:: update any info in the Client!
 
 METHOD:: readPlugins
 

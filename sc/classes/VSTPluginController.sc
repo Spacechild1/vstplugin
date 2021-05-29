@@ -304,8 +304,13 @@ VSTPluginController {
 			action.value(this, false);
 			^this;
 		};
-		loading = true;
-		// multi-threading is not supported for Supernova
+		// if path is nil we try to get it from VSTPlugin
+		path ?? {
+			this.info !? { path = this.info.key } ?? {
+				MethodError("'path' is nil but VSTPlugin doesn't have a plugin info", this).throw;
+			}
+		};
+		// multi-threading is not supported with Supernova
 		multiThreading.if {
 			Server.program.find("supernova").notNil.if {
 				"'multiThreading' option is not supported on Supernova; use ParGroup instead.".warn;
@@ -320,14 +325,9 @@ VSTPluginController {
 				{ MethodError("bad value '%' for 'mode' argument".format(mode), this).throw; }
 			);
 		};
-		// if path is nil we try to get it from VSTPlugin
-		path ?? {
-			this.info !? { path = this.info.key } ?? {
-				MethodError("'path' is nil but VSTPlugin doesn't have a plugin info", this).throw;
-			}
-		};
-		path.isString.if { path = path.standardizePath }; // or: path = path.asString.standardizePath ?
-		VSTPlugin.prGetInfo(synth.server, path, wait, { arg info;
+		// *now* we can start loading
+		loading = true;
+		VSTPlugin.prQuery(synth.server, path, wait, { arg info;
 			info.notNil.if {
 				this.prClear;
 				loading = true; // HACK for prClear!
@@ -358,8 +358,9 @@ VSTPluginController {
 					// report latency (if loaded)
 					latency !? { latencyChanged.value(latency); }
 				}, '/vst_open').oneShot;
-				// don't set 'info' property yet
-				this.sendMsg('/open', info.key, editor.asInteger, multiThreading.asInteger, intMode);
+				// don't set 'info' property yet; use original path!
+				this.sendMsg('/open', path.asString.standardizePath,
+					editor.asInteger, multiThreading.asInteger, intMode);
 			} {
 				"couldn't open '%'".format(path).error;
 				// just notify failure, but keep old plugin (if present)

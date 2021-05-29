@@ -2270,7 +2270,9 @@ bool cmdWritePreset(World *world, void *cmdData){
         } else {
             // to buffer
             auto sndbuf = World_GetNRTBuf(world, data->bufnum);
-            data->freeData = sndbuf->data; // to be freed in stage 4
+            // free old buffer data in stage 4.
+            // usually, the buffer should be already empty.
+            data->freeData = sndbuf->data;
             allocReadBuffer(sndbuf, buffer);
         }
     } catch (const Error & e) {
@@ -2389,7 +2391,8 @@ void VSTPluginDelegate::canDo(const char *what) {
 bool cmdVendorSpecific(World *world, void *cmdData) {
     auto data = (VendorCmdData *)cmdData;
     defer([&](){
-        data->index = data->owner->plugin()->vendorSpecific(data->index, data->value, data->data, data->opt);
+        data->index = data->owner->plugin()->vendorSpecific(data->index, data->value,
+                                                            data->data, data->opt);
     }, data->owner->hasEditor());
     return true;
 }
@@ -2402,7 +2405,8 @@ bool cmdVendorSpecificDone(World *world, void *cmdData) {
     return false; // done
 }
 
-void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size, const char *data, float opt, bool async) {
+void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size,
+                                       const char *data, float opt, bool async) {
     if (check()) {
         // some calls might be safe to do on the RT thread
         // and the user might not want to suspend processing.
@@ -2965,7 +2969,9 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     } else if (data->bufnum >= 0) {
         // write to buffer
         auto buf = World_GetNRTBuf(inWorld, data->bufnum);
-        data->freeData = buf->data; // to be freed in stage 4
+        // free old buffer data in stage 4.
+        // usually, the buffer should be already empty.
+        data->freeData = buf->data;
         std::stringstream ss;
         LOG_DEBUG("writing plugin info to buffer");
         ss << "[plugins]\n";
@@ -3104,7 +3110,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 }
 
 // query plugin info
-bool cmdProbe(World *inWorld, void *cmdData) {
+bool cmdQuery(World *inWorld, void *cmdData) {
     auto data = (SearchCmdData *)cmdData;
     auto desc = queryPlugin(data->pathBuf);
     // write info to file or buffer
@@ -3122,27 +3128,28 @@ bool cmdProbe(World *inWorld, void *cmdData) {
         } else if (data->bufnum >= 0) {
             // write to buffer
             auto buf = World_GetNRTBuf(inWorld, data->bufnum);
-            data->freeData = buf->data; // to be freed in stage 4
+            // free old buffer data in stage 4.
+            // usually, the buffer should be already empty.
+            data->freeData = buf->data;
             std::stringstream ss;
             LOG_DEBUG("writing plugin info to buffer");
             serializePlugin(ss, *desc);
             allocReadBuffer(buf, ss.str());
         }
         // else do nothing
-        return true;
     }
-    return false;
-}
-
-bool cmdProbeDone(World* inWorld, void* cmdData) {
-    auto data = (SearchCmdData*)cmdData;
-    if (data->bufnum >= 0)
-        syncBuffer(inWorld, data->bufnum);
-    // LOG_DEBUG("probe done!");
     return true;
 }
 
-void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
+bool cmdQueryDone(World* inWorld, void* cmdData) {
+    auto data = (SearchCmdData*)cmdData;
+    if (data->bufnum >= 0)
+        syncBuffer(inWorld, data->bufnum);
+    // LOG_DEBUG("query done!");
+    return true;
+}
+
+void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
     setVerbosity(inWorld->mVerbosity);
 
     if (gSearching) {
@@ -3150,21 +3157,21 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         return;
     }
     if (args->nextTag() != 's') {
-        LOG_ERROR("first argument to 'vst_probe' must be a string (plugin path)!");
+        LOG_ERROR("vst_query: first argument must be a string (plugin path/key)!");
         return;
     }
     int32 bufnum = -1;
     const char* filename = nullptr;
-    auto path = args->gets(); // plugin path
+    auto path = args->gets(); // plugin path/key
     auto size = strlen(path) + 1;
-    // temp file or buffer to store the probe result
+    // temp file or buffer to store the plugin info
     if (args->nextTag() == 's') {
         filename = args->gets();
     } else {
         bufnum = args->geti();
         // negative bufnum allowed (= don't write result)!
         if (bufnum >= (int)inWorld->mNumSndBufs) {
-            LOG_ERROR("vst_probe: bufnum " << bufnum << " out of range");
+            LOG_ERROR("vst_query: bufnum " << bufnum << " out of range");
             return;
         }
     }
@@ -3179,10 +3186,10 @@ void vst_probe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
             data->path[0] = '\0'; // empty path: use buffer
         }
 
-        memcpy(data->pathBuf, path, size); // store plugin path
+        memcpy(data->pathBuf, path, size); // store plugin path/key
 
-        DoAsynchronousCommand(inWorld, replyAddr, "vst_probe",
-            data, cmdProbe, cmdProbeDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_query",
+            data, cmdQuery, cmdQueryDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
     }
 }
 
@@ -3274,7 +3281,7 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_search);
     PluginCmd(vst_search_stop);
     PluginCmd(vst_clear);
-    PluginCmd(vst_probe);
+    PluginCmd(vst_query);
 
     setLogFunction(SCLog);
 
