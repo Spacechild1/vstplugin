@@ -301,15 +301,15 @@ VSTPluginDesc {
 				)
 			};
 		};
+		var line, n, key, value, flags;
 		// get first (significant) line and check for [plugin] header
-		var line = VSTPlugin.prGetLine(stream, true);
+		line = VSTPlugin.prGetLine(stream, true);
 		(line != "[plugin]").if {
 			Error("missing [plugin] header").throw;
 		};
 		// default values:
 		info.presets = [];
 		loop {
-			var line, n, key, value, flags;
 			line = VSTPlugin.prGetLine(stream, true);
 			line ?? { Error("EOF reached").throw };
 			// line.postln;
@@ -383,17 +383,12 @@ VSTPluginDesc {
 						{
 							future.if {
 								"VSTPluginDesc: unknown key '%'".format(key).warn;
-							} {
-								Error("bad key '%'".format(key)).throw;
-							}
+							} { Error("bad key '%'".format(key)).throw; }
 						}
 					)
 				}
 			)
 		}
-	}
-	prParsePlugin { arg stream, future;
-
 	}
 	prToString { arg sep = $\n;
 		var vst3 = this.sdkVersion.find("VST 3").notNil;
