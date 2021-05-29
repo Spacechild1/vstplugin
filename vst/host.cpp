@@ -165,6 +165,9 @@ int main(int argc, const char *argv[]) {
             return bridge(pid, shmPath);
         }
     #endif
+        else if (verb == "test"){
+            return EXIT_SUCCESS;
+        }
     }
     LOG_ERROR("usage:");
     LOG_ERROR("  probe <plugin_path> [<id>] [<file_path>]");

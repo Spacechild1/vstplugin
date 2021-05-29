@@ -143,6 +143,10 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
 
 /*/////////////////////////// PluginFactory ////////////////////////*/
 
+std::mutex gHostAppMutex;
+
+std::unordered_map<CpuArch, bool> gHostAppDict;
+
 PluginFactory::PluginFactory(const std::string &path)
     : path_(path)
 {
@@ -174,7 +178,12 @@ PluginFactory::PluginFactory(const std::string &path)
         // On macOS and Linux we can also use the plugin bridge to run Windows plugins
         // via Wine. The apps are called "host_pe_i386.exe" and "host_pe_amd64.exe".
         auto canBridge = [](auto arch){
-            // check if host app exists
+            std::lock_guard<std::mutex> lock(gHostAppMutex);
+            auto it = gHostAppDict.find(arch);
+            if (it != gHostAppDict.end()){
+                return it->second;
+            }
+
         #ifdef _WIN32
             auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
         #else
@@ -188,33 +197,51 @@ PluginFactory::PluginFactory(const std::string &path)
                     // we pass valid arguments, so the exit code should be 0.
                     char cmdline[256];
                     snprintf(cmdline, sizeof(cmdline), "%s --version", winecmd);
-                    int ret = system(cmdline);
-                    if (ret < 0){
-                        LOG_WARNING("Couldn't execute '" << winecmd << "': "
-                                    << strerror(errno));
+                    auto ret = system(cmdline);
+                    auto code = WEXITSTATUS(ret);
+                    if (code != EXIT_SUCCESS){
+                        LOG_WARNING("'" << winecmd << "' command failed with exit code " << code);
                         return false;
-                    } else {
-                        auto code = WEXITSTATUS(ret);
-                        if (code == 0){
-                            return true;
-                        } else {
-                            LOG_WARNING("'wine' command failed with exit code "
-                                        << WEXITSTATUS(ret));
-                            return false;
-                        }
                     }
+                    LOG_DEBUG("'" << winecmd << "' command is working");
+                    return true;
                 }();
                 if (!haveWine){
+                    gHostAppDict[arch] = false;
                     return false;
                 }
             }
           #endif // USE_WINE
         #endif
+            // check if host app exists and works
             if (pathExists(path)){
-                // LATER try to execute the bridge app?
+                char cmdline[256];
+              #if USE_WINE
+                if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+                    snprintf(cmdline, sizeof(cmdline), "%s %s test", getWineCommand(), path.c_str());
+                } else
+              #endif
+                {
+                    snprintf(cmdline, sizeof(cmdline), "%s test", path.c_str());
+                }
+
+                auto ret = system(cmdline);
+            #ifdef _WIN32
+                auto code = ret;
+            #else
+                auto code = WEXITSTATUS(ret);
+            #endif
+                if (code != EXIT_SUCCESS){
+                    LOG_ERROR("host app '" << path << "' failed with exit code " << code);
+                    gHostAppDict[arch] = false;
+                    return false;
+                }
+                LOG_DEBUG("host app '" << path << "' works");
+                gHostAppDict[arch] = true;
                 return true;
             } else {
-                LOG_WARNING("Can't locate " << path);
+                LOG_WARNING("can't find host app " << path);
+                gHostAppDict[arch] = false;
                 return false;
             }
         };
