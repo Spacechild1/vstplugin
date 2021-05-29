@@ -139,17 +139,18 @@ If there are no user supplied search paths, the standard VST search paths are us
 
 Stop a running search. (No arguments)
 
-##### /vst_probe
+##### /vst_query
 
-Probe a VST plugin.
+Try to obtain a plugin description from the plugin cache.
 
 Arguments:
 | type       ||
 | ---------- |-|
-| string     | plugin path (absolute or relative)
-| int/string | where to write the search results; either a buffer number or a file path. -1 means don't write results.
+| string     | plugin path/key (absolute or relative)
+| int/string | where to write the result; either a buffer number or a file path. -1 means don't write results.
 
-This will probe a given plugin file in a seperate process, so that bad plugins don't crash the server. On success, the plugin information is written to a file or buffer and the plugin is stored in a server-side plugin dictionary; on fail, nothing is written. If you don't need the result (e.g. in NRT synthesis), you can pass a negative buffer number.
+If the plugin is not contained in the plugin cache, it is searched in the standard VST search paths and probed in a seperate process (so that bad plugins don't crash the server).
+On success, the plugin information is written to a file or buffer and the plugin is stored in a server-side plugin dictionary; on fail, nothing is written.
 
 For VST 2.x plugins, you can omit the file extension. Relative paths are resolved recursively based on the standard VST directories.
 
@@ -710,7 +711,7 @@ VSTPlugin uses a custom format similar to .ini files to exchange plugin descript
 
 ### Plugin info
 
-This is the structure of a single plugin description, as used by `/vst_probe`:
+This is the structure of a single plugin description, as used by `/vst_query`:
 
 ```
 [plugin]\n
@@ -853,9 +854,12 @@ Each `<plugin info>` entry has the same structure as in "Plugin info".
 
 ### Plugin cache file
 
-Probing lots of (large) VST plugins can be a slow process. To speed up subsequent searches, the search results can be written to a cache file (see `/vst_search`), which is located in a hidden folder named *.VSTPlugin* in the user's home directory. The cache file itself is named *cache.ini* for 64-bit servers and *cache32.ini* for 32-bit servers.
+Probing lots of (large) VST plugins can be a slow process.
+To speed up subsequent searches, the search results can be written to a cache file (see `/vst_search`), which is located in a hidden folder named *.VSTPlugin* in the user's home directory.
+The cache file itself is named *cache.ini* for 64-bit servers and *cache32.ini* for 32-bit servers.
 
-The cache file structure is very similar to that in "Search results". The only difference is that it also contains a black-list (marked by `[ignore]`).
+The cache file structure is very similar to that in "Search results".
+The only difference is that it also contains a black-list (marked by `[ignore]`).
 
 ```
 [plugins]\n
@@ -872,5 +876,6 @@ n=<number of paths>
 <path #N-1>\n
 ```
 
-Plugins are black-listed if the probe process failed (see `/vst_probe`). If you want to replace a "bad" plugin with a "good" one, you have to first remove the cache file (see `/vst_clear`).
+Plugins are black-listed if the probe process failed (see `/vst_query`).
+If you want to replace a "bad" plugin with a "good" one, you have to first remove the cache file (see `/vst_clear`).
 
