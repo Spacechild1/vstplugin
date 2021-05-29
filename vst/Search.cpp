@@ -81,8 +81,12 @@ const char * getBundleBinaryPath(){
 
 #ifdef _WIN32
 # if USE_BRIDGE
-   // 64-bit folder first (in case we try to find a single plugin)
-#  define PROGRAMFILES(x) "%ProgramW6432%\\" x, "%ProgramFiles(x86)%\\" x
+   // native folder first (in case we try to find a single plugin)
+#  ifdef _WIN64 // 64 bit
+#    define PROGRAMFILES(x) "%ProgramW6432%\\" x, "%ProgramFiles(x86)%\\" x
+#  else // 32 bit
+#    define PROGRAMFILES(x) "%ProgramFiles(x86)%\\" x, "%ProgramW6432%\\" x
+#  endif
 # else
 #  ifdef _WIN64 // 64 bit
 #   define PROGRAMFILES(x) "%ProgramFiles%\\" x
