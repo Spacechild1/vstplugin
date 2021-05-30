@@ -196,7 +196,7 @@ PluginFactory::PluginFactory(const std::string &path)
                     auto winecmd = getWineCommand();
                     // we pass valid arguments, so the exit code should be 0.
                     char cmdline[256];
-                    snprintf(cmdline, sizeof(cmdline), "%s --version", winecmd);
+                    snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
                     auto ret = system(cmdline);
                     auto code = WEXITSTATUS(ret);
                     if (code != EXIT_SUCCESS){
@@ -218,11 +218,11 @@ PluginFactory::PluginFactory(const std::string &path)
                 char cmdline[256];
               #if USE_WINE
                 if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-                    snprintf(cmdline, sizeof(cmdline), "%s %s test", getWineCommand(), path.c_str());
+                    snprintf(cmdline, sizeof(cmdline), "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
                 } else
               #endif
                 {
-                    snprintf(cmdline, sizeof(cmdline), "%s test", path.c_str());
+                    snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
                 }
 
                 auto ret = system(cmdline);

@@ -174,5 +174,6 @@ int main(int argc, const char *argv[]) {
 #if USE_BRIDGE
     LOG_ERROR("  bridge <pid> <shared_mem_path>");
 #endif
+    LOG_ERROR("  test");
     return EXIT_FAILURE;
 }
