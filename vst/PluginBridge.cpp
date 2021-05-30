@@ -133,6 +133,11 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // get absolute path to host app
     std::string hostPath = getModuleDirectory() + "/" + hostApp;
     // fork
+#if !BRIDGE_LOG
+    // flush before fork() to avoid duplicate printouts!
+    fflush(stdout);
+    fflush(stderr);
+#endif
     pid_ = fork();
     if (pid_ == -1) {
         throw Error(Error::SystemError, "fork() failed!");
@@ -142,9 +147,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     #if !BRIDGE_LOG
         // disable stdout and stderr
         auto nullOut = fopen("/dev/null", "w");
-        fflush(stdout);
         dup2(fileno(nullOut), STDOUT_FILENO);
-        fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host.exe bridge <parent_pid> <shm_path>

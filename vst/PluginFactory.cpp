@@ -197,6 +197,7 @@ PluginFactory::PluginFactory(const std::string &path)
                     // we pass valid arguments, so the exit code should be 0.
                     char cmdline[256];
                     snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
+                    fflush(stdout);
                     auto ret = system(cmdline);
                     auto code = WEXITSTATUS(ret);
                     if (code != EXIT_SUCCESS){
@@ -224,7 +225,7 @@ PluginFactory::PluginFactory(const std::string &path)
                 {
                     snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
                 }
-
+                fflush(stdout);
                 auto ret = system(cmdline);
             #ifdef _WIN32
                 auto code = ret;
@@ -236,7 +237,7 @@ PluginFactory::PluginFactory(const std::string &path)
                     gHostAppDict[arch] = false;
                     return false;
                 }
-                LOG_DEBUG("host app '" << path << "' works");
+                LOG_DEBUG("host app '" << path << "' is working");
                 gHostAppDict[arch] = true;
                 return true;
             } else {
@@ -425,6 +426,11 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     // timeout
     auto timeoutstr = std::to_string(timeout);
     // fork
+#if !PROBE_LOG
+    // flush before fork() to avoid duplicate printouts!
+    fflush(stdout);
+    fflush(stderr);
+#endif
     pid_t pid = fork();
     if (pid == -1) {
         throw Error(Error::SystemError, "fork() failed!");
@@ -434,9 +440,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     #if !PROBE_LOG
         // disable stdout and stderr
         auto nullOut = fopen("/dev/null", "w");
-        fflush(stdout);
         dup2(fileno(nullOut), STDOUT_FILENO);
-        fflush(stderr);
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host probe <plugin_path> <plugin_id> <file_path> [timeout]
