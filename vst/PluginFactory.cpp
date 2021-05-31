@@ -216,10 +216,17 @@ PluginFactory::PluginFactory(const std::string &path)
         #endif
             // check if host app exists and works
             if (pathExists(path)){
+            #ifdef _WIN32
+                std::wstringstream ss;
+                ss << L"\"" << widen(path) << L"\" test";
+                fflush(stdout);
+                auto code = _wsystem(ss.str().c_str());
+            #else
                 char cmdline[256];
               #if USE_WINE
                 if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-                    snprintf(cmdline, sizeof(cmdline), "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
+                    snprintf(cmdline, sizeof(cmdline),
+                             "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
                 } else
               #endif
                 {
@@ -227,9 +234,6 @@ PluginFactory::PluginFactory(const std::string &path)
                 }
                 fflush(stdout);
                 auto ret = system(cmdline);
-            #ifdef _WIN32
-                auto code = ret;
-            #else
                 auto code = WEXITSTATUS(ret);
             #endif
                 if (code != EXIT_SUCCESS){
