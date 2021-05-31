@@ -216,7 +216,7 @@ PluginFactory::PluginFactory(const std::string &path)
         #endif
             // check if host app exists and works
             if (pathExists(path)){
-            #ifdef _WIN32
+            #if defined(_WIN32) && !defined(__WINE__)
                 std::wstringstream ss;
                 ss << L"\"" << widen(path) << L"\" test";
                 fflush(stdout);
