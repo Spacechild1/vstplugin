@@ -144,11 +144,11 @@ bool available() {
 void poll(){
     // only on the main thread!
     if (isCurrentThread()){
-        NSAutoreleasePool *pool =[[NSAutoreleasePool alloc] init];
+        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         while (true) {
             NSEvent *event = [NSApp
                 nextEventMatchingMask:NSAnyEventMask
-                untilDate:[[NSDate alloc] init]
+                untilDate:nil
                 inMode:NSDefaultRunLoopMode
                 dequeue:YES];
             if (event){

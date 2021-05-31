@@ -7,7 +7,7 @@
 #define classname(x) (class_getname(pd_class(x)))
 
 #if POLL_EVENT_LOOP
-#define EVENT_LOOP_POLL_INT 20 // time between polls in ms
+#define EVENT_LOOP_POLL_INT 5 // time between polls in ms
 
 static t_clock *eventLoopClock = nullptr;
 static void eventLoopTick(void *x){
