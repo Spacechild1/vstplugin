@@ -569,7 +569,9 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         auto factory = gPluginDict.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
-            LOG_VERBOSE(pluginPath);
+            if (verbose) {
+                LOG_VERBOSE(pluginPath);
+            }
 
             auto numPlugins = factory->numPlugins();
             // add and post plugins
