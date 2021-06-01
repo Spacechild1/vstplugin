@@ -1240,27 +1240,32 @@ The following code snippet will create a short soundfile with two random melodie
 it can be executed in a single block.
 code::
 (
-// 1) SynthDef for playing the VSTi
+// 1) temporary Server (for Node ID allocation)
+~server = Server(\nrt,
+    options: ServerOptions.new
+    .numOutputBusChannels_(2)
+);
 
+// 2) SynthDef for playing the VSTi
 SynthDef.new(\my_instrument, { arg out;
 	var sig = VSTPlugin.ar(nil, 2, id: \vsti);
 	sig = VSTPlugin.ar(sig, 2, id: \fx);
 	Out.ar(out, sig);
 }).store; // so that the subprocess can find the SynthDef!
 
-// 2) create the VST Synths in the language
+// 3) create the VSTi Synths (in the language)
 
-// make 2 Synths:
-~synth = { Synth.basicNew(\my_instrument) } ! 2;
+~synth = { Synth.basicNew(\my_instrument, ~server) } ! 2;
 
 // get handles to the plugin controllers
 ~vst = ~synth.collect { |x| VSTPluginController.collect(x) };
 
-// 3) create the score:
+// 4) create the Score:
 
 ~score = Score.new;
 
-~score.add([0.0, VSTPlugin.searchMsg(verbose: false)]); // search for plugins in default search paths
+// search for plugins in default search paths (only needed the first time)
+~score.add([0.0, VSTPlugin.searchMsg(verbose: false)]);
 
 // create the synths:
 ~score.add([0.0, ~synth[0].newMsg]);
@@ -1282,6 +1287,7 @@ SynthDef.new(\my_instrument, { arg out;
 ~score.add([0.0, ~vst[0].fx.setMsg(0, 0.2)]); // delay time
 ~score.add([0.0, ~vst[0].fx.setMsg(1, 0.5)]); // delay feedback
 ~score.add([0.0, ~vst[1].fx.setMsg(0, 0.9)]); // chorus depth
+
 // make a random melody
 ~melody = Pbind(
 	\type, \vst_midi,
@@ -1292,24 +1298,26 @@ SynthDef.new(\my_instrument, { arg out;
 );
 
 // helper function for recording a Pbind to a Score
-~render = { arg score, vsti, pbind, start, dur;
+~render = { arg vsti, pbind, start, dur;
 	var list = pbind.asScore(dur, start, (vst: vsti)).score;
-	score.score = score.score.addAll(list[1..(list.size-1)]); // we have to remove first and last bundle!
+	~score.score = ~score.score.addAll(list[1..(list.size-2)]); // we have to remove the first and last bundle (/g_new + /c_set)!
 };
 
-~render.(~score, ~vst[0].vsti, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
-~render.(~score, ~vst[1].vsti, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
+~render.(~vst[0].vsti, ~melody, 1, 8); // render 8 beats of the first voice, starting at beat 1
+~render.(~vst[1].vsti, ~melody, 4, 7); // render 7 beats of the second voice, starting at beat 4
 
-// end
-~score.sort; // important!
-~score.add([~score.endTime + 1, [0]]);
+// finally sort the score!
+~score.sort;
 
-// 4) render stereo aiff file
+// 5) render as stereo aiff file
 
 ~score.recordNRT("~/nrt_test".standardizePath, "~/nrt_test.aiff".standardizePath,
-	options: ServerOptions.new.numOutputBusChannels_(2));
+	options: ~server.options, duration: 15);
 
 // or save the Score to a file
 ~score.saveToFile("~/nrt_test.txt".standardizePath);
+
+// remove temporary Server
+~server.remove;
 )
 ::
