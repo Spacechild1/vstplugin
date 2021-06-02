@@ -570,7 +570,7 @@ VSTPluginGui : ObjectGui {
 		.action_({
 			FileDialog.new({ arg d;
 				showSearch.(true);
-				VSTPlugin.search(server, dir: d, useDefault: false, verbose: true, action: {
+				VSTPlugin.search(server, dir: d, verbose: true, action: {
 					{ updatePlugins.value; }.defer;
 				});
 			}, nil, 2, 0, true, pluginPath);
