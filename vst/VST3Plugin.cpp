@@ -2083,8 +2083,8 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
 #endif
 
 tresult BaseStream::read(void* buffer, int32 numBytes, int32* numBytesRead){
-    if (cursor_ < 0){
-        LOG_ERROR("BaseStream: negative cursor!");
+    if (cursor_ < 0 || cursor_ > size()){
+        LOG_ERROR("BaseStream: cursor out of range!");
         return kInternalError;
     }
     int available = size() - cursor_;
@@ -2100,40 +2100,6 @@ tresult BaseStream::read(void* buffer, int32 numBytes, int32* numBytesRead){
     }
     LOG_STREAM("BaseStream: read " << numBytes << " bytes");
     return kResultOk;
-}
-
-tresult BaseStream::write (void* buffer, int32 numBytes, int32* numBytesWritten){
-    return kNotImplemented;
-}
-
-tresult BaseStream::seek(int64 pos, int32 mode, int64* result){
-    int64_t newPos = -1;
-    switch (mode){
-    case kIBSeekSet:
-        newPos = pos;
-        LOG_STREAM("BaseStream: seek set " << pos);
-        break;
-    case kIBSeekCur:
-        newPos = cursor_ + pos;
-        LOG_STREAM("BaseStream: seek cursor " << pos);
-        break;
-    case kIBSeekEnd:
-        newPos = size() + pos;
-        LOG_STREAM("BaseStream: seek end " << pos);
-        break;
-    default:
-        return kInvalidArgument;
-    }
-    if (newPos < 0 || newPos >= size()){
-        LOG_ERROR("BaseStream: seek position out of range!");
-        return kInvalidArgument;
-    }
-    // don't have to resize here
-    if (result){
-        *result = newPos;
-    }
-    cursor_ = newPos;
-    return kResultTrue;
 }
 
 tresult BaseStream::tell(int64* pos){
@@ -2157,6 +2123,45 @@ int64 BaseStream::getPos() const {
 
 void BaseStream::rewind(){
     cursor_ = 0;
+}
+
+tresult BaseStream::doSeek(int64 pos, int32 mode, int64* result, bool resize){
+    int64_t newPos = -1;
+    switch (mode){
+    case kIBSeekSet:
+        newPos = pos;
+        LOG_STREAM("BaseStream: seek set " << pos);
+        break;
+    case kIBSeekCur:
+        newPos = cursor_ + pos;
+        LOG_STREAM("BaseStream: seek cursor " << pos);
+        break;
+    case kIBSeekEnd:
+        newPos = size() + pos;
+        LOG_STREAM("BaseStream: seek end " << pos);
+        break;
+    default:
+        return kInvalidArgument;
+    }
+    if (newPos < 0) {
+        LOG_ERROR("BaseStream: seek position "
+                  << newPos << " out of range!");
+        return kInvalidArgument;
+    } else if (newPos > size()){
+        if (resize){
+            // write() will resize appropriately
+        } else {
+            LOG_ERROR("BaseStream: seek position "
+                      << newPos << " out of range!");
+        }
+        return kInvalidArgument;
+    }
+    // don't have to resize here
+    if (result){
+        *result = newPos;
+    }
+    cursor_ = newPos;
+    return kResultTrue;
 }
 
 template<typename T>
@@ -2283,10 +2288,22 @@ void StreamView::assign(const char *data, size_t size){
     cursor_ = 0;
 }
 
-/*///////////////////// WriteStream //////////////////////////*/
+tresult StreamView::seek(int64 pos, int32 mode, int64* result){
+    return doSeek(pos, mode, result, false);
+}
+
+tresult StreamView::write (void* buffer, int32 numBytes, int32* numBytesWritten){
+    return kNotImplemented;
+}
+
+/*///////////////////// MemoryStream //////////////////////////*/
 
 MemoryStream::MemoryStream(const char *data, size_t size){
     buffer_.assign(data, size);
+}
+
+tresult MemoryStream::seek(int64 pos, int32 mode, int64* result){
+    return doSeek(pos, mode, result, true);
 }
 
 tresult MemoryStream::write (void* buffer, int32 numBytes, int32* numBytesWritten){
@@ -2297,6 +2314,8 @@ tresult MemoryStream::write (void* buffer, int32 numBytes, int32* numBytesWritte
     if (numBytes < 0){
         return kInvalidArgument;
     }
+    // NOTE: the cursor might have been set past the current size
+    // with seek(), but here we actually resize the buffer.
     int wantSize = cursor_ + numBytes;
     if (wantSize > (int64_t)buffer_.size()){
         buffer_.resize(wantSize);

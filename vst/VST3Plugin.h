@@ -551,8 +551,6 @@ class BaseStream : public IBStream {
     DUMMY_REFCOUNT_METHODS
     // IBStream
     tresult PLUGIN_API read  (void* buffer, int32 numBytes, int32* numBytesRead) override;
-    tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
-    tresult PLUGIN_API seek  (int64 pos, int32 mode, int64* result) override;
     tresult PLUGIN_API tell  (int64* pos) override;
     virtual const char *data() const = 0;
     virtual size_t size() const = 0;
@@ -568,6 +566,7 @@ class BaseStream : public IBStream {
     bool readChunkID(Vst::ChunkID id);
     bool readTUID(TUID tuid);
  protected:
+    tresult doSeek(int64 pos, int32 mode, int64 *result, bool resize);
     template<typename T>
     bool doWrite(const T& t);
     template<typename T>
@@ -583,6 +582,8 @@ class StreamView : public BaseStream {
     StreamView(const char *data, size_t size);
     void assign(const char *data, size_t size);
     // IBStream
+    tresult PLUGIN_API seek  (int64 pos, int32 mode, int64* result) override;
+    tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
     const char * data() const override { return data_; }
     size_t size() const override { return size_; }
  protected:
@@ -596,6 +597,7 @@ class MemoryStream : public BaseStream {
  public:
     MemoryStream() = default;
     MemoryStream(const char *data, size_t size);
+    tresult PLUGIN_API seek  (int64 pos, int32 mode, int64* result) override;
     tresult PLUGIN_API write (void* buffer, int32 numBytes, int32* numBytesWritten) override;
     const char * data() const override { return buffer_.data(); }
     size_t size() const override { return buffer_.size(); }
