@@ -4,9 +4,11 @@ categories:: Server->Abstractions
 related:: Classes/VSTPluginController, Classes/VSTPlugin
 
 DESCRIPTION::
-This class mimicks the interface of link::Classes/MIDIOut::, so you don`t have to send raw MIDI messages. Instances are obtained with link::Classes/VSTPluginController#-midi::.
+This class mimicks the interface of link::Classes/MIDIOut::, so you don`t have to send raw MIDI messages.
 
-It is used internally by link::Classes/Pbind::s of event type code::\vst_midi:: (see link::Classes/VSTPluginController#Sequencing::).
+Instances are obtained with link::Classes/VSTPluginController#-midi::. You should never need to create instances of this class yourself!
+
+It is used internally by link::Classes/Pbind::s of event type code::\vst_midi:: (see link::Classes/VSTPluginController#Sequencing::), but it can be used in other situations as well, e.g. for playing a VSTi with a MIDI keyboard.
 
 note::
 MIDI pitches can be Floats! The fractional part is converted to cents and passed as the code::detune:: argument to link::#-sendMidi::. This is not part of the MIDI standard and not all VST instruments actually support it!
