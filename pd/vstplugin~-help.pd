@@ -223,9 +223,8 @@ parameters \,, f 34;
 #X msg 95 418 midi_touch 1 127;
 #X obj 106 494 cnv 20 285 65 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 210 136 the MIDI pitch can be a float \, but this is not part
+#X text 192 137 the MIDI pitch can be a float \, but this is not part
 of MIDI standard and only supported by certain VST instruments.;
-#X msg 56 138 midi_note 1 60.5 127 50;
 #X text 114 502 NOTE: MIDI messages are scheduled at the current logical
 time. This allows for *sample accurate* event proccessing - but the
 plugin has to actually support it!, f 42;
@@ -234,6 +233,7 @@ plugin has to actually support it!, f 42;
 #X text 191 469 resp.;
 #X text 105 448 MIDI and SysEx messages sent *from* the plugin are
 output as;
+#X msg 56 138 midi_note 1 60.5 127;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 0 0;
@@ -247,7 +247,7 @@ output as;
 #X connect 22 0 0 0;
 #X connect 23 0 0 0;
 #X connect 24 0 0 0;
-#X connect 27 0 0 0;
+#X connect 32 0 0 0;
 #X restore 185 564 pd midi;
 #X f 13;
 #X text 185 546 MIDI messages;
