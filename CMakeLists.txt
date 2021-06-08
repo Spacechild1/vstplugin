@@ -50,6 +50,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
+if (MSVC AND NOT CMAKE_BUILD_TYPE STREQUAL Debug)
+    add_compile_options("/fp:fast")
+endif()
+
 if(LINUX AND CMAKE_COMPILER_IS_GNUCXX)
     option(STATIC_LIBS "link with static libraries (libstdc++ and libgcc)" ON)
 endif()
