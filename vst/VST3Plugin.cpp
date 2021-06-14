@@ -1475,18 +1475,23 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         }
     case 0xc0: // program change
         {
+        #if 1
+            doSetProgram(data1);
+        #else
+            // the following was required by one or more plugins,
+            // but I think they are just buggy...
             auto id = info().programChange;
             if (id != PluginDesc::NoParamID){
-                doSetParameter(id, data1 / 127.f); // don't use plainParamToNormalized()
-            #if 0
+                // don't use plainParamToNormalized()
+                doSetParameter(id, data1 / 127.f);
                 program_ = data1;
-            #endif
             #if 0
                 updateParamCache();
             #endif
             } else {
                 LOG_DEBUG("no program change parameter");
             }
+        #endif
             return;
         }
     case 0xd0: // channel aftertouch
@@ -1598,20 +1603,24 @@ void VST3Plugin::updateParamCache(){
 
 void VST3Plugin::setProgram(int program){
     if (program >= 0 && program < getNumPrograms()){
-        auto id = info().programChange;
-        if (id != PluginDesc::NoParamID){
-            auto value = controller_->plainParamToNormalized(id, program);
-            LOG_DEBUG("program change value: " << value);
-            doSetParameter(id, value);
-            program_ = program;
-        #if 0
-            updateParamCache();
-        #endif
-        } else {
-            LOG_DEBUG("no program change parameter");
-        }
+        doSetProgram(program);
     } else {
         LOG_WARNING("program number out of range!");
+    }
+}
+
+void VST3Plugin::doSetProgram(int program){
+    auto id = info().programChange;
+    if (id != PluginDesc::NoParamID){
+        auto value = controller_->plainParamToNormalized(id, program);
+        LOG_DEBUG("program change value: " << value);
+        doSetParameter(id, value);
+        program_ = program;
+    #if 0
+        updateParamCache();
+    #endif
+    } else {
+        LOG_DEBUG("no program change parameter");
     }
 }
 

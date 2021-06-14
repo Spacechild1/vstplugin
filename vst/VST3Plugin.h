@@ -480,6 +480,7 @@ class VST3Plugin final :
     void updateAutomationState();
     void sendMessage(Vst::IMessage* msg);
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
+    void doSetProgram(int program);
     void updateParamCache();
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
