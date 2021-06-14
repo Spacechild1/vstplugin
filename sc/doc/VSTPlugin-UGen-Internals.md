@@ -97,6 +97,8 @@ Arguments:
 | float      | timeout (the time to wait for each plugin before it is regarded as stuck and ignored); 0.0 means no timeout.
 | int        | the number of user supplied search paths; 0 means none.
 | string...  | (optional) list of user supplied search paths
+| int        | the number of exclude paths; 0 means none
+| string...  | (optional) list of user supplied exclude paths
 
 This will search the given paths recursively for VST plugins, probe them, and write the results to a file or buffer. Valid plugins are stored in a server-side plugin dictionary. If no plugin could be found, the buffer or file will be empty.
 
