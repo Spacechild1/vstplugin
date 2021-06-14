@@ -121,8 +121,8 @@ static void swap_bytes(T& i){
     memcpy(&i, b, n);
 }
 
-namespace detail {
 #if defined(_WIN32) || USE_WINE
+
 CpuArch readPE(vst::File& file){
     // read PE header
     // note: we don't have to worry about byte order (always LE)
@@ -186,9 +186,11 @@ CpuArch readPE(vst::File& file){
     #endif
     }
 }
+
 #endif
 
 #if !defined(_WIN32) && !defined(__APPLE__) // Linux, OpenBSD, FreeBSD, etc. (TODO handle Android?)
+
 CpuArch readELF(vst::File& file){
     // read ELF header
     // check magic number
@@ -239,9 +241,11 @@ CpuArch readELF(vst::File& file){
         throw Error(Error::ModuleError, "not a shared object");
     }
 }
+
 #endif
 
 #ifdef __APPLE__ // macOS (TODO handle iOS?)
+
 std::vector<CpuArch> readMach(vst::File& file){
     // read Mach-O header
     auto read_uint32 = [](std::fstream& f, bool swap){
@@ -339,6 +343,7 @@ std::vector<CpuArch> readMach(vst::File& file){
         return {};
     }
 }
+
 #endif
 
 // TODO figure out what to do with ARM...
@@ -354,35 +359,71 @@ static const std::vector<const char *> gBundleBinaryPaths = {
 #endif
 };
 
+static const std::vector<const char *> gBundleBinaryExtensions = {
+#if defined(_WIN32) || USE_WINE
+    // bundles are only used by VST3 plugins
+    ".vst3",
+#endif
+#if defined(__APPLE__)
+    "",
+#endif
+#if defined(__linux__)
+    ".so"
+#endif
+};
+
+// try to get CPU architecture(s) from a file
+std::vector<CpuArch> doGetCpuArchitectures(const std::string& path){
+    std::vector<CpuArch> results;
+
+    vst::File file(path);
+    if (file.is_open()){
+    #if USE_WINE
+        try {
+    #endif
+        #if defined(_WIN32) // Windows
+            results.push_back(readPE(file));
+        #elif defined(__APPLE__)
+            auto archs = readMach(file);
+            results.insert(results.end(), archs.begin(), archs.end());
+        #else
+            results.push_back(readELF(file));
+        #endif
+    #if USE_WINE
+        } catch (const Error& e) {
+            // rewind file!
+            file.clear();
+            file.seekg(0);
+            try {
+                // try to read as PE
+                results.push_back(readPE(file));
+            } catch (const Error& e2) {
+                if (e2.code() == Error::NoError){
+                    // not a PE, keep original error
+                    throw e;
+                } else {
+                    // bad PE
+                    throw e2;
+                }
+            }
+        }
+    #endif
+    }
+    return results;
+}
+
 // Check a file path or bundle for contained CPU architectures
 // If 'path' is a file, we throw an exception if it is not a library,
 // but if 'path' is a bundle (= directory), we ignore any non-library files
 // in the 'Contents' subfolder (so the resulting list might be empty).
-std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
-    std::vector<CpuArch> results;
+std::vector<CpuArch> getCpuArchitectures(const std::string& path){
     if (isDirectory(path)){
-        // '/Contents' might contain additional subfolders, such as '/Resources',
-        // or '/Frameworks' on macOS, so we should restrict our search to the folders
-        // that contain the actual binaries. This is especially relevant on macOS,
-        // because we can't filter by extension (see below).
-        for (auto& binaryPath : gBundleBinaryPaths){
-            vst::search(path + "/" + binaryPath, [&](const std::string& resPath){
-                auto res = getCpuArchitectures(resPath, true); // bundle!
-                results.insert(results.end(), res.begin(), res.end());
-            }, false); // don't filter
-        }
-    } else {
-        // ignore files that are not plugins
+        // plugin bundle
+        std::vector<CpuArch> results;
+
         auto hasExtension = [](const std::string& path){
             auto e1 = fileExtension(path);
-        #ifdef __APPLE__
-            // on Apple, the actual dylib inside the bundle doesn't have
-            // a file extension, so we must check for empty extensions!
-            if (e1.empty()){
-                return true; // accept empty extension
-            }
-        #endif
-            for (auto& e2 : getPluginExtensions()){
+            for (auto& e2 : gBundleBinaryExtensions){
                 if (e1 == e2){
                     return true;
                 }
@@ -390,69 +431,31 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path, bool bundle){
             return false;
         };
 
-        if (hasExtension(path)){
-            vst::File file(path);
-            if (file.is_open()){
-                try {
-                #if defined(_WIN32) // Windows
-                    results.push_back(readPE(file));
-                #elif defined(__APPLE__)
-                    auto archs = readMach(file);
-                    results.insert(results.end(), archs.begin(), archs.end());
-                #else
-                    results.push_back(readELF(file));
-                #endif
-                } catch (const Error& e) {
-                #if !defined(_WIN32) && USE_WINE
-                    // rewind file!
-                    file.clear();
-                    file.seekg(0);
+        // '/Contents' might contain additional subfolders, such as '/Resources',
+        // or '/Frameworks' on macOS, so we should restrict our search to the folders
+        // that contain the actual binaries. This is especially relevant on macOS,
+        // because we can't filter by extension (see hasExtension()).
+        for (auto& binaryPath : gBundleBinaryPaths){
+            vst::search(path + "/" + binaryPath, [&](const std::string& file){
+                // ignore files in a bundle that are not plugins
+                if (hasExtension(file)){
                     try {
-                        // try to read as PE
-                        results.push_back(readPE(file));
-                    } catch (const Error& e2) {
-                        Error err;
-                        if (e2.code() == Error::NoError){
-                            // not a PE, keep original error
-                            err = e;
-                        } else {
-                            // bad PE
-                            err = e2;
-                        }
-                        if (!bundle){
-                            throw err;
-                        } else {
-                            LOG_ERROR(path << ": " << err.what());
-                        }
+                        auto res = doGetCpuArchitectures(file); // bundle!
+                        results.insert(results.end(), res.begin(), res.end());
+                    } catch (const Error& e){
+                        LOG_ERROR(path << ": " << e.what());
                     }
-                #else
-                    if (!bundle){
-                        throw; // rethrow
-                    } else {
-                        LOG_WARNING(path << ": " << e.what());
-                    }
-                #endif
                 }
-            } else {
-                if (!bundle){
-                    throw Error(Error::ModuleError, "couldn't open file");
-                } else {
-                    LOG_WARNING("couldn't open " << path);
-                }
-            }
+            }, false); // don't filter
         }
+        if (results.empty()) {
+            throw Error(Error::ModuleError, "bundle doesn't contain any plugins");
+        }
+        return results;
+    } else {
+        // plugin file
+        return doGetCpuArchitectures(path);
     }
-    return results;
-}
-} // detail
-
-std::vector<CpuArch> getCpuArchitectures(const std::string& path){
-    auto results = detail::getCpuArchitectures(path, false);
-    if (results.empty()) {
-        // this code path is only reached by bundles
-        throw Error(Error::ModuleError, "bundle doesn't contain any plugins");
-    }
-    return results;
 }
 
 void printCpuArchitectures(const std::string& path){

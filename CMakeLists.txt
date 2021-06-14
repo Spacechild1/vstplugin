@@ -74,7 +74,7 @@ if (WIN32)
 else()
     if (LINUX)
         if (BUILD_WINE)
-            # causes big trouble on Wine...
+            # std::filesystem causes big trouble on Wine...
             set(STDFS OFF CACHE BOOL "Use std::filesystem" FORCE)
         else()
             set(STDFS ON CACHE BOOL "Use std::filesystem")

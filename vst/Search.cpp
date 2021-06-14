@@ -73,7 +73,8 @@ const char * getBundleBinaryPath(){
 #elif defined(__x86_64__)
         "Contents/x86_64-linux";
 #else
-        ""; // figure out what to do with all the ARM versions...
+  // figure out what to do with all the ARM versions...
+  #error "CPU architecture not supported (yet)"
 #endif
 #endif
     return path;
@@ -201,9 +202,10 @@ static bool isDirectory(const std::string& fullPath, dirent *entry){
         struct stat stbuf;
         if (stat(fullPath.c_str(), &stbuf) == 0){
             return S_ISDIR(stbuf.st_mode);
+        } else {
+            return false;
         }
     }
-    return false;
 }
 #endif
 
