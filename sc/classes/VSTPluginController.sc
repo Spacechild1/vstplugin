@@ -24,7 +24,8 @@ VSTPluginController {
 	var window; // do we have a VST editor?
 	var loading; // are we currently loading a plugin?
 	var browser; // handle to currently opened browser
-	var didQuery; // do we need to query parameters?
+	var needQueryParams;
+	var needQueryPrograms;
 
 	*initClass {
 		Class.initClassTree(Event);
@@ -175,7 +176,8 @@ VSTPluginController {
 		this.wait = wait;
 		loading = false;
 		window = false;
-		didQuery = false;
+		needQueryParams = true;
+		needQueryPrograms = true;
 		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
 		// parameter changed:
@@ -338,14 +340,15 @@ VSTPluginController {
 						latency = msg[5].asInteger;
 						this.info = info; // now set 'info' property
 						info.addDependant(this);
+
 						parameterCache = Array.fill(info.numParameters, [0, nil]);
-						program = 0;
+						this.prQueryParams;
+
 						// copy default program names (might change later when loading banks)
 						programCache = info.programs.collect(_.name);
-						// only query parameters if we have dependants!
-						(this.dependants.size > 0).if {
-							this.prQueryParams;
-						};
+						needQueryPrograms = false; // !
+						program = 0;
+
 						// post info if wanted
 						verbose.if { info.print };
 					} {
@@ -392,15 +395,18 @@ VSTPluginController {
 	prClear {
 		info !? { info.removeDependant(this) };
 		window = false; latency = nil; info = nil;
-		parameterCache = nil; programCache = nil; didQuery = false;
+		parameterCache = nil; needQueryParams = false;
+		programCache = nil; needQueryPrograms = true;
 		program = nil; currentPreset = nil; loading = false;
 	}
 	addDependant { arg dependant;
-		// only query parameters for the first dependant!
-		(this.loaded && didQuery.not).if {
-			this.prQueryParams;
-		};
 		super.addDependant(dependant);
+		// query after adding dependant!
+		this.loaded.if {
+			needQueryParams.if { this.prQueryParams };
+			needQueryPrograms.if { this.prQueryPrograms };
+		};
+
 	}
 	update { arg who, what ... args;
 		((who === info) and: { what == \presets }).if {
@@ -948,11 +954,16 @@ VSTPluginController {
 		} { ^"" };
 	}
 	prQueryParams { arg wait;
-		this.prQuery(wait, this.numParameters, '/param_query');
-		didQuery = true;
+		(this.dependants.size > 0).if {
+			this.prQuery(wait, this.numParameters, '/param_query');
+			needQueryParams = false;
+		} { needQueryParams = true; }
 	}
 	prQueryPrograms { arg wait;
-		this.prQuery(wait, this.numPrograms, '/program_query');
+		(this.dependants.size > 0).if {
+			this.prQuery(wait, this.numPrograms, '/program_query');
+			needQueryPrograms = false;
+		} { needQueryPrograms = true; }
 	}
 	prQuery { arg wait, num, cmd;
 		{
