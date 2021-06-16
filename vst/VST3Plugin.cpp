@@ -43,6 +43,7 @@ DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (Vst::IUnitData)
 DEF_CLASS_IID (Vst::IProgramListData)
+DEF_CLASS_IID (Vst::IProcessContextRequirements)
 
 namespace Steinberg {
 namespace Vst {
@@ -637,6 +638,32 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 
     LOG_DEBUG("program change: " << info_->programChange);
     LOG_DEBUG("bypass: " << info_->bypass);
+
+#if 1
+    // process context requirements
+    FUnknownPtr<Vst::IProcessContextRequirements> contextRequirements(processor_);
+    if (contextRequirements){
+        auto flags = contextRequirements->getProcessContextRequirements();
+
+        LOG_DEBUG("process context requirements:");
+
+#define PRINT_FLAG(x) if (flags & Vst::IProcessContextRequirements::Flags::x) LOG_DEBUG(#x);
+        PRINT_FLAG(kNeedSystemTime)
+        PRINT_FLAG(kNeedContinousTimeSamples)
+        PRINT_FLAG(kNeedProjectTimeMusic)
+        PRINT_FLAG(kNeedBarPositionMusic)
+        PRINT_FLAG(kNeedCycleMusic)
+        PRINT_FLAG(kNeedSamplesToNextClock)
+        PRINT_FLAG(kNeedTempo)
+        PRINT_FLAG(kNeedTimeSignature)
+        PRINT_FLAG(kNeedChord)
+        PRINT_FLAG(kNeedFrameRate)
+        PRINT_FLAG(kNeedTransportState)
+#undef PRINT_FLAG
+    } else {
+        LOG_DEBUG("IProcessContextRequirements not supported");
+    }
+#endif
 }
 
 VST3Plugin::~VST3Plugin(){
