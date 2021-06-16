@@ -343,6 +343,7 @@ class VST3Plugin final :
         public IPlugin,
         public Vst::IComponentHandler,
         public Vst::IConnectionPoint,
+        public Vst::IProgress,
         public IPlugFrame
     #if SMTG_OS_LINUX
         , public Linux::IRunLoop
@@ -374,6 +375,10 @@ class VST3Plugin final :
     tresult PLUGIN_API connect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API disconnect(Vst::IConnectionPoint* other) override;
     tresult PLUGIN_API notify(Vst::IMessage* message) override;
+
+    tresult PLUGIN_API start(ProgressType type, const tchar *description, ID& id) override;
+    tresult PLUGIN_API update(ID id, Vst::ParamValue value) override;
+    tresult PLUGIN_API finish(ID id) override;
 
     // IPlugFrame
     tresult PLUGIN_API resizeView (IPlugView* view, ViewRect* newSize) override;

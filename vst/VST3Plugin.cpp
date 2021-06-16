@@ -44,6 +44,7 @@ DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (Vst::IUnitData)
 DEF_CLASS_IID (Vst::IProgramListData)
 DEF_CLASS_IID (Vst::IProcessContextRequirements)
+DEF_CLASS_IID (Vst::IProgress)
 
 namespace Steinberg {
 namespace Vst {
@@ -776,6 +777,42 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 #endif
     sendMessage(message);
     return kResultTrue;
+}
+
+tresult VST3Plugin::start(ProgressType type, const tchar *description, ID& id) {
+    static std::atomic<ID> currentID {0};
+    id = currentID.fetch_add(1);
+
+    const char *what;
+    if (type == AsyncStateRestoration){
+        what = "AsyncStateRestoration";
+    } else if (type == UIBackgroundTask) {
+        what = "UIBackgroundTask";
+    } else {
+        what = "unknown task";
+    }
+    std::string desc;
+    if (description){
+    #ifdef UNICODE
+        desc = stringConverter().to_bytes(description);
+    #else
+        desc = description;
+    #endif
+    } else {
+        desc = "no description";
+    }
+    LOG_DEBUG("start " << what << " (" << desc << "), ID: " << id);
+    return kResultOk;
+}
+
+tresult VST3Plugin::update(ID id, Vst::ParamValue value) {
+    LOG_DEBUG("update task " << id << ": " << value);
+    return kResultOk;
+}
+
+tresult VST3Plugin::finish(ID id) {
+    LOG_DEBUG("finished task " << id);
+    return kResultOk;
 }
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
