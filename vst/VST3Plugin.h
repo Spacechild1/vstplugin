@@ -391,7 +391,8 @@ class VST3Plugin final :
     const PluginDesc& info() const override { return *info_; }
     PluginDesc::const_ptr getInfo() const { return info_; }
 
-    void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
+    void setupProcessing(double sampleRate, int maxBlockSize,
+                         ProcessPrecision precision, ProcessMode mode) override;
     void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;

@@ -751,7 +751,8 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
     return kResultTrue;
 }
 
-void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
+                                 ProcessPrecision precision, ProcessMode mode){
     LOG_DEBUG("VST3Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
               << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
     if (sampleRate <= 0){
@@ -764,7 +765,7 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPre
     }
 
     MyProcessSetup setup;
-    setup.processMode = Vst::kRealtime;
+    setup.processMode = (mode == ProcessMode::Offline) ? Vst::kOffline : Vst::kRealtime;
     setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     setup.maxSamplesPerBlock = maxBlockSize;
     setup.sampleRate = sampleRate;
@@ -792,7 +793,7 @@ template<typename T>
 void VST3Plugin::doProcess(ProcessData& inData){
     // process data
     MyProcessData data;
-    data.processMode = Vst::kRealtime;
+    data.processMode = (inData.mode == ProcessMode::Offline) ? Vst::kOffline : Vst::kRealtime;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
     data.numSamples = inData.numSamples;
     data.processContext = &context_;

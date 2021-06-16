@@ -117,6 +117,11 @@ enum class ProcessPrecision {
     Double
 };
 
+enum class ProcessMode {
+    Realtime,
+    Offline
+};
+
 enum class Bypass {
     Off,
     Hard, // simply bypass (with cross-fade)
@@ -158,6 +163,7 @@ struct ProcessData {
     int numOutputs;
     int numSamples;
     ProcessPrecision precision;
+    ProcessMode mode;
 };
 
 void bypass(ProcessData& data);
@@ -171,7 +177,8 @@ class IPlugin {
 
     virtual const PluginDesc& info() const = 0;
 
-    virtual void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) = 0;
+    virtual void setupProcessing(double sampleRate, int maxBlockSize,
+                                 ProcessPrecision precision, ProcessMode mode) = 0;
     virtual void process(ProcessData& data) = 0;
     virtual void suspend() = 0;
     virtual void resume() = 0;

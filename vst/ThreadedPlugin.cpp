@@ -134,13 +134,15 @@ void ThreadedPlugin::setListener(IPluginListener::ptr listener){
     }
 }
 
-void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) {
+void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize,
+                                     ProcessPrecision precision, ProcessMode mode) {
     ScopedLock lock(mutex_);
-    plugin_->setupProcessing(sampleRate, maxBlockSize, precision);
+    plugin_->setupProcessing(sampleRate, maxBlockSize, precision, mode);
 
     if (maxBlockSize != blockSize_ || precision != precision_){
         blockSize_ = maxBlockSize;
         precision_ = precision;
+        mode_ = mode;
 
         updateBuffer();
     }
@@ -155,7 +157,7 @@ void ThreadedPlugin::updateBuffer(){
         total += outputs_[i].numChannels;
     }
     const int incr = blockSize_ *
-        (precision_ == ProcessPrecision::Double ? sizeof(double) : sizeof(float));
+        ((precision_ == ProcessPrecision::Double) ? sizeof(double) : sizeof(float));
     buffer_.clear(); // force zero initialization
     buffer_.resize(total * incr);
     // set buffer vectors
@@ -244,6 +246,7 @@ template<typename T>
 void ThreadedPlugin::threadFunction(int numSamples){
     ProcessData data;
     data.precision = precision_;
+    data.mode = mode_;
     data.numSamples = numSamples;
     data.inputs = inputs_.get();
     data.numInputs = numInputs_;

@@ -51,7 +51,8 @@ class VST2Plugin final : public IPlugin {
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
 
-    void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
+    void setupProcessing(double sampleRate, int maxBlockSize,
+                         ProcessPrecision precision, ProcessMode mode) override;
     void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
@@ -136,7 +137,7 @@ class VST2Plugin final : public IPlugin {
     int getNumMidiOutputChannels() const;
     bool hasMidiInput() const;
     bool hasMidiOutput() const;
-        // other helpers
+    // other helpers
     static bool canHostDo(const char *what);
     bool hasFlag(VstAEffectFlags flag) const;
     void parameterAutomated(int index, float value);
@@ -147,7 +148,7 @@ class VST2Plugin final : public IPlugin {
     void getProgramChunkData(void **data, size_t *size) const;
     void setBankChunkData(const void *data, size_t size);
     void getBankChunkData(void **data, size_t *size) const;
-        // processing
+    // processing
     void preProcess(int nsamples);
     template<typename T, typename TProc>
     void doProcess(ProcessData& data, TProc processRoutine);
@@ -155,20 +156,21 @@ class VST2Plugin final : public IPlugin {
     void bypassProcess(ProcessData& data, TProc processRoutine,
                        Bypass state, bool ramp);
     void postProcess(int nsample);
-        // process VST events from plugin
+    // process VST events from plugin
     void processEvents(VstEvents *events);
-        // dispatch to plugin
+    // dispatch to plugin
     VstIntPtr dispatch(VstInt32 opCode, VstInt32 index = 0, VstIntPtr value = 0,
         void *p = 0, float opt = 0) const;
-        // data members
+    // data members
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
     PluginDesc::const_ptr info_;
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
-        // processing
+    // processing
     int latency_ = 0;
+    ProcessMode mode_ = ProcessMode::Realtime;
     VstTimeInfo timeInfo_;
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;

@@ -3026,7 +3026,7 @@ void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
 
     x_editor->defer_safe<async>([&](){
         plugin->suspend();
-        plugin->setupProcessing(x_sr, x_blocksize, x_realprecision);
+        plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, ProcessMode::Realtime);
 
         auto setupSpeakers = [](const auto& pluginBusses,
                 const auto& ugenBusses, auto& result, const char *what) {
@@ -3482,6 +3482,7 @@ static void vstplugin_doperform(t_vstplugin *x, int n){
     ProcessData data;
     data.numSamples = n;
     data.precision = x->x_realprecision;
+    data.mode = ProcessMode::Realtime;
     data.inputs = x->x_inputs.empty() ? nullptr : x->x_inputs.data();
     data.numInputs = x->x_inputs.size();
     data.outputs = x->x_outputs.empty() ? nullptr :  x->x_outputs.data();

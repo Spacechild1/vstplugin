@@ -136,7 +136,7 @@ bool PluginClient::check() {
 }
 
 void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
-                                   ProcessPrecision precision){
+                                   ProcessPrecision precision, ProcessMode mode){
     if (!check()){
         return;
     }
@@ -146,7 +146,8 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
     cmd.id = id();
     cmd.setup.sampleRate = sampleRate;
     cmd.setup.maxBlockSize = maxBlockSize;
-    cmd.setup.precision = static_cast<uint32_t>(precision);
+    cmd.setup.precision = static_cast<uint8_t>(precision);
+    cmd.setup.mode = static_cast<uint8_t>(mode);
 
     auto chn = bridge().getNRTChannel();
     chn.AddCommand(cmd, setup);
@@ -171,7 +172,8 @@ void PluginClient::doProcess(ProcessData& data){
     ShmCommand cmd(Command::Process);
     cmd.id = id();
     cmd.process.numSamples = data.numSamples;
-    cmd.process.precision = (uint16_t)data.precision;
+    cmd.process.precision = (uint8_t)data.precision;
+    cmd.process.mode = (uint8_t)data.mode;
     cmd.process.numInputs = data.numInputs;
     cmd.process.numOutputs = data.numOutputs;
 

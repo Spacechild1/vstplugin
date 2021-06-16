@@ -24,7 +24,8 @@ class PluginClient final : public DeferredPlugin {
 
     uint32_t id() const { return id_; }
 
-    void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
+    void setupProcessing(double sampleRate, int maxBlockSize,
+                         ProcessPrecision precision, ProcessMode mode) override;
     void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;

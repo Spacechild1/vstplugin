@@ -189,7 +189,8 @@ struct ShmCommand {
         // process
         struct {
             uint16_t numSamples;
-            uint16_t precision;
+            uint8_t precision;
+            uint8_t mode;
             uint16_t numInputs;
             uint16_t numOutputs;
         } process;
@@ -197,7 +198,8 @@ struct ShmCommand {
         struct {
             float sampleRate;
             uint16_t maxBlockSize;
-            uint16_t precision;
+            uint8_t precision;
+            uint8_t mode;
         } setup;
         // setup speakers
         struct {

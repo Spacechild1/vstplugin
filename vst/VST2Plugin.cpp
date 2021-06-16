@@ -298,9 +298,12 @@ intptr_t VST2Plugin::vendorSpecific(int index, intptr_t value, void *p, float op
     return dispatch(effVendorSpecific, index, value, p, opt);
 }
 
-void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision){
+void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize,
+                                 ProcessPrecision precision, ProcessMode mode){
     LOG_DEBUG("VST2Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
-              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
+              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double")
+              << ", mode: " << ((mode == ProcessMode::Offline) ? "offline" : "realtime") << ")");
+    mode_ = mode;
     if (sampleRate > 0){
         dispatch(effSetSampleRate, 0, 0, NULL, sampleRate);
         // only update if sample rate has changed
@@ -1527,14 +1530,18 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         break;
     case audioMasterGetCurrentProcessLevel:
         DEBUG_HOSTCODE("audioMasterGetCurrentProcessLevel");
-        // make sure that we don't accidentally create the event loop!
-        if (window_){
-            if (UIThread::isCurrentThread()){
-                return kVstProcessLevelUser;
-            } else
-                return kVstProcessLevelRealtime;
+        if (mode_ == ProcessMode::Offline){
+            return kVstProcessLevelOffline;
         } else {
-            return kVstProcessLevelUnknown;
+            // make sure that we don't accidentally create the event loop!
+            if (window_){
+                if (UIThread::isCurrentThread()){
+                    return kVstProcessLevelUser;
+                } else
+                    return kVstProcessLevelRealtime;
+            } else {
+                return kVstProcessLevelUnknown;
+            }
         }
     case audioMasterGetAutomationState:
         DEBUG_HOSTCODE("audioMasterGetAutomationState");

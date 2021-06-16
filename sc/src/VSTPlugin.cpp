@@ -1327,6 +1327,7 @@ void VSTPlugin::next(int inNumSamples) {
         // process
         ProcessData data;
         data.precision = ProcessPrecision::Single;
+        data.mode = ProcessMode::Realtime;
         data.numInputs = numPluginInputs_;
         data.inputs = pluginInputs_;
         data.numOutputs = numPluginOutputs_;
@@ -1668,7 +1669,7 @@ bool cmdOpen(World *world, void* cmdData) {
                 if (info->hasPrecision(ProcessPrecision::Single)) {
                     LOG_DEBUG("setupProcessing");
                     data->plugin->setupProcessing(data->sampleRate, data->blockSize,
-                                                  ProcessPrecision::Single);
+                                                  ProcessPrecision::Single, ProcessMode::Realtime);
                 } else {
                     LOG_WARNING("VSTPlugin: plugin '" << info->name <<
                                 "' doesn't support single precision processing - bypassing!");

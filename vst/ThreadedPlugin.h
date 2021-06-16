@@ -54,7 +54,8 @@ class ThreadedPlugin final : public DeferredPlugin
         return plugin_->info();
     }
 
-    void setupProcessing(double sampleRate, int maxBlockSize, ProcessPrecision precision) override;
+    void setupProcessing(double sampleRate, int maxBlockSize,
+                         ProcessPrecision precision, ProcessMode mode) override;
     void process(ProcessData& data) override;
     void suspend() override;
     void resume() override;
@@ -171,6 +172,7 @@ class ThreadedPlugin final : public DeferredPlugin
     // buffer
     int blockSize_ = 0;
     ProcessPrecision precision_ = ProcessPrecision::Single;
+    ProcessMode mode_ = ProcessMode::Realtime;
     std::unique_ptr<Bus[]> inputs_;
     int numInputs_ = 0;
     std::unique_ptr<Bus[]> outputs_;

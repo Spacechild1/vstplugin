@@ -107,14 +107,18 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         process(cmd, channel);
         break;
     case Command::SetupProcessing:
+    {
         LOG_DEBUG("PluginHandle: setupProcessing");
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
+        auto mode = static_cast<ProcessMode>(cmd.setup.mode);
         UIThread::callSync([&](){
-            plugin_->setupProcessing(cmd.setup.sampleRate, maxBlockSize_, precision_);
+            plugin_->setupProcessing(cmd.setup.sampleRate, maxBlockSize_,
+                                     precision_, mode);
         });
         updateBuffer();
         break;
+    }
     case Command::SetNumSpeakers:
     {
         LOG_DEBUG("PluginHandle: setNumSpeakers");
@@ -327,7 +331,8 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
 
     ProcessData data;
     data.numSamples = cmd.process.numSamples;
-    data.precision = (ProcessPrecision)cmd.process.precision;
+    data.precision = static_cast<ProcessPrecision>(cmd.process.precision);
+    data.mode = static_cast<ProcessMode>(cmd.process.mode);
     data.numInputs = numInputs_;
     data.inputs = inputs_.get();
     data.numOutputs = numOutputs_;
