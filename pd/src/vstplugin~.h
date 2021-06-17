@@ -110,6 +110,7 @@ class t_vstplugin {
     Bypass x_bypass = Bypass::Off;
     ProcessPrecision x_wantprecision; // single/double precision
     ProcessPrecision x_realprecision;
+    ProcessMode x_mode = ProcessMode::Realtime;
     double x_lastdsptime = 0;
 #ifdef PDINSTANCE
     t_pdinstance *x_pdinstance = nullptr; // keep track of the instance we belong to

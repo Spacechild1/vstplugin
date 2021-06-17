@@ -1890,6 +1890,22 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     }
 }
 
+static void vstplugin_offline(t_vstplugin *x, t_floatarg f){
+    ProcessMode mode = (f != 0) ? ProcessMode::Offline : ProcessMode::Realtime;
+
+    if (x->x_plugin && (mode != x->x_mode)){
+        x->x_editor->defer_safe<false>([&](){
+            ScopedLock lock(x->x_mutex);
+            x->x_plugin->suspend();
+            x->x_plugin->setupProcessing(x->x_sr, x->x_blocksize,
+                                         x->x_realprecision, mode);
+            x->x_plugin->resume();
+        }, x->x_uithread);
+    }
+
+    x->x_mode = mode;
+}
+
 // show/hide editor window
 static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
@@ -3026,7 +3042,7 @@ void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
 
     x_editor->defer_safe<async>([&](){
         plugin->suspend();
-        plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, ProcessMode::Realtime);
+        plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, x_mode);
 
         auto setupSpeakers = [](const auto& pluginBusses,
                 const auto& ugenBusses, auto& result, const char *what) {
@@ -3482,7 +3498,7 @@ static void vstplugin_doperform(t_vstplugin *x, int n){
     ProcessData data;
     data.numSamples = n;
     data.precision = x->x_realprecision;
-    data.mode = ProcessMode::Realtime;
+    data.mode = x->x_mode;
     data.inputs = x->x_inputs.empty() ? nullptr : x->x_inputs.data();
     data.numInputs = x->x_inputs.size();
     data.outputs = x->x_outputs.empty() ? nullptr :  x->x_outputs.data();
@@ -3725,6 +3741,7 @@ EXPORT void vstplugin_tilde_setup(void){
 
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_reset, gensym("reset"), A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_offline, gensym("offline"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vis, gensym("vis"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_pos, gensym("pos"), A_FLOAT, A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_size, gensym("size"), A_FLOAT, A_FLOAT, A_NULL);

@@ -1062,7 +1062,7 @@ because normal plugins would simply crash Pd., f 53;
 #X text 383 470 when done;
 #X text 293 470 outputs;
 #X text 391 546 more methods;
-#N canvas 525 135 707 489 more 0;
+#N canvas 525 135 842 529 more 0;
 #N canvas 614 345 519 433 vst2 0;
 #X obj 23 386 s \$0-msg;
 #X msg 24 69 can_do \$1;
@@ -1095,7 +1095,7 @@ the limited precision of decimal numbers in Pd., f 63;
 #X connect 1 0 0 0;
 #X connect 2 0 1 0;
 #X connect 7 0 0 0;
-#X restore 465 280 pd vst2;
+#X restore 468 487 pd vst2;
 #X obj 43 157 nbx 5 14 -1e+037 1e+037 0 0 empty empty empty 0 -8 0
 10 -262144 -1 -1 0 256;
 #X text 100 157 index;
@@ -1134,9 +1134,9 @@ the limited precision of decimal numbers in Pd., f 63;
 #X obj 20 18 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
 #X text 26 23 Input/output bus info:;
-#X obj 455 240 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+#X obj 458 449 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
 0;
-#X text 460 245 VST2 only methods;
+#X text 463 454 VST2 only methods;
 #X text 64 318 In the future \, more info might be added.;
 #X msg 458 92 pos \$1 \$2;
 #N canvas 0 23 450 300 pos 0;
@@ -1177,7 +1177,24 @@ the limited precision of decimal numbers in Pd., f 63;
 #X msg 470 149 size \$1 \$2;
 #X text 543 149 resize editor;
 #X text 481 170 This only works on VST3 plugins with a resizable plugin
-GUI!;
+GUI!, f 32;
+#X obj 455 244 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
+0;
+#X obj 460 331 s \$0-msg;
+#X text 461 249 Offline processing;
+#X msg 460 306 offline \$1;
+#X obj 460 283 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 0
+1;
+#X text 484 281 enable/disable offline processing;
+#X text 536 303 In a non-realtime context (i.e. using the 'fast-forward'
+message or running Pd in batch mode) \, some plugins don't render correctly
+unless you explicitly put them into offline processing mode., f 42
+;
+#X text 457 365 Some plugins also render at a higher quality in offline
+mode than in realtime mode., f 56;
+#X text 458 395 WARNING: With a few buggy plugins \, certain plugin
+methods only work correctly in realtime mode \, so you have to switch
+modes accordingly., f 60;
 #X connect 1 0 7 0;
 #X connect 7 0 32 0;
 #X connect 8 0 10 0;
@@ -1190,6 +1207,8 @@ GUI!;
 #X connect 39 0 38 0;
 #X connect 44 0 45 0;
 #X connect 45 0 41 0;
+#X connect 51 0 49 0;
+#X connect 52 0 51 0;
 #X restore 394 564 pd more;
 #X f 14;
 #X connect 1 0 19 0;
