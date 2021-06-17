@@ -1327,7 +1327,7 @@ void VSTPlugin::next(int inNumSamples) {
         // process
         ProcessData data;
         data.precision = ProcessPrecision::Single;
-        data.mode = ProcessMode::Realtime;
+        data.mode = processMode_;
         data.numInputs = numPluginInputs_;
         data.inputs = pluginInputs_;
         data.numOutputs = numPluginOutputs_;
@@ -1662,14 +1662,14 @@ bool cmdOpen(World *world, void* cmdData) {
             defer([&](){
                 // create plugin
                 LOG_DEBUG("create plugin");
-                data->plugin = info->create(data->editor, data->threaded, data->mode);
+                data->plugin = info->create(data->editor, data->threaded, data->runMode);
                 // setup plugin
                 LOG_DEBUG("suspend");
                 data->plugin->suspend();
                 if (info->hasPrecision(ProcessPrecision::Single)) {
                     LOG_DEBUG("setupProcessing");
                     data->plugin->setupProcessing(data->sampleRate, data->blockSize,
-                                                  ProcessPrecision::Single, ProcessMode::Realtime);
+                                                  ProcessPrecision::Single, data->processMode);
                 } else {
                     LOG_WARNING("VSTPlugin: plugin '" << info->name <<
                                 "' doesn't support single precision processing - bypassing!");
@@ -1767,9 +1767,10 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         memcpy(cmdData->path, path, len);
         cmdData->editor = editor;
         cmdData->threaded = threaded;
-        cmdData->mode = mode;
+        cmdData->runMode = mode;
         cmdData->sampleRate = owner_->sampleRate();
         cmdData->blockSize = owner_->blockSize();
+        cmdData->processMode = owner_->processMode();
         // copy ugen input busses
         assert(owner_->numInputBusses() > 0);
         cmdData->numInputs = owner_->numInputBusses();
@@ -1944,6 +1945,39 @@ void VSTPluginDelegate::reset(bool async) {
             plugin_->suspend();
             plugin_->resume();
         }
+    }
+}
+
+void VSTPluginDelegate::setProcessMode(ProcessMode mode) {
+    owner_->setProcessMode(mode);
+    if (check(false)) {
+        // update in the NRT thread
+        suspend();
+
+        auto cmd = CmdData::create<SetupCmdData>(world());
+        cmd->sampleRate = owner_->sampleRate();
+        cmd->blockSize = owner_->blockSize();
+        cmd->processMode = owner_->processMode();
+
+        doCmd(cmd,
+            [](World *world, void *cmdData){
+                auto data = (SetupCmdData *)cmdData;
+                defer([&](){
+                    auto lock = data->owner->scopedLock();
+                    data->owner->plugin()->suspend();
+                    data->owner->plugin()->setupProcessing(data->sampleRate, data->blockSize,
+                                                           ProcessPrecision::Single, data->processMode);
+                    data->owner->plugin()->resume();
+                }, data->owner->hasEditor());
+                return true; // continue
+            },
+            [](World *world, void *cmdData){
+                auto data = (PluginCmdData *)cmdData;
+                if (!data->alive()) return false;
+                data->owner->resume();
+                return false; // done
+            }
+        );
     }
 }
 
@@ -2591,6 +2625,23 @@ void vst_close(VSTPlugin *unit, sc_msg_iter *args) {
 void vst_reset(VSTPlugin *unit, sc_msg_iter *args) {
     bool async = args->geti();
     unit->delegate().reset(async);
+}
+
+void vst_mode(VSTPlugin *unit, sc_msg_iter *args) {
+    ProcessMode mode;
+    switch (args->geti()){
+    case 0:
+        mode = ProcessMode::Realtime;
+        break;
+    case 1:
+        mode = ProcessMode::Offline;
+        break;
+    default:
+        LOG_ERROR("bad argument to '/mode' command");
+        return;
+    }
+
+    unit->delegate().setProcessMode(mode);
 }
 
 void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
@@ -3253,9 +3304,12 @@ PluginLoad(VSTPlugin) {
     UnitCmd(open);
     UnitCmd(close);
     UnitCmd(reset);
+    UnitCmd(mode);
+
     UnitCmd(vis);
     UnitCmd(pos);
     UnitCmd(size);
+
     UnitCmd(set);
     UnitCmd(setn);
     UnitCmd(param_query);
@@ -3264,6 +3318,7 @@ PluginLoad(VSTPlugin) {
     UnitCmd(map);
     UnitCmd(mapa);
     UnitCmd(unmap);
+
     UnitCmd(program_set);
     UnitCmd(program_query);
     UnitCmd(program_name);
@@ -3271,13 +3326,16 @@ PluginLoad(VSTPlugin) {
     UnitCmd(program_write);
     UnitCmd(bank_read);
     UnitCmd(bank_write);
+
     UnitCmd(midi_msg);
     UnitCmd(midi_sysex);
+
     UnitCmd(tempo);
     UnitCmd(time_sig);
     UnitCmd(transport_play);
     UnitCmd(transport_set);
     UnitCmd(transport_get);
+
     UnitCmd(can_do);
     UnitCmd(vendor_method);
 

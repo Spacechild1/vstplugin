@@ -432,6 +432,12 @@ VSTPluginController {
 	resetMsg { arg async = false;
 		^this.makeMsg('/reset', async.asInteger);
 	}
+	setOffline { arg bool;
+		this.sendMsg('/mode', bool.asInteger);
+	}
+	setOfflineMsg { arg bool;
+		^this.makeMsg('/mode',  bool.asInteger);
+	}
 	// parameters
 	numParameters {
 		^(info !? (_.numParameters) ?? 0);

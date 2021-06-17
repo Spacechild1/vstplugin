@@ -46,9 +46,10 @@ struct OpenCmdData : CmdData {
     IPlugin::ptr plugin;
     bool editor;
     bool threaded;
-    RunMode mode;
+    RunMode runMode;
     double sampleRate;
     int blockSize;
+    ProcessMode processMode;
     int numInputs;
     int numOutputs;
     int *inputs;
@@ -65,6 +66,12 @@ struct PluginCmdData : CmdData {
         int i;
         float f;
     };
+};
+
+struct SetupCmdData : CmdData {
+    double sampleRate;
+    int blockSize;
+    ProcessMode processMode;
 };
 
 struct WindowCmdData : CmdData {
@@ -171,7 +178,9 @@ public:
     void showEditor(bool show);
     void setEditorPos(int x, int y);
     void setEditorSize(int w, int h);
+
     void reset(bool async);
+    void setProcessMode(ProcessMode mode);
 
     // param
     void setParam(int32 index, float value);
@@ -243,7 +252,7 @@ private:
     std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
-    Mutex mutex_;
+    Mutex mutex_; // actually, this could probably be a spinlock...
     // events
     struct ParamChange {
         int index; // parameter index or EventType (negative)
@@ -277,6 +286,12 @@ public:
     int blockSize() const;
 
     int reblockPhase() const;
+
+    void setProcessMode(ProcessMode mode) {
+        processMode_ = mode;
+    }
+
+    ProcessMode processMode() const { return processMode_; }
 
     struct Bus {
         float **channelData = nullptr;
@@ -385,6 +400,7 @@ private:
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
     Bypass bypass_ = Bypass::Off;
+    ProcessMode processMode_ = ProcessMode::Realtime;
 
     void printMapping();
 };

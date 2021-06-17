@@ -256,6 +256,20 @@ Arguments:
 
 **NOTE**: If the plugin is opened with the VST GUI editor, the command is always performed asynchronously and the `async` argument is ignored.
 
+##### /mode
+
+Set the processing mode.
+
+Arguments:
+| type ||
+| ---- |-|
+| int  | mode; 0 = realtime, 1 = offline |
+
+In non-realtime (NRT) synthesis, some VST plugins don't render correctly unless you explicitly put them into offline processing mode.
+Some plugins also render at a higher quality in offline mode than in realtime mode.
+
+On the other hand, with a few buggy plugins, certain plugin methods only work correctly in realtime mode, so you have to switch modes accordingly.
+
 ### Parameters
 
 ##### /set
