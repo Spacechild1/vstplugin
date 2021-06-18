@@ -156,6 +156,16 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
     chn.checkError();
 }
 
+#ifndef DEBUG_CLIENT_PROCESS
+#define DEBUG_CLIENT_PROCESS 0
+#endif
+
+#if DEBUG_CLIENT_PROCESS
+# define LOG_PROCESS(x) LOG_DEBUG(x)
+#else
+# define LOG_PROCESS(x)
+#endif
+
 template<typename T>
 void PluginClient::doProcess(ProcessData& data){
     if (!check()){
@@ -163,11 +173,11 @@ void PluginClient::doProcess(ProcessData& data){
         commands_.clear(); // avoid commands piling up!
         return;
     }
-    // LOG_DEBUG("PluginClient: process");
+    LOG_PROCESS("PluginClient: start processing");
 
     auto channel = bridge().getRTChannel();
 
-    // LOG_DEBUG("PluginClient: send process command");
+    LOG_PROCESS("PluginClient: send process command");
     // send process command
     ShmCommand cmd(Command::Process);
     cmd.id = id();
@@ -183,17 +193,19 @@ void PluginClient::doProcess(ProcessData& data){
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
         // write all channels sequentially to avoid additional copying.
+        LOG_PROCESS("PluginClient: write input bus " << i << " with "
+                    << bus.numChannels << " channels");
         for (int j = 0; j < bus.numChannels; ++j){
             channel.addCommand((const T *)bus.channelData32[j], sizeof(T) * data.numSamples);
         }
     }
 
     // add commands (parameter changes, MIDI messages, etc.)
-    // LOG_DEBUG("PluginClient: send commands");
+    LOG_PROCESS("PluginClient: send commands");
     sendCommands(channel);
 
     // send and wait for reply
-    // LOG_DEBUG("PluginClient: wait");
+    LOG_PROCESS("PluginClient: wait");
     channel.send();
 
     // check if host is still alive
@@ -206,8 +218,8 @@ void PluginClient::doProcess(ProcessData& data){
     // read output busses
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
-        // LOG_DEBUG("PluginClient: read audio bus " << i << " with "
-        //     << bus.numChannels << " channels");
+        LOG_PROCESS("PluginClient: read output bus " << i << " with "
+                    << bus.numChannels << " channels");
         // read channels
         for (int j = 0; j < bus.numChannels; ++j){
             auto chn = (T *)bus.channelData32[j];
@@ -227,11 +239,12 @@ void PluginClient::doProcess(ProcessData& data){
     }
 
     // get replies (parameter changes, MIDI messages, etc.)
-    // LOG_DEBUG("PluginClient: read replies");
+    LOG_PROCESS("PluginClient: read replies");
     const ShmCommand* reply;
     while (channel.getReply(reply)){
         dispatchReply(*reply);
     }
+    LOG_PROCESS("PluginClient: finished processing");
 }
 
 void PluginClient::sendCommands(RTChannel& channel){
@@ -541,34 +554,42 @@ std::string PluginClient::getProgramNameIndexed(int index) const {
 }
 
 void PluginClient::readProgramFile(const std::string& path){
+    LOG_DEBUG("PluginClient: readProgramFile");
     sendData(Command::ReadProgramFile, path.c_str(), path.size() + 1);
 }
 
 void PluginClient::readProgramData(const char *data, size_t size){
+    LOG_DEBUG("PluginClient: readProgramData");
     sendData(Command::ReadProgramData, data, size);
 }
 
 void PluginClient::readBankFile(const std::string& path){
+    LOG_DEBUG("PluginClient: readBankFile");
     sendData(Command::ReadBankFile, path.c_str(), path.size() + 1);
 }
 
 void PluginClient::readBankData(const char *data, size_t size){
+    LOG_DEBUG("PluginClient: readBankData");
     sendData(Command::ReadBankData, data, size);
 }
 
 void PluginClient::writeProgramFile(const std::string& path){
+    LOG_DEBUG("PluginClient: writeProgramFile");
     sendData(Command::WriteProgramFile, path.c_str(), path.size() + 1);
 }
 
 void PluginClient::writeProgramData(std::string& buffer){
+    LOG_DEBUG("PluginClient: writeProgramData");
     receiveData(Command::WriteProgramData, buffer);
 }
 
 void PluginClient::writeBankFile(const std::string& path){
+    LOG_DEBUG("PluginClient: writeBankFile");
     sendData(Command::WriteBankFile, path.c_str(), path.size() + 1);
 }
 
 void PluginClient::writeBankData(std::string& buffer){
+    LOG_DEBUG("PluginClient: writeBankData");
     receiveData(Command::WriteBankData, buffer);
 }
 

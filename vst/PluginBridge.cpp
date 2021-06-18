@@ -446,7 +446,7 @@ WatchDog::WatchDog(){
             if (running_){
                 LOG_DEBUG("WatchDog: waiting...");
                 condition_.wait(lock);
-                LOG_DEBUG("WatchDog: new process registered");
+                LOG_DEBUG("WatchDog: woke up");
             } else {
                 break;
             }

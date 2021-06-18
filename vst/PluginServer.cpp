@@ -184,6 +184,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         });
         break;
     case Command::ReadProgramFile:
+        LOG_DEBUG("PluginHandle: ReadProgramFile");
         UIThread::callSync([&](){
             plugin_->readProgramFile(cmd.buffer.data);
         });
@@ -192,6 +193,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankFile:
+        LOG_DEBUG("PluginHandle: ReadBankFile");
         UIThread::callSync([&](){
             plugin_->readBankFile(cmd.buffer.data);
         });
@@ -200,6 +202,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         sendProgramUpdate(channel, true);
         break;
     case Command::ReadProgramData:
+        LOG_DEBUG("PluginHandle: ReadProgramData");
         UIThread::callSync([&](){
             plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
         });
@@ -208,6 +211,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankData:
+        LOG_DEBUG("PluginHandle: ReadBankData");
         UIThread::callSync([&](){
             plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
         });
@@ -216,11 +220,13 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         sendProgramUpdate(channel, true);
         break;
     case Command::WriteProgramFile:
+        LOG_DEBUG("PluginHandle: WriteProgramFile");
         UIThread::callSync([&](){
             plugin_->writeProgramFile(cmd.buffer.data);
         });
         break;
     case Command::WriteBankFile:
+        LOG_DEBUG("PluginHandle: WriteBankFile");
         UIThread::callSync([&](){
             plugin_->writeBankFile(cmd.buffer.data);
         });
@@ -228,6 +234,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     case Command::WriteProgramData:
     case Command::WriteBankData:
     {
+        LOG_DEBUG("PluginHandle: WriteProgramData/WriteBankData");
         // get data
         std::string buffer;
         UIThread::callSync([&](){
@@ -324,8 +331,20 @@ void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
     }
 }
 
+#ifndef DEBUG_SERVER_PROCESS
+#define DEBUG_SERVER_PROCESS 0
+#endif
+
+#if DEBUG_SERVER_PROCESS
+# define LOG_PROCESS(x) LOG_DEBUG(x)
+#else
+# define LOG_PROCESS(x)
+#endif
+
 template<typename T>
 void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
+    LOG_PROCESS("PluginHandle: start processing");
+
     assert(cmd.process.numInputs == numInputs_);
     assert(cmd.process.numOutputs == numOutputs_);
 
@@ -341,9 +360,8 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     // read audio input data
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
-        // LOG_DEBUG("PluginClient: read audio bus " << i << " with "
-        //     << bus.numChannels << " channels");
-
+        LOG_PROCESS("PluginHandle: read input bus " << i << " with "
+                     << bus.numChannels << " channels");
         // read channels
         for (int j = 0; j < bus.numChannels; ++j){
             auto chn = (T *)bus.channelData32[j];
@@ -364,9 +382,11 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     }
 
     // read and dispatch commands
+    LOG_PROCESS("PluginHandle: dispatch commands");
     dispatchCommands(channel);
 
     // process audio
+    LOG_PROCESS("PluginHandle: process");
     plugin_->process(data);
 
     // send audio output data
@@ -375,6 +395,8 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     // send output busses
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
+        LOG_PROCESS("PluginHandle: write output bus " << i << " with "
+                     << bus.numChannels << " channels");
         // write all channels sequentially to avoid additional copying.
         for (int j = 0; j < bus.numChannels; ++j){
             channel.addMessage((const char *)bus.channelData32[j], sizeof(T) * data.numSamples);
@@ -382,7 +404,10 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     }
 
     // send events
+    LOG_PROCESS("PluginHandle: send events");
     sendEvents(channel);
+
+    LOG_PROCESS("PluginHandle: finished processing");
 }
 
 void PluginHandle::dispatchCommands(ShmChannel& channel){
