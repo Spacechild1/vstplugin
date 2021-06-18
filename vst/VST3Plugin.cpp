@@ -754,7 +754,8 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
                                  ProcessPrecision precision, ProcessMode mode){
     LOG_DEBUG("VST3Plugin: setupProcessing (sr: " << sampleRate << ", blocksize: " << maxBlockSize
-              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double") << ")");
+              << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double")
+              << ", mode: " << ((mode == ProcessMode::Offline) ? "offline" : "realtime") << ")");
     if (sampleRate <= 0){
         LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
         sampleRate = 44100;
@@ -1340,6 +1341,7 @@ int VST3Plugin::getLatencySamples() {
 
 void VST3Plugin::setTempoBPM(double tempo){
     if (tempo > 0){
+        LOG_DEBUG("setTempoBPM: " << tempo);
         context_.tempo = tempo;
     } else {
         LOG_ERROR("setTempoBPM: tempo must be greater than 0!");
@@ -1348,6 +1350,7 @@ void VST3Plugin::setTempoBPM(double tempo){
 
 void VST3Plugin::setTimeSignature(int numerator, int denominator){
     if (numerator > 0 && denominator > 0){
+        LOG_DEBUG("setTimeSignature: " << numerator << "/" << denominator);
         context_.timeSigNumerator = numerator;
         context_.timeSigDenominator = denominator;
     } else {
@@ -1357,6 +1360,7 @@ void VST3Plugin::setTimeSignature(int numerator, int denominator){
 }
 
 void VST3Plugin::setTransportPlaying(bool play){
+    LOG_DEBUG("setTransportPlaying: " << play);
     if (play){
         context_.state |= Vst::ProcessContext::kPlaying; // set flag
     } else {
@@ -1418,6 +1422,7 @@ void VST3Plugin::setTransportCycleEnd(double beat){
 }
 
 void VST3Plugin::setTransportPosition(double beat){
+    LOG_DEBUG("setTransportPosition: " << beat);
     context_.projectTimeMusic = std::max(beat, 0.0);
     // update project time in samples (assuming the tempo is valid for the whole "project")
     double time = beat / context_.tempo * 60.0;

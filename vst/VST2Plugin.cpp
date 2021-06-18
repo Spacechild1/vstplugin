@@ -670,6 +670,7 @@ int VST2Plugin::getLatencySamples(){
 
 void VST2Plugin::setTempoBPM(double tempo){
     if (tempo > 0) {
+        LOG_DEBUG("setTempoBPM: " << tempo);
         timeInfo_.tempo = tempo;
         timeInfo_.flags |= kVstTransportChanged;
     } else {
@@ -679,6 +680,7 @@ void VST2Plugin::setTempoBPM(double tempo){
 
 void VST2Plugin::setTimeSignature(int numerator, int denominator){
     if (numerator > 0 && denominator > 0){
+        LOG_DEBUG("setTimeSignature: " << numerator << "/" << denominator);
         timeInfo_.timeSigNumerator = numerator;
         timeInfo_.timeSigDenominator = denominator;
         timeInfo_.flags |= kVstTransportChanged;
@@ -689,7 +691,8 @@ void VST2Plugin::setTimeSignature(int numerator, int denominator){
 }
 
 void VST2Plugin::setTransportPlaying(bool play){
-    if (play != (bool)(timeInfo_.flags & kVstTransportPlaying)){
+    bool current = timeInfo_.flags & kVstTransportPlaying;
+    if (play != current){
         LOG_DEBUG("setTransportPlaying: " << play);
         timeInfo_.flags ^= kVstTransportPlaying; // toggle
         timeInfo_.flags |= kVstTransportChanged;
@@ -697,7 +700,8 @@ void VST2Plugin::setTransportPlaying(bool play){
 }
 
 void VST2Plugin::setTransportRecording(bool record){
-    if (record != (bool)(timeInfo_.flags & kVstTransportRecording)){
+    bool current = timeInfo_.flags & kVstTransportRecording;
+    if (record != current){
         LOG_DEBUG("setTransportRecording: " << record);
         timeInfo_.flags ^= kVstTransportRecording; // toggle
         timeInfo_.flags |= kVstTransportChanged;
@@ -705,21 +709,24 @@ void VST2Plugin::setTransportRecording(bool record){
 }
 
 void VST2Plugin::setTransportAutomationWriting(bool writing){
-    if (writing != (bool)(timeInfo_.flags & kVstAutomationWriting)){
+    bool current = timeInfo_.flags & kVstAutomationWriting;
+    if (writing != current) {
         timeInfo_.flags ^= kVstAutomationWriting; // toggle
         timeInfo_.flags |= kVstTransportChanged;
     }
 }
 
 void VST2Plugin::setTransportAutomationReading(bool reading){
-    if (reading != (bool)(timeInfo_.flags & kVstAutomationReading)){
+    bool current = timeInfo_.flags & kVstAutomationReading;
+    if (reading != current){
         timeInfo_.flags ^= kVstAutomationReading; // toggle
         timeInfo_.flags |= kVstTransportChanged;
     }
 }
 
 void VST2Plugin::setTransportCycleActive(bool active){
-    if (active != (bool)(timeInfo_.flags & kVstTransportCycleActive)){
+    bool current = timeInfo_.flags & kVstTransportCycleActive;
+    if (active != current) {
         LOG_DEBUG("setTransportCycleActive: " << active);
         timeInfo_.flags ^= kVstTransportCycleActive; // toggle
         timeInfo_.flags |= kVstTransportChanged;
@@ -737,6 +744,7 @@ void VST2Plugin::setTransportCycleEnd(double beat){
 }
 
 void VST2Plugin::setTransportPosition(double beat){
+    LOG_DEBUG("setTransportPosition: " << beat);
     timeInfo_.ppqPos = std::max(beat, 0.0); // musical position
     // update project time in samples (assuming the tempo is valid for the whole "project")
     double time = timeInfo_.ppqPos / timeInfo_.tempo * 60.0;
