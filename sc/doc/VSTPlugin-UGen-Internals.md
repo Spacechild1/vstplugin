@@ -11,15 +11,15 @@ Have a look at `VSTPlugin.sc` and `VSTPluginController.sc` in the *classes* fold
 ### UGen inputs
 | name         | rate  ||
 | ------------ | ----- |-|
-| flags        | ir    | creation flags (reserved for future use)      |
-| blockSize    | ir    | desired block size or 0 (= Server block size) |
-| bypass       | ir/kr | bypass state                                  |
-| numInputs    | ir    | number of audio input busses; can be 0        |
-| inputBus...  |       | (optional) `<numInputs>` audio input busses   |
-| numOutputs   | ir    | number of audio output busses; can be 0       |
-| outputBus... |       | (optional) `<numOutputs>` audio output busses |
-| numParamCtls | ir    | number of parameter controls; can be 0        |
-| paramCtl...  |       | (optional) `<numParamCtls>` parameter controls   |
+| flags        | ir    | creation flags (reserved for future use)       |
+| blockSize    | ir    | desired block size or 0 (= Server block size)  |
+| bypass       | ir/kr | bypass state                                   |
+| numInputs    | ir    | number of audio input busses; can be 0         |
+| inputBus...  |       | (optional) `<numInputs>` audio input busses    |
+| numOutputs   | ir    | number of audio output busses; can be 0        |
+| outputBus... |       | (optional) `<numOutputs>` audio output busses  |
+| numParamCtls | ir    | number of parameter controls; can be 0         |
+| paramCtl...  |       | (optional) `<numParamCtls>` parameter controls |
 
 *inputBus*
 
@@ -106,7 +106,7 @@ The following options can be combined with a bitwise OR operation:
 | value ||
 | ----- |-|
 | 0x1   | verbose (print plugin paths and probe results)
-| 0x2   | add search results to cache file.
+| 0x2   | write search results to cache file.
 | 0x4   | probe in parallel (faster, but might cause audio dropouts because of full CPU utilization)
 
 If there are no user supplied search paths, the standard VST search paths are used instead:
@@ -338,7 +338,7 @@ Replies with:
 
 To get all parameter values, you can do `/u_cmd, <nodeID>, <synthIndex>, /getn, 0, -1`.
 
-##### /parameter_query
+##### /param_query
 
 Query parameter states.
 
