@@ -796,9 +796,9 @@ to build your own preset management in Pd:, f 49;
 #X text 180 487 clear and delete cache file;
 #X msg 43 348 search -n;
 #X text 111 349 search but don't update the cache file;
-#X obj 394 506 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
+#X obj 394 527 cnv 15 50 20 empty empty empty 20 12 0 14 -257985 -66577
 0;
-#X text 398 509 NOTE:;
+#X text 398 530 NOTE:;
 #X msg 61 432 search_stop;
 #X text 143 431 stop the current (asynchronous) search;
 #X text 48 152 responds with a series of;
@@ -807,12 +807,6 @@ to build your own preset management in Pd:, f 49;
 #X text 48 173 and a final;
 #X msg 122 173 search_done;
 #X text 198 173 message;
-#X text 393 611 However \, subsequent searches in the same directory
-will be almost instantaneous because the plugin info is read from the
-cache file., f 68;
-#X text 392 466 Incompatible plugins automatically run in a shared
-subprocess (= "bit bridging") \, which incurs some CPU overhead.,
-f 62;
 #X text 99 196 Alternatively \, you can provide a list of user search
 paths. Relative paths are resolved to the current patch directory.
 , f 41;
@@ -822,16 +816,9 @@ finished and you can see the progress in the console., f 41;
 #X text 142 583 the info method will output the following messages:
 , f 27;
 #X text 17 59 Whitespace in names is replaced by underscores.;
-#X text 16 78 Search results are stored in a cache file \, so you only
-have to search once in the beginning and everytime you add new plugins.
-, f 56;
 #X text 16 27 After a plugin search \, you can simply refer to plugins
 by their name \, e.g. in the [open( message., f 55;
 #X text 69 130 search in the standard VST directories;
-#X text 393 537 The first search in a directory might take from a couple
-of seconds to several minutes \, depending on the number and type of
-plugins (shell plugins like Waves contain hundreds of sub-plugins!)
-, f 68;
 #X text 405 167 NOTE: "%ProgramFiles%" refers to either "Program Files"
 (64-bit) or "Program Files (x86)" (32-bit), f 56;
 #X obj 408 83 cnv 15 40 20 empty empty empty 20 12 0 14 -233017 -66577
@@ -857,11 +844,9 @@ plugins (shell plugins like Waves contain hundreds of sub-plugins!)
 #X text 408 372 VST3:;
 #X text 459 332 /usr/lib/vst /usr/local/lib/vst, f 20;
 #X text 457 367 /usr/lib/vst3 /usr/local/lib/vst3 ~/.vst3, f 20;
-#X text 392 434 EXPERIMENTAL: Since v0.5 you can also run Windows plugins
-in Linux with Wine (see the README for more information)., f 67;
-#X text 392 415 Since v0.4 you can run 32-bit plugins in 64-bit Pd
+#X text 396 412 Since v0.4 you can run 32-bit plugins in 64-bit Pd
 and vice versa!, f 66;
-#X text 394 579 Every plugin is probed in a seperate process to catch
+#X text 394 556 Every plugin is probed in a seperate process to catch
 bad plugins without crashing Pd., f 67;
 #X msg 36 305 search -t 10;
 #X text 124 302 Set a timeout (in seconds) for each plugin \, after
@@ -875,6 +860,24 @@ which it is regarded as stuck and ignored. Use with care!, f 38;
 #X msg 49 377 search -x <path>, f 17;
 #X msg 55 404 search -x <path1> -x <path2>;
 #X text 170 376 exclude a subfolder or file;
+#X text 396 431 Since v0.5 you can also run Windows plugins in Linux
+(via Wine)., f 67;
+#X text 397 450 Non-native plugins automatically run in a shared subprocess
+, f 61;
+#X text 397 466 (= "bit bridging") \, which incurs some CPU overhead.
+;
+#X text 397 487 For more information \, see the section 'Bridging/sandboxing'
+in the README.;
+#X text 16 78 Search results are stored in a cache file \, so you only
+have to search once in the beginning and everytime you install new
+plugins., f 56;
+#X text 392 586 The first search in a directory might take from a couple
+of seconds to several minutes \, depending on the number and type of
+plugins (shell plugins like 'Waves' contain hundreds of sub-plugins!)
+, f 68;
+#X text 394 628 Subsequent searches in the same directory will be almost
+instantaneous because the plugin info is read from the cache file.
+, f 68;
 #X connect 1 0 0 0;
 #X connect 14 0 0 0;
 #X connect 16 0 0 0;
@@ -885,14 +888,14 @@ which it is regarded as stuck and ignored. Use with care!, f 38;
 #X connect 21 0 0 0;
 #X connect 23 0 0 0;
 #X connect 27 0 0 0;
-#X connect 66 0 0 0;
-#X connect 68 0 0 0;
-#X connect 74 0 0 0;
-#X connect 75 0 0 0;
+#X connect 61 0 0 0;
+#X connect 63 0 0 0;
+#X connect 69 0 0 0;
+#X connect 70 0 0 0;
 #X restore 394 525 pd search;
 #X f 14;
 #X text 392 503 search + info;
-#N canvas 261 35 1010 512 open 0;
+#N canvas 261 35 1025 512 open 0;
 #X obj 483 327 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
 #X obj 483 348 openpanel;
@@ -910,11 +913,11 @@ them from VST2 plugins of the same name.;
 #X obj 467 177 s \$0-msg;
 #X text 502 327 file path;
 #X msg 467 156 search -a;
-#X text 167 337 on success and;
-#X text 32 336 outputs;
-#X msg 261 337 open 0;
-#X text 309 337 on failure;
-#X msg 84 336 open 1 <key>;
+#X text 167 431 on success and;
+#X text 32 430 outputs;
+#X msg 261 431 open 0;
+#X text 309 431 on failure;
+#X msg 84 430 open 1 <key>;
 #X obj 468 262 pack s f;
 #X obj 513 240 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
@@ -924,27 +927,27 @@ them from VST2 plugins of the same name.;
 1;
 #X msg 483 419 open \$1 \$2;
 #X symbolatom 458 77 10 0 0 0 - - -;
-#X text 32 276 async:;
-#X text 60 293 0: load synchronously (default);
+#X text 32 367 async:;
+#X text 60 384 0: load synchronously (default);
 #X text 465 132 1) search;
 #X text 465 199 2) open by key;
-#X text 29 53 -e: use the VST editor;
-#X text 33 257 key/path: plugin key or file path (see below);
-#X text 60 309 1: load asynchronously;
+#X text 29 59 -e: use the VST editor;
+#X text 33 340 key/path: plugin key or file path (see below);
+#X text 60 400 1: load asynchronously;
 #X obj 28 29 cnv 20 240 20 empty empty empty 20 12 0 14 -228856 -66577
 0;
-#X text 30 70 -t: process plugin in a seperate thread to utilize more
+#X text 30 130 -t: process plugin in a seperate thread to utilize more
 CPU cores., f 67;
-#X text 54 85 NOTE: this introduces a delay of 1 block.;
-#X text 55 123 This makes sure that the plugin can safely crash without
+#X text 54 149 NOTE: this introduces a delay of 1 block.;
+#X text 55 192 This makes sure that the plugin can safely crash without
 taking down the whole Pd process. Use this for buggy plugins or safe
 experimentation., f 57;
-#X text 56 165 NOTE: switching between processes incurs some fixed
+#X text 56 234 NOTE: switching between processes incurs some fixed
 CPU overhead \, which is less significant for higher blocksizes.;
-#X text 30 104 -p: run plugin in a dedicated subprocess (= sandbox).
+#X text 30 173 -p: run plugin in a dedicated subprocess (= sandbox).
 ;
-#X text 29 194 -b: run plugin in a shared subprocess.;
-#X text 54 212 This uses less memory and possibly less CPU \, but if
+#X text 29 271 -b: run plugin in a shared subprocess.;
+#X text 54 289 This uses less memory and possibly less CPU \, but if
 one plugin crashes \, it will inevitably take down all other plugins
 in the same process.;
 #X text 535 64 NOTE: on macOS \, the VST editor might run on the audio
@@ -956,10 +959,6 @@ by underscores \, so that the symbol can be easily typed in Pd (e.g.
 #X text 566 131 Plug-ins can be opened in 2 ways:;
 #X text 568 155 a) by key:;
 #X text 568 303 b) By file path:;
-#X text 583 239 Generally \, keys can only be used after a search (see
-the 'search' method). Search results are cached in a file \, so you
-only need to search once in the beginning and everytime you add a new
-plug-in., f 67;
 #X text 587 323 Both absolute and relative paths are allowed. Relative
 paths are searched like abstractions. If that fails \, the standard
 VST search paths are searched *recursively* (see [pd search]), f 67
@@ -974,6 +973,13 @@ contains several plug-ins (VST2 shell plug-ins or certain VST3 plug-ins)!
 while keys are always platform independent., f 63;
 #X text 529 26 By default \, a generic Pd editor is created \, use
 the -e flag to enable the VST editor., f 45;
+#X text 583 239 Generally \, keys can only be used after a search (see
+the 'search' method). Search results are cached in a file \, so you
+only need to search once in the beginning and everytime you install
+a new plug-in., f 70;
+#X text 55 78 If omitted \, a generic Pd editor is created.;
+#X text 55 97 NOTE: some (buggy) plugins don't work correctly without
+the VST editor., f 56;
 #X connect 0 0 1 0;
 #X connect 1 0 21 0;
 #X connect 2 0 3 0;

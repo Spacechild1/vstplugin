@@ -424,10 +424,10 @@ Usually, you can only run plugins with the same CPU architecture as the host app
 
 Since VSTPlugin v0.4, however, it is possible to run 32-bit plugins on a 64-bit Server and vice versa! Such incompatible plugins will automatically run in a shared subprocess (= bit bridging), which incurs some CPU overhead.
 
-Since VSTPlugin v0.5 it is also possible to run Windows plugins on Linux with Wine. See the README for more information.
+Since VSTPlugin v0.5 it is also possible to run Windows plugins on Linux with Wine.
 
 note::Bridging/sandboxing can also be explictly enabled for native plugins, see the code::mode:: argument in link::Classes/VSTPluginController#-open::.::
 
-
+For more information, see the emphasis::Bridging/sandboxing:: section in the README.
 
 INSTANCEMETHODS::

@@ -7,17 +7,19 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 ### Features:
 
 * supports all VST2 and VST3 plugins (audio effect, MIDI effect, instruments, etc.)
-* search and probe plugins in the standard VST directories or in user defined paths
-* automate plugin parameters programmatically (sample accurate for VST3 plugins)
-* arbitrary number of inputs/outputs + VST3 side chain inputs/outputs
+* automate plugin parameters (sample accurate for VST3 plugins)
+* arbitrary number of inputs/outputs + VST3 multi-bus support
 * use either the native VST GUI (WIN32, Cocoa, X11) or a generic editor
 * preset management: read/write standard VST preset files or
   set/get the plugin state as raw data to build your own preset management
 * MIDI input/output
 * transport and tempo support (for arpeggiators, sequencers, parameters with musical time units, etc.)
+* offline rendering
+* search for plugins in the standard VST directories or in user defined paths
 * bit-bridging and sandboxing
 * use Windows plugins on Linux (with Wine)
 * multithreading
+
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
 
@@ -56,12 +58,11 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 Since v0.4 it is possible to run 32-bit VST plugins with a 64-bit version of Pd/Supercollider and vice versa.
 
-If *vstplugin* finds a native and a bridged plugin with the same name, the latter is ignored.
+*vstplugin* always prefers native plugins over bridged plugin with the same name. Plugins that have been "converted" with an external plugin bridge (e.g. jBridge, LinVst, Yabridge) will appear as native plugins.
 
 #### Windows
 
-Bit-bridging is usually used for running old 32-bit plugins - many of which will never see an update - on modern
-64-bit host applications.
+Bit-bridging is usually used for running old 32-bit plugins - many of which will never see an update - on modern 64-bit host applications.
 
 By default, vstplugin searches for plugins in both `%PROGRAMFILES%` and `%PROGRAMFILES(x86)%`.
 
@@ -72,9 +73,9 @@ However, in the future bit bridging might become necessary again when audio soft
 
 #### Linux
 
-On Linux, classic bit-bridging is not very common because plugins are either open source or they are recent enough to provide 64-bit versions.
+On Linux, classic bit-bridging (= running 32-bit plugins on a 64-bit host) is not very common because plugins are either open source or they are recent enough to provide 64-bit versions.
 
-However, since *vstplugin v0.5* it is also possible to run Windows plugins on Linux! For this you need to have Wine installed on your system.
+However, since *vstplugin v0.5* it is also possible to run 64-bit and 32-bit Windows plugins on Linux! For this you need to have Wine installed on your system.
 Unfortunately, there are several different Wine versions (stable, development, staging, etc.) and they are not 100% compatible.
 The binaries available at https://git.iem.at/pd/vstplugin/-/releases are built against the standard Wine version shipped with Debian.
 If you want to use a newer Wine version, you might have to build *vstplugin* from source.

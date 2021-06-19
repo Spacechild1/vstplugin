@@ -419,8 +419,11 @@ SynthDef(\chorus, { arg bus=0;
 ::
 
 ARGUMENT:: editor
-request the VST plugin editor.
+enable/disable the VST plugin editor.
+
 note::On macOS this only works with SuperCollider 3.11 and above!::
+
+note::Some (buggy) plugins don't work correctly without the VST editor.::
 
 ARGUMENT:: verbose
 post the plugin info to the console if loaded successfully.
