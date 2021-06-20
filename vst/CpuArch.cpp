@@ -422,6 +422,12 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path){
         std::vector<CpuArch> results;
 
         auto hasExtension = [](const std::string& path){
+        #ifdef __APPLE__
+            // On macOS, the actual binary in a VST plugin bundle shouldn't have
+            // a file extension, but some plugin vendors don't seem to care...
+            // As a workaround we simply don't filter at all.
+            return true;
+        #else
             auto e1 = fileExtension(path);
             for (auto& e2 : gBundleBinaryExtensions){
                 if (e1 == e2){
@@ -429,6 +435,7 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path){
                 }
             }
             return false;
+        #endif
         };
 
         // '/Contents' might contain additional subfolders, such as '/Resources',
