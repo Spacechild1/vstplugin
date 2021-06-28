@@ -1372,15 +1372,31 @@ void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numO
 
     // we have to (de)activate busses *after* setting the bus arrangement.
     // we also retrieve and save the actual bus channel counts.
+    // NOTE: according to the VST3 SDK docs, we can deactivate plugin busses at will;
+    // this means that if we request a channel count of 0, we could simply deactivate
+    // the bus. However, some plugins would simply crash if a main bus is deactivated,
+    // that's why we always check the actual bus arrangement for main busses, even if
+    // the requested channel count was 0, but we don't do this for aux busses.
     auto checkSpeakers = [this](Vst::BusDirection dir, int *busses, int count){
         for (int i = 0; i < count; ++i){
-            // check actual channel count
-            Vst::SpeakerArrangement arr;
-            if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
-                busses[i] = Vst::SpeakerArr::getChannelCount(arr);
-            } else {
-                // ?
-                LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+            bool active = busses[i] > 0;
+            if (!active){
+                Vst::BusInfo info;
+                if (component_->getBusInfo(Vst::kAudio, dir, i, info) == kResultOk){
+                    if (info.busType == Vst::kMain){
+                        active = true; // main bus is always active!
+                    }
+                }
+            }
+            if (active){
+                // check actual channel count
+                Vst::SpeakerArrangement arr;
+                if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
+                    busses[i] = Vst::SpeakerArr::getChannelCount(arr);
+                } else {
+                    // ?
+                    LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+                }
             }
             // only activate bus if number of speakers is greater than zero
             component_->activateBus(Vst::kAudio, dir, i, busses[i] > 0);
