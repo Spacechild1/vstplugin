@@ -829,7 +829,7 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
         maxBlockSize = 64;
     }
 
-    MyProcessSetup setup;
+    vst3::ProcessSetup setup;
     setup.processMode = (mode == ProcessMode::Offline) ? Vst::kOffline : Vst::kRealtime;
     setup.symbolicSampleSize = (precision == ProcessPrecision::Double) ? Vst::kSample64 : Vst::kSample32;
     setup.maxSamplesPerBlock = maxBlockSize;
@@ -857,14 +857,14 @@ void VST3Plugin::process(ProcessData& data){
 template<typename T>
 void VST3Plugin::doProcess(ProcessData& inData){
     // process data
-    MyProcessData data;
+    vst3::ProcessData data;
     data.processMode = (inData.mode == ProcessMode::Offline) ? Vst::kOffline : Vst::kRealtime;
     data.symbolicSampleSize = std::is_same<T, double>::value ? Vst::kSample64 : Vst::kSample32;
     data.numSamples = inData.numSamples;
     data.processContext = &context_;
     // prepare input
     data.numInputs = inData.numInputs;
-    data.inputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numInputs);
+    data.inputs = (vst3::AudioBusBuffers *)alloca(sizeof(vst3::AudioBusBuffers) * inData.numInputs);
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
         bus.silenceFlags = 0;
@@ -873,7 +873,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
     }
     // prepare output
     data.numOutputs = inData.numOutputs;
-    data.outputs = (MyAudioBusBuffers *)alloca(sizeof(MyAudioBusBuffers) * inData.numOutputs);
+    data.outputs = (vst3::AudioBusBuffers *)alloca(sizeof(vst3::AudioBusBuffers) * inData.numOutputs);
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
         bus.silenceFlags = 0;
@@ -969,7 +969,7 @@ void VST3Plugin::doProcess(ProcessData& inData){
 }
 
 template<typename T>
-void VST3Plugin::bypassProcess(ProcessData& inData, MyProcessData& data,
+void VST3Plugin::bypassProcess(ProcessData& inData, vst3::ProcessData& data,
                                Bypass state, bool ramp)
 {
     if (bypassSilent_ && !ramp){
@@ -980,7 +980,7 @@ void VST3Plugin::bypassProcess(ProcessData& inData, MyProcessData& data,
 
     // make temporary input vector - don't touch the original vector!
     data.inputs = (data.numInputs > 0) ?
-                (MyAudioBusBuffers *)(alloca(sizeof(MyAudioBusBuffers) * data.numInputs))
+                (vst3::AudioBusBuffers *)(alloca(sizeof(vst3::AudioBusBuffers) * data.numInputs))
               : nullptr;
     for (int i = 0; i < data.numInputs; ++i){
         auto nin = inData.inputs[i].numChannels;

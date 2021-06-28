@@ -59,16 +59,20 @@ using namespace Steinberg;
 // (which only specifies the *minimum* alignment).
 //
 // If a struct has a different layout, we can't safely pass it to
-// a Windows plugin from our Linux/winelib host; rather we have to
-// use our own structs with additional padding members to match the
-// expected struct layout.
+// a Windows plugin from our Linux/winelib host.
+// Our solution is to use our own structs with additional padding
+// members to match the expected struct layout.
 //
-// The VST2 SDK is not affected, afaict. 64-bit integers are not
+// NOTE: we could also compile the wine host with -malign-double
+// but this can have unexpected consequences when interfacing
+// with existing Linux code.
+//
+// Afaict, the VST2 SDK is not affected. 64-bit integers are not
 // used anywhere and only few structs have double members:
 // * VstTimeInfo: all doubles come come first.
 // * VstOfflineTask and VstAudioFile: problematic, but not used.
 //
-// VST3 SDK:
+// The VST3 SDK, on the other hand, *is* affected:
 // Broken:
 // * Vst::ProcessSetup
 // * Vst::AudioBusBuffers
@@ -81,8 +85,10 @@ using namespace Steinberg;
 // * Vst::NoteExpressionValueEvent
 // * Vst::NoteExpressionTypeInfo
 
+namespace vst3 {
+
 // Vst::ProcessSetup
-struct MyProcessSetup {
+struct ProcessSetup {
     int32 processMode;
     int32 symbolicSampleSize;
     int32 maxSamplesPerBlock;
@@ -90,11 +96,11 @@ struct MyProcessSetup {
     Vst::SampleRate sampleRate;
 } __attribute__((packed, aligned(8) ));
 
-static_assert(sizeof(MyProcessSetup) == 24,
-              "unexpected size for MyProcessSetup");
+static_assert(sizeof(ProcessSetup) == 24,
+              "unexpected size for ProcessSetup");
 
 // Vst::AudioBusBuffers
-struct MyAudioBusBuffers {
+struct AudioBusBuffers {
     int32 numChannels;
     int32 padding1;
     uint64 silenceFlags;
@@ -106,10 +112,10 @@ struct MyAudioBusBuffers {
     int32 padding2;
 } __attribute__((packed, aligned(8) ));
 
-static_assert(sizeof(MyAudioBusBuffers) == 24,
-              "unexpected size for MyAudioBusBuffers");
+static_assert(sizeof(AudioBusBuffers) == 24,
+              "unexpected size for AudioBusBuffers");
 
-struct MyProcessContext
+struct ProcessContext
 {
     uint32 state;
     int32 padding1;
@@ -131,39 +137,43 @@ struct MyProcessContext
     int32 padding2;
 } __attribute__((packed, aligned(8) ));
 
-static_assert(sizeof(MyProcessContext) == 112,
-              "unexpected size for MyProcessContext");
+static_assert(sizeof(ProcessContext) == 112,
+              "unexpected size for ProcessContext");
 
 // Vst::ProcessData
 // This one is only used to avoid casts between
-// Vst::AudioBusBuffers <-> MyAudioBusBuffers and
-// Vst::ProcessContext <-> MyProcessContext
-struct MyProcessData
+// Vst::AudioBusBuffers <-> AudioBusBuffers and
+// Vst::ProcessContext <-> ProcessContext
+struct ProcessData
 {
     int32 processMode;
     int32 symbolicSampleSize;
     int32 numSamples;
     int32 numInputs;
     int32 numOutputs;
-    MyAudioBusBuffers* inputs;
-    MyAudioBusBuffers* outputs;
+    AudioBusBuffers* inputs;
+    AudioBusBuffers* outputs;
 
     Vst::IParameterChanges* inputParameterChanges;
     Vst::IParameterChanges* outputParameterChanges;
     Vst::IEventList* inputEvents;
     Vst::IEventList* outputEvents;
-    MyProcessContext* processContext;
+    ProcessContext* processContext;
 };
 
-static_assert(sizeof(MyProcessData) == 48,
-              "unexpected size for MyProcessData");
+static_assert(sizeof(ProcessData) == 48,
+              "unexpected size for ProcessData");
+
+} // vst3
 
 #else // 32-bit Wine
 
-using MyProcessSetup = Vst::ProcessSetup;
-using MyAudioBusBuffers = Vst::AudioBusBuffers;
-using MyProcessData = Vst::ProcessData;
-using MyProcessContext = Vst::ProcessContext;
+namespace vst3 {
+using ProcessSetup = Vst::ProcessSetup;
+using AudioBusBuffers = Vst::AudioBusBuffers;
+using ProcessData = Vst::ProcessData;
+using ProcessContext = Vst::ProcessContext;
+} // vst3
 
 // verify struct sizes
 
@@ -479,7 +489,7 @@ class VST3Plugin final :
     template<typename T>
     void doProcess(ProcessData& inData);
     template<typename T>
-    void bypassProcess(ProcessData& inData, MyProcessData& data,
+    void bypassProcess(ProcessData& inData, vst3::ProcessData& data,
                        Bypass state, bool ramp);
     void handleEvents();
     void handleOutputParameterChanges();
@@ -496,7 +506,7 @@ class VST3Plugin final :
     IWindow::ptr window_;
     std::weak_ptr<IPluginListener> listener_;
     // audio
-    MyProcessContext context_;
+    vst3::ProcessContext context_;
     // automation
     int32 automationState_ = 0; // should better be atomic as well...
     std::atomic_bool automationStateChanged_{false};
