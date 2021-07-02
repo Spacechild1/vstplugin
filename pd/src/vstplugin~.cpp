@@ -3091,12 +3091,16 @@ void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
                                outputs.data(), outputs.size());
 
         x_inputs.resize(inputs.size());
+        x_input_channels = 0;
         for (int i = 0; i < (int)inputs.size(); ++i){
+            x_input_channels += inputs[i];
             x_inputs[i] = Bus(inputs[i]);
         }
 
         x_outputs.resize(outputs.size());
+        x_output_channels = 0;
         for (int i = 0; i < (int)outputs.size(); ++i){
+            x_output_channels += outputs[i];
             x_outputs[i] = Bus(outputs[i]);
         }
 
@@ -3519,31 +3523,23 @@ static void vstplugin_doperform(t_vstplugin *x, int n){
         }
     }
 
-    // zero/bypass remaining outlets
-    int ninlets = x->x_inlets.size();
+    // zero remaining outlets
     int noutlets = x->x_outlets.size();
-    int ninputs = x->x_inputs.size();
     int noutputs = x->x_outputs.size();
-    for (int i = 0; i < noutlets; ++i){
-        auto& outlets = x->x_outlets[i];
-        int onset = (i < noutputs) ?
-                    x->x_outputs[i].numChannels : 0;
-        for (int j = onset; j < outlets.b_n; ++j){
-            auto out = outlets.b_signals[j];
-            // only bypass if
-            // a) there is a corresponding inlet and
-            // b) that inlet isn't used by the plugin
-            if (i < ninlets && j < x->x_inlets[i].b_n &&
-                !(i < ninputs && j < x->x_inputs[i].numChannels))
-            {
-                // NOTE: use a plain for-loop because we might need to
-                // convert TFloat to t_sample!
-                auto in = (const TFloat *)x->x_inlets[i].b_buffers[j];
-                for (int k = 0; k < n; ++k){
-                    out[k] = in[k];
-                }
-            } else {
-                // zero
+    if (noutlets == 1){
+        // plugin outputs might be destributed
+        auto& outlets = x->x_outlets[0];
+        for (int i = x->x_output_channels; i < outlets.b_n; ++i){
+            auto out = outlets.b_signals[i];
+            std::fill(out, out + n, 0);
+        }
+    } else {
+        for (int i = 0; i < noutlets; ++i){
+            auto& outlets = x->x_outlets[i];
+            int onset = (i < noutputs) ?
+                        x->x_outputs[i].numChannels : 0;
+            for (int j = onset; j < outlets.b_n; ++j){
+                auto out = outlets.b_signals[j];
                 std::fill(out, out + n, 0);
             }
         }

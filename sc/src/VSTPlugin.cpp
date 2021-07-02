@@ -844,7 +844,7 @@ float VSTPlugin::readControlBus(uint32 num) {
 }
 
 bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
-                             Bus *ugenBusses, int ugenBusCount,
+                             int& totalNumChannels, Bus *ugenBusses, int ugenBusCount,
                              const int *speakers, int numSpeakers, float *dummy)
 {
     // free excess bus channels
@@ -875,6 +875,7 @@ bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
     pluginBusses = result;
     pluginBusCount = numSpeakers;
     // (re)allocate plugin busses
+    totalNumChannels = 0;
     for (int i = 0; i < numSpeakers; ++i) {
         auto& bus = pluginBusses[i];
         auto channelCount = speakers[i];
@@ -896,6 +897,7 @@ bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
                 bus.numChannels = 0;
             }
         }
+        totalNumChannels += channelCount;
     }
     // set channels
     assert(ugenBusCount >= 1);
@@ -1074,9 +1076,11 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
 
     if (reblock_){
         if (!setupBuffers(pluginInputs_, numPluginInputs_,
+                          numPluginInputChannels_,
                           reblock_->inputs, reblock_->numInputs,
                           inputs, numInputs, inDummy) ||
             !setupBuffers(pluginOutputs_, numPluginOutputs_,
+                          numPluginOutputChannels_,
                           reblock_->outputs, reblock_->numOutputs,
                           outputs, numOutputs, outDummy))
         {
@@ -1085,9 +1089,11 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
         }
     } else {
         if (!setupBuffers(pluginInputs_, numPluginInputs_,
+                          numPluginInputChannels_,
                           ugenInputs_, numUgenInputs_,
                           inputs, numInputs, inDummy) ||
             !setupBuffers(pluginOutputs_, numPluginOutputs_,
+                          numPluginOutputChannels_,
                           ugenOutputs_, numUgenOutputs_,
                           outputs, numOutputs, outDummy))
         {
@@ -1350,16 +1356,30 @@ void VSTPlugin::next(int inNumSamples) {
                     std::copy(src, src + inNumSamples, dst);
                 }
             }
-
-            // zero/bypass remaining Ugen inputs/outputs
-            bypassRemaining(reblock_->inputs, reblock_->numInputs, inNumSamples, reblock_->phase);
         } else {
             data.numSamples = inNumSamples;
 
             plugin->process(data);
+        }
 
-            // zero/bypass remaining Ugen inputs/outputs
-            bypassRemaining(ugenInputs_, numUgenInputs_, inNumSamples, 0);
+        // zero remaining Ugen outputs
+        if (numUgenOutputs_ == 1){
+            // plugin outputs might be destributed
+            auto& ugenOutputs = ugenOutputs_[0];
+            for (int i = numPluginOutputChannels_; i < ugenOutputs.numChannels; ++i){
+                auto out = ugenOutputs.channelData[i];
+                std::fill(out, out + inNumSamples, 0);
+            }
+        } else {
+            for (int i = 0; i < numUgenOutputs_; ++i){
+                auto& ugenOutputs = ugenOutputs_[i];
+                int onset = (i < numPluginOutputs_) ?
+                    pluginOutputs_[i].numChannels : 0;
+                for (int j = onset; j < ugenOutputs.numChannels; ++j){
+                    auto out = ugenOutputs.channelData[j];
+                    std::fill(out, out + inNumSamples, 0);
+                }
+            }
         }
 
         // send parameter automation notification posted from the GUI thread [or NRT thread]
@@ -1405,31 +1425,6 @@ void VSTPlugin::performBypass(const Bus *ugenInputs, int numInputs,
             for (int j = 0; j < outputs.numChannels; ++j){
                 auto chn = outputs.channelData[j];
                 std::fill(chn, chn + numSamples, 0);
-            }
-        }
-    }
-}
-
-void VSTPlugin::bypassRemaining(const Bus *ugenInputs, int numInputs,
-                                int numSamples, int phase)
-{
-    for (int i = 0; i < numUgenOutputs_; ++i){
-        auto& ugenOutputs = ugenOutputs_[i];
-        int onset = (i < numPluginOutputs_) ?
-            pluginOutputs_[i].numChannels : 0;
-        for (int j = onset; j < ugenOutputs.numChannels; ++j){
-            auto out = ugenOutputs.channelData[j];
-            // only bypass if a) there is a corresponding UGen input
-            // and b) that input isn't used by the plugin
-            if (i < numInputs && j < ugenInputs[i].numChannels &&
-                !(i < numPluginInputs_ && j < pluginInputs_[i].numChannels))
-            {
-                // copy input to output
-                auto in = ugenInputs[i].channelData[j] + phase;
-                std::copy(in, in + numSamples, out);
-            } else {
-                // zero output
-                std::fill(out, out + numSamples, 0);
             }
         }
     }

@@ -323,7 +323,7 @@ private:
     float readControlBus(uint32 num);
 
     bool setupBuffers(AudioBus *& pluginBusses, int& pluginBusCount,
-                      Bus *ugenBusses, int ugenBusCount,
+                      int& totalNumChannels, Bus *ugenBusses, int ugenBusCount,
                       const int *speakers, int numSpeakers, float *dummy);
 
     void initReblocker(int reblockSize);
@@ -332,9 +332,6 @@ private:
 
     void performBypass(const Bus *ugenInputs, int numInputs,
                        int numSamples, int phase);
-
-    void bypassRemaining(const Bus *ugenInputs, int numInputs,
-                         int numSamples, int phase);
 
     static const int Initialized = 1;
     static const int UnitCmdQueued = 2;
@@ -354,6 +351,8 @@ private:
     int numUgenOutputs_ = 0;
     int numPluginInputs_ = 0;
     int numPluginOutputs_ = 0;
+    int numPluginInputChannels_ = 0;
+    int numPluginOutputChannels_ = 0;
     Bus *ugenInputs_ = nullptr;
     Bus *ugenOutputs_ = nullptr;
     AudioBus *pluginInputs_ = nullptr;

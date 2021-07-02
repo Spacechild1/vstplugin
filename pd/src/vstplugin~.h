@@ -95,6 +95,8 @@ class t_vstplugin {
     std::vector<t_signalbus> x_outlets;
     std::vector<Bus> x_inputs;
     std::vector<Bus> x_outputs;
+    int x_input_channels = 0;
+    int x_output_channels = 0;
     std::vector<char> x_inbuffer;
     std::vector<char> x_outbuffer;
     // VST plugin
