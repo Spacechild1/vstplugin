@@ -146,9 +146,9 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         // we must not quote arguments to exec!
     #if !BRIDGE_LOG
         // disable stdout and stderr
-        auto nullOut = fopen("/dev/null", "w");
-        dup2(fileno(nullOut), STDOUT_FILENO);
-        dup2(fileno(nullOut), STDERR_FILENO);
+        auto devnull = open("/dev/null", O_WRONLY);
+        dup2(devnull, STDOUT_FILENO);
+        dup2(devnull, STDERR_FILENO);
     #endif
         // arguments: host.exe bridge <parent_pid> <shm_path>
     #if USE_WINE

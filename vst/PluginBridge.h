@@ -21,6 +21,7 @@
 # include <unistd.h>
 # include <stdio.h>
 # include <sys/wait.h>
+# include <fcntl.h>
 #endif
 
 #ifndef BRIDGE_LOG

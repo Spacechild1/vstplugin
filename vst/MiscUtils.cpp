@@ -13,6 +13,8 @@
 # include <string.h>
 # include <signal.h>
 # include <dlfcn.h>
+# include <unistd.h>
+# include <fcntl.h>
 #endif
 
 #if VST_HOST_SYSTEM != VST_WINDOWS
@@ -248,6 +250,37 @@ std::string getHostApp(CpuArch arch){
     }
 }
 
+#if !defined(_WIN32) && !defined(__WINE__)
+# define SUPPRESS_OUTPUT 1
+#else
+# define SUPPRESS_OUTPUT 0
+#endif
+
+#if SUPPRESS_OUTPUT
+
+// disableOutput() and restoreOutput()
+// are never called concurrently!
+static int stdoutfd;
+static int stderrfd;
+
+void disableOutput() {
+    stdoutfd = dup(STDOUT_FILENO);
+    stderrfd = dup(STDERR_FILENO);
+    int devnull = open("/dev/null", O_WRONLY);
+    dup2(devnull, STDOUT_FILENO);
+    dup2(devnull, STDERR_FILENO);
+    close(devnull);
+}
+
+void restoreOutput() {
+    dup2(stdoutfd, STDOUT_FILENO);
+    dup2(stderrfd, STDERR_FILENO);
+    close(stdoutfd);
+    close(stderrfd);
+}
+
+#endif // SUPPRESS_OUTPUT
+
 #if USE_WINE
 const char * getWineCommand(){
     // users can override the 'wine' command with the
@@ -269,9 +302,20 @@ bool haveWine(){
         auto winecmd = getWineCommand();
         // we pass valid arguments, so the exit code should be 0.
         char cmdline[256];
-        int count = snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
+        snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
+
         fflush(stdout);
+    #if SUPPRESS_OUTPUT
+        disableOutput();
+    #endif
+
         auto status = system(cmdline);
+
+        fflush(stdout);
+    #if SUPPRESS_OUTPUT
+        restoreOutput();
+    #endif
+
         if (WIFEXITED(status)){
             auto code = WEXITSTATUS(status);
             if (code == EXIT_SUCCESS){
@@ -350,18 +394,28 @@ bool canBridgeCpuArch(CpuArch arch) {
         auto code = _wsystem(ss.str().c_str());
     #else // Unix
         char cmdline[256];
-        int count = 0;
       #if USE_WINE
         if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-            count = snprintf(cmdline, sizeof(cmdline),
-                             "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
+            snprintf(cmdline, sizeof(cmdline),
+                     "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
         } else
       #endif
         {
-            count = snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
+            snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
         }
+
         fflush(stdout);
+    #if SUPPRESS_OUTPUT
+        disableOutput();
+    #endif
+
         auto status = system(cmdline);
+
+        fflush(stdout);
+    #if SUPPRESS_OUTPUT
+        restoreOutput();
+    #endif
+
         if (!WIFEXITED(status)) {
             if (WIFSIGNALED(status)) {
                 LOG_ERROR("host app '" << path
