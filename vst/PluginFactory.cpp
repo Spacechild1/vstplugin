@@ -20,89 +20,15 @@
 # include <unistd.h>
 # include <stdlib.h>
 # include <stdio.h>
-# include <dlfcn.h>
-# include <sys/wait.h>
 # include <signal.h>
+# include <sys/wait.h>
 #endif
 
 #include <thread>
-#include <mutex>
 #include <algorithm>
 #include <sstream>
 
 namespace vst {
-
-/*////////////////////// platform ///////////////////*/
-
-#ifdef _WIN32
-
-static HINSTANCE hInstance = 0;
-
-const std::wstring& getModuleDirectory(){
-    static std::wstring dir = [](){
-        wchar_t wpath[MAX_PATH+1];
-        if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
-            wchar_t *ptr = wpath;
-            int pos = 0;
-            while (*ptr){
-                if (*ptr == '\\'){
-                    pos = (ptr - wpath);
-                }
-                ++ptr;
-            }
-            wpath[pos] = 0;
-            // LOG_DEBUG("dll directory: " << shorten(wpath));
-            return std::wstring(wpath);
-        } else {
-            LOG_ERROR("getModuleDirectory: GetModuleFileNameW() failed!");
-            return std::wstring();
-        }
-    }();
-    return dir;
-}
-
-extern "C" {
-    BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
-        if (fdwReason == DLL_PROCESS_ATTACH){
-            hInstance = hinstDLL;
-        }
-        return TRUE;
-    }
-}
-
-#else // Linux, macOS
-
-const std::string& getModuleDirectory(){
-    static std::string dir = [](){
-        // hack: obtain library info through a function pointer (vst::search)
-        Dl_info dlinfo;
-        if (!dladdr((void *)search, &dlinfo)) {
-            throw Error(Error::SystemError, "getModuleDirectory: dladdr() failed!");
-        }
-        std::string path = dlinfo.dli_fname;
-        auto end = path.find_last_of('/');
-        return path.substr(0, end);
-    }();
-    return dir;
-}
-
-#endif // WIN32
-
-std::string getHostApp(CpuArch arch){
-    if (arch == getHostCpuArchitecture()){
-    #ifdef _WIN32
-        return "host.exe";
-    #else
-        return "host";
-    #endif
-    } else {
-        std::string host = std::string("host_") + cpuArchToString(arch);
-    #if defined(_WIN32)
-        host += ".exe";
-    #endif
-        return host;
-    }
-}
 
 /*///////////////////// IFactory ////////////////////////*/
 
@@ -143,10 +69,6 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
 
 /*/////////////////////////// PluginFactory ////////////////////////*/
 
-std::mutex gHostAppMutex;
-
-std::unordered_map<CpuArch, bool> gHostAppDict;
-
 PluginFactory::PluginFactory(const std::string &path)
     : path_(path)
 {
@@ -157,103 +79,9 @@ PluginFactory::PluginFactory(const std::string &path)
         arch_ = hostArch;
     } else {
     #if USE_BRIDGE
-        // Generally, we can bridge between any kinds of CPU architectures,
-        // as long as the they are supported by the platform in question.
-        //
-        // We use the following naming scheme for the plugin bridge app:
-        // host_<cpu_arch>[extension]
-        // Examples: "host_i386", "host_amd64.exe", etc.
-        //
-        // We can selectively enable/disable CPU architectures simply by
-        // including resp. omitting the corresponding app.
-        // Note that we always ship a version of the *same* CPU architecture
-        // called "host" resp. "host.exe" to support plugin sandboxing.
-        //
-        // Bridging between i386 and amd64 is typically employed on Windows,
-        // but also possible on Linux and macOS (before 10.15).
-        // On the upcoming ARM MacBooks, we can also bridge between amd64 and aarch64.
-        // NOTE: We ship 64-bit Intel builds on Linux without "host_i386" and
-        // ask people to compile it themselves if they need it.
-        //
-        // On macOS and Linux we can also use the plugin bridge to run Windows plugins
-        // via Wine. The apps are called "host_pe_i386.exe" and "host_pe_amd64.exe".
-        auto canBridge = [](auto arch){
-            std::lock_guard<std::mutex> lock(gHostAppMutex);
-            auto it = gHostAppDict.find(arch);
-            if (it != gHostAppDict.end()){
-                return it->second;
-            }
-
-        #ifdef _WIN32
-            auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
-        #else
-            auto path = getModuleDirectory() + "/" + getHostApp(arch);
-          #if USE_WINE
-            if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-                // check if the 'wine' command can be found and works.
-                // we only need to do this once!
-                static bool haveWine = [](){
-                    auto winecmd = getWineCommand();
-                    // we pass valid arguments, so the exit code should be 0.
-                    char cmdline[256];
-                    snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
-                    fflush(stdout);
-                    auto ret = system(cmdline);
-                    auto code = WEXITSTATUS(ret);
-                    if (code != EXIT_SUCCESS){
-                        LOG_WARNING("'" << winecmd << "' command failed with exit code " << code);
-                        return false;
-                    }
-                    LOG_DEBUG("'" << winecmd << "' command is working");
-                    return true;
-                }();
-                if (!haveWine){
-                    gHostAppDict[arch] = false;
-                    return false;
-                }
-            }
-          #endif // USE_WINE
-        #endif
-            // check if host app exists and works
-            if (pathExists(path)){
-            #if defined(_WIN32) && !defined(__WINE__)
-                std::wstringstream ss;
-                ss << L"\"" << widen(path) << L"\" test";
-                fflush(stdout);
-                auto code = _wsystem(ss.str().c_str());
-            #else
-                char cmdline[256];
-              #if USE_WINE
-                if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-                    snprintf(cmdline, sizeof(cmdline),
-                             "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
-                } else
-              #endif
-                {
-                    snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
-                }
-                fflush(stdout);
-                auto ret = system(cmdline);
-                auto code = WEXITSTATUS(ret);
-            #endif
-                if (code != EXIT_SUCCESS){
-                    LOG_ERROR("host app '" << path << "' failed with exit code " << code);
-                    gHostAppDict[arch] = false;
-                    return false;
-                }
-                LOG_DEBUG("host app '" << path << "' is working");
-                gHostAppDict[arch] = true;
-                return true;
-            } else {
-                LOG_WARNING("can't find host app " << path);
-                gHostAppDict[arch] = false;
-                return false;
-            }
-        };
-
-        // check if can bridge any of the given CPU architectures
+        // check if we can bridge any of the given CPU architectures
         for (auto& arch : archs){
-            if (canBridge(arch)){
+            if (canBridgeCpuArch(arch)){
                 arch_ = arch;
                 // LOG_DEBUG("created bridged plugin factory " << path);
                 return;

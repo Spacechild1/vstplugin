@@ -168,22 +168,6 @@ const std::vector<std::string>& getDefaultSearchPaths() {
     return result;
 }
 
-#if USE_WINE
-const char * getWineCommand(){
-    // users can override the 'wine' command with the
-    // 'WINELOADER' environment variable
-    const char *cmd = getenv("WINELOADER");
-    return cmd ? cmd : "wine";
-}
-
-const char * getWineFolder(){
-    // the default Wine folder is '~/.wine', but it can be
-    // overridden with the 'WINEPREFIX' environment variable
-    const char *prefix = getenv("WINEPREFIX");
-    return prefix ? prefix : "~/.wine";
-}
-#endif
-
 #if !USE_STDFS
 // helper function
 static bool isDirectory(const std::string& fullPath, dirent *entry){

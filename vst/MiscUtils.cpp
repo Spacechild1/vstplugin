@@ -1,5 +1,7 @@
 #include "MiscUtils.h"
 #include "Log.h"
+#include "FileUtils.h"
+#include "CpuArch.h"
 
 #ifdef _WIN32
 # ifndef NOMINMAX
@@ -10,6 +12,7 @@
 # include <stdlib.h>
 # include <string.h>
 # include <signal.h>
+# include <dlfcn.h>
 #endif
 
 #if VST_HOST_SYSTEM != VST_WINDOWS
@@ -17,6 +20,7 @@
 #include <pthread.h>
 #endif
 
+#include <mutex>
 #include <sstream>
 
 namespace vst {
@@ -33,7 +37,7 @@ Log::~Log(){
     if (gLogFunction){
         gLogFunction(level_, msg.c_str());
     } else {
-        std::cerr << msg;
+        std::cout << msg;
         std::flush(std::cerr);
     }
 }
@@ -171,6 +175,223 @@ const char *strsignal(int sig){
 }
 #undef MATCH
 #endif
+
+//-------------------------------------------------------------//
+
+#ifdef _WIN32
+
+static HINSTANCE hInstance = 0;
+
+const std::wstring& getModuleDirectory(){
+    static std::wstring dir = [](){
+        wchar_t wpath[MAX_PATH+1];
+        if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
+            wchar_t *ptr = wpath;
+            int pos = 0;
+            while (*ptr){
+                if (*ptr == '\\'){
+                    pos = (ptr - wpath);
+                }
+                ++ptr;
+            }
+            wpath[pos] = 0;
+            // LOG_DEBUG("dll directory: " << shorten(wpath));
+            return std::wstring(wpath);
+        } else {
+            LOG_ERROR("getModuleDirectory: GetModuleFileNameW() failed!");
+            return std::wstring();
+        }
+    }();
+    return dir;
+}
+
+extern "C" {
+    BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
+        if (fdwReason == DLL_PROCESS_ATTACH){
+            hInstance = hinstDLL;
+        }
+        return TRUE;
+    }
+}
+
+#else // Linux, macOS
+
+const std::string& getModuleDirectory(){
+    static std::string dir = [](){
+        // hack: obtain library info through a function pointer (vst::search)
+        Dl_info dlinfo;
+        if (!dladdr((void *)search, &dlinfo)) {
+            throw Error(Error::SystemError, "getModuleDirectory: dladdr() failed!");
+        }
+        std::string path = dlinfo.dli_fname;
+        auto end = path.find_last_of('/');
+        return path.substr(0, end);
+    }();
+    return dir;
+}
+
+#endif // WIN32
+
+std::string getHostApp(CpuArch arch){
+    if (arch == getHostCpuArchitecture()){
+    #ifdef _WIN32
+        return "host.exe";
+    #else
+        return "host";
+    #endif
+    } else {
+        std::string host = std::string("host_") + cpuArchToString(arch);
+    #if defined(_WIN32)
+        host += ".exe";
+    #endif
+        return host;
+    }
+}
+
+#if USE_WINE
+const char * getWineCommand(){
+    // users can override the 'wine' command with the
+    // 'WINELOADER' environment variable
+    const char *cmd = getenv("WINELOADER");
+    return cmd ? cmd : "wine";
+}
+
+const char * getWineFolder(){
+    // the default Wine folder is '~/.wine', but it can be
+    // overridden with the 'WINEPREFIX' environment variable
+    const char *prefix = getenv("WINEPREFIX");
+    return prefix ? prefix : "~/.wine";
+}
+
+bool haveWine(){
+    // we only need to do this once!
+    static bool _haveWine = [](){
+        auto winecmd = getWineCommand();
+        // we pass valid arguments, so the exit code should be 0.
+        char cmdline[256];
+        int count = snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
+        fflush(stdout);
+        auto status = system(cmdline);
+        if (WIFEXITED(status)){
+            auto code = WEXITSTATUS(status);
+            if (code == EXIT_SUCCESS){
+                LOG_DEBUG("'" << winecmd << "' command is working");
+                return true; // success
+            } else if (code == EXIT_FAILURE) {
+                LOG_VERBOSE("'" << winecmd << "' command failed or not available");
+            } else {
+                LOG_ERROR("'" << winecmd << "' command failed with exit code " << code);
+            }
+        } else if (WIFSIGNALED(status)) {
+            LOG_ERROR("'" << winecmd << "' command was terminated with signal " << WTERMSIG(status));
+        } else {
+            LOG_ERROR("'" << winecmd << "' command failed with status " << status);
+        }
+        return false;
+    }();
+    return _haveWine;
+}
+
+#endif
+
+#if USE_BRIDGE
+// Generally, we can bridge between any kinds of CPU architectures,
+// as long as the they are supported by the platform in question.
+//
+// We use the following naming scheme for the plugin bridge app:
+// host_<cpu_arch>[extension]
+// Examples: "host_i386", "host_amd64.exe", etc.
+//
+// We can selectively enable/disable CPU architectures simply by
+// including resp. omitting the corresponding app.
+// Note that we always ship a version of the *same* CPU architecture
+// called "host" resp. "host.exe" to support plugin sandboxing.
+//
+// Bridging between i386 and amd64 is typically employed on Windows,
+// but also possible on Linux and macOS (before 10.15).
+// On the upcoming ARM MacBooks, we can also bridge between amd64 and aarch64.
+// NOTE: We ship 64-bit Intel builds on Linux without "host_i386" and
+// ask people to compile it themselves if they need it.
+//
+// On macOS and Linux we can also use the plugin bridge to run Windows plugins
+// via Wine. The apps are called "host_pe_i386.exe" and "host_pe_amd64.exe".
+
+std::mutex gHostAppMutex;
+
+std::unordered_map<CpuArch, bool> gHostAppDict;
+
+bool canBridgeCpuArch(CpuArch arch) {
+    std::lock_guard<std::mutex> lock(gHostAppMutex);
+    auto it = gHostAppDict.find(arch);
+    if (it != gHostAppDict.end()){
+        return it->second;
+    }
+
+#ifdef _WIN32
+    auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
+#else // Unix
+  #if USE_WINE
+    if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+        // check if the 'wine' command can be found and works.
+        if (!haveWine()){
+            gHostAppDict[arch] = false;
+            return false;
+        }
+    }
+  #endif // USE_WINE
+    auto path = getModuleDirectory() + "/" + getHostApp(arch);
+#endif
+    // check if host app exists and works
+    if (pathExists(path)){
+    #if defined(_WIN32) && !defined(__WINE__)
+        std::wstringstream ss;
+        ss << L"\"" << widen(path) << L"\" test";
+        fflush(stdout);
+        auto code = _wsystem(ss.str().c_str());
+    #else // Unix
+        char cmdline[256];
+        int count = 0;
+      #if USE_WINE
+        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+            count = snprintf(cmdline, sizeof(cmdline),
+                             "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
+        } else
+      #endif
+        {
+            count = snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
+        }
+        fflush(stdout);
+        auto status = system(cmdline);
+        if (!WIFEXITED(status)) {
+            if (WIFSIGNALED(status)) {
+                LOG_ERROR("host app '" << path
+                          << "' was terminated with signal " << WTERMSIG(status));
+            } else {
+                LOG_ERROR("host app '" << path << "' failed with status " << status);
+            }
+            gHostAppDict[arch] = false;
+            return false;
+        }
+        auto code = WEXITSTATUS(status);
+    #endif
+        if (code == EXIT_SUCCESS){
+            LOG_DEBUG("host app '" << path << "' is working");
+            gHostAppDict[arch] = true;
+            return true; // success
+        } else {
+            LOG_ERROR("host app '" << path << "' failed with exit code " << code);
+            gHostAppDict[arch] = false;
+            return false;
+        }
+    } else {
+        LOG_VERBOSE("can't find host app " << path);
+        gHostAppDict[arch] = false;
+        return false;
+    }
+}
+#endif
+
+//-------------------------------------------------------------//
 
 void setProcessPriority(Priority p){
 #if VST_HOST_SYSTEM == VST_WINDOWS

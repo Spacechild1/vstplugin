@@ -62,7 +62,29 @@ std::string errorMessage(int err);
 const char *strsignal(int sig);
 #endif
 
-//----------------------------------------------------------------------------------------
+//---------------------------------------------------------------//
+
+std::string getHostApp(CpuArch arch);
+
+#ifdef _WIN32
+const std::wstring& getModuleDirectory();
+#else
+const std::string& getModuleDirectory();
+#endif
+
+#if USE_WINE
+const char * getWineCommand();
+
+const char * getWineFolder();
+
+bool haveWine();
+#endif
+
+#if USE_BRIDGE
+bool canBridgeCpuArch(CpuArch arch);
+#endif
+
+//---------------------------------------------------------------//
 
 enum class Priority {
     Low,

@@ -395,12 +395,6 @@ bool hasPluginExtension(const std::string& path);
 
 const char * getBundleBinaryPath();
 
-#if USE_WINE
-const char * getWineCommand();
-
-const char * getWineFolder();
-#endif
-
 class IWindow {
  public:
     using ptr = std::unique_ptr<IWindow>;
