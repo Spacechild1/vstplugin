@@ -43,8 +43,11 @@ DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (Vst::IUnitData)
 DEF_CLASS_IID (Vst::IProgramListData)
+
+#if VST_VERSION >= VST_3_7_0_VERSION
 DEF_CLASS_IID (Vst::IProcessContextRequirements)
 DEF_CLASS_IID (Vst::IProgress)
+#endif
 
 namespace Steinberg {
 namespace Vst {
@@ -640,7 +643,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     LOG_DEBUG("program change: " << info_->programChange);
     LOG_DEBUG("bypass: " << info_->bypass);
 
-#if 1
+#if 1 && VST_VERSION >= VST_3_7_0_VERSION
     // process context requirements
     FUnknownPtr<Vst::IProcessContextRequirements> contextRequirements(processor_);
     if (contextRequirements){
@@ -779,6 +782,8 @@ tresult VST3Plugin::notify(Vst::IMessage *message){
     return kResultTrue;
 }
 
+#if VST_VERSION >= VST_3_7_0_VERSION
+
 tresult VST3Plugin::start(ProgressType type, const tchar *description, ID& id) {
     static std::atomic<ID> currentID {0};
     id = currentID.fetch_add(1);
@@ -814,6 +819,8 @@ tresult VST3Plugin::finish(ID id) {
     LOG_DEBUG("finished task " << id);
     return kResultOk;
 }
+
+#endif
 
 void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
                                  ProcessPrecision precision, ProcessMode mode){
