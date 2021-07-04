@@ -20,7 +20,11 @@
 // BTW, named semaphores are not reliable, either:
 // https://sourceware.org/bugzilla/show_bug.cgi?id=17980
 #if VST_HOST_SYSTEM == VST_LINUX
-# define SHM_FUTEX 1
+# if 1
+#  define SHM_FUTEX 1
+# else
+#  define SHM_SEMAPHORE 1
+# endif
 #endif
 
 // Windows: we use unnamed Events and duplicate the handles in the child process.
@@ -41,8 +45,16 @@ class ShmInterface;
 
 class ShmChannel {
  public:
+    enum Type {
+        Queue,
+        Request
+    };
     // immutable data
     struct Header {
+        Header(Type _type, const char *_name, uint32_t _size)
+            : size(_size), offset(sizeof(Header)), type(_type) {
+            snprintf(name, sizeof(name), "%s", _name);
+        }
         uint32_t size;
         uint32_t offset; // = sizeof(Header) = 128 resp. 64
         uint32_t type;
@@ -58,7 +70,7 @@ class ShmChannel {
         uint32_t data2{0};
         char padding[24];
     #elif SHM_SEMAPHORE
-        // semaphore names (macOS)
+        // semaphore names
         char data1[32];
         char data2[32];
         char padding[32];
@@ -66,6 +78,7 @@ class ShmChannel {
     };
     // mutable data
     struct Data {
+        Data() = default;
         uint32_t capacity = 0;
         std::atomic<uint32_t> size{0};
         char data[1]; // flexible array
@@ -76,11 +89,6 @@ class ShmChannel {
 
         uint32_t size;
         char data[1];
-    };
-
-    enum Type {
-        Queue,
-        Request
     };
 
     static const size_t alignment = 64;
@@ -144,6 +152,8 @@ class ShmInterface {
     static const int32_t maxNumChannels = 60;
 
     struct Header {
+        Header(uint32_t _size, uint32_t _numChannels);
+
         uint32_t size;
         uint8_t versionMajor;
         uint8_t versionMinor;

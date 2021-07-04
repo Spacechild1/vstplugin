@@ -27,10 +27,14 @@
 # endif
 #endif
 
-#if 0
-#define SHM_DEBUG(x) LOG_DEBUG(x)
+#ifndef DEBUG_SHM
+#define DEBUG_SHM 0
+#endif
+
+#if DEBUG_SHM
+#define LOG_SHM(x) LOG_DEBUG(x)
 #else
-#define SHM_DEBUG(x)
+#define LOG_SHM(x)
 #endif
 
 namespace vst {
@@ -62,14 +66,14 @@ void futex_wait(std::atomic<uint32_t>* futexp)
 
 void futex_post(std::atomic<uint32_t>* futexp)
 {
-   uint32_t expected = 0;
-   if (futexp->compare_exchange_strong(expected, 1)) {
+    uint32_t expected = 0;
+    if (futexp->compare_exchange_strong(expected, 1)) {
        // wake one waiter
        if (futex(futexp, FUTEX_WAKE, 1, nullptr, nullptr, 0) < 0) {
            throw Error(Error::SystemError,
                        "futex_post() failed: " + errorMessage(errno));
        }
-   }
+    }
 }
 #endif
 
@@ -96,7 +100,7 @@ ShmChannel::ShmChannel(Type type, int32_t size,
 
 void ShmChannel::HandleDeleter::operator ()(void *handle){
 #if SHM_EVENT
-    // SHM_DEBUG("close event " << handle);
+    // LOG_SHM("close event " << handle);
     CloseHandle((HANDLE)handle);
 #elif SHM_SEMAPHORE
     sem_close((sem_t *)handle);
@@ -105,7 +109,7 @@ void ShmChannel::HandleDeleter::operator ()(void *handle){
 }
 
 ShmChannel::~ShmChannel(){
-    // SHM_DEBUG("~ShmChannel");
+    // LOG_SHM("~ShmChannel");
 }
 
 size_t ShmChannel::peekMessage() const {
@@ -251,13 +255,11 @@ void ShmChannel::waitReply(){
 }
 
 void ShmChannel::init(ShmInterface& shm, char *data, int num){
-    SHM_DEBUG("init channel " << num);
+    LOG_SHM("init channel " << num);
     header_ = reinterpret_cast<Header *>(data);
     if (owner_){
-        header_->size = totalSize_;
-        header_->offset = sizeof(Header);
-        header_->type = type_;
-        snprintf(header_->name, sizeof(header_->name), "%s", name_.c_str());
+        // placement new
+        new (header_) Header(type_, name_.c_str(), totalSize_);
     #if SHM_SEMAPHORE
         // POSIX expects leading slash
         snprintf(header_->data1, sizeof(header_->data1),
@@ -291,14 +293,14 @@ void ShmChannel::init(ShmInterface& shm, char *data, int num){
         data_ = reinterpret_cast<Data *>(data + header_->offset);
     }
 
-    SHM_DEBUG("init ShmChannel " << num << " (" << name_
+    LOG_SHM("init ShmChannel " << num << " (" << name_
               << "): buffer size = " << data_->capacity
               << ", total size = " << totalSize_
               << ", start address = " << (void *)data);
 }
 
 void ShmChannel::initEvent(ShmInterface& shm, Handle& event, void *data){
-    // SHM_DEBUG("ShmChannel: init event " << which);
+    // LOG_SHM("ShmChannel: init event " << which);
 #if SHM_EVENT
     if (owner_){
         // create new Event
@@ -328,16 +330,16 @@ void ShmChannel::initEvent(ShmInterface& shm, Handle& event, void *data){
         }
         event.reset(targetHandle);
     }
-    SHM_DEBUG("create event " << event.get());
+    LOG_SHM("create event " << event.get());
 #elif SHM_SEMAPHORE
     if (owner_){
         // create semaphore and return an error if it already exists
         event.reset(sem_open((const char *)data, O_CREAT | O_EXCL, 0755, 0));
-        SHM_DEBUG("ShmChannel: created semaphore " << (const char *)data);
+        LOG_SHM("ShmChannel: created semaphore " << (const char *)data);
     } else {
         // open an existing semaphore
         event.reset(sem_open((const char *)data, 0, 0, 0, 0));
-        SHM_DEBUG("ShmChannel: created semaphore " << (const char *)data);
+        LOG_SHM("ShmChannel: created semaphore " << (const char *)data);
     }
     if (event.get() == SEM_FAILED){
         throw Error(Error::SystemError, "sem_open() failed: "
@@ -380,18 +382,30 @@ void ShmChannel::waitEvent(void *event){
         throw Error(Error::SystemError, "sem_wait() failed: "
                     + errorMessage(errno));
     }
-#elif USE_SHM_FUTEX
+#elif SHM_FUTEX
     futex_wait(static_cast<std::atomic<uint32_t>*>(event));
 #endif
 }
 
 /*//////////////// ShmInterface //////////////////*/
 
+ShmInterface::Header::Header(uint32_t _size, uint32_t _numChannels) {
+    size = _size;
+    versionMajor = VERSION_MAJOR;
+    versionMinor = VERSION_MINOR;
+    versionPatch = VERSION_PATCH;
+#if SHM_EVENT
+    processID = GetCurrentProcessId();
+#endif
+    numChannels = _numChannels;
+    memset(channelOffset, 0, sizeof(channelOffset));
+}
+
 ShmInterface::ShmInterface(){}
 
 ShmInterface::~ShmInterface(){
     closeShm();
-    SHM_DEBUG("closed ShmInterface");
+    LOG_SHM("closed ShmInterface");
 
 #if SHM_EVENT
     CloseHandle(hParentProcess_);
@@ -404,9 +418,9 @@ void ShmInterface::connect(const std::string &path){
     }
 
     openShm(path, false);
-    SHM_DEBUG("ShmInterface: connected to " << path);
+    LOG_SHM("ShmInterface: connected to " << path);
     auto header = reinterpret_cast<Header *>(data_);
-    SHM_DEBUG("total size: " << header->size);
+    LOG_SHM("total size: " << header->size);
 
 #if SHM_EVENT
     // needed for channel events
@@ -462,20 +476,11 @@ void ShmInterface::create(){
     snprintf(path, sizeof(path), "/vst_shm_%p", this);
 
     openShm(path, true);
-    SHM_DEBUG("ShmInterface: created " << path);
-    SHM_DEBUG("total size: " << size_);
+    LOG_SHM("ShmInterface: created " << path);
+    LOG_SHM("total size: " << size_);
 
-    auto header = reinterpret_cast<Header *>(data_);
-    memset(header, 0, sizeof(Header));
-    header->size = size_;
-    header->versionMajor = VERSION_MAJOR;
-    header->versionMinor = VERSION_MINOR;
-    header->versionPatch = VERSION_PATCH;
-#if SHM_EVENT
-    header->processID = GetCurrentProcessId();
-#endif
-    header->numChannels = channels_.size();
-
+    // placement new
+    auto header = new (data_) Header(size_, channels_.size());
     char *ptr = data_ + sizeof(Header);
 
     for (size_t i = 0; i < channels_.size(); ++i){
@@ -556,8 +561,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
     // first we have to increase the minimum working set size
     SIZE_T minSize, maxSize;
     if (GetProcessWorkingSetSize(GetCurrentProcess(), &minSize, &maxSize)){
-        SHM_DEBUG("working set size: min = " << minSize << ", max = " << maxSize);
-        SHM_DEBUG("request size: " << totalSize);
+        LOG_SHM("working set size: min = " << minSize << ", max = " << maxSize);
+        LOG_SHM("request size: " << totalSize);
         if (totalSize > minSize){
             minSize += totalSize;
         }
