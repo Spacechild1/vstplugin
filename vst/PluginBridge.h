@@ -22,6 +22,7 @@
 # include <stdio.h>
 # include <sys/wait.h>
 # include <fcntl.h>
+# include <string.h>
 #endif
 
 #ifndef BRIDGE_LOG

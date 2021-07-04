@@ -153,31 +153,6 @@ std::string errorMessage(int err){
     return ss.str();
 }
 
-#ifndef _WIN32
-#define MATCH(x) case x: return #x;
-const char *strsignal(int sig){
-    switch (sig) {
-    MATCH(SIGINT)
-    MATCH(SIGILL)
-    MATCH(SIGABRT)
-    MATCH(SIGFPE)
-    MATCH(SIGSEGV)
-    MATCH(SIGTERM)
-    MATCH(SIGHUP)
-    MATCH(SIGQUIT)
-    MATCH(SIGTRAP)
-    MATCH(SIGKILL)
-    MATCH(SIGBUS)
-    MATCH(SIGSYS)
-    MATCH(SIGPIPE)
-    MATCH(SIGALRM)
-    default:
-        return "unknown";
-    }
-}
-#undef MATCH
-#endif
-
 //-------------------------------------------------------------//
 
 #ifdef _WIN32

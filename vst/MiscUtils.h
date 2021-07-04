@@ -58,10 +58,6 @@ bool stringCompare(const std::string& lhs, const std::string& rhs);
 
 std::string errorMessage(int err);
 
-#ifndef _WIN32
-const char *strsignal(int sig);
-#endif
-
 //---------------------------------------------------------------//
 
 std::string getHostApp(CpuArch arch);
