@@ -25,6 +25,8 @@
 
 using namespace vst;
 
+#define TEST_REALTIME 1
+
 #define TEST_QUEUE 1
 #define TEST_QUEUE_COUNT 100
 #define TEST_QUEUE_BUFSIZE 256
@@ -34,6 +36,8 @@ using namespace vst;
 
 #define TEST_BENCHMARK 1
 #define TEST_BENCHMARK_COUNT 20
+#define TEST_BENCHMARK_SLEEP 5
+#define TEST_BENCHMARK_AVG_OFFSET 1
 
 void sleep_ms(int ms){
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -140,8 +144,6 @@ void client_test_request(ShmInterface& shm){
         LOG_VERBOSE("client: got message: " << msg);
     }
 
-    // std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-
     // post reply
     auto reply = "ok";
     LOG_VERBOSE("client: send reply: " << reply);
@@ -189,21 +191,24 @@ void server_benchmark(ShmInterface& shm){
 
         auto outer = t4 - t1;
         auto inner = t3 - t2;
-        avg_outer += outer;
-        avg_inner += inner;
+        if (i >= TEST_BENCHMARK_AVG_OFFSET){
+            avg_outer += outer;
+            avg_inner += inner;
+        }
         LOG_VERBOSE("server: full delta = " << outer << " us, "
                     << "inner delta = " << inner << " us");
 
     #if 1
         // make sure that child process actually has to wake up
-        sleep_ms(1);
+        sleep_ms(TEST_BENCHMARK_SLEEP);
     #endif
     }
+    auto divisor = TEST_BENCHMARK_COUNT - TEST_BENCHMARK_AVG_OFFSET;
     LOG_VERBOSE("---");
     LOG_VERBOSE("server: average full delta = "
-                << (avg_outer / TEST_BENCHMARK_COUNT) << " us");
+                << (avg_outer / divisor) << " us");
     LOG_VERBOSE("server: average inner delta = "
-                << (avg_inner / TEST_BENCHMARK_COUNT) << " us");
+                << (avg_inner / divisor) << " us");
 
     sleep_ms(1);
 }
@@ -272,6 +277,11 @@ int server_run(){
     // continue with parent process
 #endif
 
+#if TEST_REALTIME
+    setProcessPriority(Priority::High);
+    setThreadPriority(Priority::High);
+#endif
+
     sleep_ms(500);
 
 #if TEST_QUEUE
@@ -308,6 +318,11 @@ int server_run(){
 }
 
 int client_run(const char *path){
+#if TEST_REALTIME
+    setProcessPriority(Priority::High);
+    setThreadPriority(Priority::High);
+#endif
+
     LOG_VERBOSE("---");
     LOG_VERBOSE("client: start");
     LOG_VERBOSE("---");

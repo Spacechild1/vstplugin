@@ -16,7 +16,7 @@
 # include <fcntl.h>
 # include <sys/shm.h>
 # include <sys/mman.h>
-# if USE_SHM_FUTEX
+# if SHM_FUTEX
 #  include <sys/syscall.h>
 #  include <linux/futex.h>
 # else // semaphore
@@ -35,7 +35,7 @@
 
 namespace vst {
 
-#if USE_SHM_FUTEX
+#if SHM_FUTEX
 int futex(std::atomic<uint32_t>* uaddr, int futex_op, uint32_t val,
           const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
 {
@@ -85,7 +85,7 @@ ShmChannel::ShmChannel(Type type, int32_t size,
                        const std::string& name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
 {
-#if USE_SHM_FUTEX
+#if SHM_FUTEX || SHM_EVENT
     static_assert(sizeof(Header) == 64, "bad size for Header");
 #else
     static_assert(sizeof(Header) == 128, "bad size for Header");
@@ -95,27 +95,16 @@ ShmChannel::ShmChannel(Type type, int32_t size,
 }
 
 void ShmChannel::HandleDeleter::operator ()(void *handle){
-#if VST_HOST_SYSTEM == VST_WINDOWS
+#if SHM_EVENT
     // SHM_DEBUG("close event " << handle);
     CloseHandle((HANDLE)handle);
-#elif VST_HOST_SYSTEM == VST_MACOS
+#elif SHM_SEMAPHORE
     sem_close((sem_t *)handle);
 #endif
-    // nothing to do on Linux!
+    // nothing to do for SHM_FUTEX
 }
 
 ShmChannel::~ShmChannel(){
-#if VST_HOST_SYSTEM == VST_LINUX && !USE_SHM_FUTEX
-    // only destroy the semaphore once!
-    if (owner_){
-        if (eventA_){
-            sem_destroy((sem_t *)eventA_.get());
-        }
-        if (eventB_){
-            sem_destroy((sem_t *)eventB_.get());
-        }
-    }
-#endif
     // SHM_DEBUG("~ShmChannel");
 }
 
@@ -261,7 +250,7 @@ void ShmChannel::waitReply(){
     waitEvent(eventB_.get());
 }
 
-void ShmChannel::init(char *data, ShmInterface& shm, int num){
+void ShmChannel::init(ShmInterface& shm, char *data, int num){
     SHM_DEBUG("init channel " << num);
     header_ = reinterpret_cast<Header *>(data);
     if (owner_){
@@ -269,15 +258,15 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         header_->offset = sizeof(Header);
         header_->type = type_;
         snprintf(header_->name, sizeof(header_->name), "%s", name_.c_str());
-    #if VST_HOST_SYSTEM == VST_WINDOWS || VST_HOST_SYSTEM == VST_MACOS
+    #if SHM_SEMAPHORE
         // POSIX expects leading slash
-        snprintf(header_->event1, sizeof(header_->event1),
+        snprintf(header_->data1, sizeof(header_->data1),
                  "/vst_shm_%p_%da", &shm, num);
         if (type_ == Request){
-            snprintf(header_->event2, sizeof(header_->event2),
+            snprintf(header_->data2, sizeof(header_->data2),
                      "/vst_shm_%p_%db", &shm, num);
         } else {
-            header_->event2[0] = '\0';
+            header_->data2[0] = '\0';
         }
     #endif
     } else {
@@ -288,10 +277,12 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
         type_ = (Type)header_->type;
         name_ = header_->name;
     }
-    initEvent(eventA_, &header_->event1);
+
+    initEvent(shm, eventA_, &header_->data1);
     if (type_ == Request){
-        initEvent(eventB_, &header_->event2);
+        initEvent(shm, eventB_, &header_->data2);
     }
+
     if (owner_){
         // placement new
         data_ = new (data + header_->offset) Data();
@@ -306,35 +297,39 @@ void ShmChannel::init(char *data, ShmInterface& shm, int num){
               << ", start address = " << (void *)data);
 }
 
-void ShmChannel::initEvent(Handle& event, void *data){
+void ShmChannel::initEvent(ShmInterface& shm, Handle& event, void *data){
     // SHM_DEBUG("ShmChannel: init event " << which);
-#if VST_HOST_SYSTEM == VST_WINDOWS
-    // named Event
+#if SHM_EVENT
     if (owner_){
-        event.reset(CreateEventA(0, 0, 0, (const char *)data));
-        if (event){
-            if (GetLastError() != ERROR_ALREADY_EXISTS){
-                SHM_DEBUG("ShmChannel: created Event " << (const char *)data);
-            } else {
-                throw Error(Error::SystemError,
-                            "CreateEvent() failed - already exists!");
-            }
-        } else {
+        // create new Event
+        event.reset(CreateEventA(0, 0, 0, 0));
+        if (!event){
             throw Error(Error::SystemError, "CreateEvent() failed: "
                         + errorMessage(GetLastError()));
         }
+        // HANDLE can be safely truncated to 32-bit integer
+        uint32_t handle = (uint32_t)reinterpret_cast<uintptr_t>(event.get());
+        memcpy(data, &handle, sizeof(handle));
     } else {
-        event.reset(OpenEventA(EVENT_ALL_ACCESS, 0, (const char *)data));
-        if (event){
-            SHM_DEBUG("ShmChannel: opened Event " << (const char *)data);
-        } else {
-            throw Error(Error::SystemError, "OpenEvent() failed: "
+        // get Event handle from shared memory segment and duplicate it
+        // to get a handle that is valid in this process.
+        uint32_t intHandle;
+        memcpy(&intHandle, data, sizeof(uint32_t));
+        auto sourceHandle = reinterpret_cast<HANDLE>(intHandle);
+        auto sourceProcess = (HANDLE)shm.getParentProcessHandle();
+        auto targetProcess = GetCurrentProcess();
+        HANDLE targetHandle;
+        auto result = DuplicateHandle(sourceProcess, sourceHandle,
+                                      targetProcess, &targetHandle,
+                                      0, FALSE, DUPLICATE_SAME_ACCESS);
+        if (!result){
+            throw Error(Error::SystemError, "DuplicateHandle() failed: "
                         + errorMessage(GetLastError()));
         }
+        event.reset(targetHandle);
     }
     SHM_DEBUG("create event " << event.get());
-#elif VST_HOST_SYSTEM == VST_MACOS
-    // named semaphore
+#elif SHM_SEMAPHORE
     if (owner_){
         // create semaphore and return an error if it already exists
         event.reset(sem_open((const char *)data, O_CREAT | O_EXCL, 0755, 0));
@@ -348,41 +343,29 @@ void ShmChannel::initEvent(Handle& event, void *data){
         throw Error(Error::SystemError, "sem_open() failed: "
                     + errorMessage(errno));
     }
-#elif USE_SHM_FUTEX
+#elif SHM_FUTEX
     event.reset(data);
-#else
-    // unnamed semaphore in shared memory segment
-    static_assert(sizeof(sem_t) <= sizeof(Header::event1), "event structure too small!");
-    event.reset(data);
-    if (owner_){
-        // only init the semaphore once!
-        if (sem_init((sem_t *)data, 1, 0) != 0){
-            throw Error(Error::SystemError, "sem_init() failed: "
-                        + errorMessage(errno));
-        }
-        SHM_DEBUG("ShmChannel: created semaphore");
-    }
 #endif
 }
 
 void ShmChannel::postEvent(void *event){
-#if VST_HOST_SYSTEM == VST_WINDOWS
+#if SHM_EVENT
     if (!SetEvent((HANDLE)event)){
         throw Error(Error::SystemError, "SetEvent() failed: "
                     + errorMessage(GetLastError()));
     }
-#elif USE_SHM_FUTEX
-    futex_post(static_cast<std::atomic<uint32_t>*>(event));
-#else
+#elif SHM_SEMAPHORE
     if (sem_post((sem_t *)event) != 0){
         throw Error(Error::SystemError, "sem_post() failed: "
                     + errorMessage(errno));
     }
+#elif SHM_FUTEX
+    futex_post(static_cast<std::atomic<uint32_t>*>(event));
 #endif
 }
 
 void ShmChannel::waitEvent(void *event){
-#if VST_HOST_SYSTEM == VST_WINDOWS
+#if SHM_EVENT
     auto result = WaitForSingleObject(event, INFINITE);
     if (result != WAIT_OBJECT_0){
         if (result == WAIT_ABANDONED){
@@ -392,13 +375,13 @@ void ShmChannel::waitEvent(void *event){
                         + errorMessage(GetLastError()));
         }
     }
-#elif USE_SHM_FUTEX
-    futex_wait(static_cast<std::atomic<uint32_t>*>(event));
-#else
+#elif SHM_SEMAPHORE
     if (sem_wait((sem_t *)event) != 0){
         throw Error(Error::SystemError, "sem_wait() failed: "
                     + errorMessage(errno));
     }
+#elif USE_SHM_FUTEX
+    futex_wait(static_cast<std::atomic<uint32_t>*>(event));
 #endif
 }
 
@@ -409,6 +392,10 @@ ShmInterface::ShmInterface(){}
 ShmInterface::~ShmInterface(){
     closeShm();
     SHM_DEBUG("closed ShmInterface");
+
+#if SHM_EVENT
+    CloseHandle(hParentProcess_);
+#endif
 }
 
 void ShmInterface::connect(const std::string &path){
@@ -421,10 +408,19 @@ void ShmInterface::connect(const std::string &path){
     auto header = reinterpret_cast<Header *>(data_);
     SHM_DEBUG("total size: " << header->size);
 
+#if SHM_EVENT
+    // needed for channel events
+    hParentProcess_ = OpenProcess(PROCESS_DUP_HANDLE, FALSE, header->processID);
+    if (!hParentProcess_){
+        throw Error(Error::SystemError, "OpenProcess() failed: "
+                    + errorMessage(GetLastError()));
+    }
+#endif
+
     // channels_.reserve(header->numChannels);
     for (size_t i = 0; i < header->numChannels; ++i){
         channels_.emplace_back();
-        channels_[i].init(data_ + header->channelOffset[i], *this, i);
+        channels_[i].init(*this, data_ + header->channelOffset[i], i);
     }
 }
 
@@ -475,12 +471,15 @@ void ShmInterface::create(){
     header->versionMajor = VERSION_MAJOR;
     header->versionMinor = VERSION_MINOR;
     header->versionPatch = VERSION_PATCH;
+#if SHM_EVENT
+    header->processID = GetCurrentProcessId();
+#endif
     header->numChannels = channels_.size();
 
     char *ptr = data_ + sizeof(Header);
 
     for (size_t i = 0; i < channels_.size(); ++i){
-        channels_[i].init(ptr, *this, i);
+        channels_[i].init(*this, ptr, i);
         header->channelOffset[i] = ptr - data_;
         ptr += channels_[i].size();
     }

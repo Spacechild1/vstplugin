@@ -14,16 +14,25 @@
 // In fact, this is the very reason why we have to compile
 // the host with wineg++ in the first place (instead of just
 // using a regular Windows build).
-//
 
-#ifndef USE_SHM_FUTEX
-# if VST_HOST_SYSTEM == VST_LINUX
-  // unnamed semaphores don't work for IPC between apps compiled
-  // for different CPU architectures, so we have to use a futex instead.
-#  define USE_SHM_FUTEX 1
-# else
-#  define USE_SHM_FUTEX 0
-# endif
+// Linux: unnamed semaphores don't work for IPC between apps compiled
+// for different CPU architectures, so we have to use a futex instead.
+// BTW, named semaphores are not reliable, either:
+// https://sourceware.org/bugzilla/show_bug.cgi?id=17980
+#if VST_HOST_SYSTEM == VST_LINUX
+# define SHM_FUTEX 1
+#endif
+
+// Windows: we use unnamed Events and duplicate the handles in the child process.
+// This *might* be more efficient than using named Events.
+#if VST_HOST_SYSTEM == VST_WINDOWS
+# define SHM_EVENT 1
+#endif
+
+// macOS: for now we use named Posix semaphores, but we might later switch to Mach semaphores.
+// BTW, macOS doesn't support unnamed Posix semaphores at all.
+#if VST_HOST_SYSTEM == VST_MACOS
+# define SHM_SEMAPHORE 1
 #endif
 
 namespace vst {
@@ -38,15 +47,20 @@ class ShmChannel {
         uint32_t offset; // = sizeof(Header) = 128 resp. 64
         uint32_t type;
         char name[20];
-    #if USE_SHM_FUTEX
-        std::atomic<uint32_t> event1{0};
-        std::atomic<uint32_t> event2{0};
+    #if SHM_FUTEX
+        // atomic integers for Futex
+        std::atomic<uint32_t> data1{0};
+        std::atomic<uint32_t> data2{0};
         char padding[24];
-    #else
-        // holds event/semaphore names (Windows/macOS)
-        // or semaphore objects (Linux)
-        char event1[32];
-        char event2[32];
+    #elif SHM_EVENT
+        // Event handles
+        uint32_t data1{0};
+        uint32_t data2{0};
+        char padding[24];
+    #elif SHM_SEMAPHORE
+        // semaphore names (macOS)
+        char data1[32];
+        char data2[32];
         char padding[32];
     #endif
     };
@@ -73,7 +87,7 @@ class ShmChannel {
 
     ShmChannel() = default;
     ShmChannel(Type type, int32_t size,
-                        const std::string& name);
+               const std::string& name);
     ShmChannel(const ShmChannel&) = delete;
     ShmChannel(ShmChannel&&) = default;
     ~ShmChannel();
@@ -103,7 +117,7 @@ class ShmChannel {
     void postReply();
     void waitReply();
 
-    void init(char *data, ShmInterface& shm, int num);
+    void init(ShmInterface& shm, char *data, int num);
  private:
     struct HandleDeleter { void operator()(void *); };
     using Handle = std::unique_ptr<void, HandleDeleter>;
@@ -120,7 +134,7 @@ class ShmChannel {
     uint32_t rdhead_ = 0;
     uint32_t wrhead_ = 0;
     // helper methods
-    void initEvent(Handle& event, void *data);
+    void initEvent(ShmInterface& shm, Handle& event, void *data);
     void postEvent(void *event);
     void waitEvent(void *event);
 };
@@ -135,7 +149,11 @@ class ShmInterface {
         uint8_t versionMinor;
         uint8_t versionPatch;
         uint8_t unused;
+    #if SHM_EVENT
+        int32_t processID;
+    #else
         uint32_t reserved;
+    #endif
         uint32_t numChannels;
         uint32_t channelOffset[maxNumChannels];
     };
@@ -173,12 +191,19 @@ class ShmInterface {
     }
 
     void getVersion(int& major, int& minor, int& patch) const;
+
+#if SHM_EVENT
+    void * getParentProcessHandle() const { return hParentProcess_; }
+#endif
  private:
     std::vector<ShmChannel> channels_;
     bool owner_ = false;
     std::string path_;
 #if VST_HOST_SYSTEM == VST_WINDOWS
     void *hMapFile_ = nullptr;
+#endif
+#if SHM_EVENT
+    void *hParentProcess_ = nullptr;
 #endif
     size_t size_ = 0;
     char *data_ = nullptr;

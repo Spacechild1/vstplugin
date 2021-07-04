@@ -628,12 +628,17 @@ static PluginDictionary gPluginDict;
 
 PluginServer::PluginServer(int pid, const std::string& shmPath)
 {
+    LOG_DEBUG("PluginServer: parent: " << pid << ", path: " << shmPath);
+
 #if VST_HOST_SYSTEM == VST_WINDOWS
     parent_ = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (!parent_){
+        throw Error(Error::SystemError,
+                    "OpenProcess() failed: " + errorMessage(errno));
+    }
 #else
     parent_ = pid;
 #endif
-    LOG_DEBUG("PluginServer: parent " << parent_);
 
     shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);

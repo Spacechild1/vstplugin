@@ -108,7 +108,7 @@ int probe(const std::string& pluginPath, int pluginIndex,
 #if USE_BRIDGE
 // host one or more VST plugins
 int bridge(int pid, const std::string& path){
-    LOG_DEBUG("bridge begin: " << pid << " " << path);
+    LOG_DEBUG("bridge begin");
     setProcessPriority(Priority::High);
     // main thread is UI thread
     setThreadPriority(Priority::Low);
