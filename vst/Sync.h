@@ -97,15 +97,17 @@ class Event {
         for (;;) {
             // don't increment past 1
             // NOTE: we have to use the CAS loop even if we don't
-            // increment 'oldcount', because a another thread
+            // increment 'oldcount', because another thread
             // might decrement the counter concurrently!
             auto newcount = oldcount >= 0 ? 1 : oldcount + 1;
             if (count_.compare_exchange_weak(oldcount, newcount, std::memory_order_release,
-                                             std::memory_order_relaxed))
+                                             std::memory_order_relaxed)) {
                 break;
+            }
         }
-        if (oldcount < 0)
+        if (oldcount < 0){
             sem_.post(); // release one waiting thread
+        }
     }
     void wait(){
         auto old = count_.fetch_sub(1, std::memory_order_acquire);
