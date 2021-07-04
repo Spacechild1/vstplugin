@@ -38,6 +38,7 @@ using namespace vst;
 #define TEST_BENCHMARK_COUNT 20
 #define TEST_BENCHMARK_SLEEP 5
 #define TEST_BENCHMARK_AVG_OFFSET 1
+#define TEST_BENCHMARK_DEBUG 0
 
 void sleep_ms(int ms){
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -47,6 +48,8 @@ void server_test_queue(ShmInterface& shm){
     LOG_VERBOSE("---");
     LOG_VERBOSE("test request");
     LOG_VERBOSE("---");
+
+    LOG_VERBOSE("server: queue");
 
     auto& channel = shm.getChannel(0);
     channel.clear();
@@ -65,15 +68,17 @@ void server_test_queue(ShmInterface& shm){
        sleep_ms(1); // prevent queue overflow
     }
 
+    LOG_VERBOSE("server: send quit");
     const char *quit = "quit";
     channel.writeMessage(quit, strlen(quit) + 1);
     channel.post();
 
-    // wait for child to finish. we'd better properly synchronize.
-    sleep_ms(500);
+    LOG_VERBOSE("server: done");
 }
 
 void client_test_queue(ShmInterface& shm){
+    LOG_VERBOSE("client: queue");
+
     auto& channel = shm.getChannel(0);
     LOG_VERBOSE("client: channel " << channel.name());
 
@@ -99,14 +104,14 @@ void client_test_queue(ShmInterface& shm){
 
         channel.wait();
     }
-
-    sleep_ms(1);
 }
 
 void server_test_request(ShmInterface& shm){
     LOG_VERBOSE("---");
     LOG_VERBOSE("test request");
     LOG_VERBOSE("---");
+
+    LOG_VERBOSE("server: request");
 
     auto& channel = shm.getChannel(1);
     channel.clear();
@@ -131,6 +136,8 @@ void server_test_request(ShmInterface& shm){
 }
 
 void client_test_request(ShmInterface& shm){
+    LOG_VERBOSE("client: request");
+
     auto& channel = shm.getChannel(1);
 
     LOG_VERBOSE("client: channel " << channel.name());
@@ -150,14 +157,14 @@ void client_test_request(ShmInterface& shm){
     channel.clear();
     channel.addMessage(reply, strlen(reply) + 1);
     channel.postReply();
-
-    sleep_ms(1);
 }
 
 void server_benchmark(ShmInterface& shm){
     LOG_VERBOSE("---");
     LOG_VERBOSE("test benchmark");
     LOG_VERBOSE("---");
+
+    LOG_VERBOSE("server: benchmark");
 
     auto& channel = shm.getChannel(1);
     LOG_VERBOSE("server: channel " << channel.name());
@@ -180,8 +187,14 @@ void server_benchmark(ShmInterface& shm){
         auto msg = "test";
         channel.addMessage(msg, strlen(msg) + 1);
         auto t2 = timer.get_elapsed_us();
+    #if TEST_BENCHMARK_DEBUG
+        LOG_VERBOSE("server: post");
+    #endif
         channel.post();
         // wait for reply
+    #if TEST_BENCHMARK_DEBUG
+        LOG_VERBOSE("server: wait for reply");
+    #endif
         channel.waitReply();
         auto t3 = timer.get_elapsed_us();
         const char *reply;
@@ -209,28 +222,37 @@ void server_benchmark(ShmInterface& shm){
                 << (avg_outer / divisor) << " us");
     LOG_VERBOSE("server: average inner delta = "
                 << (avg_inner / divisor) << " us");
-
-    sleep_ms(1);
 }
 
 void client_benchmark(ShmInterface& shm){
+    LOG_VERBOSE("client: benchmark");
+
     auto& channel = shm.getChannel(1);
 
     LOG_VERBOSE("client: channel " << channel.name());
 
     for (int i = 0; i < TEST_BENCHMARK_COUNT; ++i){
         // wait for message
+    #if TEST_BENCHMARK_DEBUG
+        LOG_VERBOSE("client: wait");
+    #endif
         channel.wait();
+
         const char *msg;
         size_t msgSize;
         channel.getMessage(msg, msgSize);
 
         // post reply
+    #if TEST_BENCHMARK_DEBUG
+        LOG_VERBOSE("client: post reply");
+    #endif
         auto reply = "ok";
         channel.clear();
         channel.addMessage(reply, strlen(reply) + 1);
         channel.postReply();
     }
+
+    LOG_VERBOSE("client: done");
 }
 
 int server_run(){
@@ -240,6 +262,7 @@ int server_run(){
     ShmInterface shm;
     shm.addChannel(ShmChannel::Queue, TEST_QUEUE_BUFSIZE, "queue");
     shm.addChannel(ShmChannel::Request, TEST_REQUEST_BUFSIZE, "request");
+    shm.addChannel(ShmChannel::Request, 0, "sync");
     shm.create();
 
     LOG_VERBOSE("server: created shared memory interface " << shm.path());
@@ -277,22 +300,28 @@ int server_run(){
     // continue with parent process
 #endif
 
-#if TEST_REALTIME
-    setProcessPriority(Priority::High);
-    setThreadPriority(Priority::High);
-#endif
+    auto& sync = shm.getChannel(2);
 
-    sleep_ms(500);
+    sync.post();
+    sync.waitReply();
 
 #if TEST_QUEUE
     server_test_queue(shm);
+    sync.post();
+    sync.waitReply();
 #endif
 #if TEST_REQUEST
     server_test_request(shm);
+    sync.post();
+    sync.waitReply();
 #endif
 #if TEST_BENCHMARK
     server_benchmark(shm);
+    sync.post();
+    sync.waitReply();
 #endif
+
+    LOG_DEBUG("server: waiting for client");
 
 #ifdef _WIN32
     DWORD code = -1;
@@ -307,9 +336,21 @@ int server_run(){
 #else
     int code = -1;
     int status = 0;
-    waitpid(pid, &status, 0);
-    if (WIFEXITED(status)) {
-        code = WEXITSTATUS(status);
+    if (waitpid(pid, &status, 0) == pid) {
+        if (WIFEXITED(status)) {
+            code = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            std::stringstream msg;
+            msg << "child process terminated with signal "
+                << sig << " (" << strsignal(sig) << ")";
+            throw Error(Error::SystemError, msg.str());
+        } else {
+            throw Error(Error::SystemError, "child process terminated with status "
+                        + std::to_string(status));
+        }
+    } else {
+        throw Error(Error::SystemError, "waitpid() failed: " + errorMessage(errno));
     }
 #endif
     LOG_VERBOSE("child process finished with exit code " << code);
@@ -318,11 +359,6 @@ int server_run(){
 }
 
 int client_run(const char *path){
-#if TEST_REALTIME
-    setProcessPriority(Priority::High);
-    setThreadPriority(Priority::High);
-#endif
-
     LOG_VERBOSE("---");
     LOG_VERBOSE("client: start");
     LOG_VERBOSE("---");
@@ -332,25 +368,38 @@ int client_run(const char *path){
 
     LOG_VERBOSE("client: connected to shared memory interface " << path);
 
+    auto& sync = shm.getChannel(2);
+
+    sync.wait();
+    sync.postReply();
+
 #if TEST_QUEUE
     client_test_queue(shm);
+    sync.wait();
+    sync.postReply();
 #endif
 #if TEST_REQUEST
     client_test_request(shm);
+    sync.wait();
+    sync.postReply();
 #endif
 #if TEST_BENCHMARK
     client_benchmark(shm);
+    sync.wait();
+    sync.postReply();
 #endif
 
     return EXIT_SUCCESS;
 }
 
 int main(int argc, const char *argv[]){
+#if TEST_REALTIME
     setProcessPriority(Priority::High);
     setThreadPriority(Priority::High);
+#endif
 
     try {
-        if (argc > 1){
+        if (argc > 1) {
             return client_run(argv[1]);
         } else {
             return server_run();
