@@ -24,6 +24,10 @@
 #include <unordered_map>
 #include <atomic>
 
+#ifndef VST_3_7_0_VERSION
+# define VST_3_7_0_VERSION 0x030700
+#endif
+
 namespace Steinberg {
 namespace Vst {
 // copied from public.sdk/vst/vstpresetfile.h
