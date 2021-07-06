@@ -22,6 +22,7 @@
 
 #include <cstring>
 #include <thread>
+#include <cmath>
 
 using namespace vst;
 
@@ -36,9 +37,26 @@ using namespace vst;
 
 #define TEST_BENCHMARK 1
 #define TEST_BENCHMARK_COUNT 20
-#define TEST_BENCHMARK_SLEEP 5
+#define TEST_BENCHMARK_SLEEP -1 // negative: don't sleep
+#define TEST_BENCHMARK_DSP_COUNT 0
 #define TEST_BENCHMARK_AVG_OFFSET 1
 #define TEST_BENCHMARK_DEBUG 0
+
+static volatile float gPhase = 0.0;
+static volatile float gBuffer[64];
+
+void fake_dsp(int n){
+    // a simple sine oscillator
+    const float advance = 440.0 / 44100.0;
+    float phase = gPhase;
+    for (int i = 0; i < n; ++i){
+        for (int j = 0; j < 64; ++j){
+            phase = fmodf(phase + advance, 1.0);
+            gBuffer[j] = cos(phase * 6.28318530717959); // force write
+        }
+    }
+    gPhase = phase;
+}
 
 void sleep_ms(int ms){
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -175,7 +193,14 @@ void server_benchmark(ShmInterface& shm){
     {
         auto t1 = timer.get_elapsed_us();
         auto t2 = timer.get_elapsed_us();
-        LOG_VERBOSE("server: empty delta = " << (t2 - t1) << " us");
+        LOG_VERBOSE("server: no sleep = " << (t2 - t1) << " us");
+    }
+
+    {
+        auto t1 = timer.get_elapsed_us();
+        sleep_ms(0);
+        auto t2 = timer.get_elapsed_us();
+        LOG_VERBOSE("server: sleep(0) = " << (t2 - t1) << " us");
     }
 
     double avg_outer = 0;
@@ -200,6 +225,9 @@ void server_benchmark(ShmInterface& shm){
         const char *reply;
         size_t replySize;
         channel.getMessage(reply, replySize);
+
+        fake_dsp(TEST_BENCHMARK_DSP_COUNT);
+
         auto t4 = timer.get_elapsed_us();
 
         auto outer = t4 - t1;
@@ -211,7 +239,7 @@ void server_benchmark(ShmInterface& shm){
         LOG_VERBOSE("server: full delta = " << outer << " us, "
                     << "inner delta = " << inner << " us");
 
-    #if 1
+    #if TEST_BENCHMARK_SLEEP >= 0
         // make sure that child process actually has to wake up
         sleep_ms(TEST_BENCHMARK_SLEEP);
     #endif
