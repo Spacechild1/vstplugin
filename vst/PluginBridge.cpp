@@ -173,7 +173,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
 #endif
     alive_ = true;
     LOG_DEBUG("PluginBridge: spawned subprocess (child: " << child
-              << ", parent: " << parent);
+              << ", parent: " << parent << ")");
 
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginBridge *>(x)->pollUIThread();
@@ -255,7 +255,7 @@ void PluginBridge::checkStatus(bool wait){
             LOG_WARNING("Watchdog: subprocess was terminated with signal "
                         << sig << " (" << strsignal(sig) << ")");
         } else if (WIFSTOPPED(status)){
-            auto sig = WTERMSIG(status);
+            auto sig = WSTOPSIG(status);
             LOG_WARNING("Watchdog: subprocess was stopped with signal "
                         << sig << " (" << strsignal(sig) << ")");
         } else if (WIFCONTINUED(status)){
@@ -421,7 +421,7 @@ WatchDog::WatchDog(){
                 for (auto it = processes_.begin(); it != processes_.end();){
                     auto process = it->lock();
                     if (process){
-                        process->checkStatus();
+                        process->checkStatus(false);
                         ++it;
                     } else {
                         // remove stale process
