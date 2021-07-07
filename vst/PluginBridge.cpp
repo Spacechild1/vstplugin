@@ -271,8 +271,8 @@ void PluginBridge::checkStatus(bool wait){
 
     bool wasAlive = alive_.exchange(false);
 
-    // notify waiting RT threads
-    for (int i = 2; i < shm_.numChannels(); ++i){
+    // notify waiting NRT/RT threads
+    for (int i = Channel::NRT; i < shm_.numChannels(); ++i){
         // this should be safe, because channel messages
         // can only be read when they are complete
         // (the channel size is atomic)
@@ -306,7 +306,7 @@ void PluginBridge::removeUIClient(uint32_t id){
 void PluginBridge::postUIThread(const ShmUICommand& cmd){
     // ScopedLock lock(uiMutex_);
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
-    auto& channel = shm_.getChannel(0);
+    auto& channel = shm_.getChannel(Channel::UISend);
     if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
         // other side polls regularly
         // channel.post();
@@ -316,7 +316,7 @@ void PluginBridge::postUIThread(const ShmUICommand& cmd){
 }
 
 void PluginBridge::pollUIThread(){
-    auto& channel = shm_.getChannel(1);
+    auto& channel = shm_.getChannel(Channel::UIReceive);
 
     char buffer[64]; // larger than ShmCommand!
     size_t size = sizeof(buffer);
@@ -383,21 +383,21 @@ RTChannel PluginBridge::getRTChannel(){
             }
             counter.fetch_add(1);
         }
-        return RTChannel(shm_.getChannel(index + 3),
+        return RTChannel(shm_.getChannel(Channel::NRT + 1),
                          std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
     } else {
-        // channel 2 is both NRT and RT channel
-        return RTChannel(shm_.getChannel(2));
+        // RT channel = NRT channel
+        return RTChannel(shm_.getChannel(Channel::NRT));
     }
 }
 
 NRTChannel PluginBridge::getNRTChannel(){
     if (locks_){
-        return NRTChannel(shm_.getChannel(2),
+        return NRTChannel(shm_.getChannel(Channel::NRT),
                           std::unique_lock<Mutex>(nrtMutex_));
     } else {
         // channel 2 is both NRT and RT channel
-        return NRTChannel(shm_.getChannel(2));
+        return NRTChannel(shm_.getChannel(Channel::NRT));
     }
 }
 
@@ -411,48 +411,7 @@ WatchDog& WatchDog::instance(){
 WatchDog::WatchDog(){
     LOG_DEBUG("create WatchDog");
     running_ = true;
-    thread_ = std::thread([this](){
-        vst::setThreadPriority(Priority::Low);
-
-        std::unique_lock<std::mutex> lock(mutex_);
-        for (;;){
-            // periodically check all running processes
-            while (!processes_.empty()){
-                for (auto it = processes_.begin(); it != processes_.end();){
-                    auto process = it->lock();
-                    if (process){
-                        process->checkStatus(false);
-                        ++it;
-                    } else {
-                        // remove stale process
-                        it = processes_.erase(it);
-                    }
-                }
-
-                lock.unlock();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                lock.lock();
-            }
-
-            // wait for a new process to be added
-            //
-            // NOTE: we have to put both the check and wait at the end!
-            // Since the thread is created concurrently with the first process,
-            // the process might be registered *before* the thread starts,
-            // causing the latter to wait on the condition variable instead of
-            // entering the poll loop.
-            // Also, 'running_' might be set to false while we're sleeping in the
-            // poll loop, which means that we would wait on the condition forever.
-            if (running_){
-                LOG_DEBUG("WatchDog: waiting...");
-                condition_.wait(lock);
-                LOG_DEBUG("WatchDog: woke up");
-            } else {
-                break;
-            }
-        }
-        LOG_DEBUG("WatchDog: thread finished");
-    });
+    thread_ = std::thread(&WatchDog::run, this);
 #if !WATCHDOG_JOIN
     thread_.detach();
 #endif
@@ -476,6 +435,49 @@ void WatchDog::registerProcess(PluginBridge::ptr process){
     std::lock_guard<std::mutex> lock(mutex_);
     processes_.push_back(process);
     condition_.notify_one();
+}
+
+void WatchDog::run(){
+    vst::setThreadPriority(Priority::Low);
+
+    std::unique_lock<std::mutex> lock(mutex_);
+    for (;;){
+        // periodically check all running processes
+        while (!processes_.empty()){
+            for (auto it = processes_.begin(); it != processes_.end();){
+                auto process = it->lock();
+                if (process){
+                    process->checkStatus(false);
+                    ++it;
+                } else {
+                    // remove stale process
+                    it = processes_.erase(it);
+                }
+            }
+
+            lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            lock.lock();
+        }
+
+        // wait for a new process to be added
+        //
+        // NOTE: we have to put both the check and wait at the end!
+        // Since the thread is created concurrently with the first process,
+        // the process might be registered *before* the thread starts,
+        // causing the latter to wait on the condition variable instead of
+        // entering the poll loop.
+        // Also, 'running_' might be set to false while we're sleeping in the
+        // poll loop, which means that we would wait on the condition forever.
+        if (running_){
+            LOG_DEBUG("WatchDog: waiting...");
+            condition_.wait(lock);
+            LOG_DEBUG("WatchDog: woke up");
+        } else {
+            break;
+        }
+    }
+    LOG_DEBUG("WatchDog: thread finished");
 }
 
 } // vst

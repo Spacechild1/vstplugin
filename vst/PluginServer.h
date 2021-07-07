@@ -132,6 +132,15 @@ class PluginServer {
 
     PluginHandle *findPlugin(uint32_t id);
 
+    // NOTE: UI thread order is the opposite of PluginBridge!
+    struct Channel  {
+        enum {
+            UIReceive = 0,
+            UISend,
+            NRT
+        };
+    };
+
 #if VST_HOST_SYSTEM == VST_WINDOWS
     HANDLE parent_ = 0;
 #else

@@ -118,6 +118,15 @@ class PluginBridge final
     static const size_t nrtRequestSize = 65536;
     static const size_t rtRequestSize = 65536;
 
+    // NOTE: UI thread order is the opposite of PluginServer!
+    struct Channel {
+        enum {
+            UISend = 0,
+            UIReceive,
+            NRT
+        };
+    };
+
     ShmInterface shm_;
     bool shared_;
     std::atomic_bool alive_{false};
@@ -160,6 +169,8 @@ class WatchDog {
     void registerProcess(PluginBridge::ptr process);
  private:
     WatchDog();
+
+    void run();
 
     std::thread thread_;
     std::mutex mutex_;

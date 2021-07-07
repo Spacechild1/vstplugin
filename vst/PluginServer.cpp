@@ -664,7 +664,8 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     running_ = true;
 
     LOG_DEBUG("PluginServer: create threads");
-    for (int i = 2; i < shm_->numChannels(); ++i){
+    // create threads for NRT + RT channels
+    for (int i = Channel::NRT; i < shm_->numChannels(); ++i){
         auto thread = std::thread(&PluginServer::runThread,
                                   this, &shm_->getChannel(i));
         threads_.push_back(std::move(thread));
@@ -692,7 +693,7 @@ void PluginServer::run(){
 
 void PluginServer::postUIThread(const ShmUICommand& cmd){
     // sizeof(cmd) is a bit lazy, but we don't care about size here
-    auto& channel = shm_->getChannel(1);
+    auto& channel = shm_->getChannel(Channel::UISend);
 
     if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
         // other side polls regularly
@@ -703,8 +704,8 @@ void PluginServer::postUIThread(const ShmUICommand& cmd){
 }
 
 void PluginServer::pollUIThread(){
-    // poll events from channel 0 and dispatch to plugin
-    auto& channel = shm_->getChannel(0);
+    // poll UI events and dispatch to plugin
+    auto& channel = shm_->getChannel(Channel::UIReceive);
 
     char buffer[64]; // larger than ShmCommand!
     size_t size = sizeof(buffer);
@@ -906,7 +907,7 @@ void PluginServer::quit(){
 
     running_ = false;
     // wake up all threads
-    for (int i = 2; i < shm_->numChannels(); ++i){
+    for (int i = Channel::NRT; i < shm_->numChannels(); ++i){
         shm_->getChannel(i).post();
     }
 
