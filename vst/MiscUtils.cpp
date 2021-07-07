@@ -33,13 +33,20 @@ void setLogFunction(LogFunction f){
     gLogFunction = f;
 }
 
-Log::~Log(){
-    stream_ << "\n";
-    std::string msg = stream_.str();
+void logMessage(int level, const char *msg){
     if (gLogFunction){
-        gLogFunction(level_, msg.c_str());
+        gLogFunction(level, msg);
     } else {
-        std::cout << msg;
+        std::cerr << msg;
+        std::flush(std::cerr);
+    }
+}
+
+void logMessage(int level, const std::string& msg){
+    if (gLogFunction){
+        gLogFunction(level, msg.c_str());
+    } else {
+        std::cerr << msg;
         std::flush(std::cerr);
     }
 }

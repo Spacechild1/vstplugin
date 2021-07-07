@@ -12,7 +12,10 @@ namespace vst {
 class Log {
 public:
     Log(int level = LOGLEVEL) : level_(level) {}
-    ~Log();
+    ~Log() {
+        stream_ << "\n";
+        logMessage(level_, stream_.str());
+    }
     template<typename T>
     Log& operator<<(T&& t) {
         stream_ << std::forward<T>(t);
