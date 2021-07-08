@@ -10,6 +10,16 @@
 #include <cstring>
 #include <sstream>
 
+#ifndef DEBUG_SERVER_PROCESS
+#define DEBUG_SERVER_PROCESS 0
+#endif
+
+#if DEBUG_SERVER_PROCESS
+# define LOG_PROCESS(x) LOG_DEBUG(x)
+#else
+# define LOG_PROCESS(x)
+#endif
+
 namespace vst {
 
 /*///////////////// PluginHandleListener ///////*/
@@ -331,16 +341,6 @@ void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
     }
 }
 
-#ifndef DEBUG_SERVER_PROCESS
-#define DEBUG_SERVER_PROCESS 0
-#endif
-
-#if DEBUG_SERVER_PROCESS
-# define LOG_PROCESS(x) LOG_DEBUG(x)
-#else
-# define LOG_PROCESS(x)
-#endif
-
 template<typename T>
 void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     LOG_PROCESS("PluginHandle: start processing");
@@ -633,13 +633,12 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
 #if VST_HOST_SYSTEM == VST_WINDOWS
     parent_ = OpenProcess(SYNCHRONIZE, FALSE, pid);
     if (!parent_){
-        throw Error(Error::SystemError,
-                    "OpenProcess() failed: " + errorMessage(errno));
+        throw Error(Error::SystemError, "OpenProcess() failed: "
+                    + errorMessage(GetLastError()));
     }
 #else
     parent_ = pid;
 #endif
-
     shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);
     LOG_DEBUG("PluginServer: connected to shared memory interface");

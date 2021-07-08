@@ -8,6 +8,8 @@
 #endif
 
 #include <stdlib.h>
+#include <string.h>
+#include <mutex>
 
 #if !defined(_WIN32) || defined(__WINE__)
 # define USE_ALARM 1
@@ -106,8 +108,57 @@ int probe(const std::string& pluginPath, int pluginIndex,
 }
 
 #if USE_BRIDGE
+
+#if VST_HOST_SYSTEM == VST_WINDOWS
+static HANDLE gLogChannel = NULL;
+#else
+static int gLogChannel = -1;
+#endif
+
+static std::mutex gLogMutex;
+
+void writeLog(int level, const char *msg){
+    LogMessage::Header header;
+    header.level = level;
+    header.size = strlen(msg) + 1;
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    if (gLogChannel) {
+        std::lock_guard<std::mutex> lock(gLogMutex);
+        DWORD bytesWritten;
+        WriteFile(gLogChannel, &header, sizeof(header), &bytesWritten, NULL);
+        WriteFile(gLogChannel, msg, header.size, &bytesWritten, NULL);
+    }
+#else
+    if (gLogChannel >= 0) {
+        std::lock_guard<std::mutex> lock(gLogMutex);
+        write(gLogChannel, &header, sizeof(header));
+        write(gLogChannel, msg, header.size);
+    }
+#endif
+}
+
 // host one or more VST plugins
-int bridge(int pid, const std::string& path){
+int bridge(int pid, const std::string& path, int logChannel){
+    // setup log channel
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    auto hParent = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
+    if (hParent){
+        if (DuplicateHandle(hParent, (HANDLE)logChannel,
+                            GetCurrentProcess(), &gLogChannel,
+                            0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            setLogFunction(writeLog);
+        } else {
+            LOG_ERROR("DuplicateHandle() failed: " << errorMessage(GetLastError()));
+        }
+    } else {
+        LOG_ERROR("OpenProcess() failed: " << errorMessage(GetLastError()));
+    }
+    CloseHandle(hParent);
+#else
+    gLogChannel = logChannel;
+    setLogFunction(writeLog);
+#endif
+
     LOG_DEBUG("bridge begin");
     setProcessPriority(Priority::High);
     // main thread is UI thread
@@ -157,12 +208,13 @@ int main(int argc, const char *argv[]) {
             return probe(path, index, file, timeout);
         }
     #if USE_BRIDGE
-        else if (verb == "bridge" && argc >= 2){
+        else if (verb == "bridge" && argc >= 3){
             // args: <pid> <shared_mem_path>
-            int pid = std::stod(argv[0]);
+            int pid = std::stol(argv[0], 0, 0);
             std::string shmPath = shorten(argv[1]);
+            int logChannel = std::stol(argv[2], 0, 0);
 
-            return bridge(pid, shmPath);
+            return bridge(pid, shmPath, logChannel);
         }
     #endif
         else if (verb == "test"){

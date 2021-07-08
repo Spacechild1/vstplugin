@@ -16,15 +16,20 @@
 # ifndef NOMINMAX
 #  define NOMINMAX
 # endif
-#include "windows.h"
+# include <windows.h>
 #else
 # include <unistd.h>
 # include <stdio.h>
+# include <poll.h>
 # include <sys/wait.h>
 # include <fcntl.h>
 # include <string.h>
 #endif
 
+// redirect stdout and stderr from child process to parent.
+// use this if you want to see debug output from the actual VST plugins.
+// NOTE: this doesn't affect log functions like LOG_ERROR because
+// they go to a seperate pipe.
 #ifndef BRIDGE_LOG
 #define BRIDGE_LOG 0
 #endif
@@ -101,6 +106,8 @@ class PluginBridge final
         return alive_.load(std::memory_order_acquire);
     }
 
+    void readLog();
+
     void checkStatus(bool wait);
 
     void addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client);
@@ -131,9 +138,12 @@ class PluginBridge final
     bool shared_;
     std::atomic_bool alive_{false};
 #ifdef _WIN32
+    HANDLE hLogRead_ = NULL;
+    HANDLE hLogWrite_ = NULL;
     PROCESS_INFORMATION pi_;
 #else
     pid_t pid_;
+    int logRead_ = -1;
 #endif
     std::unique_ptr<PaddedSpinLock[]> locks_;
     std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;

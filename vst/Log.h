@@ -26,6 +26,17 @@ private:
     int level_;
 };
 
+// for interprocess logging
+struct LogMessage {
+    struct Header {
+        int32_t level;
+        int32_t size;
+    };
+
+    Header header;
+    char data[1];
+};
+
 } // vst
 
 #define DO_LOG(level, x) do { vst::Log(level) << x; } while(false)

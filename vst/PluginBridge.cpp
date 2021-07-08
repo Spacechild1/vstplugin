@@ -5,6 +5,8 @@
 #include "CpuArch.h"
 #include "MiscUtils.h"
 
+#include <cassert>
+
 namespace vst {
 
 /*///////////////////// Channel /////////////////////*/
@@ -93,7 +95,20 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
 
     // spawn host process
     std::string hostApp = getHostApp(arch);
+
 #ifdef _WIN32
+    // create pipe for logging
+    if (!CreatePipe(&hLogRead_, &hLogWrite_, NULL, 0)) {
+        throw Error(Error::SystemError,
+                    "CreatePipe() failed: " + errorMessage(GetLastError()));
+    }
+    // the write handle gets passed to the child process. note that we can't simply
+    // close our end after CreateProcess() because the child process needs to
+    // duplicate the handle; otherwise we would inadvertently close the pipe.
+    // we actually close our end after we receive the first message, see readLog().
+    // NOTE: Win32 handles can be safely truncated to 32-bit!
+    auto writeLog = (uint32_t)reinterpret_cast<uintptr_t>(hLogWrite_);
+
     // get process Id
     auto parent = GetCurrentProcessId();
     // get absolute path to host app
@@ -103,8 +118,8 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     // NOTE: on Windows we need to quote the arguments for _spawn to handle
     // spaces in file names.
     std::stringstream cmdLineStream;
-    cmdLineStream << hostApp << " bridge "
-                  << parent << " \"" << shm_.path() << "\"";
+    cmdLineStream << hostApp << " bridge " << parent
+                  << " \"" << shm_.path() << "\" " << writeLog;
     // LOG_DEBUG(cmdLineStream.str());
     auto cmdLine = widen(cmdLineStream.str());
 
@@ -113,10 +128,6 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     STARTUPINFOW si;
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
-#if BRIDGE_LOG
-    // si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-#endif
-
     if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL, 0,
                         BRIDGE_LOG ? CREATE_NEW_CONSOLE : DETACHED_PROCESS,
                         NULL, NULL, &si, &pi_)){
@@ -125,9 +136,16 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
         throw Error(Error::SystemError, ss.str());
     }
-    auto child = pi_.dwProcessId;
+    auto pid = pi_.dwProcessId;
 #else // Unix
-    // get parent Id
+    // create pipe
+    int pipefd[2];
+    if (pipe(pipefd) != 0){
+        throw Error(Error::SystemError,
+                    "pipe() failed: " + errorMessage(errno));
+    }
+    auto writeEnd = std::to_string(pipefd[1]);
+    // get parent pid
     auto parent = getpid();
     auto parentStr = std::to_string(parent);
     // get absolute path to host app
@@ -138,41 +156,49 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     fflush(stdout);
     fflush(stderr);
 #endif
-    pid_ = fork();
-    if (pid_ == -1) {
+    auto pid = fork();
+    if (pid == -1) {
         throw Error(Error::SystemError, "fork() failed!");
-    } else if (pid_ == 0) {
-        // child process: run host app
-        // we must not quote arguments to exec!
+    } else if (pid == 0) {
+        // child process
+        close(pipefd[0]); // close read end
+
     #if !BRIDGE_LOG
         // disable stdout and stderr
         auto devnull = open("/dev/null", O_WRONLY);
         dup2(devnull, STDOUT_FILENO);
         dup2(devnull, STDERR_FILENO);
     #endif
-        // arguments: host.exe bridge <parent_pid> <shm_path>
+
+        // host.exe bridge <parent_pid> <shm_path> <logchannel>
+        // NOTE: we must not quote arguments to exec!
     #if USE_WINE
         if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
             // run in Wine
             auto winecmd = getWineCommand();
             // use PATH!
             if (execlp(winecmd, winecmd, hostPath.c_str(), "bridge",
-                      parentStr.c_str(), shm_.path().c_str(), nullptr) < 0){
-                LOG_ERROR("couldn't run '" << winecmd << "' (" << errorMessage(errno) << ")");
+                       parentStr.c_str(), shm_.path().c_str(),
+                       writeEnd.c_str(), nullptr) < 0) {
+                LOG_ERROR("couldn't run '" << winecmd
+                          << "' (" << errorMessage(errno) << ")");
             }
         } else
     #endif
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  parentStr.c_str(), shm_.path().c_str(), nullptr) < 0){
-            // LATER redirect child stderr to parent stdin
+                  parentStr.c_str(), shm_.path().c_str(),
+                  writeEnd.c_str(), nullptr) < 0) {
             LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
         }
         std::exit(EXIT_FAILURE);
     }
-    auto child = pid_;
+    // parent process
+    pid_ = pid;
+    logRead_ = pipefd[0];
+    close(pipefd[1]); // close write end!
 #endif
     alive_ = true;
-    LOG_DEBUG("PluginBridge: spawned subprocess (child: " << child
+    LOG_DEBUG("PluginBridge: spawned subprocess (child: " << pid
               << ", parent: " << parent << ")");
 
     pollFunction_ = UIThread::addPollFunction([](void *x){
@@ -197,15 +223,149 @@ PluginBridge::~PluginBridge(){
     // this might even be dangerous if we accidentally
     // wait on a subprocess that somehow got stuck.
     // maybe use some timeout?
+    readLog();
     checkStatus(true);
 
 #ifdef _WIN32
     CloseHandle(pi_.hProcess);
     CloseHandle(pi_.hThread);
+    CloseHandle(hLogRead_);
+    CloseHandle(hLogWrite_);
 #endif
 
     LOG_DEBUG("free PluginBridge");
 }
+
+void PluginBridge::readLog(){
+#ifdef _WIN32
+    if (hLogRead_) {
+        for (;;) {
+            // try to read header into buffer, but don't remove it from
+            // the pipe yet. we also get the number of available bytes.
+            // NOTE: PeekNamedPipe() returns immediately!
+            LogMessage::Header header;
+            DWORD bytesRead, bytesAvailable;
+            if (!PeekNamedPipe(hLogRead_, &header, sizeof(header),
+                               &bytesRead, &bytesAvailable, NULL)) {
+                LOG_ERROR("PeekNamedPipe(): " << errorMessage(GetLastError()));
+                CloseHandle(hLogRead_);
+                hLogRead_ = NULL;
+                return;
+            }
+            if (bytesRead < sizeof(header)){
+                // nothing to read yet
+                return;
+            }
+        #if 1
+            // close our write handle (if it's still open), so terminating
+            // the subprocess would close the pipe. we do this here to ensure
+            // that the child process has duplicated the handle.
+            if (hLogWrite_){
+                CloseHandle(hLogWrite_);
+                hLogWrite_ = NULL;
+            }
+        #endif
+            // check if message is complete
+            int msgsize = header.size + sizeof(header);
+            if (bytesAvailable < msgsize) {
+                // try again next time
+                return;
+            }
+            // now actually read the whole message
+            auto msg = (LogMessage *)alloca(msgsize);
+            if (ReadFile(hLogRead_, msg, msgsize, &bytesRead, NULL)){
+                if (bytesRead == msgsize){
+                    logMessage(msg->header.level, msg->data);
+                } else {
+                    // shouldn't really happen, because we've peeked
+                    // the number of available bytes!
+                    LOG_ERROR("ReadFile(): size mismatch");
+                    CloseHandle(hLogRead_);
+                    hLogRead_ = NULL;
+                    return;
+                }
+            } else {
+                LOG_ERROR("ReadFile(): " << errorMessage(GetLastError()));
+                CloseHandle(hLogRead_);
+                hLogRead_ = NULL;
+                return;
+            }
+        }
+    }
+#else
+    if (logRead_ >= 0){
+        for (;;){
+            auto checkResult = [this](int count){
+                if (count > 0){
+                    return true;
+                } else if (count == 0){
+                    LOG_WARNING("read(): EOF");
+                } else {
+                    LOG_ERROR("read(): " << errorMessage(errno));
+                }
+                close(logRead_);
+                logRead_ = -1;
+                return false;
+            };
+
+            struct pollfd fds;
+            fds.fd = logRead_;
+            fds.events = POLLIN;
+            fds.revents = 0;
+
+            auto ret = poll(&fds, 1, 0);
+            if (ret > 0){
+                if (fds.revents & POLLIN){
+                    LogMessage::Header header;
+                    auto count = read(logRead_, &header, sizeof(header));
+                    if (!checkResult(count)){
+                        return;
+                    }
+                    // always atomic (header is smaller than PIPE_BUF).
+                    assert(count == sizeof(header));
+
+                    auto msgsize = header.size;
+                    auto msg = (char *)alloca(msgsize);
+                    // The following calls to read() can block!
+                    // This could be dangerous if the subprocess dies after
+                    // writing the header but before writing the actual message.
+                    // However, in this case all file descriptors to the write end
+                    // should have been closed and read() should return 0 (= EOF).
+                    //
+                    // We use a loop in case the message is larger than PIPE_BUF.
+                    int bytes = 0;
+                    while (bytes < msgsize) {
+                        count = read(logRead_, msg + bytes, msgsize - bytes);
+                        if (!checkResult(count)){
+                            return;
+                        }
+                        bytes += count;
+                    }
+                    logMessage(header.level, msg);
+                } else {
+                    if (fds.revents & POLLHUP){
+                        // there might be remaining data in the pipe, but we don't care.
+                        LOG_ERROR("FIFO closed");
+                    } else {
+                        // shouldn't happen when reading from a pipe
+                        LOG_ERROR("FIFO error");
+                    }
+                    close(logRead_);
+                    logRead_ = -1;
+                    break;
+                }
+            } else if (ret == 0){
+                // timeout
+                break;
+            } else {
+                LOG_ERROR("poll(): " << errorMessage(errno));
+                break;
+            }
+        }
+    }
+#endif
+}
+
 
 void PluginBridge::checkStatus(bool wait){
     // already dead, no need to check
@@ -280,12 +440,15 @@ void PluginBridge::checkStatus(bool wait){
     }
 
     if (wasAlive){
+        LOG_DEBUG("PluginBridge: notify clients");
         // notify all clients
         ScopedLock lock(clientMutex_);
         for (auto& it : clients_){
             auto client = it.second.lock();
             if (client){
                 client->pluginCrashed();
+            } else {
+                LOG_DEBUG("PluginBridge: stale client");
             }
         }
     }
@@ -447,6 +610,7 @@ void WatchDog::run(){
             for (auto it = processes_.begin(); it != processes_.end();){
                 auto process = it->lock();
                 if (process){
+                    process->readLog();
                     process->checkStatus(false);
                     ++it;
                 } else {

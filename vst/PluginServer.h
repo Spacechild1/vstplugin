@@ -142,7 +142,7 @@ class PluginServer {
     };
 
 #if VST_HOST_SYSTEM == VST_WINDOWS
-    HANDLE parent_ = 0;
+    HANDLE parent_ = NULL;
 #else
     int parent_ = -1;
 #endif
