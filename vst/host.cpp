@@ -139,7 +139,7 @@ int main(int argc, const char *argv[]) {
         argc -= 2;
         argv += 2;
         if (verb == "probe" && argc > 0){
-            // args: <plugin_path> [<id>] [<file_path>]
+            // args: <plugin_path> [<id>] [<file_path>] [<timeout>]
             std::string path = shorten(argv[0]);
             int index;
             try {

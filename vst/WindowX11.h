@@ -8,7 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
-#include <vector>
+#include <list>
 #include <unordered_map>
 
 namespace vst {
@@ -99,7 +99,10 @@ class EventLoop {
         double interval_;
         double elapsed_ = 0;
     };
-    std::vector<Timer> timerList_;
+    // use a linked list, so we can safely add timers from within a callback.
+    // e.g. in a subprocess, the WindowOpen command is called from the
+    // PluginServer poll function and will in turn register a timer.
+    std::list<Timer> timerList_;
 
     UIThread::Handle nextPollFunctionHandle_ = 0;
     std::unordered_map<UIThread::Handle, void *> pollFunctions_;

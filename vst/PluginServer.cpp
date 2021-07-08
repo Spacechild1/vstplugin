@@ -660,11 +660,10 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginServer *>(x)->pollUIThread();
     }, this);
-    // create threads
-    running_ = true;
 
-    LOG_DEBUG("PluginServer: create threads");
     // create threads for NRT + RT channels
+    LOG_DEBUG("PluginServer: create threads");
+    running_ = true;
     for (int i = Channel::NRT; i < shm_->numChannels(); ++i){
         auto thread = std::thread(&PluginServer::runThread,
                                   this, &shm_->getChannel(i));
