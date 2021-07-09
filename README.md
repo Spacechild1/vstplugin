@@ -1,4 +1,4 @@
-vstplugin v0.5.0
+vstplugin v0.5.1
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -18,7 +18,7 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 * search for plugins in the standard VST directories or in user defined paths
 * bit-bridging and sandboxing
 * use Windows plugins on Linux (with Wine)
-* multithreading
+* (optional) multithreaded plugin processing
 
 
 See the help files (vstplugin~-help.pd and VSTPlugin.schelp) for detailed instructions.
