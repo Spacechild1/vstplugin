@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 3.1)
 
 set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
@@ -41,11 +41,12 @@ if (BUILD_WINE)
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+# check for Clang or AppleClang
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_COMPILER_IS_CLANG 1)
 endif()
 
-if(NOT CMAKE_BUILD_TYPE)
+if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
