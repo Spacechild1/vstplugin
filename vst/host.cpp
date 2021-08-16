@@ -55,7 +55,6 @@ static int gTimeout;
 int probe(const std::string& pluginPath, int pluginIndex,
           const std::string& filePath, float timeout)
 {
-    setProcessPriority(Priority::Low);
     setThreadPriority(Priority::Low);
 
 #if USE_ALARM
@@ -160,7 +159,6 @@ int bridge(int pid, const std::string& path, int logChannel){
 #endif
 
     LOG_DEBUG("bridge begin");
-    setProcessPriority(Priority::High);
     // main thread is UI thread
     setThreadPriority(Priority::Low);
     try {

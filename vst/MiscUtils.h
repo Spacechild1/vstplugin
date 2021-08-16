@@ -84,10 +84,9 @@ bool canBridgeCpuArch(CpuArch arch);
 
 enum class Priority {
     Low,
+    Normal,
     High
 };
-
-void setProcessPriority(Priority p);
 
 void setThreadPriority(Priority p);
 

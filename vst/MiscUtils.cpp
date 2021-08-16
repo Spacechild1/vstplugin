@@ -429,27 +429,26 @@ bool canBridgeCpuArch(CpuArch arch) {
 
 //-------------------------------------------------------------//
 
-void setProcessPriority(Priority p){
-#if VST_HOST_SYSTEM == VST_WINDOWS
-    auto priorityClass = (p == Priority::High) ?
-                HIGH_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS;
-    if (!SetPriorityClass(GetCurrentProcess(), priorityClass)){
-        LOG_WARNING("couldn't set process priority");
-    }
-#endif
-}
-
 void setThreadPriority(Priority p){
 #if VST_HOST_SYSTEM == VST_WINDOWS
     auto thread = GetCurrentThread();
     // set the thread priority
-    auto threadPriority = (p == Priority::High) ?
-                THREAD_PRIORITY_HIGHEST : THREAD_PRIORITY_LOWEST;
+    int threadPriority;
+    if (p == Priority::High) {
+        // make it work independently from the process priority class
+        threadPriority = THREAD_PRIORITY_TIME_CRITICAL;
+    } else if (p == Priority::Low) {
+        threadPriority = THREAD_PRIORITY_LOWEST;
+    } else {
+        threadPriority = THREAD_PRIORITY_NORMAL;
+    }
     if (SetThreadPriority(thread, threadPriority)){
+    #if 0
         // disable priority boost
-        if (!SetThreadPriorityBoost(thread, (p != Priority::High))){
+        if (!SetThreadPriorityBoost(thread, (p == Priority::Low))){
             LOG_WARNING("couldn't disable thread priority boost");
         }
+    #endif
     } else {
         LOG_WARNING("couldn't set thread priority");
     }
@@ -458,6 +457,7 @@ void setThreadPriority(Priority p){
     // high priority value taken from Pd, see s_inter.c
     auto policy = (p == Priority::High) ? SCHED_FIFO : SCHED_OTHER;
     struct sched_param param;
+    // TODO: Low vs Normal
     param.sched_priority = (p == Priority::High) ?
                 sched_get_priority_max(SCHED_FIFO) - 7 : 0;
     if (pthread_setschedparam(pthread_self(), policy, &param) != 0){

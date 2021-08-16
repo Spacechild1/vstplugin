@@ -422,7 +422,6 @@ int client_run(const char *path){
 
 int main(int argc, const char *argv[]){
 #if TEST_REALTIME
-    setProcessPriority(Priority::High);
     setThreadPriority(Priority::High);
 #endif
 
