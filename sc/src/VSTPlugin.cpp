@@ -617,6 +617,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
 // -------------------- VSTPlugin ------------------------ //
 
 VSTPlugin::VSTPlugin(){
+    setVerbosity(mWorld->mVerbosity);
     // Ugen inputs:
     //   flags, blocksize, bypass, ninputs, inputs..., noutputs, outputs..., nparams, params...
     //     input: nchannels, chn1, chn2, ...
@@ -2587,8 +2588,6 @@ void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
 /*** unit command callbacks ***/
 
 void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
-    setVerbosity(unit->mWorld->mVerbosity);
-
     const char *path = args->gets();
     auto editor = args->geti();
     auto threaded = args->geti();
