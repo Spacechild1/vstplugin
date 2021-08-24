@@ -35,11 +35,11 @@ using namespace vst;
 #endif
 
 enum PdLogLevel {
-    PD_FATAL = -3,
-    PD_ERROR,
-    PD_NORMAL,
-    PD_DEBUG,
-    PD_ALL
+    PdCritical = -3,
+    PdError,
+    PdNormal,
+    PdDebug,
+    PdAll
 };
 
 class t_vsteditor;
