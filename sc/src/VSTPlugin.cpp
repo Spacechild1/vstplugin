@@ -2976,7 +2976,10 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     // use default search paths?
     if (searchPaths.empty()) {
         for (auto& path : getDefaultSearchPaths()) {
-            searchPaths.push_back(path);
+            // only search if the path actually exists
+            if (pathExists(path)){
+                searchPaths.push_back(path);
+            }
         }
     }
     // search for plugins

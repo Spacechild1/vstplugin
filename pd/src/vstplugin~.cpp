@@ -1248,7 +1248,10 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     } else {
         // search in the default VST search paths if no user paths were provided
         for (auto& path : getDefaultSearchPaths()){
-            paths.emplace_back(path);
+            // only search if the path actually exists
+            if (pathExists(path)){
+                paths.emplace_back(path);
+            }
         }
     }
 
