@@ -370,10 +370,12 @@ bool canBridgeCpuArch(CpuArch arch) {
     // check if host app exists and works
     if (pathExists(path)){
     #if defined(_WIN32) && !defined(__WINE__)
-        std::wstringstream ss;
-        ss << L"\"" << widen(path) << L"\" test";
+        auto wpath = widen(path);
+        auto quotepath = L"\"" + wpath + L"\"";
         fflush(stdout);
-        auto code = _wsystem(ss.str().c_str());
+        // don't use system() to avoid terminal popping up
+        auto code = _wspawnl(_P_WAIT, wpath.c_str(), quotepath.c_str(), L"test", NULL);
+        auto error = errno; // save errno!
     #else // Unix
         char cmdline[256];
       #if USE_WINE
@@ -392,6 +394,7 @@ bool canBridgeCpuArch(CpuArch arch) {
     #endif
 
         auto status = system(cmdline);
+        auto error = errno; // save errno!
 
         fflush(stdout);
     #if SUPPRESS_OUTPUT
@@ -415,7 +418,13 @@ bool canBridgeCpuArch(CpuArch arch) {
             gHostAppDict[arch] = true;
             return true; // success
         } else {
-            LOG_ERROR("host app '" << path << "' failed with exit code " << code);
+            if (code < 0){
+                // _wspawnl sets errno, so we can't use errorMessage()!
+                LOG_ERROR("couldn't execute host app '" << path << "': "
+                          << strerror(error) << " (" << error << ")");
+            } else {
+                LOG_ERROR("host app '" << path << "' failed with exit code " << code);
+            }
             gHostAppDict[arch] = false;
             return false;
         }
