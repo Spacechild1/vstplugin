@@ -68,14 +68,21 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
         LOG_DEBUG("PluginClient: wait for Server");
         chn.send();
     } else {
+        // info too large, try to transmit via tmp file
         LOG_DEBUG("PluginClient: send info via tmp file");
-        // info too large, try transmit via tmp file
         std::stringstream ss;
         ss << getTmpDirectory() << "/vst_" << (void *)this;
         std::string path = ss.str();
         TmpFile file(path, File::WRITE);
-
+        if (!file){
+            throw Error(Error::SystemError,
+                        "PluginClient: couldn't create tmp file");
+        }
         file << info;
+        if (!file){
+            throw Error(Error::SystemError,
+                        "PluginClient: couldn't write info to tmp file");
+        }
 
         cmdSize = sizeof(ShmCommand) + path.size() + 1;
         cmd->plugin.size = 0; // !
@@ -605,7 +612,34 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     memcpy(cmd->buffer.data, data, size);
 
     auto chn = bridge().getNRTChannel();
-    chn.addCommand(cmd, totalSize);
+    if (!chn.addCommand(cmd, totalSize)) {
+        if (type == Command::ReadProgramData ||
+                type == Command::ReadBankData) {
+            // plugin data too large, try to transmit via tmp file
+            LOG_DEBUG("PluginClient: send plugin data via tmp file");
+            std::stringstream ss;
+            ss << getTmpDirectory() << "/vst_" << (void *)this;
+            std::string path = ss.str();
+            TmpFile file(path, File::WRITE);
+            if (!file){
+                throw Error(Error::SystemError,
+                            "PluginClient: couldn't create tmp file");
+            }
+            file.write(data, size);
+            if (!file){
+                throw Error(Error::SystemError,
+                            "PluginClient: couldn't write plugin data to tmp file");
+            }
+            auto cmd = (type == Command::ReadProgramData) ?
+                        Command::ReadProgramFile : Command::ReadBankFile;
+            sendData(cmd, path.c_str(), path.size() + 1);
+
+            return; // !
+        } else {
+            throw Error(Error::PluginError,
+                        "PluginClient: could not send plugin data");
+        }
+    }
     chn.send();
 
     // check if host is still alive!
