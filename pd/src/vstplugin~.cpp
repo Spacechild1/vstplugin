@@ -744,8 +744,8 @@ static void vstparam_setup(){
 
 /*-------------------- t_vsteditor ------------------------*/
 
-t_vsteditor::t_vsteditor(t_vstplugin &owner, bool gui)
-    : e_owner(&owner){
+t_vsteditor::t_vsteditor(t_vstplugin& owner, bool gui)
+    : e_owner(&owner) {
     e_mainthread = std::this_thread::get_id();
     if (gui){
         pd_vmess(&pd_canvasmaker, gensym("canvas"), (char *)"iiiii", 0, 0, 100, 100, 10);
@@ -771,9 +771,11 @@ t_vsteditor::~t_vsteditor(){
 // post outgoing event (thread-safe)
 void t_vsteditor::post_event(const t_event& event){
     bool mainthread = std::this_thread::get_id() == e_mainthread;
+    // check if the Pd scheduler is locked
+    bool locked = mainthread || e_locked.load();
     // prevent event scheduling from within the tick method to avoid
     // deadlocks or memory errors
-    if (mainthread && e_tick){
+    if (locked && e_tick) {
         pd_error(e_owner, "%s: recursion detected", classname(e_owner));
         return;
     }
@@ -782,7 +784,7 @@ void t_vsteditor::post_event(const t_event& event){
     e_events.push_back(event);
     e_mutex.unlock();
 
-    if (mainthread){
+    if (locked) {
         clock_delay(e_clock, 0);
     } else {
         // Only lock Pd if DSP is off. This is better for real-time safety and it also
@@ -794,9 +796,7 @@ void t_vsteditor::post_event(const t_event& event){
     #endif
         if (pd_getdspstate()){
             e_needclock.store(true); // set the clock in the perform routine
-        } else if (!e_locked.load()) {
-            // lock the Pd scheduler, but only if we're not currently deferring
-            // to the UI thread from the main thread!
+        } else {
             sys_lock();
             clock_delay(e_clock, 0);
             sys_unlock();
@@ -1028,15 +1028,18 @@ void t_vsteditor::flush_queues(){
 
 template<bool async, typename T>
 void t_vsteditor::defer_safe(const T& fn, bool uithread){
-    if (!async){
-        e_locked.store(true);
-    }
     // call on UI thread if we have the plugin UI!
-    defer(fn, uithread);
-    if (!async){
-        e_locked.store(false);
-        // in case we couldn't set clock in post_event()!
-        clock_delay(e_clock, 0);
+    if (!async) {
+        // NOTE: set 'e_locked' *within* the deferred function
+        // to avoid possible race conditions with subsequent
+        // events on the UI thread.
+        defer([&](){
+            e_locked.store(true);
+            fn();
+            e_locked.store(false);
+        }, uithread);
+    } else {
+        defer(fn, uithread);
     }
 }
 
