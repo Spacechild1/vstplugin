@@ -129,7 +129,7 @@ class t_vstplugin {
     bool check_plugin();
 
     template<bool async>
-    void setup_plugin(IPlugin *plugin, bool uithread);
+    void setup_plugin(IPlugin *plugin);
 
     void update_buffers();
 

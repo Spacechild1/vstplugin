@@ -1454,7 +1454,7 @@ static void vstplugin_open_do(t_open_data *x){
             // setup plugin
             // protect against concurrent vstplugin_dsp() and vstplugin_save()
             ScopedLock lock(x->owner->x_mutex);
-            x->owner->setup_plugin<async>(x->plugin.get(), x->editor);
+            x->owner->setup_plugin<async>(x->plugin.get());
         }, x->editor);
         LOG_DEBUG("done");
     } catch (const Error & e) {
@@ -2948,7 +2948,7 @@ bool t_vstplugin::check_plugin(){
 }
 
 template<bool async>
-void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
+void t_vstplugin::setup_plugin(IPlugin *plugin){
     // check if precision is actually supported
     if (plugin->info().hasPrecision(x_wantprecision)){
         x_realprecision = x_wantprecision;
@@ -2974,72 +2974,70 @@ void t_vstplugin::setup_plugin(IPlugin *plugin, bool uithread){
         }
     }
 
-    x_editor->defer_safe<async>([&](){
-        plugin->suspend();
-        plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, x_mode);
+    plugin->suspend();
+    plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, x_mode);
 
-        auto setupSpeakers = [](const auto& pluginBusses,
-                const auto& ugenBusses, auto& result, const char *what) {
-            assert(ugenBusses.size() >= 1);
-            result.resize(pluginBusses.size());
+    auto setupSpeakers = [](const auto& pluginBusses,
+            const auto& ugenBusses, auto& result, const char *what) {
+        assert(ugenBusses.size() >= 1);
+        result.resize(pluginBusses.size());
 
-            if (ugenBusses.size() == 1 && pluginBusses.size() > 1){
-                LOG_DEBUG("distribute " << what);
-                // distribute inlets/outlets over plugin busses
-                //
-                // NOTE: only do this if the plugin has more than one bus,
-                // as a workaround for buggy VST3 plugins which would report
-                // a wrong default channel count, like Helm.vst3 or RoughRider2.vst3
-                auto remaining = ugenBusses[0].b_n;
-                for (int i = 0; i < (int)pluginBusses.size(); ++i){
-                    if (remaining > 0){
-                        auto chn = std::min<int>(remaining, pluginBusses[i].numChannels);
-                        result[i] = chn;
-                        remaining -= chn;
-                    } else {
-                        result[i] = 0;
-                    }
-                }
-            } else {
-                LOG_DEBUG("associate " << what);
-                // associate inlet/outlet busses with plugin input/output busses.
-                for (int i = 0; i < (int)pluginBusses.size(); ++i){
-                    if (i < (int)ugenBusses.size()){
-                        result[i] = ugenBusses[i].b_n;
-                    } else {
-                        result[i] = 0;
-                    }
+        if (ugenBusses.size() == 1 && pluginBusses.size() > 1){
+            LOG_DEBUG("distribute " << what);
+            // distribute inlets/outlets over plugin busses
+            //
+            // NOTE: only do this if the plugin has more than one bus,
+            // as a workaround for buggy VST3 plugins which would report
+            // a wrong default channel count, like Helm.vst3 or RoughRider2.vst3
+            auto remaining = ugenBusses[0].b_n;
+            for (int i = 0; i < (int)pluginBusses.size(); ++i){
+                if (remaining > 0){
+                    auto chn = std::min<int>(remaining, pluginBusses[i].numChannels);
+                    result[i] = chn;
+                    remaining -= chn;
+                } else {
+                    result[i] = 0;
                 }
             }
-        };
-
-        // prepare input busses
-        std::vector<int> inputs;
-        setupSpeakers(plugin->info().inputs, x_inlets, inputs, "inputs");
-
-        // prepare output busses
-        std::vector<int> outputs;
-        setupSpeakers(plugin->info().outputs, x_outlets, outputs, "outputs");
-
-        plugin->setNumSpeakers(inputs.data(), inputs.size(),
-                               outputs.data(), outputs.size());
-
-        x_inputs.resize(inputs.size());
-        x_input_channels = 0;
-        for (int i = 0; i < (int)inputs.size(); ++i){
-            x_input_channels += inputs[i];
-            x_inputs[i] = Bus(inputs[i]);
+        } else {
+            LOG_DEBUG("associate " << what);
+            // associate inlet/outlet busses with plugin input/output busses.
+            for (int i = 0; i < (int)pluginBusses.size(); ++i){
+                if (i < (int)ugenBusses.size()){
+                    result[i] = ugenBusses[i].b_n;
+                } else {
+                    result[i] = 0;
+                }
+            }
         }
+    };
 
-        x_outputs.resize(outputs.size());
-        x_output_channels = 0;
-        for (int i = 0; i < (int)outputs.size(); ++i){
-            x_output_channels += outputs[i];
-            x_outputs[i] = Bus(outputs[i]);
-        }
+    // prepare input busses
+    std::vector<int> inputs;
+    setupSpeakers(plugin->info().inputs, x_inlets, inputs, "inputs");
 
-        plugin->resume();
-    }, uithread);
+    // prepare output busses
+    std::vector<int> outputs;
+    setupSpeakers(plugin->info().outputs, x_outlets, outputs, "outputs");
+
+    plugin->setNumSpeakers(inputs.data(), inputs.size(),
+                           outputs.data(), outputs.size());
+
+    x_inputs.resize(inputs.size());
+    x_input_channels = 0;
+    for (int i = 0; i < (int)inputs.size(); ++i){
+        x_input_channels += inputs[i];
+        x_inputs[i] = Bus(inputs[i]);
+    }
+
+    x_outputs.resize(outputs.size());
+    x_output_channels = 0;
+    for (int i = 0; i < (int)outputs.size(); ++i){
+        x_output_channels += outputs[i];
+        x_outputs[i] = Bus(outputs[i]);
+    }
+
+    plugin->resume();
 }
 
 void t_vstplugin::update_buffers(){
@@ -3633,8 +3631,10 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     ScopedLock lock(x->x_mutex);
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr))) {
-        // calls update_buffers() internally!
-        x->setup_plugin<false>(x->x_plugin.get(), x->x_uithread);
+        x->x_editor->defer_safe<false>([&](){
+            // calls update_buffers() internally!
+            x->setup_plugin<false>(x->x_plugin.get());
+        }, x->x_uithread);
         if (x->x_threaded && (x->x_blocksize != oldblocksize)){
             // queue(!) latency change notification
             x->x_editor->latencyChanged(x->x_plugin->getLatencySamples());
