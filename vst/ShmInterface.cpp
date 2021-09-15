@@ -184,7 +184,7 @@ bool ShmChannel::writeMessage(const char *data, size_t size) {
             wrhead_ -= capacity;
         }
 
-        data_->size += msgsize; // atomic increment!
+        data_->size.fetch_add(msgsize, std::memory_order_release);
 
         return true;
     } else {
@@ -203,7 +203,7 @@ bool ShmChannel::addMessage(const char * data, size_t size) {
         memcpy(msg->data, data, size); // use original size!
 
         wrhead_ += msgsize;
-        data_->size += msgsize; // atomic increment!
+        data_->size.fetch_add(msgsize, std::memory_order_release);
 
         return true;
     } else {
