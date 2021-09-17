@@ -47,9 +47,10 @@ struct _Channel {
         : channel_(&channel)
         { channel.clear(); }
     _Channel(ShmChannel& channel, std::unique_lock<Mutex> lock)
-        : channel_(&channel),
-          lock_(std::move(lock))
+        : channel_(&channel), lock_(std::move(lock))
         { channel.clear(); }
+    _Channel(_Channel&& other)
+        : channel_(other.channel_), lock_(std::move(other.lock_)) {}
 
     bool addCommand(const void* cmd, size_t size){
         return channel_->addMessage(static_cast<const char *>(cmd), size);

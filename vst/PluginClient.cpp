@@ -630,6 +630,10 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
                 throw Error(Error::SystemError,
                             "PluginClient: couldn't write plugin data to tmp file");
             }
+            // avoid dead lock!
+            {
+                auto tmp(std::move(chn));
+            }
             auto cmd = (type == Command::ReadProgramData) ?
                         Command::ReadProgramFile : Command::ReadBankFile;
             sendData(cmd, path.c_str(), path.size() + 1);
