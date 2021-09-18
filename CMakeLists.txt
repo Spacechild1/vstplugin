@@ -4,7 +4,6 @@ set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
 project(${PROJECT})
 
-include (CheckCCompilerFlag)
 include (CheckCXXCompilerFlag)
 
 if(UNIX AND NOT APPLE AND NOT MINGW)
@@ -198,9 +197,6 @@ if (VST3)
     message(STATUS "VST3DIR: ${VST3DIR}")
 endif()
 
-# host app
-option(BUILD_HOST "Build host app (needed)" ON)
-
 # bit bridging
 option(BRIDGE "Enable plugin bridge" ON)
 add_definitions(-DUSE_BRIDGE=$<BOOL:${BRIDGE}>)
@@ -277,12 +273,9 @@ endif()
 # vst library
 include_directories(vst)
 
-# always build 64-bit libvst except when we only
-# want to build the 32-bit wine host.
-if (BUILD_HOST OR NOT BUILD_WINE)
-    set(LIBVST "vst")
-    set(LIBS ${LIBVST} ${VST_LIBS})
-endif()
+set(LIBVST "vst")
+set(LIBS ${LIBVST} ${VST_LIBS})
+
 if (BUILD_HOST32)
     set(LIBVST32 "vst32")
     set(LIBS32 ${LIBVST32} ${VST_LIBS})
@@ -291,31 +284,29 @@ endif()
 add_subdirectory(vst)
 
 # host
-if (BUILD_HOST)
-    if (BUILD_WINE)
-        if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-            set(HOST "host_pe_amd64")
-        elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
-            set(HOST "host_pe_i386")
-        else()
-            message(FATAL_ERROR "unexpected value for CMAKE_SIZEOF_VOID_P")
-        endif()
+if (BUILD_WINE)
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(HOST "host_pe_amd64")
+    elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(HOST "host_pe_i386")
     else()
-        set(HOST "host")
+        message(FATAL_ERROR "unexpected value for CMAKE_SIZEOF_VOID_P")
     endif()
-    add_executable(${HOST} "vst/host.cpp") # HOST exe
-    target_link_libraries(${HOST} ${LIBS})
-    if (WMAIN AND (MINGW OR BUILD_WINE))
-        # -municode must be a linker flag!
-        target_link_libraries(${HOST} "-municode")
-    endif()
-    set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
-    # up to CMake 3.12 we can't install targets from another directory,
-    # so we export the output file path and install it as a file.
-    set(HOST_PATH $<TARGET_FILE:${HOST}>)
-    if (MSVC)
-        set(HOST_PDB_PATH $<TARGET_PDB_FILE:${HOST}>)
-    endif()
+else()
+    set(HOST "host")
+endif()
+add_executable(${HOST} "vst/host.cpp") # HOST exe
+target_link_libraries(${HOST} ${LIBS})
+if (WMAIN AND (MINGW OR BUILD_WINE))
+    # -municode must be a linker flag!
+    target_link_libraries(${HOST} "-municode")
+endif()
+set_target_properties(${HOST} PROPERTIES LINK_FLAGS_RELEASE -s)
+# up to CMake 3.12 we can't install targets from another directory,
+# so we export the output file path and install it as a file.
+set(HOST_PATH $<TARGET_FILE:${HOST}>)
+if (MSVC)
+    set(HOST_PDB_PATH $<TARGET_PDB_FILE:${HOST}>)
 endif()
 
 # 32-bit host

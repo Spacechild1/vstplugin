@@ -11,7 +11,6 @@ variables:
   SC_PATH: /tmp/supercollider
   PDLIBNAME: vstplugin~
   SCLIBNAME: VSTPlugin
-  BUILD_HOST: 1
 
 ### script snippets
 
@@ -30,7 +29,7 @@ variables:
   - prefix="$(pwd)/${CI_JOB_NAME}"
   - cmake -H. -Bbuild -DCMAKE_INSTALL_PREFIX="${prefix}"
    -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSTATIC_LIBS=${STATIC_LIBS} -DWINE=${WINE}
-   -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST=${BUILD_HOST} -DBUILD_HOST32=${BUILD_HOST32}
+   -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST32=${BUILD_HOST32}
    -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
    -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}"
 
@@ -75,14 +74,12 @@ variables:
     - *script_cmake
 
 .build:linux_i386: &build_linux_i386
-  allow_failure: true
   extends: .build:linux
   image: registry.git.iem.at/devtools/docker/debiancross:i386
   variables:
     PD_EXTENSION: l_i386
 
 .build:linux_wine: &build_linux_wine
-  allow_failure: true
   extends: .build:script
   image: registry.git.iem.at/devtools/docker/debiancross:amd64
   variables:
@@ -93,12 +90,17 @@ variables:
       - $JOBS == "all" || $JOBS == "wine"
   before_script:
     - DEB_TARGET_ARCH_BITS=$(dpkg-architecture ${TARGETDEBARCH:+-A} ${TARGETDEBARCH} -q DEB_TARGET_ARCH_BITS)
-    - test "x${DEB_TARGET_ARCH_BITS}" = "x32" && { BUILD_HOST=0; BUILD_HOST32=1; }
-    - apt-get update && apt-get install make cmake wget git libx11-dev
-      wine${DEB_TARGET_ARCH_BITS}-tools wine gcc-multilib g++-multilib
+    - apt-get update
+    - test "x${DEB_TARGET_ARCH_BITS}" = "x32" &&
+      { export CXXFLAGS="-m32"; apt-get install gcc-multilib g++-multilib; }
+    - apt-get install make cmake wget git libx11-dev wine${DEB_TARGET_ARCH_BITS}-tools wine
     - .git-ci/get_vst2.sh "${VST2DIR}"
     - .git-ci/get_vst3.sh "${VST3DIR}"
     - *script_cmake
+
+.build:linux_wine32: &build_linux_wine32
+  extends: .build:linux_wine
+  image: registry.git.iem.at/devtools/docker/debiancross:i386
 
 .build:macos: &build_macos
   extends: .build:script
@@ -158,6 +160,9 @@ variables:
 .Linux_wine:
   allow_failure: true
   <<: *build_linux_wine
+.Linux_wine32:
+  allow_failure: true
+  <<: *build_linux_wine32
 .Darwin:
   <<: *build_macos
 .w32:
@@ -240,9 +245,9 @@ Linux_wine:
     - .Linux_wine
     - .base
 Linux_wine32:
-  image: registry.git.iem.at/devtools/docker/debiancross:i386
   extends:
-    - Linux_wine
+    - .Linux_wine32
+    - .base
 Darwin:
   extends:
     - .Darwin

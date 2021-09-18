@@ -49,15 +49,15 @@ message(STATUS "PD_INSTALLDIR: ${PD_INSTALLDIR}")
 
 if (BUILD_WINE)
     # install wine hosts
-    if (BUILD_HOST)
-        install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "${HOST}"
-            DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
-    endif()
+    install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "${HOST}"
+        DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
+
     if (BUILD_HOST32)
         install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "${HOST32}"
             DESTINATION "${PD_INSTALLDIR}/${FILENAME}")
     endif()
-    # don't build Pd external
+
+    # don't actually build Pd external
     return()
 endif()
 
