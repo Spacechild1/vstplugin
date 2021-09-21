@@ -11,6 +11,8 @@
 #include <string.h>
 #include <mutex>
 
+#define PROBE_IN_UI_THREAD 0
+
 using namespace vst;
 
 #ifndef USE_WMAIN
@@ -46,8 +48,40 @@ int probe(const std::string& pluginPath, int pluginIndex, const std::string& fil
 
     LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
+    #if PROBE_IN_UI_THREAD
+        // setup UI event loop
+        LOG_DEBUG("setup event loop");
+        UIThread::setup();
+
+        vst::PluginDesc::const_ptr desc;
+        Error error;
+
+        auto fn = [&]() {
+            try {
+                auto factory = vst::IFactory::load(pluginPath, true);
+                desc = factory->probePlugin(pluginIndex);
+            } catch (const Error& e) {
+                error = e;
+            }
+
+            UIThread::quit();
+        };
+
+        UIThread::callAsync([](void *x) {
+            (*static_cast<decltype(fn)*>(x))();
+        }, &fn);
+
+        // run until quit in lambda
+        UIThread::run();
+
+        if (error.code() != Error::NoError) {
+            throw error; // rethrow!
+        }
+    #else
         auto factory = vst::IFactory::load(pluginPath, true);
         auto desc = factory->probePlugin(pluginIndex);
+    #endif
+
         if (!filePath.empty()) {
             vst::File file(filePath, File::WRITE);
             if (file.is_open()) {
