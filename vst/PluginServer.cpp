@@ -22,6 +22,31 @@
 
 namespace vst {
 
+template<typename T>
+void defer(const T& fn){
+    // call on UI thread and catch exceptions
+    bool success = false;
+    Error err;
+    bool ok = UIThread::callSync([&](){
+        try {
+            fn();
+            success = true;
+        } catch (const Error& e){
+            err = e;
+        } catch (const std::exception& e) {
+            err = Error(e.what());
+        }
+    });
+    if (ok){
+        if (!success){
+            throw err;
+        }
+        return;
+    } else {
+        LOG_ERROR("UIThread::callSync() failed");
+    }
+}
+
 /*///////////////// PluginHandleListener ///////*/
 
 void PluginHandleListener::parameterAutomated(int index, float value) {
@@ -122,7 +147,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
         auto mode = static_cast<ProcessMode>(cmd.setup.mode);
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->setupProcessing(cmd.setup.sampleRate, maxBlockSize_,
                                      precision_, mode);
         });
@@ -141,7 +166,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         std::copy(speakers + numInputs,
                   speakers + numInputs + numOutputs, output);
 
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->setNumSpeakers(input, numInputs, output, numOutputs);
         });
 
@@ -183,19 +208,19 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     }
     case Command::Suspend:
         LOG_DEBUG("PluginHandle: suspend");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->suspend();
         });
         break;
     case Command::Resume:
         LOG_DEBUG("PluginHandle: resume");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->resume();
         });
         break;
     case Command::ReadProgramFile:
         LOG_DEBUG("PluginHandle: ReadProgramFile");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->readProgramFile(cmd.buffer.data);
         });
         channel.clear(); // !
@@ -204,7 +229,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     case Command::ReadBankFile:
         LOG_DEBUG("PluginHandle: ReadBankFile");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->readBankFile(cmd.buffer.data);
         });
         channel.clear(); // !
@@ -213,7 +238,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     case Command::ReadProgramData:
         LOG_DEBUG("PluginHandle: ReadProgramData");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
         });
         channel.clear(); // !
@@ -222,7 +247,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     case Command::ReadBankData:
         LOG_DEBUG("PluginHandle: ReadBankData");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
         });
         channel.clear(); // !
@@ -231,13 +256,13 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     case Command::WriteProgramFile:
         LOG_DEBUG("PluginHandle: WriteProgramFile");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->writeProgramFile(cmd.buffer.data);
         });
         break;
     case Command::WriteBankFile:
         LOG_DEBUG("PluginHandle: WriteBankFile");
-        UIThread::callSync([&](){
+        defer([&](){
             plugin_->writeBankFile(cmd.buffer.data);
         });
         break;
@@ -247,7 +272,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         LOG_DEBUG("PluginHandle: WriteProgramData/WriteBankData");
         // get data
         std::string buffer;
-        UIThread::callSync([&](){
+        defer([&](){
             if (cmd.type == Command::WriteBankData){
                 plugin_->writeBankData(buffer);
             } else {
@@ -802,14 +827,15 @@ void PluginServer::handleCommand(ShmChannel& channel,
             }
             break;
         }
-    } catch (const Error& e){
+    } catch (const Error& e) {
+        LOG_DEBUG("exception: " << e.what());
         channel.clear(); // !
 
         std::string msg = e.what();
 
         char buf[256]; // can't use alloca() in catch block
         auto size = CommandSize(ShmCommand, error, msg.size() + 1);
-        auto reply = new(buf)ShmCommand(Command::Error);
+        auto reply = new (buf) ShmCommand(Command::Error);
         reply->error.code = e.code();
         memcpy(reply->error.msg, msg.c_str(), msg.size() + 1);
 
@@ -823,53 +849,42 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
                                 ShmChannel& channel){
     LOG_DEBUG("PluginServer: create plugin " << id);
 
-    struct PluginResult {
-        PluginDesc::const_ptr info;
-        IPlugin::ptr plugin;
-        Error error;
-    } result;
-
+    PluginDesc::const_ptr info;
     if (size){
         // info is transmitted in place
         std::stringstream ss;
         ss << std::string(data, size);
-        result.info = gPluginDict.readPlugin(ss);
+        info = gPluginDict.readPlugin(ss);
     } else {
         // info is transmitted via a tmp file
         File file(data);
         if (!file.is_open()){
             throw Error(Error::PluginError, "couldn't read plugin info!");
         }
-        result.info = gPluginDict.readPlugin(file);
+        info = gPluginDict.readPlugin(file);
     }
 
     LOG_DEBUG("PluginServer: did read plugin info");
 
-    if (!result.info){
+    if (!info){
         // shouldn't happen...
         throw Error(Error::PluginError, "plugin info out of date!");
     }
 
     // create on UI thread!
-    UIThread::callSync([](void *x){
-        auto result = static_cast<PluginResult *>(x);
-        try {
-            // open with Mode::Native to avoid infinite recursion!
-            result->plugin = result->info->create(true, false, RunMode::Native);
-        } catch (const Error& e){
-            result->error = e;
-        }
-    }, &result);
+    IPlugin::ptr plugin;
+    defer([&](){
+        // open with Mode::Native to avoid infinite recursion!
+        plugin = info->create(true, false, RunMode::Native);
+    });
 
-    if (result.plugin){
-        auto handle = std::make_unique<PluginHandle>(*this,
-                std::move(result.plugin), id, channel);
+    assert(plugin != nullptr);
 
-        WriteLock lock(pluginMutex_);
-        plugins_.emplace(id, std::move(handle));
-    } else {
-        throw result.error;
-    }
+    auto handle = std::make_unique<PluginHandle>(
+                *this, std::move(plugin), id, channel);
+
+    WriteLock lock(pluginMutex_);
+    plugins_.emplace(id, std::move(handle));
 }
 
 void PluginServer::destroyPlugin(uint32_t id){
@@ -882,9 +897,9 @@ void PluginServer::destroyPlugin(uint32_t id){
         lock.unlock();
 
         // release on UI thread!
-        UIThread::callSync([](void *x){
-            delete static_cast<PluginHandle *>(x);
-        }, plugin);
+        defer([&](){
+            delete plugin;
+        });
     } else {
         LOG_ERROR("PluginServer::destroyPlugin: chouldn't find plugin " << id);
     }
@@ -913,9 +928,9 @@ void PluginServer::quit(){
     // on the UI thread (in case the parent crashed)
     WriteLock lock(pluginMutex_);
     if (!plugins_.empty()){
-        UIThread::callSync([](void *x){
-            static_cast<PluginServer *>(x)->plugins_.clear();
-        }, this);
+        defer([&](){
+            plugins_.clear();
+        });
         LOG_DEBUG("released plugins");
     }
 
