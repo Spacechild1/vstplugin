@@ -395,9 +395,9 @@ and 3 stereo output busses \, you can simply do the following:, f
 #X obj 479 136 openpanel;
 #X obj 488 243 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 490 540 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+#X obj 490 565 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
 -1 -1;
-#X obj 478 666 s \$0-msg;
+#X obj 478 691 s \$0-msg;
 #X text 909 162 name;
 #X text 879 57 index;
 #X text 911 211 index;
@@ -426,8 +426,8 @@ exchange your presets between Pd and other hosts (e.g. your favourite
 DAW), f 53;
 #X text 499 115 read program file (.fxp/.vstpreset);
 #X text 507 243 write program file (.fxp/.vstpreset);
-#X text 509 540 write bank file (.fxb) - VST2 only;
-#X text 476 413 read bank file (.fxb) - VST2 only;
+#X text 509 565 write bank file (.fxb) - VST2 only;
+#X text 476 410 read bank file (.fxb) - VST2 only;
 #X text 820 639 set bank data as list of bytes - VST2 only;
 #X text 826 679 get bank data as list of bytes - VST2 only;
 #X obj 804 425 cnv 15 200 25 empty empty empty 20 12 0 14 -233017 -66577
@@ -588,30 +588,30 @@ your own preset banks in Pd, f 47;
 #X obj 479 164 pack s f;
 #X obj 537 164 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X obj 478 433 openpanel;
-#X symbolatom 540 434 24 0 0 0 - - -;
-#X obj 478 461 pack s f;
-#X obj 536 461 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X obj 478 458 openpanel;
+#X symbolatom 540 459 24 0 0 0 - - -;
+#X obj 478 486 pack s f;
+#X obj 536 486 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 478 488 bank_read \$1 \$2;
+#X msg 478 513 bank_read \$1 \$2;
 #X obj 488 264 openpanel;
 #X symbolatom 550 265 24 0 0 0 - - -;
 #X obj 488 292 pack s f;
 #X obj 546 292 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
 #X msg 488 316 program_write \$1 \$2;
-#X obj 490 562 openpanel;
-#X symbolatom 552 563 24 0 0 0 - - -;
-#X obj 490 590 pack s f;
-#X obj 548 590 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
+#X obj 490 587 openpanel;
+#X symbolatom 552 588 24 0 0 0 - - -;
+#X obj 490 615 pack s f;
+#X obj 548 615 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
-#X msg 490 615 bank_write \$1 \$2;
+#X msg 490 640 bank_write \$1 \$2;
 #X msg 168 616 preset_delete <result>;
 #X msg 166 668 preset_rename <result>;
 #X msg 575 212 program_read <result>;
 #X msg 579 338 program_write <result>;
-#X msg 572 510 bank_read <result>;
-#X msg 582 637 bank_write <result>;
+#X msg 572 535 bank_read <result>;
+#X msg 582 662 bank_write <result>;
 #X text 70 494 responds with;
 #X text 290 495 (1: success \, 0: fail);
 #X text 78 570 responds with;
@@ -619,8 +619,8 @@ your own preset banks in Pd, f 47;
 #X text 76 669 responds with;
 #X text 488 214 responds with;
 #X text 493 338 responds with;
-#X text 484 511 responds with;
-#X text 493 638 responds with;
+#X text 484 536 responds with;
+#X text 493 663 responds with;
 #X symbolatom 50 155 16 0 0 2 name - -;
 #X obj 97 177 tgl 15 0 empty empty async 17 7 0 10 -262144 -1 -1 0
 1;
@@ -666,6 +666,8 @@ locations on the filesystem., f 52;
 #X text 818 456 You can also work with the raw plugin data \, e.g.
 to build your own preset management in Pd:, f 49;
 #X text 30 83 Quick guide:;
+#X obj 478 433 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
+-1 -1;
 #X connect 1 0 33 0;
 #X connect 3 0 0 0;
 #X connect 5 0 26 0;
@@ -723,6 +725,7 @@ to build your own preset management in Pd:, f 49;
 #X connect 144 0 145 1;
 #X connect 145 0 127 0;
 #X connect 146 0 145 0;
+#X connect 154 0 91 0;
 #X restore 274 525 pd preset;
 #X f 17;
 #X msg 216 310 print;
