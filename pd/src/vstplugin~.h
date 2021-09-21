@@ -251,6 +251,7 @@ class t_workqueue {
 
     t_workqueue();
     ~t_workqueue();
+
     template<typename T, typename Fn1, typename Fn2>
     void push(void *owner, T *data, Fn1 workfn, Fn2 cb){
         dopush(owner, data, t_fun<void>(t_fun<T>(workfn)),

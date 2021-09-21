@@ -1494,15 +1494,32 @@ static void vstplugin_open_done(t_open_data *x){
         x->owner->x_editor->setup();
 
         verbose(PdDebug, "opened '%s'", info.name.c_str());
+    }
+}
 
+static void vstplugin_open_notify(t_vstplugin *x) {
+    // output message
+    bool success = x->x_plugin != nullptr;
+    t_atom msg[2];
+    SETFLOAT(&msg[0], success);
+    if (success){
+        // Output the original path, *not* the plugin name!
+        // It might be used to query information about
+        // the plugin, so we better make sure that it
+        // really refers to the same plugin.
+        SETSYMBOL(&msg[1], x->x_path);
+    }
+    outlet_anything(x->x_messout, gensym("open"), 1 + success, msg);
+
+    if (success) {
         // report initial latency
         t_atom a;
-        int latency = x->owner->x_plugin->getLatencySamples();
-        if (x->owner->x_threaded){
-            latency += x->owner->x_blocksize;
+        int latency = x->x_plugin->getLatencySamples();
+        if (x->x_threaded){
+            latency += x->x_blocksize;
         }
         SETFLOAT(&a, latency);
-        outlet_anything(x->owner->x_messout, gensym("latency"), 1, &a);
+        outlet_anything(x->x_messout, gensym("latency"), 1, &a);
     }
 }
 
@@ -1562,20 +1579,6 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     // close the old plugin
     vstplugin_close(x);
 
-    auto open_done = [](t_open_data *data){
-        vstplugin_open_done(data);
-        // output message
-        bool success = data->owner->x_plugin != nullptr;
-        t_atom a[2];
-        int n = 1;
-        SETFLOAT(&a[0], success);
-        if (success){
-            SETSYMBOL(&a[1], data->owner->x_key);
-            n++;
-        }
-        outlet_anything(data->owner->x_messout, gensym("open"), n, a);
-    };
-
     // for editor or plugin bridge/sandbox
     initEventLoop();
 
@@ -1587,7 +1590,12 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data->editor = editor;
         data->threaded = threaded;
         data->mode = mode;
-        t_workqueue::get()->push(x, data, vstplugin_open_do<true>, open_done);
+        t_workqueue::get()->push(
+            x, data, vstplugin_open_do<true>,
+            [](t_open_data *x){
+                vstplugin_open_done(x);
+                vstplugin_open_notify(x->owner);
+            });
     } else {
         t_open_data data;
         data.owner = x;
@@ -1596,7 +1604,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         data.threaded = threaded;
         data.mode = mode;
         vstplugin_open_do<false>(&data);
-        open_done(&data);
+        vstplugin_open_done(&data);
+        vstplugin_open_notify(x);
     }
     x->x_async = async; // remember *how* we openend the plugin
     // NOTE: don't set 'x_uithread' already because 'editor' value might change
@@ -3362,10 +3371,11 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         data.mode = mode;
         vstplugin_open_do<false>(&data);
         vstplugin_open_done(&data);
-        x_uithread = editor; // !
-        x_threaded = threaded;
         x_async = false;
-        x_path = file; // HACK: set symbol for vstplugin_loadbang
+        // HACK: always set path symbol so that in vstplugin_loadbang()
+        // we know that we have to call vstplugin_open_notify()
+        //  - even if the plugin has failed to load!
+        x_path = file;
     }
 
     // restore state
@@ -3549,17 +3559,9 @@ static t_int *vstplugin_perform(t_int *w){
 static void vstplugin_loadbang(t_vstplugin *x, t_floatarg action){
     // send message when plugin has been loaded (or failed to do so)
     // x_path is set in constructor
-    if ((int)action == 0 && x->x_path){ // LB_LOAD
-        bool success = x->x_plugin != nullptr;
-        t_atom a[2];
-        int n = 1;
-        SETFLOAT(&a[0], success);
-        if (success){
-            SETSYMBOL(&a[1], x->x_key);
-            n++;
-        }
-        outlet_anything(x->x_messout, gensym("open"), n, a);
-        if (!success){
+    if ((int)action == 0 && x->x_path) { // LB_LOAD
+        vstplugin_open_notify(x);
+        if (!x->x_plugin){
             x->x_path = nullptr; // undo HACK in vstplugin ctor
         }
     }
