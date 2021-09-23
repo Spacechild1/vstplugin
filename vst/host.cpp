@@ -11,7 +11,7 @@
 #include <string.h>
 #include <mutex>
 
-#if !defined(_WIN32) || defined(__WINE__)
+#if VST_HOST_SYSTEM != VST_WINDOWS
 # define USE_ALARM 1
 # include <signal.h>
 #else
@@ -216,6 +216,7 @@ int main(int argc, const char *argv[]) {
         }
     #endif
         else if (verb == "test"){
+            // std::this_thread::sleep_for(std::chrono::milliseconds(4000));
             return EXIT_SUCCESS;
         }
     }

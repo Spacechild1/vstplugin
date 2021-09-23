@@ -148,7 +148,7 @@ PaddedSpinLock::PaddedSpinLock(){
 #if __cplusplus < 201703L
 void* PaddedSpinLock::operator new(size_t size){
     // Wine doesn't seem to have _aligned_malloc/_aligned_free
-#if defined(_WIN32) && !defined(__WINE__)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     void *ptr = _aligned_malloc(size, alignof(PaddedSpinLock));
 #else
     void *ptr = nullptr;
@@ -166,7 +166,7 @@ void* PaddedSpinLock::operator new(size_t size){
 
 void PaddedSpinLock::operator delete(void* ptr){
     // see above
-#if defined(_WIN32) && !defined(__WINE__)
+#if VST_HOST_SYSTEM == VST_WINDOWS
     _aligned_free(ptr);
 #else
     std::free(ptr);

@@ -1,5 +1,5 @@
 #include "FileUtils.h"
-
+#include "Interface.h"
 #include "MiscUtils.h"
 #include "Log.h"
 
@@ -193,8 +193,9 @@ std::string fileBaseName(const std::string& path){
 //---------------------------------------------------//
 
 File::File(const std::string& path, Mode mode)
-#if defined(_WIN32) && (defined(_MSC_VER) || __GNUC__ >= 9) && !defined(__WINE__)
+#if (VST_HOST_SYSTEM == VST_WINDOWS) && (defined(_MSC_VER) || __GNUC__ >= 9)
 // UTF-16 file names supported by MSVC and newer GCC versions
+// NOTE: doesn't work on Wine!
     : std::fstream(vst::widen(path).c_str(),
 #else
 // might create problems on Windows... LATER fix this
