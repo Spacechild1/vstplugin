@@ -232,13 +232,70 @@ std::string getHostApp(CpuArch arch){
     }
 }
 
-#if !defined(_WIN32) && !defined(__WINE__)
-# define SUPPRESS_OUTPUT 1
-#else
-# define SUPPRESS_OUTPUT 0
-#endif
+#ifdef _WIN32
 
-#if SUPPRESS_OUTPUT
+int runCommand(const char *cmd, const char *args) {
+    auto wcmd = widen(cmd);
+    fflush(stdout);
+    // don't use system() to avoid console popping up
+#if 1
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(pi));
+
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+
+    std::stringstream cmdline;
+    // NOTE: we must quote the command when passed as the first argument!
+    cmdline << "\"" << cmd << "\" " << (args ? args : "");
+    auto wcmdline = widen(cmdline.str());
+
+    if (!CreateProcessW(wcmd.c_str(), &wcmdline[0], NULL, NULL, 0,
+                        DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
+        throw Error(Error::SystemError, errorMessage(GetLastError()));
+    }
+
+    auto res = WaitForSingleObject(pi.hProcess, INFINITE);
+    if (res == WAIT_OBJECT_0){
+        DWORD exitCode;
+        auto success = GetExitCodeProcess(pi.hProcess, &exitCode);
+        auto e = GetLastError(); // cache error before calling CloseHandle()!
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        if (success) {
+            return exitCode;
+        } else {
+            throw Error(Error::SystemError,
+                        "GetExitCodeProcess() failed: " + errorMessage(e));
+        }
+    } else {
+        auto e = GetLastError();
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        throw Error(Error::SystemError,
+                    "WaitForSingleObject() failed: " + errorMessage(e));
+    }
+#else
+    // still shows console...
+    // NOTE: we must quote the command when passed as the first argument!
+    auto quotecmd = L"\"" + wcmd + L"\"";
+    auto wargs = widen(args ? args : "");
+    auto result = _wspawnl(_P_WAIT, wcmd.c_str(),
+                           quotecmd.c_str(), wargs.c_str(), NULL);
+    if (result >= 0) {
+        return result;
+    } else {
+        auto e = errno;
+        std::stringstream ss;
+        ss << strerror(e) << " (" << e << ")";
+
+        throw Error(Error::SystemError, ss.str());
+    }
+#endif
+}
+
+#else
 
 // disableOutput() and restoreOutput()
 // are never called concurrently!
@@ -261,7 +318,44 @@ void restoreOutput() {
     close(stderrfd);
 }
 
-#endif // SUPPRESS_OUTPUT
+int runCommand(const char *cmd, const char *args) {
+    char cmdline[256];
+    snprintf(cmdline, sizeof(cmdline), "\"%s\" %s",
+             cmd, args ? args : "");
+
+    fflush(stdout);
+#if SUPPRESS_OUTPUT
+    disableOutput();
+#endif
+
+    auto status = system(cmdline);
+    auto e = errno; // save errno!
+
+    fflush(stdout);
+#if SUPPRESS_OUTPUT
+    restoreOutput();
+#endif
+
+    if (status >= 0) {
+        if (WIFEXITED(status)) {
+            // exited normally
+            return WEXITSTATUS(status);
+        } else {
+            std::stringstream ss;
+            if (WIFSIGNALED(status)) {
+                ss << "terminated with signal " << WTERMSIG(status);
+            } else {
+                ss << "failed with status " << status;
+            }
+            throw Error(Error::SystemError, ss.str());
+        }
+    } else {
+        // system() failed
+        throw Error(Error::SystemError, errorMessage(e));
+    }
+}
+
+#endif // _WIN32
 
 #if USE_WINE
 const char * getWineCommand(){
@@ -282,24 +376,9 @@ bool haveWine(){
     // we only need to do this once!
     static bool _haveWine = [](){
         auto winecmd = getWineCommand();
-        // we pass valid arguments, so the exit code should be 0.
-        char cmdline[256];
-        snprintf(cmdline, sizeof(cmdline), "\"%s\" --version", winecmd);
-
-        fflush(stdout);
-    #if SUPPRESS_OUTPUT
-        disableOutput();
-    #endif
-
-        auto status = system(cmdline);
-
-        fflush(stdout);
-    #if SUPPRESS_OUTPUT
-        restoreOutput();
-    #endif
-
-        if (WIFEXITED(status)){
-            auto code = WEXITSTATUS(status);
+        try {
+            // we pass valid arguments, so the exit code should be 0.
+            auto code = runCommand(winecmd, "--version");
             if (code == EXIT_SUCCESS){
                 LOG_DEBUG("'" << winecmd << "' command is working");
                 return true; // success
@@ -308,10 +387,8 @@ bool haveWine(){
             } else {
                 LOG_ERROR("'" << winecmd << "' command failed with exit code " << code);
             }
-        } else if (WIFSIGNALED(status)) {
-            LOG_ERROR("'" << winecmd << "' command was terminated with signal " << WTERMSIG(status));
-        } else {
-            LOG_ERROR("'" << winecmd << "' command failed with status " << status);
+        } catch (const Error& e) {
+            LOG_ERROR("'" << winecmd << "' command failed :" << e.what());
         }
         return false;
     }();
@@ -367,64 +444,32 @@ bool canBridgeCpuArch(CpuArch arch) {
   #endif // USE_WINE
     auto path = getModuleDirectory() + "/" + getHostApp(arch);
 #endif
+
     // check if host app exists and works
     if (pathExists(path)){
-    #if defined(_WIN32) && !defined(__WINE__)
-        auto wpath = widen(path);
-        auto quotepath = L"\"" + wpath + L"\"";
-        fflush(stdout);
-        // don't use system() to avoid terminal popping up
-        auto code = _wspawnl(_P_WAIT, wpath.c_str(), quotepath.c_str(), L"test", NULL);
-        auto error = errno; // save errno!
-    #else // Unix
-        char cmdline[256];
-      #if USE_WINE
-        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-            snprintf(cmdline, sizeof(cmdline),
-                     "\"%s\" \"%s\" test", getWineCommand(), path.c_str());
-        } else
-      #endif
-        {
-            snprintf(cmdline, sizeof(cmdline), "\"%s\" test", path.c_str());
-        }
-
-        fflush(stdout);
-    #if SUPPRESS_OUTPUT
-        disableOutput();
-    #endif
-
-        auto status = system(cmdline);
-        auto error = errno; // save errno!
-
-        fflush(stdout);
-    #if SUPPRESS_OUTPUT
-        restoreOutput();
-    #endif
-
-        if (!WIFEXITED(status)) {
-            if (WIFSIGNALED(status)) {
-                LOG_ERROR("host app '" << path
-                          << "' was terminated with signal " << WTERMSIG(status));
-            } else {
-                LOG_ERROR("host app '" << path << "' failed with status " << status);
+        int exitCode;
+        try {
+        #if USE_WINE
+            if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64) {
+                char args[256];
+                snprintf(args, sizeof(args), "\"%s\" test", path.c_str());
+                exitCode = runCommand(getWineCommand(), args);
+            } else
+        #endif
+            {
+                exitCode = runCommand(path.c_str(), "test");
             }
+        } catch (const Error& e) {
+            LOG_ERROR("failed to execute host app '" << path << "': " << e.what());
             gHostAppDict[arch] = false;
             return false;
         }
-        auto code = WEXITSTATUS(status);
-    #endif
-        if (code == EXIT_SUCCESS){
+        if (exitCode == EXIT_SUCCESS){
             LOG_DEBUG("host app '" << path << "' is working");
             gHostAppDict[arch] = true;
             return true; // success
         } else {
-            if (code < 0){
-                // _wspawnl sets errno, so we can't use errorMessage()!
-                LOG_ERROR("couldn't execute host app '" << path << "': "
-                          << strerror(error) << " (" << error << ")");
-            } else {
-                LOG_ERROR("host app '" << path << "' failed with exit code " << code);
-            }
+            LOG_ERROR("host app '" << path << "' failed with exit code " << exitCode);
             gHostAppDict[arch] = false;
             return false;
         }
@@ -434,7 +479,8 @@ bool canBridgeCpuArch(CpuArch arch) {
         return false;
     }
 }
-#endif
+
+#endif // USE_BRIDGE
 
 //-------------------------------------------------------------//
 

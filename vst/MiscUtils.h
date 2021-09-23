@@ -80,6 +80,8 @@ bool haveWine();
 bool canBridgeCpuArch(CpuArch arch);
 #endif
 
+int runCommand(const char *cmd, const char *args);
+
 //---------------------------------------------------------------//
 
 enum class Priority {
