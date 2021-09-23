@@ -115,8 +115,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
     // arguments: host.exe bridge <parent_pid> <shm_path>
-    // NOTE: on Windows we need to quote the arguments for _spawn to handle
-    // spaces in file names.
+    // NOTE: we need to quote string arguments (in case they contain spaces)
     std::stringstream cmdLineStream;
     cmdLineStream << hostApp << " bridge " << parent
                   << " \"" << shm_.path() << "\" " << writeLog;
@@ -176,19 +175,28 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
             // run in Wine
             auto winecmd = getWineCommand();
-            // use PATH!
+            // LOG_DEBUG("host path: " << hostPath);
+            // arguments: wine host.exe bridge <parent_pid> <shm_path>
+            // NOTE: we must *not* quote arguments to exec()
+            // execlp() beause we want to use PATH!
             if (execlp(winecmd, winecmd, hostPath.c_str(), "bridge",
                        parentStr.c_str(), shm_.path().c_str(),
-                       writeEnd.c_str(), nullptr) < 0) {
+                       writeEnd.c_str(), nullptr) != 0)
+            {
                 LOG_ERROR("couldn't run '" << winecmd
                           << "' (" << errorMessage(errno) << ")");
             }
-        } else
+            std::exit(EXIT_FAILURE);
+        }
     #endif
+        // LOG_DEBUG("host path: " << hostPath);
+        // arguments: host.exe bridge <parent_pid> <shm_path>
         if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
                   parentStr.c_str(), shm_.path().c_str(),
-                  writeEnd.c_str(), nullptr) < 0) {
-            LOG_ERROR("couldn't open host process " << hostApp << " (" << errorMessage(errno) << ")");
+                  writeEnd.c_str(), nullptr) != 0)
+        {
+            LOG_ERROR("couldn't open host process "
+                      << hostApp << " (" << errorMessage(errno) << ")");
         }
         std::exit(EXIT_FAILURE);
     }

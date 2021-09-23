@@ -197,20 +197,19 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
     std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
     /// LOG_DEBUG("host path: " << shorten(hostPath));
     // arguments: host.exe probe <plugin_path> <plugin_id> <file_path>
-    // on Windows we need to quote the arguments for _spawn to handle spaces in file names.
-    std::stringstream cmdLineStream;
-    cmdLineStream << hostApp << " probe "
+    // NOTE: we need to quote string arguments (in case they contain spaces)
+    std::stringstream cmdline;
+    cmdline << hostApp << " probe "
             << "\"" << path() << "\" " << idString
             << " \"" << tmpPath + "\"";
-    // LOG_DEBUG(cmdLineStream.str());
-    auto cmdLine = widen(cmdLineStream.str());
+    auto wcmdline = widen(cmdline.str());
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL,
+    if (!CreateProcessW(hostPath.c_str(), &wcmdline[0], NULL, NULL,
                         PROBE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi)){
         auto err = GetLastError();
         std::stringstream ss;
@@ -268,7 +267,6 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         throw Error(Error::SystemError, "fork() failed!");
     } else if (pid == 0) {
         // child process: start new process with plugin path and temp file path as arguments.
-        // we must not quote arguments to exec!
     #if !PROBE_LOG
         // disable stdout and stderr
         auto nullOut = fopen("/dev/null", "w");
@@ -276,6 +274,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         dup2(fileno(nullOut), STDERR_FILENO);
     #endif
         // arguments: host probe <plugin_path> <plugin_id> <file_path> [timeout]
+        // NOTE: we must *not* quote arguments to exec!
     #if USE_WINE
         if (arch_ == CpuArch::pe_i386 || arch_ == CpuArch::pe_amd64){
             const char *winecmd = getWineCommand();
