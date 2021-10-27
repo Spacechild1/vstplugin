@@ -603,14 +603,20 @@ void ShmInterface::openShm(const std::string &path, bool create){
         }
     }
     // memory map the shared memory object
+    int err = 0;
     void *data = mmap(0, totalSize, PROT_WRITE, MAP_SHARED, fd, 0);
-    if (data && !create){
+    if (!data) {
+        err = errno; // cache errno
+    } else if (!create) {
         // get actual total size
         auto oldSize = totalSize;
         totalSize = static_cast<Header *>(data)->size;
         munmap(data, oldSize);
         // map again with correct size
         data = mmap(0, totalSize, PROT_WRITE, MAP_SHARED, fd, 0);
+        if (!data) {
+            err = errno; // cache errno
+        }
     }
     // we can close the fd after calling mmap()!
     ::close(fd);
@@ -620,7 +626,7 @@ void ShmInterface::openShm(const std::string &path, bool create){
             shm_unlink(path.c_str());
         }
         throw Error(Error::SystemError, "mmap() failed: "
-                    + errorMessage(errno));
+                    + errorMessage(err));
     }
 #if 1
     // try to lock the file to physical memory
