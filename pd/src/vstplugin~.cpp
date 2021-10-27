@@ -297,6 +297,8 @@ static void readIniFile(){
             gPluginDict.read(path);
         } catch (const Error& e){
             error("couldn't read cache file: %s", e.what());
+        } catch (const std::exception& e){
+            error("couldn't read cache file: unexpected exception (%s)", e.what());
         }
     }
 }
