@@ -1415,6 +1415,10 @@ static void vstplugin_close(t_vstplugin *x){
     x->x_key = nullptr;
     x->x_path = nullptr;
     x->x_preset = nullptr;
+    x->x_inputs.clear();
+    x->x_outputs.clear();
+    x->x_input_channels = 0;
+    x->x_output_channels = 0;
 
     // notify
     outlet_anything(x->x_messout, gensym("close"), 0, nullptr);
@@ -3639,17 +3643,15 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr))) {
         x->x_editor->defer_safe<false>([&](){
-            // calls update_buffers() internally!
             x->setup_plugin<false>(x->x_plugin.get());
         }, x->x_uithread);
         if (x->x_threaded && (x->x_blocksize != oldblocksize)){
             // queue(!) latency change notification
             x->x_editor->latencyChanged(x->x_plugin->getLatencySamples());
         }
-    } else {
-        // just update buffers (also needed for bypassing!)
-        x->update_buffers();
     }
+    // always update buffers (also needed for bypassing!)
+    x->update_buffers();
 }
 
 // setup function
