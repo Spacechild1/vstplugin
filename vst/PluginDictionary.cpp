@@ -153,12 +153,14 @@ void PluginDictionary::read(const std::string& path, bool update){
                     }
                 }
                 if (plugin){
+                    LOG_DEBUG("read plugin " << plugin->name);
                     // store plugin at keys
                     for (auto& key : keys){
                         int index = plugin->bridged() ? BRIDGED : NATIVE;
                         plugins_[index][key] = plugin;
                     }
                 } else {
+                    LOG_DEBUG("couldn't read plugin");
                     // plugin is outdated, we need to update the cache
                     outdated = true;
                 }
@@ -254,6 +256,14 @@ void PluginDictionary::doWrite(const std::string& path) const {
     // write version number
     file << "[version]\n";
     file << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_PATCH << "\n";
+    // serialize exceptions
+    // NOTE: do this before serializing the plugins because it is more robust;
+    // otherwise we might get swallowed if a plugin desc is broken.
+    file << "[ignore]\n";
+    file << "n=" << exceptions_.size() << "\n";
+    for (auto& e : exceptions_){
+        file << e << "\n";
+    }
     // serialize plugins
     file << "[plugins]\n";
     file << "n=" << pluginMap.size() << "\n";
@@ -269,12 +279,6 @@ void PluginDictionary::doWrite(const std::string& path) const {
         for (auto& key : keys){
             file << key << "\n";
         }
-    }
-    // serialize exceptions
-    file << "[ignore]\n";
-    file << "n=" << exceptions_.size() << "\n";
-    for (auto& e : exceptions_){
-        file << e << "\n";
     }
     LOG_DEBUG("wrote cache file: " << path);
 }
