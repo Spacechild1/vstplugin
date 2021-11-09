@@ -249,6 +249,8 @@ struct ShmUICommand {
             int32_t index;
             float value;
         } paramAutomated;
+        // latency change
+        int32_t latency;
     };
 };
 

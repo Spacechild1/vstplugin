@@ -506,6 +506,10 @@ void PluginBridge::pollUIThread(){
                 client->parameterAutomated(cmd->paramAutomated.index,
                                            cmd->paramAutomated.value);
                 break;
+            case Command::LatencyChanged:
+                LOG_DEBUG("UI thread: LatencyChanged");
+                client->latencyChanged(cmd->latency);
+                break;
             default:
                 // ignore other events for now
                 break;

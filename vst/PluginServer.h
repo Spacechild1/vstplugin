@@ -28,34 +28,28 @@ class PluginServer;
 class ShmInterface;
 class ShmChannel;
 
-/*///////////////// PluginHandleListener ////////*/
+/*///////////////// PluginHandle ///////////////*/
 
-class PluginHandle;
+class PluginHandle :
+    public IPluginListener,
+    public std::enable_shared_from_this<PluginHandle>
+{
+public:
+    PluginHandle(PluginServer& server, IPlugin::ptr plugin,
+                 uint32_t id, ShmChannel& channel);
+    ~PluginHandle();
 
-class PluginHandleListener : public IPluginListener {
- public:
-    PluginHandleListener(PluginHandle &owner)
-        : owner_(&owner){}
+    void init();
+
+    void handleRequest(const ShmCommand& cmd, ShmChannel& channel);
+    void handleUICommand(const ShmUICommand& cmd);
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
     void pluginCrashed() override {} // never called inside the bridge
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
- private:
-    PluginHandle *owner_;
-};
-
-/*///////////////// PluginHandle ///////////////*/
-
-class PluginHandle {
- public:
-    PluginHandle(PluginServer& server, IPlugin::ptr plugin,
-                 uint32_t id, ShmChannel& channel);
-
-    void handleRequest(const ShmCommand& cmd, ShmChannel& channel);
-    void handleUICommand(const ShmUICommand& cmd);
- private:
+private:
     friend class PluginHandleListener;
 
     void updateBuffer();
@@ -72,13 +66,10 @@ class PluginHandle {
     void sendParameterUpdate(ShmChannel& channel);
     void sendProgramUpdate(ShmChannel& channel, bool bank);
 
-    void requestParameterUpdate(int32_t index, float value);
-
     static bool addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
 
     PluginServer *server_ = nullptr;
     IPlugin::ptr plugin_;
-    std::shared_ptr<PluginHandleListener> proxy_;
     uint32_t id_ = 0;
 
     int maxBlockSize_ = 64;
@@ -96,7 +87,8 @@ class PluginHandle {
         int32_t index;
         float value;
     };
-    LockfreeFifo<Param, 16> paramAutomated_;
+    UnboundedLockfreeFifo<Param> paramAutomated_;
+    static const int paramAutomationRateLimit = 64;
 
     // cached parameter state
     std::unique_ptr<float[]> paramState_;
@@ -116,7 +108,7 @@ class PluginServer {
 
     void run();
 
-    void postUIThread(const ShmUICommand& cmd);
+    bool postUIThread(const ShmUICommand& cmd);
  private:
     void pollUIThread();
     void checkParentAlive();
@@ -151,7 +143,7 @@ class PluginServer {
     std::atomic<bool> running_;
     UIThread::Handle pollFunction_;
 
-    std::unordered_map<uint32_t, std::unique_ptr<PluginHandle>> plugins_;
+    std::unordered_map<uint32_t, std::shared_ptr<PluginHandle>> plugins_;
     SharedMutex pluginMutex_;
 };
 
