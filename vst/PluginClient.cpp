@@ -361,6 +361,14 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
         }
         break;
     }
+    case Command::UpdateDisplay:
+    {
+        auto listener = listener_.lock();
+        if (listener){
+            listener->updateDisplay();
+        }
+        break;
+    }
     case Command::MidiReceived:
     {
         auto listener = listener_.lock();

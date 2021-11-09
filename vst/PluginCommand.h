@@ -55,10 +55,11 @@ struct Command {
         ParameterUpdate, // 40
         ParamAutomated,
         LatencyChanged,
+        UpdateDisplay,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error, // 45
+        Error, // 46
         Process,
         Quit
     };

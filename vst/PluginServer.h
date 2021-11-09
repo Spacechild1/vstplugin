@@ -46,6 +46,7 @@ public:
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void updateDisplay() override;
     void pluginCrashed() override {} // never called inside the bridge
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
@@ -88,6 +89,8 @@ private:
         float value;
     };
     UnboundedLockfreeFifo<Param> paramAutomated_;
+    std::atomic<bool> updateDisplay_{false};
+
     static const int paramAutomationRateLimit = 64;
 
     // cached parameter state

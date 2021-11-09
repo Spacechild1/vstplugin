@@ -521,6 +521,13 @@ void ThreadedPluginListener::latencyChanged(int nsamples) {
     }
 }
 
+void ThreadedPluginListener::updateDisplay() {
+    auto listener = owner_->listener_.lock();
+    if (listener){
+        listener->updateDisplay();
+    }
+}
+
 void ThreadedPluginListener::pluginCrashed(){
     // UI or NRT thread
     auto listener = owner_->listener_.lock();

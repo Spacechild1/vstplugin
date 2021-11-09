@@ -323,6 +323,12 @@ void PluginHandle::latencyChanged(int nsamples) {
     }
 }
 
+void PluginHandle::updateDisplay() {
+    // don't send yet! we first need to update the parameter
+    // cache and send the new values to the client.
+    updateDisplay_.store(true);
+}
+
 void PluginHandle::midiEvent(const MidiEvent& event) {
     if (UIThread::isCurrentThread()){
         // ignore for now
@@ -455,6 +461,14 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     LOG_PROCESS("PluginHandle: send events");
     sendEvents(channel);
 
+    // handle possible display update
+    if (updateDisplay_.exchange(false)){
+        sendParameterUpdate(channel);
+
+        ShmCommand cmd(Command::UpdateDisplay);
+        addReply(channel, &cmd, sizeof(ShmCommand));
+    }
+
     LOG_PROCESS("PluginHandle: finished processing");
 }
 
@@ -566,6 +580,9 @@ void PluginHandle::sendEvents(ShmChannel& channel){
             break;
         }
         case Command::LatencyChanged:
+            addReply(channel, &event, sizeof(ShmCommand));
+            break;
+        case Command::UpdateDisplay:
             addReply(channel, &event, sizeof(ShmCommand));
             break;
         case Command::MidiReceived:

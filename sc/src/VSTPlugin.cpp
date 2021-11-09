@@ -1513,6 +1513,19 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
     }
 }
 
+void VSTPluginDelegate::updateDisplay() {
+    // RT thread
+    if (std::this_thread::get_id() == rtThreadID_) {
+        sendUpdateDisplay();
+    } else {
+        // from UI/NRT thread - push to queue
+        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
+        if (!(paramQueue_.emplace(UpdateDisplay, 0.f))){
+            LOG_DEBUG("param queue overflow");
+        }
+    }
+}
+
 void VSTPluginDelegate::pluginCrashed(){
     // From the watch dog thread.
     std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
@@ -1576,6 +1589,8 @@ void VSTPluginDelegate::handleEvents(){
             sendParameterAutomated(p.index, p.value);
         } else if (p.index == VSTPluginDelegate::LatencyChange){
             sendLatencyChange(p.value);
+        } else if (p.index == VSTPluginDelegate::UpdateDisplay){
+            sendUpdateDisplay();
         } else if (p.index == VSTPluginDelegate::PluginCrash){
             sendPluginCrash();
         }
@@ -2536,8 +2551,12 @@ void VSTPluginDelegate::sendLatencyChange(int nsamples){
     sendMsg("/vst_latency", nsamples + latencySamples());
 }
 
+void VSTPluginDelegate::sendUpdateDisplay() {
+    sendMsg("/vst_update", 0, nullptr);
+}
+
 void VSTPluginDelegate::sendPluginCrash(){
-    sendMsg("/vst_crash", 0);
+    sendMsg("/vst_crash", 0, nullptr);
 }
 
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {

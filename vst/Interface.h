@@ -111,6 +111,7 @@ class IPluginListener {
     virtual ~IPluginListener(){}
     virtual void parameterAutomated(int index, float value) = 0;
     virtual void latencyChanged(int nsamples) = 0;
+    virtual void updateDisplay() = 0;
     virtual void midiEvent(const MidiEvent& event) = 0;
     virtual void sysexEvent(const SysexEvent& event) = 0;
     virtual void pluginCrashed() = 0;

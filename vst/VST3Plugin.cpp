@@ -731,22 +731,14 @@ tresult VST3Plugin::restartComponent(int32 flags){
         }
     }
 
-    // restart component might be called before paramCache_ is allocated
+    // update parameter cache and send notification to listeners
+    // NOTE: restartComponent might be called before paramCache_ is allocated
     if ((flags & Vst::kParamValuesChanged) && paramCache_){
-        int nparams = getNumParameters();
+        updateParamCache();
+
         auto listener = listener_.lock();
-        // this is not perfect, because we might already change a parameter
-        // before this method gets called on the UI thread.
-        for (int i = 0; i < nparams; ++i){
-            auto id = info().getParamID(i);
-            auto value = controller_->getParamNormalized(id);
-            if (listener){
-                if (paramCache_[i].value.exchange(value, std::memory_order_relaxed) != value){
-                    listener->parameterAutomated(i, value);
-                }
-            } else {
-                paramCache_[i].value.store(value, std::memory_order_relaxed);
-            }
+        if (listener){
+            listener->updateDisplay();
         }
     }
 
@@ -1571,7 +1563,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         #if 1
             doSetProgram(data1);
         #else
-            // the following was required by one or more plugins,
+            // the following was required by a few plugins,
             // but I think they are just buggy...
             auto id = info().programChange;
             if (id != PluginDesc::NoParamID){
@@ -1710,6 +1702,8 @@ void VST3Plugin::doSetProgram(int program){
         doSetParameter(id, value);
         program_ = program;
     #if 0
+        // plugin should either send parameter automation messages
+        // or call restartComponent with kParamValuesChanged
         updateParamCache();
     #endif
     } else {

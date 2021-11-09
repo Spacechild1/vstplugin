@@ -1545,8 +1545,9 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
             if (window_){
                 if (UIThread::isCurrentThread()){
                     return kVstProcessLevelUser;
-                } else
+                } else {
                     return kVstProcessLevelRealtime;
+                }
             } else {
                 return kVstProcessLevelUnknown;
             }
@@ -1561,8 +1562,14 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         DEBUG_HOSTCODE("audioMasterGetDirectory");
         break;
     case audioMasterUpdateDisplay:
+    {
         DEBUG_HOSTCODE("audioMasterUpdateDisplay");
+        auto listener = listener_.lock();
+        if (listener){
+            listener->updateDisplay();
+        }
         break;
+    }
     case audioMasterBeginEdit:
         DEBUG_HOSTCODE("audioMasterBeginEdit");
         break;

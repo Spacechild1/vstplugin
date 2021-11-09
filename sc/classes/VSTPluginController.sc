@@ -226,6 +226,11 @@ VSTPluginController {
 			latencyChanged.value(latency);
 			this.changed(\latency, latency);
 		}, '/vst_latency'));
+		// update display:
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			"update display".postln;
+			this.prQueryParams;
+		}, '/vst_update'));
 		// plugin crashed
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			"plugin '%' crashed".format(this.info.name).warn;

@@ -188,6 +188,7 @@ class ThreadedPluginListener : public IPluginListener {
         : owner_(&owner) {}
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void updateDisplay() override;
     void pluginCrashed() override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;

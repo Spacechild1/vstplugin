@@ -510,6 +510,10 @@ void PluginBridge::pollUIThread(){
                 LOG_DEBUG("UI thread: LatencyChanged");
                 client->latencyChanged(cmd->latency);
                 break;
+            case Command::UpdateDisplay:
+                LOG_DEBUG("UI thread: UpdateDisplay");
+                client->updateDisplay();
+                break;
             default:
                 // ignore other events for now
                 break;

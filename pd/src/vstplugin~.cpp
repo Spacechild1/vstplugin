@@ -811,6 +811,13 @@ void t_vsteditor::parameterAutomated(int index, float value){
     t_event e(t_event::Parameter);
     e.param.index = index;
     e.param.value = value;
+
+    post_event(e);
+}
+
+void t_vsteditor::updateDisplay() {
+    t_event e(t_event::Display);
+
     post_event(e);
 }
 
@@ -818,12 +825,14 @@ void t_vsteditor::parameterAutomated(int index, float value){
 void t_vsteditor::latencyChanged(int nsamples){
     t_event e(t_event::Latency);
     e.latency = nsamples;
+
     post_event(e);
 }
 
 // plugin crash notification might come from another thread
 void t_vsteditor::pluginCrashed(){
     t_event e(t_event::Crash);
+
     post_event(e);
 }
 
@@ -831,6 +840,7 @@ void t_vsteditor::pluginCrashed(){
 void t_vsteditor::midiEvent(const MidiEvent &event){
     t_event e(t_event::Midi);
     e.midi = event;
+
     post_event(e);
 }
 
@@ -843,6 +853,7 @@ void t_vsteditor::sysexEvent(const SysexEvent &event){
     e.sysex.data = data;
     e.sysex.size = event.size;
     e.sysex.delta = event.delta;
+
     post_event(e);
 }
 
@@ -885,13 +896,23 @@ void t_vsteditor::tick(t_vsteditor *x){
             outlet_anything(outlet, gensym("param_automated"), 2, msg);
             break;
         }
+        case t_event::Display:
+        {
+            // update the generic GUI
+            // shouldn't be necessary because I don't see how the
+            // UpdateDisplay event can happen without UI editor...
+            x->update();
+            // send message
+            outlet_anything(outlet, gensym("update"), 0, nullptr);
+            break;
+        }
         case t_event::Crash:
         {
             auto& name = x->e_owner->x_plugin->info().name;
             pd_error(x->e_owner, "plugin '%s' crashed!", name.c_str());
 
             // send notification
-            outlet_anything(outlet, gensym("crash"), 0, 0);
+            outlet_anything(outlet, gensym("crash"), 0, nullptr);
 
             // automatically close plugin
             vstplugin_close(x->e_owner);

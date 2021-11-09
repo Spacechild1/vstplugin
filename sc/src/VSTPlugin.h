@@ -141,7 +141,8 @@ class VSTPluginDelegate :
     friend class VSTPlugin;
 public:
     enum EventType {
-        LatencyChange = -2,
+        LatencyChange = -3,
+        UpdateDisplay,
         PluginCrash
     };
 
@@ -154,6 +155,7 @@ public:
 
     void parameterAutomated(int index, float value) override;
     void latencyChanged(int nsamples) override;
+    void updateDisplay() override;
     void pluginCrashed() override;
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
@@ -228,6 +230,7 @@ public:
     void sendParameterAutomated(int32 index, float value); // unchecked
     int32 latencySamples() const;
     void sendLatencyChange(int nsamples);
+    void sendUpdateDisplay();
     void sendPluginCrash();
 
     // perform sequenced command
