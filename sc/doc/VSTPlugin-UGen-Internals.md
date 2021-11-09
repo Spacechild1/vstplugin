@@ -704,6 +704,28 @@ Arguments:
 | int        | synth index
 | float  ... | SysEx message (one float per byte)
 
+### /vst_update
+
+Multiple parameters have changed internally,
+e.g. because the user loaded a preset in the plugin UI.
+
+Arguments:
+| type       ||
+| ---------- |-|
+| int        | node ID
+| int        | synth index
+
+### /vst_crash
+
+The plugin has crashed.
+Naturally, this message can only be sent if the plugin has been bridged or sandboxed.
+
+Arguments:
+| type       ||
+| ---------- |-|
+| int        | node ID
+| int        | synth index
+
 
 # String encoding
 
