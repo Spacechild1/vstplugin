@@ -85,14 +85,6 @@ class PluginClient final : public DeferredPlugin {
     // VST2 only
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
-    // VST3 only
-    void beginMessage() override;
-    void addInt(const char* id, int64_t value) override;
-    void addFloat(const char* id, double value) override;
-    void addString(const char* id, const char *value) override;
-    void addString(const char* id, const std::string& value) override;
-    void addBinary(const char* id, const char *data, size_t size) override;
-    void endMessage() override;
  protected:
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginDesc::const_ptr info_;

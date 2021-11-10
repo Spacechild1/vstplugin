@@ -120,29 +120,6 @@ class ThreadedPlugin final : public DeferredPlugin
         return plugin_->canDo(what);
     }
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
-
-    // VST3 only
-    void beginMessage() override {
-        plugin_->beginMessage();
-    }
-    void addInt(const char* id, int64_t value) override {
-        plugin_->addInt(id, value);
-    }
-    void addFloat(const char* id, double value) override {
-        plugin_->addFloat(id, value);
-    }
-    void addString(const char* id, const char *value) override {
-        plugin_->addString(id, value);
-    }
-    void addString(const char* id, const std::string& value) override {
-        plugin_->addString(id, value);
-    }
-    void addBinary(const char* id, const char *data, size_t size) override {
-        plugin_->addBinary(id, data, size);
-    }
-    void endMessage() override {
-        plugin_->endMessage();
-    }
  private:
     void updateBuffer();
     template<typename T>

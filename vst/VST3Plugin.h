@@ -477,15 +477,6 @@ class VST3Plugin final :
     IWindow *getWindow() const override {
         return window_.get();
     }
-
-    // VST3 only
-    void beginMessage() override;
-    void addInt(const char* id, int64_t value) override;
-    void addFloat(const char* id, double value) override;
-    void addString(const char* id, const char *value) override;
-    void addString(const char* id, const std::string& value) override;
-    void addBinary(const char* id, const char *data, size_t size) override;
-    void endMessage() override;
  private:
     int getNumParameters() const;
     int getNumPrograms() const;
@@ -546,8 +537,6 @@ class VST3Plugin final :
     LockfreeFifo<ParamChange, 16> paramChangesToGui_; // e.g. VU meter
     // programs
     int program_ = 0;
-    // message from host to plugin
-    IPtr<Vst::IMessage> msg_;
     bool editor_ = false;
 };
 

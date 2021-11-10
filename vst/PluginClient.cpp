@@ -748,36 +748,6 @@ intptr_t PluginClient::vendorSpecific(int index, intptr_t value, void *p, float 
     return 0;
 }
 
-// VST3 only
-
-void PluginClient::beginMessage(){
-    UNSUPPORTED_METHOD("beginMessage");
-}
-
-void PluginClient::addInt(const char* id, int64_t value){
-    UNSUPPORTED_METHOD("addInt");
-}
-
-void PluginClient::addFloat(const char* id, double value){
-    UNSUPPORTED_METHOD("addFloat");
-}
-
-void PluginClient::addString(const char* id, const char *value){
-    UNSUPPORTED_METHOD("addString");
-}
-
-void PluginClient::addString(const char* id, const std::string& value){
-    UNSUPPORTED_METHOD("addString");
-}
-
-void PluginClient::addBinary(const char* id, const char *data, size_t size){
-    UNSUPPORTED_METHOD("addBinary");
-}
-
-void PluginClient::endMessage(){
-    UNSUPPORTED_METHOD("endMessage");
-}
-
 
 /*///////////////////// WindowClient ////////////////////*/
 

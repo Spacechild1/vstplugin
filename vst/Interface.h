@@ -249,14 +249,6 @@ class IPlugin {
     // VST2 only
     virtual int canDo(const char *what) const { return 0; }
     virtual intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) { return 0; }
-    // VST3 only
-    virtual void beginMessage() {}
-    virtual void addInt(const char* id, int64_t value) {}
-    virtual void addFloat(const char* id, double value) {}
-    virtual void addString(const char* id, const char *value) {}
-    virtual void addString(const char* id, const std::string& value) {}
-    virtual void addBinary(const char* id, const char *data, size_t size) {}
-    virtual void endMessage() {}
 };
 
 class IFactory;

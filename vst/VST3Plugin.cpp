@@ -2114,48 +2114,6 @@ bool VST3Plugin::canResize() const {
     return view_ && (view_->canResize() == kResultTrue);
 }
 
-// VST3 only
-void VST3Plugin::beginMessage() {
-    msg_.reset(new HostMessage);
-}
-
-void VST3Plugin::addInt(const char* id, int64_t value) {
-    if (msg_){
-        msg_->getAttributes()->setInt(id, value);
-    }
-}
-
-void VST3Plugin::addFloat(const char* id, double value) {
-    if (msg_){
-        msg_->getAttributes()->setFloat(id, value);
-    }
-}
-
-void VST3Plugin::addString(const char* id, const char *value) {
-    addString(id, std::string(value));
-}
-
-void VST3Plugin::addString(const char* id, const std::string& value) {
-    if (msg_){
-        Vst::String128 buf;
-        convertString(value, buf);
-        msg_->getAttributes()->setString(id, buf);
-    }
-}
-
-void VST3Plugin::addBinary(const char* id, const char *data, size_t size) {
-    if (msg_){
-        msg_->getAttributes()->setBinary(id, data, size);
-    }
-}
-
-void VST3Plugin::endMessage() {
-    if (msg_){
-        sendMessage(msg_.get());
-        msg_ = nullptr;
-    }
-}
-
 void VST3Plugin::sendMessage(Vst::IMessage *msg){
     FUnknownPtr<Vst::IConnectionPoint> p1(component_);
     if (p1){
