@@ -228,7 +228,6 @@ VSTPluginController {
 		}, '/vst_latency'));
 		// update display:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
-			"update display".postln;
 			this.prQueryParams;
 		}, '/vst_update'));
 		// plugin crashed

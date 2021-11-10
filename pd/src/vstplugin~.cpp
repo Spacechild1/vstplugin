@@ -972,12 +972,12 @@ void t_vsteditor::setup(){
         e_params.emplace_back(e_owner, i);
     }
         // slider: #X obj ...
-    char sliderText[] = "25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1";
+    const char *sliderText = "25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1";
     t_binbuf *sliderBuf = binbuf_new();
     binbuf_text(sliderBuf, sliderText, strlen(sliderText));
     t_atom *slider = binbuf_getvec(sliderBuf);
         // display: #X symbolatom ...
-    char displayText[] = "165 79 10 0 0 1 label rcv snd";
+    const char *displayText = "165 79 10 0 0 1 label rcv snd";
     t_binbuf *displayBuf = binbuf_new();
     binbuf_text(displayBuf, displayText, strlen(displayText));
     t_atom *display = binbuf_getvec(displayBuf);
