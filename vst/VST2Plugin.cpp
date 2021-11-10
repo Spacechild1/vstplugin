@@ -183,7 +183,7 @@ std::unique_ptr<VST2Plugin> VST2Factory::doCreate(PluginDesc::const_ptr desc) co
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
 VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const_ptr desc)
-    : plugin_(plugin), info_(std::move(desc))
+    : plugin_(plugin), info_(std::move(desc)), factory_(std::move(f))
 {
     plugin_->user = this;
     latency_ = plugin->initialDelay;
@@ -210,7 +210,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
     // are we probing?
     if (!info_){
         // create and fill plugin info
-        auto info = std::make_shared<PluginDesc>(f);
+        auto info = std::make_shared<PluginDesc>(factory_);
         info->setUniqueID(plugin_->uniqueID);
         info->name = getPluginName();
         if (info->name.empty()){

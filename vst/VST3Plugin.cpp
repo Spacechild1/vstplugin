@@ -391,7 +391,7 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
 }
 
 VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginDesc::const_ptr desc)
-    : info_(std::move(desc))
+    : info_(std::move(desc)), factory_(std::move(f))
 {
     memset(&context_, 0, sizeof(context_));
     context_.state = Vst::ProcessContext::kContTimeValid | Vst::ProcessContext::kSystemTimeValid
@@ -406,7 +406,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     context_.frameRate.framesPerSecond = 60; // just pick one
 
     // are we probing?
-    auto info = !info_ ? std::make_shared<PluginDesc>(f) : nullptr;
+    auto info = !info_ ? std::make_shared<PluginDesc>(factory_) : nullptr;
     TUID uid;
     PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);

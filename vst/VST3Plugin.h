@@ -500,11 +500,8 @@ class VST3Plugin final :
     void updateParamCache();
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
-    mutable IPlugView *view_ = nullptr;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
     PluginDesc::const_ptr info_;
-    IWindow::ptr window_;
-    std::weak_ptr<IPluginListener> listener_;
     // audio
     vst3::ProcessContext context_;
     // automation
@@ -537,7 +534,12 @@ class VST3Plugin final :
     LockfreeFifo<ParamChange, 16> paramChangesToGui_; // e.g. VU meter
     // programs
     int program_ = 0;
+    // UI
     bool editor_ = false;
+    mutable IPlugView *view_ = nullptr;
+    IWindow::ptr window_;
+    std::weak_ptr<IPluginListener> listener_;
+    IFactory::const_ptr factory_; // keep alive
 };
 
 //--------------------------------------------------------------------------------

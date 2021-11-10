@@ -166,8 +166,6 @@ class VST2Plugin final : public IPlugin {
                            VstIntPtr value, void *ptr, float opt);
     AEffect *plugin_ = nullptr;
     PluginDesc::const_ptr info_;
-    IWindow::ptr window_;
-    std::weak_ptr<IPluginListener> listener_;
     // processing
     int latency_ = 0;
     ProcessMode mode_ = ProcessMode::Realtime;
@@ -176,12 +174,16 @@ class VST2Plugin final : public IPlugin {
     Bypass lastBypass_ = Bypass::Off;
     bool haveBypass_ = false;
     bool bypassSilent_ = false; // check if we can stop processing
-        // buffers for incoming MIDI and SysEx events
+    // buffers for incoming MIDI and SysEx events
     std::vector<VstMidiEvent> midiQueue_;
     std::vector<VstMidiSysexEvent> sysexQueue_;
     VstEvents *vstEvents_; // VstEvents is basically an array of VstEvent pointers
     int vstEventBufferSize_ = 0;
     bool editor_ = false;
+    // UI
+    IWindow::ptr window_;
+    std::weak_ptr<IPluginListener> listener_;
+    IFactory::const_ptr factory_; // keep alive
 };
 
 } // vst
