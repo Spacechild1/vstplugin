@@ -203,14 +203,15 @@ private:
     // notify Pd (e.g. for MIDI event or GUI automation)
     struct t_event {
         enum t_type {
-            Latency,
+            Unknown,
             Parameter,
-            Display,
-            Crash,
             Midi,
-            Sysex
+            Sysex,
+            Latency,
+            Crash,
+            Display
         };
-        t_event() = default;
+        t_event() : type(Unknown) {}
         t_event(t_type _type) : type(_type){}
         // data
         t_type type;
@@ -230,17 +231,15 @@ private:
     t_vstplugin *e_owner;
     t_canvas *e_canvas = nullptr;
     std::vector<t_vstparam> e_params;
+    int width_ = 0;
+    int height_ = 0;
     // outgoing messages:
     t_clock *e_clock;
-    Mutex e_mutex;
     std::thread::id e_mainthread;
     std::atomic_bool e_needclock {false};
     std::atomic_bool e_locked {false};
-
-    std::vector<t_event> e_events;
     bool e_tick = false;
-    int width_ = 0;
-    int height_ = 0;
+    UnboundedMPSCQueue<t_event> e_events;
 };
 
 class t_workqueue {
@@ -272,9 +271,9 @@ class t_workqueue {
     void dopush(void *owner, void *data, t_fun<void> workfn,
                t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
-    LockfreeFifo<t_item, 1024> w_nrt_queue;
+    UnboundedMPSCQueue<t_item> w_nrt_queue;
     // queue from NRT to RT
-    LockfreeFifo<t_item, 1024> w_rt_queue;
+    UnboundedMPSCQueue<t_item> w_rt_queue;
     // worker thread
     std::thread w_thread;
     std::mutex w_mutex; // for cancel

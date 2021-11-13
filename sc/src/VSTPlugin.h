@@ -261,8 +261,7 @@ private:
         int index; // parameter index or EventType (negative)
         float value;
     };
-    LockfreeFifo<ParamChange, 16> paramQueue_;
-    SpinLock paramQueueWriteLock_;
+    UnboundedMPSCQueue<ParamChange, rt::allocator<ParamChange>> paramQueue_;
 };
 
 class VSTPlugin : public SCUnit {

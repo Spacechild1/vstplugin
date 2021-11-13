@@ -39,6 +39,11 @@ namespace rt {
             interfaceTable->fRTFree(world_, p);
         }
 
+        template<class U>
+        struct rebind {
+            typedef allocator<U> other;
+        };
+
         World* world_; // must be public (see ctor)...
     };
 

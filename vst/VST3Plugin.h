@@ -530,7 +530,7 @@ class VST3Plugin final :
         Vst::ParamID id;
         Vst::ParamValue value;
     };
-    LockfreeFifo<ParamChange, 64> paramChangesFromGui_;
+    UnboundedMPSCQueue<ParamChange> paramChangesFromGui_;
     LockfreeFifo<ParamChange, 16> paramChangesToGui_; // e.g. VU meter
     // programs
     int program_ = 0;

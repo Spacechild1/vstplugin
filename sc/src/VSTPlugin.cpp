@@ -1443,7 +1443,9 @@ int VSTPlugin::reblockPhase() const {
 
 //------------------- VSTPluginDelegate ------------------------------//
 
-VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
+VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner)
+    : paramQueue_(rt::allocator<ParamChange>(owner.mWorld))
+{
     setOwner(&owner);
     rtThreadID_ = std::this_thread::get_id();
     // LOG_DEBUG("RT thread ID: " << rtThreadID_);
@@ -1493,10 +1495,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         }
     } else {
         // from UI/NRT thread - push to queue
-        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
-        if (!(paramQueue_.emplace(index, value))){
-            LOG_DEBUG("param queue overflow");
-        }
+        paramQueue_.emplace(index, value); // thread-safe!
     }
 }
 
@@ -1506,10 +1505,7 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
         sendLatencyChange(nsamples);
     } else {
         // from UI/NRT thread - push to queue
-        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
-        if (!(paramQueue_.emplace(LatencyChange, (float)nsamples))){
-            LOG_DEBUG("param queue overflow");
-        }
+        paramQueue_.emplace(LatencyChange, (float)nsamples); // thread-safe!
     }
 }
 
@@ -1519,19 +1515,13 @@ void VSTPluginDelegate::updateDisplay() {
         sendUpdateDisplay();
     } else {
         // from UI/NRT thread - push to queue
-        std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
-        if (!(paramQueue_.emplace(UpdateDisplay, 0.f))){
-            LOG_DEBUG("param queue overflow");
-        }
+        paramQueue_.emplace(UpdateDisplay, 0.f); // thread-safe!
     }
 }
 
 void VSTPluginDelegate::pluginCrashed(){
-    // From the watch dog thread.
-    std::lock_guard<SpinLock> lock(paramQueueWriteLock_);
-    if (!(paramQueue_.emplace(PluginCrash, 0.f))){
-        LOG_DEBUG("param queue overflow");
-    }
+    // From the watch dog thread
+    paramQueue_.emplace(PluginCrash, 0.f); // thread-safe!
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {

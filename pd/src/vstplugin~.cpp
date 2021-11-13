@@ -105,13 +105,7 @@ t_workqueue::t_workqueue(){
                 if (item.workfn){
                     item.workfn(item.data);
                 }
-                while (!w_rt_queue.push(item)){
-                    // prevent possible dead lock when
-                    // RT thread blocks in cancel() method
-                    lock.unlock();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    lock.lock();
-                }
+                w_rt_queue.push(item);
             }
         }
         LOG_DEBUG("worker thread finished");
@@ -152,38 +146,26 @@ void t_workqueue::dopush(void *owner, void *data, t_fun<void> workfn,
     item.workfn = workfn;
     item.cb = cb;
     item.cleanup = cleanup;
-    while (!w_nrt_queue.push(item)){
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        post("vstplugin~: work queue blocked!");
-    }
+    w_nrt_queue.push(item);
     w_event.set();
 }
 
 // cancel all running commands belonging to owner
 void t_workqueue::cancel(void *owner){
     std::lock_guard<std::mutex> lock(w_mutex);
-    int read, write;
     // NRT queue
-    read = w_nrt_queue.readPos();
-    write = w_nrt_queue.writePos();
-    while (read != write){
-        auto& data = w_nrt_queue.data()[read++];
-        if (data.owner == owner){
-            data.workfn = nullptr;
-            data.cb = nullptr;
+    w_nrt_queue.forEach([&](t_item& i){
+        if (i.owner == owner) {
+            i.workfn = nullptr;
+            i.cb = nullptr;
         }
-        read %= w_nrt_queue.capacity();
-    }
+    });
     // RT queue
-    read = w_rt_queue.readPos();
-    write = w_rt_queue.writePos();
-    while (read != write){
-        auto& data = w_rt_queue.data()[read++];
-        if (data.owner == owner){
-            data.cb = nullptr;
+    w_rt_queue.forEach([&](t_item& i){
+        if (i.owner == owner) {
+            i.cb = nullptr;
         }
-        read %= w_rt_queue.capacity();
-    }
+    });
 }
 
 void t_workqueue::poll(){
@@ -763,7 +745,8 @@ t_vsteditor::~t_vsteditor(){
     }
     clock_free(e_clock);
     // prevent memleak with sysex events
-    for (auto& e : e_events){
+    t_event e;
+    while (e_events.pop(e)) {
         if (e.type == t_event::Sysex){
             delete[] e.sysex.data;
         }
@@ -781,10 +764,9 @@ void t_vsteditor::post_event(const t_event& event){
         pd_error(e_owner, "%s: recursion detected", classname(e_owner));
         return;
     }
-    // the event might come from the GUI thread, worker thread or audio thread
-    e_mutex.lock();
-    e_events.push_back(event);
-    e_mutex.unlock();
+    // the event might come from the GUI thread, worker thread or audio thread,
+    // but that's why we use a MPSC queue.
+    e_events.push(event);
 
     if (locked) {
         clock_delay(e_clock, 0);
@@ -863,16 +845,8 @@ void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
     x->e_tick = true; // prevent recursion
 
-    // we always need to lock
-    // it's more important not to block than flushing the queues on time
-    if (!x->e_mutex.try_lock()){
-        LOG_DEBUG("couldn't lock mutex");
-        x->e_tick = false;
-        return;
-    }
-
-    // automated parameters:
-    for (auto& e : x->e_events){
+    t_event e;
+    while (x->e_events.pop(e)) {
         switch (e.type){
         case t_event::Latency:
         {
@@ -944,8 +918,7 @@ void t_vsteditor::tick(t_vsteditor *x){
             bug("t_vsteditor::tick");
         }
     }
-    x->e_events.clear();
-    x->e_mutex.unlock();
+
     x->e_tick = false;
 }
 
