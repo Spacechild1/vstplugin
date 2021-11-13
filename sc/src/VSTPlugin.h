@@ -261,7 +261,9 @@ private:
         int index; // parameter index or EventType (negative)
         float value;
     };
-    UnboundedMPSCQueue<ParamChange, rt::allocator<ParamChange>> paramQueue_;
+    // don't use RT allocator!
+    using ParamQueue = UnboundedMPSCQueue<ParamChange>;
+    ParamQueue* paramQueue_;
 };
 
 class VSTPlugin : public SCUnit {

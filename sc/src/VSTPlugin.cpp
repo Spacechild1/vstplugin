@@ -45,6 +45,24 @@ void RTFreeSafe(World *world, void *data){
     }
 }
 
+void cmdRTfree(World *world, void * cmdData) {
+    if (cmdData) {
+        RTFree(world, cmdData);
+        // LOG_DEBUG("cmdRTfree!");
+    }
+}
+
+// 'clean' version for non-POD data
+template<typename T>
+void cmdRTfree(World *world, void * cmdData) {
+    if (cmdData) {
+        auto data = (T*)cmdData;
+        data->~T(); // destruct members (e.g. release rt::shared_pointer in RT thread)
+        RTFree(world, cmdData);
+        LOG_DEBUG("cmdRTfree!");
+    }
+}
+
 // SndBuffers
 static void syncBuffer(World *world, int32 index) {
     auto src = world->mSndBufsNonRealTimeMirror + index;
@@ -1443,12 +1461,17 @@ int VSTPlugin::reblockPhase() const {
 
 //------------------- VSTPluginDelegate ------------------------------//
 
-VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner)
-    : paramQueue_(rt::allocator<ParamChange>(owner.mWorld))
-{
+VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
     setOwner(&owner);
     rtThreadID_ = std::this_thread::get_id();
     // LOG_DEBUG("RT thread ID: " << rtThreadID_);
+    auto queue = (ParamQueue*)RTAlloc(world(), sizeof(ParamQueue));
+    if (queue) {
+        paramQueue_ = new (queue) ParamQueue();
+    } else {
+        paramQueue_ = nullptr;
+        LOG_ERROR("RTAlloc failed!");
+    }
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
@@ -1457,6 +1480,23 @@ VSTPluginDelegate::~VSTPluginDelegate() {
     // closed by setOwner(nullptr) or CmdData::alive().
     // NOTE that we must *not* retain ourself!
     doClose<false>();
+
+    if (paramQueue_) {
+        if (paramQueue_->needFree()) {
+            // release internal memory on the NRT thread,
+            // but param queue itself on the RT thread.
+            DoAsynchronousCommand(world(), 0, 0, paramQueue_,
+                [](World *, void *inData) {
+                    static_cast<ParamQueue*>(inData)->free();
+                    return false;
+                }, nullptr, nullptr, cmdRTfree<ParamQueue>, 0, 0);
+        } else {
+            // no internal memory, free immediately on the RT thread.
+            paramQueue_->~ParamQueue();
+            RTFree(world(), paramQueue_);
+        }
+    }
+
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
 
@@ -1493,9 +1533,9 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         if (paramSet_) {
             sendParameterAutomated(index, value);
         }
-    } else {
+    } else if (paramQueue_) {
         // from UI/NRT thread - push to queue
-        paramQueue_.emplace(index, value); // thread-safe!
+        paramQueue_->emplace(index, value); // thread-safe!
     }
 }
 
@@ -1503,9 +1543,9 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
     // RT thread
     if (std::this_thread::get_id() == rtThreadID_) {
         sendLatencyChange(nsamples);
-    } else {
+    } else if (paramQueue_) {
         // from UI/NRT thread - push to queue
-        paramQueue_.emplace(LatencyChange, (float)nsamples); // thread-safe!
+        paramQueue_->emplace(LatencyChange, (float)nsamples); // thread-safe!
     }
 }
 
@@ -1513,15 +1553,17 @@ void VSTPluginDelegate::updateDisplay() {
     // RT thread
     if (std::this_thread::get_id() == rtThreadID_) {
         sendUpdateDisplay();
-    } else {
+    } else if (paramQueue_) {
         // from UI/NRT thread - push to queue
-        paramQueue_.emplace(UpdateDisplay, 0.f); // thread-safe!
+        paramQueue_->emplace(UpdateDisplay, 0.f); // thread-safe!
     }
 }
 
 void VSTPluginDelegate::pluginCrashed(){
     // From the watch dog thread
-    paramQueue_.emplace(PluginCrash, 0.f); // thread-safe!
+    if (paramQueue_) {
+        paramQueue_->emplace(PluginCrash, 0.f); // thread-safe!
+    }
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
@@ -1569,20 +1611,22 @@ bool VSTPluginDelegate::check(bool loud) const {
 }
 
 void VSTPluginDelegate::update(){
-    paramQueue_.clear();
+    if (paramQueue_) paramQueue_->clear();
 }
 
 void VSTPluginDelegate::handleEvents(){
-    ParamChange p;
-    while (paramQueue_.pop(p)){
-        if (p.index >= 0){
-            sendParameterAutomated(p.index, p.value);
-        } else if (p.index == VSTPluginDelegate::LatencyChange){
-            sendLatencyChange(p.value);
-        } else if (p.index == VSTPluginDelegate::UpdateDisplay){
-            sendUpdateDisplay();
-        } else if (p.index == VSTPluginDelegate::PluginCrash){
-            sendPluginCrash();
+    if (paramQueue_) {
+        ParamChange p;
+        while (paramQueue_->pop(p)){
+            if (p.index >= 0){
+                sendParameterAutomated(p.index, p.value);
+            } else if (p.index == VSTPluginDelegate::LatencyChange){
+                sendLatencyChange(p.value);
+            } else if (p.index == VSTPluginDelegate::UpdateDisplay){
+                sendUpdateDisplay();
+            } else if (p.index == VSTPluginDelegate::PluginCrash){
+                sendPluginCrash();
+            }
         }
     }
 }
@@ -2562,24 +2606,6 @@ void VSTPluginDelegate::sendMsg(const char *cmd, int n, const float *data) {
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, n, data);
     } else {
         LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
-    }
-}
-
-void cmdRTfree(World *world, void * cmdData) {
-    if (cmdData) {
-        RTFree(world, cmdData);
-        // LOG_DEBUG("cmdRTfree!");
-    }
-}
-
-// 'clean' version for non-POD data
-template<typename T>
-void cmdRTfree(World *world, void * cmdData) {
-    if (cmdData) {
-        auto data = (T*)cmdData;
-        data->~T(); // destruct members (e.g. release rt::shared_pointer in RT thread)
-        RTFree(world, cmdData);
-        LOG_DEBUG("cmdRTfree!");
     }
 }
 

@@ -79,15 +79,7 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
     UnboundedMPSCQueue& operator=(const UnboundedMPSCQueue&) = delete;
 
     ~UnboundedMPSCQueue(){
-        auto it = first_.load();
-        while (it){
-            auto tmp = it;
-            it = it->next_;
-            if (tmp != &dummy_) {
-                tmp->~Node<T>();
-                Base::deallocate(tmp, 1);
-            }
-        }
+        free();
     }
 
     // not thread-safe!
@@ -149,6 +141,40 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
             it = it->next_;
         }
     }
+
+    void free() {
+        auto it = first_.exchange(nullptr);
+        while (it){
+            auto next = it->next_;
+            if (it != &dummy_) {
+                it->~Node<T>();
+                Base::deallocate(it, 1);
+            }
+            it = next;
+        }
+    }
+
+    bool needFree() const {
+        return first_.load(std::memory_order_relaxed)
+                != last_.load(std::memory_order_relaxed);
+    }
+
+#if 0
+    Node<T> *release() {
+        auto head = first_.exchange(nullptr);
+        // unlink dummy node
+        if (head == &dummy_) {
+            return head->next_;
+        } else {
+            for (auto it = head; it; it = it->next_) {
+                if (it->next_ == &dummy_) {
+                    it->next_ = dummy_.next_;
+                }
+            }
+            return head;
+        }
+    }
+#endif
  private:
     std::atomic<Node<T> *> first_;
     std::atomic<Node<T> *> devider_;
