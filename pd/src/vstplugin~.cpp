@@ -53,15 +53,18 @@ namespace {
 }
 
 void t_workqueue::init(){
+    // might get called from different threads!
     std::lock_guard<std::mutex> lock(gWorkQueueMutex);
     if (!gWorkQueues.count(pd_this)){
         gWorkQueues[pd_this] = std::make_unique<t_workqueue>();
-    } else {
-        error("t_workqueue already initialized for this instance!");
     }
 }
 
 t_workqueue* t_workqueue::get(){
+    // might get called from different threads!
+    // note that insertion doesn't invalidate pointers,
+    // so the returned pointers won't become stale!
+    std::lock_guard<std::mutex> lock(gWorkQueueMutex);
     auto it = gWorkQueues.find(pd_this);
     if (it != gWorkQueues.end()){
         return it->second.get();
@@ -73,7 +76,9 @@ t_workqueue* t_workqueue::get(){
 static std::unique_ptr<t_workqueue> gWorkQueue;
 
 void t_workqueue::init(){
-    gWorkQueue = std::make_unique<t_workqueue>();
+    if (!gWorkQueue) {
+        gWorkQueue = std::make_unique<t_workqueue>();
+    }
 }
 
 t_workqueue* t_workqueue::get(){
@@ -3190,6 +3195,8 @@ int t_vstplugin::get_sample_offset(){
 // constructor
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
 t_vstplugin::t_vstplugin(int argc, t_atom *argv){
+    t_workqueue::init();
+
     bool search = false; // search for plugins in the standard VST directories
     bool gui = true; // use GUI?
     bool threaded = false;
@@ -3747,8 +3754,6 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
 
     vstparam_setup();
-
-    t_workqueue::init();
 
     post("vstplugin~ %s", getVersionString());
 
