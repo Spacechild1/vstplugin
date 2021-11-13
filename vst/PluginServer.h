@@ -88,7 +88,7 @@ private:
         int32_t index;
         float value;
     };
-    UnboundedLockfreeFifo<Param> paramAutomated_;
+    UnboundedMPSCQueue<Param> paramAutomated_;
     std::atomic<bool> updateDisplay_{false};
 
     static const int paramAutomationRateLimit = 64;

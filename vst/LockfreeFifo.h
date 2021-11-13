@@ -57,27 +57,36 @@ class LockfreeFifo {
 };
 
 template<typename T>
-class UnboundedLockfreeFifo {
-    struct Node {
-        Node *next_ = nullptr;
-        T data_{};
-    };
+struct Node {
+    template<typename... U>
+    Node(U&&... args)
+        : next_(nullptr), data_(std::forward<U>(args)...) {}
+    Node * next_;
+    T data_;
+};
+
+template<typename T, typename Alloc = std::allocator<T>>
+class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
+    typedef typename Alloc::template rebind<Node<T>>::other Base;
  public:
-    UnboundedLockfreeFifo () {
+    UnboundedMPSCQueue(const Alloc& alloc = Alloc {}) : Base(alloc) {
         // add dummy node
-        first_ = devider_ = last_ = new Node {};
+        first_ = devider_ = last_ = &dummy_;
     }
 
-    UnboundedLockfreeFifo(const UnboundedLockfreeFifo&) = delete;
+    UnboundedMPSCQueue(const UnboundedMPSCQueue&) = delete;
 
-    UnboundedLockfreeFifo& operator=(const UnboundedLockfreeFifo&) = delete;
+    UnboundedMPSCQueue& operator=(const UnboundedMPSCQueue&) = delete;
 
-    ~UnboundedLockfreeFifo(){
+    ~UnboundedMPSCQueue(){
         auto it = first_.load();
         while (it){
             auto tmp = it;
             it = it->next_;
-            delete tmp;
+            if (tmp != &dummy_) {
+                tmp->~Node<T>();
+                Base::deallocate(tmp, 1);
+            }
         }
     }
 
@@ -92,7 +101,8 @@ class UnboundedLockfreeFifo {
         }
         // add empty nodes
         while (n--){
-            auto node = new Node {};
+            auto node = Base::allocate(1);
+            new (node) Node<T>();
             node->next_ = first_;
             first_.store(node);
         }
@@ -104,28 +114,9 @@ class UnboundedLockfreeFifo {
 
     template<typename... TArgs>
     void emplace(TArgs&&... args){
-        Node *node;
-        for (;;){
-            auto first = first_.load(std::memory_order_relaxed);
-            if (first != devider_.load(std::memory_order_relaxed)){
-                // try to reuse existing node
-                if (first_.compare_exchange_weak(first, first->next_,
-                                                 std::memory_order_acq_rel))
-                {
-                    first->next_ = nullptr; // !
-                    node = first;
-                    break;
-                }
-            } else {
-                // create new node
-                node = new Node {};
-                break;
-            }
-        }
-        node->data_ = T { std::forward<TArgs>(args)... };
-        auto last = last_.load(std::memory_order_relaxed);
-        last->next_ = node;
-        last_.store(node, std::memory_order_release); // publish
+        auto n = getNode();
+        n->data_ = T{std::forward<TArgs>(args)...};
+        pushNode(n);
     }
 
     bool pop(T& result){
@@ -148,10 +139,50 @@ class UnboundedLockfreeFifo {
     void clear(){
         devider_.store(last_);
     }
+
+    // not thread-safe!
+    template<typename Func>
+    void forEach(Func&& fn) {
+        auto it = devider_.load(std::memory_order_relaxed)->next_;
+        while (it) {
+            fn(it->data_);
+            it = it->next_;
+        }
+    }
  private:
-    std::atomic<Node *> first_;
-    std::atomic<Node *> devider_;
-    std::atomic<Node *> last_;
+    std::atomic<Node<T> *> first_;
+    std::atomic<Node<T> *> devider_;
+    std::atomic<Node<T> *> last_;
+    std::atomic<int32_t> lock_{0};
+    Node<T> dummy_; // optimization
+
+    Node<T>* getNode() {
+        for (;;){
+            auto first = first_.load(std::memory_order_relaxed);
+            if (first != devider_.load(std::memory_order_relaxed)){
+                // try to reuse existing node
+                if (first_.compare_exchange_weak(first, first->next_,
+                                                 std::memory_order_acq_rel))
+                {
+                    first->next_ = nullptr; // !
+                    return first;
+                }
+            } else {
+                // make new node
+                auto n = Base::allocate(1);
+                new (n) Node<T>();
+                return n;
+            }
+        }
+    }
+
+    void pushNode(Node<T>* n){
+        while (lock_.exchange(1, std::memory_order_acquire)) ; // lock
+        auto last = last_.load(std::memory_order_relaxed);
+        last->next_ = n;
+        last_.store(n, std::memory_order_release); // publish
+        lock_.store(0, std::memory_order_release); // unlock
+    }
 };
 
 } // vst
