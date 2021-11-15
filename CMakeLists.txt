@@ -212,6 +212,9 @@ if (BRIDGE)
         # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
         option(BUILD_HOST32 "Build the 32-bit host app" OFF)
     endif()
+    if(APPLE)
+        option(BUILD_HOST_AMD64 "Build 64-bit intel host app" OFF)
+    endif()
 endif()
 
 # Wine support on Linux
@@ -281,6 +284,11 @@ if (BUILD_HOST32)
     set(LIBS32 ${LIBVST32} ${VST_LIBS})
 endif()
 
+if (BUILD_HOST_AMD64)
+    set(LIBVST_AMD64 "vst_amd64")
+    set(LIBS_AMD64 ${LIBVST_AMD64} ${VST_LIBS})
+endif()
+
 add_subdirectory(vst)
 
 # host
@@ -329,9 +337,19 @@ if (BUILD_HOST32)
     set_target_properties(${HOST32} PROPERTIES LINK_FLAGS_RELEASE -s)
     # see above
     set(HOST32_PATH $<TARGET_FILE:${HOST32}>)
-    if (MSVC)
-        set(HOST32_PDB_PATH $<TARGET_PDB_FILE:${HOST32}>)
-    endif()
+endif()
+
+# 64-bit Intel host (for Apple M1)
+if (BUILD_AMD64)
+    message(STATUS "Build 64-bit Intel host program")
+    set(HOST_AMD64 "host_amd64")
+    add_executable(${HOST_AMD64} "vst/host.cpp")
+    target_compile_options(${HOST_AMD64} PUBLIC "-arch x86_64")
+    target_link_options(${HOST_AMD64} PUBLIC "-arch x86_64")
+    target_link_libraries(${HOST_AMD64} ${LIBS_AMD64})
+    set_target_properties(${HOST_AMD64} PROPERTIES LINK_FLAGS_RELEASE -s)
+    # see above
+    set(HOST_AMD64_PATH $<TARGET_FILE:${HOST_AMD64}>)
 endif()
 
 # vstplugin~
