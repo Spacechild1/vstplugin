@@ -23,7 +23,6 @@
 // ARM
 #if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
   #define CPU_ARM
-  #include <intrinsics.h>
 #endif
 
 namespace vst {
@@ -130,7 +129,7 @@ void SpinLock::yield(){
 #if defined(CPU_INTEL)
     _mm_pause();
 #elif defined(CPU_ARM)
-    __yield();
+    __asm__ __volatile__("yield");
 #else // fallback
     std::this_thread::sleep_for(std::chrono::microseconds(0));
 #endif
