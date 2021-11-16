@@ -340,7 +340,7 @@ if (BUILD_HOST32)
 endif()
 
 # 64-bit Intel host (for Apple M1)
-if (BUILD_AMD64)
+if (BUILD_HOST_AMD64)
     if (CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
         message(FATAL_ERROR "Can't build 64-bit Intel host program if CMAKE_OSX_ARCHITECTURES contains x86_64!")
     endif()
