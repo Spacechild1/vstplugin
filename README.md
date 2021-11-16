@@ -69,7 +69,7 @@ By default, vstplugin searches for plugins in both `%PROGRAMFILES%` and `%PROGRA
 #### macOS
 
 On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 eventually dropped 32-bit support.
-However, in the future bit bridging might become necessary again when audio software is ported to ARM for the new M1 MacBooks.
+However, bit-bridging is still useful for Apple M1 MacBooks because it allows to run existing 64-bit Intel VST plugins in a native (= arm64) Pd or SC app.
 
 #### Linux
 
@@ -185,8 +185,14 @@ Yes, it's ridiculous!
 
 #### macOS
 
+Intel:
+
 You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
 Note that the macOS 10.14 SDK dropped support for compiling 32-bit applications; you must use Xcode 9.4 or earlier.
+
+Apple M1 (ARM):
+
+You can build a 64-bit Intel host application (for running existing Intel plugins) by setting `BUILD_HOST_AMD64` to `ON`.
 
 
 #### Linux
