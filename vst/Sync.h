@@ -83,6 +83,19 @@ class LightSemaphore {
             sem_.wait();
         }
     }
+    bool try_wait(){
+        auto value = count_.load(std::memory_order_relaxed);
+        for (;;){
+            if (value > 0){
+                if (count_.compare_exchange_weak(value, value-1,
+                        std::memory_order_acquire, std::memory_order_relaxed)) {
+                    return true;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
  private:
     Semaphore sem_;
     std::atomic<int32_t> count_{0};
@@ -100,8 +113,8 @@ class Event {
             // increment 'oldcount', because another thread
             // might decrement the counter concurrently!
             auto newcount = oldcount >= 0 ? 1 : oldcount + 1;
-            if (count_.compare_exchange_weak(oldcount, newcount, std::memory_order_release,
-                                             std::memory_order_relaxed)) {
+            if (count_.compare_exchange_weak(oldcount, newcount,
+                    std::memory_order_release, std::memory_order_relaxed)) {
                 break;
             }
         }
@@ -113,6 +126,19 @@ class Event {
         auto old = count_.fetch_sub(1, std::memory_order_acquire);
         if (old <= 0){
             sem_.wait();
+        }
+    }
+    bool try_wait(){
+        auto value = count_.load(std::memory_order_relaxed);
+        for (;;){
+            if (value > 0){
+                if (count_.compare_exchange_weak(value, value-1,
+                        std::memory_order_acquire, std::memory_order_relaxed)) {
+                    return true;
+                }
+            } else {
+                return false;
+            }
         }
     }
  private:
