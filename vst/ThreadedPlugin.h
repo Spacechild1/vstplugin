@@ -24,6 +24,8 @@ class DSPThreadPool {
 
     using Callback = void (*)(ThreadedPlugin *, int);
     bool push(Callback cb, ThreadedPlugin *plugin, int numSamples);
+
+    bool processTask();
  private:
     struct Task {
         Callback cb;
@@ -36,6 +38,8 @@ class DSPThreadPool {
     std::atomic<bool> running_;
     PaddedSpinLock pushLock_;
     PaddedSpinLock popLock_;
+
+    void run();
 };
 
 /*//////////////////// ThreadedPlugin ////////////////*/
