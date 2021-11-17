@@ -35,7 +35,9 @@ bool isCurrentThread(){
     return X11::EventLoop::instance().checkThread();
 }
 
-bool available() { return true; }
+bool available() {
+    return X11::EventLoop::instance().available();
+}
 
 void poll(){}
 
@@ -79,8 +81,12 @@ EventLoop::EventLoop() {
     if (!XInitThreads()){
         LOG_WARNING("X11: XInitThreads failed!");
     }
-    // install error handler, so our program won't die
-    // on a bad X11 request
+    display_ = XOpenDisplay(nullptr);
+    if (!display_){
+        LOG_ERROR("X11: couldn't open display! No X11 server?");
+        return;
+    }
+    // install error handler, so our program won't die on a bad X11 request
     XSetErrorHandler([](Display *d, XErrorEvent *e){
         char buf[256];
         buf[0] = 0;
@@ -93,10 +99,6 @@ EventLoop::EventLoop() {
     if (eventfd_ < 0){
         throw Error("X11: couldn't create eventfd");
     }
-    display_ = XOpenDisplay(nullptr);
-    if (!display_){
-        throw Error("X11: couldn't open display!");
-    }
 #if 0
     // root_ = DefaultRootWindow(display_);
 #else
@@ -105,6 +107,9 @@ EventLoop::EventLoop() {
     root_ = XCreateSimpleWindow(display_, DefaultRootWindow(display_),
                 0, 0, 1, 1, 1, 0, 0);
 #endif
+    if (!root_) {
+        throw Error("X11: couldn't create root window!");
+    }
     LOG_DEBUG("X11: created root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
@@ -124,8 +129,10 @@ EventLoop::~EventLoop(){
     }
     if (display_){
     #if 1
-        // destroy dummy window
-        XDestroyWindow(display_, root_);
+        if (root_) {
+            // destroy dummy window
+            XDestroyWindow(display_, root_);
+        }
     #endif
         XCloseDisplay(display_);
     }

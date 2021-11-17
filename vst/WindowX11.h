@@ -26,6 +26,10 @@ class EventLoop {
     EventLoop();
     ~EventLoop();
 
+    bool available() const {
+        return display_ != nullptr;
+    }
+
     bool sync();
     bool callSync(UIThread::Callback cb, void *user);
     bool callAsync(UIThread::Callback cb, void *user);
@@ -58,7 +62,7 @@ class EventLoop {
     Window* findWindow(::Window handle);
 
     Display *display_ = nullptr;
-    ::Window root_;
+    ::Window root_ = 0;
     std::thread thread_;
     int eventfd_ = -1;
     std::atomic<bool> running_{false};
