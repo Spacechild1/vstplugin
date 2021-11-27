@@ -159,22 +159,6 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
                 != last_.load(std::memory_order_relaxed);
     }
 
-#if 0
-    Node<T> *release() {
-        auto head = first_.exchange(nullptr);
-        // unlink dummy node
-        if (head == &dummy_) {
-            return head->next_;
-        } else {
-            for (auto it = head; it; it = it->next_) {
-                if (it->next_ == &dummy_) {
-                    it->next_ = dummy_.next_;
-                }
-            }
-            return head;
-        }
-    }
-#endif
  private:
     std::atomic<Node<T> *> first_;
     std::atomic<Node<T> *> devider_;

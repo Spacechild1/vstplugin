@@ -780,6 +780,11 @@ void t_vsteditor::post_event(const t_event& event){
         // prevents a possible deadlock with plugins that use a mutex for synchronization
         // between UI thread and processing thread.
         // Calling pd_getdspstate() is not really thread-safe, though...
+        //
+        // NOTE: the following also works for the case that the perform routine is called from a
+        // different thread than the one where the object has been constructed - but only if
+        // DSP is running! Otherwise it would deadlock. Alternatively, we could use the same
+        // solution as in the SC version, i.e. marking Pd threads with thread local variables.
     #ifdef PDINSTANCE
         pd_setinstance(e_owner->x_pdinstance);
     #endif

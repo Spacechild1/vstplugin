@@ -247,12 +247,10 @@ public:
 private:
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
+    World* world_ = nullptr;
     bool editor_ = false;
     bool threaded_ = false;
     bool isLoading_ = false;
-    World* world_ = nullptr;
-    // thread safety
-    std::thread::id rtThreadID_;
     bool paramSet_ = false; // did we just set a parameter manually?
     bool suspended_ = false;
     Mutex mutex_; // actually, this could probably be a spinlock...
@@ -261,7 +259,9 @@ private:
         int index; // parameter index or EventType (negative)
         float value;
     };
-    // don't use RT allocator!
+    // don't use RT allocator! only non-realtime threads are allowed
+    // to push to the queue. Also, the internal queue memory (if any)
+    // has to be disposed in the NRT thread, see ~VSTPluginDelegate().
     using ParamQueue = UnboundedMPSCQueue<ParamChange>;
     ParamQueue* paramQueue_;
 };

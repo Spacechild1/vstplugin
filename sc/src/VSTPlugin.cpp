@@ -636,8 +636,31 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
 
 // -------------------- VSTPlugin ------------------------ //
 
+namespace {
+
+thread_local bool gCurrentThreadRT;
+
+// some callbacks need to know whether they are called from a RT thread,
+// e.g. so they would use the appropriate memory management functions.
+// this is simpler and faster than saving and checking thread IDs.
+void setCurrentThreadRT() {
+    gCurrentThreadRT = true;
+}
+
+bool isCurrentThreadRT() {
+    LOG_DEBUG("isCurrentThreadRT: " << gCurrentThreadRT);
+    return gCurrentThreadRT;
+}
+
+} // namespace
+
 VSTPlugin::VSTPlugin(){
     setVerbosity(mWorld->mVerbosity);
+    // the following will mark this thread as a RT thread; this is used in the
+    // IPluginInterface callbacks, e.g. VSTPluginDelegate::parameterAutomated().
+    // NOTE: in Supernova the constructor might actually run on a DSP helper thread,
+    // so we also have to do this in VSTPluginDelegate::open() and VSTPlugin::next().
+    setCurrentThreadRT(); // !
     // Ugen inputs:
     //   flags, blocksize, bypass, ninputs, inputs..., noutputs, outputs..., nparams, params...
     //     input: nchannels, chn1, chn2, ...
@@ -1223,8 +1246,8 @@ void VSTPlugin::unmap(int32 index) {
 // perform routine
 void VSTPlugin::next(int inNumSamples) {
 #ifdef SUPERNOVA
-    // for Supernova the "next" routine might be called in a different thread - each time!
-    delegate_->rtThreadID_ = std::this_thread::get_id();
+    // with Supernova the "next" routine might be called in different threads - each time!
+    setCurrentThreadRT();
 #endif
     if (!valid()){
         ClearUnitOutputs(this, inNumSamples);
@@ -1463,8 +1486,6 @@ int VSTPlugin::reblockPhase() const {
 
 VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
     setOwner(&owner);
-    rtThreadID_ = std::this_thread::get_id();
-    // LOG_DEBUG("RT thread ID: " << rtThreadID_);
     auto queue = (ParamQueue*)RTAlloc(world(), sizeof(ParamQueue));
     if (queue) {
         paramQueue_ = new (queue) ParamQueue();
@@ -1527,8 +1548,7 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
 }
 
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
-    // RT thread
-    if (std::this_thread::get_id() == rtThreadID_) {
+    if (isCurrentThreadRT()) {
         // only if caused by /set! ignore UGen input automation and parameter mappings.
         if (paramSet_) {
             sendParameterAutomated(index, value);
@@ -1540,8 +1560,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 }
 
 void VSTPluginDelegate::latencyChanged(int nsamples){
-    // RT thread
-    if (std::this_thread::get_id() == rtThreadID_) {
+    if (isCurrentThreadRT()) {
         sendLatencyChange(nsamples);
     } else if (paramQueue_) {
         // from UI/NRT thread - push to queue
@@ -1550,8 +1569,7 @@ void VSTPluginDelegate::latencyChanged(int nsamples){
 }
 
 void VSTPluginDelegate::updateDisplay() {
-    // RT thread
-    if (std::this_thread::get_id() == rtThreadID_) {
+    if (isCurrentThreadRT()) {
         sendUpdateDisplay();
     } else if (paramQueue_) {
         // from UI/NRT thread - push to queue
@@ -1567,8 +1585,8 @@ void VSTPluginDelegate::pluginCrashed(){
 }
 
 void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
-    // check if we're on the realtime thread, otherwise ignore it
-    if (std::this_thread::get_id() == rtThreadID_) {
+    // so far, we only handle MIDI events that come from the RT thread
+    if (isCurrentThreadRT()) {
         float buf[3];
         // we don't want negative values here
         buf[0] = (unsigned char)midi.data[0];
@@ -1579,8 +1597,8 @@ void VSTPluginDelegate::midiEvent(const MidiEvent& midi) {
 }
 
 void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
-    // check if we're on the realtime thread, otherwise ignore it
-    if (std::this_thread::get_id() == rtThreadID_) {
+    // so far, we only handle SysEx events that come from the RT thread
+    if (isCurrentThreadRT()) {
         if ((sysex.size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
             LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
@@ -1784,6 +1802,14 @@ bool cmdOpen(World *world, void* cmdData) {
 void VSTPluginDelegate::open(const char *path, bool editor,
                              bool threaded, RunMode mode) {
     LOG_DEBUG("open");
+
+#ifdef SUPERNOVA
+    // The VSTPlugin constructor might actually run on a DSP helper thread, so we have to
+    // make sure that we also mark the main audio thread. We do this here because there
+    // really can't be any callbacks before opening a plugin.
+    setCurrentThreadRT();
+#endif
+
     if (isLoading_) {
         LOG_WARNING("VSTPlugin: already loading!");
         sendMsg("/vst_open", 0);
@@ -2031,10 +2057,6 @@ void VSTPluginDelegate::setProcessMode(ProcessMode mode) {
 void VSTPluginDelegate::setParam(int32 index, float value) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
-#ifdef SUPERNOVA
-            // set the RT thread back to the main audio thread (see "next")
-            rtThreadID_ = std::this_thread::get_id();
-#endif
             paramSet_ = true;
             int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
             plugin_->setParameter(index, value, sampleOffset);
@@ -2052,10 +2074,6 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
 void VSTPluginDelegate::setParam(int32 index, const char* display) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
-#ifdef SUPERNOVA
-            // set the RT thread back to the main audio thread (see "next")
-            rtThreadID_ = std::this_thread::get_id();
-#endif
             paramSet_ = true;
             int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
             if (!plugin_->setParameter(index, display, sampleOffset)) {
