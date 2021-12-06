@@ -86,6 +86,10 @@ t_workqueue* t_workqueue::get(){
 }
 #endif
 
+static thread_local bool gWorkerThread{false};
+
+bool isWorkerThread() { return gWorkerThread; }
+
 t_workqueue::t_workqueue(){
 #ifdef PDINSTANCE
     w_instance = pd_this;
@@ -95,6 +99,8 @@ t_workqueue::t_workqueue(){
         LOG_DEBUG("worker thread started");
 
         vst::setThreadPriority(Priority::Low);
+
+        gWorkerThread = true; // mark as worker thread
 
     #ifdef PDINSTANCE
         pd_setinstance(w_instance);
@@ -776,24 +782,35 @@ void t_vsteditor::post_event(const t_event& event){
     if (locked) {
         clock_delay(e_clock, 0);
     } else {
-        // Only lock Pd if DSP is off. This is better for real-time safety and it also
-        // prevents a possible deadlock with plugins that use a mutex for synchronization
-        // between UI thread and processing thread.
-        // Calling pd_getdspstate() is not really thread-safe, though...
-        //
-        // NOTE: the following also works for the case that the perform routine is called from a
-        // different thread than the one where the object has been constructed - but only if
-        // DSP is running! Otherwise it would deadlock. Alternatively, we could use the same
-        // solution as in the SC version, i.e. marking Pd threads with thread local variables.
+        // Set the clock in the perform routine. This is better for real-time safety
+        // and it also prevents a possible deadlock with plugins that use a mutex for
+        // synchronization between UI thread and processing thread.
+        // This also works for the case where the perform routine is called from a
+        // different thread than the one where the object has been constructed.
+        e_needclock.store(true);
+
     #ifdef PDINSTANCE
         pd_setinstance(e_owner->x_pdinstance);
     #endif
-        if (pd_getdspstate()){
-            e_needclock.store(true); // set the clock in the perform routine
-        } else {
-            sys_lock();
-            clock_delay(e_clock, 0);
-            sys_unlock();
+        // Calling pd_getdspstate() is not really thread-safe...
+        if (pd_getdspstate() == 0){
+            // Special case: DSP might be off and the event does not come from Pd's
+            // scheduler thread, neither directly nor indirectly (-> e_locked):
+            // only lock Pd if the event comes from the UI thread or worker thread,
+            // otherwise we post a warning and wait for the user to turn on DSP...
+            // Generally, this can happen when we receive a notification from the
+            // watchdog thread or when a libpd client calls a [vstplugin~] method
+            // from another thread.
+            // NOTE: calling vst_gui() is safe in this context
+            bool canlock = isWorkerThread() || (vst_gui() && UIThread::isCurrentThread());
+            if (canlock) {
+                sys_lock();
+                clock_delay(e_clock, 0);
+                sys_unlock();
+            } else {
+                LOG_WARNING("received event from unknown thread; cannot dispatch with DSP turned off");
+                // ignore
+            }
         }
     }
 }
