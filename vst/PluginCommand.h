@@ -48,18 +48,19 @@ struct Command {
         WindowSetSize,
         // events/replies
         PluginData, // 35
+        PluginDataFile,
         SpeakerArrangement,
         ProgramNumber,
         ProgramName,
         ProgramNameIndexed,
-        ParameterUpdate, // 40
+        ParameterUpdate, // 41
         ParamAutomated,
         LatencyChanged,
         UpdateDisplay,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error, // 46
+        Error, // 47
         Process,
         Quit
     };

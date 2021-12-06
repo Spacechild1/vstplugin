@@ -229,13 +229,46 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         // send data
         channel.clear(); // !
 
-        ShmCommand reply(Command::PluginData, id_);
-        reply.i = buffer.size(); // save actual size!
-        addReply(channel, &reply, sizeof(reply));
+        auto totalSize = sizeof(ShmCommand) + buffer.size();
+        if (totalSize > channel.capacity()) {
+            // plugin data too large for NRT channel, try to transmit via tmp file
+            LOG_DEBUG("PluginClient: send plugin data via tmp file (size: "
+                      << buffer.size() << ", capacity: " << channel.capacity() << ")");
+            std::stringstream ss;
+            ss << getTmpDirectory() << "/vst_" << (void *)this;
+            std::string path = ss.str();
+            // NOTE: the file must be deleted by the client!
+            File file(path, File::WRITE);
+            if (!file){
+                throw Error(Error::SystemError,
+                            "PluginClient: couldn't create tmp file");
+            }
+            file.write(buffer.data(), buffer.size());
+            if (!file){
+                if (!removeFile(path)) {
+                    LOG_ERROR("PluginClient: can't remove tmp file");
+                }
+                throw Error(Error::SystemError,
+                            "PluginClient: couldn't write plugin data to tmp file");
+            }
 
-        // send actual data as a seperate message to avoid needless copy.
-        if (!addReply(channel, buffer.data(), buffer.size())){
-            throw Error("plugin data too large!");
+            auto pathLength = path.size() + 1;
+            auto replySize = CommandSize(ShmCommand, buffer, pathLength);
+            auto reply = (ShmCommand *)alloca(replySize);
+            new (reply) ShmCommand(Command::PluginDataFile, id_);
+            memcpy(reply->buffer.data, path.data(), pathLength);
+            reply->buffer.size = pathLength;
+
+            addReply(channel, reply, replySize);
+        } else {
+            ShmCommand reply(Command::PluginData, id_);
+            reply.i = buffer.size(); // save actual size!
+            addReply(channel, &reply, sizeof(reply));
+
+            // send actual data as a seperate message to avoid needless copy.
+            if (!addReply(channel, buffer.data(), buffer.size())){
+                throw Error("plugin data too large!"); // shouldn't happen
+            }
         }
 
         break;

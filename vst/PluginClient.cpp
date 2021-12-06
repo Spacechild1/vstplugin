@@ -696,11 +696,27 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
                 throw Error(Error::PluginError,
                             "PluginClient::receiveData: missing data message");
             }
-        } else if (reply->type == Command::Error){
+        } else if (reply->type == Command::PluginDataFile) {
+            // data is transmitted in a tmp file
+            auto path = reply->buffer.data;
+            File file(path, File::READ);
+            if (!file){
+                throw Error(Error::SystemError, "PluginClient: couldn't read tmp file");
+            }
+            file.seekg(0, std::ios_base::end);
+            buffer.resize(file.tellg());
+            file.seekg(0, std::ios_base::beg);
+            file.read(&buffer[0], buffer.size());
+
+            // we have to remove the tmp file!
+            if (!removeFile(path)) {
+                LOG_ERROR("PluginClient: couldn't remove tmp file");
+            }
+        } else if (reply->type == Command::Error) {
            reply->throwError();
         } else {
             throw Error(Error::PluginError,
-                        "PluginClient::receiveData: unexpected reply message");
+                        "PluginClient::receiveData: unexpected reply message " + std::to_string(reply->type));
         }
     } else {
         throw Error(Error::PluginError,

@@ -104,6 +104,7 @@ class ShmChannel {
 
     Type type() const { return type_; }
     int32_t size() const { return totalSize_; }
+    int32_t capacity() const { return data_->capacity; }
     const std::string& name() const { return name_; }
 
     size_t peekMessage() const;
