@@ -32,10 +32,18 @@ class DSPThreadPool {
         ThreadedPlugin *plugin;
         int numSamples;
     };
-    LockfreeFifo<Task, 1024> queue_;
     std::vector<std::thread> threads_;
-    Event event_;
+    // NOTE: Semaphore is the right tool to notify one or more threads in a thread pool.
+    // With Event there are certain edge cases where it would fail to notify the correct
+    // number of threads. For example, if several worker threads are about to call wait()
+    // more or less simultaneously and you call set() several times *before* one of them
+    // actually manages to do so, only a single worker thread will continue and the others
+    // will wait.
+    // The only disadvantage of Semaphore is that all those post() calls will make the worker
+    // threads spin a few times, but I think this negligible. Also, the post() call is a bit faster.
+    LightSemaphore semaphore_;
     std::atomic<bool> running_;
+    LockfreeFifo<Task, 1024> queue_;
     PaddedSpinLock pushLock_;
     PaddedSpinLock popLock_;
 

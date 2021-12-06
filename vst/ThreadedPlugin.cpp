@@ -17,8 +17,7 @@ namespace vst {
 
 /*/////////////////// DSPThreadPool /////////////////////////*/
 
-// there's a deadlock bug in the windows runtime library which would cause
-// the process to hang if trying to join a thread in a static object destructor.
+// joining a thread in a global/static object constructor can dead lock in a Windows DLL.
 #ifdef _WIN32
 # define DSPTHREADPOOL_JOIN 0
 #else
@@ -57,10 +56,7 @@ DSPThreadPool::~DSPThreadPool(){
     running_.store(false);
 
     // wake up all threads!
-    auto n = threads_.size();
-    while (n--){
-        event_.set();
-    }
+    semaphore_.post(threads_.size());
     // join threads
     for (auto& thread : threads_){
         if (thread.joinable()){
@@ -75,7 +71,7 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
     THREAD_DEBUG("DSPThreadPool::push");
-    event_.set();
+    semaphore_.post();
     return result;
 }
 
@@ -105,7 +101,7 @@ void DSPThreadPool::run() {
         popLock_.unlock();
 
         // wait for more
-        event_.wait();
+        semaphore_.wait();
 
         THREAD_DEBUG("DSP thread " << i << " woke up");
     }
