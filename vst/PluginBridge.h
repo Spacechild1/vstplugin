@@ -52,6 +52,8 @@ struct _Channel {
     _Channel(_Channel&& other)
         : channel_(other.channel_), lock_(std::move(other.lock_)) {}
 
+    int32_t capacity() const { return channel_->capacity(); }
+
     bool addCommand(const void* cmd, size_t size){
         return channel_->addMessage(static_cast<const char *>(cmd), size);
     }
@@ -73,6 +75,9 @@ struct _Channel {
     }
 
     void checkError();
+
+    void lock() { lock_.lock(); }
+    void unlock() { lock_.unlock(); }
  private:
     ShmChannel *channel_;
     std::unique_lock<Mutex> lock_;

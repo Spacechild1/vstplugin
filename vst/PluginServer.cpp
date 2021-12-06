@@ -184,23 +184,53 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         sendProgramUpdate(channel, true);
         break;
     case Command::ReadProgramData:
+    {
         LOG_DEBUG("PluginHandle: ReadProgramData");
+        auto realSize = cmd.i;
+        // data is in a seperate message!
+        const char *data;
+        size_t size;
+        if (channel.getMessage(data, size)){
+            assert(size >= realSize); // 'size' can be larger because of padding!
+        } else {
+            throw Error(Error::PluginError,
+                        "PluginClient::ReadProgramData: missing data message");
+        }
+
         defer([&](){
-            plugin_->readProgramData(cmd.buffer.data, cmd.buffer.size);
+            plugin_->readProgramData(data, realSize);
         });
+
         channel.clear(); // !
+
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, false);
         break;
+    }
     case Command::ReadBankData:
+    {
         LOG_DEBUG("PluginHandle: ReadBankData");
+        auto realSize = cmd.i;
+        // data is in a seperate message!
+        const char *data;
+        size_t size;
+        if (channel.getMessage(data, size)){
+            assert(size >= realSize); // 'size' can be larger because of padding!
+        } else {
+            throw Error(Error::PluginError,
+                        "PluginClient::ReadBankData: missing data message");
+        }
+
         defer([&](){
-            plugin_->readBankData(cmd.buffer.data, cmd.buffer.size);
+            plugin_->readBankData(data, realSize);
         });
+
         channel.clear(); // !
+
         sendParameterUpdate(channel);
         sendProgramUpdate(channel, true);
         break;
+    }
     case Command::WriteProgramFile:
         LOG_DEBUG("PluginHandle: WriteProgramFile");
         defer([&](){

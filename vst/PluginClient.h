@@ -57,6 +57,7 @@ class PluginClient final : public DeferredPlugin {
     void readBankData(const std::string& buffer) {
         readBankData(buffer.data(), buffer.size());
     }
+    void sendFile(Command::Type type, const std::string& path);
     void sendData(Command::Type type, const char *data, size_t size);
 
     void writeProgramFile(const std::string& path) override;

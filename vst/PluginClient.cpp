@@ -69,7 +69,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
         chn.send();
     } else {
         // info too large, try to transmit via tmp file
-        LOG_DEBUG("PluginClient: send info via tmp file");
+        LOG_DEBUG("PluginClient: send info via tmp file (" << info.size() << " bytes)");
         std::stringstream ss;
         ss << getTmpDirectory() << "/vst_" << (void *)this;
         std::string path = ss.str();
@@ -570,7 +570,7 @@ std::string PluginClient::getProgramNameIndexed(int index) const {
 
 void PluginClient::readProgramFile(const std::string& path){
     LOG_DEBUG("PluginClient: readProgramFile");
-    sendData(Command::ReadProgramFile, path.c_str(), path.size() + 1);
+    sendFile(Command::ReadProgramFile, path);
 }
 
 void PluginClient::readProgramData(const char *data, size_t size){
@@ -580,7 +580,7 @@ void PluginClient::readProgramData(const char *data, size_t size){
 
 void PluginClient::readBankFile(const std::string& path){
     LOG_DEBUG("PluginClient: readBankFile");
-    sendData(Command::ReadBankFile, path.c_str(), path.size() + 1);
+    sendFile(Command::ReadBankFile, path);
 }
 
 void PluginClient::readBankData(const char *data, size_t size){
@@ -590,7 +590,7 @@ void PluginClient::readBankData(const char *data, size_t size){
 
 void PluginClient::writeProgramFile(const std::string& path){
     LOG_DEBUG("PluginClient: writeProgramFile");
-    sendData(Command::WriteProgramFile, path.c_str(), path.size() + 1);
+    sendFile(Command::WriteProgramFile, path);
 }
 
 void PluginClient::writeProgramData(std::string& buffer){
@@ -600,7 +600,7 @@ void PluginClient::writeProgramData(std::string& buffer){
 
 void PluginClient::writeBankFile(const std::string& path){
     LOG_DEBUG("PluginClient: writeBankFile");
-    sendData(Command::WriteBankFile, path.c_str(), path.size() + 1);
+    sendFile(Command::WriteBankFile, path);
 }
 
 void PluginClient::writeBankData(std::string& buffer){
@@ -608,50 +608,75 @@ void PluginClient::writeBankData(std::string& buffer){
     receiveData(Command::WriteBankData, buffer);
 }
 
+void PluginClient::sendFile(Command::Type type, const std::string &path) {
+    auto pathSize = path.size() + 1;
+    auto cmdSize = CommandSize(ShmCommand, buffer, pathSize);
+    // TODO send data as seperate command to avoid needless copy,
+    // similar to WriteProgramData in PluginServer.
+    auto cmd = (ShmCommand *)alloca(cmdSize);
+    new (cmd) ShmCommand(type, id());
+    cmd->buffer.size = pathSize;
+    memcpy(cmd->buffer.data, path.data(), pathSize);
+
+    auto chn = bridge().getNRTChannel();
+    if (!chn.addCommand(cmd, cmdSize)) {
+        throw Error(Error::PluginError,
+                    "PluginClient: could not send file path");
+    }
+    chn.send();
+
+    // check if host is still alive!
+    if (!check()){
+        return;
+    }
+
+    // get replies
+    const ShmCommand* reply;
+    while (chn.getReply(reply)){
+        dispatchReply(*reply);
+    }
+}
+
 void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     if (!check()){
         return;
     }
 
-    auto totalSize = CommandSize(ShmCommand, buffer, size);
-    auto cmd = (ShmCommand *)alloca(totalSize);
-    new (cmd) ShmCommand(type, id());
-    cmd->buffer.size = size;
-    memcpy(cmd->buffer.data, data, size);
-
+    auto totalSize = sizeof(ShmCommand) + size;
     auto chn = bridge().getNRTChannel();
-    if (!chn.addCommand(cmd, totalSize)) {
-        if (type == Command::ReadProgramData ||
-                type == Command::ReadBankData) {
-            // plugin data too large, try to transmit via tmp file
-            LOG_DEBUG("PluginClient: send plugin data via tmp file");
-            std::stringstream ss;
-            ss << getTmpDirectory() << "/vst_" << (void *)this;
-            std::string path = ss.str();
-            TmpFile file(path, File::WRITE);
-            if (!file){
-                throw Error(Error::SystemError,
-                            "PluginClient: couldn't create tmp file");
-            }
-            file.write(data, size);
-            if (!file){
-                throw Error(Error::SystemError,
-                            "PluginClient: couldn't write plugin data to tmp file");
-            }
-            // avoid dead lock!
-            {
-                auto tmp(std::move(chn));
-            }
-            auto cmd = (type == Command::ReadProgramData) ?
-                        Command::ReadProgramFile : Command::ReadBankFile;
-            sendData(cmd, path.c_str(), path.size() + 1);
-
-            return; // !
-        } else {
-            throw Error(Error::PluginError,
-                        "PluginClient: could not send plugin data");
+    if (totalSize > chn.capacity()) {
+        // plugin data too large, try to transmit via tmp file
+        LOG_DEBUG("PluginClient: send plugin data via tmp file (size: "
+                  << size << ", capacity: " << chn.capacity() << ")");
+        std::stringstream ss;
+        ss << getTmpDirectory() << "/vst_" << (void *)this;
+        std::string path = ss.str();
+        TmpFile file(path, File::WRITE);
+        if (!file){
+            throw Error(Error::SystemError,
+                        "PluginClient: couldn't create tmp file");
         }
+        file.write(data, size);
+        if (!file){
+            throw Error(Error::SystemError,
+                        "PluginClient: couldn't write plugin data to tmp file");
+        }
+        chn.unlock(); // avoid dead lock in sendFile()!
+        auto cmd = (type == Command::ReadProgramData) ?
+                    Command::ReadProgramFile : Command::ReadBankFile;
+        sendFile(cmd, path);
+
+        return; // !
     }
+
+    ShmCommand cmd(type, id());
+    cmd.i = size; // save actual size!
+    chn.AddCommand(cmd, buffer);
+    // send data as seperate command to avoid needless copy
+    if (!chn.addCommand(data, size)) {
+        throw Error("plugin data too large!"); // shouldn't happen
+    }
+
     chn.send();
 
     // check if host is still alive!
@@ -685,13 +710,13 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     const ShmCommand *reply;
     if (chn.getReply(reply)){
         if (reply->type == Command::PluginData){
-            auto len = reply->i;
+            auto realSize = reply->i;
             // data is in a seperate message!
             const char *data;
             size_t size;
             if (chn.getReply(data, size)){
-                assert(size >= len); // 'size' can be larger because of padding!
-                buffer.assign(data, len);
+                assert(size >= realSize); // 'size' can be larger because of padding!
+                buffer.assign(data, realSize);
             } else {
                 throw Error(Error::PluginError,
                             "PluginClient::receiveData: missing data message");
