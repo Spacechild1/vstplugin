@@ -659,7 +659,7 @@ VSTPlugin::VSTPlugin(){
     // the following will mark this thread as a RT thread; this is used in the
     // IPluginInterface callbacks, e.g. VSTPluginDelegate::parameterAutomated().
     // NOTE: in Supernova the constructor might actually run on a DSP helper thread,
-    // so we also have to do this in VSTPluginDelegate::open() and VSTPlugin::next().
+    // so we also have to do this in runUnitCmd()!
     setCurrentThreadRT(); // !
     // Ugen inputs:
     //   flags, blocksize, bypass, ninputs, inputs..., noutputs, outputs..., nparams, params...
@@ -1802,13 +1802,6 @@ bool cmdOpen(World *world, void* cmdData) {
 void VSTPluginDelegate::open(const char *path, bool editor,
                              bool threaded, RunMode mode) {
     LOG_DEBUG("open");
-
-#ifdef SUPERNOVA
-    // The VSTPlugin constructor might actually run on a DSP helper thread, so we have to
-    // make sure that we also mark the main audio thread. We do this here because there
-    // really can't be any callbacks before opening a plugin.
-    setCurrentThreadRT();
-#endif
 
     if (isLoading_) {
         LOG_WARNING("VSTPlugin: already loading!");
@@ -3334,6 +3327,11 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 // which *is* set to zero.
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
+#ifdef SUPERNOVA
+    // The VSTPlugin constructor might actually run on a DSP helper thread, so we have to
+    // make sure that we also mark the main audio thread. Doing this here is the safest option.
+    setCurrentThreadRT();
+#endif
     if (unit->initialized()) {
         // the constructor has been called, so we can savely run the command
         if (unit->valid()){
