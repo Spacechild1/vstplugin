@@ -38,8 +38,7 @@ static void initEventLoop() {}
 
 /*---------------------- work queue ----------------------------*/
 
-// there's a deadlock bug in the windows runtime library which would cause
-// the process to hang if trying to join a thread in a static object destructor.
+// joining a thread in a global/static object constructor can dead lock in a Windows DLL.
 #ifdef _WIN32
 # define WORK_QUEUE_JOIN 0
 #else
@@ -49,12 +48,14 @@ static void initEventLoop() {}
 #ifdef PDINSTANCE
 namespace {
     std::unordered_map<t_pdinstance *, std::unique_ptr<t_workqueue>> gWorkQueues;
-    std::mutex gWorkQueueMutex;
+    SharedMutex gWorkQueueMutex;
 }
 
 void t_workqueue::init(){
     // might get called from different threads!
-    std::lock_guard<std::mutex> lock(gWorkQueueMutex);
+    // NOTE: insertion doesn't invalidate pointers to elements,
+    // so the pointers returned by t_workqueue::get() won't become stale!
+    WriteLock lock(gWorkQueueMutex);
     if (!gWorkQueues.count(pd_this)){
         gWorkQueues[pd_this] = std::make_unique<t_workqueue>();
     }
@@ -62,14 +63,12 @@ void t_workqueue::init(){
 
 t_workqueue* t_workqueue::get(){
     // might get called from different threads!
-    // note that insertion doesn't invalidate pointers,
-    // so the returned pointers won't become stale!
-    std::lock_guard<std::mutex> lock(gWorkQueueMutex);
+    ReadLock lock(gWorkQueueMutex);
     auto it = gWorkQueues.find(pd_this);
     if (it != gWorkQueues.end()){
         return it->second.get();
     } else {
-        return nullptr;
+        return nullptr; // shouldn't happen!
     }
 }
 #else
