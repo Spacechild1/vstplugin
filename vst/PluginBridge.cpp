@@ -582,6 +582,9 @@ NRTChannel PluginBridge::getNRTChannel(){
 
 /*/////////////////// WatchDog //////////////////////*/
 
+// poll interval in milliseconds
+#define WATCHDOG_POLL_INTERVAL 5
+
 WatchDog& WatchDog::instance(){
     static WatchDog watchDog;
     return watchDog;
@@ -600,7 +603,7 @@ WatchDog::~WatchDog(){
 #if WATCHDOG_JOIN
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        processes_.clear();
+        processes_.clear(); // !
         running_ = false;
         condition_.notify_one();
     }
@@ -620,7 +623,12 @@ void WatchDog::run(){
     vst::setThreadPriority(Priority::Low);
 
     std::unique_lock<std::mutex> lock(mutex_);
-    for (;;){
+    while (running_) {
+        LOG_DEBUG("WatchDog: waiting...");
+        // wait until a process has been added or we should quit
+        condition_.wait(lock, [&]() { return !processes_.empty() || !running_; });
+        LOG_DEBUG("WatchDog: woke up");
+
         // periodically check all running processes
         while (!processes_.empty()){
             for (auto it = processes_.begin(); it != processes_.end();){
@@ -636,25 +644,8 @@ void WatchDog::run(){
             }
 
             lock.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(WATCHDOG_POLL_INTERVAL));
             lock.lock();
-        }
-
-        // wait for a new process to be added
-        //
-        // NOTE: we have to put both the check and wait at the end!
-        // Since the thread is created concurrently with the first process,
-        // the process might be registered *before* the thread starts,
-        // causing the latter to wait on the condition variable instead of
-        // entering the poll loop.
-        // Also, 'running_' might be set to false while we're sleeping in the
-        // poll loop, which means that we would wait on the condition forever.
-        if (running_){
-            LOG_DEBUG("WatchDog: waiting...");
-            condition_.wait(lock);
-            LOG_DEBUG("WatchDog: woke up");
-        } else {
-            break;
         }
     }
     LOG_DEBUG("WatchDog: thread finished");
