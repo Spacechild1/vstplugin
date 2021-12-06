@@ -113,6 +113,16 @@ void Semaphore::post(){
 #endif
 }
 
+void Semaphore::post(int count){
+#if VST_HOST_SYSTEM == VST_WINDOWS
+    ReleaseSemaphore(sem_, count, 0);
+#else
+    for (int i = 0; i < count; ++i) {
+        post();
+    }
+#endif
+}
+
 void Semaphore::wait(){
 #if VST_HOST_SYSTEM == VST_WINDOWS
     WaitForSingleObject(sem_, INFINITE);
@@ -125,13 +135,13 @@ void Semaphore::wait(){
 
 /*///////////////////// SpinLock ////////////////////////*/
 
-void SpinLock::yield(){
+void pauseCpu() {
 #if defined(CPU_INTEL)
     _mm_pause();
 #elif defined(CPU_ARM)
     __asm__ __volatile__("yield");
 #else // fallback
-    std::this_thread::sleep_for(std::chrono::microseconds(0));
+    std::this_thread::yield();
 #endif
 }
 

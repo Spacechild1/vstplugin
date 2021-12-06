@@ -54,6 +54,7 @@ class Semaphore {
     Semaphore(Semaphore&&) = delete;
     Semaphore& operator=(Semaphore&&) = delete;
     void post();
+    void post(int count);
     void wait();
  private:
 #if VST_HOST_SYSTEM == VST_WINDOWS
@@ -77,6 +78,13 @@ class LightSemaphore {
             sem_.post();
         }
     }
+    void post(int count){
+        auto old = count_.fetch_add(count, std::memory_order_release);
+        if (old < 0){
+            auto release = -old < count ? -old : count;
+            sem_.post(release);
+        }
+    }
     void wait(){
         auto old = count_.fetch_sub(1, std::memory_order_acquire);
         if (old <= 0){
@@ -85,16 +93,16 @@ class LightSemaphore {
     }
     bool try_wait(){
         auto value = count_.load(std::memory_order_relaxed);
-        for (;;){
-            if (value > 0){
-                if (count_.compare_exchange_weak(value, value-1,
-                        std::memory_order_acquire, std::memory_order_relaxed)) {
-                    return true;
-                }
-            } else {
-                return false;
-            }
+        // NOTE: we could also use a single compare_exchange_strong(),
+        // but I don't think that try_wait() should fail just because
+        // another thread decremented the count concurrently.
+        while (value > 0) {
+            if (count_.compare_exchange_weak(value, value - 1,
+                    std::memory_order_acquire, std::memory_order_relaxed)) {
+                return true;
+            } // retry
         }
+        return false;
     }
  private:
     Semaphore sem_;
@@ -130,16 +138,16 @@ class Event {
     }
     bool try_wait(){
         auto value = count_.load(std::memory_order_relaxed);
-        for (;;){
-            if (value > 0){
-                if (count_.compare_exchange_weak(value, value-1,
-                        std::memory_order_acquire, std::memory_order_relaxed)) {
-                    return true;
-                }
-            } else {
-                return false;
-            }
+        // NOTE: we could also use a single compare_exchange_strong(),
+        // but I don't think that try_wait() should fail just because
+        // another thread decremented the count concurrently.
+        while (value > 0) {
+            if (count_.compare_exchange_weak(value, value - 1,
+                    std::memory_order_acquire, std::memory_order_relaxed)) {
+                return true;
+            } // retry
         }
+        return false;
     }
  private:
     Semaphore sem_;
@@ -147,6 +155,8 @@ class Event {
 };
 
 /*///////////////////// SpinLock /////////////////////*/
+
+void pauseCpu();
 
 // simple spin lock
 
@@ -160,7 +170,7 @@ class SpinLock {
         // this should prevent unnecessary cache invalidation.
         do {
             while (locked_.load(std::memory_order_relaxed)){
-                yield();
+                pauseCpu();
             }
         } while (locked_.exchange(true, std::memory_order_acquire));
     }
@@ -171,7 +181,6 @@ class SpinLock {
         locked_.store(false, std::memory_order_release);
     }
  protected:
-    void yield();
     // data
     std::atomic<int32_t> locked_{false};
 };
