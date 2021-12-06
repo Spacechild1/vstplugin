@@ -43,6 +43,24 @@
 
 namespace  vst {
 
+template<typename T>
+T nextPowerOfTwo(T v) {
+    T result = 1;
+    while (result < v) {
+        result *= 2;
+    }
+    return result;
+}
+
+template<typename T>
+T prevPowerOfTwo(T v) {
+    T result = 1;
+    while (result <= v) {
+        result *= 2;
+    }
+    return result >> 1;
+}
+
 //--------------------------------------------------------------//
 
 #ifdef _WIN32

@@ -126,7 +126,6 @@ class PluginBridge final
 
     NRTChannel getNRTChannel();
  private:
-    static const int maxNumThreads = 8;
     static const size_t queueSize = 1024;
     static const size_t nrtRequestSize = 65536;
     static const size_t rtRequestSize = 65536;
@@ -151,6 +150,7 @@ class PluginBridge final
     pid_t pid_;
     int logRead_ = -1;
 #endif
+    uint32_t threadMask_ = 0;
     std::unique_ptr<PaddedSpinLock[]> locks_;
     std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;
     Mutex clientMutex_;

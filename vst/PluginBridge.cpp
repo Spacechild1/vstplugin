@@ -76,17 +76,29 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     shm_.addChannel(ShmChannel::Queue, queueSize, "ui_rcv");
     if (shared){
         // --- shared plugin bridge ---
-        // a single nrt channel followed by several rt channels
+        // a single NRT channel followed by several RT channels.
+        //
+        // the bridge can be used from several threads concurrently!
+        // this is necessary for hosts with multi-threaded audio processing,
+        // like Supernova, some libpd apps - and maybe even Pd itself :-)
+        // for the actual algorithm, see getRTChannel().
+        static int hwThreads = []() {
+            return std::thread::hardware_concurrency();
+        }();
+        auto numThreads = prevPowerOfTwo(hwThreads);
+        LOG_DEBUG("PluginBridge: using " << numThreads << " RT threads");
+        threadMask_ = numThreads - 1;
         shm_.addChannel(ShmChannel::Request, nrtRequestSize, "nrt");
-        for (int i = 0; i < maxNumThreads; ++i){
+        for (int i = 0; i < numThreads; ++i){
             char buf[16];
             snprintf(buf, sizeof(buf), "rt%d", i+1);
             shm_.addChannel(ShmChannel::Request, rtRequestSize, buf);
         }
-        locks_ = std::make_unique<PaddedSpinLock[]>(maxNumThreads);
+
+        locks_ = std::make_unique<PaddedSpinLock[]>(numThreads);
     } else {
         // --- sandboxed plugin ---
-        // a single rt channel (which also doubles as the nrt channel)
+        // a single rt channel which also doubles as the nrt channel
         shm_.addChannel(ShmChannel::Request, rtRequestSize, "rt");
     }
     shm_.create();
@@ -543,29 +555,36 @@ IPluginListener::ptr PluginBridge::findClient(uint32_t id){
 
 RTChannel PluginBridge::getRTChannel(){
     if (locks_){
+        // shared plugin bridge, see the comments in PluginBridge::PluginBridge().
         static std::atomic<uint32_t> counter{0}; // can safely overflow
 
-        uint32_t index;
+        uint32_t index, i = 0;
+        uint32_t mask = threadMask_;
         for (;;){
-            // we take the current index and try to lock the
-            // corresponding spinlock. if the spinlock is already
-            // taken (another DSP thread trying to use the plugin bridge
-            // concurrently), we atomically increment the index and try again.
-            // if there's only a single DSP thread, we will only ever
-            // lock the first spinlock and the plugin server will only
-            // use a single thread as well.
-
-            // modulo is optimized to bitwise AND if maxNumThreads is power of 2!
-            index = counter.load(std::memory_order_acquire) % maxNumThreads;
+            // we take the current index and try to lock the corresponding spinlock.
+            // if the spinlock is already taken (another DSP thread is trying to use the
+            // plugin bridge oncurrently), we atomically increment the index and try again.
+            // if there's only a single DSP thread, we will only ever lock the first spinlock
+            // and the plugin server will only use a single thread as well.
+            index = counter.load(std::memory_order_acquire) & mask;
             if (locks_[index].try_lock()){
                 break;
             }
             counter.fetch_add(1);
+        #if 0
+            // pause CPU everytime we cycle through all spinlocks
+            const int spin_count = 1000;
+            if ((++i & mask) == 0) {
+                for (int j = 0; j < spin_count; ++j) {
+                    pauseCpu();
+                }
+            }
+        #endif
         }
         return RTChannel(shm_.getChannel(Channel::NRT + 1),
                          std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
     } else {
-        // RT channel = NRT channel
+        // plugin sandbox: RT channel = NRT channel
         return RTChannel(shm_.getChannel(Channel::NRT));
     }
 }
