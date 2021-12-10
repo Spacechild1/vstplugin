@@ -1503,12 +1503,12 @@ VSTPluginDelegate::~VSTPluginDelegate() {
     doClose<false>();
 
     if (paramQueue_) {
-        if (paramQueue_->needFree()) {
+        if (paramQueue_->needRelease()) {
             // release internal memory on the NRT thread,
             // but param queue itself on the RT thread.
             DoAsynchronousCommand(world(), 0, 0, paramQueue_,
                 [](World *, void *inData) {
-                    static_cast<ParamQueue*>(inData)->free();
+                    static_cast<ParamQueue*>(inData)->release();
                     return false;
                 }, nullptr, nullptr, cmdRTfree<ParamQueue>, 0, 0);
         } else {

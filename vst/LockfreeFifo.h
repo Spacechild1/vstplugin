@@ -79,7 +79,7 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
     UnboundedMPSCQueue& operator=(const UnboundedMPSCQueue&) = delete;
 
     ~UnboundedMPSCQueue(){
-        free();
+        freeMemory();
     }
 
     // not thread-safe!
@@ -142,19 +142,12 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
         }
     }
 
-    void free() {
-        auto it = first_.exchange(nullptr);
-        while (it){
-            auto next = it->next_;
-            if (it != &dummy_) {
-                it->~Node<T>();
-                Base::deallocate(it, 1);
-            }
-            it = next;
-        }
+    void release() {
+        freeMemory();
+        first_ = devider_ = last_ = &dummy_;
     }
 
-    bool needFree() const {
+    bool needRelease() const {
         return first_.load(std::memory_order_relaxed)
                 != last_.load(std::memory_order_relaxed);
     }
@@ -192,6 +185,18 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
         last->next_ = n;
         last_.store(n, std::memory_order_release); // publish
         lock_.store(0, std::memory_order_release); // unlock
+    }
+
+    void freeMemory() {
+        auto it = first_.exchange(nullptr);
+        while (it){
+            auto next = it->next_;
+            if (it != &dummy_) {
+                it->~Node<T>();
+                Base::deallocate(it, 1);
+            }
+            it = next;
+        }
     }
 };
 
