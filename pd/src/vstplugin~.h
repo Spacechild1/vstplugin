@@ -4,7 +4,7 @@
 
 #include "Interface.h"
 #include "PluginDictionary.h"
-#include "LockfreeFifo.h"
+#include "Lockfree.h"
 #include "Log.h"
 #include "Bus.h"
 #include "FileUtils.h"

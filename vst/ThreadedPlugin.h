@@ -3,7 +3,7 @@
 #include "Interface.h"
 #include "Sync.h"
 #include "DeferredPlugin.h"
-#include "LockfreeFifo.h"
+#include "Lockfree.h"
 #include "Bus.h"
 
 #include <thread>

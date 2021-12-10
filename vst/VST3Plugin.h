@@ -2,7 +2,7 @@
 
 #include "Interface.h"
 #include "PluginFactory.h"
-#include "LockfreeFifo.h"
+#include "Lockfree.h"
 
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"

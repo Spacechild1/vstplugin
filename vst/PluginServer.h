@@ -4,7 +4,7 @@
 #include "PluginCommand.h"
 #include "Sync.h"
 #include "Bus.h"
-#include "LockfreeFifo.h"
+#include "Lockfree.h"
 
 #include <thread>
 #include <atomic>
