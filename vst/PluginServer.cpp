@@ -881,8 +881,10 @@ void PluginServer::checkParentAlive(){
 }
 
 void PluginServer::runThread(ShmChannel *channel){
-    // raise thread priority for audio thread!
-    setThreadPriority(Priority::High);
+    // raise thread priority for RT threads, but not for dedicated NRT thread!
+    if (channel->name() != "nrt") {
+        setThreadPriority(Priority::High);
+    }
 
     // while running, wait for requests and dispatch to plugin
     // Quit command -> quit()
