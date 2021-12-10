@@ -752,47 +752,47 @@ VSTPlugin uses a custom format similar to .ini files to exchange plugin descript
 This is the structure of a single plugin description, as used by `/vst_query`:
 
 ```
-[plugin]\n
-id=<unique ID string>\n
-path=<file path>\n
-name=<plugin name>\n
-vendor=<vendor name>\n
-category=<category name>\n
-version=<plugin version string>\n
-sdkversion=<VST SDK version string>\n
-pgmchange=<program change parameter index in hex>\n // optional
-bypass=<bypass parameter index in hex>\n // optional
-flags=<bitset>\n
-[inputs]\n
+[plugin]
+id=<unique ID string>
+path=<file path>
+name=<plugin name>
+vendor=<vendor name>
+category=<category name>
+version=<plugin version string>
+sdkversion=<VST SDK version string>
+pgmchange=<program change parameter index in hex> // optional
+bypass=<bypass parameter index in hex> // optional
+flags=<bitset>
+[inputs]
 n=<input bus count>
-<channel count #0>, <type #0>, <name #0>\n
-<channel count #1>, <type #1>, <name #1>\n
+<channel count #0>, <type #0>, <name #0>
+<channel count #1>, <type #1>, <name #1>
 ...
-<channel count #N-1>, <type #N-1>, <name #N-1>\n
-[outputs]\n
+<channel count #N-1>, <type #N-1>, <name #N-1>
+[outputs]
 n=<output bus count>
-<channel count #0>, <type #0>, <name #0>\n
-<channel count #1>, <type #1>, <name #1>\n
+<channel count #0>, <type #0>, <name #0>
+<channel count #1>, <type #1>, <name #1>
 ...
-<channel count #N-1>, <type #N-1>, <name #N-1>\n
-[parameters]\n
-n=<parameter count>\n
-<name #0>, <label #0>, <ID #0>\n
-<name #1>, <label #1>, <ID #1>\n
+<channel count #N-1>, <type #N-1>, <name #N-1>
+[parameters]
+n=<parameter count>
+<name #0>, <label #0>, <ID #0>
+<name #1>, <label #1>, <ID #1>
 ...
-<name #N-1>, <label #N-1>, <ID #N-1>\n
-[programs]\n
-n=<program count>\n
-<name #0>\n
-<name #1>\n
+<name #N-1>, <label #N-1>, <ID #N-1>
+[programs]
+n=<program count>
+<name #0>
+<name #1>
 ...
-<name #N-1>\n
-[keys]\n
-n=<number of keys>\n
-<key #0>\n
-<key #1>\n
+<name #N-1>
+[keys]
+n=<number of keys>
+<key #0>
+<key #1>
 ...
-<key #N-1>\n
+<key #N-1>
 ```
 
 String values, like plugin/parameter/program names, can contain any characters except newlines and commas (those are bashed to a replacement symbol by the UGen).
@@ -879,7 +879,7 @@ C:/Program Files/VSTPlugins/GVST/GChorus.dll
 This is used by `/vst_search` to transmit search results to the client. It has the following structure:
 
 ```
-[plugins]\n
+[plugins]
 n=<number of plugins>
 <plugin info #0>
 <plugin info #1>
@@ -897,21 +897,23 @@ To speed up subsequent searches, the search results can be written to a cache fi
 The cache file itself is named *cache.ini* for 64-bit servers and *cache32.ini* for 32-bit servers.
 
 The cache file structure is very similar to that in "Search results".
-The only difference is that it also contains a black-list (marked by `[ignore]`).
+The only difference is that it also contains a version header (`[version]`) and a plugin black-list (`[ignore]`).
 
 ```
-[plugins]\n
+[version]
+<major>.<minor>.<patch>
+[ignore]
+n=<number of paths>
+<path #0>
+<path #1>
+...
+<path #N-1>
+[plugins]
 n=<number of plugins>
 <plugin info #0>
 <plugin info #1>
 ...
 <plugin info #N-1>
-[ignore]
-n=<number of paths>
-<path #0>\n
-<path #1>\n
-...
-<path #N-1>\n
 ```
 
 Plugins are black-listed if the probe process failed (see `/vst_query`).
