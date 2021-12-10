@@ -308,25 +308,31 @@ VSTPlugin : MultiOutUGen {
 	*prParseIni { arg stream;
 		var line, n, indices, last = 0;
 		var major = 0, minor = 0, bugfix = 0;
-		// get version
-		line = this.prGetLine(stream, true);
-		(line == "[version]").if {
-			#major, minor, bugfix = this.prGetLine(stream).split($.).collect(_.asInteger);
-			// there was a breaking change between 0.4 and 0.5
-			// (introduction of audio input/output busses)
-			((major == 0) && (minor < 5)).if {
-			    Error("The plugin cache file is incompatible with this version. Please perform a new search!").throw;
-			};
+		loop {
 			line = this.prGetLine(stream, true);
-		};
-		(line != "[plugins]").if { Error("missing [plugins] header").throw };
-		// get number of plugins
-		line = this.prGetLine(stream, true);
-		n = this.prParseCount(line);
-		// now deserialize plugins
-		^n.collect {
-			VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
-		};
+			line.isNil.if {
+				Error("missing [plugins] header").throw; // reached EOF!
+			};
+			// check version (optional)
+			(line == "[version]").if {
+				#major, minor, bugfix = this.prGetLine(stream).split($.).collect(_.asInteger);
+				// there was a breaking change between 0.4 and 0.5
+				// (introduction of audio input/output busses)
+				((major == 0) && (minor < 5)).if {
+					Error("The plugin cache file is incompatible with this version. Please perform a new search!").throw;
+				};
+			};
+			// collect plugins
+			(line == "[plugins]").if {
+				// get number of plugins
+				line = this.prGetLine(stream, true);
+				n = this.prParseCount(line);
+				// deserialize plugins and return!
+				^n.collect {
+					VSTPluginDesc.prParse(stream, major, minor, bugfix).scanPresets;
+				};
+			};
+		}
 	}
 	*prMakeTmpPath {
 		^PathName.tmp +/+ "vst_" ++ UniqueID.next;
