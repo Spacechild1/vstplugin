@@ -424,7 +424,7 @@ class VST3Plugin final :
     void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override;
 
-    void setListener(IPluginListener::ptr listener) override {
+    void setListener(IPluginListener* listener) override {
         listener_ = listener;
     }
 
@@ -538,7 +538,7 @@ class VST3Plugin final :
     bool editor_ = false;
     mutable IPlugView *view_ = nullptr;
     IWindow::ptr window_;
-    std::weak_ptr<IPluginListener> listener_;
+    IPluginListener* listener_;
     IFactory::const_ptr factory_; // keep alive
 };
 

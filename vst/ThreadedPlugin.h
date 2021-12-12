@@ -52,9 +52,8 @@ class DSPThreadPool {
 
 /*//////////////////// ThreadedPlugin ////////////////*/
 
-class ThreadedPluginListener;
 
-class ThreadedPlugin final : public DeferredPlugin
+class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
 {
  public:
     friend class ThreadedPluginListener;
@@ -76,7 +75,7 @@ class ThreadedPlugin final : public DeferredPlugin
         return plugin_->getLatencySamples();
     }
 
-    void setListener(IPluginListener::ptr listener) override;
+    void setListener(IPluginListener* listener) override;
 
     double getTransportPosition() const override {
         return plugin_->getTransportPosition();
@@ -132,7 +131,15 @@ class ThreadedPlugin final : public DeferredPlugin
         return plugin_->canDo(what);
     }
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
- private:
+
+    // IPluginListener
+    void parameterAutomated(int index, float value) override;
+    void latencyChanged(int nsamples) override;
+    void updateDisplay() override;
+    void pluginCrashed() override;
+    void midiEvent(const MidiEvent& event) override;
+    void sysexEvent(const SysexEvent& event) override;
+private:
     void updateBuffer();
     template<typename T>
     void doProcess(ProcessData& data);
@@ -143,8 +150,7 @@ class ThreadedPlugin final : public DeferredPlugin
     // data
     DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
-    std::weak_ptr<IPluginListener> listener_;
-    std::shared_ptr<ThreadedPluginListener> proxyListener_;
+    IPluginListener* listener_ = nullptr;
     mutable Mutex mutex_;
     Event event_;
     // commands/events
@@ -166,22 +172,6 @@ class ThreadedPlugin final : public DeferredPlugin
     std::unique_ptr<Bus[]> outputs_;
     int numOutputs_ = 0;
     std::vector<char> buffer_;
-};
-
-/*/////////////////// ThreadedPluginListener ////////////////////*/
-
-class ThreadedPluginListener : public IPluginListener {
- public:
-    ThreadedPluginListener(ThreadedPlugin& owner)
-        : owner_(&owner) {}
-    void parameterAutomated(int index, float value) override;
-    void latencyChanged(int nsamples) override;
-    void updateDisplay() override;
-    void pluginCrashed() override;
-    void midiEvent(const MidiEvent& event) override;
-    void sysexEvent(const SysexEvent& event) override;
- private:
-    ThreadedPlugin *owner_;
 };
 
 } // vst

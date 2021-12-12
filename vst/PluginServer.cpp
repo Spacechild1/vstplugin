@@ -66,13 +66,8 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
         paramState_[i] = value;
         sendParam(channel, i, value, false);
     }
-}
 
-void PluginHandle::init() {
-    // set listener
-    // NOTE: can't call this in the constructor!
-    LOG_DEBUG("PluginHandle (" << id_ << "): set listener");
-    plugin_->setListener(shared_from_this());
+    plugin_->setListener(this);
 }
 
 PluginHandle::~PluginHandle() {
@@ -1003,9 +998,8 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
 
     assert(plugin != nullptr);
 
-    auto handle = std::make_shared<PluginHandle>(
+    auto handle = std::make_unique<PluginHandle>(
                 *this, std::move(plugin), id, channel);
-    handle->init();
 
     WriteLock lock(pluginMutex_);
     plugins_.emplace(id, std::move(handle));
@@ -1016,16 +1010,11 @@ void PluginServer::destroyPlugin(uint32_t id){
     WriteLock lock(pluginMutex_);
     auto it = plugins_.find(id);
     if (it != plugins_.end()){
-        auto plugin = it->second;
+        auto plugin = it->second.release();
         plugins_.erase(it);
         lock.unlock();
-
-        // release on the UI thread!
-        // NOTE: we really have to release it in the function body,
-        // so it's not enough to just use a move capture.
-        defer([&plugin] () {
-            plugin = nullptr;
-        });
+        // move to UI thread and release there!
+        defer([plugin] () { delete plugin; });
     } else {
         LOG_ERROR("PluginServer::destroyPlugin: chouldn't find plugin " << id);
     }

@@ -345,19 +345,14 @@ void PluginBridge::checkStatus(){
             LOG_DEBUG("PluginBridge: notify clients");
             // notify all clients
             ScopedLock lock(clientMutex_);
-            for (auto& it : clients_){
-                auto client = it.second.lock();
-                if (client){
-                    client->pluginCrashed();
-                } else {
-                    LOG_DEBUG("PluginBridge: stale client");
-                }
+            for (auto& it : clients_) {
+                it.second->pluginCrashed();
             }
         }
     }
 }
 
-void PluginBridge::addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client){
+void PluginBridge::addUIClient(uint32_t id, IPluginListener* client){
     LOG_DEBUG("PluginBridge: add client " << id);
     ScopedLock lock(clientMutex_);
     clients_.emplace(id, client);
@@ -419,21 +414,16 @@ void PluginBridge::pollUIThread(){
     }
 }
 
-IPluginListener::ptr PluginBridge::findClient(uint32_t id){
+// must be called with clientMutex_ locked!
+IPluginListener* PluginBridge::findClient(uint32_t id){
     auto it = clients_.find(id);
     if (it != clients_.end()){
-        auto client = it->second.lock();
-        if (client){
-            return client;
-        } else {
-            LOG_ERROR("PluginBridge::pollUIThread: plugin "
-                        << id << " is stale");
-        }
+        return it->second;
     } else {
         LOG_ERROR("PluginBridge::pollUIThread: plugin "
                   << id << " doesn't exist (anymore)");
+        return nullptr;
     }
-    return nullptr;
 }
 
 RTChannel PluginBridge::getRTChannel(){

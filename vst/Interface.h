@@ -107,7 +107,6 @@ struct SysexEvent {
 
 class IPluginListener {
  public:
-    using ptr = std::shared_ptr<IPluginListener>;
     virtual ~IPluginListener(){}
     virtual void parameterAutomated(int index, float value) = 0;
     virtual void latencyChanged(int nsamples) = 0;
@@ -191,7 +190,7 @@ class IPlugin {
     virtual void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) = 0;
     virtual int getLatencySamples() = 0;
 
-    virtual void setListener(IPluginListener::ptr listener) = 0;
+    virtual void setListener(IPluginListener* listener) = 0;
 
     virtual void setTempoBPM(double tempo) = 0;
     virtual void setTimeSignature(int numerator, int denominator) = 0;

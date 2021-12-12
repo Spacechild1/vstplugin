@@ -108,7 +108,7 @@ class PluginBridge final
 
     void checkStatus();
 
-    void addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client);
+    void addUIClient(uint32_t id, IPluginListener* client);
 
     void removeUIClient(uint32_t id);
 
@@ -143,7 +143,7 @@ class PluginBridge final
 #endif
     uint32_t numThreads_ = 0;
     std::unique_ptr<PaddedSpinLock[]> locks_;
-    std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;
+    std::unordered_map<uint32_t, IPluginListener*> clients_;
     Mutex clientMutex_;
     Mutex nrtMutex_;
     // unnecessary, as all IWindow methods should be called form the same thread
@@ -152,7 +152,7 @@ class PluginBridge final
 
     void pollUIThread();
 
-    IPluginListener::ptr findClient(uint32_t id);
+    IPluginListener* findClient(uint32_t id);
 
     void getStatus(bool wait);
 };

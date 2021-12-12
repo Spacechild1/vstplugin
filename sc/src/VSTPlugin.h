@@ -9,7 +9,6 @@
 #include "Lockfree.h"
 #include "Log.h"
 #include "Sync.h"
-#include "rt_shared_ptr.hpp"
 #include "CpuArch.h"
 
 using namespace vst;
@@ -26,108 +25,7 @@ using namespace vst;
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
 class VSTPlugin;
-class VSTPluginDelegate;
-
-struct CmdData {
-    template<typename T>
-    static T* create(World * world, int size = 0);
-
-    rt::shared_ptr<VSTPluginDelegate> owner;
-    bool alive() const;
-};
-
-struct CloseCmdData : CmdData {
-    IPlugin::ptr plugin;
-    bool editor;
-};
-
-// cache all relevant info so we don't have to touch
-// the VSTPlugin instance during the async command.
-struct OpenCmdData : CmdData {
-    IPlugin::ptr plugin;
-    bool editor;
-    bool threaded;
-    RunMode runMode;
-    double sampleRate;
-    int blockSize;
-    ProcessMode processMode;
-    int numInputs;
-    int numOutputs;
-    int *inputs;
-    int *outputs;
-    std::vector<int> pluginInputs;
-    std::vector<int> pluginOutputs;
-    // flexible array for RT memory
-    int size = 0;
-    char path[1];
-};
-
-struct PluginCmdData : CmdData {
-    union {
-        int i;
-        float f;
-    };
-};
-
-struct SetupCmdData : CmdData {
-    double sampleRate;
-    int blockSize;
-    ProcessMode processMode;
-};
-
-struct WindowCmdData : CmdData {
-    union {
-        int x;
-        int width;
-    };
-    union {
-        int y;
-        int height;
-    };
-};
-
-struct VendorCmdData : CmdData {
-    int32 index;
-    int32 value;
-    float opt;
-    size_t size;
-    char data[1];
-};
-
-struct PresetCmdData : CmdData {
-    static PresetCmdData* create(World* world, const char* path, bool async = false);
-    static PresetCmdData* create(World* world, int bufnum, bool async = false);
-    static bool nrtFree(World* world, void* cmdData);
-    std::string buffer;
-    int result = 0;
-    int32 bufnum = -1;
-    bool async = false;
-    void* freeData = nullptr;
-    // flexible array
-    char path[1];
-};
-
-namespace SearchFlags {
-    const int verbose = 1;
-    const int save = 2;
-    const int parallel = 4;
-}
-
-struct SearchCmdData {
-    static bool nrtFree(World* world, void* cmdData);
-    int32 flags = 0;
-    int32 bufnum = -1;
-    float timeout = 0.0;
-    void* freeData = nullptr;
-    char path[256];
-    int32 numSearchPaths = 0;
-    int32 numExcludePaths = 0;
-    // flexibel struct member
-    union {
-        char *pathList[1];
-        char pathBuf[1];
-    };
-};
+class OpenCmdData;
 
 // This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.
 // It is managed by a rt::shared_ptr and therefore kept alive during the execution of commands, which means
@@ -135,11 +33,10 @@ struct SearchCmdData {
 // In the RT stage we can call alive() to verify that the UGen is still alive and synchronize the state.
 // We must not access the actual UGen during a NRT stage!
 
-class VSTPluginDelegate :
-    public IPluginListener,
-    public std::enable_shared_from_this<VSTPluginDelegate>
+class VSTPluginDelegate : public IPluginListener
 {
     friend class VSTPlugin;
+    friend class VSTPluginDelegatePtr;
 public:
     enum EventType {
         LatencyChange = -3,
@@ -245,6 +142,7 @@ public:
     void update();
     void handleEvents();
 private:
+    std::atomic<int32_t> refcount_{0}; // doesn't really have to be atomic...
     VSTPlugin *owner_ = nullptr;
     IPlugin::ptr plugin_;
     World* world_ = nullptr;
@@ -264,6 +162,83 @@ private:
     // has to be disposed in the NRT thread, see ~VSTPluginDelegate().
     using ParamQueue = UnboundedMPSCQueue<ParamChange>;
     ParamQueue* paramQueue_;
+
+    void addRef();
+    void release();
+};
+
+class VSTPluginDelegatePtr {
+public:
+    VSTPluginDelegatePtr(VSTPluginDelegate *ptr = nullptr)
+        : ptr_(ptr) {
+        if (ptr) {
+            ptr->addRef();
+        }
+    }
+
+    VSTPluginDelegatePtr(const VSTPluginDelegatePtr& other) {
+        ptr_ = other.ptr_;
+        if (ptr_) {
+            ptr_->addRef();
+        }
+    }
+
+    VSTPluginDelegatePtr(VSTPluginDelegatePtr&& other) {
+        ptr_ = other.ptr_;
+        other.ptr_ = nullptr;
+        // refcount stays the same
+    }
+
+    ~VSTPluginDelegatePtr() {
+        if (ptr_) {
+            ptr_->release();
+        }
+    }
+
+    VSTPluginDelegatePtr& operator=(VSTPluginDelegatePtr&& other) {
+        if (ptr_) {
+            ptr_->release();
+        }
+        ptr_ = other.ptr_;
+        other.ptr_ = nullptr;
+        // refcount stays the same
+        return *this;
+    }
+
+    VSTPluginDelegatePtr& operator=(const VSTPluginDelegatePtr& other) {
+        if (ptr_) {
+            ptr_->release();
+        }
+        ptr_ = other.ptr_;
+        if (ptr_) {
+            ptr_->addRef();
+        }
+        return *this;
+    }
+
+    void reset(VSTPluginDelegate *ptr) {
+        if (ptr_) {
+            ptr_->release();
+        }
+        ptr_ = ptr;
+        if (ptr) {
+            ptr->addRef();
+        }
+    }
+
+    VSTPluginDelegate* get() const { return ptr_; }
+
+    VSTPluginDelegate& operator*() const { return *ptr_; }
+
+    VSTPluginDelegate* operator->() const { return ptr_; }
+
+    operator bool () const { return ptr_ != nullptr; }
+
+    bool operator==(const VSTPluginDelegatePtr& other) const { return ptr_ == other.ptr_; }
+
+    bool operator!=(const VSTPluginDelegatePtr& other) const { return ptr_ != other.ptr_; }
+private:
+    VSTPluginDelegate *ptr_;
 };
 
 class VSTPlugin : public SCUnit {
@@ -349,7 +324,7 @@ private:
     };
     UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
 
-    rt::shared_ptr<VSTPluginDelegate> delegate_;
+    VSTPluginDelegatePtr delegate_;
 
     int numUgenInputs_ = 0;
     int numUgenOutputs_ = 0;
@@ -408,5 +383,106 @@ private:
     void printMapping();
 };
 
+class VSTPluginDelegate;
 
+struct CmdData {
+    template<typename T>
+    static T* create(World * world, int size = 0);
+
+    VSTPluginDelegatePtr owner;
+    bool alive() const;
+};
+
+struct CloseCmdData : CmdData {
+    IPlugin::ptr plugin;
+    bool editor;
+};
+
+// cache all relevant info so we don't have to touch
+// the VSTPlugin instance during the async command.
+struct OpenCmdData : CmdData {
+    IPlugin::ptr plugin;
+    bool editor;
+    bool threaded;
+    RunMode runMode;
+    double sampleRate;
+    int blockSize;
+    ProcessMode processMode;
+    int numInputs;
+    int numOutputs;
+    int *inputs;
+    int *outputs;
+    std::vector<int> pluginInputs;
+    std::vector<int> pluginOutputs;
+    // flexible array for RT memory
+    int size = 0;
+    char path[1];
+};
+
+struct PluginCmdData : CmdData {
+    union {
+        int i;
+        float f;
+    };
+};
+
+struct SetupCmdData : CmdData {
+    double sampleRate;
+    int blockSize;
+    ProcessMode processMode;
+};
+
+struct WindowCmdData : CmdData {
+    union {
+        int x;
+        int width;
+    };
+    union {
+        int y;
+        int height;
+    };
+};
+
+struct VendorCmdData : CmdData {
+    int32 index;
+    int32 value;
+    float opt;
+    size_t size;
+    char data[1];
+};
+
+struct PresetCmdData : CmdData {
+    static PresetCmdData* create(World* world, const char* path, bool async = false);
+    static PresetCmdData* create(World* world, int bufnum, bool async = false);
+    static bool nrtFree(World* world, void* cmdData);
+    std::string buffer;
+    int result = 0;
+    int32 bufnum = -1;
+    bool async = false;
+    void* freeData = nullptr;
+    // flexible array
+    char path[1];
+};
+
+namespace SearchFlags {
+    const int verbose = 1;
+    const int save = 2;
+    const int parallel = 4;
+}
+
+struct SearchCmdData {
+    static bool nrtFree(World* world, void* cmdData);
+    int32 flags = 0;
+    int32 bufnum = -1;
+    float timeout = 0.0;
+    void* freeData = nullptr;
+    char path[256];
+    int32 numSearchPaths = 0;
+    int32 numExcludePaths = 0;
+    // flexibel struct member
+    union {
+        char *pathList[1];
+        char pathBuf[1];
+    };
+};
 

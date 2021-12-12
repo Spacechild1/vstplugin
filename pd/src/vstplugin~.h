@@ -102,7 +102,7 @@ class t_vstplugin {
     std::vector<char> x_outbuffer;
     // VST plugin
     IPlugin::ptr x_plugin;
-    std::shared_ptr<t_vsteditor> x_editor;
+    std::unique_ptr<t_vsteditor> x_editor;
     Mutex x_mutex;
     bool x_process = false;
     bool x_async = false;

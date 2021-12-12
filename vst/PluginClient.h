@@ -36,7 +36,7 @@ class PluginClient final : public DeferredPlugin {
     void setNumSpeakers(int *input, int numInputs, int *output, int numOutputs) override;
     int getLatencySamples() override;
 
-    void setListener(IPluginListener::ptr listener) override;
+    void setListener(IPluginListener* listener) override;
 
     double getTransportPosition() const override;
 
@@ -94,7 +94,7 @@ class PluginClient final : public DeferredPlugin {
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginDesc::const_ptr info_;
     IWindow::ptr window_;
-    std::weak_ptr<IPluginListener> listener_;
+    IPluginListener* listener_;
     PluginBridge::ptr bridge_;
     uint32_t id_;
     std::vector<Command> commands_;

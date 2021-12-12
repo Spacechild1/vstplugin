@@ -120,7 +120,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
 }
 
 PluginClient::~PluginClient(){
-    if (!listener_.expired()){
+    if (listener_){
         bridge_->removeUIClient(id_);
     }
     // destroy plugin
@@ -327,9 +327,8 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
         paramCache_[index].display = reply.paramState.display;
 
         if (reply.type == Command::ParamAutomated){
-            auto listener = listener_.lock();
-            if (listener){
-                listener->parameterAutomated(index, value);
+            if (listener_){
+                listener_->parameterAutomated(index, value);
             }
             LOG_DEBUG("PluginClient (" << id_ << "): parameter " << index
                       << " automated ");
@@ -349,43 +348,31 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
         program_ = reply.i;
         break;
     case Command::LatencyChanged:
-    {
         latency_ = reply.i;
-        auto listener = listener_.lock();
-        if (listener){
-            listener->latencyChanged(latency_);
+        if (listener_){
+            listener_->latencyChanged(latency_);
         }
         break;
-    }
     case Command::UpdateDisplay:
-    {
-        auto listener = listener_.lock();
-        if (listener){
-            listener->updateDisplay();
+        if (listener_){
+            listener_->updateDisplay();
         }
         break;
-    }
     case Command::MidiReceived:
-    {
-        auto listener = listener_.lock();
-        if (listener){
-            listener->midiEvent(reply.midi);
+        if (listener_){
+            listener_->midiEvent(reply.midi);
         }
         break;
-    }
     case Command::SysexReceived:
-    {
-        auto listener = listener_.lock();
-        if (listener){
+        if (listener_){
             SysexEvent sysex;
             sysex.delta = reply.sysex.delta;
             sysex.size = reply.sysex.size;
             sysex.data = reply.sysex.data;
 
-            listener->sysexEvent(sysex);
+            listener_->sysexEvent(sysex);
         }
         break;
-    }
     case Command::Error:
         reply.throwError();
         break;
@@ -504,7 +491,7 @@ int PluginClient::getLatencySamples(){
     return latency_;
 }
 
-void PluginClient::setListener(IPluginListener::ptr listener) {
+void PluginClient::setListener(IPluginListener* listener) {
     listener_ = listener;
     if (listener){
         if (bridge_->alive()){

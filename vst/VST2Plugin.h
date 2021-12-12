@@ -61,7 +61,7 @@ class VST2Plugin final : public IPlugin {
                         int *output, int numOutputs) override;
     int getLatencySamples() override;
 
-    void setListener(IPluginListener::ptr listener) override {
+    void setListener(IPluginListener* listener) override {
         listener_ = listener;
     }
 
@@ -181,7 +181,7 @@ class VST2Plugin final : public IPlugin {
     bool editor_ = false;
     // UI
     IWindow::ptr window_;
-    std::weak_ptr<IPluginListener> listener_;
+    IPluginListener* listener_;
     IFactory::const_ptr factory_; // keep alive
 };
 

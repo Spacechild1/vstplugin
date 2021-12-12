@@ -728,8 +728,9 @@ VSTPlugin::VSTPlugin(){
     // Ugen input/output busses must not be nullptr!
     if (ugenInputs_ && ugenOutputs_){
         // create delegate
-        delegate_ = rt::make_shared<VSTPluginDelegate>(mWorld, *this);
-        if (delegate_){
+        auto mem = RTAlloc(mWorld, sizeof(VSTPluginDelegate));
+        if (mem) {
+            delegate_.reset(new (mem) VSTPluginDelegate(*this));
             mSpecialIndex |= Valid;
         } else {
             LOG_ERROR("RTAlloc failed!");
@@ -1907,7 +1908,7 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
         owner_->setupPlugin(cmd.pluginInputs.data(), cmd.pluginInputs.size(),
                             cmd.pluginOutputs.data(), cmd.pluginOutputs.size());
         // receive events from plugin
-        plugin_->setListener(shared_from_this());
+        plugin_->setListener(this);
         // success, window, initial latency
         bool haveWindow = plugin_->getWindow() != nullptr;
         int latency = plugin_->getLatencySamples() + latencySamples();
@@ -2624,9 +2625,32 @@ void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
     AsyncStageFn stage3, AsyncStageFn stage4) {
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
-        cmdData->owner = shared_from_this();
-        DoAsynchronousCommand(world(), 0, 0, cmdData,
-            stage2, stage3, stage4, cmdRTfree<T>, 0, 0);
+        cmdData->owner.reset(this);
+        DoAsynchronousCommand(world(),
+            0, 0, cmdData, stage2, stage3, stage4, cmdRTfree<T>, 0, 0);
+    }
+}
+
+#define DEBUG_REFCOUNT 0
+
+void VSTPluginDelegate::addRef() {
+    auto count = refcount_.fetch_add(1);
+#if DEBUG_REFCOUNT
+    LOG_DEBUG("refcount: " << (count + 1) << " (" << this << ")");
+#endif
+}
+
+void VSTPluginDelegate::release() {
+    auto count = refcount_.fetch_sub(1);
+#if DEBUG_REFCOUNT
+    LOG_DEBUG("refcount: " << (count - 1) << " (" << this << ")");
+#endif
+    assert(count >= 1);
+    if (count == 1) {
+        // last reference
+        auto world = world_;
+        this->~VSTPluginDelegate();
+        RTFree(world, this);
     }
 }
 

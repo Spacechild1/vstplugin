@@ -135,6 +135,8 @@ ThreadedPlugin::ThreadedPlugin(IPlugin::ptr plugin)
 }
 
 ThreadedPlugin::~ThreadedPlugin() {
+    // just to be sure
+    plugin_->setListener(nullptr);
     // wait for last processing to finish (ideally we shouldn't have to)
     event_.wait();
     // avoid memleak with param string and sysex command
@@ -149,15 +151,12 @@ ThreadedPlugin::~ThreadedPlugin() {
     }
 }
 
-void ThreadedPlugin::setListener(IPluginListener::ptr listener){
+void ThreadedPlugin::setListener(IPluginListener* listener){
     listener_ = listener;
     if (listener){
-        auto proxy = std::make_shared<ThreadedPluginListener>(*this);
-        proxyListener_ = proxy; // keep alive
-        plugin_->setListener(proxy);
+        plugin_->setListener(this);
     } else {
         plugin_->setListener(nullptr);
-        proxyListener_ = nullptr;
     }
 }
 
@@ -360,22 +359,21 @@ void ThreadedPlugin::doProcess(ProcessData& data){
 }
 
 void ThreadedPlugin::sendEvents(){
-    auto listener = listener_.lock();
-    if (listener){
+    if (listener_){
         for (auto& event : events_[current_]){
             switch (event.type){
             case Command::ParamAutomated:
-                listener->parameterAutomated(event.paramAutomated.index,
+                listener_->parameterAutomated(event.paramAutomated.index,
                                              event.paramAutomated.value);
                 break;
             case Command::LatencyChanged:
-                listener->latencyChanged(event.i);
+                listener_->latencyChanged(event.i);
                 break;
             case Command::MidiReceived:
-                listener->midiEvent(event.midi);
+                listener_->midiEvent(event.midi);
                 break;
             case Command::SysexReceived:
-                listener->sysexEvent(event.sysex);
+                listener_->sysexEvent(event.sysex);
                 delete[] event.sysex.data; // delete data!
                 break;
             default:
@@ -527,71 +525,65 @@ intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, floa
     return plugin_->vendorSpecific(index, value, p, opt);
 }
 
-/*/////////////////// ThreadedPluginListener ////////////////////*/
 
-void ThreadedPluginListener::parameterAutomated(int index, float value) {
-    if (isCurrentThreadDSP()){
+void ThreadedPlugin::parameterAutomated(int index, float value) {
+    if (isCurrentThreadDSP()) {
         Command e(Command::ParamAutomated);
         e.paramAutomated.index = index;
         e.paramAutomated.value = value;
 
-        owner_->pushEvent(e);
+        pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = owner_->listener_.lock();
-        if (listener){
-            listener->parameterAutomated(index, value);
+        if (listener_){
+            listener_->parameterAutomated(index, value);
         }
     }
 }
 
-void ThreadedPluginListener::latencyChanged(int nsamples) {
-    if (isCurrentThreadDSP()){
+void ThreadedPlugin::latencyChanged(int nsamples) {
+    if (isCurrentThreadDSP()) {
         Command e(Command::LatencyChanged);
         e.i = nsamples;
 
-        owner_->pushEvent(e);
+        pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = owner_->listener_.lock();
-        if (listener){
-            listener->latencyChanged(nsamples);
+        if (listener_){
+            listener_->latencyChanged(nsamples);
         }
     }
 }
 
-void ThreadedPluginListener::updateDisplay() {
-    auto listener = owner_->listener_.lock();
-    if (listener){
-        listener->updateDisplay();
+void ThreadedPlugin::updateDisplay() {
+    if (listener_){
+        listener_->updateDisplay();
     }
 }
 
-void ThreadedPluginListener::pluginCrashed(){
+void ThreadedPlugin::pluginCrashed(){
     // UI or NRT thread
-    auto listener = owner_->listener_.lock();
-    if (listener){
-        listener->pluginCrashed();
+    if (listener_){
+        listener_->pluginCrashed();
     }
 }
 
-void ThreadedPluginListener::midiEvent(const MidiEvent& event) {
-    if (isCurrentThreadDSP()){
+void ThreadedPlugin::midiEvent(const MidiEvent& event) {
+    if (isCurrentThreadDSP()) {
         Command e(Command::MidiReceived);
         e.midi = event;
 
-        owner_->pushEvent(e);
+        pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = owner_->listener_.lock();
-        if (listener){
-            listener->midiEvent(event);
+        if (listener_){
+            listener_->midiEvent(event);
         }
     }
 }
 
-void ThreadedPluginListener::sysexEvent(const SysexEvent& event) {
-    if (isCurrentThreadDSP()){
+void ThreadedPlugin::sysexEvent(const SysexEvent& event) {
+    if (isCurrentThreadDSP()) {
         // deep copy!
         auto data = new char[event.size];
         memcpy(data, event.data, event.size);
@@ -601,12 +593,11 @@ void ThreadedPluginListener::sysexEvent(const SysexEvent& event) {
         e.sysex.size = event.size;
         e.sysex.delta = event.delta;
 
-        owner_->pushEvent(e);
+        pushEvent(e);
     } else {
         // UI or NRT thread
-        auto listener = owner_->listener_.lock();
-        if (listener){
-            listener->sysexEvent(event);
+        if (listener_){
+            listener_->sysexEvent(event);
         }
     }
 }

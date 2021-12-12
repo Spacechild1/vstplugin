@@ -275,7 +275,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
 }
 
 VST2Plugin::~VST2Plugin(){
-    listener_.reset(); // for some buggy plugins
+    listener_ = nullptr; // for some buggy plugins
 
     window_ = nullptr;
 
@@ -1409,17 +1409,16 @@ void VST2Plugin::postProcess(int nsamples){
 }
 
 void VST2Plugin::processEvents(VstEvents *events){
-    auto listener = listener_.lock();
-    if (listener){
+    if (listener_){
         for (int i = 0; i < events->numEvents; ++i){
             auto *event = events->events[i];
             if (event->type == kVstMidiType){
                 auto *midiEvent = (VstMidiEvent *)event;
                 auto *data = midiEvent->midiData;
-                listener->midiEvent(MidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
+                listener_->midiEvent(MidiEvent(data[0], data[1], data[2], midiEvent->deltaFrames));
             } else if (event->type == kVstSysExType){
                 auto *sysexEvent = (VstMidiSysexEvent *)event;
-                listener->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
+                listener_->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
             } else {
                 LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");
             }
@@ -1484,9 +1483,8 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterAutomate:
         // ignore bogus parameter changes, e.g. as sent by ReaPlugs.
         if (index >= 0 && index < info().numParameters()) {
-            auto listener = listener_.lock();
-            if (listener) {
-                listener->parameterAutomated(index, opt);
+            if (listener_) {
+                listener_->parameterAutomated(index, opt);
             }
         } else {
             LOG_DEBUG("VST2Plugin: parameter automation index " << index << " out of range");
@@ -1512,9 +1510,8 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         DEBUG_HOSTCODE("audioMasterIOChanged");
         // check latency
         if (plugin_->initialDelay != latency_){
-            auto listener = listener_.lock();
-            if (listener){
-                listener->latencyChanged(plugin_->initialDelay);
+            if (listener_){
+                listener_->latencyChanged(plugin_->initialDelay);
             }
             latency_ = plugin_->initialDelay;
         }
@@ -1565,9 +1562,8 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
     case audioMasterUpdateDisplay:
     {
         DEBUG_HOSTCODE("audioMasterUpdateDisplay");
-        auto listener = listener_.lock();
-        if (listener){
-            listener->updateDisplay();
+        if (listener_){
+            listener_->updateDisplay();
         }
         break;
     }

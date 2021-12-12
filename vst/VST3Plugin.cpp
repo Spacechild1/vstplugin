@@ -671,7 +671,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 }
 
 VST3Plugin::~VST3Plugin(){
-    listener_.reset(); // for some buggy plugins
+    listener_ = nullptr; // for some buggy plugins
     window_ = nullptr;
     processor_ = nullptr;
     // destroy controller
@@ -693,9 +693,8 @@ tresult VST3Plugin::beginEdit(Vst::ParamID id){
 tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
     int index = info().getParamIndex(id);
     if (index >= 0){
-        auto listener = listener_.lock();
-        if (listener){
-            listener->parameterAutomated(index, value);
+        if (listener_){
+            listener_->parameterAutomated(index, value);
         }
         paramCache_[index].value = value;
     }
@@ -725,9 +724,8 @@ tresult VST3Plugin::restartComponent(int32 flags){
 #undef PRINT_FLAG
 
     if (flags & Vst::kLatencyChanged){
-        auto listener = listener_.lock();
-        if (listener){
-            listener->latencyChanged(processor_->getLatencySamples());
+        if (listener_){
+            listener_->latencyChanged(processor_->getLatencySamples());
         }
     }
 
@@ -736,9 +734,8 @@ tresult VST3Plugin::restartComponent(int32 flags){
     if ((flags & Vst::kParamValuesChanged) && paramCache_){
         updateParamCache();
 
-        auto listener = listener_.lock();
-        if (listener){
-            listener->updateDisplay();
+        if (listener_){
+            listener_->updateDisplay();
         }
     }
 
@@ -1168,15 +1165,14 @@ void VST3Plugin::bypassProcess(ProcessData& inData, vst3::ProcessData& data,
 #define norm2midi(x) (static_cast<uint8_t>((x) * 127.f) & 127)
 
 void VST3Plugin::handleEvents(){
-    auto listener = listener_.lock();
-    if (listener){
+    if (listener_){
         for (int i = 0; i < outputEvents_.getEventCount(); ++i){
             Vst::Event event;
             outputEvents_.getEvent(i, event);
             if (event.type == Vst::Event::kDataEvent){
                 if (event.data.type == Vst::DataEvent::kMidiSysEx){
                     SysexEvent e((const char *)event.data.bytes, event.data.size);
-                    listener->sysexEvent(e);
+                    listener_->sysexEvent(e);
                 } else {
                     LOG_DEBUG("got unsupported data event");
                 }
@@ -1230,7 +1226,7 @@ void VST3Plugin::handleEvents(){
                     LOG_DEBUG("got unsupported event type: " << event.type);
                     continue;
                 }
-                listener->midiEvent(e);
+                listener_->midiEvent(e);
             }
         }
         outputEvents_.clear();
@@ -1238,8 +1234,7 @@ void VST3Plugin::handleEvents(){
 }
 
 void VST3Plugin::handleOutputParameterChanges(){
-    auto listener = listener_.lock();
-    if (listener){
+    if (listener_){
         int numParams = outputParamChanges_.getParameterCount();
         for (int i = 0; i < numParams; ++i){
             auto data = outputParamChanges_.getParameterData(i);
@@ -1254,7 +1249,7 @@ void VST3Plugin::handleOutputParameterChanges(){
                         Vst::ParamValue value = 0;
                         if (data->getPoint(j, offset, value) == kResultOk){
                             // for now we ignore the sample offset
-                            listener->parameterAutomated(index, value);
+                            listener_->parameterAutomated(index, value);
                         }
                     }
                 } else if (window_){

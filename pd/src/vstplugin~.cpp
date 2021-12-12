@@ -1457,7 +1457,7 @@ static void vstplugin_open_done(t_open_data *data){
         // store path symbol (to avoid reopening the same plugin)
         x->x_path = data->pathsym;
         // receive events from plugin
-        x->x_plugin->setListener(x->x_editor);
+        x->x_plugin->setListener(x->x_editor.get());
         // update Pd editor
         x->x_editor->setup();
 
@@ -3428,7 +3428,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     x_wantprecision = precision;
     x_canvas = canvas_getcurrent();
-    x_editor = std::make_shared<t_vsteditor>(*this, gui);
+    x_editor = std::make_unique<t_vsteditor>(*this, gui);
 #ifdef PDINSTANCE
     x_pdinstance = pd_this;
 #endif

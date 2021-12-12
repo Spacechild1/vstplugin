@@ -43,8 +43,6 @@ public:
                  uint32_t id, ShmChannel& channel);
     ~PluginHandle();
 
-    void init();
-
     void handleRequest(const ShmCommand& cmd, ShmChannel& channel);
     void handleUICommand(const ShmUICommand& cmd);
 
@@ -150,7 +148,7 @@ class PluginServer {
     std::atomic<bool> running_;
     UIThread::Handle pollFunction_;
 
-    std::unordered_map<uint32_t, std::shared_ptr<PluginHandle>> plugins_;
+    std::unordered_map<uint32_t, std::unique_ptr<PluginHandle>> plugins_;
     SharedMutex pluginMutex_;
 };
 
