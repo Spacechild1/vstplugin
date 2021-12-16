@@ -146,11 +146,11 @@ void server_test_request(ShmInterface& shm){
     LOG_VERBOSE("server: wait for reply");
 
     channel.waitReply();
-    const char *reply;
+    const void *reply;
     size_t replySize;
     channel.getMessage(reply, replySize);
 
-    LOG_VERBOSE("server: got reply: " << reply);
+    LOG_VERBOSE("server: got reply: " << (const char *)reply);
 }
 
 void client_test_request(ShmInterface& shm){
@@ -163,10 +163,10 @@ void client_test_request(ShmInterface& shm){
     LOG_VERBOSE("client: wait for message");
     channel.wait();
     for (int i = 0; i < 4; ++i){
-        const char *msg;
+        const void *msg;
         size_t msgSize;
         channel.getMessage(msg, msgSize);
-        LOG_VERBOSE("client: got message: " << msg);
+        LOG_VERBOSE("client: got message: " << (const char *)msg);
     }
 
     // post reply
@@ -222,7 +222,7 @@ void server_benchmark(ShmInterface& shm){
     #endif
         channel.waitReply();
         auto t3 = timer.get_elapsed_us();
-        const char *reply;
+        const void *reply;
         size_t replySize;
         channel.getMessage(reply, replySize);
 
@@ -266,7 +266,7 @@ void client_benchmark(ShmInterface& shm){
     #endif
         channel.wait();
 
-        const char *msg;
+        const void *msg;
         size_t msgSize;
         channel.getMessage(msg, msgSize);
 

@@ -121,7 +121,7 @@ size_t ShmChannel::peekMessage() const {
     }
 }
 
-bool ShmChannel::readMessage(char * buffer, size_t& size) {
+bool ShmChannel::readMessage(void * buffer, size_t& size) {
     if (data_->size.load(std::memory_order_relaxed) > 0){
         auto msg = (Message *)&data_->data[rdhead_];
         if (msg->size > size){
@@ -139,7 +139,7 @@ bool ShmChannel::readMessage(char * buffer, size_t& size) {
             auto n1 = limit - begin;
             auto n2 = end - limit;
             memcpy(buffer, begin, n1);
-            memcpy(buffer + n1, data_->data, n2);
+            memcpy((char *)buffer + n1, data_->data, n2);
             rdhead_ = n2;
         } else {
             memcpy(buffer, begin, msg->size);
@@ -156,7 +156,7 @@ bool ShmChannel::readMessage(char * buffer, size_t& size) {
     }
 }
 
-bool ShmChannel::writeMessage(const char *data, size_t size) {
+bool ShmChannel::writeMessage(const void *data, size_t size) {
     auto capacity = data_->capacity;
     // get actual message size (+ size field + alignment)
     auto msgsize = align_to(size + sizeof(Message::size), Message::alignment);
@@ -173,7 +173,7 @@ bool ShmChannel::writeMessage(const char *data, size_t size) {
             auto n1 = limit - begin;
             auto n2 = end - limit;
             memcpy(begin, data, n1);
-            memcpy(data_->data, data + n1, n2);
+            memcpy(data_->data, (const char *)data + n1, n2);
         } else {
             memcpy(begin, data, size); // use original size!
         }
@@ -192,7 +192,7 @@ bool ShmChannel::writeMessage(const char *data, size_t size) {
     }
 }
 
-bool ShmChannel::addMessage(const char * data, size_t size) {
+bool ShmChannel::addMessage(const void * data, size_t size) {
     auto capacity = data_->capacity;
     // get actual message size (+ size field + alignment)
     auto msgsize = align_to(size + sizeof(Message::size), Message::alignment);
@@ -211,7 +211,7 @@ bool ShmChannel::addMessage(const char * data, size_t size) {
     }
 }
 
-bool ShmChannel::getMessage(const char *& buf, size_t& size) {
+bool ShmChannel::getMessage(const void *& buf, size_t& size) {
     if (data_->size.load(std::memory_order_relaxed) > 0){
         auto msg = (Message *)&data_->data[rdhead_];
 

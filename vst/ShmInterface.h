@@ -109,14 +109,14 @@ class ShmChannel {
 
     size_t peekMessage() const;
     // read queue message (thread-safe, copy)
-    bool readMessage(char * buffer, size_t& size);
+    bool readMessage(void * buffer, size_t& size);
     // write queue message
-    bool writeMessage(const char *data, size_t size);
+    bool writeMessage(const void *data, size_t size);
 
     // add request message (not thread-safe)
-    bool addMessage(const char * data, size_t size);
+    bool addMessage(const void * data, size_t size);
     // get request message (not thread-safe, no copy)
-    bool getMessage(const char *& data, size_t& size);
+    bool getMessage(const void *& data, size_t& size);
 
     void clear();
     void reset();

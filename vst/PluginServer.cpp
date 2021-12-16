@@ -188,7 +188,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         LOG_DEBUG("PluginHandle: ReadProgramData");
         auto realSize = cmd.i;
         // data is in a seperate message!
-        const char *data;
+        const void *data;
         size_t size;
         if (channel.getMessage(data, size)){
             assert(size >= realSize); // 'size' can be larger because of padding!
@@ -198,7 +198,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         }
 
         defer([&](){
-            plugin_->readProgramData(data, realSize);
+            plugin_->readProgramData((const char *)data, realSize);
         });
 
         channel.clear(); // !
@@ -212,7 +212,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         LOG_DEBUG("PluginHandle: ReadBankData");
         auto realSize = cmd.i;
         // data is in a seperate message!
-        const char *data;
+        const void *data;
         size_t size;
         if (channel.getMessage(data, size)){
             assert(size >= realSize); // 'size' can be larger because of padding!
@@ -222,7 +222,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         }
 
         defer([&](){
-            plugin_->readBankData(data, realSize);
+            plugin_->readBankData((const char *)data, realSize);
         });
 
         channel.clear(); // !
@@ -482,7 +482,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
         // read channels
         for (int j = 0; j < bus.numChannels; ++j){
             auto chn = (T *)bus.channelData32[j];
-            const char* msg;
+            const void* msg;
             size_t size;
             if (channel.getMessage(msg, size)){
                 // size can be larger because of message
@@ -536,7 +536,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
 }
 
 void PluginHandle::dispatchCommands(ShmChannel& channel){
-    const char *data;
+    const void *data;
     size_t size;
     while (channel.getMessage(data, size)){
         auto cmd = (const ShmCommand *)data;
@@ -895,7 +895,7 @@ void PluginServer::runThread(ShmChannel *channel){
 
         channel->reset();
 
-        const char *msg;
+        const void *msg;
         size_t size;
         if (channel->getMessage(msg, size)){
             handleCommand(*channel, *reinterpret_cast<const ShmCommand *>(msg));

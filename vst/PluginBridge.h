@@ -64,14 +64,14 @@ struct _Channel {
     }
 
     template<typename T>
-    bool getReply(const T *& reply){
-        size_t dummy;
-        return channel_->getMessage(*reinterpret_cast<const char **>(&reply), dummy);
+    bool getReply(const T *& reply, size_t& size){
+        return channel_->getMessage(reinterpret_cast<const void *&>(reply), size);
     }
 
     template<typename T>
-    bool getReply(const T *& reply, size_t& size){
-        return channel_->getMessage(*reinterpret_cast<const char **>(&reply), size);
+    bool getReply(const T *& reply){
+        size_t dummy;
+        return getReply(reply, dummy);
     }
 
     void checkError();
