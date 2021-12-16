@@ -609,10 +609,12 @@ void PluginClient::writeBankData(std::string& buffer){
 }
 
 void PluginClient::sendFile(Command::Type type, const std::string &path) {
+    if (!check()){
+        return;
+    }
+
     auto pathSize = path.size() + 1;
     auto cmdSize = CommandSize(ShmCommand, buffer, pathSize);
-    // TODO send data as seperate command to avoid needless copy,
-    // similar to WriteProgramData in PluginServer.
     auto cmd = (ShmCommand *)alloca(cmdSize);
     new (cmd) ShmCommand(type, id());
     cmd->buffer.size = pathSize;

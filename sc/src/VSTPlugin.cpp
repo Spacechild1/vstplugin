@@ -648,7 +648,7 @@ void setCurrentThreadRT() {
 }
 
 bool isCurrentThreadRT() {
-    LOG_DEBUG("isCurrentThreadRT: " << gCurrentThreadRT);
+    // LOG_DEBUG("isCurrentThreadRT: " << gCurrentThreadRT);
     return gCurrentThreadRT;
 }
 
@@ -1500,7 +1500,10 @@ VSTPluginDelegate::~VSTPluginDelegate() {
     // In practice, the plugin should have already been
     // closed by setOwner(nullptr) or CmdData::alive().
     // NOTE that we must *not* retain ourself!
-    doClose<false>();
+    if (plugin_) {
+        LOG_WARNING("VSTPluginDelegate: closing plugin in destructor");
+        doClose<false>();
+    }
 
     if (paramQueue_) {
         if (paramQueue_->needRelease()) {
