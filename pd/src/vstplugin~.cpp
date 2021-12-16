@@ -7,12 +7,12 @@
 #define classname(x) (class_getname(pd_class(x)))
 
 #if POLL_EVENT_LOOP
-#define EVENT_LOOP_POLL_INT 5 // time between polls in ms
+#define EVENT_LOOP_POLL_INTERVAL 5 // time between polls in ms
 
 static t_clock *eventLoopClock = nullptr;
 static void eventLoopTick(void *x){
     UIThread::poll();
-    clock_delay(eventLoopClock, EVENT_LOOP_POLL_INT);
+    clock_delay(eventLoopClock, EVENT_LOOP_POLL_INTERVAL);
 }
 
 static void initEventLoop(){
@@ -778,6 +778,11 @@ void t_vsteditor::post_event(const t_event& event){
     // but that's why we use a MPSC queue.
     e_events.push(event);
 
+#ifdef PDINSTANCE
+    // always set Pd instance because 'locked' being true does not necessarily mean
+    // we are on the main thread!
+    pd_setinstance(e_owner->x_pdinstance);
+#endif
     if (locked) {
         clock_delay(e_clock, 0);
     } else {
@@ -788,9 +793,6 @@ void t_vsteditor::post_event(const t_event& event){
         // different thread than the one where the object has been constructed.
         e_needclock.store(true);
 
-    #ifdef PDINSTANCE
-        pd_setinstance(e_owner->x_pdinstance);
-    #endif
         // Calling pd_getdspstate() is not really thread-safe...
         if (pd_getdspstate() == 0){
             // Special case: DSP might be off and the event does not come from Pd's
