@@ -376,8 +376,8 @@ VSTPluginDesc {
 						\flags,
 						{
 							flags = hex2int.(value);
-							[\editor, \synth, \singlePrecision, \doublePrecision, \midiInput, \midiOutput, \sysexInput, \sysexOutput, \bridged].do { arg item, i;
-								info.slotPut(item, ((flags >> i) & 1).asBoolean)
+							#[\editor, \synth, \singlePrecision, \doublePrecision, \midiInput, \midiOutput, \sysexInput, \sysexOutput, \bridged].do { arg item, i;
+								info.slotPut(item, (flags & (1 << i)).asBoolean)
 							}
 						},
 						{

@@ -111,10 +111,8 @@ VSTPlugin : MultiOutUGen {
 		exclude.isString.if { exclude = [exclude] };
 		(exclude.isNil or: exclude.isArray).not.if { MethodError("bad type % for 'exclude' argument!".format(exclude.class), this).throw };
 		exclude = exclude.collect({ arg p; p.asString.standardizePath });
-		// make flags
-		[verbose, save, parallel].do { arg value, bit;
-			flags = flags | (value.asBoolean.asInteger << bit);
-		};
+		// make flag from options
+		flags = [verbose, save, parallel].sum { arg x, i; x.asInteger << i };
 		dest = this.prMakeDest(dest); // nil -> -1 = don't write results
 		^['/cmd', '/vst_search', flags, dest, timeout ?? 0.0, dir.size] ++ dir ++ exclude.size ++ exclude;
 	}
