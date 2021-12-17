@@ -1496,14 +1496,35 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
-    // Closing the plugin in the destructor is unsafe.
-    // In practice, the plugin should have already been
-    // closed by setOwner(nullptr) or CmdData::alive().
-    // NOTE that we must *not* retain ourself!
+    // The plugin should have already been closed by setOwner(nullptr) or CmdData::alive().
+#if 0
+    assert(plugin_ == nullptr);
+#else
     if (plugin_) {
+        // Let's be nice and release the plugin in a RT safe manner.
         LOG_WARNING("VSTPluginDelegate: closing plugin in destructor");
-        doClose<false>();
+        // we must unset the listener, although this is not thread-safe.
+        plugin_->setListener(nullptr);
+        auto cmdData = CmdData::create<CloseCmdData>(world());
+        if (cmdData) {
+            cmdData->plugin = std::move(plugin_);
+            cmdData->editor = editor_;
+            // don't retain ourself!
+            DoAsynchronousCommand(world(), 0, 0, cmdData,
+                [](World *world, void* inData) {
+                auto data = (CloseCmdData*)inData;
+                // release plugin on the correct thread
+                defer([&](){
+                    data->plugin = nullptr;
+                }, data->editor);
+                return false; // done
+            }, nullptr, nullptr, cmdRTfree<CloseCmdData>, 0, 0);
+        } else {
+            // rather leak it than destroy it here
+            auto plugin = plugin_.release();
+        }
     }
+#endif
 
     if (paramQueue_) {
         if (paramQueue_->needRelease()) {
@@ -1671,7 +1692,6 @@ void VSTPluginDelegate::close() {
     doClose();
 }
 
-template<bool retain>
 void VSTPluginDelegate::doClose(){
     if (plugin_){
         auto cmdData = CmdData::create<CloseCmdData>(world());
@@ -1680,18 +1700,18 @@ void VSTPluginDelegate::doClose(){
         }
         cmdData->plugin = std::move(plugin_);
         cmdData->editor = editor_;
-        // NOTE: the plugin might send an event between here
-        // and the NRT stage, e.g. when automating parameters
-        // in the plugin UI. Since the events come from the
-        // UI thread, we must not unset the listener in the
-        // audio thread, otherwise we have a race condition.
-        // Instead, we keep the delegate alive with 'retain=true'
-        // until the plugin has been closed.
+        // NOTE: the plugin might send an event between here and
+        // the NRT stage, e.g. when automating parameters in the
+        // plugin UI. Since the events come from the UI thread,
+        // we must not unset the listener in the audio thread,
+        // otherwise we have a race condition.
+        // Instead, we keep the delegate alive until the plugin
+        // has been closed.
         // See setOwner(), alive() and ~VSTPluginDelegate().
     #if 0
         data->plugin->setListener(nullptr);
     #endif
-        doCmd<retain>(cmdData, [](World *world, void* inData) {
+        doCmd(cmdData, [](World *world, void* inData) {
             auto data = (CloseCmdData*)inData;
             // release plugin on the correct thread
             defer([&](){
@@ -2623,16 +2643,14 @@ void VSTPluginDelegate::sendMsg(const char *cmd, int n, const float *data) {
     }
 }
 
-template<bool retain, typename T>
+template<typename T>
 void VSTPluginDelegate::doCmd(T *cmdData, AsyncStageFn stage2,
     AsyncStageFn stage3, AsyncStageFn stage4) {
     // so we don't have to always check the return value of makeCmdData
     if (cmdData) {
-        if (retain){
-            cmdData->owner = shared_from_this();
-        }
-        DoAsynchronousCommand(world(),
-            0, 0, cmdData, stage2, stage3, stage4, cmdRTfree<T>, 0, 0);
+        cmdData->owner = shared_from_this();
+        DoAsynchronousCommand(world(), 0, 0, cmdData,
+            stage2, stage3, stage4, cmdRTfree<T>, 0, 0);
     }
 }
 

@@ -174,7 +174,6 @@ public:
               bool threaded, RunMode mode);
     void doneOpen(OpenCmdData& msg);
     void close();
-    template<bool retain=true>
     void doClose();
 
     void showEditor(bool show);
@@ -234,7 +233,7 @@ public:
     void sendPluginCrash();
 
     // perform sequenced command
-    template<bool retain = true, typename T>
+    template<typename T>
     void doCmd(T* cmdData, AsyncStageFn stage2, AsyncStageFn stage3 = nullptr,
         AsyncStageFn stage4 = nullptr);
 
