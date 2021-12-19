@@ -65,6 +65,10 @@ struct Node {
     T data_;
 };
 
+// special MPSC queue implementation that can be safely created in a RT context.
+// the required dummy node is a class member and therefore doesn't have to be allocated
+// dynamically in the constructor. As a consequence, we need to be extra careful when
+// freeing the nodes in the destructor (we must not delete the dummy node!)
 template<typename T, typename Alloc = std::allocator<T>>
 class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
     typedef typename Alloc::template rebind<Node<T>>::other Base;

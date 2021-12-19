@@ -516,7 +516,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
                      << bus.numChannels << " channels");
         // write all channels sequentially to avoid additional copying.
         for (int j = 0; j < bus.numChannels; ++j){
-            channel.addMessage((const char *)bus.channelData32[j], sizeof(T) * data.numSamples);
+            channel.addMessage(bus.channelData32[j], sizeof(T) * data.numSamples);
         }
     }
 
@@ -758,7 +758,7 @@ void PluginHandle::sendParam(ShmChannel &channel, int index,
 }
 
 bool PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){
-    return channel.addMessage(static_cast<const char *>(cmd), size);
+    return channel.addMessage(cmd, size);
 }
 
 /*////////////////// PluginServer ////////////////*/
@@ -831,7 +831,7 @@ void PluginServer::run(){
 bool PluginServer::postUIThread(const ShmUICommand& cmd){
     // sizeof(cmd) is a bit lazy, but we don't care about size here
     auto& channel = shm_->getChannel(Channel::UISend);
-    return channel.writeMessage((const char *)&cmd, sizeof(cmd));
+    return channel.writeMessage(&cmd, sizeof(cmd));
 }
 
 void PluginServer::pollUIThread(){
@@ -960,7 +960,7 @@ void PluginServer::handleCommand(ShmChannel& channel,
         reply->error.code = e.code();
         memcpy(reply->error.msg, msg.c_str(), msg.size() + 1);
 
-        channel.addMessage((const char *)reply, size);
+        channel.addMessage(reply, size);
     }
 
     channel.postReply();
@@ -1042,7 +1042,7 @@ PluginHandle * PluginServer::findPlugin(uint32_t id){
 void PluginServer::quit(){
     LOG_DEBUG("PluginServer: quit");
 
-    running_ = false;
+    running_.store(false);
     // wake up all threads
     for (int i = Channel::NRT; i < shm_->numChannels(); ++i){
         shm_->getChannel(i).post();
@@ -1052,6 +1052,7 @@ void PluginServer::quit(){
     // on the UI thread (in case the parent crashed)
     WriteLock lock(pluginMutex_);
     if (!plugins_.empty()){
+        LOG_DEBUG("release remaining " << plugins_.size() << " plugins");
         defer([&](){
             plugins_.clear();
         });

@@ -10,8 +10,6 @@ if(UNIX AND NOT APPLE AND NOT MINGW)
     set(LINUX TRUE)
 endif()
 
-message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
-
 # some MinGW setups don't define WIN32!
 if (MINGW AND NOT WIN32)
     message(WARNING "Your MinGW setup doesn't define WIN32")
@@ -162,6 +160,7 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     endif()
 
     add_definitions("-ffast-math -funroll-loops -fomit-frame-pointer")
+    add_definitions("-Wstrict-aliasing")
 
     if (CMAKE_COMPILER_IS_CLANG)
         add_definitions("-stdlib=libc++")

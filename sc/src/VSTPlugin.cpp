@@ -1558,7 +1558,7 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
         // Schedule for closing, but keep delegate alive.
         // This makes sure that we don't get deleted while
         // the plugin sends an event, see doClose().
-        // NOTE that can't do this while we have a pending
+        // NOTE that we can't do this while we have a pending
         // command because it would create a race condition:
         // doClose() immediately moves the plugin, but the
         // command might try to access it in the NRT stage.
@@ -1913,7 +1913,7 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     editor_ = cmd.editor;
     threaded_ = cmd.threaded;
     isLoading_ = false;
-    // move the plugin even if alive() returns false
+    // move *before* calling alive(), so that doClose() can close it.
     plugin_ = std::move(cmd.plugin);
     if (!alive()) {
         LOG_WARNING("VSTPlugin freed during 'open'");

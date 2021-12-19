@@ -490,7 +490,7 @@ void PluginBridge::postUIThread(const ShmUICommand& cmd){
     // ScopedLock lock(uiMutex_);
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
     auto& channel = shm_.getChannel(Channel::UISend);
-    if (channel.writeMessage((const char *)&cmd, sizeof(cmd))){
+    if (channel.writeMessage(&cmd, sizeof(cmd))){
         // other side polls regularly
         // channel.post();
     } else {

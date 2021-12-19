@@ -55,7 +55,7 @@ struct _Channel {
     int32_t capacity() const { return channel_->capacity(); }
 
     bool addCommand(const void* cmd, size_t size){
-        return channel_->addMessage(static_cast<const char *>(cmd), size);
+        return channel_->addMessage(cmd, size);
     }
 
     void send(){

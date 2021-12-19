@@ -142,7 +142,7 @@ int bridge(int pid, const std::string& path, int logChannel){
 #if VST_HOST_SYSTEM == VST_WINDOWS
     auto hParent = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
     if (hParent){
-        if (DuplicateHandle(hParent, (HANDLE)logChannel,
+        if (DuplicateHandle(hParent, (HANDLE)(uintptr_t)logChannel,
                             GetCurrentProcess(), &gLogChannel,
                             0, FALSE, DUPLICATE_SAME_ACCESS)) {
             setLogFunction(writeLog);
