@@ -262,7 +262,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         auto totalSize = sizeof(ShmCommand) + buffer.size();
         if (totalSize > channel.capacity()) {
             // plugin data too large for NRT channel, try to transmit via tmp file
-            LOG_DEBUG("PluginClient: send plugin data via tmp file (size: "
+            LOG_DEBUG("PluginHandle: send plugin data via tmp file (size: "
                       << buffer.size() << ", capacity: " << channel.capacity() << ")");
             std::stringstream ss;
             ss << getTmpDirectory() << "/vst_" << (void *)this;
@@ -271,7 +271,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
             File file(path, File::WRITE);
             if (!file){
                 throw Error(Error::SystemError,
-                            "PluginClient: couldn't create tmp file");
+                            "PluginHandle: couldn't create tmp file");
             }
             file.write(buffer.data(), buffer.size());
             if (!file){

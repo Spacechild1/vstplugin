@@ -663,7 +663,10 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
             throw Error(Error::SystemError,
                         "PluginClient: couldn't write plugin data to tmp file");
         }
-        chn.unlock(); // avoid dead lock in sendFile()!
+        // avoid dead lock in sendFile()!
+        {
+            auto dummy = std::move(chn);
+        }
         auto cmd = (type == Command::ReadProgramData) ?
                     Command::ReadProgramFile : Command::ReadBankFile;
         sendFile(cmd, path);
@@ -734,6 +737,7 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
             buffer.resize(file.tellg());
             file.seekg(0, std::ios_base::beg);
             file.read(&buffer[0], buffer.size());
+            file.close();
 
             // we have to remove the tmp file!
             if (!removeFile(path)) {

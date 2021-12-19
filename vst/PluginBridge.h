@@ -41,6 +41,8 @@ enum class CpuArch;
 
 /*/////////////////////// RTChannel / NRTChannel ////////////////////////*/
 
+// NOTE: if you want to unlock a _Channel prematurely, just let it go out of scope.
+// Don't add an unlock() method (the internal lock might be already unlocked)!
 template<typename Mutex>
 struct _Channel {
     _Channel(ShmChannel& channel)
@@ -75,9 +77,6 @@ struct _Channel {
     }
 
     void checkError();
-
-    void lock() { lock_.lock(); }
-    void unlock() { lock_.unlock(); }
  private:
     ShmChannel *channel_;
     std::unique_lock<Mutex> lock_;
