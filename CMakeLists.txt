@@ -150,7 +150,8 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
         add_definitions("-mfpmath=sse")
     endif()
 
-    if(NATIVE)
+    option(NATIVE "optimize for this machine (not portable!)" OFF)
+    if (NATIVE)
         add_definitions(-march=native)
     endif()
 
