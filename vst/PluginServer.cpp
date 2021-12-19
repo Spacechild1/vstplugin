@@ -847,7 +847,18 @@ void PluginServer::pollUIThread(){
         if (plugin){
             plugin->handleUICommand(*cmd);
         } else {
-            LOG_ERROR("PluginServer::pollUIThread: couldn't find plugin " << cmd->id);
+            // UI commands run asynchronously, so they can be "late"
+            switch (cmd->type) {
+            case Command::WindowOpen:
+            case Command::WindowClose:
+            case Command::WindowSetPos:
+            case Command::WindowSetSize:
+                break;
+            default:
+                LOG_ERROR("PluginServer::pollUIThread: couldn't find plugin "
+                          << cmd->id << " for command " << cmd->type);
+                break;
+            }
         }
         size = sizeof(buffer); // reset size!
     }
