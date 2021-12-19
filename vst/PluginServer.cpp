@@ -1018,8 +1018,12 @@ void PluginServer::destroyPlugin(uint32_t id){
         plugins_.erase(it);
         lock.unlock();
 
-        // move to UI thread and release there!
-        defer([plugin=std::move(plugin)] () {});
+        // release on the UI thread!
+        // NOTE: we really have to release it in the function body,
+        // so it's not enough to just use a move capture.
+        defer([&plugin] () {
+            plugin = nullptr;
+        });
     } else {
         LOG_ERROR("PluginServer::destroyPlugin: chouldn't find plugin " << id);
     }
