@@ -114,10 +114,11 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         throw Error(Error::SystemError,
                     "CreatePipe() failed: " + errorMessage(GetLastError()));
     }
-    // the write handle gets passed to the child process. note that we can't simply
-    // close our end after CreateProcess() because the child process needs to
-    // duplicate the handle; otherwise we would inadvertently close the pipe.
-    // we actually close our end after we receive the first message, see readLog().
+    // the write handle gets passed to the child process. we can't simply close
+    // our end after CreateProcess() because the child process needs to duplicate
+    // the handle; otherwise we would inadvertently close the pipe. we only close
+    // our end in the destructor, after reading all remaining messages.
+
     // NOTE: Win32 handles can be safely truncated to 32-bit!
     auto writeLog = (uint32_t)reinterpret_cast<uintptr_t>(hLogWrite_);
 
@@ -239,12 +240,12 @@ PluginBridge::~PluginBridge(){
         chn.send();
     }
 
-    // not really necessary.
-    // this might even be dangerous if we accidentally
-    // wait on a subprocess that somehow got stuck.
-    // maybe use some timeout?
-    readLog();
+    // wait for the subprocess to finish.
+    // this might even be dangerous if the subprocess
+    // somehow got stuck. maybe use some timeout?
     checkStatus(true);
+    // read remaining messages
+    readLog();
 
 #ifdef _WIN32
     CloseHandle(pi_.hProcess);
@@ -276,15 +277,6 @@ void PluginBridge::readLog(){
                 // nothing to read yet
                 return;
             }
-        #if 1
-            // close our write handle (if it's still open), so terminating
-            // the subprocess would close the pipe. we do this here to ensure
-            // that the child process has duplicated the handle.
-            if (hLogWrite_){
-                CloseHandle(hLogWrite_);
-                hLogWrite_ = NULL;
-            }
-        #endif
             // check if message is complete
             int msgsize = header.size + sizeof(header);
             if (bytesAvailable < msgsize) {
