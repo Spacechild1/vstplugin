@@ -99,17 +99,33 @@ ShmChannel::ShmChannel(Type type, int32_t size,
 }
 
 void ShmChannel::HandleDeleter::operator ()(void *handle){
+    // only invoked if handle is not NULL
 #if SHM_EVENT
     // LOG_SHM("close event " << handle);
     CloseHandle((HANDLE)handle);
 #elif SHM_SEMAPHORE
-    sem_close((sem_t *)handle);
+    if (sem_close((sem_t *)handle) != 0) {
+        LOG_ERROR("sem_close() failed: " << errorMessage(errno));
+    }
 #endif
     // nothing to do for SHM_FUTEX
 }
 
 ShmChannel::~ShmChannel(){
     // LOG_SHM("~ShmChannel");
+#if SHM_SEMAPHORE
+    // unlink semaphores in the owner, so that they are removed
+    // from the system once both ends have closed their handles
+    // (happens automatically if the subprocess crashes).
+    if (owner_) {
+        if (eventA_ && sem_unlink((const char *)header_->data1) != 0) {
+            LOG_ERROR("sem_unlink() failed: " << errorMessage(errno));
+        }
+        if (eventB_ && sem_unlink((const char *)header_->data2) != 0) {
+            LOG_ERROR("sem_unlink() failed: " << errorMessage(errno));
+        }
+    }
+#endif
 }
 
 size_t ShmChannel::peekMessage() const {
@@ -404,6 +420,9 @@ ShmInterface::Header::Header(uint32_t _size, uint32_t _numChannels) {
 ShmInterface::ShmInterface(){}
 
 ShmInterface::~ShmInterface(){
+    // *first* clear channels because the channel destructor might want to
+    // access the shared memory region, e.g. to unlink semaphores.
+    channels_.clear();
     closeShm();
     LOG_SHM("closed ShmInterface");
 
@@ -443,9 +462,8 @@ void ShmInterface::disconnect(){
         if (!owner_){
             closeShm();
         } else {
-            LOG_WARNING("ShmInterface: owner must not call disconnect()!");
+            LOG_ERROR("ShmInterface: owner must not call disconnect()!");
         }
-
     } else {
         LOG_WARNING("ShmInterface::disconnect: not connected");
     }
@@ -495,10 +513,8 @@ void ShmInterface::close(){
         if (owner_){
             closeShm();
         } else {
-            LOG_WARNING("ShmInterface: only owner may call close()!");
+            LOG_ERROR("ShmInterface: only owner may call close()!");
         }
-    } else {
-        LOG_WARNING("ShmInterface::close: not connected");
     }
 }
 
