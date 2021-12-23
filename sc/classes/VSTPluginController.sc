@@ -866,7 +866,6 @@ VSTPluginController {
 			// wait for cmd to finish and update buffer info
 			synth.server.sync;
 			buf.updateInfo({
-				buf.postln;
 				// now read data from Buffer
 				buf.getToFloatArray(wait: wait, timeout: timeout, action: { arg array;
 					var data;
