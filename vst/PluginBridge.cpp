@@ -545,33 +545,35 @@ IPluginListener::ptr PluginBridge::findClient(uint32_t id){
     return nullptr;
 }
 
+static std::atomic<uint32_t> threadCounter{0}; // can safely overflow
+
 RTChannel PluginBridge::getRTChannel(){
     if (locks_){
         // shared plugin bridge, see the comments in PluginBridge::PluginBridge().
-        static std::atomic<uint32_t> counter{0}; // can safely overflow
 
-        uint32_t index, i = 0;
         uint32_t mask = threadMask_;
-        for (;;){
-            // we take the current index and try to lock the corresponding spinlock.
-            // if the spinlock is already taken (another DSP thread is trying to use the
-            // plugin bridge oncurrently), we atomically increment the index and try again.
-            // if there's only a single DSP thread, we will only ever lock the first spinlock
-            // and the plugin server will only use a single thread as well.
-            index = counter.load(std::memory_order_acquire) & mask;
-            if (locks_[index].try_lock()){
-                break;
-            }
-            counter.fetch_add(1);
-        #if 0
-            // pause CPU everytime we cycle through all spinlocks
-            const int spin_count = 1000;
-            if ((++i & mask) == 0) {
-                for (int j = 0; j < spin_count; ++j) {
-                    pauseCpu();
+        // we take the current index and try to lock the corresponding spinlock.
+        // if the spinlock is already taken (another DSP thread is trying to use the
+        // plugin bridge oncurrently), we atomically increment the index and try again.
+        // if there's only a single DSP thread, we will only ever lock the first spinlock
+        // and the plugin server will only use a single thread as well.
+        uint32_t index = threadCounter.load(std::memory_order_relaxed) & mask;
+        if (!locks_[index].try_lock()) {
+            // LOG_DEBUG("PluginBridge: index " << index << " taken");
+            uint32_t i = 0;
+            do {
+                index = threadCounter.fetch_add(1, std::memory_order_relaxed) & mask;
+            #if 0
+                // pause CPU everytime we cycle through all spinlocks
+                const int spin_count = 1000;
+                if ((++i & mask) == 0) {
+                    for (int j = 0; j < spin_count; ++j) {
+                        pauseCpu();
+                    }
                 }
-            }
-        #endif
+            #endif
+            } while (!locks_[index].try_lock());
+            // LOG_DEBUG("PluginBridge: found free index " << index);
         }
         return RTChannel(shm_.getChannel(Channel::NRT + 1 + index),
                          std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
