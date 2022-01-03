@@ -573,7 +573,7 @@ RTChannel PluginBridge::getRTChannel(){
             }
         #endif
         }
-        return RTChannel(shm_.getChannel(Channel::NRT + 1),
+        return RTChannel(shm_.getChannel(Channel::NRT + 1 + index),
                          std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
     } else {
         // plugin sandbox: RT channel = NRT channel
