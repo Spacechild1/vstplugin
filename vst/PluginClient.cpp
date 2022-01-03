@@ -8,6 +8,16 @@
 #include <sstream>
 #include <cassert>
 
+#ifndef DEBUG_CLIENT_PROCESS
+#define DEBUG_CLIENT_PROCESS 0
+#endif
+
+#if DEBUG_CLIENT_PROCESS
+# define LOG_PROCESS(x) LOG_DEBUG(x)
+#else
+# define LOG_PROCESS(x)
+#endif
+
 namespace vst {
 
 /*/////////////////////// PluginClient /////////////////////////////*/
@@ -43,7 +53,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
     if (info_->numPrograms() > 0){
         programCache_ = std::make_unique<std::string[]>(info_->numPrograms());
     }
-    LOG_DEBUG("PluginClient: get plugin bridge");
+    LOG_DEBUG("PluginClient (" << id_ << "): get plugin bridge");
     if (sandbox){
         bridge_ = PluginBridge::create(factory_->arch());
     } else {
@@ -54,7 +64,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
     std::stringstream ss;
     info_->serialize(ss);
     auto info = ss.str();
-    LOG_DEBUG("PluginClient: open plugin (info size: "
+    LOG_DEBUG("PluginClient (" << id_ << "): open plugin (info size: "
               << info.size() << ")");
 
     auto cmdSize = sizeof(ShmCommand) + info.size();
@@ -65,11 +75,11 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
 
     auto chn = bridge_->getNRTChannel();
     if (chn.addCommand(cmd, cmdSize)){
-        LOG_DEBUG("PluginClient: wait for Server");
+        LOG_DEBUG("PluginClient (" << id_ << "): wait for Server");
         chn.send();
     } else {
         // info too large, try to transmit via tmp file
-        LOG_DEBUG("PluginClient: send info via tmp file (" << info.size() << " bytes)");
+        LOG_DEBUG("PluginClient (" << id_ << "): send info via tmp file (" << info.size() << " bytes)");
         std::stringstream ss;
         ss << getTmpDirectory() << "/vst_" << (void *)this;
         std::string path = ss.str();
@@ -93,7 +103,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
                         "PluginClient: couldn't send plugin info");
         }
 
-        LOG_DEBUG("PluginClient: wait for Server");
+        LOG_DEBUG("PluginClient (" << id_ << "): wait for Server");
         chn.send(); // tmp file is still in scope!
     }
 
@@ -102,7 +112,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
         throw Error(Error::PluginError, "plugin crashed");
     }
 
-    LOG_DEBUG("PluginClient: plugin created");
+    LOG_DEBUG("PluginClient (" << id_ << "): plugin created");
 
     // collect replies (after check!)
     const ShmCommand *reply;
@@ -110,7 +120,7 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
         dispatchReply(*reply);
     }
 
-    LOG_DEBUG("PluginClient: done!");
+    LOG_DEBUG("PluginClient (" << id_ << "): done!");
 }
 
 PluginClient::~PluginClient(){
@@ -135,7 +145,7 @@ PluginClient::~PluginClient(){
             delete[] cmd.sysex.data;
         }
     }
-    LOG_DEBUG("free PluginClient");
+    LOG_DEBUG("PluginClient (" << id_ << "): free");
 }
 
 bool PluginClient::check() {
@@ -147,7 +157,7 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
     if (!check()){
         return;
     }
-    LOG_DEBUG("PluginClient: setupProcessing");
+    LOG_DEBUG("PluginClient (" << id_ << "): setupProcessing");
 
     ShmCommand cmd(Command::SetupProcessing);
     cmd.id = id();
@@ -163,16 +173,6 @@ void PluginClient::setupProcessing(double sampleRate, int maxBlockSize,
     chn.checkError();
 }
 
-#ifndef DEBUG_CLIENT_PROCESS
-#define DEBUG_CLIENT_PROCESS 0
-#endif
-
-#if DEBUG_CLIENT_PROCESS
-# define LOG_PROCESS(x) LOG_DEBUG(x)
-#else
-# define LOG_PROCESS(x)
-#endif
-
 template<typename T>
 void PluginClient::doProcess(ProcessData& data){
     if (!check()){
@@ -180,11 +180,11 @@ void PluginClient::doProcess(ProcessData& data){
         commands_.clear(); // avoid commands piling up!
         return;
     }
-    LOG_PROCESS("PluginClient: start processing");
+    LOG_PROCESS("PluginClient (" << id_ << "): start processing");
 
     auto channel = bridge().getRTChannel();
 
-    LOG_PROCESS("PluginClient: send process command");
+    LOG_PROCESS("PluginClient (" << id_ << "): send process command");
     // send process command
     ShmCommand cmd(Command::Process);
     cmd.id = id();
@@ -200,7 +200,7 @@ void PluginClient::doProcess(ProcessData& data){
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
         // write all channels sequentially to avoid additional copying.
-        LOG_PROCESS("PluginClient: write input bus " << i << " with "
+        LOG_PROCESS("PluginClient (" << id_ << "): write input bus " << i << " with "
                     << bus.numChannels << " channels");
         for (int j = 0; j < bus.numChannels; ++j){
             channel.addCommand((const T *)bus.channelData32[j], sizeof(T) * data.numSamples);
@@ -208,11 +208,11 @@ void PluginClient::doProcess(ProcessData& data){
     }
 
     // add commands (parameter changes, MIDI messages, etc.)
-    LOG_PROCESS("PluginClient: send commands");
+    LOG_PROCESS("PluginClient (" << id_ << "): send commands");
     sendCommands(channel);
 
     // send and wait for reply
-    LOG_PROCESS("PluginClient: wait");
+    LOG_PROCESS("PluginClient (" << id_ << "): wait");
     channel.send();
 
     // check if host is still alive
@@ -225,7 +225,7 @@ void PluginClient::doProcess(ProcessData& data){
     // read output busses
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
-        LOG_PROCESS("PluginClient: read output bus " << i << " with "
+        LOG_PROCESS("PluginClient (" << id_ << "): read output bus " << i << " with "
                     << bus.numChannels << " channels");
         // read channels
         for (int j = 0; j < bus.numChannels; ++j){
@@ -239,19 +239,19 @@ void PluginClient::doProcess(ProcessData& data){
                 std::copy(reply, reply + data.numSamples, chn);
             } else {
                 std::fill(chn, chn + data.numSamples, 0);
-                LOG_ERROR("PluginClient: missing channel " << j
+                LOG_ERROR("PluginClient (" << id_ << "): missing channel " << j
                           << " for audio output bus " << i);
             }
         }
     }
 
     // get replies (parameter changes, MIDI messages, etc.)
-    LOG_PROCESS("PluginClient: read replies");
+    LOG_PROCESS("PluginClient (" << id_ << "): read replies");
     const ShmCommand* reply;
     while (channel.getReply(reply)){
         dispatchReply(*reply);
     }
-    LOG_PROCESS("PluginClient: finished processing");
+    LOG_PROCESS("PluginClient (" << id_ << "): finished processing");
 }
 
 void PluginClient::sendCommands(RTChannel& channel){
@@ -319,7 +319,7 @@ void PluginClient::sendCommands(RTChannel& channel){
 }
 
 void PluginClient::dispatchReply(const ShmCommand& reply){
-    // LOG_DEBUG("PluginClient: got reply " << reply.type);
+    // LOG_DEBUG("PluginClient (" << id_ << "): got reply " << reply.type);
     switch (reply.type){
     case Command::ParamAutomated:
     case Command::ParameterUpdate:
@@ -335,10 +335,10 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
             if (listener){
                 listener->parameterAutomated(index, value);
             }
-            LOG_DEBUG("PluginClient: parameter " << index
+            LOG_DEBUG("PluginClient (" << id_ << "): parameter " << index
                       << " automated ");
         } else {
-            LOG_DEBUG("PluginClient: parameter " << index
+            LOG_DEBUG("PluginClient (" << id_ << "): parameter " << index
                       << " updated to " << value);
         }
         break;
@@ -411,7 +411,7 @@ void PluginClient::suspend(){
     if (!check()){
         return;
     }
-    LOG_DEBUG("PluginClient: suspend");
+    LOG_DEBUG("PluginClient (" << id_ << "): suspend");
     ShmCommand cmd(Command::Suspend, id());
 
     auto chn = bridge().getNRTChannel();
@@ -426,7 +426,7 @@ void PluginClient::resume(){
         return;
     }
 
-    LOG_DEBUG("PluginClient: resume");
+    LOG_DEBUG("PluginClient (" << id_ << "): resume");
     ShmCommand cmd(Command::Resume, id());
 
     auto chn = bridge().getNRTChannel();
@@ -569,42 +569,42 @@ std::string PluginClient::getProgramNameIndexed(int index) const {
 }
 
 void PluginClient::readProgramFile(const std::string& path){
-    LOG_DEBUG("PluginClient: readProgramFile");
+    LOG_DEBUG("PluginClient (" << id_ << "): readProgramFile");
     sendFile(Command::ReadProgramFile, path);
 }
 
 void PluginClient::readProgramData(const char *data, size_t size){
-    LOG_DEBUG("PluginClient: readProgramData");
+    LOG_DEBUG("PluginClient (" << id_ << "): readProgramData");
     sendData(Command::ReadProgramData, data, size);
 }
 
 void PluginClient::readBankFile(const std::string& path){
-    LOG_DEBUG("PluginClient: readBankFile");
+    LOG_DEBUG("PluginClient (" << id_ << "): readBankFile");
     sendFile(Command::ReadBankFile, path);
 }
 
 void PluginClient::readBankData(const char *data, size_t size){
-    LOG_DEBUG("PluginClient: readBankData");
+    LOG_DEBUG("PluginClient (" << id_ << "): readBankData");
     sendData(Command::ReadBankData, data, size);
 }
 
 void PluginClient::writeProgramFile(const std::string& path){
-    LOG_DEBUG("PluginClient: writeProgramFile");
+    LOG_DEBUG("PluginClient (" << id_ << "): writeProgramFile");
     sendFile(Command::WriteProgramFile, path);
 }
 
 void PluginClient::writeProgramData(std::string& buffer){
-    LOG_DEBUG("PluginClient: writeProgramData");
+    LOG_DEBUG("PluginClient (" << id_ << "): writeProgramData");
     receiveData(Command::WriteProgramData, buffer);
 }
 
 void PluginClient::writeBankFile(const std::string& path){
-    LOG_DEBUG("PluginClient: writeBankFile");
+    LOG_DEBUG("PluginClient (" << id_ << "): writeBankFile");
     sendFile(Command::WriteBankFile, path);
 }
 
 void PluginClient::writeBankData(std::string& buffer){
-    LOG_DEBUG("PluginClient: writeBankData");
+    LOG_DEBUG("PluginClient (" << id_ << "): writeBankData");
     receiveData(Command::WriteBankData, buffer);
 }
 
@@ -648,7 +648,7 @@ void PluginClient::sendData(Command::Type type, const char *data, size_t size){
     auto chn = bridge().getNRTChannel();
     if (totalSize > chn.capacity()) {
         // plugin data too large, try to transmit via tmp file
-        LOG_DEBUG("PluginClient: send plugin data via tmp file (size: "
+        LOG_DEBUG("PluginClient (" << id_ << "): send plugin data via tmp file (size: "
                   << size << ", capacity: " << chn.capacity() << ")");
         std::stringstream ss;
         ss << getTmpDirectory() << "/vst_" << (void *)this;
@@ -741,7 +741,7 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
 
             // we have to remove the tmp file!
             if (!removeFile(path)) {
-                LOG_ERROR("PluginClient: couldn't remove tmp file");
+                LOG_ERROR("PluginClient (" << id_ << "): couldn't remove tmp file");
             }
         } else if (reply->type == Command::Error) {
            reply->throwError();

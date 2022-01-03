@@ -53,7 +53,7 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
                            uint32_t id, ShmChannel& channel)
     : server_(&server), plugin_(std::move(plugin)), id_(id)
 {
-    LOG_DEBUG("PluginHandle::PluginHandle");
+    LOG_DEBUG("PluginHandle::PluginHandle (" << id_ << ")");
     // cache param state and send to client
     channel.clear(); // !
 
@@ -71,26 +71,26 @@ PluginHandle::PluginHandle(PluginServer& server, IPlugin::ptr plugin,
 void PluginHandle::init() {
     // set listener
     // NOTE: can't call this in the constructor!
-    LOG_DEBUG("set listener");
+    LOG_DEBUG("PluginHandle (" << id_ << "): set listener");
     plugin_->setListener(shared_from_this());
 }
 
 PluginHandle::~PluginHandle() {
-    LOG_DEBUG("PluginHandle::~PluginHandle");
+    LOG_DEBUG("PluginHandle::~PluginHandle (" << id_ << ")");
 }
 
 void PluginHandle::handleRequest(const ShmCommand &cmd,
                                  ShmChannel &channel)
 {
-    // LOG_DEBUG("PluginHandle: got request " << cmd.type);
+    // LOG_DEBUG("PluginHandle (" << id_ << "): got request " << cmd.type);
     switch (cmd.type){
     case Command::Process:
-        // LOG_DEBUG("PluginHandle: process");
+        // LOG_DEBUG("PluginHandle (" << id_ << "): process");
         process(cmd, channel);
         break;
     case Command::SetupProcessing:
     {
-        LOG_DEBUG("PluginHandle: setupProcessing");
+        LOG_DEBUG("PluginHandle (" << id_ << "): setupProcessing");
         maxBlockSize_ = cmd.setup.maxBlockSize;
         precision_ = static_cast<ProcessPrecision>(cmd.setup.precision);
         auto mode = static_cast<ProcessMode>(cmd.setup.mode);
@@ -103,7 +103,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     }
     case Command::SetNumSpeakers:
     {
-        LOG_DEBUG("PluginHandle: setNumSpeakers");
+        LOG_DEBUG("PluginHandle (" << id_ << "): setNumSpeakers");
         int numInputs = cmd.speakers.numInputs;
         int numOutputs = cmd.speakers.numOutputs;
         auto speakers = cmd.speakers.speakers;
@@ -154,19 +154,19 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     }
     case Command::Suspend:
-        LOG_DEBUG("PluginHandle: suspend");
+        LOG_DEBUG("PluginHandle (" << id_ << "): suspend");
         defer([&](){
             plugin_->suspend();
         });
         break;
     case Command::Resume:
-        LOG_DEBUG("PluginHandle: resume");
+        LOG_DEBUG("PluginHandle (" << id_ << "): resume");
         defer([&](){
             plugin_->resume();
         });
         break;
     case Command::ReadProgramFile:
-        LOG_DEBUG("PluginHandle: ReadProgramFile");
+        LOG_DEBUG("PluginHandle (" << id_ << "): ReadProgramFile");
         defer([&](){
             plugin_->readProgramFile(cmd.buffer.data);
         });
@@ -175,7 +175,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankFile:
-        LOG_DEBUG("PluginHandle: ReadBankFile");
+        LOG_DEBUG("PluginHandle (" << id_ << "): ReadBankFile");
         defer([&](){
             plugin_->readBankFile(cmd.buffer.data);
         });
@@ -185,7 +185,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     case Command::ReadProgramData:
     {
-        LOG_DEBUG("PluginHandle: ReadProgramData");
+        LOG_DEBUG("PluginHandle (" << id_ << "): ReadProgramData");
         auto realSize = cmd.i;
         // data is in a seperate message!
         const void *data;
@@ -209,7 +209,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     }
     case Command::ReadBankData:
     {
-        LOG_DEBUG("PluginHandle: ReadBankData");
+        LOG_DEBUG("PluginHandle (" << id_ << "): ReadBankData");
         auto realSize = cmd.i;
         // data is in a seperate message!
         const void *data;
@@ -232,13 +232,13 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     }
     case Command::WriteProgramFile:
-        LOG_DEBUG("PluginHandle: WriteProgramFile");
+        LOG_DEBUG("PluginHandle (" << id_ << "): WriteProgramFile");
         defer([&](){
             plugin_->writeProgramFile(cmd.buffer.data);
         });
         break;
     case Command::WriteBankFile:
-        LOG_DEBUG("PluginHandle: WriteBankFile");
+        LOG_DEBUG("PluginHandle (" << id_ << "): WriteBankFile");
         defer([&](){
             plugin_->writeBankFile(cmd.buffer.data);
         });
@@ -246,7 +246,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     case Command::WriteProgramData:
     case Command::WriteBankData:
     {
-        LOG_DEBUG("PluginHandle: WriteProgramData/WriteBankData");
+        LOG_DEBUG("PluginHandle (" << id_ << "): WriteProgramData/WriteBankData");
         // get data
         std::string buffer;
         defer([&](){
@@ -262,7 +262,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         auto totalSize = sizeof(ShmCommand) + buffer.size();
         if (totalSize > channel.capacity()) {
             // plugin data too large for NRT channel, try to transmit via tmp file
-            LOG_DEBUG("PluginHandle: send plugin data via tmp file (size: "
+            LOG_DEBUG("PluginHandle (" << id_ << "): send plugin data via tmp file (size: "
                       << buffer.size() << ", capacity: " << channel.capacity() << ")");
             std::stringstream ss;
             ss << getTmpDirectory() << "/vst_" << (void *)this;
@@ -276,10 +276,10 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
             file.write(buffer.data(), buffer.size());
             if (!file){
                 if (!removeFile(path)) {
-                    LOG_ERROR("PluginClient: can't remove tmp file");
+                    LOG_ERROR("PluginHandle: can't remove tmp file");
                 }
                 throw Error(Error::SystemError,
-                            "PluginClient: couldn't write plugin data to tmp file");
+                            "PluginHandle: couldn't write plugin data to tmp file");
             }
 
             auto pathLength = path.size() + 1;
@@ -304,7 +304,7 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         break;
     }
     default:
-        LOG_ERROR("PluginHandle: unknown NRT request " << cmd.type);
+        LOG_ERROR("PluginHandle (" << id_ << "): unknown NRT request " << cmd.type);
         break;
     }
 }
@@ -330,11 +330,11 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
             window->setSize(cmd.windowSize.width, cmd.windowSize.height);
             break;
         default:
-            LOG_ERROR("PluginHandle: unknown UI command " << cmd.type);
+            LOG_ERROR("PluginHandle (" << id_ << "): unknown UI command " << cmd.type);
             break;
         }
     } else {
-        LOG_ERROR("PluginHandle: can't handle UI command without window!");
+        LOG_ERROR("PluginHandle (" << id_ << "): can't handle UI command without window!");
     }
 }
 
@@ -353,7 +353,7 @@ void PluginHandle::parameterAutomated(int index, float value) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             counter++;
             if (counter > 1000) {
-                LOG_WARNING("PluginHandle: postUIThread() blocked for over 1 second");
+                LOG_WARNING("PluginHandle (" << id_ << "): postUIThread() blocked for over 1 second");
                 break;
             }
         }
@@ -376,7 +376,7 @@ void PluginHandle::latencyChanged(int nsamples) {
 
         // UI queue is bounded!
         if (!server_->postUIThread(cmd)) {
-            LOG_WARNING("PluginHandle: couldn't post latency change!");
+            LOG_WARNING("PluginHandle (" << id_ << "): couldn't post latency change!");
         }
     } else {
         Command cmd(Command::LatencyChanged);
@@ -460,7 +460,7 @@ void PluginHandle::process(const ShmCommand &cmd, ShmChannel &channel){
 
 template<typename T>
 void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
-    LOG_PROCESS("PluginHandle: start processing");
+    LOG_PROCESS("PluginHandle (" << id_ << "): start processing");
 
     assert(cmd.process.numInputs == numInputs_);
     assert(cmd.process.numOutputs == numOutputs_);
@@ -477,7 +477,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     // read audio input data
     for (int i = 0; i < data.numInputs; ++i){
         auto& bus = data.inputs[i];
-        LOG_PROCESS("PluginHandle: read input bus " << i << " with "
+        LOG_PROCESS("PluginHandle (" << id_ << "): read input bus " << i << " with "
                      << bus.numChannels << " channels");
         // read channels
         for (int j = 0; j < bus.numChannels; ++j){
@@ -499,11 +499,11 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     }
 
     // read and dispatch commands
-    LOG_PROCESS("PluginHandle: dispatch commands");
+    LOG_PROCESS("PluginHandle (" << id_ << "): dispatch commands");
     dispatchCommands(channel);
 
     // process audio
-    LOG_PROCESS("PluginHandle: process");
+    LOG_PROCESS("PluginHandle (" << id_ << "): process");
     plugin_->process(data);
 
     // send audio output data
@@ -512,7 +512,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     // send output busses
     for (int i = 0; i < data.numOutputs; ++i){
         auto& bus = data.outputs[i];
-        LOG_PROCESS("PluginHandle: write output bus " << i << " with "
+        LOG_PROCESS("PluginHandle (" << id_ << "): write output bus " << i << " with "
                      << bus.numChannels << " channels");
         // write all channels sequentially to avoid additional copying.
         for (int j = 0; j < bus.numChannels; ++j){
@@ -521,7 +521,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
     }
 
     // send events
-    LOG_PROCESS("PluginHandle: send events");
+    LOG_PROCESS("PluginHandle (" << id_ << "): send events");
     sendEvents(channel);
 
     // handle possible display update
@@ -532,7 +532,7 @@ void PluginHandle::doProcess(const ShmCommand& cmd, ShmChannel& channel){
         addReply(channel, &cmd, sizeof(ShmCommand));
     }
 
-    LOG_PROCESS("PluginHandle: finished processing");
+    LOG_PROCESS("PluginHandle (" << id_ << "): finished processing");
 }
 
 void PluginHandle::dispatchCommands(ShmChannel& channel){
@@ -623,7 +623,7 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             }
             break;
         default:
-            LOG_ERROR("PluginHandle: unknown RT command " << cmd->type);
+            LOG_ERROR("PluginHandle (" << id_ << "): unknown RT command " << cmd->type);
             break;
         }
     }
