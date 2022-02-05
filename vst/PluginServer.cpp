@@ -10,10 +10,6 @@
 #include <cstring>
 #include <sstream>
 
-#ifndef DEBUG_SERVER_PROCESS
-#define DEBUG_SERVER_PROCESS 0
-#endif
-
 #if DEBUG_SERVER_PROCESS
 # define LOG_PROCESS(x) LOG_DEBUG(x)
 #else

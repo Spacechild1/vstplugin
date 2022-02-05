@@ -8,10 +8,6 @@
 #include <sstream>
 #include <cassert>
 
-#ifndef DEBUG_CLIENT_PROCESS
-#define DEBUG_CLIENT_PROCESS 0
-#endif
-
 #if DEBUG_CLIENT_PROCESS
 # define LOG_PROCESS(x) LOG_DEBUG(x)
 #else

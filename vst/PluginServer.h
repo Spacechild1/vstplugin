@@ -22,6 +22,10 @@
 # include <unistd.h>
 #endif
 
+#ifndef DEBUG_SERVER_PROCESS
+#define DEBUG_SERVER_PROCESS 0
+#endif
+
 namespace vst {
 
 class PluginServer;

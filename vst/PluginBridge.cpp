@@ -82,20 +82,16 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         // this is necessary for hosts with multi-threaded audio processing,
         // like Supernova, some libpd apps - and maybe even Pd itself :-)
         // for the actual algorithm, see getRTChannel().
-        static int hwThreads = []() {
-            return std::thread::hardware_concurrency();
-        }();
-        auto numThreads = prevPowerOfTwo(hwThreads);
-        LOG_DEBUG("PluginBridge: using " << numThreads << " RT threads");
-        threadMask_ = numThreads - 1;
+        numThreads_ = std::thread::hardware_concurrency();
+        LOG_DEBUG("PluginBridge: using " << numThreads_ << " RT threads");
         shm_.addChannel(ShmChannel::Request, nrtRequestSize, "nrt");
-        for (int i = 0; i < numThreads; ++i){
+        for (int i = 0; i < numThreads_; ++i){
             char buf[16];
             snprintf(buf, sizeof(buf), "rt%d", i+1);
             shm_.addChannel(ShmChannel::Request, rtRequestSize, buf);
         }
 
-        locks_ = std::make_unique<PaddedSpinLock[]>(numThreads);
+        locks_ = std::make_unique<PaddedSpinLock[]>(numThreads_);
     } else {
         // --- sandboxed plugin ---
         // a single rt channel which also doubles as the nrt channel
@@ -545,29 +541,29 @@ IPluginListener::ptr PluginBridge::findClient(uint32_t id){
     return nullptr;
 }
 
-static std::atomic<uint32_t> threadCounter{0}; // can safely overflow
-
 RTChannel PluginBridge::getRTChannel(){
     if (locks_){
         // shared plugin bridge, see the comments in PluginBridge::PluginBridge().
 
-        uint32_t mask = threadMask_;
-        // we take the current index and try to lock the corresponding spinlock.
-        // if the spinlock is already taken (another DSP thread is trying to use the
-        // plugin bridge oncurrently), we atomically increment the index and try again.
-        // if there's only a single DSP thread, we will only ever lock the first spinlock
-        // and the plugin server will only use a single thread as well.
-        uint32_t index = threadCounter.load(std::memory_order_relaxed) & mask;
-        if (!locks_[index].try_lock()) {
+        // we map audio threads to successive indices, so that each audio thread
+        // is automatically associated with a dedicated thread in the subprocess.
+        static std::atomic<uint32_t> counter{0};
+
+        thread_local uint32_t threadIndex = counter.fetch_add(1) % numThreads_;
+        uint32_t index = threadIndex;
+        if (!locks_[index].try_lock()){
+            // if two threads end up on the same spinlock, e.g. because there are
+            // more audio threads than in the subprocess, try to find a free spinlock.
             // LOG_DEBUG("PluginBridge: index " << index << " taken");
-            uint32_t i = 0;
             do {
-                index = threadCounter.fetch_add(1, std::memory_order_relaxed) & mask;
+                if (++index == numThreads_) {
+                    index = 0;
+                }
             #if 0
                 // pause CPU everytime we cycle through all spinlocks
                 const int spin_count = 1000;
-                if ((++i & mask) == 0) {
-                    for (int j = 0; j < spin_count; ++j) {
+                if (index == threadIndex) {
+                    for (int i = 0; i < spin_count; ++i) {
                         pauseCpu();
                     }
                 }

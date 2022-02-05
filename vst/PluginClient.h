@@ -5,6 +5,10 @@
 #include "DeferredPlugin.h"
 #include "PluginBridge.h"
 
+#ifndef DEBUG_CLIENT_PROCESS
+#define DEBUG_CLIENT_PROCESS 0
+#endif
+
 namespace vst {
 
 class PluginClient final : public DeferredPlugin {

@@ -149,7 +149,7 @@ class PluginBridge final
     pid_t pid_;
     int logRead_ = -1;
 #endif
-    uint32_t threadMask_ = 0;
+    uint32_t numThreads_ = 0;
     std::unique_ptr<PaddedSpinLock[]> locks_;
     std::unordered_map<uint32_t, std::weak_ptr<IPluginListener>> clients_;
     Mutex clientMutex_;
