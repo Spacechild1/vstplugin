@@ -17,6 +17,20 @@ namespace vst {
 
 /*/////////////////// DSPThreadPool /////////////////////////*/
 
+thread_local bool gCurrentThreadDSP;
+
+// some callbacks in IThreadedPluginListener need to know whether they
+// are called from a DSP (helper) thread, so that they would push to
+// a queue instead of forwarding to the "real" listener.
+// This is simpler and faster than saving and checking thread IDs.
+void setCurrentThreadDSP() {
+    gCurrentThreadDSP = true;
+}
+
+bool isCurrentThreadDSP() {
+    // LOG_DEBUG("isCurrentThreadDSP: " << gCurrentThreadDSP);
+    return gCurrentThreadDSP;
+}
 
 DSPThreadPool::DSPThreadPool() {
     LOG_DEBUG("start DSPThreadPool");
@@ -36,7 +50,7 @@ DSPThreadPool::DSPThreadPool() {
     for (int i = 0; i < numThreads; ++i){
         std::thread thread([this, i](){
             setThreadPriority(Priority::High);
-
+            setCurrentThreadDSP();
             run();
         });
         threads_.push_back(std::move(thread));
@@ -267,9 +281,6 @@ void ThreadedPlugin::threadFunction(int numSamples){
     data.numOutputs = numOutputs_;
 
     if (mutex_.try_lock()){
-        // set thread ID!
-        rtThread_ = std::this_thread::get_id();
-
         // clear outgoing event queue!
         events_[!current_].clear();
 
@@ -297,6 +308,7 @@ void ThreadedPlugin::doProcess(ProcessData& data){
         // NOTE: we only process a single task at a time and then check again,
         // because in the meantime another thread might have finished our task.
         // in this case, we can move on and let the DSP threads do the remaining work.
+        setCurrentThreadDSP(); // !
         if (!threadPool_->processTask()){
             // no tasks left -> wait
             // LOG_DEBUG("wait for task");
@@ -518,7 +530,7 @@ intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, floa
 /*/////////////////// ThreadedPluginListener ////////////////////*/
 
 void ThreadedPluginListener::parameterAutomated(int index, float value) {
-    if (std::this_thread::get_id() == owner_->rtThread_){
+    if (isCurrentThreadDSP()){
         Command e(Command::ParamAutomated);
         e.paramAutomated.index = index;
         e.paramAutomated.value = value;
@@ -534,7 +546,7 @@ void ThreadedPluginListener::parameterAutomated(int index, float value) {
 }
 
 void ThreadedPluginListener::latencyChanged(int nsamples) {
-    if (std::this_thread::get_id() == owner_->rtThread_){
+    if (isCurrentThreadDSP()){
         Command e(Command::LatencyChanged);
         e.i = nsamples;
 
@@ -564,7 +576,7 @@ void ThreadedPluginListener::pluginCrashed(){
 }
 
 void ThreadedPluginListener::midiEvent(const MidiEvent& event) {
-    if (std::this_thread::get_id() == owner_->rtThread_){
+    if (isCurrentThreadDSP()){
         Command e(Command::MidiReceived);
         e.midi = event;
 
@@ -579,7 +591,7 @@ void ThreadedPluginListener::midiEvent(const MidiEvent& event) {
 }
 
 void ThreadedPluginListener::sysexEvent(const SysexEvent& event) {
-    if (std::this_thread::get_id() == owner_->rtThread_){
+    if (isCurrentThreadDSP()){
         // deep copy!
         auto data = new char[event.size];
         memcpy(data, event.data, event.size);
