@@ -167,6 +167,19 @@ std::string fileName(const std::string& path){
     }
 }
 
+std::string fileDirectory(const std::string& path){
+#ifdef _WIN32
+    auto pos = path.find_last_of("/\\");
+#else
+    auto pos = path.find_last_of('/');
+#endif
+    if (pos != std::string::npos){
+        return path.substr(0, pos);
+    } else {
+        return path;
+    }
+}
+
 // include the dot!
 std::string fileExtension(const std::string& path){
     auto name = fileName(path);

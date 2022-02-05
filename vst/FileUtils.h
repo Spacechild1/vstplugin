@@ -21,6 +21,8 @@ bool createDirectory(const std::string& dir);
 
 std::string fileName(const std::string& path);
 
+std::string fileDirectory(const std::string& path);
+
 std::string fileExtension(const std::string& path);
 
 std::string fileBaseName(const std::string& path);
