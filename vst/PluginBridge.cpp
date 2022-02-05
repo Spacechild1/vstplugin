@@ -604,16 +604,18 @@ WatchDog& WatchDog::instance(){
 }
 
 WatchDog::WatchDog(){
-    LOG_DEBUG("create WatchDog");
+    LOG_DEBUG("start WatchDog");
     running_ = true;
     thread_ = std::thread(&WatchDog::run, this);
-#if !WATCHDOG_JOIN
-    thread_.detach();
-#endif
 }
 
 WatchDog::~WatchDog(){
-#if WATCHDOG_JOIN
+#ifdef _WIN32
+    // You can't synchronize threads in a global/static object
+    // destructor in a Windows DLL because of the loader lock.
+    // See https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+    thread_.detach();
+#else
     {
         std::lock_guard<std::mutex> lock(mutex_);
         processes_.clear(); // !

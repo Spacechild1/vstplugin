@@ -38,13 +38,6 @@ static void initEventLoop() {}
 
 /*---------------------- work queue ----------------------------*/
 
-// joining a thread in a global/static object constructor can dead lock in a Windows DLL.
-#ifdef _WIN32
-# define WORK_QUEUE_JOIN 0
-#else
-# define WORK_QUEUE_JOIN 1
-#endif
-
 #ifdef PDINSTANCE
 namespace {
     std::unordered_map<t_pdinstance *, std::unique_ptr<t_workqueue>> gWorkQueues;
@@ -121,16 +114,18 @@ t_workqueue::t_workqueue(){
         LOG_DEBUG("worker thread finished");
     });
 
-#if !WORK_QUEUE_JOIN
-    w_thread.detach();
-#endif
-
     w_clock = clock_new(this, (t_method)clockmethod);
     clock_delay(w_clock, 0);
 }
 
 t_workqueue::~t_workqueue(){
-#if WORK_QUEUE_JOIN
+#ifdef _WIN32
+    // You can't synchronize threads in a global/static object
+    // destructor in a Windows DLL because of the loader lock.
+    // See https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+    w_thread.detach();
+    LOG_DEBUG("worker thread detached");
+#else
     w_running.store(false);
 
     // wake up and join thread

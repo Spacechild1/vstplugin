@@ -17,14 +17,9 @@ namespace vst {
 
 /*/////////////////// DSPThreadPool /////////////////////////*/
 
-// joining a thread in a global/static object constructor can dead lock in a Windows DLL.
-#ifdef _WIN32
-# define DSPTHREADPOOL_JOIN 0
-#else
-# define DSPTHREADPOOL_JOIN 1
-#endif
 
 DSPThreadPool::DSPThreadPool() {
+    LOG_DEBUG("start DSPThreadPool");
 #if 0
     THREAD_DEBUG("Align of DSPThreadPool: " << alignof(*this));
     THREAD_DEBUG("DSPThreadPool address: " << this);
@@ -44,15 +39,19 @@ DSPThreadPool::DSPThreadPool() {
 
             run();
         });
-    #if !DSPTHREADPOOL_JOIN
-        thread.detach();
-    #endif
         threads_.push_back(std::move(thread));
     }
 }
 
 DSPThreadPool::~DSPThreadPool(){
-#if DSPTHREADPOOL_JOIN
+#ifdef _WIN32
+    // You can't synchronize threads in a global/static object
+    // destructor in a Windows DLL because of the loader lock.
+    // See https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+    for (auto& thread : threads_){
+        thread.detach();
+    }
+#else
     running_.store(false);
 
     // wake up all threads!
@@ -64,6 +63,7 @@ DSPThreadPool::~DSPThreadPool(){
         }
     }
 #endif
+    LOG_DEBUG("free DSPThreadPool");
 }
 
 bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){

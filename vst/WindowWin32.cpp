@@ -121,6 +121,7 @@ DWORD EventLoop::run(void *user){
 }
 
 EventLoop::EventLoop(){
+    LOG_DEBUG("Win32: start EventLoop");
     // setup window class
     WNDCLASSEXW wcex;
     memset(&wcex, 0, sizeof(WNDCLASSEXW));
@@ -145,20 +146,24 @@ EventLoop::EventLoop(){
     };
     // wait for thread to create message queue
     event_.wait();
-    LOG_DEBUG("Win32: event loop created");
+    LOG_DEBUG("Win32: EventLoop ready");
 }
 
-EventLoop::~EventLoop(){
-    LOG_DEBUG("Win32: about to quit");
+EventLoop::~EventLoop() {
     if (thread_){
+        // can't synchronize threads in a global/static
+        // object constructor in a Windows DLL.
+    #if 0
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
             LOG_DEBUG("Win32: joined thread");
         } else {
             LOG_DEBUG("Win32: couldn't post quit message!");
         }
+    #endif
         CloseHandle(thread_);
     }
+    LOG_DEBUG("Win32: EventLoop quit");
 }
 
 bool EventLoop::checkThread() {

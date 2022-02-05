@@ -167,14 +167,6 @@ class PluginBridge final
 
 /*/////////////////////////// WatchDog //////////////////////////////*/
 
-// there's a deadlock bug in the windows runtime library which would cause
-// the process to hang if trying to join a thread in a static object destructor.
-#ifdef _WIN32
-# define WATCHDOG_JOIN 0
-#else
-# define WATCHDOG_JOIN 1
-#endif
-
 class WatchDog {
  public:
     static WatchDog& instance();
