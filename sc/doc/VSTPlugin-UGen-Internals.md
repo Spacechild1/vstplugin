@@ -199,6 +199,7 @@ Arguments:
 | string | plugin key or path.
 | int    | request VST GUI editor; 1 = yes, 0 = no
 | int    | request multithreading; 1 = yes, 0 = no
+| int    | mode; 0 = normal, 1 = sandbox (dedicated process), 2 = bridge (shared process)
 
 Replies with
 | `/vst_open` ||
