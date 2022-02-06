@@ -38,7 +38,10 @@ PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
         bridge = it->second.lock();
     }
 
-    if (!bridge){
+    // Edge case: the bridge subprocess has crashed, but still lingers,
+    // so we create a new one; otherwise, the user would get a misleading
+    // error message that the new plugin has crashed.
+    if (!bridge || !bridge->alive()){
         // create shared bridge
         LOG_DEBUG("create shared plugin bridge for " << cpuArchToString(arch));
         bridge = std::make_shared<PluginBridge>(arch, true);
