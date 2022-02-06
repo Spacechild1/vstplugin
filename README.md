@@ -40,14 +40,14 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
   Otherwise you get a warning if you try to open a plugin with "editor: true".
 
 * macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)...
- This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
+  This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
 
- There are two options work around this issue:
+  There are two options work around this issue:
 
- a) run the plugin in a subprocess (see "-b" and "-p" options)
+  a) run the plugin in a subprocess (see "-b" and "-p" options)
 
- b) use my Pd "eventloop" fork (source: https://github.com/Spacechild1/pure-data/tree/eventloop, binaries: https://github.com/Spacechild1/pure-data/releases, e.g. "Pd 0.51-1 event loop").
-    NOTE: You have tick "Enable event loop" in the "Start up" settings.
+  b) use my Pd "eventloop" fork (source: https://github.com/Spacechild1/pure-data/tree/eventloop, binaries: https://github.com/Spacechild1/pure-data/releases, e.g. "Pd 0.51-1 event loop").
+     NOTE: You have tick "Enable event loop" in the "Start up" settings.
 
 * VST3 preset files created with vstplugin v0.3.0 or below couldn't be opened in other VST hosts and vice versa.
   This has been fixed in vstplugin v0.3.1. You can still open old "wrong" preset files, but this might go away in future versions; you're advised to open and save your old VST3 presets to "convert" them to the new format.
