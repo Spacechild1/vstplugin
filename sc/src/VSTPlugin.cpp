@@ -39,19 +39,6 @@ void SCLog(int level, const char *s){
     }
 }
 
-void RTFreeSafe(World *world, void *data){
-    if (data){
-        RTFree(world, data);
-    }
-}
-
-void cmdRTfree(World *world, void * cmdData) {
-    if (cmdData) {
-        RTFree(world, cmdData);
-        // LOG_DEBUG("cmdRTfree!");
-    }
-}
-
 // 'clean' version for non-POD data
 template<typename T>
 void cmdRTfree(World *world, void * cmdData) {
@@ -813,24 +800,24 @@ VSTPlugin::VSTPlugin(){
 VSTPlugin::~VSTPlugin(){
     clearMapping();
 
-    RTFreeSafe(mWorld, paramState_);
-    RTFreeSafe(mWorld, paramMapping_);
+    RTFree(mWorld, paramState_);
+    RTFree(mWorld, paramMapping_);
 
-    RTFreeSafe(mWorld, ugenInputs_);
-    RTFreeSafe(mWorld, ugenOutputs_);
+    RTFree(mWorld, ugenInputs_);
+    RTFree(mWorld, ugenOutputs_);
 
     // plugin input buffers
     for (int i = 0; i < numPluginInputs_; ++i){
-        RTFreeSafe(mWorld, pluginInputs_[i].channelData32);
+        RTFree(mWorld, pluginInputs_[i].channelData32);
     }
-    RTFreeSafe(mWorld, pluginInputs_);
+    RTFree(mWorld, pluginInputs_);
     // plugin output buffers
     for (int i = 0; i < numPluginOutputs_; ++i){
-        RTFreeSafe(mWorld, pluginOutputs_[i].channelData32);
+        RTFree(mWorld, pluginOutputs_[i].channelData32);
     }
-    RTFreeSafe(mWorld, pluginOutputs_);
+    RTFree(mWorld, pluginOutputs_);
 
-    RTFreeSafe(mWorld, dummyBuffer_);
+    RTFree(mWorld, dummyBuffer_);
 
     freeReblocker();
 
@@ -893,7 +880,7 @@ bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
 {
     // free excess bus channels
     for (int i = numSpeakers; i < pluginBusCount; ++i){
-        RTFreeSafe(mWorld, pluginBusses[i].channelData32);
+        RTFree(mWorld, pluginBusses[i].channelData32);
         // if the following RTRealloc fails!
         pluginBusses[i].channelData32 = nullptr;
         pluginBusses[i].numChannels = 0;
@@ -907,7 +894,7 @@ bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
             return false; // bail!
         }
     } else {
-        RTFreeSafe(mWorld, pluginBusses);
+        RTFree(mWorld, pluginBusses);
         result = nullptr;
     }
     // init new busses, in case a subsequent RTRealloc call fails!
@@ -936,7 +923,7 @@ bool VSTPlugin::setupBuffers(AudioBus *& pluginBusses, int &pluginBusCount,
                 bus.numChannels = channelCount;
             } else {
                 // free old array!
-                RTFreeSafe(mWorld, bus.channelData32);
+                RTFree(mWorld, bus.channelData32);
                 bus.channelData32 = nullptr;
                 bus.numChannels = 0;
             }
@@ -1097,13 +1084,13 @@ bool VSTPlugin::updateReblocker(int numSamples){
 void VSTPlugin::freeReblocker(){
     if (reblock_){
         for (int i = 0; i < reblock_->numInputs; ++i){
-            RTFreeSafe(mWorld, reblock_->inputs[i].channelData);
+            RTFree(mWorld, reblock_->inputs[i].channelData);
         }
         for (int i = 0; i < reblock_->numOutputs; ++i){
-            RTFreeSafe(mWorld, reblock_->outputs[i].channelData);
+            RTFree(mWorld, reblock_->outputs[i].channelData);
         }
-        RTFreeSafe(mWorld, reblock_->inputs);
-        RTFreeSafe(mWorld, reblock_->outputs);
+        RTFree(mWorld, reblock_->inputs);
+        RTFree(mWorld, reblock_->outputs);
         RTFree(mWorld, reblock_);
     }
 }
@@ -1168,7 +1155,7 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
             setInvalid();
         }
     } else {
-        RTFreeSafe(mWorld, paramState_);
+        RTFree(mWorld, paramState_);
         paramState_ = nullptr;
     }
 
@@ -1186,7 +1173,7 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
             setInvalid();
         }
     } else {
-        RTFreeSafe(mWorld, paramMapping_);
+        RTFree(mWorld, paramMapping_);
         paramMapping_ = nullptr;
     }
 }
@@ -1943,8 +1930,8 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
     }
 
     // RTAlloc might have failed!
-    RTFreeSafe(world_, cmd.inputs);
-    RTFreeSafe(world_, cmd.outputs);
+    RTFree(world_, cmd.inputs);
+    RTFree(world_, cmd.outputs);
 }
 
 void VSTPluginDelegate::showEditor(bool show) {
@@ -3196,7 +3183,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
         // LOG_DEBUG("start search");
         gSearching = true; // before command dispatching! -> NRT mode
         DoAsynchronousCommand(inWorld, replyAddr, "vst_search", data,
-            cmdSearch, cmdSearchDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
+            cmdSearch, cmdSearchDone, SearchCmdData::nrtFree, RTFree, 0, 0);
     } else {
         for (int i = 0; i < numPaths; ++i){
             RTFree(inWorld, pathList[i]);
@@ -3222,7 +3209,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                 }
                 gPluginDict.clear();
                 return false;
-            }, 0, 0, cmdRTfree, 0, 0);
+            }, 0, 0, RTFree, 0, 0);
         }
     } else {
         LOG_WARNING("can't clear while searching!");
@@ -3309,7 +3296,7 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         memcpy(data->pathBuf, path, size); // store plugin path/key
 
         DoAsynchronousCommand(inWorld, replyAddr, "vst_query",
-            data, cmdQuery, cmdQueryDone, SearchCmdData::nrtFree, cmdRTfree, 0, 0);
+            data, cmdQuery, cmdQueryDone, SearchCmdData::nrtFree, RTFree, 0, 0);
     }
 }
 
