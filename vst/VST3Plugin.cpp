@@ -1366,39 +1366,31 @@ void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numO
         outputSpeakers[i] = makeChannels(output[i]);
     };
 
-    processor_->setBusArrangements(inputSpeakers, numInputs,
-                                   outputSpeakers, numOutputs);
+    if (processor_->setBusArrangements(inputSpeakers, numInputs,
+                                       outputSpeakers, numOutputs) == kResultFalse) {
+        LOG_DEBUG("bus arrangement not supported!");
+    }
 
     // we have to (de)activate busses *after* setting the bus arrangement.
     // we also retrieve and save the actual bus channel counts.
-    // NOTE: according to the VST3 SDK docs, we can deactivate plugin busses at will;
-    // this means that if we request a channel count of 0, we could simply deactivate
-    // the bus. However, some plugins would simply crash if a main bus is deactivated,
-    // that's why we always check the actual bus arrangement for main busses, even if
-    // the requested channel count was 0, but we don't do this for aux busses.
+    // NOTE: if the users passes 0 channels, this effectively deactivates the bus;
+    // however, we still have to check the actual speaker arrangement, so that we
+    // pass the correct number of channels in the processing routine, even if the
+    // bus is deactivated (see the VST3 docs). Some plugins reject a speaker count
+    // of 0, but still allow to deactivate the bus.
     auto checkSpeakers = [this](Vst::BusDirection dir, int *busses, int count){
         for (int i = 0; i < count; ++i){
             bool active = busses[i] > 0;
-            if (!active){
-                Vst::BusInfo info;
-                if (component_->getBusInfo(Vst::kAudio, dir, i, info) == kResultOk){
-                    if (info.busType == Vst::kMain){
-                        active = true; // main bus is always active!
-                    }
-                }
-            }
-            if (active){
-                // check actual channel count
-                Vst::SpeakerArrangement arr;
-                if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
-                    busses[i] = Vst::SpeakerArr::getChannelCount(arr);
-                } else {
-                    // ?
-                    LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
-                }
+            // check actual channel count
+            Vst::SpeakerArrangement arr;
+            if (processor_->getBusArrangement(dir, i, arr) == kResultOk){
+                busses[i] = Vst::SpeakerArr::getChannelCount(arr);
+            } else {
+                // ?
+                LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
             }
             // only activate bus if number of speakers is greater than zero
-            component_->activateBus(Vst::kAudio, dir, i, busses[i] > 0);
+            component_->activateBus(Vst::kAudio, dir, i, active);
         }
     };
 
