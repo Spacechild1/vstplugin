@@ -5,7 +5,7 @@
 variables:
   PROJECT: vstplugin
   JOBS: all
-  PDVERSION: 0.51-1
+  PDVERSION: 0.52-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
   SC_PATH: /tmp/supercollider

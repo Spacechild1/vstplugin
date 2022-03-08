@@ -283,9 +283,9 @@ static void readIniFile(){
         try {
             gPluginDict.read(path);
         } catch (const Error& e){
-            error("couldn't read cache file: %s", e.what());
+            pd_error(nullptr, "couldn't read cache file: %s", e.what());
         } catch (const std::exception& e){
-            error("couldn't read cache file: unexpected exception (%s)", e.what());
+            pd_error(nullptr, "couldn't read cache file: unexpected exception (%s)", e.what());
         }
     }
 }
@@ -301,7 +301,7 @@ static void writeIniFile(){
         }
         gPluginDict.write(dir + "/" CACHE_FILE);
     } catch (const Error& e){
-        error("couldn't write cache file: %s", e.what());
+        pd_error(nullptr, "couldn't write cache file: %s", e.what());
     }
 }
 
@@ -382,7 +382,7 @@ void postBug(const char *fmt, T... args){
 template<bool async = false, typename... T>
 void postError(const char *fmt, T... args){
     PdScopedLock<async> lock;
-    error(fmt, args...);
+    pd_error(nullptr, fmt, args...);
 }
 
 
