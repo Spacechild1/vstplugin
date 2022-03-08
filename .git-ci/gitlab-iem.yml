@@ -118,7 +118,7 @@ variables:
     variables:
       - $JOBS == "all" || $JOBS == "macos"
   before_script:
-    - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}.macos.zip
+    - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}-macosx7.mac.tar.gz
     - rm -rf /Applications/Pd*.app/
     - tar xvf Pd.tgz -C /Applications/
     - rm -f Pd.tgz
