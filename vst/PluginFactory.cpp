@@ -72,7 +72,7 @@ IFactory::ptr IFactory::load(const std::string& path, bool probe){
 PluginFactory::PluginFactory(const std::string &path)
     : path_(path)
 {
-    auto archs = getCpuArchitectures(path);
+    auto archs = getPluginCpuArchitectures(path);
     auto hostArch = getHostCpuArchitecture();
 
     if (std::find(archs.begin(), archs.end(), hostArch) != archs.end()){
@@ -81,7 +81,7 @@ PluginFactory::PluginFactory(const std::string &path)
     #if USE_BRIDGE
         // check if we can bridge any of the given CPU architectures
         for (auto& arch : archs){
-            if (canBridgeCpuArch(arch)){
+            if (IHostApp::get(arch) != nullptr){
                 arch_ = arch;
                 // LOG_DEBUG("created bridged plugin factory " << path);
                 return;
@@ -105,7 +105,7 @@ PluginFactory::PluginFactory(const std::string &path)
     }
 }
 
-IFactory::ProbeFuture PluginFactory::probeAsync(float timeout, bool nonblocking) {
+ProbeFuture PluginFactory::probeAsync(float timeout, bool nonblocking) {
     plugins_.clear();
     pluginMap_.clear();
     return [this, self = shared_from_this(), timeout,
@@ -165,9 +165,6 @@ int PluginFactory::numPlugins() const {
     return plugins_.size();
 }
 
-// should host.exe inherit file handles and print to stdout/stderr?
-#define PROBE_LOG 0
-
 PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(float timeout, bool nonblocking){
     return doProbePlugin(PluginDesc::SubPlugin { "", -1 }, timeout, nonblocking);
 }
@@ -178,208 +175,63 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
 {
     auto desc = std::make_shared<PluginDesc>(shared_from_this());
     desc->name = sub.name; // necessary for error reporting, will be overriden later
-    // turn id into string
-    char idString[12];
-    if (sub.id >= 0){
-        snprintf(idString, sizeof(idString), "0x%X", sub.id);
-    } else {
-        sprintf(idString, "_");
-    }
     // create temp file path
     std::stringstream ss;
     // desc address should be unique as long as PluginDesc instances are retained.
     ss << getTmpDirectory() << "/vst_" << desc.get();
     std::string tmpPath = ss.str();
-    // LOG_DEBUG("temp path: " << tmpPath);
-    std::string hostApp = getHostApp(arch_);
-#ifdef _WIN32
-    // get absolute path to host app
-    std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
-    /// LOG_DEBUG("host path: " << shorten(hostPath));
-    // arguments: host.exe probe <plugin_path> <plugin_id> <file_path>
-    // NOTE: we need to quote string arguments (in case they contain spaces)
-    std::stringstream cmdline;
-    cmdline << hostApp << " probe "
-            << "\"" << path() << "\" " << idString
-            << " \"" << tmpPath + "\"";
-    auto wcmdline = widen(cmdline.str());
-    STARTUPINFOW si;
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    ZeroMemory(&pi, sizeof(pi));
 
-    if (!CreateProcessW(hostPath.c_str(), &wcmdline[0], NULL, NULL,
-                        PROBE_LOG, DETACHED_PROCESS, NULL, NULL, &si, &pi)){
-        auto err = GetLastError();
-        std::stringstream ss;
-        ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
-        throw Error(Error::SystemError, ss.str());
+    auto app = IHostApp::get(arch_);
+    if (!app) {
+        // shouldn't happen
+        throw Error(Error::SystemError, "couldn't get host app");
     }
-    auto wait = [pi, timeout, nonblocking](DWORD& code){
-        // don't remove the DWORD cast!
-        const DWORD timeoutms = (timeout > 0) ? static_cast<DWORD>(timeout * 1000.f) : INFINITE;
-        auto res = WaitForSingleObject(pi.hProcess, nonblocking ? 0 : timeoutms);
-        if (res == WAIT_TIMEOUT){
-            if (nonblocking){
-                return false;
-            } else {
-                if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
-                    LOG_DEBUG("terminated hanging subprocess");
-                } else {
-                    LOG_ERROR("couldn't terminate hanging subprocess: "
-                              << errorMessage(GetLastError()));
-                }
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-                std::stringstream msg;
-                msg << "subprocess timed out after " << timeout << " seconds!";
-                throw Error(Error::SystemError, msg.str());
-            }
-        } else if (res == WAIT_OBJECT_0){
-            if (!GetExitCodeProcess(pi.hProcess, &code)){
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-                throw Error(Error::SystemError, "couldn't retrieve exit code for subprocess!");
-            }
-        } else {
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-            throw Error(Error::SystemError, "WaitForSingleObject() failed: " + errorMessage(GetLastError()));
-        }
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        return true;
-    };
-#else // Unix
-    // get absolute path to host app
-    std::string hostPath = getModuleDirectory() + "/" + hostApp;
-    // timeout
-    auto timeoutstr = std::to_string(timeout);
-    // fork
-#if !PROBE_LOG
-    // flush before fork() to avoid duplicate printouts!
-    fflush(stdout);
-    fflush(stderr);
-#endif
-    pid_t pid = fork();
-    if (pid == -1) {
-        throw Error(Error::SystemError, "fork() failed!");
-    } else if (pid == 0) {
-        // child process: start new process with plugin path and temp file path as arguments.
-    #if !PROBE_LOG
-        // disable stdout and stderr
-        auto nullOut = fopen("/dev/null", "w");
-        dup2(fileno(nullOut), STDOUT_FILENO);
-        dup2(fileno(nullOut), STDERR_FILENO);
-    #endif
-        // arguments: host probe <plugin_path> <plugin_id> <file_path> [timeout]
-        // NOTE: we must *not* quote arguments to exec!
-    #if USE_WINE
-        if (arch_ == CpuArch::pe_i386 || arch_ == CpuArch::pe_amd64){
-            const char *winecmd = getWineCommand();
-            // use PATH!
-            if (execlp(winecmd, winecmd, hostPath.c_str(), "probe", path().c_str(),
-                       idString, tmpPath.c_str(), timeoutstr.c_str(), nullptr) < 0) {
-                // LATER redirect child stderr to parent stdin
-                LOG_ERROR("couldn't run 'wine' (" << errorMessage(errno) << ")");
-            }
-        } else
-    #endif
-        if (execl(hostPath.c_str(), hostApp.c_str(), "probe", path().c_str(),
-                  idString, tmpPath.c_str(), timeoutstr.c_str(), nullptr) < 0) {
-            // write error to temp file
-            int err = errno;
-            File file(tmpPath, File::WRITE);
-            if (file.is_open()){
-                file << static_cast<int>(Error::SystemError) << "\n";
-                file << "couldn't run subprocess " << hostApp
-                     << ": " << errorMessage(err) << "\n";
-            }
-        }
-        std::exit(EXIT_FAILURE);
-    }
-    // parent process: wait for child
-    auto wait = [pid, nonblocking](int& code){
-        int status = 0;
-        if (waitpid(pid, &status, nonblocking ? WNOHANG : 0) == 0){
-            return false;
-        }
-        if (WIFEXITED(status)) {
-            code = WEXITSTATUS(status);
-        } else if (WIFSIGNALED(status)){
-            auto sig = WTERMSIG(status);
-            std::stringstream msg;
-            msg << "subprocess was terminated with signal "
-               << sig << " (" << strsignal(sig) << ")";
-            throw Error(Error::SystemError, msg.str());
-        } else if (WIFSTOPPED(status)){
-            auto sig = WSTOPSIG(status);
-            std::stringstream msg;
-            msg << "subprocess was stopped with signal "
-               << sig << " (" << strsignal(sig) << ")";
-            throw Error(Error::SystemError, msg.str());
-        } else if (WIFCONTINUED(status)){
-            // FIXME what should be do here?
-            throw Error(Error::SystemError, "subprocess continued");
-        } else {
-            std::stringstream msg;
-            msg << "unknown exit status (" << status << ")";
-            throw Error(Error::SystemError, msg.str());
-        }
-        return true;
-    };
-#endif
+    auto process = app->probe(path_, sub.id, tmpPath);
+    // NB: std::function doesn't allow move-only types in a lambda capture,
+    // so we have to wrap ProcessHandle in a std::shared_ptr...
     return [desc=std::move(desc),
             tmpPath=std::move(tmpPath),
-            wait=std::move(wait),
-        #ifdef _WIN32
-            pi,
-        #else
-            pid,
-        #endif
-            timeout,
-            start = std::chrono::system_clock::now()]
+            process=std::make_shared<ProcessHandle>(std::move(process)),
+            timeout, nonblocking,
+            start=std::chrono::system_clock::now()]
             (ProbeResult& result) {
-    #ifdef _WIN32
-        DWORD code;
-    #else
-        int code;
-    #endif
         result.plugin = desc;
         result.total = 1;
         // wait for process to finish
-        // (returns false when nonblocking and still running)
+        int code = -1;
         try {
-            if (!wait(code)){
-                if (timeout > 0) {
-                    using seconds = std::chrono::duration<double>;
-                    auto now = std::chrono::system_clock::now();
-                    auto elapsed = std::chrono::duration_cast<seconds>(now - start).count();
-                    if (elapsed > timeout){
-                    #ifdef _WIN32
-                        if (TerminateProcess(pi.hProcess, EXIT_FAILURE)){
-                            LOG_DEBUG("terminated hanging subprocess");
-                        } else {
-                            LOG_ERROR("couldn't terminate hanging subprocess: "
-                                      << errorMessage(GetLastError()));
+            if (nonblocking) {
+                auto ret = process->tryWait(0);
+                if (!ret.first) {
+                    if (timeout > 0) {
+                        using seconds = std::chrono::duration<double>;
+                        auto now = std::chrono::system_clock::now();
+                        auto elapsed = std::chrono::duration_cast<seconds>(now - start).count();
+                        if (elapsed > timeout) {
+                            if (process->terminate()) {
+                                LOG_DEBUG("terminated hanging subprocess");
+                            }
+                            std::stringstream msg;
+                            msg << "subprocess timed out after " << timeout << " seconds!";
+                            throw Error(Error::SystemError, msg.str());
                         }
-                        CloseHandle(pi.hProcess);
-                        CloseHandle(pi.hThread);
-                    #else
-                        if (kill(pid, SIGTERM) == 0){
-                            LOG_DEBUG("terminated hanging subprocess");
-                        } else {
-                            LOG_ERROR("couldn't terminate hanging subprocess: "
-                                      << errorMessage(errno));
-                        }
-                    #endif
-                        std::stringstream msg;
-                        msg << "subprocess timed out after " << timeout << " seconds!";
-                        throw Error(Error::SystemError, msg.str());
                     }
+                    return false;
                 }
-                return false;
+                code = ret.second;
+            } else if (timeout > 0) {
+                auto ret = process->tryWait(timeout);
+                if (!ret.first) {
+                    if (process->terminate()) {
+                        LOG_DEBUG("terminated hanging subprocess");
+                    }
+                    std::stringstream msg;
+                    msg << "subprocess timed out after " << timeout << " seconds!";
+                    throw Error(Error::SystemError, msg.str());
+                }
+                code = ret.second;
+            } else {
+                code = process->wait();
             }
         } catch (const Error& e){
             result.error = e;

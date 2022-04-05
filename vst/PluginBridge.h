@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "ShmInterface.h"
 #include "Sync.h"
+#include "HostApp.h"
 
 #include <memory>
 #include <atomic>
@@ -24,14 +25,6 @@
 # include <sys/wait.h>
 # include <fcntl.h>
 # include <string.h>
-#endif
-
-// redirect stdout and stderr from child process to parent.
-// use this if you want to see debug output from the actual VST plugins.
-// NOTE: this doesn't affect log functions like LOG_ERROR because
-// they go to a seperate pipe.
-#ifndef BRIDGE_LOG
-#define BRIDGE_LOG 0
 #endif
 
 namespace vst {
@@ -113,7 +106,7 @@ class PluginBridge final
 
     void readLog();
 
-    void checkStatus(bool wait);
+    void checkStatus();
 
     void addUIClient(uint32_t id, std::shared_ptr<IPluginListener> client);
 
@@ -141,12 +134,11 @@ class PluginBridge final
     ShmInterface shm_;
     bool shared_;
     std::atomic_bool alive_{false};
+    ProcessHandle process_;
 #ifdef _WIN32
     HANDLE hLogRead_ = NULL;
     HANDLE hLogWrite_ = NULL;
-    PROCESS_INFORMATION pi_;
 #else
-    pid_t pid_;
     int logRead_ = -1;
 #endif
     uint32_t numThreads_ = 0;

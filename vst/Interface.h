@@ -277,8 +277,9 @@ enum class RunMode {
 
 class IModule {
  public:
-     // throws an Error exception on failure!
+    // throws an Error exception on failure!
     static std::unique_ptr<IModule> load(const std::string& path);
+
     virtual ~IModule(){}
     virtual bool init() = 0; // VST3 only
     virtual bool exit() = 0; // VST3 only
@@ -327,15 +328,15 @@ struct ProbeResult {
     bool valid() const { return error.code() == Error::NoError; }
 };
 
+using ProbeCallback = std::function<void(const ProbeResult&)>;
+using ProbeFuture = std::function<bool(ProbeCallback)>;
+
 enum class CpuArch;
 
 class IFactory {
  public:
     using ptr = std::shared_ptr<IFactory>;
     using const_ptr = std::shared_ptr<const IFactory>;
-
-    using ProbeCallback = std::function<void(const ProbeResult&)>;
-    using ProbeFuture = std::function<bool(ProbeCallback)>;
 
     // expects an absolute path to the actual plugin file with or without extension
     // throws an Error exception on failure!

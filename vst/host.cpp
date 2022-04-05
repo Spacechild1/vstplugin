@@ -11,13 +11,6 @@
 #include <string.h>
 #include <mutex>
 
-#if VST_HOST_SYSTEM != VST_WINDOWS
-# define USE_ALARM 1
-# include <signal.h>
-#else
-# define USE_ALARM 0
-#endif
-
 using namespace vst;
 
 #ifndef USE_WMAIN
@@ -51,33 +44,10 @@ static int gTimeout;
 #endif
 
 // probe a plugin and write info to file
-// returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and everything else on error/crash :-)
-int probe(const std::string& pluginPath, int pluginIndex,
-          const std::string& filePath, float timeout)
+// returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and anything else on error/crash :-)
+int probe(const std::string& pluginPath, int pluginIndex, const std::string& filePath)
 {
     setThreadPriority(Priority::Low);
-
-#if USE_ALARM
-    if (timeout > 0){
-        gFilePath = filePath;
-        gTimeout = timeout + 0.5; // round up
-
-        signal(SIGALRM, [](int){
-        #if 1
-            // not really async safe
-            LOG_DEBUG("probe timed out");
-        #endif
-            // this should be more or less safe
-            char buf[256];
-            snprintf(buf, sizeof(buf),
-                     "subprocess timed out after %d seconds", gTimeout);
-            writeErrorMsg(Error::SystemError, buf, gFilePath);
-            std::exit(EXIT_FAILURE);
-        });
-
-        alarm(gTimeout); // round up
-    }
-#endif
 
     LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
@@ -197,13 +167,8 @@ int main(int argc, const char *argv[]) {
                 index = -1; // non-numeric argument
             }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
-            float timeout;
-            try {
-                timeout = argc > 3 ? std::stof(argv[3]) : 0.f;
-            } catch (...){
-                timeout = 0.f;
-            }
-            return probe(path, index, file, timeout);
+
+            return probe(path, index, file);
         }
     #if USE_BRIDGE
         else if (verb == "bridge" && argc >= 3){

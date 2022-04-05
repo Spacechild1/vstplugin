@@ -166,8 +166,8 @@ std::string errorMessage(int err){
 
 static HINSTANCE hInstance = 0;
 
-const std::wstring& getModuleDirectory(){
-    static std::wstring dir = [](){
+const std::string& getModuleDirectory(){
+    static std::string dir = [](){
         wchar_t wpath[MAX_PATH+1];
         if (GetModuleFileNameW(hInstance, wpath, MAX_PATH) > 0){
             wchar_t *ptr = wpath;
@@ -180,13 +180,17 @@ const std::wstring& getModuleDirectory(){
             }
             wpath[pos] = 0;
             // LOG_DEBUG("dll directory: " << shorten(wpath));
-            return std::wstring(wpath);
+            return shorten(wpath);
         } else {
             LOG_ERROR("getModuleDirectory: GetModuleFileNameW() failed!");
-            return std::wstring();
+            return std::string();
         }
     }();
     return dir;
+}
+
+int getCurrentProcessId() {
+    return GetCurrentProcessId();
 }
 
 extern "C" {
@@ -214,30 +218,17 @@ const std::string& getModuleDirectory(){
     return dir;
 }
 
-#endif // WIN32
-
-std::string getHostApp(CpuArch arch){
-    if (arch == getHostCpuArchitecture()){
-    #ifdef _WIN32
-        return "host.exe";
-    #else
-        return "host";
-    #endif
-    } else {
-        std::string host = std::string("host_") + cpuArchToString(arch);
-    #if defined(_WIN32)
-        host += ".exe";
-    #endif
-        return host;
-    }
+int getCurrentProcessId() {
+    return pid();
 }
 
-#ifdef _WIN32
+#endif // WIN32
 
-int runCommand(const char *cmd, const char *args) {
+#ifdef _WIN32
+int runCommand(const std::string& cmd, const std::string& args) {
     auto wcmd = widen(cmd);
     fflush(stdout);
-    // don't use system() to avoid console popping up
+    // don't use system() or _wspawnl() to avoid console popping up
 #if 1
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));
@@ -247,8 +238,8 @@ int runCommand(const char *cmd, const char *args) {
     si.cb = sizeof(si);
 
     std::stringstream cmdline;
-    // NOTE: we must quote the command when passed as the first argument!
-    cmdline << "\"" << cmd << "\" " << (args ? args : "");
+    // NOTE: to be 100% safe, let's quote the command
+    cmdline << "\"" << fileName(cmd) << "\" " << args;
     auto wcmdline = widen(cmdline.str());
 
     if (!CreateProcessW(wcmd.c_str(), &wcmdline[0], NULL, NULL, 0,
@@ -278,9 +269,9 @@ int runCommand(const char *cmd, const char *args) {
     }
 #else
     // still shows console...
-    // NOTE: we must quote the command when passed as the first argument!
-    auto quotecmd = L"\"" + wcmd + L"\"";
-    auto wargs = widen(args ? args : "");
+    // NOTE: to be 100% safe, let's quote the command
+    auto quotecmd = L"\"" + widen(fileName(cmd)) + L"\"";
+    auto wargs = widen(args);
     auto result = _wspawnl(_P_WAIT, wcmd.c_str(),
                            quotecmd.c_str(), wargs.c_str(), NULL);
     if (result >= 0) {
@@ -318,10 +309,10 @@ void restoreOutput() {
     close(stderrfd);
 }
 
-int runCommand(const char *cmd, const char *args) {
-    char cmdline[256];
+int runCommand(const std::string& cmd, const std::string& args) {
+    char cmdline[1024];
     snprintf(cmdline, sizeof(cmdline), "\"%s\" %s",
-             cmd, args ? args : "");
+             cmd.c_str(), args.c_str());
 
     fflush(stdout);
 #if SUPPRESS_OUTPUT
@@ -396,91 +387,6 @@ bool haveWine(){
 }
 
 #endif
-
-#if USE_BRIDGE
-// Generally, we can bridge between any kinds of CPU architectures,
-// as long as the they are supported by the platform in question.
-//
-// We use the following naming scheme for the plugin bridge app:
-// host_<cpu_arch>[extension]
-// Examples: "host_i386", "host_amd64.exe", etc.
-//
-// We can selectively enable/disable CPU architectures simply by
-// including resp. omitting the corresponding app.
-// Note that we always ship a version of the *same* CPU architecture
-// called "host" resp. "host.exe" to support plugin sandboxing.
-//
-// Bridging between i386 and amd64 is typically employed on Windows,
-// but also possible on Linux and macOS (before 10.15).
-// On the upcoming ARM MacBooks, we can also bridge between amd64 and aarch64.
-// NOTE: We ship 64-bit Intel builds on Linux without "host_i386" and
-// ask people to compile it themselves if they need it.
-//
-// On macOS and Linux we can also use the plugin bridge to run Windows plugins
-// via Wine. The apps are called "host_pe_i386.exe" and "host_pe_amd64.exe".
-
-std::mutex gHostAppMutex;
-
-std::unordered_map<CpuArch, bool> gHostAppDict;
-
-bool canBridgeCpuArch(CpuArch arch) {
-    std::lock_guard<std::mutex> lock(gHostAppMutex);
-    auto it = gHostAppDict.find(arch);
-    if (it != gHostAppDict.end()){
-        return it->second;
-    }
-
-#ifdef _WIN32
-    auto path = shorten(getModuleDirectory()) + "\\" + getHostApp(arch);
-#else // Unix
-  #if USE_WINE
-    if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-        // check if the 'wine' command can be found and works.
-        if (!haveWine()){
-            gHostAppDict[arch] = false;
-            return false;
-        }
-    }
-  #endif // USE_WINE
-    auto path = getModuleDirectory() + "/" + getHostApp(arch);
-#endif
-
-    // check if host app exists and works
-    if (pathExists(path)){
-        int exitCode;
-        try {
-        #if USE_WINE
-            if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64) {
-                char args[256];
-                snprintf(args, sizeof(args), "\"%s\" test", path.c_str());
-                exitCode = runCommand(getWineCommand(), args);
-            } else
-        #endif
-            {
-                exitCode = runCommand(path.c_str(), "test");
-            }
-        } catch (const Error& e) {
-            LOG_ERROR("failed to execute host app '" << path << "': " << e.what());
-            gHostAppDict[arch] = false;
-            return false;
-        }
-        if (exitCode == EXIT_SUCCESS){
-            LOG_DEBUG("host app '" << path << "' is working");
-            gHostAppDict[arch] = true;
-            return true; // success
-        } else {
-            LOG_ERROR("host app '" << path << "' failed with exit code " << exitCode);
-            gHostAppDict[arch] = false;
-            return false;
-        }
-    } else {
-        LOG_VERBOSE("can't find host app " << path);
-        gHostAppDict[arch] = false;
-        return false;
-    }
-}
-
-#endif // USE_BRIDGE
 
 //-------------------------------------------------------------//
 

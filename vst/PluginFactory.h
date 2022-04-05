@@ -3,6 +3,7 @@
 #include "Interface.h"
 #include "PluginDesc.h"
 #include "CpuArch.h"
+#include "HostApp.h"
 
 // for testing we don't want to load hundreds of sub plugins
 // #define PLUGIN_LIMIT 50

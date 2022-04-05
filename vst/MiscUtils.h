@@ -78,13 +78,7 @@ std::string errorMessage(int err);
 
 //---------------------------------------------------------------//
 
-std::string getHostApp(CpuArch arch);
-
-#ifdef _WIN32
-const std::wstring& getModuleDirectory();
-#else
 const std::string& getModuleDirectory();
-#endif
 
 #if USE_WINE
 const char * getWineCommand();
@@ -94,13 +88,9 @@ const char * getWineFolder();
 bool haveWine();
 #endif
 
-#if USE_BRIDGE
-bool canBridgeCpuArch(CpuArch arch);
-#endif
+int getCurrentProcessId();
 
-int runCommand(const char *cmd, const char *args);
-
-//---------------------------------------------------------------//
+int runCommand(const std::string& cmd, const std::string& args);
 
 enum class Priority {
     Low,

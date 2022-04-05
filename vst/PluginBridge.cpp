@@ -61,14 +61,6 @@ PluginBridge::ptr PluginBridge::create(CpuArch arch){
     return bridge;
 }
 
-// PluginFactory.cpp
-#ifdef _WIN32
-const std::wstring& getModuleDirectory();
-#else
-const std::string& getModuleDirectory();
-#endif
-std::string getHostApp(CpuArch arch);
-
 PluginBridge::PluginBridge(CpuArch arch, bool shared)
     : shared_(shared)
 {
@@ -104,50 +96,16 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
 
     LOG_DEBUG("PluginBridge: created channels");
 
-    // spawn host process
-    std::string hostApp = getHostApp(arch);
-
 #ifdef _WIN32
     // create pipe for logging
     if (!CreatePipe(&hLogRead_, &hLogWrite_, NULL, 0)) {
         throw Error(Error::SystemError,
                     "CreatePipe() failed: " + errorMessage(GetLastError()));
     }
-    // the write handle gets passed to the child process. we can't simply close
-    // our end after CreateProcess() because the child process needs to duplicate
-    // the handle; otherwise we would inadvertently close the pipe. we only close
-    // our end in the destructor, after reading all remaining messages.
-
-    // NOTE: Win32 handles can be safely truncated to 32-bit!
-    auto writeLog = (uint32_t)reinterpret_cast<uintptr_t>(hLogWrite_);
-
-    // get process Id
-    auto parent = GetCurrentProcessId();
-    // get absolute path to host app
-    std::wstring hostPath = getModuleDirectory() + L"\\" + widen(hostApp);
-    /// LOG_DEBUG("host path: " << shorten(hostPath));
-    // arguments: host.exe bridge <parent_pid> <shm_path>
-    // NOTE: we need to quote string arguments (in case they contain spaces)
-    std::stringstream cmdLineStream;
-    cmdLineStream << hostApp << " bridge " << parent
-                  << " \"" << shm_.path() << "\" " << writeLog;
-    // LOG_DEBUG(cmdLineStream.str());
-    auto cmdLine = widen(cmdLineStream.str());
-
-    ZeroMemory(&pi_, sizeof(pi_));
-
-    STARTUPINFOW si;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    if (!CreateProcessW(hostPath.c_str(), &cmdLine[0], NULL, NULL, 0,
-                        BRIDGE_LOG ? CREATE_NEW_CONSOLE : DETACHED_PROCESS,
-                        NULL, NULL, &si, &pi_)){
-        auto err = GetLastError();
-        std::stringstream ss;
-        ss << "couldn't open host process " << hostApp << " (" << errorMessage(err) << ")";
-        throw Error(Error::SystemError, ss.str());
-    }
-    auto pid = pi_.dwProcessId;
+    // We can't simply close our end after CreateProcess() because the child process
+    // needs to duplicate the handle; otherwise we would inadvertently close the pipe.
+    // We only close our end in the destructor, after reading all remaining messages.
+    intptr_t pipeHandle = reinterpret_cast<intptr_t>(hLogWrite_);
 #else // Unix
     // create pipe
     int pipefd[2];
@@ -155,71 +113,24 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         throw Error(Error::SystemError,
                     "pipe() failed: " + errorMessage(errno));
     }
-    auto writeEnd = std::to_string(pipefd[1]);
-    // get parent pid
-    auto parent = getpid();
-    auto parentStr = std::to_string(parent);
-    // get absolute path to host app
-    std::string hostPath = getModuleDirectory() + "/" + hostApp;
-    // fork
-#if !BRIDGE_LOG
-    // flush before fork() to avoid duplicate printouts!
-    fflush(stdout);
-    fflush(stderr);
-#endif
-    auto pid = fork();
-    if (pid == -1) {
-        throw Error(Error::SystemError, "fork() failed!");
-    } else if (pid == 0) {
-        // child process
-        close(pipefd[0]); // close read end
-
-    #if !BRIDGE_LOG
-        // disable stdout and stderr
-        auto devnull = open("/dev/null", O_WRONLY);
-        dup2(devnull, STDOUT_FILENO);
-        dup2(devnull, STDERR_FILENO);
-    #endif
-
-        // host.exe bridge <parent_pid> <shm_path> <logchannel>
-        // NOTE: we must not quote arguments to exec!
-    #if USE_WINE
-        if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
-            // run in Wine
-            auto winecmd = getWineCommand();
-            // LOG_DEBUG("host path: " << hostPath);
-            // arguments: wine host.exe bridge <parent_pid> <shm_path>
-            // NOTE: we must *not* quote arguments to exec()
-            // execlp() beause we want to use PATH!
-            if (execlp(winecmd, winecmd, hostPath.c_str(), "bridge",
-                       parentStr.c_str(), shm_.path().c_str(),
-                       writeEnd.c_str(), nullptr) != 0)
-            {
-                LOG_ERROR("couldn't run '" << winecmd
-                          << "' (" << errorMessage(errno) << ")");
-            }
-            std::exit(EXIT_FAILURE);
-        }
-    #endif
-        // LOG_DEBUG("host path: " << hostPath);
-        // arguments: host.exe bridge <parent_pid> <shm_path>
-        if (execl(hostPath.c_str(), hostApp.c_str(), "bridge",
-                  parentStr.c_str(), shm_.path().c_str(),
-                  writeEnd.c_str(), nullptr) != 0)
-        {
-            LOG_ERROR("couldn't open host process "
-                      << hostApp << " (" << errorMessage(errno) << ")");
-        }
-        std::exit(EXIT_FAILURE);
-    }
-    // parent process
-    pid_ = pid;
     logRead_ = pipefd[0];
     close(pipefd[1]); // close write end!
+    intptr_t pipeHandle = logRead_;
 #endif
+    // spawn host process
+    // NB: we already checked in the PluginFactory::PluginFactory if we're able to bridge
+    auto hostApp = IHostApp::get(arch);
+    assert(hostApp);
+    try {
+        process_ = hostApp->bridge(shm_.path(), pipeHandle);
+    } catch (const Error& e) {
+        auto msg = "couldn't create host process '" + hostApp->path() + "': " + e.what();
+        throw Error(Error::SystemError, msg);
+    }
+
     alive_ = true;
-    LOG_DEBUG("PluginBridge: spawned subprocess (child: " << pid
-              << ", parent: " << parent << ")");
+    LOG_DEBUG("PluginBridge: spawned subprocess (child: " << process_.pid()
+              << ", parent: " << getCurrentProcessId() << ")");
 
     pollFunction_ = UIThread::addPollFunction([](void *x){
         static_cast<PluginBridge *>(x)->pollUIThread();
@@ -242,13 +153,11 @@ PluginBridge::~PluginBridge(){
     // wait for the subprocess to finish.
     // this might even be dangerous if the subprocess
     // somehow got stuck. maybe use some timeout?
-    checkStatus(true);
+    process_.wait();
     // read remaining messages
     readLog();
 
 #ifdef _WIN32
-    CloseHandle(pi_.hProcess);
-    CloseHandle(pi_.hThread);
     CloseHandle(hLogRead_);
     CloseHandle(hLogWrite_);
 #endif
@@ -378,88 +287,31 @@ void PluginBridge::readLog(){
 }
 
 
-void PluginBridge::checkStatus(bool wait){
+void PluginBridge::checkStatus(){
     // already dead, no need to check
-    if (!alive_.load()){
+    if (!alive_.load(std::memory_order_acquire)){
         return;
     }
-#ifdef _WIN32
-    DWORD res = WaitForSingleObject(pi_.hProcess, wait ? INFINITE : 0);
-    if (res == WAIT_TIMEOUT){
-        return; // still running
-    } else if (res == WAIT_OBJECT_0){
-        DWORD code = 0;
-        if (GetExitCodeProcess(pi_.hProcess, &code)){
-            if (code == EXIT_SUCCESS){
-                LOG_DEBUG("Watchdog: subprocess exited successfully");
-            } else if (code == EXIT_FAILURE){
-                // LATER get the actual Error from the child process.
-                LOG_WARNING("Watchdog: subprocess exited with failure");
-            } else {
-                LOG_WARNING("Watchdog: subprocess crashed!");
+    if (!process_.checkIfRunning()) {
+        // make sure that only a single thread will notify clients
+        if (alive_.exchange(false)) {
+            // notify waiting NRT/RT threads
+            for (int i = Channel::NRT; i < shm_.numChannels(); ++i){
+                // this should be safe, because channel messages
+                // can only be read when they are complete
+                // (the channel size is atomic)
+                shm_.getChannel(i).postReply();
             }
-        } else {
-            LOG_ERROR("Watchdog: couldn't retrieve exit code for subprocess!");
-        }
-    } else {
-        LOG_ERROR("Watchdog: WaitForSingleObject() failed: "
-                  + errorMessage(GetLastError()));
-    }
-#else
-    int status = 0;
-    auto ret = waitpid(pid_, &status, wait ? 0 : WNOHANG);
-    if (ret == 0){
-        return; // still running
-    } else if (ret > 0){
-        if (WIFEXITED(status)) {
-            int code = WEXITSTATUS(status);
-            if (code == EXIT_SUCCESS){
-                LOG_DEBUG("Watchdog: subprocess exited successfully");
-            } else if (code == EXIT_FAILURE){
-                // LATER get the actual Error from the child process.
-                LOG_WARNING("Watchdog: subprocess exited with failure");
-            } else {
-                LOG_WARNING("Watchdog: subprocess crashed!");
-            }
-        } else if (WIFSIGNALED(status)){
-            auto sig = WTERMSIG(status);
-            LOG_WARNING("Watchdog: subprocess was terminated with signal "
-                        << sig << " (" << strsignal(sig) << ")");
-        } else if (WIFSTOPPED(status)){
-            auto sig = WSTOPSIG(status);
-            LOG_WARNING("Watchdog: subprocess was stopped with signal "
-                        << sig << " (" << strsignal(sig) << ")");
-        } else if (WIFCONTINUED(status)){
-            // FIXME what should be do here?
-            LOG_VERBOSE("Watchdog: subprocess continued");
-        } else {
-            LOG_ERROR("Watchdog: unknown status (" << status << ")");
-        }
-    } else {
-        LOG_ERROR("Watchdog: waitpid() failed: " << errorMessage(errno));
-    }
-#endif
-
-    bool wasAlive = alive_.exchange(false);
-
-    // notify waiting NRT/RT threads
-    for (int i = Channel::NRT; i < shm_.numChannels(); ++i){
-        // this should be safe, because channel messages
-        // can only be read when they are complete
-        // (the channel size is atomic)
-        shm_.getChannel(i).postReply();
-    }
-
-    if (wasAlive){
-        LOG_DEBUG("PluginBridge: notify clients");
-        // notify all clients
-        ScopedLock lock(clientMutex_);
-        for (auto& it : clients_){
-            auto client = it.second.lock();
-            if (client){
-                client->pluginCrashed();
-            } else {
-                LOG_DEBUG("PluginBridge: stale client");
+            LOG_DEBUG("PluginBridge: notify clients");
+            // notify all clients
+            ScopedLock lock(clientMutex_);
+            for (auto& it : clients_){
+                auto client = it.second.lock();
+                if (client){
+                    client->pluginCrashed();
+                } else {
+                    LOG_DEBUG("PluginBridge: stale client");
+                }
             }
         }
     }
@@ -649,7 +501,7 @@ void WatchDog::run(){
                 auto process = it->lock();
                 if (process){
                     process->readLog();
-                    process->checkStatus(false);
+                    process->checkStatus();
                     ++it;
                 } else {
                     // remove stale process
