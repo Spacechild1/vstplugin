@@ -26,7 +26,9 @@ const char * cpuArchToString(CpuArch arch);
 
 CpuArch cpuArchFromString(const std::string& name);
 
-std::vector<CpuArch> getCpuArchitectures(const std::string& path);
+std::vector<CpuArch> getPluginCpuArchitectures(const std::string& path);
+
+std::vector<CpuArch> getFileCpuArchitectures(const std::string& path);
 
 void printCpuArchitectures(const std::string& path);
 

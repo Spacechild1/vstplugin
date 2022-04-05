@@ -123,7 +123,7 @@ static void swap_bytes(T& i){
 
 #if defined(_WIN32) || USE_WINE
 
-CpuArch readPE(vst::File& file){
+CpuArch readPE(vst::File& file, bool onlyPlugins){
     // read PE header
     // note: we don't have to worry about byte order (always LE)
     const uint16_t dos_signature = 0x5A4D;
@@ -144,7 +144,7 @@ CpuArch readPE(vst::File& file){
                 // check if it is a DLL
                 uint16_t flags;
                 memcpy(&flags, &header[18], sizeof(flags));
-                if (!(flags & IMAGE_FILE_DLL)){
+                if (!(flags & IMAGE_FILE_DLL) && onlyPlugins){
                     throw Error(Error::ModuleError, "not a DLL");
                 }
                 // get CPU architecture
@@ -182,7 +182,11 @@ CpuArch readPE(vst::File& file){
     #if USE_WINE
         throw Error(Error::NoError); // HACK!
     #else
-        throw Error(Error::ModuleError, "not a DLL");
+        if (onlyPlugins) {
+            throw Error(Error::ModuleError, "not a DLL");
+        } else {
+            throw Error(Error::ModuleError, "not a PE file");
+        }
     #endif
     }
 }
@@ -191,7 +195,7 @@ CpuArch readPE(vst::File& file){
 
 #if !defined(_WIN32) && !defined(__APPLE__) // Linux, OpenBSD, FreeBSD, etc. (TODO handle Android?)
 
-CpuArch readELF(vst::File& file){
+CpuArch readELF(vst::File& file, bool onlyPlugins){
     // read ELF header
     // check magic number
     char data[64]; // ELF header size
@@ -212,7 +216,7 @@ CpuArch readELF(vst::File& file){
             swap_bytes(filetype);
         }
         // check if it is a shared object
-        if (filetype != ET_DYN){
+        if (filetype != ET_DYN && onlyPlugins){
             throw Error(Error::ModuleError, "not a shared object");
         }
         // read CPU architecture
@@ -238,7 +242,11 @@ CpuArch readELF(vst::File& file){
             return CpuArch::unknown;
         }
     } else {
-        throw Error(Error::ModuleError, "not a shared object");
+        if (onlyPlugins) {
+            throw Error(Error::ModuleError, "not a shared object");
+        } else {
+            throw Error(Error::ModuleError, "not an ELF file");
+        }
     }
 }
 
@@ -246,7 +254,7 @@ CpuArch readELF(vst::File& file){
 
 #ifdef __APPLE__ // macOS (TODO handle iOS?)
 
-std::vector<CpuArch> readMach(vst::File& file){
+std::vector<CpuArch> readMach(vst::File& file, bool onlyPlugins){
     // read Mach-O header
     auto read_uint32 = [](std::fstream& f, bool swap){
         uint32_t i;
@@ -285,7 +293,7 @@ std::vector<CpuArch> readMach(vst::File& file){
         uint32_t cpusubtype = read_uint32(f, swap); // ignored
         uint32_t filetype = read_uint32(f, swap);
         // check if it is a dylib or Mach-bundle
-        if (filetype != MH_DYLIB && filetype != MH_BUNDLE){
+        if (filetype != MH_DYLIB && filetype != MH_BUNDLE && onlyPlugins){
             throw Error(Error::ModuleError, "not a plugin");
         }
         return getCpuArch(cputype);
@@ -373,7 +381,7 @@ static const std::vector<const char *> gBundleBinaryExtensions = {
 };
 
 // try to get CPU architecture(s) from a file
-std::vector<CpuArch> doGetCpuArchitectures(const std::string& path){
+std::vector<CpuArch> doGetCpuArchitectures(const std::string& path, bool onlyPlugins){
     std::vector<CpuArch> results;
 
     vst::File file(path);
@@ -382,12 +390,12 @@ std::vector<CpuArch> doGetCpuArchitectures(const std::string& path){
         try {
     #endif
         #if defined(_WIN32) // Windows
-            results.push_back(readPE(file));
+            results.push_back(readPE(file, onlyPlugins));
         #elif defined(__APPLE__)
-            auto archs = readMach(file);
+            auto archs = readMach(file, onlyPlugins);
             results.insert(results.end(), archs.begin(), archs.end());
         #else
-            results.push_back(readELF(file));
+            results.push_back(readELF(file, onlyPlugins));
         #endif
     #if USE_WINE
         } catch (const Error& e) {
@@ -396,7 +404,7 @@ std::vector<CpuArch> doGetCpuArchitectures(const std::string& path){
             file.seekg(0);
             try {
                 // try to read as PE
-                results.push_back(readPE(file));
+                results.push_back(readPE(file, onlyPlugins));
             } catch (const Error& e2) {
                 if (e2.code() == Error::NoError){
                     // not a PE, keep original error
@@ -416,7 +424,7 @@ std::vector<CpuArch> doGetCpuArchitectures(const std::string& path){
 // If 'path' is a file, we throw an exception if it is not a library,
 // but if 'path' is a bundle (= directory), we ignore any non-library files
 // in the 'Contents' subfolder (so the resulting list might be empty).
-std::vector<CpuArch> getCpuArchitectures(const std::string& path){
+std::vector<CpuArch> getPluginCpuArchitectures(const std::string& path){
     if (isDirectory(path)){
         // plugin bundle
         std::vector<CpuArch> results;
@@ -447,7 +455,7 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path){
                 // ignore files in a bundle that are not plugins
                 if (hasExtension(file)){
                     try {
-                        auto res = doGetCpuArchitectures(file); // bundle!
+                        auto res = doGetCpuArchitectures(file, true); // bundle!
                         results.insert(results.end(), res.begin(), res.end());
                     } catch (const Error& e){
                         LOG_ERROR(path << ": " << e.what());
@@ -461,12 +469,16 @@ std::vector<CpuArch> getCpuArchitectures(const std::string& path){
         return results;
     } else {
         // plugin file
-        return doGetCpuArchitectures(path);
+        return doGetCpuArchitectures(path, true);
     }
 }
 
+std::vector<CpuArch> getFileCpuArchitectures(const std::string &path) {
+    return doGetCpuArchitectures(path, false);
+}
+
 void printCpuArchitectures(const std::string& path){
-    auto archs = getCpuArchitectures(path);
+    auto archs = getFileCpuArchitectures(path);
     if (!archs.empty()){
         std::stringstream ss;
         for (auto& arch : archs){
