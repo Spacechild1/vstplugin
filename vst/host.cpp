@@ -180,16 +180,26 @@ int main(int argc, const char *argv[]) {
             return bridge(pid, shmPath, logChannel);
         }
     #endif
-        else if (verb == "test"){
-            // std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+        else if (verb == "test" && argc > 0){
+            std::string version = shorten(argv[0]);
+            // version must match exactly
+            if (version == getVersionString()) {
+                return EXIT_SUCCESS;
+            } else {
+                LOG_ERROR("version mismatch");
+                return EXIT_FAILURE;
+            }
+        } else if (verb == "--version") {
+            std::cout << "vstplugin " << getVersionString() << std::endl;
             return EXIT_SUCCESS;
         }
     }
-    LOG_ERROR("usage:");
-    LOG_ERROR("  probe <plugin_path> [<id>] [<file_path>]");
+    std::cout << "usage:\n"
+              << "  probe <plugin_path> [<id>] [<file_path>]\n"
 #if USE_BRIDGE
-    LOG_ERROR("  bridge <pid> <shared_mem_path>");
+              << "  bridge <pid> <shared_mem_path> <log_pipe>\n"
 #endif
-    LOG_ERROR("  test");
+              << "  test <version>\n"
+              << "  --version" << std::endl;
     return EXIT_FAILURE;
 }

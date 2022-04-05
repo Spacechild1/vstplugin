@@ -261,13 +261,13 @@ protected:
 
 bool HostApp::doTest(const std::string& cmd, const std::string& args) const {
     std::stringstream ss;
-    ss << args << " test";
+    ss << args << " test " << getVersionString();
     try {
         int exitCode = runCommand(cmd, ss.str());
         if (exitCode == EXIT_SUCCESS){
             return true; // success
         } else if (exitCode == EXIT_FAILURE) {
-            LOG_ERROR("host app '" << path_ << "' failed");
+            LOG_ERROR("host app '" << path_ << "' failed (version mismatch)");
         } else {
             LOG_ERROR("host app '" << path_ << "' failed with exit code " << exitCode);
         }
