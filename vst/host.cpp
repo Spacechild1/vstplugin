@@ -38,11 +38,6 @@ void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& pa
     }
 }
 
-#if USE_ALARM
-static std::string gFilePath;
-static int gTimeout;
-#endif
-
 // probe a plugin and write info to file
 // returns EXIT_SUCCESS on success, EXIT_FAILURE on fail and anything else on error/crash :-)
 int probe(const std::string& pluginPath, int pluginIndex, const std::string& filePath)
@@ -172,11 +167,21 @@ int main(int argc, const char *argv[]) {
         }
     #if USE_BRIDGE
         else if (verb == "bridge" && argc >= 3){
-            // args: <pid> <shared_mem_path>
-            int pid = std::stol(argv[0], 0, 0);
+            // args: <pid> <shared_mem_path> <log_pipe>
+            int pid, logChannel;
+            try {
+                pid = std::stol(argv[0], 0, 0);
+            } catch (...) {
+                LOG_ERROR("bad 'pid' argument: " << argv[0]);
+                return EXIT_FAILURE;
+            }
             std::string shmPath = shorten(argv[1]);
-            int logChannel = std::stol(argv[2], 0, 0);
-
+            try {
+                logChannel = std::stol(argv[2], 0, 0);
+            } catch (...) {
+                LOG_ERROR("bad 'log_pipe' argument: " << argv[2]);
+                return EXIT_FAILURE;
+            }
             return bridge(pid, shmPath, logChannel);
         }
     #endif

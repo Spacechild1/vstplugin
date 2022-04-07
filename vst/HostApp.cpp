@@ -2,10 +2,18 @@
 #include "MiscUtils.h"
 #include "CpuArch.h"
 #include "FileUtils.h"
+#include "MiscUtils.h"
 #include "Log.h"
 
 #include <mutex>
 #include <cassert>
+
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+#endif
 
 namespace vst {
 
@@ -33,6 +41,10 @@ int ProcessHandle::pid() const {
     return pi_.dwProcessId;
 }
 
+bool ProcessHandle::valid() const {
+    return pid() >= 0;
+}
+
 int ProcessHandle::wait() {
     auto result = tryWait(-1);
     assert(result.first);
@@ -50,6 +62,7 @@ std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
         if (!GetExitCodeProcess(pi_.hProcess, &code)) {
             throw Error(Error::SystemError, "couldn't retrieve exit code for subprocess!");
         }
+        pi_.dwProcessId = -1; // sentinel
         return { true, code };
     } else {
         throw Error(Error::SystemError, "WaitForSingleObject() failed: " + errorMessage(GetLastError()));
@@ -74,6 +87,7 @@ bool ProcessHandle::checkIfRunning() {
         } else {
             LOG_ERROR("Watchdog: couldn't retrieve exit code for subprocess!");
         }
+        pi_.dwProcessId = -1; // sentinel
     } else {
         LOG_ERROR("Watchdog: WaitForSingleObject() failed: "
                   + errorMessage(GetLastError()));
@@ -83,6 +97,7 @@ bool ProcessHandle::checkIfRunning() {
 
 bool ProcessHandle::terminate() {
     if (TerminateProcess(pi_.hProcess, EXIT_FAILURE)) {
+        pi_.dwProcessId = -1; // sentinel
         return true;
     } else {
         LOG_ERROR("couldn't terminate subprocess: "
@@ -97,25 +112,33 @@ int ProcessHandle::pid() const {
     return pid_;
 }
 
+bool ProcessHandle::valid() const {
+    return pid_ >= 0;
+}
+
 int ProcessHandle::wait() {
     int status = 0;
-    if (waitpid(pid, &status, 0) != pid_){
+    if (waitpid(pid_, &status, 0) < 0){
         std::stringstream msg;
-        msg << "waitpid() failed " << errorMessage(errno) << ")";
+        msg << "waitpid() failed: " << errorMessage(errno) << ")";
         throw Error(Error::SystemError, msg.str());
     }
+    pid_ = -1; // sentinel
     return parseStatus(status);
 }
 
 std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
     int status = 0;
-    if (timeout == 0) {
-        auto ret = waitpid(pid, &status, WNOHANG);
+    if (timeout < 0) {
+        pid_ = -1;
+        return { true, wait() };
+    } else if (timeout == 0) {
+        auto ret = waitpid(pid_, &status, WNOHANG);
         if (ret == 0) {
             return { false, -1 };
         } else if (ret < 0) {
             std::stringstream msg;
-            msg << "waitpid() failed " << errorMessage(errno) << ")";
+            msg << "waitpid() failed: " << errorMessage(errno) << ")";
             throw Error(Error::SystemError, msg.str());
         }
     } else {
@@ -124,7 +147,7 @@ std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
         const int maxsleep = 100000; // 100 ms
         auto start = std::chrono::system_clock::now();
         for (;;) {
-            auto ret = waitpid(pid, &status, WNOHANG);
+            auto ret = waitpid(pid_, &status, WNOHANG);
             if (ret == pid_) {
                 break;
             } else if (ret == 0) {
@@ -146,6 +169,7 @@ std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
             }
         }
     }
+    pid_ = -1; // sentinel
     return { true, parseStatus(status) };
 }
 
@@ -169,6 +193,7 @@ bool ProcessHandle::checkIfRunning() {
         } catch (const Error& e) {
             LOG_WARNING("WatchDog: " << e.what());
         }
+        pid_ = -1; // sentinel
     } else {
         LOG_ERROR("Watchdog: waitpid() failed: " << errorMessage(errno));
     }
@@ -176,7 +201,8 @@ bool ProcessHandle::checkIfRunning() {
 }
 
 bool ProcessHandle::terminate() {
-    if (kill(pid, SIGTERM) == 0){
+    if (kill(pid_, SIGTERM) == 0) {
+        pid_ = -1; // sentinel
         return true;
     } else {
         LOG_ERROR("couldn't terminate subprocess: " << errorMessage(errno));
@@ -254,8 +280,8 @@ protected:
 #ifdef _WIN32
     ProcessHandle createProcess(const std::string& cmdline, bool log) const;
 #else
-    template<bool log, typename T...>
-    static ProcessHandle createProcess(const char *cmd, T&&... args) const;
+    template<bool log, typename... T>
+    static ProcessHandle createProcess(const char *cmd, T&&... args);
 #endif
 };
 
@@ -302,7 +328,7 @@ ProcessHandle HostApp::probe(const std::string &pluginPath, int id,
 
 ProcessHandle HostApp::bridge(const std::string &shmPath, intptr_t logPipe) const {
     /// LOG_DEBUG("host path: " << shorten(hostPath));
-    // arguments: host.exe bridge <parent_pid> <shm_path>
+    // arguments: host.exe bridge <parent_pid> <shm_path> <log_pipe>
     // NOTE: we need to quote string arguments (in case they contain spaces)
     // NOTE: Win32 handles can be safely cast to DWORD!
     std::stringstream cmdline;
@@ -322,7 +348,7 @@ ProcessHandle HostApp::createProcess(const std::string &cmdline, bool log) const
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
 
-    if (!CreateProcessW(widen(path_).c_str(), widen(cmdline).data(), NULL, NULL, 0,
+    if (!CreateProcessW(widen(path_).c_str(), &widen(cmdline)[0], NULL, NULL, 0,
                         log ? CREATE_NEW_CONSOLE : DETACHED_PROCESS,
                         NULL, NULL, &si, &pi)){
         auto err = GetLastError();
@@ -336,8 +362,8 @@ ProcessHandle HostApp::createProcess(const std::string &cmdline, bool log) const
 
 #else
 
-template<bool log, typename T... args>
-ProcessHandle HostApp::createProcess(const char *cmd, T&&... args) const {
+template<bool log, typename... T>
+ProcessHandle HostApp::createProcess(const char *cmd, T&&... args) {
     if (!log) {
         // flush before fork() to avoid duplicate printouts!
         fflush(stdout);
@@ -365,7 +391,7 @@ ProcessHandle HostApp::createProcess(const char *cmd, T&&... args) const {
 }
 
 ProcessHandle HostApp::probe(const std::string &pluginPath, int id,
-                             const std::string &tmpPath) {
+                             const std::string &tmpPath) const {
     // turn id into hex string
     char idString[12];
     if (id >= 0){
@@ -378,12 +404,12 @@ ProcessHandle HostApp::probe(const std::string &pluginPath, int id,
                                     pluginPath.c_str(), idString, tmpPath.c_str());
 }
 
-ProcessHandle HostApp::bridge(const std::string &shmPath, intptr_t logPipe) {
+ProcessHandle HostApp::bridge(const std::string &shmPath, intptr_t logPipe) const {
     auto parent = std::to_string(getpid());
     auto pipe = std::to_string(static_cast<int>(logPipe));
-    // arguments: host bridge <parent_pid> <shm_path>
+    // arguments: host bridge <parent_pid> <shm_path> <log_pipe>
     return createProcess<BRIDGE_LOG>(path_.c_str(), fileName(path_).c_str(), "bridge",
-                                     shmPath.c_str(), parent.c_str(), pipe.c_str());
+                                     parent.c_str(), shmPath.c_str(), pipe.c_str());
 }
 
 #endif
@@ -423,9 +449,9 @@ class UniversalHostApp : public HostApp {
     ProcessHandle bridge(const std::string& shmPath, intptr_t logPipe) override {
         auto parent = std::to_string(getpid());
         auto pipe = std::to_string(static_cast<int>(logPipe));
-        // arguments: arch -<arch> <host_path> bridge <parent_pid> <shm_path>
+        // arguments: arch -<arch> <host_path> bridge <parent_pid> <shm_path> <log_pipe>
         return createProcess<BRIDGE_LOG>("arch", "arch", archOption(arch_), path_.c_str(), "bridge",
-                                         shmPath.c_str(), parent.c_str(), pipe.c_str());
+                                         parent.c_str(), shmPath.c_str(), pipe.c_str());
     }
 
     bool test() const override {
@@ -436,12 +462,12 @@ class UniversalHostApp : public HostApp {
 };
 #endif
 
-#if USE_BRIDGE && !defined(_WIN32)
+#if USE_WINE
 class WineHostApp : public HostApp {
     using HostApp::HostApp;
 
     ProcessHandle probe(const std::string& pluginPath, int id,
-                        const std::string& tmpPath) override {
+                        const std::string& tmpPath) const override {
         auto wine = getWineCommand();
         // turn id into hex string
         char idString[12];
@@ -455,13 +481,13 @@ class WineHostApp : public HostApp {
                                         pluginPath.c_str(), idString, tmpPath.c_str());
     }
 
-    ProcessHandle bridge(const std::string& shmPath, intptr_t logPipe) override {
+    ProcessHandle bridge(const std::string& shmPath, intptr_t logPipe) const override {
         auto wine = getWineCommand();
         auto parent = std::to_string(getpid());
         auto pipe = std::to_string(static_cast<int>(logPipe));
         // arguments: wine <host_path> bridge <parent_pid> <shm_path>
         return createProcess<BRIDGE_LOG>(wine, wine, path_.c_str(), "bridge",
-                                         shmPath.c_str(), parent.c_str(), pipe.c_str());
+                                         parent.c_str(), shmPath.c_str(), pipe.c_str());
     }
 
     bool test() const override {
@@ -525,20 +551,20 @@ IHostApp* IHostApp::get(CpuArch arch) {
 #endif
 
     // check if host app exists and works
-    if (pathExists(path)){
+    if (pathExists(path)) {
+        std::unique_ptr<HostApp> app;
     #if USE_WINE
-        std::unique_ptr<HostApp> app = isWine ? std::make_unique<WineHostApp>(path) :
-                                                std::make_unique<HostApp>(path);
-    #else
-        auto app = std::make_unique<HostApp>(arch, path);
+        if (isWine) {
+            app = std::make_unique<WineHostApp>(arch, path);
+        }
     #endif
+        if (!app) {
+            app = std::make_unique<HostApp>(arch, path);
+        }
         if (app->test()) {
             LOG_DEBUG("host app '" << path << "' is working");
             auto result = gHostAppDict.emplace(arch, std::move(app));
             return result.first->second.get();
-        } else {
-            gHostAppDict[arch] = nullptr;
-            return nullptr;
         }
     } else {
     #ifdef __APPLE__
@@ -553,16 +579,16 @@ IHostApp* IHostApp::get(CpuArch arch) {
                     auto result = gHostAppDict.emplace(arch, app);
                     return result.first.get();
                 } else {
-                    gHostAppDict[arch] = nullptr;
-                    return nullptr;
+                    break;
                 }
             }
         }
-#endif
-        LOG_VERBOSE("no appropriate host app for CPU architecture " << cpuArchToString(arch));
-        gHostAppDict[arch] = nullptr;
-        return nullptr;
+    #endif // __APPLE__
     }
+    // failure
+    LOG_VERBOSE("no appropriate host app for CPU architecture " << cpuArchToString(arch));
+    gHostAppDict[arch] = nullptr;
+    return nullptr;
 }
 
 } // vst

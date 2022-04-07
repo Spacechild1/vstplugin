@@ -219,7 +219,7 @@ const std::string& getModuleDirectory(){
 }
 
 int getCurrentProcessId() {
-    return pid();
+    return getpid();
 }
 
 #endif // WIN32

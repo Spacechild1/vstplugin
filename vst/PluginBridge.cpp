@@ -114,7 +114,6 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
                     "pipe() failed: " + errorMessage(errno));
     }
     logRead_ = pipefd[0];
-    close(pipefd[1]); // close write end!
     intptr_t pipeHandle = logRead_;
 #endif
     // spawn host process
@@ -127,6 +126,10 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         auto msg = "couldn't create host process '" + hostApp->path() + "': " + e.what();
         throw Error(Error::SystemError, msg);
     }
+#ifndef _WIN32
+    // close write end *after* creating the subprocess!
+    close(pipefd[1]);
+#endif
 
     alive_ = true;
     LOG_DEBUG("PluginBridge: spawned subprocess (child: " << process_.pid()
@@ -153,7 +156,14 @@ PluginBridge::~PluginBridge(){
     // wait for the subprocess to finish.
     // this might even be dangerous if the subprocess
     // somehow got stuck. maybe use some timeout?
-    process_.wait();
+    if (process_) {
+        try {
+            process_.wait();
+        } catch (const Error& e) {
+            LOG_ERROR("PluginBridge::~PluginBridge: " << e.what());
+        }
+    }
+
     // read remaining messages
     readLog();
 

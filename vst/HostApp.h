@@ -3,7 +3,10 @@
 #include "Interface.h"
 
 #ifdef _WIN32
-#include <windows.h>
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <windows.h>
 #endif
 
 namespace vst {
@@ -52,6 +55,10 @@ public:
     int pid() const;
 
     int wait();
+
+    bool valid() const;
+
+    operator bool() const { return valid(); }
 
     std::pair<bool, int> tryWait(double timeout);
 
