@@ -572,11 +572,11 @@ IHostApp* IHostApp::get(CpuArch arch) {
         path = getModuleDirectory() + "/host";
         for (auto& a : getFileCpuArchitectures(path)) {
             if (a == arch) {
-                auto app = std::make_unique<UniversalHostApp>(path);
+                auto app = std::make_unique<UniversalHostApp>(arch, path);
                 if (app->test()) {
                     LOG_DEBUG("host app '" << path << "' ("
                               << cpuArchToString(arch) << ") is working");
-                    auto result = gHostAppDict.emplace(arch, app);
+                    auto result = gHostAppDict.emplace(arch, std::move(app));
                     return result.first.get();
                 } else {
                     break;
