@@ -42,7 +42,7 @@ int ProcessHandle::pid() const {
 }
 
 bool ProcessHandle::valid() const {
-    return pid() >= 0;
+    return pi_.dwProcessId > 0;
 }
 
 int ProcessHandle::wait() {
@@ -62,7 +62,7 @@ std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
         if (!GetExitCodeProcess(pi_.hProcess, &code)) {
             throw Error(Error::SystemError, "couldn't retrieve exit code for subprocess!");
         }
-        pi_.dwProcessId = -1; // sentinel
+        close();
         return { true, code };
     } else {
         throw Error(Error::SystemError, "WaitForSingleObject() failed: " + errorMessage(GetLastError()));
@@ -87,22 +87,30 @@ bool ProcessHandle::checkIfRunning() {
         } else {
             LOG_ERROR("Watchdog: couldn't retrieve exit code for subprocess!");
         }
-        pi_.dwProcessId = -1; // sentinel
+        close();
+        return false;
     } else {
-        LOG_ERROR("Watchdog: WaitForSingleObject() failed: "
-                  + errorMessage(GetLastError()));
+        // error (should we rather throw?)
+        LOG_ERROR("Watchdog: WaitForSingleObject() failed: " << errorMessage(GetLastError()));
+        return false;
     }
-    return false;
 }
 
 bool ProcessHandle::terminate() {
     if (TerminateProcess(pi_.hProcess, EXIT_FAILURE)) {
-        pi_.dwProcessId = -1; // sentinel
+        close();
         return true;
     } else {
-        LOG_ERROR("couldn't terminate subprocess: "
-                  << errorMessage(GetLastError()));
+        LOG_ERROR("couldn't terminate subprocess: " << errorMessage(GetLastError()));
         return false;
+    }
+}
+
+void ProcessHandle::close() {
+    if (valid()) {
+        CloseHandle(pi_.hProcess);
+        CloseHandle(pi_.hThread);
+        ZeroMemory(&pi_, sizeof(pi_));
     }
 }
 
@@ -118,27 +126,30 @@ bool ProcessHandle::valid() const {
 
 int ProcessHandle::wait() {
     int status = 0;
-    if (waitpid(pid_, &status, 0) < 0){
+    if (waitpid(pid_, &status, 0) == pid_) {
+        pid_ = -1; // sentinel
+        return parseStatus(status);
+    } else {
         std::stringstream msg;
-        msg << "waitpid() failed: " << errorMessage(errno) << ")";
+        msg << "waitpid() failed: " << errorMessage(errno);
         throw Error(Error::SystemError, msg.str());
     }
-    pid_ = -1; // sentinel
-    return parseStatus(status);
 }
 
 std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
     int status = 0;
     if (timeout < 0) {
-        pid_ = -1;
         return { true, wait() };
     } else if (timeout == 0) {
         auto ret = waitpid(pid_, &status, WNOHANG);
         if (ret == 0) {
-            return { false, -1 };
-        } else if (ret < 0) {
+            return { false, -1 }; // still running
+        } else if (ret == pid_) {
+            pid_ = -1; // sentinel
+            return { true, parseStatus(status) }; // finished
+        } else {
             std::stringstream msg;
-            msg << "waitpid() failed: " << errorMessage(errno) << ")";
+            msg << "waitpid() failed: " << errorMessage(errno);
             throw Error(Error::SystemError, msg.str());
         }
     } else {
@@ -154,7 +165,7 @@ std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
                 auto now = std::chrono::system_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start).count();
                 if (elapsed >= timeout) {
-                    return { false, -1 };
+                    return { false, -1 }; // time out
                 } else {
                     usleep(sleepmicros);
                     sleepmicros *= 2;
@@ -164,13 +175,14 @@ std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
                 }
             } else if (ret < 0) {
                 std::stringstream msg;
-                msg << "waitpid() failed " << errorMessage(errno) << ")";
+                msg << "waitpid() failed " << errorMessage(errno);
                 throw Error(Error::SystemError, msg.str());
             }
         }
+        // finished
+        pid_ = -1; // sentinel
+        return { true, parseStatus(status) };
     }
-    pid_ = -1; // sentinel
-    return { true, parseStatus(status) };
 }
 
 bool ProcessHandle::checkIfRunning() {
@@ -193,11 +205,14 @@ bool ProcessHandle::checkIfRunning() {
         } catch (const Error& e) {
             LOG_WARNING("WatchDog: " << e.what());
         }
+        // finished
         pid_ = -1; // sentinel
+        return false;
     } else {
+        // error (should we rather throw?)
         LOG_ERROR("Watchdog: waitpid() failed: " << errorMessage(errno));
+        return false;
     }
-    return false;
 }
 
 bool ProcessHandle::terminate() {
@@ -432,11 +447,11 @@ const char * archOption(CpuArch arch) {
 class UniversalHostApp : public HostApp {
     using HostApp::HostApp;
 
-    ProcessHandle probe(const std::string& path, int id,
-                        const std::string& tmpPath) override {
+    ProcessHandle probe(const std::string& pluginPath, int id,
+                        const std::string& tmpPath) const override {
         // turn id into hex string
         char idString[12];
-        if (id >= 0){
+        if (id >= 0) {
             snprintf(idString, sizeof(idString), "0x%X", id);
         } else {
             sprintf(idString, "_");
@@ -446,7 +461,7 @@ class UniversalHostApp : public HostApp {
                                         pluginPath.c_str(), idString, tmpPath.c_str());
     }
 
-    ProcessHandle bridge(const std::string& shmPath, intptr_t logPipe) override {
+    ProcessHandle bridge(const std::string& shmPath, intptr_t logPipe) const override {
         auto parent = std::to_string(getpid());
         auto pipe = std::to_string(static_cast<int>(logPipe));
         // arguments: arch -<arch> <host_path> bridge <parent_pid> <shm_path> <log_pipe>

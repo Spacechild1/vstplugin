@@ -24,22 +24,17 @@ public:
         : pi_(pi) {}
 
     ~ProcessHandle() {
-        if (pi_.hProcess) {
-            CloseHandle(pi_.hProcess);
-            CloseHandle(pi_.hThread);
-        }
+        close();
     }
 
     ProcessHandle(ProcessHandle&& other) {
         pi_ = other.pi_;
-        other.pi_.hProcess = NULL;
-        other.pi_.hThread = NULL;
+        other.pi_.dwProcessId = 0; // sentinel
     }
 
     ProcessHandle& operator=(ProcessHandle&& other) {
         pi_ = other.pi_;
-        other.pi_.hProcess = NULL;
-        other.pi_.hThread = NULL;
+        other.pi_.dwProcessId = 0; // sentinel
         return *this;
     }
 #else
@@ -48,9 +43,16 @@ public:
     ProcessHandle(int pid)
         : pid_(pid) {}
 
-    ProcessHandle(ProcessHandle&& other) = default;
+    ProcessHandle(ProcessHandle&& other) {
+        pid_ = other.pid_;
+        other.pid_ = -1; // sentinel
+    }
 
-    ProcessHandle& operator=(ProcessHandle&& other) = default;
+    ProcessHandle& operator=(ProcessHandle&& other) {
+        pid_ = other.pid_;
+        other.pid_ = -1; // sentinel
+        return *this;
+    }
 #endif
     int pid() const;
 
@@ -68,6 +70,7 @@ public:
 private:
 #ifdef _WIN32
     PROCESS_INFORMATION pi_;
+    void close();
 #else
     int pid_;
     int parseStatus(int status);
