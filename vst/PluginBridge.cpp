@@ -102,12 +102,9 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
         throw Error(Error::SystemError,
                     "CreatePipe() failed: " + errorMessage(GetLastError()));
     }
-    // We can't simply close our end after CreateProcess() because the child process
-    // needs to duplicate the handle; otherwise we would inadvertently close the pipe.
-    // We only close our end in the destructor, after reading all remaining messages.
     intptr_t pipeHandle = reinterpret_cast<intptr_t>(hLogWrite_);
 #else // Unix
-    // create pipe
+    // create pipe for logging
     int pipefd[2];
     if (pipe(pipefd) != 0){
         throw Error(Error::SystemError,
@@ -123,10 +120,22 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     try {
         process_ = hostApp->bridge(shm_.path(), pipeHandle);
     } catch (const Error& e) {
+        // close pipe handles
+    #ifdef _WIN32
+        CloseHandle(hLogRead_);
+        CloseHandle(hLogWrite_);
+    #else
+        close(pipefd[0]);
+        close(pipefd[1]);
+    #endif
         auto msg = "couldn't create host process '" + hostApp->path() + "': " + e.what();
         throw Error(Error::SystemError, msg);
     }
-#ifndef _WIN32
+#ifdef _WIN32
+    // We can't simply close our end after CreateProcess() because the child process
+    // needs to duplicate the handle; otherwise we would inadvertently close the pipe.
+    // We only close our end in the destructor, after reading all remaining messages.
+#else
     // close write end *after* creating the subprocess!
     close(pipefd[1]);
 #endif
@@ -168,8 +177,16 @@ PluginBridge::~PluginBridge(){
     readLog();
 
 #ifdef _WIN32
-    CloseHandle(hLogRead_);
-    CloseHandle(hLogWrite_);
+    if (hLogRead_) {
+        CloseHandle(hLogRead_);
+    }
+    if (hLogWrite_) {
+        CloseHandle(hLogWrite_);
+    }
+#else
+    if (logRead_ >= 0) {
+        close(logRead_);
+    }
 #endif
 
     LOG_DEBUG("free PluginBridge");
@@ -207,7 +224,7 @@ void PluginBridge::readLog(){
                 if (bytesRead == msgsize){
                     logMessage(msg->header.level, msg->data);
                 } else {
-                    // shouldn't really happen, because we've peeked
+                    // shouldn't really happen because we've peeked
                     // the number of available bytes!
                     LOG_ERROR("ReadFile(): size mismatch");
                     CloseHandle(hLogRead_);
@@ -273,6 +290,7 @@ void PluginBridge::readLog(){
                     }
                     logMessage(header.level, msg);
                 } else {
+                    // pipe closed
                     if (fds.revents & POLLHUP){
                         // there might be remaining data in the pipe, but we don't care.
                         LOG_ERROR("FIFO closed");
@@ -288,7 +306,10 @@ void PluginBridge::readLog(){
                 // timeout
                 break;
             } else {
+                // poll() failed
                 LOG_ERROR("poll(): " << errorMessage(errno));
+                close(logRead_);
+                logRead_ = -1;
                 break;
             }
         }
