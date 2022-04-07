@@ -114,7 +114,7 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
                     "pipe() failed: " + errorMessage(errno));
     }
     logRead_ = pipefd[0];
-    intptr_t pipeHandle = logRead_;
+    intptr_t pipeHandle = pipefd[1];
 #endif
     // spawn host process
     // NB: we already checked in the PluginFactory::PluginFactory if we're able to bridge
