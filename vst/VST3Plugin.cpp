@@ -245,7 +245,7 @@ PluginDesc::const_ptr VST3Factory::probePlugin(int id) const {
     return plugin->getInfo();
 }
 
-/*///////////////////// ParamValueQeue /////////////////////*/
+/*///////////////////// ParamValueQueue /////////////////////*/
 
 #if USE_MULTI_POINT_AUTOMATION
 

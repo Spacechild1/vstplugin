@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <signal.h>
 #endif
 
 namespace vst {
@@ -439,12 +440,13 @@ const char * archOption(CpuArch arch) {
         return "-i386";
     } else {
         std::stringstream ss;
-        ss << "unsupported CPU architecture " << cpuArchToString();
+        ss << "unsupported CPU architecture " << cpuArchToString(arch);
         throw Error(Error::ModuleError, ss.str());
     }
 }
 
 class UniversalHostApp : public HostApp {
+public:
     using HostApp::HostApp;
 
     ProcessHandle probe(const std::string& pluginPath, int id,
@@ -592,7 +594,7 @@ IHostApp* IHostApp::get(CpuArch arch) {
                     LOG_DEBUG("host app '" << path << "' ("
                               << cpuArchToString(arch) << ") is working");
                     auto result = gHostAppDict.emplace(arch, std::move(app));
-                    return result.first.get();
+                    return result.first->second.get();
                 } else {
                     break;
                 }
