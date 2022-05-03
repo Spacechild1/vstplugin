@@ -139,7 +139,7 @@ VSTPluginController {
 		synthDef.notNil.if {
 			metadata = synthDef.metadata;
 		} {
-			desc = SynthDescLib.global.at(synth.defName);
+			desc = SynthDescLib.global.at(synth.defName.asSymbol); // for SC 3.6 compat
 			desc.isNil.if { MethodError("couldn't find SynthDef '%' in global SynthDescLib!".format(synth.defName), this).throw };
 			metadata = desc.metadata; // take metadata from SynthDesc, not SynthDef (SC bug)!
 		};
