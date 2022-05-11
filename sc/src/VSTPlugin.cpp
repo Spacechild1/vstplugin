@@ -204,27 +204,16 @@ static std::atomic_bool gSearching {false};
 
 static PluginDictionary gPluginDict;
 
-#define SETTINGS_DIR ".VSTPlugin"
-// so that 64-bit and 32-bit installations can co-exist!
-#if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
-#define CACHE_FILE "cache32.ini"
-#else
-#define CACHE_FILE "cache.ini"
-#endif
+static std::string gSettingsDir = userSettingsPath() + "/sc";
 
-static std::string getSettingsDir(){
-#ifdef _WIN32
-    return expandPath("%USERPROFILE%\\" SETTINGS_DIR);
-#else
-    return expandPath("~/" SETTINGS_DIR);
-#endif
-}
+static std::string gCacheFileName = std::string("cache_")
+        + cpuArchToString(getHostCpuArchitecture()) + ".ini";
 
 static Mutex gFileLock;
 
-static void readIniFile(){
+static void readCacheFile(){
     ScopedLock lock(gFileLock);
-    auto path = getSettingsDir() + "/" CACHE_FILE;
+    auto path = gSettingsDir + "/" + gCacheFileName;
     if (pathExists(path)){
         LOG_VERBOSE("read cache file " << path);
         try {
@@ -237,16 +226,16 @@ static void readIniFile(){
     }
 }
 
-static void writeIniFile(){
+static void writeCacheFile(){
     ScopedLock lock(gFileLock);
     try {
-        auto dir = getSettingsDir();
-        if (!pathExists(dir)){
-            if (!createDirectory(dir)){
-                throw Error("couldn't create directory " + dir);
+        if (!pathExists(gSettingsDir)){
+            createDirectory(userSettingsPath());
+            if (!createDirectory(gSettingsDir)){
+                throw Error("couldn't create directory " + gSettingsDir);
             }
         }
-        gPluginDict.write(dir + "/" CACHE_FILE);
+        gPluginDict.write(gSettingsDir + "/" + gCacheFileName);
     } catch (const Error& e){
         LOG_ERROR("couldn't write cache file: " << e.what());
     }
@@ -3051,7 +3040,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         }
     }
     if (save){
-        writeIniFile();
+        writeCacheFile();
     }
 #if 1
     // filter duplicate/stale plugins
@@ -3205,7 +3194,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                 int flags = static_cast<PluginCmdData*>(data)->i;
                 if (flags & 1) {
                     // remove cache file
-                    removeFile(getSettingsDir() + "/" CACHE_FILE);
+                    removeFile(gSettingsDir + "/" + gCacheFileName);
                 }
                 gPluginDict.clear();
                 return false;
@@ -3407,7 +3396,7 @@ PluginLoad(VSTPlugin) {
     LOG_VERBOSE("VSTPlugin " << getVersionString());
 
     // read cached plugin info
-    readIniFile();
+    readCacheFile();
 }
 
 

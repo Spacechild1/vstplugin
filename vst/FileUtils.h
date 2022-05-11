@@ -7,6 +7,8 @@ namespace vst {
 
 std::string expandPath(const char *path);
 
+std::string userSettingsPath();
+
 bool pathExists(const std::string& path);
 
 bool isDirectory(const std::string& path);

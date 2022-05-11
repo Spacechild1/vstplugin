@@ -242,12 +242,19 @@ VSTPlugin : MultiOutUGen {
 		}
 	}
 	*readPlugins {
-		var path, stream, dict = IdentityDictionary.new;
-		// handle 32-bit SuperCollider on Windows (should we care about 32-bit builds on macOS and Linux?)
-		path = ((thisProcess.platform.name == \windows) && Platform.resourceDir.find("(x86").notNil).if
-		{ "cache32.ini" } { "cache.ini" };
-		path = ("~/.VSTPlugin/" ++ path).standardizePath;
-		// read plugins.ini file
+		var arch, appdata, cachefile, path, stream, dict = IdentityDictionary.new;
+		arch = switch(Platform.architecture,
+			\i386, \i386,
+			\x86_64, \amd64,
+			\AArch32, \arm,
+			\AArch64, \aarch64,
+			{ "unknown CPU architecture: %".format(Platform.architecture).throw }
+		);
+		// <appdata>/vstplugin/sc/cache_<version_<arch>.ini
+		appdata = "XDG_DATA_HOME".getenv ?? { Platform.userAppSupportDir.dirname };
+		cachefile = "cache_%.ini".format(arch);
+		path = appdata +/+ "vstplugin" +/+ "sc" +/+ cachefile;
+		// read cache file
 		File.exists(path).not.if {
 			"Couldn't find plugin cache file! Make sure to call VSTPlugin.search at least once.".warn;
 			^dict;

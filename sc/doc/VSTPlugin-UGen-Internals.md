@@ -894,8 +894,9 @@ Each `<plugin info>` entry has the same structure as in "Plugin info".
 ### Plugin cache file
 
 Probing lots of (large) VST plugins can be a slow process.
-To speed up subsequent searches, the search results can be written to a cache file (see `/vst_search`), which is located in a hidden folder named *.VSTPlugin* in the user's home directory.
-The cache file itself is named *cache.ini* for 64-bit servers and *cache32.ini* for 32-bit servers.
+To speed up subsequent searches, the search results can be written to a cache file (see `/vst_search`), which is located in a platform specific directory:
+`%LOCALAPPDATA%\vstplugin\sc` on Windows, `~/Library/Application Support/vstplugin/sc` on macOS and `$XDG_DATA_HOME/vstplugin/sc` resp. `~/.local/share/vstplugin/sc` on Linux.
+The cache file itself is named `cache_<arch>.ini`, so that cache files for different CPU architectures can co-exist.
 
 The cache file structure is very similar to that in "Search results".
 The only difference is that it also contains a version header (`[version]`) and a plugin black-list (`[ignore]`).

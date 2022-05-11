@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "Sync.h"
 #include "rt_shared_ptr.hpp"
+#include "CpuArch.h"
 
 using namespace vst;
 

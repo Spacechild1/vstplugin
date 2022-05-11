@@ -33,15 +33,22 @@ namespace fs = std::filesystem;
 namespace vst {
 
 #ifdef _WIN32
+
 std::string expandPath(const char *path) {
     wchar_t buf[MAX_PATH];
     ExpandEnvironmentStringsW(widen(path).c_str(), buf, MAX_PATH);
     return shorten(buf);
 }
+
+std::string userSettingsPath() {
+    return expandPath("%LOCALAPPDATA%\\vstplugin");
+}
+
 #else
+
 std::string expandPath(const char *path) {
     // only expands ~ to home directory so far
-    if (path && *path == '~') {
+    if (*path == '~') {
         const char *home = getenv("HOME");
         if (home) {
             return std::string(home) + std::string(path + 1);
@@ -49,6 +56,20 @@ std::string expandPath(const char *path) {
     }
     return path;
 }
+
+std::string userSettingsPath() {
+    auto config = getenv("XDG_DATA_HOME");
+    if (config) {
+        return std::string(config) + "/vstplugin";
+    } else {
+    #ifdef __APPLE__
+        return expandPath("~/Library/Application Support/vstplugin");
+    #else
+        return expandPath("~/.local/share/vstplugin");
+    #endif
+    }
+}
+
 #endif
 
 bool pathExists(const std::string& path){

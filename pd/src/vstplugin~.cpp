@@ -257,27 +257,16 @@ static PluginDictionary gPluginDict;
 SharedMutex gPresetMutex;
 #endif
 
-#define SETTINGS_DIR ".vstplugin~"
-// so that 64-bit and 32-bit installations can co-exist!
-#if (defined(_WIN32) && !defined(_WIN64)) || defined(__i386__)
-#define CACHE_FILE "cache32.ini"
-#else
-#define CACHE_FILE "cache.ini"
-#endif
+static std::string gSettingsDir = userSettingsPath() + "/pd";
 
-static std::string getSettingsDir(){
-#ifdef _WIN32
-    return expandPath("%USERPROFILE%\\" SETTINGS_DIR);
-#else
-    return expandPath("~/" SETTINGS_DIR);
-#endif
-}
+static std::string gCacheFileName = std::string("cache_")
+        + cpuArchToString(getHostCpuArchitecture()) + ".ini";
 
 static Mutex gFileLock;
 
-static void readIniFile(){
+static void readCacheFile(){
     ScopedLock lock(gFileLock);
-    auto path = getSettingsDir() + "/" CACHE_FILE;
+    auto path = gSettingsDir + "/" + gCacheFileName;
     if (pathExists(path)){
         verbose(PdDebug, "read cache file %s", path.c_str());
         try {
@@ -290,16 +279,16 @@ static void readIniFile(){
     }
 }
 
-static void writeIniFile(){
+static void writeCacheFile(){
     ScopedLock lock(gFileLock);
     try {
-        auto dir = getSettingsDir();
-        if (!pathExists(dir)){
-            if (!createDirectory(dir)){
-                throw Error("couldn't create directory " + dir);
+        if (!pathExists(gSettingsDir)){
+            createDirectory(userSettingsPath());
+            if (!createDirectory(gSettingsDir)){
+                throw Error("couldn't create directory " + gSettingsDir);
             }
         }
-        gPluginDict.write(dir + "/" CACHE_FILE);
+        gPluginDict.write(gSettingsDir + "/" + gCacheFileName);
     } catch (const Error& e){
         pd_error(nullptr, "couldn't write cache file: %s", e.what());
     }
@@ -1121,7 +1110,7 @@ static void vstplugin_search_do(t_search_data *x){
     }
 
     if (x->update && !x->cancel){
-        writeIniFile(); // mutex protected
+        writeCacheFile(); // mutex protected
     } else {
         LOG_DEBUG("search cancelled!");
     }
@@ -1241,7 +1230,7 @@ static void vstplugin_search_stop(t_vstplugin *x){
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
         // unloading plugins might crash, so we we first delete the cache file
     if (f != 0){
-        removeFile(getSettingsDir() + "/" CACHE_FILE);
+        removeFile(gSettingsDir + "/" + gCacheFileName);
     }
         // clear the plugin description dictionary
     gPluginDict.clear();
@@ -3380,7 +3369,7 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
             searchPlugins<false>(path, nullptr);
         }
     #if 1
-        writeIniFile(); // shall we write cache file?
+        writeCacheFile(); // shall we write cache file?
     #endif
         gDidSearch = true;
     }
@@ -3788,5 +3777,5 @@ EXPORT void vstplugin_tilde_setup(void){
     post("vstplugin~ %s", getVersionString());
 
     // read cached plugin info
-    readIniFile();
+    readCacheFile();
 }

@@ -10,6 +10,7 @@
 #include "FileUtils.h"
 #include "MiscUtils.h"
 #include "Sync.h"
+#include "CpuArch.h"
 
 using namespace vst;
 
