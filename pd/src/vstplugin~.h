@@ -113,6 +113,7 @@ class t_vstplugin {
     ProcessPrecision x_wantprecision; // single/double precision
     ProcessPrecision x_realprecision;
     ProcessMode x_mode = ProcessMode::Realtime;
+    RunMode x_runmode = RunMode::Auto;
     double x_lastdsptime = 0;
 #ifdef PDINSTANCE
     t_pdinstance *x_pdinstance = nullptr; // keep track of the instance we belong to

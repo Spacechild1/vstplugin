@@ -1496,6 +1496,7 @@ static void vstplugin_open_done(t_open_data *x){
         x->owner->x_plugin = std::move(x->plugin);
         x->owner->x_uithread = x->editor; // remember *where* we opened the plugin
         x->owner->x_threaded = x->threaded;
+        x->owner->x_runmode = x->mode;
 
         // after setting the plugin!
         x->owner->update_buffers();
@@ -1589,8 +1590,9 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
         return;
     }
 #endif
-    // don't reopen the same plugin (mainly for -k flag)
-    if (pathsym == x->x_path && x->x_editor->vst_gui() == editor){
+    // don't reopen the same plugin (mainly for -k flag), unless options have changed.
+    if (pathsym == x->x_path && editor == x->x_uithread
+            && threaded == x->x_threaded && mode == x->x_runmode) {
         return;
     }
     // don't open while async command is running
@@ -3603,15 +3605,25 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
         // protect against concurrent vstplugin_open_do()
         ScopedLock lock(x->x_mutex);
         // 1) plugin
-        if (x->x_editor->vst_gui()){
-            binbuf_addv(bb, "ssss", gensym("#A"), gensym("open"), gensym("-e"), x->x_path);
-        } else {
-            binbuf_addv(bb, "sss", gensym("#A"), gensym("open"), x->x_path);
+        binbuf_addv(bb, "ss", gensym("#A"), gensym("open"));
+        if (x->x_uithread) {
+            binbuf_addv(bb, "s", gensym("-e"));
         }
+        if (x->x_threaded) {
+            binbuf_addv(bb, "s", gensym("-t"));
+        }
+        if (x->x_runmode == RunMode::Bridge) {
+            binbuf_addv(bb, "s", gensym("-b"));
+        } else if (x->x_runmode == RunMode::Sandbox) {
+            binbuf_addv(bb, "s", gensym("-p"));
+        }
+        binbuf_addv(bb, "s", x->x_path);
         binbuf_addsemi(bb);
         // 2) program number
-        binbuf_addv(bb, "ssi", gensym("#A"), gensym("program_set"), x->x_plugin->getProgram());
-        binbuf_addsemi(bb);
+        if (x->x_plugin->info().numPrograms() > 0) {
+            binbuf_addv(bb, "ssi", gensym("#A"), gensym("program_set"), x->x_plugin->getProgram());
+            binbuf_addsemi(bb);
+        }
         // 3) program data
         std::string buffer;
         defer([&](){
