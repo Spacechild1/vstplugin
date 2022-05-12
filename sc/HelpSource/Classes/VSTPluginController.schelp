@@ -242,7 +242,7 @@ s.bind {
 
 subsection:: Sequencing
 
-VSTPlugin defines two custom Event types which can be used in link::Classes/Pbind::, for example.
+VSTPlugin defines two custom link::Classes/Event:: types which are typically used with link::Classes/Pbind::.
 Like with (most) other Event types, commands are scheduled as OSC bundles with Server latency.
 
 definitionlist::
@@ -278,7 +278,9 @@ This can be very inefficient for plugins with a large number of parameters! It i
 See link::#Automation:: for more examples.
 
 ## code::\vst_midi::
-|| send MIDI messages; the interface is very similar to code::\midi::.
+|| send MIDI messages; the interface is very similar to the code::\midi:: Event type.
+
+Event keys:
 table::
 ## code::\vst:: || the VSTPluginController instance
 ## code::\midicmd:: || the MIDI method (see below)
@@ -292,11 +294,31 @@ table::
 ## code::\progNum:: || program number for code::\program::
 ## code::\array:: || UInt8Array for code::\sysex::
 ::
-The default value for code::\midicmd:: is code::\noteOn::, with code::\noteOff:: commands being scheduled automatically. Other possible values are code::\noteOff::, code::\control::, code::\bend::, code::\touch::, code::\polyTouch::, code::\program::, code::\allNotesOff:: and code::\sysex::. The commands correspond to the methods listed in link::Classes/VSTPluginMIDIProxy::.
 
-note::Always prefer code::\vst_midi:: over code::\midi:: because the latter doesn't schedule OSC bundles!::
+Possible values for code::\midicmd:::
+table::
+## code::\noteOn:: || note-on message (= default);
+
+automatically schedules code::\noteOff:: messages based on the note duration.
+
+(This can be disabled by setting code::\hasGate:: to code::false::.)
+
+## code::\noteOff:: || note-off message
+## code::\control:: || CC message
+## code::\bend:: || pitch bend
+## code::\touch:: || channel after-touch
+## code::\touch:: || polyphonic after-touch
+## code::\program:: || program change
+## code::\allNotesOff:: || turn all notes off
+## code::\sysex:: || SysEx message
+::
+Each code::\midicmd:: has a corresponding method in link::Classes/VSTPluginMIDIProxy::.
+
+See link::Tutorials/A-Practical-Guide/PG_08_Event_Types_and_Parameters#MIDI output:: for more details on MIDI commands.
 
 See link::#VST Instruments:: for examples.
+
+note::Always prefer code::\vst_midi:: over code::\midi:: because the latter doesn't schedule OSC bundles!::
 ::
 
 strong::Tip:::

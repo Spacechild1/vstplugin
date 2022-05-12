@@ -6,13 +6,44 @@ related:: Classes/VSTPluginController, Classes/VSTPlugin
 DESCRIPTION::
 This class mimicks the interface of link::Classes/MIDIOut::, so you don`t have to send raw MIDI messages.
 
-Instances are obtained with link::Classes/VSTPluginController#-midi::. You should never need to create instances of this class yourself!
+Every link::Classes/VSTPluginController:: instance has its own VSTPluginMIDIProxy instance that you can access with link::Classes/VSTPluginController#-midi::.
 
-It is used internally by link::Classes/Pbind::s of event type code::\vst_midi:: (see link::Classes/VSTPluginController#Sequencing::), but it can be used in other situations as well, e.g. for playing a VSTi with a MIDI keyboard.
+It is used internally by link::Classes/Pbind::s of link::Classes/Event:: type code::\vst_midi:: (see link::Classes/VSTPluginController#Sequencing::), but it can also be used for playing a VSTi with a MIDI keyboard, for manually scheduling MIDI events in a Routine, etc.
 
-note::
-MIDI pitches can be Floats! The fractional part is converted to cents and passed as the code::detune:: argument to link::#-sendMidi::. This is not part of the MIDI standard and not all VST instruments actually support it!
+See link::Classes/VSTPluginController#VST Instruments:: for some usage examples.
+
+warning::This class is strong::not:: a drop-in replacement for MIDIOut!
+More specifically, it is not meant to be used with the code::\midi:: Event type. Instead, use the dedicated code::\vst_midi:: Event type mentioned above.
 ::
+
+CLASSMETHODS::
+
+PRIVATE:: new
+
+INSTANCEMETHODS::
 
 All methods have a corresponding code::*Msg:: version which returns a raw OSC message, so they can be scheduled as bundles.
 
+PRIVATE:: latency, owner, uid
+
+METHOD:: noteOn
+
+ARGUMENT:: chan
+the MIDI channel
+
+ARGUMENT:: note
+the pitch
+
+ARGUMENT:: veloc
+the velocity
+
+DISCUSSION::
+The pitch argument does not have to be an Integer, it can also be a fractional value (= microtonal)!
+
+code::
+~vst.midi.noteOn(0, 60.5, 100); // play quarter tone between c4 and c#4
+::
+
+note:: This is not part of the MIDI standard and not all VST instruments actually support it!::
+
+strong::Tip::: SFZ samplers like emphasis::sfizz:: or emphasis::sforzando:: do support microtonal playback.
