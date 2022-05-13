@@ -32,7 +32,7 @@ VSTPluginController {
 		// custom event type for playing VSTis:
 		Event.addEventType(\vst_midi, #{ arg server;
 			var freqs, lag, offset, strumOffset, dur, sustain, strum;
-			var bndl, noteoffs, vst, hasGate, midicmd;
+			var bndl, noteoffs, vst, hasGate, midicmd, sel;
 
 			freqs = ~freq = ~detunedFreq.value;
 
@@ -45,9 +45,10 @@ VSTPluginController {
 			vst = ~vst.value.midi;
 			hasGate = ~hasGate ? true;
 			midicmd = ~midicmd;
+			sel = (midicmd ++ "Msg").asSymbol;
 			bndl = ~midiEventFunctions[midicmd].valueEnvir.asCollection.flop;
 			bndl = bndl.collect({ arg args;
-				vst.performList((midicmd ++ "Msg").asSymbol, args);
+				vst.performList(sel, args);
 			});
 
 			if (strum == 0) {
