@@ -3186,12 +3186,14 @@ void vst_search_stop(World* inWorld, void* inUserData, struct sc_msg_iter*args, 
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
     if (!gSearching) {
-        auto data = CmdData::create<PluginCmdData>(inWorld);
+        struct ClearCmdData { int flags; };
+
+        auto data = (ClearCmdData *)RTAlloc(inWorld, sizeof(ClearCmdData));
         if (data) {
-            data->i = args->geti(); // 1 = remove cache file
+            data->flags = args->geti(); // 1 = remove cache file
             DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
                 // unloading plugins might crash, so we make sure we *first* delete the cache file
-                int flags = static_cast<PluginCmdData*>(data)->i;
+                int flags = static_cast<ClearCmdData *>(data)->flags;
                 if (flags & 1) {
                     // remove cache file
                     removeFile(gSettingsDir + "/" + gCacheFileName);
