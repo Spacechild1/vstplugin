@@ -115,6 +115,7 @@ t_workqueue::t_workqueue(){
     });
 
     w_clock = clock_new(this, (t_method)clockmethod);
+    clock_setunit(w_clock, 1, 1); // use samples
     clock_delay(w_clock, 0);
 }
 
@@ -140,7 +141,7 @@ t_workqueue::~t_workqueue(){
 
 void t_workqueue::clockmethod(t_workqueue *w){
     w->poll();
-    clock_delay(w->w_clock, 1.451247); // roughly once per DSP tick
+    clock_delay(w->w_clock, 64); // once per DSP tick
 }
 
 void t_workqueue::dopush(void *owner, void *data, t_fun<void> workfn,
