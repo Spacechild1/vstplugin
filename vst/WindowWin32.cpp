@@ -7,6 +7,7 @@
 #include <cstring>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
+#define VST_ROOT_CLASS_NAME L"VST Plugin Root Class"
 
 namespace vst {
 
@@ -73,46 +74,36 @@ DWORD EventLoop::run(void *user){
     setThreadPriority(Priority::Low);
 
     auto obj = (EventLoop *)user;
-    // force message queue creation
-    MSG msg;
-    PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
+    // invisible window for postMessage()!
+    // also creates the message queue.
+    auto hwnd = CreateWindowW(
+          VST_ROOT_CLASS_NAME, L"Untitled",
+          0, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+          NULL, NULL, NULL, NULL
+    );
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)obj);
+    obj->hwnd_ = hwnd;
     obj->notify();
     LOG_DEBUG("Win32: start message loop");
 
     // setup timer
-    auto timer = SetTimer(0, 0, EventLoop::updateInterval, NULL);
+    auto timer = SetTimer(hwnd, 0, EventLoop::updateInterval, NULL);
 
+    MSG msg;
     DWORD ret;
-    while ((ret = GetMessage(&msg, NULL, 0, 0)) != 0){
-        if (ret < 0){
-            LOG_ERROR("Win32: GetMessage: error");
-            break;
-        }
-        auto type = msg.message;
-        if (type == WM_CALL){
-            // LOG_DEBUG("WM_CALL");
-            auto cb = (UIThread::Callback)msg.wParam;
-            auto data = (void *)msg.lParam;
-            cb(data);
-        } else if (type == WM_SYNC){
-            // LOG_DEBUG("WM_SYNC");
-            obj->notify();
-        } else if ((type == WM_TIMER) && (msg.hwnd == NULL)
-                   && (msg.wParam == timer)) {
-            // call poll functions
-            std::lock_guard<std::mutex> lock(obj->pollFunctionMutex_);
-            for (auto& it : obj->pollFunctions_){
-                it.second();
-            }
-        } else {
-            // LOG_DEBUG("dispatch message " << msg.message);
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
+    while ((ret = GetMessage(&msg, NULL, 0, 0)) > 0){
+        // LOG_DEBUG("dispatch message " << msg.message);
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    if (ret < 0) {
+        LOG_ERROR("Win32: GetMessage() failed (" << GetLastError() << ")");
     }
     LOG_DEBUG("Win32: quit message loop");
 
-    KillTimer(NULL, timer);
+    KillTimer(hwnd, timer);
+
+    DestroyWindow(hwnd);
 
     // let's be nice
     CoUninitialize();
@@ -120,10 +111,56 @@ DWORD EventLoop::run(void *user){
     return 0;
 }
 
+// NOTE: we use a window procedure to make sure that events are also processed
+// during a modal loop!
+LRESULT WINAPI EventLoop::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam){
+    auto obj = (EventLoop *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    switch (msg) {
+    case WM_CALL:
+    {
+        // LOG_DEBUG("WM_CALL");
+        auto cb = (UIThread::Callback)wParam;
+        auto data = (void *)lParam;
+        cb(data);
+        return true;
+    }
+    case WM_SYNC:
+        // LOG_DEBUG("WM_SYNC");
+        if (obj){
+            obj->notify();
+        } else {
+            LOG_ERROR("Win32: bug GetWindowLongPtr");
+        }
+        return true;
+    case WM_TIMER:
+        // LOG_DEBUG("WM_TIMER");
+        if (obj){
+            obj->timer(wParam);
+        } else {
+            LOG_ERROR("Win32: bug GetWindowLongPtr");
+        }
+        return true;
+    default:
+        LOG_DEBUG("Win32: root window received message " << msg);
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
+}
+
 EventLoop::EventLoop(){
     LOG_DEBUG("Win32: start EventLoop");
-    // setup window class
+    // setup window classes
     WNDCLASSEXW wcex;
+    // 1. root window class
+    memset(&wcex, 0, sizeof(WNDCLASSEXW));
+    wcex.cbSize = sizeof(WNDCLASSEXW);
+    wcex.lpfnWndProc = EventLoop::procedure;
+    wcex.lpszClassName =  VST_ROOT_CLASS_NAME;
+    if (!RegisterClassExW(&wcex)){
+        LOG_WARNING("Win32: couldn't register root window class!");
+    } else {
+        LOG_DEBUG("Win32: registered root window class!");
+    }
+    // 2. editor window class
     memset(&wcex, 0, sizeof(WNDCLASSEXW));
     wcex.cbSize = sizeof(WNDCLASSEXW);
     wcex.lpfnWndProc = Window::procedure;
@@ -135,9 +172,9 @@ EventLoop::EventLoop(){
     wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
 #endif
     if (!RegisterClassExW(&wcex)){
-        LOG_WARNING("Win32: couldn't register window class!");
+        LOG_WARNING("Win32: couldn't register editor window class!");
     } else {
-        LOG_DEBUG("Win32: registered window class!");
+        LOG_DEBUG("Win32: registered editor window class!");
     }
     // run thread
     thread_ = CreateThread(NULL, 0, run, this, 0, &threadID_);
@@ -171,7 +208,10 @@ bool EventLoop::checkThread() {
 }
 
 bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
-    return PostThreadMessage(threadID_, msg, (WPARAM)data1, (LPARAM)data2);
+    // IMPORTANT: do not use PostThreadMessage() because the message
+    // would be eaten by a modal loop! Instead, we send the message
+    // to an invisible window.
+    return PostMessage(hwnd_, msg, (WPARAM)data1, (LPARAM)data2);
 }
 
 bool EventLoop::callAsync(UIThread::Callback cb, void *user){
@@ -235,6 +275,18 @@ void EventLoop::notify(){
     event_.set();
 }
 
+void EventLoop::timer(UINT_PTR id) {
+    if (id == 0) {
+        // call poll functions
+        std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+        for (auto& it : pollFunctions_){
+           it.second();
+        }
+    } else {
+        LOG_DEBUG("Win32: unknown timer " << id);
+    }
+}
+
 /*///////////////////////// Window ///////////////////////////*/
 
 Window::Window(IPlugin& plugin)
@@ -257,10 +309,10 @@ bool Window::canResize(){
     return canResize_;
 }
 
-LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam){
+LRESULT WINAPI Window::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam){
     auto window = (Window *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 
-    switch (Msg){
+    switch (msg){
     case WM_CLOSE: // intercept close event!
     {
         if (window){
@@ -293,7 +345,7 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
         return true;
     }
     default:
-        return DefWindowProcW(hWnd, Msg, wParam, lParam);
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
     }
 }
 

@@ -40,11 +40,12 @@ class EventLoop {
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
 
     static DWORD WINAPI run(void *user);
-    LRESULT WINAPI procedure(HWND hWnd, UINT Msg,
-                        WPARAM wParam, LPARAM lParam);
+    static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
     void notify();
-    HANDLE thread_;
-    DWORD threadID_;
+    void timer(UINT_PTR id);
+    HANDLE thread_ = NULL;
+    DWORD threadID_ = 0;
+    HWND hwnd_ = NULL;
     std::mutex mutex_;
     SyncCondition event_;
 
