@@ -27,7 +27,7 @@ variables:
 # as they should be, instead they are resolved to the source directory *before* getting passed to CMake.
 .script:cmake: &script_cmake
   - prefix="$(pwd)/${CI_JOB_NAME}"
-  - cmake -H. -Bbuild -DCMAKE_INSTALL_PREFIX="${prefix}" -DCMAKE_OSX_ARCHITECTURES="${OSX_ARCHITECTURES}"
+  - cmake -H. -Bbuild -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${prefix}" -DCMAKE_OSX_ARCHITECTURES="${OSX_ARCHITECTURES}"
    -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DSTATIC_LIBS=${STATIC_LIBS} -DWINE=${WINE}
    -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST32=${BUILD_HOST32} -DBUILD_HOST_AMD64=${BUILD_HOST_AMD64}
    -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
@@ -122,7 +122,7 @@ variables:
   before_script:
     - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}-macosx7.mac.tar.gz
     - rm -rf /Applications/Pd*.app/
-    - tar xvf Pd.tgz -C /Applications/
+    - tar -xvf Pd.tgz -C /Applications/
     - rm -f Pd.tgz
     - *script_deps
     - *script_cmake
@@ -136,11 +136,12 @@ variables:
     SUPERNOVA: 1
     STATIC_LIBS: 1
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
+    CMAKE: mingw-w64-i686-cmake
   only:
     variables:
       - $JOBS == "all" || $JOBS == "windows"
   before_script:
-    - pacman --noconfirm -S cmake
+    - pacman --noconfirm -S ${CMAKE}
     - wget -q -O Pd.zip ${PD_URL}
 # install locally to avoid hassles with Windows vs. Unix file paths.
 # NOTE: PD_PATH is also used in .script:cmake.
@@ -157,6 +158,7 @@ variables:
     IEMCI_CONFIGURATIONS: mingw64
     PD_EXTENSION: m_amd64
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
+    CMAKE: mingw-w64-x86_64-cmake
 
 ### job templates
 .Linux:
