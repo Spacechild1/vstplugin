@@ -91,7 +91,7 @@ EventLoop::EventLoop() {
         char buf[256];
         buf[0] = 0;
         XGetErrorText(d, e->error_code, buf, sizeof(buf));
-        LOG_ERROR("X11: " << buf);
+        LOG_ERROR("X11: Error: " << buf);
         return 0;
     });
 
