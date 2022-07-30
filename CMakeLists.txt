@@ -1,5 +1,10 @@
 cmake_minimum_required (VERSION 3.1)
 
+# minimum macOS deployment target; must come before project()!
+if (APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "Minimum OSX deployment version")
+endif()
+
 set(PROJECT "vstplugin")
 message(STATUS "Project: ${PROJECT}")
 project(${PROJECT})

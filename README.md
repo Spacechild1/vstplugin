@@ -200,6 +200,7 @@ Note that the macOS 10.14 SDK dropped support for compiling 32-bit applications;
 
 Apple M1 (ARM):
 
+By default, the minimum macOS deployment target is OSX 10.9. You may choose a *higher* version by setting the `CMAKE_OSX_DEPLOYMENT_TARGET` CMake variable.
 You can build a 64-bit Intel host application (for running existing Intel plugins) by setting `BUILD_HOST_AMD64` to `ON`.
 
 
