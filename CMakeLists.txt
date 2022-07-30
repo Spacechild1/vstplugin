@@ -61,6 +61,17 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
+# check if the compiler can produce 32-bit binaries.
+# For some reason we must move it up here...
+if (APPLE)
+    CHECK_CXX_COMPILER_FLAG("-m32" HAS_M32_SUPPORT)
+endif()
+if (LINUX)
+    # CHECK_CXX_COMPILER_FLAG("-m32) fails with a linker error...
+    # For now assume that -m32 is supported. LATER fix this.
+    set(HAS_M32_SUPPORT 1)
+endif()
+
 if (MSVC AND NOT CMAKE_BUILD_TYPE STREQUAL Debug)
     add_compile_options("/fp:fast")
 endif()
@@ -174,12 +185,6 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     if (CMAKE_COMPILER_IS_CLANG)
         add_definitions("-stdlib=libc++")
     endif()
-endif()
-
-# check if the compiler can produce 32-bit binaries.
-# For some reason we must move it up here...
-if (LINUX OR APPLE)
-    CHECK_CXX_COMPILER_FLAG("-m32" HAS_M32_SUPPORT)
 endif()
 
 if (MSVC)
