@@ -16,6 +16,14 @@ if (MINGW AND NOT WIN32)
     set(WIN32 TRUE)
 endif()
 
+if (WIN32)
+    # requires at least Windows 7
+    set(WINVER "0x0601" CACHE STRING "Minimum supported windows version")
+    if (WINVER)
+        add_definitions(-D_WIN32_WINNT=${WINVER})
+    endif()
+endif()
+
 # build Wine host
 if (LINUX)
     option(BUILD_WINE "Build Wine host(s)" OFF)
@@ -59,10 +67,6 @@ if(MINGW)
     option(STATIC_LIBS "link with static libraries (libstdc++, libgcc and phread)" ON)
 
     set(CMAKE_EXECUTABLE_SUFFIX ".exe")
-endif()
-
-if (WINVER)
-    add_definitions(-D_WIN32_WINNT=${WINVER})
 endif()
 
 # use std::filesystem?

@@ -176,12 +176,10 @@ If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and 
 
 4) copy the 64-bit 'host.exe' to the 32-bit installation folder and rename it to 'host_amd64.exe'
 
-If you get compilation errors concerning the SRWLock functions, it means that the Windows SDK version (`_WIN32_WINNT`) is set too low.
-The minimum supported version is `0x0600` (= Windows 7); you can easily override it with the `WINVER` CMake variable.
+By default, the minimum Windows deployment target is Windows 7. You may choose a *higher* version by setting the `WINVER` CMake variable.
 
 If you compile with MinGW, make sure to choose the appropriate generator with `cmake .. -G "Unix Makefiles"`.
 Alternatively, you can pick a generator in cmake-gui when you first click "Configure". In this case you should also select the correct toolchain.
-
 
 ##### Warning about 32-bit MinGW
 
