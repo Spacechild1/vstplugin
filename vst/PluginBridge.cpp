@@ -174,7 +174,7 @@ PluginBridge::~PluginBridge(){
     }
 
     // read remaining messages
-    readLog();
+    readLog(false);
 
 #ifdef _WIN32
     if (hLogRead_) {
@@ -192,7 +192,7 @@ PluginBridge::~PluginBridge(){
     LOG_DEBUG("free PluginBridge");
 }
 
-void PluginBridge::readLog(){
+void PluginBridge::readLog(bool loud){
 #ifdef _WIN32
     if (hLogRead_) {
         for (;;) {
@@ -203,7 +203,9 @@ void PluginBridge::readLog(){
             DWORD bytesRead, bytesAvailable;
             if (!PeekNamedPipe(hLogRead_, &header, sizeof(header),
                                &bytesRead, &bytesAvailable, NULL)) {
-                LOG_ERROR("PeekNamedPipe(): " << errorMessage(GetLastError()));
+                if (loud) {
+                    LOG_ERROR("PeekNamedPipe(): " << errorMessage(GetLastError()));
+                }
                 CloseHandle(hLogRead_);
                 hLogRead_ = NULL;
                 return;
@@ -232,7 +234,9 @@ void PluginBridge::readLog(){
                     return;
                 }
             } else {
-                LOG_ERROR("ReadFile(): " << errorMessage(GetLastError()));
+                if (loud) {
+                    LOG_ERROR("ReadFile(): " << errorMessage(GetLastError()));
+                }
                 CloseHandle(hLogRead_);
                 hLogRead_ = NULL;
                 return;
@@ -242,13 +246,16 @@ void PluginBridge::readLog(){
 #else
     if (logRead_ >= 0){
         for (;;){
-            auto checkResult = [this](int count){
+            auto checkResult = [this, loud](int count){
                 if (count > 0){
                     return true;
-                } else if (count == 0){
-                    LOG_WARNING("read(): EOF");
-                } else {
-                    LOG_ERROR("read(): " << errorMessage(errno));
+                }
+                if (loud) {
+                    if (count == 0){
+                        LOG_WARNING("read(): EOF");
+                    } else {
+                        LOG_ERROR("read(): " << errorMessage(errno));
+                    }
                 }
                 close(logRead_);
                 logRead_ = -1;
@@ -291,12 +298,14 @@ void PluginBridge::readLog(){
                     logMessage(header.level, msg);
                 } else {
                     // pipe closed
-                    if (fds.revents & POLLHUP){
-                        // there might be remaining data in the pipe, but we don't care.
-                        LOG_ERROR("FIFO closed");
-                    } else {
-                        // shouldn't happen when reading from a pipe
-                        LOG_ERROR("FIFO error");
+                    if (loud) {
+                        if (fds.revents & POLLHUP){
+                            // there might be remaining data in the pipe, but we don't care.
+                            LOG_ERROR("FIFO closed");
+                        } else {
+                            // shouldn't happen when reading from a pipe
+                            LOG_ERROR("FIFO error");
+                        }
                     }
                     close(logRead_);
                     logRead_ = -1;

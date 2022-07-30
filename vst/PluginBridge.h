@@ -104,7 +104,7 @@ class PluginBridge final
         return alive_.load(std::memory_order_acquire);
     }
 
-    void readLog();
+    void readLog(bool loud = true);
 
     void checkStatus();
 
