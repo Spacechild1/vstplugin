@@ -176,6 +176,12 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     endif()
 endif()
 
+# check if the compiler can produce 32-bit binaries.
+# For some reason we must move it up here...
+if (LINUX OR APPLE)
+    CHECK_CXX_COMPILER_FLAG("-m32" HAS_M32_SUPPORT)
+endif()
+
 if (MSVC)
     add_definitions("/std:c++17") # for std::filesystem
 endif()
@@ -211,18 +217,27 @@ option(BRIDGE "Enable plugin bridge" ON)
 add_definitions(-DUSE_BRIDGE=$<BOOL:${BRIDGE}>)
 if (BRIDGE)
     message(STATUS "Enable plugin bridge")
-    if(APPLE OR LINUX)
-        # Try to directly build the 32-bit (Intel) version of 'HOST' with -m32.
-        # This works on Linux and older macOS versions.
-        # We don't enable this by default because on Linux we would have to install
-        # lots of extra libs and on macOS it won't work on newer OS versions (macOs 10.15+) anyway.
-        # (Maybe we can somehow detect the macOs version)?
-        #
-        # NOTE: I've tried to use CHECK_CXX_COMPILER_FLAG(-m32 HAS_CXX_M32) but it always fails...
-        option(BUILD_HOST32 "Build the 32-bit host app" OFF)
+    # build host apps
+    if (LINUX)
+        # On Linux/Wine we can always build a 32-bit host app if the required 32-bit
+        # libraries are installed, so we always show the option. If we did a compile check
+        # and the libraries were not installed (yet), the option would remain hidden...
+        option(BUILD_HOST32 "Build 32-bit host app" OFF)
     endif()
-    if(APPLE)
-        option(BUILD_HOST_AMD64 "Build 64-bit intel host app" OFF)
+    if (APPLE)
+        # On macOS we only show the option if we do NOT build a universal binary.
+        list(LENGTH CMAKE_OSX_ARCHITECTURES numarchs)
+        if (numarchs LESS 2)
+            # Only show the 32-bit Intel option if supported by the toolchain.
+            if (HAS_M32_SUPPORT AND NOT (CMAKE_OSX_ARCHITECTURES STREQUAL "i386"))
+                option(BUILD_HOST32 "Build 32-bit host app" OFF)
+            endif()
+            # Only show the 64-bit Intel option if we are building for arm64 (only).
+            if ((CMAKE_OSX_ARCHITECTURES STREQUAL "arm64") OR
+                    (NOT CMAKE_OSX_ARCHITECTURES AND (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")))
+                option(BUILD_HOST_AMD64 "Build 64-bit Intel host app" OFF)
+            endif()
+        endif()
     endif()
 endif()
 

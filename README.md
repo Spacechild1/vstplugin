@@ -193,15 +193,20 @@ Yes, it's ridiculous!
 
 #### macOS
 
-Intel:
+You can build a universal binary with `-DCMAKE_OSX_ARCHITECTURES=<archs>`.
+As a side effect, this will also enable bit-bridging between the specified architectures.
 
-You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
-Note that the macOS 10.14 SDK dropped support for compiling 32-bit applications; you must use Xcode 9.4 or earlier.
+For example, `-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"` will build for Intel and ARM.
+On ARM machines in particular, this would allow you to use existing Intel plugins in ARM versions of Pd/SC.
 
-Apple M1 (ARM):
+Alternatively, you can build individual host apps:
+
+* Intel: You can build a 32-bit host application (for running old 32-bit plugins) by setting `BUILD_HOST32` to `ON`.
+  Note that the macOS 10.14 SDK dropped support for compiling 32-bit applications; you must use Xcode 9.4 or earlier.
+
+* ARM: You can build a 64-bit Intel host application (for running existing Intel plugins) by setting `BUILD_HOST_AMD64` to `ON`.
 
 By default, the minimum macOS deployment target is OSX 10.9. You may choose a *higher* version by setting the `CMAKE_OSX_DEPLOYMENT_TARGET` CMake variable.
-You can build a 64-bit Intel host application (for running existing Intel plugins) by setting `BUILD_HOST_AMD64` to `ON`.
 
 
 #### Linux
