@@ -38,19 +38,40 @@ static void initEventLoop() {}
 
 /*---------------------- work queue ----------------------------*/
 
+// With PDINSTANCE the work queue is reference-counted to avoid resource leaks.
+// LATER maybe bind it to a symbol instead of using a hash table + mutex?
 #ifdef PDINSTANCE
 namespace {
     std::unordered_map<t_pdinstance *, std::unique_ptr<t_workqueue>> gWorkQueues;
     SharedMutex gWorkQueueMutex;
 }
 
-void t_workqueue::init(){
+void t_workqueue::init() {
     // might get called from different threads!
     // NOTE: insertion doesn't invalidate pointers to elements,
     // so the pointers returned by t_workqueue::get() won't become stale!
     WriteLock lock(gWorkQueueMutex);
-    if (!gWorkQueues.count(pd_this)){
-        gWorkQueues[pd_this] = std::make_unique<t_workqueue>();
+    auto it = gWorkQueues.find(pd_this);
+    if (it != gWorkQueues.end()) {
+        // add reference
+        it->second->w_refcount++;
+    } else {
+        // create
+        gWorkQueues.emplace(pd_this, std::make_unique<t_workqueue>());
+    }
+}
+
+void t_workqueue::release() {
+    // NOTE: deletion doesn't invalidate pointers to elements,
+    // so the pointers returned by t_workqueue::get() won't become stale!
+    WriteLock lock(gWorkQueueMutex);
+    auto it = gWorkQueues.find(pd_this);
+    if (it != gWorkQueues.end()) {
+        if (--it->second->w_refcount == 0) {
+            gWorkQueues.erase(it);
+        }
+    } else {
+        bug("t_workqueue::release");
     }
 }
 
@@ -67,13 +88,15 @@ t_workqueue* t_workqueue::get(){
 #else
 static std::unique_ptr<t_workqueue> gWorkQueue;
 
-void t_workqueue::init(){
+void t_workqueue::init() {
     if (!gWorkQueue) {
         gWorkQueue = std::make_unique<t_workqueue>();
     }
 }
 
-t_workqueue* t_workqueue::get(){
+void t_workqueue::release() {}
+
+t_workqueue* t_workqueue::get() {
     return gWorkQueue.get();
 }
 #endif
@@ -120,7 +143,8 @@ t_workqueue::t_workqueue(){
 }
 
 t_workqueue::~t_workqueue(){
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(PDINSTANCE)
+    // Windows and not reference-counted:
     // You can't synchronize threads in a global/static object
     // destructor in a Windows DLL because of the loader lock.
     // See https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
@@ -135,7 +159,10 @@ t_workqueue::~t_workqueue(){
         w_thread.join();
     }
     LOG_DEBUG("worker thread joined");
-    // don't free clock
+#endif
+    // only free clock if t_workqueue is reference-counted!
+#ifdef PDINSTANCE
+    clock_free(w_clock);
 #endif
 }
 
@@ -3430,6 +3457,8 @@ t_vstplugin::~t_vstplugin(){
     LOG_DEBUG("vstplugin free");
 
     pd_unbind(&x_obj.ob_pd, gensym(glob_recv_name));
+
+    t_workqueue::release();
 }
 
 static void vstplugin_free(t_vstplugin *x){

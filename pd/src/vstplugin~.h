@@ -250,6 +250,7 @@ class t_workqueue {
     using t_fun = void (*)(T *);
 
     static void init();
+    static void release();
     static t_workqueue* get();
 
     t_workqueue();
@@ -271,14 +272,14 @@ class t_workqueue {
         t_fun<void> cleanup;
     };
     void dopush(void *owner, void *data, t_fun<void> workfn,
-               t_fun<void> cb, t_fun<void> cleanup);
+                t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
     UnboundedMPSCQueue<t_item> w_nrt_queue;
     // queue from NRT to RT
     UnboundedMPSCQueue<t_item> w_rt_queue;
     // worker thread
     std::thread w_thread;
-    std::mutex w_mutex; // for cancel
+    std::mutex w_mutex; // for cancellation
     Event w_event;
     std::atomic<bool> w_running{false};
     // polling
@@ -286,5 +287,6 @@ class t_workqueue {
     static void clockmethod(t_workqueue *w);
 #ifdef PDINSTANCE
     t_pdinstance *w_instance = nullptr;
+    int w_refcount = 1;
 #endif
 };
