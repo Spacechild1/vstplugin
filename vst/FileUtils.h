@@ -29,6 +29,8 @@ std::string fileExtension(const std::string& path);
 
 std::string fileBaseName(const std::string& path);
 
+double fileTimeLastModified(const std::string& path);
+
 // cross platform fstream, taking UTF-8 file paths.
 // will become obsolete when we can switch the whole project to C++17
 class File : public std::fstream {

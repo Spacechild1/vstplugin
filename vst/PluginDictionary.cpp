@@ -99,13 +99,35 @@ void PluginDictionary::clear() {
     exceptions_.clear();
 }
 
+// PluginDesc.cpp
 bool getLine(std::istream& stream, std::string& line);
 int getCount(const std::string& line);
+
+static double getPluginTimestamp(const std::string& path) {
+    // LOG_DEBUG("getPluginTimestamp: " << path);
+    if (isFile(path)) {
+        return fileTimeLastModified(path);
+    } else {
+        // bundle: find newest timestamp of all contained binaries
+        double timestamp = 0;
+        vst::search(path + "/Contents", [&](auto& path){
+            double t = fileTimeLastModified(path);
+            if (t > timestamp) {
+                timestamp = t;
+            }
+        }, false); // don't filter by extensions (because of macOS)!
+        return timestamp;
+    }
+}
 
 void PluginDictionary::read(const std::string& path, bool update){
     ReadLock lock(mutex_);
     int versionMajor = 0, versionMinor = 0, versionBugfix = 0;
     bool outdated = false;
+
+    double timestamp = fileTimeLastModified(path);
+    // LOG_DEBUG("cache file timestamp: " << timestamp);
+
     File file(path);
     std::string line;
     while (getLine(file, line)){
@@ -134,7 +156,7 @@ void PluginDictionary::read(const std::string& path, bool update){
             int numPlugins = getCount(line);
             while (numPlugins--){
                 // read a single plugin description
-                auto plugin = doReadPlugin(file, versionMajor,
+                auto plugin = doReadPlugin(file, timestamp, versionMajor,
                                            versionMinor, versionBugfix);
                 // always collect keys, otherwise reading the cache file
                 // would throw an error if a plugin had been removed
@@ -160,8 +182,7 @@ void PluginDictionary::read(const std::string& path, bool update){
                         plugins_[index][key] = plugin;
                     }
                 } else {
-                    LOG_DEBUG("couldn't read plugin");
-                    // plugin is outdated, we need to update the cache
+                    // plugin has been changed or removed - update the cache
                     outdated = true;
                 }
             }
@@ -169,7 +190,24 @@ void PluginDictionary::read(const std::string& path, bool update){
             std::getline(file, line);
             int numExceptions = getCount(line);
             while (numExceptions-- && std::getline(file, line)){
-                exceptions_.insert(line);
+                // check if plugin has been changed or removed
+                if (pathExists(line)) {
+                    try {
+                        auto t = getPluginTimestamp(line);
+                        if (t < timestamp) {
+                            exceptions_.insert(line);
+                        } else {
+                            LOG_VERBOSE("black-listed plugin " << line << " has changed");
+                            outdated = true;
+                        }
+                    } catch (const Error& e) {
+                        LOG_ERROR("could not get timestamp for " << line << ": " << e.what());
+                        outdated = true;
+                    }
+                } else {
+                    LOG_VERBOSE("black-listed plugin " << line << " has been removed");
+                    outdated = true;
+                }
             }
         } else {
             throw Error("bad data: " + line);
@@ -191,12 +229,12 @@ void PluginDictionary::read(const std::string& path, bool update){
 
 PluginDesc::const_ptr PluginDictionary::readPlugin(std::istream& stream){
     WriteLock lock(mutex_);
-    return doReadPlugin(stream, VERSION_MAJOR,
+    return doReadPlugin(stream, -1, VERSION_MAJOR,
                         VERSION_MINOR, VERSION_PATCH);
 }
 
-PluginDesc::const_ptr PluginDictionary::doReadPlugin(std::istream& stream, int versionMajor,
-                                                  int versionMinor, int versionPatch){
+PluginDesc::const_ptr PluginDictionary::doReadPlugin(std::istream& stream, double timestamp,
+                                                     int versionMajor, int versionMinor, int versionPatch){
     // deserialize plugin
     auto desc = std::make_shared<PluginDesc>(nullptr);
     try {
@@ -206,17 +244,31 @@ PluginDesc::const_ptr PluginDictionary::doReadPlugin(std::istream& stream, int v
         return nullptr;
     }
 
-    // load the factory (if not loaded already) to verify that the plugin still exists
+    // check if the plugin has been removed or changed since the last cache file update
+    if (!pathExists(desc->path())) {
+        LOG_WARNING("plugin " << desc->path() << " has been removed");
+        return nullptr; // skip
+    }
+    try {
+        if (timestamp >= 0 && getPluginTimestamp(desc->path()) > timestamp) {
+            LOG_WARNING("plugin " << desc->path() << " has changed");
+            return nullptr; // skip
+        }
+    } catch (const Error& e) {
+        LOG_ERROR("could not get timestamp for " << desc->path()
+                    << ": " << e.what());
+        return nullptr;  // skip
+    }
+    // load the factory (if not already loaded)
     IFactory::ptr factory;
     if (!factories_.count(desc->path())){
         try {
             factory = IFactory::load(desc->path());
             factories_[desc->path()] = factory;
         } catch (const Error& e){
-            // this probably happens when the plugin has been (re)moved
             LOG_WARNING("couldn't load '" << desc->name <<
                         "' (" << desc->path() << "): " << e.what());
-            return nullptr; // skip plugin
+            return nullptr; // skip
         }
     } else {
         factory = factories_[desc->path()];
