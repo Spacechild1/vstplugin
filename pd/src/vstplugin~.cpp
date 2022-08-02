@@ -1258,11 +1258,11 @@ static void vstplugin_search_stop(t_vstplugin *x){
 }
 
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
-        // unloading plugins might crash, so we we first delete the cache file
+    // unloading plugins might crash, so we we first delete the cache file
     if (f != 0){
         removeFile(gSettingsDir + "/" + gCacheFileName);
     }
-        // clear the plugin description dictionary
+    // clear the plugin description dictionary
     gPluginDict.clear();
 }
 
@@ -1275,13 +1275,18 @@ static void vstplugin_plugin_list(t_vstplugin *x){
     }
 }
 
-// resolves relative paths to an existing plugin in the canvas search paths or VST search paths.
-// returns empty string on failure!
-template<bool async>
-static std::string resolvePath(t_canvas *c, const std::string& s){
+static std::string resolvePluginPath(t_canvas *c, const char *s) {
+    // first try plugin dictionary
+    auto desc = gPluginDict.findPlugin(s);
+    if (desc) {
+        return s; // return key/path
+    }
+    // try as file path
     std::string result;
-        // resolve relative path
-    if (!sys_isabsolutepath(s.c_str())){
+    if (sys_isabsolutepath(s)){
+        result = s;
+    } else {
+        // resolve relative path to canvas search paths or VST search paths
         bool vst3 = false;
         std::string path = s;
         auto ext = fileExtension(path);
@@ -1306,16 +1311,10 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
         const char *bundlePath = "Contents/Info.plist";
         // on MacOS VST plugins are always bundles (directories) but canvas_open needs a real file
         snprintf(fullPath, MAXPDSTRING, "%s/%s", path.c_str(), bundlePath);
-        {
-            PdScopedLock<async> lock;
-            fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
-        }
+        fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
     #else
         const char *bundlePath = nullptr;
-        {
-            PdScopedLock<async> lock;
-            fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
-        }
+        fd = canvas_open(c, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
         if (fd < 0 && vst3){
             // VST3 plugins might be bundles
             // NOTE: this doesn't work for bridged plugins (yet)!
@@ -1327,10 +1326,7 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
             snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
                      path.c_str(), bundlePath, fileBaseName(path).c_str());
          #endif
-            {
-                PdScopedLock<async> lock;
-                fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
-            }
+            fd = canvas_open(c, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
         }
     #endif
         if (fd >= 0){
@@ -1352,37 +1348,27 @@ static std::string resolvePath(t_canvas *c, const std::string& s){
                 if (!result.empty()) break; // success
             }
         }
-    } else {
-        result = s;
     }
-    sys_unbashfilename(&result[0], &result[0]);
+    if (result.empty()) {
+        post("'%s' is neither an existing plugin name nor a valid file path", s);
+    } else {
+        sys_unbashfilename(result.data(), result.data());
+    }
     return result;
 }
 
 // query a plugin by its key or file path and probe if necessary.
 template<bool async>
-static const PluginDesc * queryPlugin(t_vstplugin *x, const std::string& path){
-    // query plugin
+static const PluginDesc * queryPlugin(const std::string& path) {
     auto desc = gPluginDict.findPlugin(path);
     if (!desc){
-            // try as file path
-        std::string abspath = resolvePath<async>(x->x_canvas, path);
-        if (abspath.empty()){
-            PdScopedLock<async> lock;
-            verbose(PdNormal, "'%s' is neither an existing plugin name "
-                    "nor a valid file path", path.c_str());
-        } else if (!(desc = gPluginDict.findPlugin(abspath))){
-            // finally probe plugin
-            if (probePlugin<async>(abspath, 0)){
-                desc = gPluginDict.findPlugin(abspath);
-                // findPlugin() fails if the module contains several plugins,
-                // which means the path can't be used as a key.
-                if (!desc){
-                    PdScopedLock<async> lock;
-                    verbose(PdNormal, "'%s' contains more than one plugin. "
-                            "Please use the 'search' method and open the desired "
-                            "plugin by its name.", abspath.c_str());
-                }
+        if (probePlugin<async>(path, 0)){
+            desc = gPluginDict.findPlugin(path);
+            // findPlugin() fails if the module contains several plugins,
+            // which means the path can't be used as a key.
+            if (!desc){
+                PdLog<async>() << "'" << path << "' contains more than one plugin. "
+                               << "Please use the 'search' method and open the desired plugin by its key.";
             }
         }
    }
@@ -1464,7 +1450,8 @@ static void vstplugin_close(t_vstplugin *x){
 // open
 
 struct t_open_data : t_command_data<t_open_data> {
-    t_symbol *path;
+    t_symbol *pathsym;
+    std::string abspath;
     IPlugin::ptr plugin;
     bool editor;
     bool threaded;
@@ -1474,39 +1461,34 @@ struct t_open_data : t_command_data<t_open_data> {
 template<bool async>
 static void vstplugin_open_do(t_open_data *x){
     // get plugin info
-    const PluginDesc *info = queryPlugin<async>(x->owner, x->path->s_name);
-    if (!info){
-        PdScopedLock<async> lock;
-        pd_error(x->owner, "%s: can't open '%s'", classname(x->owner), x->path->s_name);
-        return;
-    }
-    try {
-        // make sure to only request the plugin UI if the
-        // plugin supports it and we have an event loop
-        if (x->editor &&
-                !(info->editor() && UIThread::available())){
-            x->editor = false;
-            LOG_DEBUG("can't use plugin UI!");
+    const PluginDesc *info = queryPlugin<async>(x->abspath);
+    if (info) {
+        try {
+            // make sure to only request the plugin UI if the
+            // plugin supports it and we have an event loop
+            if (x->editor &&
+                    !(info->editor() && UIThread::available())){
+                x->editor = false;
+                LOG_DEBUG("can't use plugin UI!");
+            }
+            if (x->editor){
+                LOG_DEBUG("create plugin in UI thread");
+            } else {
+                LOG_DEBUG("create plugin in NRT thread");
+            }
+            x->owner->x_editor->defer_safe<async>([&](){
+                // create plugin
+                x->plugin = info->create(x->editor, x->threaded, x->mode);
+                // setup plugin
+                // protect against concurrent vstplugin_dsp() and vstplugin_save()
+                ScopedLock lock(x->owner->x_mutex);
+                x->owner->setup_plugin<async>(x->plugin.get());
+            }, x->editor);
+            LOG_DEBUG("done");
+        } catch (const Error & e) {
+            // shouldn't happen...
+            PdLog<async>(PdError) << "could not create plugin '" << info->name << "': " << e.what();
         }
-        if (x->editor){
-            LOG_DEBUG("create plugin in UI thread");
-        } else {
-            LOG_DEBUG("create plugin in NRT thread");
-        }
-        x->owner->x_editor->defer_safe<async>([&](){
-            // create plugin
-            x->plugin = info->create(x->editor, x->threaded, x->mode);
-            // setup plugin
-            // protect against concurrent vstplugin_dsp() and vstplugin_save()
-            ScopedLock lock(x->owner->x_mutex);
-            x->owner->setup_plugin<async>(x->plugin.get());
-        }, x->editor);
-        LOG_DEBUG("done");
-    } catch (const Error & e) {
-        // shouldn't happen...
-        PdScopedLock<async> lock;
-        pd_error(x->owner, "%s: couldn't open '%s': %s",
-                 classname(x->owner), info->name.c_str(), e.what());
     }
 }
 
@@ -1530,13 +1512,15 @@ static void vstplugin_open_done(t_open_data *x){
         // store key (mainly needed for preset change notification)
         x->owner->x_key = gensym(makeKey(info).c_str());
         // store path symbol (to avoid reopening the same plugin)
-        x->owner->x_path = x->path;
+        x->owner->x_path = x->pathsym;
         // receive events from plugin
         x->owner->x_plugin->setListener(x->owner->x_editor);
         // update Pd editor
         x->owner->x_editor->setup();
 
         verbose(PdDebug, "opened '%s'", info.name.c_str());
+    } else {
+        pd_error(x->owner, "%s: cannot open '%s'", classname(x->owner), x->pathsym->s_name);
     }
 }
 
@@ -1552,7 +1536,7 @@ static void vstplugin_open_notify(t_vstplugin *x) {
         // really refers to the same plugin.
         SETSYMBOL(&msg[1], x->x_path);
     }
-    outlet_anything(x->x_messout, gensym("open"), 1 + success, msg);
+    outlet_anything(x->x_messout, gensym("open"), (success ? 2 : 1), msg);
 
     if (success) {
         // report initial latency
@@ -1626,11 +1610,20 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     // for editor or plugin bridge/sandbox
     initEventLoop();
 
+    auto abspath = resolvePluginPath(x->x_canvas, pathsym->s_name);
+    if (abspath.empty()) {
+        pd_error(x, "%s: cannot open '%s'", classname(x), pathsym->s_name);
+        // output failure!
+        vstplugin_open_notify(x);
+        return;
+    }
+
     // open the new plugin
     if (async){
         auto data = new t_open_data();
         data->owner = x;
-        data->path = pathsym;
+        data->pathsym = pathsym;
+        data->abspath = abspath;
         data->editor = editor;
         data->threaded = threaded;
         data->mode = mode;
@@ -1643,7 +1636,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     } else {
         t_open_data data;
         data.owner = x;
-        data.path = pathsym;
+        data.pathsym = pathsym;
+        data.abspath = abspath;
         data.editor = editor;
         data.threaded = threaded;
         data.mode = mode;
@@ -1674,7 +1668,8 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     const PluginDesc *info = nullptr;
     if (argc > 0){ // some plugin
         auto path = atom_getsymbol(argv)->s_name;
-        if (!(info = queryPlugin<false>(x, path))){
+        auto abspath = resolvePluginPath(x->x_canvas, path);
+        if (abspath.empty() || !(info = queryPlugin<false>(abspath))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
             return;
         }
@@ -2035,10 +2030,10 @@ template<t_direction dir>
 static void vstplugin_bus_list(t_vstplugin *x, t_symbol *s){
     const PluginDesc *info = nullptr;
     if (*s->s_name){
-        auto path = s->s_name;
-        if (!(info = queryPlugin<false>(x, path))){
+        auto abspath = resolvePluginPath(x->x_canvas, s->s_name);
+        if (abspath.empty() || !(info = queryPlugin<false>(abspath))){
             pd_error(x, "%s: couldn't open '%s' - no such file or plugin!",
-                     classname(x), path);
+                     classname(x), s->s_name);
             return;
         }
     } else {
@@ -2137,9 +2132,10 @@ static void vstplugin_param_count(t_vstplugin *x){
 static void vstplugin_param_list(t_vstplugin *x, t_symbol *s){
     const PluginDesc *info = nullptr;
     if (*s->s_name){
-        auto path = s->s_name;
-        if (!(info = queryPlugin<false>(x, path))){
-            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
+        auto abspath = resolvePluginPath(x->x_canvas, s->s_name);
+        if (abspath.empty() || !(info = queryPlugin<false>(abspath))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!",
+                     classname(x), s->s_name);
             return;
         }
     } else {
@@ -2290,9 +2286,10 @@ static void vstplugin_program_list(t_vstplugin *x,  t_symbol *s){
     const PluginDesc *info = nullptr;
     bool local = false;
     if (*s->s_name){
-        auto path = s->s_name;
-        if (!(info = queryPlugin<false>(x, path))){
-            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
+        auto abspath = resolvePluginPath(x->x_canvas, s->s_name);
+        if (abspath.empty() || !(info = queryPlugin<false>(abspath))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!",
+                     classname(x), s->s_name);
             return;
         }
     } else {
@@ -2389,36 +2386,12 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
 template<t_preset type, bool async>
 static void vstplugin_preset_read_do(t_preset_data *data){
     auto x = data->owner;
-    char path[MAXPDSTRING];
-    int fd;
-    // avoid locking Pd for absolute paths!
-    if (sys_isabsolutepath(data->path.c_str())){
-        if ((fd = sys_open(data->path.c_str(), O_RDONLY)) >= 0){
-            snprintf(path, MAXPDSTRING, "%s", data->path.c_str());
-        }
-    } else {
-        char dir[MAXPDSTRING], *name;
-        PdScopedLock<async> lock;
-        if ((fd = canvas_open(x->x_canvas, data->path.c_str(), "",
-                              dir, &name, MAXPDSTRING, 1)) >= 0){
-            snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
-        }
-    }
-    if (fd < 0){
-        PdScopedLock<async> lock;
-        pd_error(x, "%s: couldn't read %s file '%s' - no such file!",
-                 classname(x), presetName(type), data->path.c_str());
-        data->success = false;
-        return;
-    }
-    sys_close(fd);
-    // sys_bashfilename(path, path);
     try {
         // NOTE: avoid readProgramFile() to minimize the critical section
         std::string buffer;
-        vst::File file(path);
+        vst::File file(data->path);
         if (!file.is_open()){
-            throw Error("couldn't open file " + std::string(path));
+            throw Error("couldn't open file " + std::string(data->path));
         }
         file.seekg(0, std::ios_base::end);
         buffer.resize(file.tellg());
@@ -2442,44 +2415,67 @@ static void vstplugin_preset_read_do(t_preset_data *data){
         data->success = true;
     } catch (const Error& e) {
         PdScopedLock<async> lock;
-        pd_error(x, "%s: couldn't read %s file '%s':\n%s",
+        pd_error(x, "%s: could not read %s '%s':\n%s",
                  classname(x), presetName(type), data->path.c_str(), e.what());
         data->success = false;
     }
 }
 
-template<t_preset type, bool async>
+template<t_preset type>
+static void vstplugin_preset_read_notify(t_vstplugin *x, bool success) {
+    t_atom a;
+    SETFLOAT(&a, success);
+    char sel[64];
+    snprintf(sel, sizeof(sel), "%s_read", presetName(type));
+    outlet_anything(x->x_messout, gensym(sel), 1, &a);
+}
+
+template<t_preset type>
 static void vstplugin_preset_read_done(t_preset_data *data){
-    if (async){
-        // command finished
-        data->owner->x_suspended = false;
-    }
+    // command finished
+    data->owner->x_suspended = false;
     // *now* update
     data->owner->x_editor->update();
-    // notify
-    t_atom a;
-    SETFLOAT(&a, data->success);
-    static const char *names[] = { "program_read", "bank_read", "preset_load" };
-    outlet_anything(data->owner->x_messout, gensym(names[type]), 1, &a);
+
+    vstplugin_preset_read_notify<type>(data->owner, data->success);
 }
 
 template<t_preset type>
 static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float f){
     if (!x->check_plugin()) return;
-    bool async = f;
+
+    // resolve path
+    char path[MAXPDSTRING];
+    if (sys_isabsolutepath(s->s_name)){
+        snprintf(path, MAXPDSTRING, "%s", s->s_name);
+    } else {
+        char dir[MAXPDSTRING], *name;
+        int fd = canvas_open(x->x_canvas, s->s_name, "", dir, &name, MAXPDSTRING, 1);
+        if (fd >= 0) {
+            snprintf(path, MAXPDSTRING, "%s/%s", dir, name);
+            sys_close(fd);
+        } else {
+            pd_error(x, "%s: could not find %s '%s'",
+                     classname(x), presetName(type), s->s_name);
+            vstplugin_preset_read_notify<type>(x, false);
+            return;
+        }
+    }
+
+    bool async = (f != 0);
     if (async){
         auto data = new t_preset_data();
         data->owner = x;
-        data->path = s->s_name;
+        data->path = path;
         t_workqueue::get()->push(x, data, vstplugin_preset_read_do<type, true>,
-                                 vstplugin_preset_read_done<type, true>);
+                                 vstplugin_preset_read_done<type>);
         x->x_suspended = true;
     } else {
         t_preset_data data;
         data.owner = x;
-        data.path = s->s_name;
+        data.path = path;
         vstplugin_preset_read_do<type, false>(&data);
-        vstplugin_preset_read_done<type, false>(&data);
+        vstplugin_preset_read_done<type>(&data);
     }
 }
 
@@ -2533,65 +2529,63 @@ static void vstplugin_preset_write_do(t_preset_data *data){
     }
 }
 
-static void vstplugin_preset_notify(t_vstplugin *x);
+static void vstplugin_preset_change_notify(t_vstplugin *x);
 
-template<t_preset type, bool async>
+template<t_preset type>
 static void vstplugin_preset_write_done(t_preset_data *data){
-    if (async){
-        // command finished
-        data->owner->x_suspended = false;
-    }
-    if (type == PRESET){
-        if (data->success){
-            auto y = (t_save_data *)data;
-            // set current preset
-            y->owner->x_preset = gensym(y->name.c_str());
-            // add preset and notify for change
-            if (y->add){
-                auto& info = y->owner->x_plugin->info();
-                Preset preset;
-                preset.name = y->name;
-                preset.path = y->path;
-                preset.type = y->type;
-                {
-                #ifdef PDINSTANCE
-                    WriteLock lock(gPresetMutex);
-                #endif
-                    const_cast<PluginDesc&>(info).addPreset(std::move(preset));
-                }
-                vstplugin_preset_notify(y->owner);
+    // command finished
+    data->owner->x_suspended = false;
+    if (type == PRESET && data->success){
+        auto y = (t_save_data *)data;
+        // set current preset
+        y->owner->x_preset = gensym(y->name.c_str());
+        // add preset and notify for change
+        if (y->add){
+            auto& info = y->owner->x_plugin->info();
+            Preset preset;
+            preset.name = y->name;
+            preset.path = y->path;
+            preset.type = y->type;
+            {
+            #ifdef PDINSTANCE
+                WriteLock lock(gPresetMutex);
+            #endif
+                const_cast<PluginDesc&>(info).addPreset(std::move(preset));
             }
+            vstplugin_preset_change_notify(y->owner);
         }
     }
     // notify
     t_atom a;
     SETFLOAT(&a, data->success);
-    static const char *names[] = { "program_write", "bank_write", "preset_save" };
-    outlet_anything(data->owner->x_messout, gensym(names[type]), 1, &a);
+    char sel[64];
+    snprintf(sel, sizeof(sel), "%s_write", presetName(type));
+    outlet_anything(data->owner->x_messout, gensym(sel), 1, &a);
 }
 
 template<t_preset type>
 static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg f){
     if (!x->check_plugin()) return;
-    bool async = f;
     // get the full path here because it's relatively cheap,
     // otherwise we would have to lock Pd in the NRT thread
     // (like we do in vstplugin_preset_read)
     char path[MAXPDSTRING];
     canvas_makefilename(x->x_canvas, s->s_name, path, MAXPDSTRING);
+
+    bool async = (f != 0);
     if (async){
         auto data = new t_preset_data();
         data->owner = x;
         data->path = path;
         t_workqueue::get()->push(x, data, vstplugin_preset_write_do<type, true>,
-                                 vstplugin_preset_write_done<type, true>);
+                                 vstplugin_preset_write_done<type>);
         x->x_suspended = true;
     } else {
         t_preset_data data;
         data.owner = x;
         data.path = path;
         vstplugin_preset_write_do<type, false>(&data);
-        vstplugin_preset_write_done<type, false>(&data);
+        vstplugin_preset_write_done<type>(&data);
     }
 }
 
@@ -2658,9 +2652,10 @@ static void vstplugin_preset_info(t_vstplugin *x, t_floatarg f){
 static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
     const PluginDesc *info = nullptr;
     if (*s->s_name){
-        auto path = s->s_name;
-        if (!(info = queryPlugin<false>(x, path))){
-            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!", classname(x), path);
+        auto abspath = resolvePluginPath(x->x_canvas, s->s_name);
+        if (abspath.empty() || !(info = queryPlugin<false>(abspath))){
+            pd_error(x, "%s: couldn't open '%s' - no such file or plugin!",
+                     classname(x), s->s_name);
             return;
         }
     } else {
@@ -2740,7 +2735,7 @@ static bool vstplugin_preset_writeable(t_vstplugin *x, const PluginDesc& info, i
 }
 
 
-static void vstplugin_preset_notify(t_vstplugin *x){
+static void vstplugin_preset_change_notify(t_vstplugin *x){
     auto thing = gensym(t_vstplugin::glob_recv_name)->s_thing;
     if (thing){
         // notify all vstplugin~ instances for preset changes
@@ -2759,6 +2754,7 @@ static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
 
 static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
+
     auto& info = x->x_plugin->info();
     t_symbol *path;
     {
@@ -2787,6 +2783,7 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
 
 static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
+
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
     WriteLock lock(gPresetMutex);
@@ -2794,7 +2791,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     Preset preset;
     bool add = false;
     int index = vstplugin_preset_index(x, argc, argv, false);
-    // preset at *index* must exist and be writeable
+    // existing preset must be writeable!
     if (index >= 0 && argv->a_type == A_FLOAT && !vstplugin_preset_writeable(x, info, index)){
         t_atom a;
         SETFLOAT(&a, 0);
@@ -2833,7 +2830,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         data->add = add;
         t_workqueue::get()->push(x, data,
                                  vstplugin_preset_write_do<PRESET, true>,
-                                 vstplugin_preset_write_done<PRESET, true>);
+                                 vstplugin_preset_write_done<PRESET>);
         x->x_suspended = true;
     } else {
         t_save_data data;
@@ -2846,7 +2843,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
         lock.unlock(); // to avoid deadlock in vstplugin_preset_write_done
     #endif
         vstplugin_preset_write_do<PRESET, false>(&data);
-        vstplugin_preset_write_done<PRESET, false>(&data);
+        vstplugin_preset_write_done<PRESET>(&data);
     }
 }
 
@@ -2901,7 +2898,7 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
         #ifdef PDINSTANCE
             lock.unlock(); // !
         #endif
-            vstplugin_preset_notify(x);
+            vstplugin_preset_change_notify(x);
             notify(x, true);
             return; // success
         } else {
@@ -2951,7 +2948,7 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
         #ifdef PDINSTANCE
             lock.unlock(); // !
         #endif
-            vstplugin_preset_notify(x);
+            vstplugin_preset_change_notify(x);
             notify(x, true);
             return; // success
         } else {
@@ -3406,21 +3403,25 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
 
     // open plugin
     if (file){
-        // for editor or plugin bridge/sandbox
-        initEventLoop();
+        auto abspath = resolvePluginPath(x_canvas, file->s_name);
+        if (!abspath.empty()) {
+            // for editor or plugin bridge/sandbox
+            initEventLoop();
 
-        t_open_data data;
-        data.owner = this;
-        data.path = file;
-        data.editor = editor;
-        data.threaded = threaded;
-        data.mode = mode;
-        vstplugin_open_do<false>(&data);
-        vstplugin_open_done(&data);
-        x_async = false;
-        // HACK: always set path symbol so that in vstplugin_loadbang()
-        // we know that we have to call vstplugin_open_notify()
-        //  - even if the plugin has failed to load!
+            t_open_data data;
+            data.owner = this;
+            data.pathsym = file;
+            data.abspath = abspath;
+            data.editor = editor;
+            data.threaded = threaded;
+            data.mode = mode;
+            vstplugin_open_do<false>(&data);
+            vstplugin_open_done(&data);
+        } else {
+            pd_error(this, "%s: cannot open '%s'", classname(this), file->s_name);
+        }
+        // HACK: always set path symbol so that in vstplugin_loadbang() we know that we
+        // have to call vstplugin_open_notify() - even if the plugin has failed to load!
         x_path = file;
     }
 
