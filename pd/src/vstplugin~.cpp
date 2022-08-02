@@ -3441,15 +3441,16 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 
 // destructor
 t_vstplugin::~t_vstplugin(){
-    // first make sure that there are no pending async commands!
-    // NOTE that this doesn't affect pending close commands,
-    // because they can't be issued while the plugin is suspended.
+    // we can stop the search without synchronizing with the worker thread!
+    vstplugin_search_stop(this);
+
+    // beforing closing the plugin, make sure that there are no pending tasks!
+    // NOTE that this doesn't affect pending close commands because they can't
+    // be issued while the plugin is suspended.
     if (x_suspended){
         t_workqueue::get()->cancel(this);
         x_suspended = false; // for vstplugin_close()!
     }
-    // don't need to sync!
-    vstplugin_search_stop(this);
 
     if (x_plugin) {
         vstplugin_close(this);
