@@ -8,6 +8,8 @@
 #  define NOMINMAX
 # endif
 # include <windows.h>
+#else
+# include <sys/stat.h>
 #endif
 
 #if USE_STDFS
@@ -223,6 +225,50 @@ std::string fileBaseName(const std::string& path){
     size_t n = (dot != std::string::npos) ? dot - start : std::string::npos;
     return path.substr(start, n);
 }
+
+// return the timestamp of the last modification (file content changed, file replaced, etc.)
+// as a Unix timestamp (number of seconds since Jan 1, 1970).
+#ifdef _WIN32
+double fileTimeLastModified(const std::string &path) {
+    HANDLE hFile = CreateFileW(widen(path).c_str(),
+                               GENERIC_READ, FILE_SHARE_READ, NULL,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        throw Error(Error::SystemError, "CreateFile() failed: " + errorMessage(GetLastError()));
+    }
+    FILETIME creationTime, writeTime;
+    if (!GetFileTime(hFile, &creationTime, NULL, &writeTime)) {
+        CloseHandle(hFile);
+        throw Error(Error::SystemError, "GetFileTime() failed: " + errorMessage(GetLastError()));
+    }
+    CloseHandle(hFile);
+    uint64_t ct = ((uint64_t)creationTime.dwHighDateTime << 32) | (creationTime.dwLowDateTime);
+    uint64_t wt = ((uint64_t)writeTime.dwHighDateTime << 32) | (writeTime.dwLowDateTime);
+    // use the newer timestamp
+    auto t = std::max<uint64_t>(ct, wt);
+    // Kudos to https://www.frenk.com/2009/12/convert-filetime-to-unix-timestamp/
+    // Between Jan 1, 1601 and Jan 1, 1970 there are 11644473600 seconds.
+    // FILETIME uses 100-nanosecond intervals.
+    return (t * 0.0000001) - 11644473600;
+}
+#else
+double fileTimeLastModified(const std::string &path) {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) {
+        throw Error(Error::SystemError, "stat() failed: " + errorMessage(errno));
+    }
+    // macOS does not support nanosecond precision!
+#ifdef __APPLE__
+    double mtime = st.st_mtime;
+    double ctime = st.st_ctime;
+#else
+    double mtime = (double)st.st_mtim.tv_sec + st.st_mtim.tv_nsec * 0.000000001;
+    double ctime = (double)st.st_ctim.tv_sec + st.st_ctim.tv_nsec * 0.000000001;
+#endif
+    // return the newer timestamp
+    return std::max<double>(mtime, ctime);
+}
+#endif
 
 //---------------------------------------------------//
 

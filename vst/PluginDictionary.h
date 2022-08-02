@@ -33,8 +33,8 @@ class PluginDictionary {
     // read a single plugin description
     PluginDesc::const_ptr readPlugin(std::istream& stream);
  private:
-    PluginDesc::const_ptr doReadPlugin(std::istream& stream, int versionMajor,
-                                       int versionMinor, int versionPatch);
+    PluginDesc::const_ptr doReadPlugin(std::istream& stream, double timestamp,
+                                       int versionMajor, int versionMinor, int versionPatch);
     void doWrite(const std::string& path) const;
     std::unordered_map<std::string, IFactory::ptr> factories_;
     enum {
