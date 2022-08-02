@@ -819,20 +819,21 @@ void t_vsteditor::post_event(const t_event& event){
         if (pd_getdspstate() == 0){
             // Special case: DSP might be off and the event does not come from Pd's
             // scheduler thread, neither directly nor indirectly (-> e_locked):
-            // only lock Pd if the event comes from the UI thread or worker thread,
-            // otherwise we post a warning and wait for the user to turn on DSP...
-            // Generally, this can happen when we receive a notification from the
-            // watchdog thread or when a libpd client calls a [vstplugin~] method
-            // from another thread.
+            // To avoid a deadlock, only lock Pd if the event comes from the UI thread or
+            // worker thread, otherwise we post a warning and wait for the user to turn on DSP...
+            // Generally, this can happen when we receive a notification from the watchdog
+            // thread or when a libpd client calls a [vstplugin~] method from another thread.
             // NOTE: calling vst_gui() is safe in this context
             bool canlock = isWorkerThread() || (vst_gui() && UIThread::isCurrentThread());
             if (canlock) {
+                // there is still a possible deadlock if post_event() is called from the UI thread
+                // while we are waiting in ~vstplugin(), but this is so unlikely that we don't care...
                 sys_lock();
                 clock_delay(e_clock, 0);
                 sys_unlock();
             } else {
                 LOG_WARNING("received event from unknown thread; cannot dispatch with DSP turned off");
-                // ignore
+                // will be dispatched when DSP is turned on
             }
         }
     }
@@ -3440,7 +3441,7 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
 }
 
 // destructor
-t_vstplugin::~t_vstplugin(){
+t_vstplugin::~t_vstplugin() {
     // we can stop the search without synchronizing with the worker thread!
     vstplugin_search_stop(this);
 
