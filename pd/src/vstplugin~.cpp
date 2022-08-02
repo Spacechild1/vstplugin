@@ -6,6 +6,9 @@
 #define pd_class(x) (*(t_pd *)(x))
 #define classname(x) (class_getname(pd_class(x)))
 
+
+/*===================== event loop =========================*/
+
 #if POLL_EVENT_LOOP
 #define EVENT_LOOP_POLL_INTERVAL 5 // time between polls in ms
 
@@ -36,7 +39,8 @@ static void initEventLoop(){
 static void initEventLoop() {}
 #endif
 
-/*---------------------- work queue ----------------------------*/
+
+/*============================ t_workqueue ============================*/
 
 // With PDINSTANCE the work queue is reference-counted to avoid resource leaks.
 // LATER maybe bind it to a symbol instead of using a hash table + mutex?
@@ -227,7 +231,8 @@ void t_workqueue::poll(){
     }
 }
 
-/*---------------------- utility ----------------------------*/
+
+/*============================ utility ============================*/
 
 // substitute SPACE for NO-BREAK SPACE (e.g. to avoid Tcl errors in the properties dialog)
 static void substitute_whitespace(char *buf){
@@ -291,7 +296,8 @@ void defer(const T& fn, bool uithread){
     fn();
 }
 
-/*----------------------------- logging ---------------------------------*/
+
+/*============================ logging ============================*/
 
 template<bool async>
 class PdLog {
@@ -350,7 +356,8 @@ private:
     PdLogLevel level_;
 };
 
-/*---------------------- search/probe ----------------------------*/
+
+/*============================ search/probe ============================*/
 
 static PluginDictionary gPluginDict;
 
@@ -702,7 +709,8 @@ static const PluginDesc * queryPlugin(const std::string& path) {
 // (see '-s' flag for [vstplugin~])
 static std::atomic_bool gDidSearch{false};
 
-/*--------------------- t_vstparam --------------------------*/
+
+/*========================= t_vstparam =========================*/
 
 static t_class *vstparam_class;
 
@@ -758,7 +766,8 @@ static void vstparam_setup(){
     class_addmethod(vstparam_class, (t_method)vstparam_set, gensym("set"), A_DEFFLOAT, 0);
 }
 
-/*-------------------- t_vsteditor ------------------------*/
+
+/*============================ t_vsteditor ============================*/
 
 t_vsteditor::t_vsteditor(t_vstplugin& owner, bool gui)
     : e_owner(&owner) {
@@ -1133,9 +1142,10 @@ void t_vsteditor::set_size(int w, int h){
     }
 }
 
-/*---------------- t_vstplugin (public methods) ------------------*/
 
-// search
+/*======================== t_vstplugin ========================*/
+
+/*------------------------- "search" --------------------------*/
 
 template<bool async>
 static void vstplugin_search_do(t_search_data *x){
@@ -1258,12 +1268,16 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     }
 }
 
+/*----------------------- "search_stop" -------------------------*/
+
 static void vstplugin_search_stop(t_vstplugin *x){
     if (x->x_search_data){
         x->x_search_data->cancel = true;
         x->x_search_data = nullptr; // will be freed by work queue
     }
 }
+
+/*----------------------- "search_clear" ------------------------*/
 
 static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
     // unloading plugins might crash, so we we first delete the cache file
@@ -1274,6 +1288,8 @@ static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
     gPluginDict.clear();
 }
 
+/*----------------------- "plugin_list" -------------------------*/
+
 static void vstplugin_plugin_list(t_vstplugin *x){
     auto plugins = gPluginDict.pluginList();
     for (auto& plugin : makePluginList(plugins)){
@@ -1283,89 +1299,7 @@ static void vstplugin_plugin_list(t_vstplugin *x){
     }
 }
 
-std::string t_vstplugin::resolve_plugin_path(const char *s) {
-    // first try plugin dictionary
-    auto desc = gPluginDict.findPlugin(s);
-    if (desc) {
-        return s; // return key/path
-    }
-    // try as file path
-    std::string result;
-    if (sys_isabsolutepath(s)){
-        result = s;
-    } else {
-        // resolve relative path to canvas search paths or VST search paths
-        bool vst3 = false;
-        std::string path = s;
-        auto ext = fileExtension(path);
-        if (ext == ".vst3"){
-            vst3 = true;
-        } else if (ext.empty()){
-            // no extension: assume VST2 plugin
-        #ifdef _WIN32
-            path += ".dll";
-        #elif defined(__APPLE__)
-            path += ".vst";
-        #else // Linux/BSD/etc.
-            path += ".so";
-        #endif
-        }
-            // first try canvas search paths
-        char fullPath[MAXPDSTRING];
-        char dirresult[MAXPDSTRING];
-        char *name = nullptr;
-        int fd;
-    #ifdef __APPLE__
-        const char *bundlePath = "Contents/Info.plist";
-        // on MacOS VST plugins are always bundles (directories) but canvas_open needs a real file
-        snprintf(fullPath, MAXPDSTRING, "%s/%s", path.c_str(), bundlePath);
-        fd = canvas_open(x_canvas, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
-    #else
-        const char *bundlePath = nullptr;
-        fd = canvas_open(x_canvas, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
-        if (fd < 0 && vst3){
-            // VST3 plugins might be bundles
-            // NOTE: this doesn't work for bridged plugins (yet)!
-            bundlePath = getBundleBinaryPath();
-        #ifdef _WIN32
-            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
-                     path.c_str(), bundlePath, fileName(path).c_str());
-        #else
-            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
-                     path.c_str(), bundlePath, fileBaseName(path).c_str());
-         #endif
-            fd = canvas_open(x_canvas, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
-        }
-    #endif
-        if (fd >= 0){
-            sys_close(fd);
-            char buf[MAXPDSTRING+1];
-            snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
-            if (bundlePath){
-                // restore original path
-                char *pos = strstr(buf, bundlePath);
-                if (pos){
-                    pos[-1] = 0;
-                }
-            }
-            result = buf; // success
-        } else {
-            // otherwise try default VST paths
-            for (auto& vstpath : getDefaultSearchPaths()){
-                result = vst::find(vstpath, path);
-                if (!result.empty()) break; // success
-            }
-        }
-    }
-    if (result.empty()) {
-        pd_error(this, "'%s' is neither an existing plugin name nor a valid file path", s);
-    } else {
-        sys_unbashfilename(&result[0], &result[0]); // pre-C++17 workaround
-    }
-    return result;
-}
-
-// close
+/*-------------------------- "close" ----------------------------*/
 
 struct t_close_data : t_command_data<t_close_data> {
     IPlugin::ptr plugin;
@@ -1436,8 +1370,7 @@ static void vstplugin_close(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("close"), 0, nullptr);
 }
 
-
-// open
+/*-------------------------- "open" ----------------------------*/
 
 struct t_open_data : t_command_data<t_open_data> {
     t_symbol *pathsym;
@@ -1667,6 +1600,8 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     // NOTE: don't set 'x_uithread' already because 'editor' value might change
 }
 
+/*-------------------------- "info" -------------------------*/
+
 static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
     t_atom msg[2];
     SETSYMBOL(&msg[0], gensym(what));
@@ -1724,6 +1659,8 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     sendInfo(x, "bridged", info->bridged());
 }
 
+/*-------------------------- "can_do" ----------------------------*/
+
 // query plugin for capabilities
 static void vstplugin_can_do(t_vstplugin *x, t_symbol *s){
     if (!x->check_plugin()) return;
@@ -1733,6 +1670,8 @@ static void vstplugin_can_do(t_vstplugin *x, t_symbol *s){
     SETFLOAT(&msg[1], result);
     outlet_anything(x->x_messout, gensym("can_do"), 2, msg);
 }
+
+/*----------------------- "vendor_method" ------------------------*/
 
 // vendor specific action (index, value, opt, data)
 static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
@@ -1778,6 +1717,8 @@ static void vstplugin_vendor_method(t_vstplugin *x, t_symbol *s, int argc, t_ato
     SETSYMBOL(&msg[1], gensym(toHex(result).c_str()));
     outlet_anything(x->x_messout, gensym("vendor_method"), 2, msg);
 }
+
+/*-------------------------- "print" -----------------------------*/
 
 // print plugin info in Pd console
 static void vstplugin_print(t_vstplugin *x){
@@ -1831,6 +1772,8 @@ static void vstplugin_print(t_vstplugin *x){
     post("---");
 }
 
+/*-------------------------- "bypass" ----------------------------*/
+
 // bypass the plugin
 static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
     int arg = f;
@@ -1855,10 +1798,11 @@ static void vstplugin_bypass(t_vstplugin *x, t_floatarg f){
     x->x_bypass = bypass;
 }
 
-// reset the plugin
+/*-------------------------- "reset" ----------------------------*/
 
 struct t_reset_data : t_command_data<t_reset_data> {};
 
+// reset the plugin state
 static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     bool async = f;
@@ -1893,6 +1837,9 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     }
 }
 
+/*-------------------------- "offline" ----------------------------*/
+
+// enable/disable offline processing
 static void vstplugin_offline(t_vstplugin *x, t_floatarg f){
     ProcessMode mode = (f != 0) ? ProcessMode::Offline : ProcessMode::Realtime;
 
@@ -1908,6 +1855,8 @@ static void vstplugin_offline(t_vstplugin *x, t_floatarg f){
 
     x->x_mode = mode;
 }
+
+/*~~~~~~~~~~~~~~~~~~~~ editor window ~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 // show/hide editor window
 static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
@@ -1929,7 +1878,7 @@ static void vstplugin_click(t_vstplugin *x){
     vstplugin_vis(x, 1);
 }
 
-/*------------------------ transport----------------------------------*/
+/*~~~~~~~~~~~~~~~~~~~~~~~ transport ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 // set tempo in BPM
 static void vstplugin_tempo(t_vstplugin *x, t_floatarg f){
@@ -1987,7 +1936,7 @@ static void vstplugin_transport_get(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym("transport"), 1, &a);
 }
 
-/*//////////////////////////////////// inputs/outputs //////////////////////////////////////*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~ I/O info ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 enum class t_direction {
     in,
@@ -2065,7 +2014,7 @@ static void vstplugin_bus_list(t_vstplugin *x, t_symbol *s){
     }
 }
 
-/*------------------------------------ parameters ------------------------------------------*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~ parameters ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 static bool findParamIndex(t_vstplugin *x, t_atom *a, int& index){
     if (a->a_type == A_SYMBOL){
@@ -2177,7 +2126,7 @@ static void vstplugin_param_dump(t_vstplugin *x){
     }
 }
 
-/*------------------------------------- MIDI -----------------------------------------*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~ MIDI ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 // send raw MIDI message
 static void vstplugin_midi_raw(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
@@ -2248,7 +2197,7 @@ static void vstplugin_midi_sysex(t_vstplugin *x, t_symbol *s, int argc, t_atom *
     x->x_plugin->sendSysexEvent(SysexEvent(data.data(), data.size()));
 }
 
-/* --------------------------------- programs --------------------------------- */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~ programs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 // set the current program by index
 static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
@@ -2326,7 +2275,7 @@ static void vstplugin_program_list(t_vstplugin *x,  t_symbol *s){
     }
 }
 
-/* -------------------------------- presets ---------------------------------------*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~ presets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 enum t_preset {
     PROGRAM,
@@ -2344,6 +2293,8 @@ struct t_preset_data : t_command_data<t_preset_data> {
     std::string errmsg;
     bool success;
 };
+
+/*----------------------- "preset_data_set" -------------------------*/
 
 // set program/bank data (list of bytes)
 // TODO: make this asynchronous!
@@ -2370,6 +2321,8 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
                  classname(x), presetName(type), e.what());
     }
 }
+
+/*----------------------- "preset_data_get" ----------------------------*/
 
 // get program/bank data
 // TODO: make this asynchronous!
@@ -2400,6 +2353,8 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
     outlet_anything(x->x_messout, gensym(type == BANK ? "bank_data" : "program_data"),
                     n, atoms.data());
 }
+
+/*-------------------------- "program_read" ----------------------------*/
 
 // read program/bank file (.FXP/.FXB)
 template<t_preset type, bool async>
@@ -2502,7 +2457,7 @@ static void vstplugin_preset_read(t_vstplugin *x, t_symbol *s, t_float f){
     }
 }
 
-// write program/bank file (.FXP/.FXB)
+/*-------------------------- "program_write" ----------------------------*/
 
 struct t_save_data : t_preset_data {
     std::string name;
@@ -2510,6 +2465,7 @@ struct t_save_data : t_preset_data {
     bool add;
 };
 
+// write program/bank file (.FXP/.FXB)
 template<t_preset type, bool async>
 static void vstplugin_preset_write_do(t_preset_data *data){
     try {
@@ -2616,6 +2572,8 @@ static void vstplugin_preset_write(t_vstplugin *x, t_symbol *s, t_floatarg f){
     }
 }
 
+/*-------------------------- "preset_count" --------------------------*/
+
 static void vstplugin_preset_count(t_vstplugin *x){
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
@@ -2628,6 +2586,8 @@ static void vstplugin_preset_count(t_vstplugin *x){
     }
     outlet_anything(x->x_messout, gensym("preset_count"), 1, &msg);
 }
+
+/*-------------------------- "preset_info" ---------------------------*/
 
 static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginDesc& info, int index){
 #ifdef PDINSTANCE
@@ -2675,6 +2635,8 @@ static void vstplugin_preset_info(t_vstplugin *x, t_floatarg f){
     if (!x->check_plugin()) return;
     vstplugin_preset_doinfo(x, x->x_plugin->info(), (int)f);
 }
+
+/*-------------------------- "preset_list" ----------------------------*/
 
 static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
     const PluginDesc *info = nullptr;
@@ -2779,6 +2741,8 @@ static void vstplugin_preset_change(t_vstplugin *x, t_symbol *s){
     }
 }
 
+/*-------------------------- "preset_load" ----------------------------*/
+
 static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
 
@@ -2807,6 +2771,8 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     bool async = atom_getfloatarg(1, argc, argv); // optional 2nd argument
     vstplugin_preset_read<PRESET>(x, path, async);
 }
+
+/*-------------------------- "preset_save" ----------------------------*/
 
 static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
     if (!x->check_plugin()) return;
@@ -2874,6 +2840,8 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     }
 }
 
+/*-------------------------- "preset_rename" --------------------------*/
+
 struct t_rename_data : t_command_data<t_rename_data> {
     int index;
     t_symbol *newname;
@@ -2935,6 +2903,8 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     notify(x, false);
 }
 
+/*-------------------------- "preset_delete" --------------------------*/
+
 struct t_delete_data : t_command_data<t_delete_data> {
     int index;
     bool current;
@@ -2985,7 +2955,7 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     notify(x, false);
 }
 
-/*---------------------------- t_vstplugin (internal methods) -------------------------------------*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~ helper methods ~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 static t_class *vstplugin_class;
 
@@ -3229,7 +3199,90 @@ int t_vstplugin::get_sample_offset(){
     return offset % x_blocksize;
 }
 
-// constructor
+std::string t_vstplugin::resolve_plugin_path(const char *s) {
+    // first try plugin dictionary
+    auto desc = gPluginDict.findPlugin(s);
+    if (desc) {
+        return s; // return key/path
+    }
+    // try as file path
+    std::string result;
+    if (sys_isabsolutepath(s)){
+        result = s;
+    } else {
+        // resolve relative path to canvas search paths or VST search paths
+        bool vst3 = false;
+        std::string path = s;
+        auto ext = fileExtension(path);
+        if (ext == ".vst3"){
+            vst3 = true;
+        } else if (ext.empty()){
+            // no extension: assume VST2 plugin
+        #ifdef _WIN32
+            path += ".dll";
+        #elif defined(__APPLE__)
+            path += ".vst";
+        #else // Linux/BSD/etc.
+            path += ".so";
+        #endif
+        }
+            // first try canvas search paths
+        char fullPath[MAXPDSTRING];
+        char dirresult[MAXPDSTRING];
+        char *name = nullptr;
+        int fd;
+    #ifdef __APPLE__
+        const char *bundlePath = "Contents/Info.plist";
+        // on MacOS VST plugins are always bundles (directories) but canvas_open needs a real file
+        snprintf(fullPath, MAXPDSTRING, "%s/%s", path.c_str(), bundlePath);
+        fd = canvas_open(x_canvas, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+    #else
+        const char *bundlePath = nullptr;
+        fd = canvas_open(x_canvas, path.c_str(), "", dirresult, &name, MAXPDSTRING, 1);
+        if (fd < 0 && vst3){
+            // VST3 plugins might be bundles
+            // NOTE: this doesn't work for bridged plugins (yet)!
+            bundlePath = getBundleBinaryPath();
+        #ifdef _WIN32
+            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s",
+                     path.c_str(), bundlePath, fileName(path).c_str());
+        #else
+            snprintf(fullPath, MAXPDSTRING, "%s/%s/%s.so",
+                     path.c_str(), bundlePath, fileBaseName(path).c_str());
+         #endif
+            fd = canvas_open(x_canvas, fullPath, "", dirresult, &name, MAXPDSTRING, 1);
+        }
+    #endif
+        if (fd >= 0){
+            sys_close(fd);
+            char buf[MAXPDSTRING+1];
+            snprintf(buf, MAXPDSTRING, "%s/%s", dirresult, name);
+            if (bundlePath){
+                // restore original path
+                char *pos = strstr(buf, bundlePath);
+                if (pos){
+                    pos[-1] = 0;
+                }
+            }
+            result = buf; // success
+        } else {
+            // otherwise try default VST paths
+            for (auto& vstpath : getDefaultSearchPaths()){
+                result = vst::find(vstpath, path);
+                if (!result.empty()) break; // success
+            }
+        }
+    }
+    if (result.empty()) {
+        pd_error(this, "'%s' is neither an existing plugin name nor a valid file path", s);
+    } else {
+        sys_unbashfilename(&result[0], &result[0]); // pre-C++17 workaround
+    }
+    return result;
+}
+
+/*---------------------------- constructor -----------------------------*/
+
 // usage: vstplugin~ [flags...] [file] inlets (default=2) outlets (default=2)
 t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     t_workqueue::init();
@@ -3440,7 +3493,8 @@ static void *vstplugin_new(t_symbol *s, int argc, t_atom *argv){
     return new (x) t_vstplugin(argc, argv); // placement new
 }
 
-// destructor
+/*----------------------------- destructor ----------------------------*/
+
 t_vstplugin::~t_vstplugin() {
     // we can stop the search without synchronizing with the worker thread!
     vstplugin_search_stop(this);
@@ -3474,7 +3528,7 @@ static void vstplugin_free(t_vstplugin *x){
     x->~t_vstplugin();
 }
 
-// perform routine
+/*-------------------------- perform routine ----------------------------*/
 
 // TFloat: processing float type
 // this templated method makes some optimization based on whether T and U are equal
@@ -3609,7 +3663,8 @@ static t_int *vstplugin_perform(t_int *w){
     return (w+3);
 }
 
-// loadbang
+/*----------------------- loadbang method -------------------------*/
+
 static void vstplugin_loadbang(t_vstplugin *x, t_floatarg action){
     // send message when plugin has been loaded (or failed to do so)
     // x_path is set in constructor
@@ -3621,7 +3676,8 @@ static void vstplugin_loadbang(t_vstplugin *x, t_floatarg action){
     }
 }
 
-// save function
+/*------------------------ save method ----------------------------*/
+
 static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     t_vstplugin *x = (t_vstplugin *)z;
     binbuf_addv(bb, "ssff", &s__X, gensym("obj"),
@@ -3674,7 +3730,8 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     obj_saveformat(&x->x_obj, bb);
 }
 
-// dsp callback
+/*-------------------------- dsp method ----------------------------*/
+
 static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     int oldblocksize = x->x_blocksize;
     int oldsr = x->x_sr;
@@ -3712,7 +3769,8 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->update_buffers();
 }
 
-// setup function
+/*-------------------------- setup function ----------------------------*/
+
 #ifdef _WIN32
 #define EXPORT extern "C" __declspec(dllexport)
 #elif __GNUC__ >= 4
