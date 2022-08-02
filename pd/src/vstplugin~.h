@@ -130,12 +130,13 @@ class t_vstplugin {
 
     bool check_plugin();
 
-    template<bool async>
     void setup_plugin(IPlugin *plugin);
 
     void update_buffers();
 
     int get_sample_offset();
+
+    std::string resolve_plugin_path(const char *s);
 };
 
 // VST parameter responder (for Pd GUI)
@@ -250,6 +251,7 @@ class t_workqueue {
     using t_fun = void (*)(T *);
 
     static void init();
+    static void release();
     static t_workqueue* get();
 
     t_workqueue();
@@ -261,6 +263,7 @@ class t_workqueue {
                t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
     }
     void cancel(void *owner);
+    void log(PdLogLevel level, std::string msg);
     void poll();
  private:
     struct t_item {
@@ -271,20 +274,27 @@ class t_workqueue {
         t_fun<void> cleanup;
     };
     void dopush(void *owner, void *data, t_fun<void> workfn,
-               t_fun<void> cb, t_fun<void> cleanup);
+                t_fun<void> cb, t_fun<void> cleanup);
     // queues from RT to NRT
     UnboundedMPSCQueue<t_item> w_nrt_queue;
     // queue from NRT to RT
     UnboundedMPSCQueue<t_item> w_rt_queue;
     // worker thread
     std::thread w_thread;
-    std::mutex w_mutex; // for cancel
+    std::mutex w_mutex; // for cancellation
     Event w_event;
     std::atomic<bool> w_running{false};
+    // logging
+    struct t_logmsg {
+        PdLogLevel level;
+        std::string msg;
+    };
+    UnboundedMPSCQueue<t_logmsg> w_log_queue;
     // polling
     t_clock *w_clock = nullptr;
     static void clockmethod(t_workqueue *w);
 #ifdef PDINSTANCE
     t_pdinstance *w_instance = nullptr;
+    int w_refcount = 1;
 #endif
 };
