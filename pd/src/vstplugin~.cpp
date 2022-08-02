@@ -204,7 +204,18 @@ void t_workqueue::cancel(void *owner){
     });
 }
 
+// asynchronous logging to avoid possible deadlocks with sys_lock()/sys_unlock()
+void t_workqueue::log(PdLogLevel level, std::string msg) {
+    w_log_queue.emplace(level, std::move(msg));
+}
+
 void t_workqueue::poll(){
+    // poll log messages
+    t_logmsg msg;
+    while (w_log_queue.pop(msg)) {
+        verbose(msg.level, "%s", msg.msg.c_str());
+    }
+    // poll finished tasks
     t_item item;
     while (w_rt_queue.pop(item)){
         if (item.cb){
@@ -280,6 +291,65 @@ void defer(const T& fn, bool uithread){
     fn();
 }
 
+/*----------------------------- logging ---------------------------------*/
+
+template<bool async>
+class PdLog {
+public:
+    PdLog(PdLogLevel level = PdNormal)
+        : level_(level){}
+    PdLog(PdLog&& other)
+        : ss_(std::move(other.ss_)), level_(other.level_) {}
+    ~PdLog(){
+        auto str = ss_.str();
+        if (!str.empty()){
+            if (async) {
+                // don't use sys_lock()/sys_unlock() to avoid possible deadlocks,
+                // e.g. when joining
+                t_workqueue::get()->log(level_, std::move(str));
+            } else {
+                verbose(level_, "%s", str.c_str());
+            }
+        }
+    }
+    template<typename T>
+    PdLog& operator <<(T&& value){
+        ss_ << std::forward<T>(value);
+        return *this;
+    }
+    PdLog& operator <<(const ProbeResult& result){
+        auto code = result.error.code();
+        if (code == Error::NoError){
+            *this << "ok!";
+        } else {
+            // promote to error message
+            level_ = PdError;
+
+            switch (result.error.code()){
+            case Error::Crash:
+                *this << "crashed!";
+                break;
+            case Error::SystemError:
+                *this << "error! " << result.error.what();
+                break;
+            case Error::ModuleError:
+                *this << "couldn't load! " << result.error.what();
+                break;
+            case Error::PluginError:
+                *this << "failed! " << result.error.what();
+                break;
+            default:
+                *this << "unexpected error! " << result.error.what();
+                break;
+            }
+        }
+        return *this;
+    }
+private:
+    std::stringstream ss_;
+    PdLogLevel level_;
+};
+
 /*---------------------- search/probe ----------------------------*/
 
 static PluginDictionary gPluginDict;
@@ -324,64 +394,6 @@ static void writeCacheFile(){
         pd_error(nullptr, "couldn't write cache file: %s", e.what());
     }
 }
-
-
-template<bool async>
-class PdLog {
-public:
-    PdLog(PdLogLevel level = PdNormal)
-        : level_(level){}
-    PdLog(PdLog&& other)
-        : ss_(std::move(other.ss_)), level_(other.level_) {}
-    ~PdLog(){
-        auto str = ss_.str();
-        if (!str.empty()){
-            if (async) sys_lock();
-            verbose(level_, "%s", str.c_str());
-            if (async) sys_unlock();
-        }
-    }
-    template<typename T>
-    PdLog& operator <<(T&& value){
-        ss_ << std::forward<T>(value);
-        return *this;
-    }
-    PdLog& operator <<(const ProbeResult& result){
-        auto code = result.error.code();
-        if (code == Error::NoError){
-            *this << "ok!";
-        } else {
-            // promote to error message
-            level_ = PdError;
-
-            switch (result.error.code()){
-            case Error::Crash:
-                *this << "crashed!";
-                break;
-            case Error::SystemError:
-                *this << "error! " << result.error.what();
-                break;
-            case Error::ModuleError:
-                *this << "couldn't load! " << result.error.what();
-                break;
-            case Error::PluginError:
-                *this << "failed! " << result.error.what();
-                break;
-            default:
-                *this << "unexpected error! " << result.error.what();
-                break;
-            }
-        }
-        return *this;
-    }
-private:
-    std::stringstream ss_;
-    PdLogLevel level_;
-};
-
-
-}
-
 
 // load factory and probe plugins
 template<bool async>

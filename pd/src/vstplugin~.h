@@ -263,6 +263,7 @@ class t_workqueue {
                t_fun<void>(t_fun<T>(cb)), t_fun<void>(T::free));
     }
     void cancel(void *owner);
+    void log(PdLogLevel level, std::string msg);
     void poll();
  private:
     struct t_item {
@@ -283,6 +284,12 @@ class t_workqueue {
     std::mutex w_mutex; // for cancellation
     Event w_event;
     std::atomic<bool> w_running{false};
+    // logging
+    struct t_logmsg {
+        PdLogLevel level;
+        std::string msg;
+    };
+    UnboundedMPSCQueue<t_logmsg> w_log_queue;
     // polling
     t_clock *w_clock = nullptr;
     static void clockmethod(t_workqueue *w);
