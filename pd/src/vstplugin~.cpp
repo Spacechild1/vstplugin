@@ -125,13 +125,16 @@ t_workqueue::t_workqueue(){
         while (w_running.load()) {
             w_event.wait();
 
-            std::unique_lock<std::mutex> lock(w_mutex); // for cancel
+            std::unique_lock<std::mutex> lock(w_mutex); // for cancellation
             t_item item;
             while (w_nrt_queue.pop(item)){
                 if (item.workfn){
                     item.workfn(item.data);
                 }
                 w_rt_queue.push(item);
+                // temporarily release lock in case someone is blocking on cancel()!
+                lock.unlock();
+                lock.lock();
             }
         }
         LOG_DEBUG("worker thread finished");
@@ -1419,7 +1422,7 @@ static void vstplugin_close(t_vstplugin *x){
         // We can't sync with the plugin closing on the UI thread, as the
         // actual close request is issued on the NRT thread and can execute
         // *after* ~t_vstplugin. We *could* wait for all pending NRT commands
-        // to finish, but that's a bit overkill. Instead we close the editor
+        // to finish, but that would be overkill. Instead we close the editor
         // *here* and sync with the UI thread in ~t_vstplugin, assuming that
         // the plugin can't send UI events without the editor.
         auto window = x->x_plugin->getWindow();
@@ -3444,14 +3447,17 @@ t_vstplugin::~t_vstplugin(){
         t_workqueue::get()->cancel(this);
         x_suspended = false; // for vstplugin_close()!
     }
+    // don't need to sync!
     vstplugin_search_stop(this);
 
-    vstplugin_close(this);
+    if (x_plugin) {
+        vstplugin_close(this);
 
-    // Sync with UI thread if we're closing asynchronously,
-    // see comment in vstplugin_close().
-    if (x_async && x_uithread){
-        UIThread::sync();
+        // Sync with UI thread if we're closing asynchronously,
+        // see comment in vstplugin_close().
+        if (x_async && x_uithread){
+            UIThread::sync();
+        }
     }
 
     LOG_DEBUG("vstplugin free");
