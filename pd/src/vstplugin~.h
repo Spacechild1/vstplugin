@@ -130,12 +130,13 @@ class t_vstplugin {
 
     bool check_plugin();
 
-    template<bool async>
     void setup_plugin(IPlugin *plugin);
 
     void update_buffers();
 
     int get_sample_offset();
+
+    std::string resolve_plugin_path(const char *s);
 };
 
 // VST parameter responder (for Pd GUI)
