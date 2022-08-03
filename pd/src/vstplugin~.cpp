@@ -1407,7 +1407,7 @@ static void vstplugin_open_do(t_open_data *data){
                 // setup plugin
                 // protect against concurrent vstplugin_dsp() and vstplugin_save()
                 ScopedLock lock(x->x_mutex);
-                x->setup_plugin(data->plugin.get());
+                x->setup_plugin(*data->plugin);
             }, data->editor);
             LOG_DEBUG("done");
         } catch (const Error & e) {
@@ -2992,17 +2992,17 @@ bool t_vstplugin::check_plugin(){
     return false;
 }
 
-void t_vstplugin::setup_plugin(IPlugin *plugin){
+void t_vstplugin::setup_plugin(IPlugin& plugin){
     // check processing precision before calling setupProcessing()!
     // (only post warnings in vstplugin_open_done())
-    if (plugin->info().hasPrecision(x_wantprecision)){
+    if (plugin.info().hasPrecision(x_wantprecision)){
         x_realprecision = x_wantprecision;
         x_process = true;
     } else {
-        if (plugin->info().hasPrecision(ProcessPrecision::Single)){
+        if (plugin.info().hasPrecision(ProcessPrecision::Single)){
             x_realprecision = ProcessPrecision::Single;
             x_process = true;
-        } else if (plugin->info().hasPrecision(ProcessPrecision::Double)){
+        } else if (plugin.info().hasPrecision(ProcessPrecision::Double)){
             x_realprecision = ProcessPrecision::Double;
             x_process = true;
         } else {
@@ -3010,8 +3010,8 @@ void t_vstplugin::setup_plugin(IPlugin *plugin){
         }
     }
 
-    plugin->suspend();
-    plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, x_mode);
+    plugin.suspend();
+    plugin.setupProcessing(x_sr, x_blocksize, x_realprecision, x_mode);
 
     auto setupSpeakers = [](const auto& pluginBusses,
             const auto& ugenBusses, auto& result, const char *what) {
@@ -3050,13 +3050,13 @@ void t_vstplugin::setup_plugin(IPlugin *plugin){
 
     // prepare input busses
     std::vector<int> inputs;
-    setupSpeakers(plugin->info().inputs, x_inlets, inputs, "inputs");
+    setupSpeakers(plugin.info().inputs, x_inlets, inputs, "inputs");
 
     // prepare output busses
     std::vector<int> outputs;
-    setupSpeakers(plugin->info().outputs, x_outlets, outputs, "outputs");
+    setupSpeakers(plugin.info().outputs, x_outlets, outputs, "outputs");
 
-    plugin->setNumSpeakers(inputs.data(), inputs.size(),
+    plugin.setNumSpeakers(inputs.data(), inputs.size(),
                            outputs.data(), outputs.size());
 
     x_inputs.resize(inputs.size());
@@ -3073,7 +3073,7 @@ void t_vstplugin::setup_plugin(IPlugin *plugin){
         x_outputs[i] = Bus(outputs[i]);
     }
 
-    plugin->resume();
+    plugin.resume();
 }
 
 void t_vstplugin::update_buffers(){
@@ -3770,7 +3770,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     // only reset plugin if blocksize or samplerate has changed
     if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr))) {
         x->x_editor->defer_safe<false>([&](){
-            x->setup_plugin(x->x_plugin.get());
+            x->setup_plugin(*x->x_plugin);
         }, x->x_uithread);
         if (x->x_threaded && (x->x_blocksize != oldblocksize)){
             // queue(!) latency change notification

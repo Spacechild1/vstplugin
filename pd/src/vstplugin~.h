@@ -130,7 +130,7 @@ class t_vstplugin {
 
     bool check_plugin();
 
-    void setup_plugin(IPlugin *plugin);
+    void setup_plugin(IPlugin& plugin);
 
     void update_buffers();
 
