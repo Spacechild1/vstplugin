@@ -2,6 +2,7 @@
 
 #include "PluginDesc.h"
 #include "Log.h"
+#include "FileUtils.h"
 #include "MiscUtils.h"
 
 #include <cstring>
@@ -175,6 +176,7 @@ EventLoop::EventLoop(){
     // FIXME this causes linker errors on Wine (undefined reference to 'ExtractIconW')
     wchar_t exeFileName[MAX_PATH];
     exeFileName[0] = 0;
+    // 1) first try to get icon from the (parent) process
     if (gParentProcessId != 0) {
         // get file path of parent process
         auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
@@ -194,13 +196,44 @@ EventLoop::EventLoop(){
             LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
         }
     }
-    if (exeFileName[0]) {
-        auto icon = ExtractIconW(NULL, exeFileName, 0);
-        if (icon) {
-            LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
-            wcex.hIcon = icon;
+    auto hIcon = ExtractIconW(NULL, exeFileName, 0);
+    if ((uintptr_t)hIcon > 1) {
+        LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+        wcex.hIcon = hIcon;
+    } else {
+        LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+        // 2) try to get icon from our plugin DLL
+        auto hInstance = (HINSTANCE)getModuleHandle();
+        if (hInstance) {
+            // a) we are inside the DLL
+            if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) == 0) {
+                LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
+            }
+            hIcon = ExtractIconW(NULL, exeFileName, 0);
+            if ((uintptr_t)hIcon > 1) {
+                LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+                wcex.hIcon = hIcon;
+            } else {
+                LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+            }
         } else {
-            LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+            // b) we are inside the host process
+            static std::vector<std::string> pluginPaths = {
+                getModuleDirectory() + "\\VSTPlugin.scx",
+                getModuleDirectory() + "\\VSTPlugin_supernova.scx"
+            };
+            for (auto& path : pluginPaths) {
+                if (pathExists(path)) {
+                    hIcon = ExtractIconW(NULL, widen(path).c_str(), 0);
+                    if ((uintptr_t)hIcon > 1) {
+                        wcex.hIcon = hIcon;
+                        LOG_DEBUG("Win32: extracted icon from " << path);
+                        break;
+                    } else {
+                        LOG_DEBUG("Win32: could not extract icon from " << path);
+                    }
+                }
+            }
         }
     }
 #endif

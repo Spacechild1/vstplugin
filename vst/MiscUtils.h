@@ -80,6 +80,8 @@ std::string errorMessage(int err);
 
 const std::string& getModuleDirectory();
 
+void * getModuleHandle();
+
 #if USE_WINE
 const char * getWineCommand();
 

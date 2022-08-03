@@ -189,6 +189,10 @@ const std::string& getModuleDirectory(){
     return dir;
 }
 
+void * getModuleHandle() {
+    return (void *)hInstance;
+}
+
 int getCurrentProcessId() {
     return GetCurrentProcessId();
 }
