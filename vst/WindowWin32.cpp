@@ -11,6 +11,12 @@
 
 namespace vst {
 
+static DWORD gParentProcessId = 0;
+
+void setParentProcess(DWORD pid) {
+    gParentProcessId = pid;
+}
+
 namespace UIThread {
 
 // fake event loop
@@ -168,8 +174,35 @@ EventLoop::EventLoop(){
 #ifndef __WINE__
     // FIXME this causes linker errors on Wine (undefined reference to 'ExtractIconW')
     wchar_t exeFileName[MAX_PATH];
-    GetModuleFileNameW(NULL, exeFileName, MAX_PATH);
-    wcex.hIcon = ExtractIconW(NULL, exeFileName, 0);
+    exeFileName[0] = 0;
+    if (gParentProcessId != 0) {
+        // get file path of parent process
+        auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                                    FALSE, gParentProcessId);
+        if (hProcess){
+            DWORD size = MAX_PATH;
+            if (!QueryFullProcessImageNameW(hProcess, 0, exeFileName, &size)) {
+                LOG_ERROR("QueryFullProcessImageName() failed: " << errorMessage(GetLastError()));
+            }
+        } else {
+            LOG_ERROR("OpenProcess() failed: " << errorMessage(GetLastError()));
+        }
+        CloseHandle(hProcess);
+    } else {
+        // get file path of this process
+        if (GetModuleFileNameW(NULL, exeFileName, MAX_PATH) == 0) {
+            LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
+        }
+    }
+    if (exeFileName[0]) {
+        auto icon = ExtractIconW(NULL, exeFileName, 0);
+        if (icon) {
+            LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+            wcex.hIcon = icon;
+        } else {
+            LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+        }
+    }
 #endif
     if (!RegisterClassExW(&wcex)){
         LOG_WARNING("Win32: couldn't register editor window class!");
