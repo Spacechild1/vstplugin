@@ -25,7 +25,7 @@ static void initEventLoop(){
 
         // start polling if called from main thread
         if (UIThread::isCurrentThread()){
-            post("WARNING: the VST GUI currently runs on the audio thread! "
+            post("warning: the VST GUI currently runs on the audio thread! "
                  "See the README for more information.");
 
             eventLoopClock = clock_new(0, (t_method)eventLoopTick);
@@ -217,7 +217,7 @@ void t_workqueue::poll(){
     // poll log messages
     t_logmsg msg;
     while (w_log_queue.pop(msg)) {
-        verbose(msg.level, "%s", msg.msg.c_str());
+        logpost(nullptr, msg.level, "%s", msg.msg.c_str());
     }
     // poll finished tasks
     t_item item;
@@ -314,7 +314,7 @@ public:
                 // e.g. when joining
                 t_workqueue::get()->log(level_, std::move(str));
             } else {
-                verbose(level_, "%s", str.c_str());
+                logpost(nullptr, level_, "%s", str.c_str());
             }
         }
     }
@@ -376,7 +376,7 @@ static void readCacheFile(){
     ScopedLock lock(gFileLock);
     auto path = gSettingsDir + "/" + gCacheFileName;
     if (pathExists(path)){
-        verbose(PdDebug, "read cache file %s", path.c_str());
+        logpost(nullptr, PdDebug, "read cache file %s", path.c_str());
         try {
             gPluginDict.read(path);
         } catch (const Error& e){
@@ -1169,7 +1169,7 @@ static void vstplugin_search_done(t_search_data *x){
         return; // !
     }
     x->owner->x_search_data = nullptr; // !
-    verbose(PdNormal, "search done");
+    logpost(x, PdNormal, "search done");
 
     for (auto& plugin : makePluginList(x->plugins)){
         t_atom msg;
@@ -1431,16 +1431,16 @@ static void vstplugin_open_done(t_open_data *data){
         if (x->x_process) {
             if (x->x_wantprecision != x->x_realprecision) {
                 if (x->x_wantprecision == ProcessPrecision::Double){
-                    post("warning: '%s' doesn't support double precision, using single precision instead",
-                         info.name.c_str());
+                    logpost(x, PdNormal, "warning: '%s' doesn't support double precision,"
+                            " using single precision instead", info.name.c_str());
                 } else {
-                    post("warning: '%s' doesn't support single precision, using double precision instead",
-                         info.name.c_str());
+                    logpost(x, PdNormal, "warning: '%s' doesn't support single precision,"
+                            " using double precision instead", info.name.c_str());
                 }
             }
         } else {
-            post("warning: '%s' doesn't support single or double precision - bypassing",
-                 info.name.c_str());
+            logpost(x, PdNormal, "warning: '%s' doesn't support single or double precision"
+                    " - bypassing", info.name.c_str());
         }
 
         // after setting the plugin!
@@ -1461,7 +1461,7 @@ static void vstplugin_open_done(t_open_data *data){
         // update Pd editor
         x->x_editor->setup();
 
-        verbose(PdDebug, "opened '%s'", info.name.c_str());
+        logpost(x, PdDebug, "opened '%s'", info.name.c_str());
     } else {
         if (!data->errmsg.empty()) {
             pd_error(x, "%s", data->errmsg.c_str());
