@@ -1425,27 +1425,22 @@ static void vstplugin_open_done(t_open_data *data){
         x->x_threaded = data->threaded;
         x->x_runmode = data->mode;
 
-        // check processing precision
         auto& info = x->x_plugin->info();
-        if (info.hasPrecision(x->x_wantprecision)){
-            x->x_realprecision = x->x_wantprecision;
-            x->x_process = true;
-        } else {
-            if (info.hasPrecision(ProcessPrecision::Single)){
-                post("'%s' doesn't support double precision, using single precision instead",
-                     info.name.c_str());
-                x->x_realprecision = ProcessPrecision::Single;
-                x->x_process = true;
-            } else if (info.hasPrecision(ProcessPrecision::Double)){
-                post("'%s' doesn't support single precision, using double precision instead",
-                     info.name.c_str());
-                x->x_realprecision = ProcessPrecision::Double;
-                x->x_process = true;
-            } else {
-                post("'%s' doesn't support single or double precision - bypassing",
-                     info.name.c_str());
-                x->x_process = false;
+
+        // warn about processing precision mismatch, see setup_plugin().
+        if (x->x_process) {
+            if (x->x_wantprecision != x->x_realprecision) {
+                if (x->x_wantprecision == ProcessPrecision::Double){
+                    post("warning: '%s' doesn't support double precision, using single precision instead",
+                         info.name.c_str());
+                } else {
+                    post("warning: '%s' doesn't support single precision, using double precision instead",
+                         info.name.c_str());
+                }
             }
+        } else {
+            post("warning: '%s' doesn't support single or double precision - bypassing",
+                 info.name.c_str());
         }
 
         // after setting the plugin!
@@ -2998,6 +2993,23 @@ bool t_vstplugin::check_plugin(){
 }
 
 void t_vstplugin::setup_plugin(IPlugin *plugin){
+    // check processing precision before calling setupProcessing()!
+    // (only post warnings in vstplugin_open_done())
+    if (plugin->info().hasPrecision(x_wantprecision)){
+        x_realprecision = x_wantprecision;
+        x_process = true;
+    } else {
+        if (plugin->info().hasPrecision(ProcessPrecision::Single)){
+            x_realprecision = ProcessPrecision::Single;
+            x_process = true;
+        } else if (plugin->info().hasPrecision(ProcessPrecision::Double)){
+            x_realprecision = ProcessPrecision::Double;
+            x_process = true;
+        } else {
+            x_process = false; // bypass
+        }
+    }
+
     plugin->suspend();
     plugin->setupProcessing(x_sr, x_blocksize, x_realprecision, x_mode);
 
