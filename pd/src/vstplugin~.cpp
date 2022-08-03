@@ -25,7 +25,7 @@ static void initEventLoop(){
 
         // start polling if called from main thread
         if (UIThread::isCurrentThread()){
-            post("WARNING: the VST GUI currently runs on the audio thread! "
+            post("warning: the VST GUI currently runs on the audio thread! "
                  "See the README for more information.");
 
             eventLoopClock = clock_new(0, (t_method)eventLoopTick);

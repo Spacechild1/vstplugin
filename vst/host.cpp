@@ -79,6 +79,12 @@ static HANDLE gLogChannel = NULL;
 static int gLogChannel = -1;
 #endif
 
+#ifdef _WIN32
+namespace vst {
+    void setParentProcess(DWORD pid); // WindowWin32.cpp
+}
+#endif
+
 static std::mutex gLogMutex;
 
 void writeLog(int level, const char *msg){
@@ -103,8 +109,11 @@ void writeLog(int level, const char *msg){
 
 // host one or more VST plugins
 int bridge(int pid, const std::string& path, int logChannel){
-    // setup log channel
+#ifdef _WIN32
+    setParentProcess(pid);
+#endif
 #if VST_HOST_SYSTEM == VST_WINDOWS
+    // setup log channel
     auto hParent = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
     if (hParent){
         if (DuplicateHandle(hParent, (HANDLE)(uintptr_t)logChannel,
@@ -141,7 +150,8 @@ int bridge(int pid, const std::string& path, int logChannel){
         return EXIT_FAILURE;
     }
 }
-#endif
+
+#endif // USE_BRIDGE
 
 #if USE_WMAIN
 int wmain(int argc, const wchar_t *argv[]){

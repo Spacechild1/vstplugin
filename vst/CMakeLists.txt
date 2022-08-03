@@ -38,7 +38,7 @@ elseif (LINUX)
     add_definitions(-DTARGET_API_MAC_CARBON=1)
     list(APPEND SRC "WindowX11.h" "WindowX11.cpp")
 elseif (APPLE)
-    add_definitions(-fno-objc-arc)
+    add_compile_options("-fno-objc-arc")
     list(APPEND SRC "WindowCocoa.h" "WindowCocoa.mm")
 endif()
 
