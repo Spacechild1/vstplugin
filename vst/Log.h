@@ -9,6 +9,10 @@
 
 namespace vst {
 
+void logMessage(int level, const char * msg);
+
+void logMessage(int level, const std::string& msg);
+
 class Log {
 public:
     Log(int level = LOGLEVEL) : level_(level) {}

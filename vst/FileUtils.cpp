@@ -74,6 +74,72 @@ std::string userSettingsPath() {
 
 #endif
 
+// 1. use uniform directory separator ('/')
+// 2. remove '/./' components
+// 3. handle and remove '/../' components
+std::string normalizePath(const std::string &path) {
+    std::string result;
+    result.reserve(path.size()); // result will always be equal or smaller
+
+#ifdef _WIN32
+    auto start = path.find_first_of("/\\");
+#else
+    auto start = path.find_first_of('/');
+#endif
+    if (start == std::string::npos) {
+        // no separators
+        return path;
+    }
+    // append everything before the first separator
+    result.append(path, 0, start);
+    // start at first separator
+    for (int i = start; i < path.size(); ++i) {
+        auto c = path[i];
+    #ifdef _WIN32
+        if (c == '\\') {
+            c = '/';
+        }
+    #endif
+        if (c == '/') {
+            auto is_separator = [](auto c) {
+            #ifdef _WIN32
+                return c == '/' || c == '\\';
+            #else
+                return c == '/';
+            #endif
+            };
+            auto is_dot = [](auto c) {
+                return c == '.';
+            };
+            // first skip redundant separators
+            while (is_separator(path[i + 1])) {
+                i++;
+            }
+            // then look for '/./' or '/../'
+            if (is_dot(path[i + 1])) {
+                if (is_separator(path[i + 2])) {
+                    // skip '/.' and continue with following '/'
+                    i++;
+                    continue;
+                } else if (is_dot(path[i + 2]) && is_separator(path[i + 3])) {
+                    // pop previous directory (if there is any)
+                    auto last = result.find_last_of('/');
+                    if (last != std::string::npos) {
+                        result.erase(last);
+                    }
+                    // skip '/..' and continue with following '/'
+                    i += 2;
+                    continue;
+                }
+                // '.' is part of a file/directory name
+            }
+        }
+        result.push_back(c);
+    }
+    LOG_DEBUG("normalized path " << path << " to " << result);
+    return result;
+}
+
 bool pathExists(const std::string& path){
 #if USE_STDFS
     std::error_code e;

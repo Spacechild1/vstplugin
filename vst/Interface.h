@@ -75,10 +75,6 @@ using LogFunction = void (*)(int level, const char *);
 
 void setLogFunction(LogFunction f);
 
-void logMessage(int level, const char * msg);
-
-void logMessage(int level, const std::string& msg);
-
 struct MidiEvent {
     MidiEvent(char _status = 0, char _data1 = 0, char _data2 = 0,
               int _delta = 0, float _detune = 0){

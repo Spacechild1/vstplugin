@@ -467,7 +467,8 @@ static bool isAbsolutePath(const std::string& path) {
 
 // resolves relative path to an existing plugin in the VST search paths.
 // returns empty string on failure!
-static std::string resolvePath(std::string path) {
+static std::string resolvePluginPath(const std::string& s) {
+    auto path = normalizePath(s);
     if (isAbsolutePath(path)) {
         return path; // success
     }
@@ -481,39 +482,36 @@ static std::string resolvePath(std::string path) {
         path += ".so";
     #endif
     }
-    for (auto& vstpath : getDefaultSearchPaths()) {
-        auto result = vst::find(vstpath, path);
+    for (auto& dir : getDefaultSearchPaths()) {
+        auto result = vst::find(dir, path);
         if (!result.empty()) return result; // success
     }
     return std::string{}; // fail
 }
 
 // query a plugin by its key or file path and probe if necessary.
-static const PluginDesc* queryPlugin(std::string path) {
-#ifdef _WIN32
-    for (auto& c : path) {
-        if (c == '\\') c = '/';
-    }
-#endif
-    auto& dict = getPluginDict();
-    // query plugin
-    auto desc = dict.findPlugin(path);
+static const PluginDesc* queryPlugin(const std::string& path) {
+    // first try as key
+    auto desc = gPluginDict.findPlugin(path);
     if (!desc) {
-        // try as file path
-        auto absPath = resolvePath(path);
-        if (absPath.empty()){
-            LOG_WARNING("'" << path << "' is neither an existing plugin name nor a valid file path.");
-        } else if (!(desc = dict.findPlugin(absPath))){
-            // finally probe plugin
-            if (probePlugin(absPath, 0, getVerbosity() >= 0)) {
-                desc = dict.findPlugin(absPath);
-                // findPlugin() fails if the module contains several plugins,
-                // which means the path can't be used as a key.
-                if (!desc){
-                    LOG_WARNING("'" << absPath << "' contains more than one plugin.\n"
-                                "Please perform a search and open the desired plugin by its name.");
+        // then try as file path
+        auto absPath = resolvePluginPath(path);
+        if (!absPath.empty()){
+            desc = gPluginDict.findPlugin(absPath);
+            if (!desc) {
+                // finally probe plugin
+                if (probePlugin(absPath, 0, getVerbosity() >= 0)) {
+                    desc = gPluginDict.findPlugin(absPath);
+                    // findPlugin() fails if the module contains several plugins,
+                    // which means the path can't be used as a key.
+                    if (!desc){
+                        LOG_WARNING("'" << absPath << "' contains more than one plugin.\n"
+                                    "Please perform a search and open the desired plugin by its name.");
+                    }
                 }
             }
+        } else {
+            LOG_WARNING("'" << path << "' is neither an existing plugin name nor a valid file path.");
         }
     }
     return desc.get();
@@ -3030,7 +3028,8 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     }
     std::vector<std::string> excludePaths;
     for (int i = 0; i < data->numExcludePaths; ++i){
-        excludePaths.push_back(data->pathList[data->numSearchPaths + i]);
+        const char *path = data->pathList[data->numSearchPaths + i];
+        excludePaths.push_back(normalizePath(path)); // normalize!
     }
     // use default search paths?
     if (searchPaths.empty()) {

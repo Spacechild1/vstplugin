@@ -1240,7 +1240,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
                     auto sym = atom_getsymbol(argv);
                     char path[MAXPDSTRING];
                     canvas_makefilename(x->x_canvas, sym->s_name, path, MAXPDSTRING);
-                    exclude.push_back(path);
+                    exclude.push_back(normalizePath(path)); // normalize!
                 } else {
                     pd_error(x, "%s: missing argument for -x flag", classname(x));
                     return;
@@ -3267,9 +3267,8 @@ std::string t_vstplugin::resolve_plugin_path(const char *s) {
         return s; // return key/path
     }
     // try as file path
-    std::string result;
     if (sys_isabsolutepath(s)){
-        result = s;
+        return normalizePath(s); // success!
     } else {
         // resolve relative path to canvas search paths or VST search paths
         bool vst3 = false;
@@ -3325,21 +3324,19 @@ std::string t_vstplugin::resolve_plugin_path(const char *s) {
                     pos[-1] = 0;
                 }
             }
-            result = buf; // success
+            return normalizePath(buf); // success!
         } else {
             // otherwise try default VST paths
-            for (auto& vstpath : getDefaultSearchPaths()){
-                result = vst::find(vstpath, path);
-                if (!result.empty()) break; // success
+            for (auto& dir : getDefaultSearchPaths()){
+                auto result = vst::find(dir, path);
+                if (!result.empty()) {
+                    return normalizePath(result); // success
+                }
             }
         }
     }
-    if (result.empty()) {
-        pd_error(this, "'%s' is neither an existing plugin name nor a valid file path", s);
-    } else {
-        sys_unbashfilename(&result[0], &result[0]); // pre-C++17 workaround
-    }
-    return result;
+    pd_error(this, "'%s' is neither an existing plugin name nor a valid file path", s);
+    return "";
 }
 
 /*---------------------------- constructor -----------------------------*/
