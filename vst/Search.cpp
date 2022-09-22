@@ -19,6 +19,10 @@ namespace fs = std::filesystem;
 # include <sys/types.h>
 #endif
 
+# ifdef __linux__
+#  include <sys/utsname.h>
+# endif
+
 #include <unordered_set>
 #include <cstring>
 #include <algorithm>
@@ -58,26 +62,37 @@ bool hasPluginExtension(const std::string& path){
 }
 
 const char * getBundleBinaryPath(){
-    auto path =
 #if defined(_WIN32)
-#ifdef _WIN64
-        "Contents/x86_64-win";
-#else // WIN32
-        "Contents/x86-win";
-#endif
+  #ifdef _WIN64
+    return "Contents/x86_64-win";
+  #else // WIN32
+    return "Contents/x86-win";
+  #endif
 #elif defined(__APPLE__)
-        "Contents/MacOS";
-#else // Linux
-#if defined(__i386__)
-        "Contents/i386-linux";
-#elif defined(__x86_64__)
-        "Contents/x86_64-linux";
+    return "Contents/MacOS";
+#elif defined(__linux__)
+  #if defined(__i386__)
+    return "Contents/i386-linux";
+  #elif defined(__x86_64__)
+    return "Contents/x86_64-linux";
+  #else // ARM versions
+    // The VST3 documentation says:
+    // the architecture name based on the output of command-line
+    // "uname -m" (machine hardware) + "-linux"
+    static std::string path = []() -> std::string {
+        struct utsname buf;
+        if (uname(&buf) == 0) {
+            return "Contents/" + std::string(buf.machine) + "-linux";
+        } else {
+            LOG_ERROR("uname() failed: " << errorMessage(errno));
+            return "Contents/unknown-linux";
+        }
+    }();
+    return path.c_str();
+  #endif
 #else
-  // figure out what to do with all the ARM versions...
-  #error "CPU architecture not supported (yet)"
+# error "Platform not supported (yet)"
 #endif
-#endif
-    return path;
 }
 
 #ifdef _WIN32
