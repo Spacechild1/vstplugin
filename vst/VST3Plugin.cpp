@@ -791,7 +791,7 @@ tresult VST3Plugin::start(ProgressType type, const tchar *description, ID& id) {
     std::string desc;
     if (description){
     #ifdef UNICODE
-        desc = stringConverter().to_bytes(description);
+        desc = stringConverter().to_bytes(reinterpret_cast<const unichar *>(description));
     #else
         desc = description;
     #endif
