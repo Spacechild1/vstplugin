@@ -14,7 +14,7 @@ namespace vst {
 
 static DWORD gParentProcessId = 0;
 
-void setParentProcess(DWORD pid) {
+void setParentProcess(int pid) {
     gParentProcessId = pid;
 }
 

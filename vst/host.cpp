@@ -81,7 +81,7 @@ static int gLogChannel = -1;
 
 #ifdef _WIN32
 namespace vst {
-    void setParentProcess(DWORD pid); // WindowWin32.cpp
+    void setParentProcess(int pid); // WindowWin32.cpp
 }
 #endif
 
