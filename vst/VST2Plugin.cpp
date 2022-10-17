@@ -1489,7 +1489,10 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
 VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *p, float opt){
     switch(opcode) {
     case audioMasterAutomate:
-        parameterAutomated(index, opt);
+        // avoid bogus parameter changes, e.g. as sent by ReaPlugs.
+        if (index >= 0) {
+            parameterAutomated(index, opt);
+        }
         break;
     case audioMasterIdle:
         DEBUG_HOSTCODE("audioMasterIdle");
