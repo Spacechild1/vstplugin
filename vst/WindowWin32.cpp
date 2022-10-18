@@ -173,7 +173,11 @@ EventLoop::EventLoop(){
     wcex.lpfnWndProc = Window::procedure;
     wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
 #ifndef __WINE__
-    // FIXME this causes linker errors on Wine (undefined reference to 'ExtractIconW')
+    // On Wine, for some reason, QueryFullProcessImageName() would silently truncate
+    // the path name after a certain number of characters...
+    // NOTE: Wine also requires to link explicitly to "shell32" for 'ExtractIconW'!
+    // Generally, the question is whether the icon is actually useful on Linux;
+    // with Gnome, at least, it doesn't seem so, but I need to test other desktops.
     wchar_t exeFileName[MAX_PATH];
     exeFileName[0] = 0;
     // 1) first try to get icon from the (parent) process

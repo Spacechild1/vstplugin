@@ -1,9 +1,9 @@
-set(SRC "Interface.h" "PluginCommand.h" "MiscUtils.h" "MiscUtils.cpp"
-    "PluginDesc.h" "PluginDesc.cpp" "ThreadedPlugin.h" "ThreadedPlugin.cpp"
-    "PluginDictionary.h" "PluginDictionary.cpp" "CpuArch.h" "CpuArch.cpp"
-    "PluginFactory.h" "PluginFactory.cpp" "Sync.h" "Sync.cpp" "Search.cpp"
-    "FileUtils.h" "FileUtils.cpp" "Module.cpp" "Lockfree.h" "Bus.h"
-    "HostApp.h" "HostApp.cpp")
+set(SRC "Bus.h" "CpuArch.cpp" "CpuArch.h" "FileUtils.cpp" "FileUtils.h" "Interface.h"
+    "HostApp.cpp" "HostApp.h" "Lockfree.h" "Log.h" "MiscUtils.cpp" "MiscUtils.h" "Module.cpp"
+    "PluginCommand.h" "PluginDesc.cpp" "PluginDesc.h" "PluginDictionary.cpp" "PluginDictionary.h"
+    "PluginFactory.cpp" "PluginFactory.h" "Search.cpp" "Sync.cpp" "Sync.h"
+    "ThreadedPlugin.cpp" "ThreadedPlugin.h"
+    )
 
 # VST2 SDK
 if (VST2)

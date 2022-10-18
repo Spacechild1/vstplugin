@@ -110,7 +110,7 @@ void writeLog(int level, const char *msg){
 // host one or more VST plugins
 int bridge(int pid, const std::string& path, int logChannel){
 #ifdef _WIN32
-    setParentProcess(pid);
+    setParentProcess(pid); // see WindowWin32.cpp
 #endif
 #if VST_HOST_SYSTEM == VST_WINDOWS
     // setup log channel
