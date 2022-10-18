@@ -1488,6 +1488,8 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
             if (listener) {
                 listener->parameterAutomated(index, opt);
             }
+        } else {
+            LOG_DEBUG("VST2Plugin: parameter automation index " << index << " out of range");
         }
         break;
     case audioMasterIdle:
