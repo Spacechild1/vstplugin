@@ -1304,13 +1304,6 @@ bool VST2Plugin::canHostDo(const char *what) {
         || matches("sizeWindow");
 }
 
-void VST2Plugin::parameterAutomated(int index, float value){
-    auto listener = listener_.lock();
-    if (listener){
-        listener->parameterAutomated(index, value);
-    }
-}
-
 #if 0
 #define DEBUG_TIME_INFO(x) DO_LOG("plugin wants " << x)
 #else
@@ -1489,9 +1482,12 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
 VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value, void *p, float opt){
     switch(opcode) {
     case audioMasterAutomate:
-        // avoid bogus parameter changes, e.g. as sent by ReaPlugs.
-        if (index >= 0) {
-            parameterAutomated(index, opt);
+        // ignore bogus parameter changes, e.g. as sent by ReaPlugs.
+        if (index >= 0 && index < info().numParameters()) {
+            auto listener = listener_.lock();
+            if (listener) {
+                listener->parameterAutomated(index, opt);
+            }
         }
         break;
     case audioMasterIdle:

@@ -140,7 +140,6 @@ class VST2Plugin final : public IPlugin {
     // other helpers
     static bool canHostDo(const char *what);
     bool hasFlag(VstAEffectFlags flag) const;
-    void parameterAutomated(int index, float value);
     void checkLatency();
     VstTimeInfo * getTimeInfo(VstInt32 flags);
     bool hasChunkData() const;
