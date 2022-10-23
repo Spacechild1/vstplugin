@@ -210,19 +210,20 @@ EventLoop::EventLoop(){
         auto hInstance = (HINSTANCE)getModuleHandle();
         if (hInstance) {
             // a) we are inside the DLL
-            if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) == 0) {
-                LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
-            }
-            hIcon = ExtractIconW(NULL, exeFileName, 0);
-            if ((uintptr_t)hIcon > 1) {
-                LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
-                wcex.hIcon = hIcon;
+            if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) != 0) {
+                hIcon = ExtractIconW(NULL, exeFileName, 0);
+                if ((uintptr_t)hIcon > 1) {
+                    LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+                    wcex.hIcon = hIcon;
+                } else {
+                    LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+                }
             } else {
-                LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+                LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
             }
         } else {
             // b) we are inside the host process
-            static std::vector<std::string> pluginPaths = {
+            std::vector<std::string> pluginPaths = {
                 getModuleDirectory() + "\\VSTPlugin.scx",
                 getModuleDirectory() + "\\VSTPlugin_supernova.scx"
             };
