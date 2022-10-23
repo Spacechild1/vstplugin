@@ -192,7 +192,6 @@ if (MSVC)
 endif()
 
 if (MINGW)
-    set(CMAKE_CXX_COMPILER g++)
     add_compile_options("-mstackrealign")
 endif()
 
