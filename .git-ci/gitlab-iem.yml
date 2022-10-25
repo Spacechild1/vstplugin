@@ -74,7 +74,7 @@ variables:
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
       make cmake wget git libx11-dev${TARGETDEBARCH:+:}${TARGETDEBARCH} puredata-dev puredata
-    - test "x${TARGETDEBARCH}" = "xi386" && { export CXX=${TARGETARCH}-g++; }
+    - test "x${TARGETDEBARCH}" != "x" && { export CXX=${TARGETARCH}-g++; }
     - *script_deps
     - *script_cmake
 
@@ -83,6 +83,18 @@ variables:
   image: registry.git.iem.at/devtools/docker/debiancross:i386
   variables:
     PD_EXTENSION: l_i386
+
+.build:linux_armhf: &build_linux_armhf
+  extends: .build:linux
+  image: registry.git.iem.at/devtools/docker/debiancross:armhf
+  variables:
+    PD_EXTENSION: l_arm
+
+.build:linux_arm64: &build_linux_arm64
+  extends: .build:linux
+  image: registry.git.iem.at/devtools/docker/debiancross:arm64
+  variables:
+    PD_EXTENSION: l_arm64
 
 .build:linux_wine: &build_linux_wine
   extends: .build:script
@@ -166,6 +178,12 @@ variables:
 .Linux_i386:
   allow_failure: true
   <<: *build_linux_i386
+.Linux_ARMhf:
+  allow_failure: true
+  <<: *build_linux_armhf
+.Linux_ARM64:
+  allow_failure: true
+  <<: *build_linux_arm64
 .Linux_wine:
   allow_failure: true
   <<: *build_linux_wine
@@ -248,6 +266,14 @@ Linux:
 Linux_i386:
   extends:
     - .Linux_i386
+    - .base
+Linux_ARM64:
+  extends:
+    - .Linux_ARM64
+    - .base
+Linux_ARMhf:
+  extends:
+    - .Linux_ARMhf
     - .base
 Linux_wine:
   extends:
