@@ -42,7 +42,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 * macOS/Pd: because of technical limitations the GUI must run on the main thread - which happens to be the audio thread in Pd (at the time of writing)...
   This might get fixed in future Pd versions, but for now, macOS users are adviced to keep native GUI windows closed whenever possible to avoid audio drop-outs.
 
-  There are two options work around this issue:
+  There are two workarounds:
 
   a) run the plugin in a subprocess (see "-b" and "-p" options)
 
@@ -70,8 +70,8 @@ By default, vstplugin searches for plugins in both `%PROGRAMFILES%` and `%PROGRA
 
 #### macOS
 
-On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14, because macOS 10.15 eventually dropped 32-bit support.
-However, bit-bridging is still useful for Apple M1 MacBooks because it allows to run existing 64-bit Intel VST plugins in a native (= arm64) Pd or SC app.
+On macOS, running 32-bit (Intel) plugins is only possible up to macOS 10.14 because macOS 10.15 eventually dropped 32-bit support.
+However, bit-bridging is still useful for Apple M1 MacBooks because it allows to run existing 64-bit Intel VST plugins in a native ARM Pd or SC app.
 
 #### Linux
 
@@ -168,13 +168,13 @@ If you don't want to build the SuperCollider extension, set `SC` to `OFF`.
 
 If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and vice versa), you have to perform the following steps:
 
-1) compile the project with a 64-bit compiler (e.g. in a 'build64' folder)
+1) build and install the project with a 64-bit compiler (e.g. in a 'build64' folder)
 
-2) compile the project with a 32-bit compiler (e.g. in a 'build32' folder)
+2) build and install the project with a 32-bit compiler (e.g. in a 'build32' folder)
 
-3) copy the 32-bit 'host.exe' to the 64-bit installation folder and rename it to 'host_i386.exe'
+3) 64-bit: set the `HOST32_PATH` variable to the path of the 32-bit(!) host.exe and reinstall the project.
 
-4) copy the 64-bit 'host.exe' to the 32-bit installation folder and rename it to 'host_amd64.exe'
+4) 32-bit: set the `HOST_AMD64_PATH` variable to the path of the 64-bit(!) host.exe and reinstall the project.
 
 By default, the minimum Windows deployment target is Windows 7. You may choose a *higher* version by setting the `WINVER` CMake variable.
 
@@ -188,7 +188,7 @@ This only seems to happen if either the plugin or the host (but not both!) link 
 This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider/Pd with MinGW.
 In this special case you should set `STATIC_LIBS` to `OFF` so that `VSTPlugin` resp. `vstplugin~` are also linked dynamically.
 To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles.
-Yes, it's ridiculous!
+I know, it's ridiculous!
 
 
 #### macOS
