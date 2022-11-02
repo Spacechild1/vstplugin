@@ -906,7 +906,7 @@ void PluginServer::runThread(ShmChannel *channel){
 
     // while running, wait for requests and dispatch to plugin
     // Quit command -> quit()
-    for (;;){
+    while (running_.load(std::memory_order_relaxed)) {
         // LOG_DEBUG(channel->name() << ": wait");
         channel->wait();
         // LOG_DEBUG(channel->name() << ": wake up");
@@ -917,17 +917,14 @@ void PluginServer::runThread(ShmChannel *channel){
         size_t size;
         if (channel->getMessage(msg, size)){
             handleCommand(*channel, *reinterpret_cast<const ShmCommand *>(msg));
-        } else if (!running_) {
-            // thread got woken up after quit message
-            LOG_DEBUG(channel->name() << ": quit");
-            break;
-        } else {
+        } else if (running_) {
             LOG_ERROR("PluginServer: '" << channel->name()
                       << "': couldn't get message");
             // ?
             channel->postReply();
         }
     }
+    LOG_DEBUG(channel->name() << ": quit");
 }
 
 void PluginServer::handleCommand(ShmChannel& channel,
