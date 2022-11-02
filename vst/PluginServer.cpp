@@ -808,12 +808,23 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
 }
 
 PluginServer::~PluginServer(){
+    LOG_DEBUG("free PluginServer");
+
     UIThread::removePollFunction(pollFunction_);
 
     for (auto& thread : threads_){
         thread.join();
     }
-    LOG_DEBUG("free PluginServer");
+
+    // properly destruct all remaining plugins
+    // on the UI thread (in case the parent crashed)
+    if (!plugins_.empty()){
+        LOG_DEBUG("release remaining " << plugins_.size() << " plugins");
+        defer([&](){
+            plugins_.clear();
+        });
+        LOG_DEBUG("released plugins");
+    }
 
 #if VST_HOST_SYSTEM == VST_WINDOWS
     CloseHandle(parent_);
@@ -1042,17 +1053,6 @@ void PluginServer::quit(){
     // wake up all threads
     for (int i = Channel::NRT; i < shm_->numChannels(); ++i){
         shm_->getChannel(i).post();
-    }
-
-    // properly destruct all remaining plugins
-    // on the UI thread (in case the parent crashed)
-    WriteLock lock(pluginMutex_);
-    if (!plugins_.empty()){
-        LOG_DEBUG("release remaining " << plugins_.size() << " plugins");
-        defer([&](){
-            plugins_.clear();
-        });
-        LOG_DEBUG("released plugins");
     }
 
     // quit event loop
