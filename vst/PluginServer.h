@@ -118,7 +118,7 @@ class PluginServer {
     bool postUIThread(const ShmUICommand& cmd);
  private:
     void pollUIThread();
-    void checkParentAlive();
+    void checkIfParentAlive();
     void runThread(ShmChannel* channel);
     void handleCommand(ShmChannel& channel,
                        const ShmCommand &cmd);

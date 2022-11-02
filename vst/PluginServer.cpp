@@ -9,6 +9,9 @@
 #include <cassert>
 #include <cstring>
 #include <sstream>
+#ifndef _WIN32
+#include <signal.h>
+#endif
 
 #if DEBUG_SERVER_PROCESS
 # define LOG_PROCESS(x) LOG_DEBUG(x)
@@ -870,30 +873,24 @@ void PluginServer::pollUIThread(){
         size = sizeof(buffer); // reset size!
     }
 
-    checkParentAlive();
+    checkIfParentAlive();
 }
 
-void PluginServer::checkParentAlive(){
+void PluginServer::checkIfParentAlive(){
 #if VST_HOST_SYSTEM == VST_WINDOWS
     bool alive = WaitForSingleObject(parent_, 0) == WAIT_TIMEOUT;
 #else
-    auto parent = getppid();
   #ifndef __WINE__
-    bool alive = parent == parent_;
+    bool alive = getppid() == parent_;
   #else
-    // We can't do this on Wine, because we might have been
-    // forked in a Wine launcher app.
-    // At least we can check for 1 (= reparented to init).
-    // NOTE that this is not 100% reliable, that's why we
-    // don't use this method for the other hosts.
-    bool alive = parent != 1;
+    // We can't do the above on Wine because we might have been
+    // forked in a Wine launcher app. Instead we use the kill()
+    // function to check if the parent is still alive.
+    bool alive = (kill(parent_, 0) == 0) || (errno == EPERM);
   #endif
 #endif
     if (!alive){
         LOG_WARNING("parent (" << parent_ << ") terminated!");
-    #if VST_HOST_SYSTEM != VST_WINDOWS
-        LOG_DEBUG("new parent ID: " << parent);
-    #endif
         quit();
     }
 }
