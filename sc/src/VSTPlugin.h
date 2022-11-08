@@ -477,6 +477,7 @@ struct SearchCmdData {
     float timeout = 0.0;
     void* freeData = nullptr;
     char path[256];
+    char cacheFileDir[256];
     int32 numSearchPaths = 0;
     int32 numExcludePaths = 0;
     // flexibel struct member

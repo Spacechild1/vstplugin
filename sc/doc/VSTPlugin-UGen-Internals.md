@@ -99,6 +99,7 @@ Arguments:
 | string...  | (optional) list of user supplied search paths
 | int        | the number of exclude paths; 0 means none
 | string...  | (optional) list of user supplied exclude paths
+| string     | (optional) custom cache file directory
 
 This will search the given paths recursively for VST plugins, probe them, and write the results to a file or buffer. Valid plugins are stored in a server-side plugin dictionary. If no plugin could be found, the buffer or file will be empty.
 
@@ -163,6 +164,15 @@ The probe process can return one of the following results:
     a) not a VST plugin, b) wrong architecture, c) missing dependencies
 - crashed -> the plugin crashed on initialization
 - error -> internal failure
+
+##### /vst_cache_read
+
+Read the cache file from a custom location.
+
+Arguments:
+| type   ||
+| ------ |-|
+| string | the cache file directory |
 
 ##### /vst_clear
 

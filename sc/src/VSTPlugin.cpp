@@ -205,9 +205,9 @@ static std::string gCacheFileName = std::string("cache_")
 
 static Mutex gFileLock;
 
-static void readCacheFile(){
+static void readCacheFile(const std::string& dir, bool loud) {
     ScopedLock lock(gFileLock);
-    auto path = gSettingsDir + "/" + gCacheFileName;
+    auto path = dir + "/" + gCacheFileName;
     if (pathExists(path)){
         LOG_VERBOSE("read cache file " << path);
         try {
@@ -217,20 +217,39 @@ static void readCacheFile(){
         } catch (const std::exception& e){
             LOG_ERROR("couldn't read cache file: unexpected exception (" << e.what() << ")");
         }
+    } else if (loud) {
+        LOG_ERROR("could not find cache file in " << dir);
     }
 }
 
-static void writeCacheFile(){
+static void readCacheFile(){
+    readCacheFile(gSettingsDir, false);
+}
+
+static void writeCacheFile(const std::string& dir) {
     ScopedLock lock(gFileLock);
     try {
-        if (!pathExists(gSettingsDir)){
+        if (pathExists(dir)) {
+            gPluginDict.write(dir + "/" + gCacheFileName);
+        } else {
+            throw Error("directory " + dir + " does not exist");
+        }
+    } catch (const Error& e) {
+        LOG_ERROR("couldn't write cache file: " << e.what());
+    }
+}
+
+static void writeCacheFile() {
+    ScopedLock lock(gFileLock);
+    try {
+        if (!pathExists(gSettingsDir)) {
             createDirectory(userSettingsPath());
-            if (!createDirectory(gSettingsDir)){
+            if (!createDirectory(gSettingsDir)) {
                 throw Error("couldn't create directory " + gSettingsDir);
             }
         }
         gPluginDict.write(gSettingsDir + "/" + gCacheFileName);
-    } catch (const Error& e){
+    } catch (const Error& e) {
         LOG_ERROR("couldn't write cache file: " << e.what());
     }
 }
@@ -3035,7 +3054,13 @@ bool cmdSearch(World *inWorld, void* cmdData) {
         }
     }
     if (save){
-        writeCacheFile();
+        if (data->cacheFileDir[0]) {
+            // use custom cache file directory
+            writeCacheFile(data->cacheFileDir);
+        } else {
+            // use default cache file directory
+            writeCacheFile();
+        }
     }
 #if 1
     // filter duplicate/stale plugins
@@ -3151,6 +3176,8 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
 
     assert(numPaths <= maxNumPaths);
 
+    const char *cacheFileDir = args->gets();
+
     SearchCmdData *data = CmdData::create<SearchCmdData>(inWorld, numPaths * sizeof(char *));
     if (data) {
         data->flags = flags;
@@ -3160,6 +3187,11 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
             snprintf(data->path, sizeof(data->path), "%s", filename);
         } else {
             data->path[0] = '\0'; // empty path: use buffer
+        }
+        if (cacheFileDir) {
+            snprintf(data->cacheFileDir, sizeof(data->cacheFileDir), "%s", cacheFileDir);
+        } else {
+            data->cacheFileDir[0] = '\0';
         }
         data->numSearchPaths = numSearchPaths;
         data->numExcludePaths = numExcludePaths;
@@ -3180,25 +3212,53 @@ void vst_search_stop(World* inWorld, void* inUserData, struct sc_msg_iter*args, 
 }
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
-    if (!gSearching) {
-        struct ClearCmdData { int flags; };
-
-        auto data = (ClearCmdData *)RTAlloc(inWorld, sizeof(ClearCmdData));
-        if (data) {
-            data->flags = args->geti(); // 1 = remove cache file
-            DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
-                // unloading plugins might crash, so we make sure we *first* delete the cache file
-                int flags = static_cast<ClearCmdData *>(data)->flags;
-                if (flags & 1) {
-                    // remove cache file
-                    removeFile(gSettingsDir + "/" + gCacheFileName);
-                }
-                getPluginDict().clear();
-                return false;
-            }, 0, 0, RTFree, 0, 0);
-        }
-    } else {
+    if (gSearching) {
         LOG_WARNING("can't clear while searching!");
+        return;
+    }
+
+    struct ClearCmdData { int flags; };
+
+    auto data = (ClearCmdData *)RTAlloc(inWorld, sizeof(ClearCmdData));
+    if (data) {
+        data->flags = args->geti(); // 1 = remove cache file
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_clear", data, [](World*, void* data) {
+            // unloading plugins might crash, so we make sure we *first* delete the cache file
+            int flags = static_cast<ClearCmdData *>(data)->flags;
+            if (flags & 1) {
+                // remove cache file
+                removeFile(gSettingsDir + "/" + gCacheFileName);
+            }
+            getPluginDict().clear();
+            return false;
+        }, 0, 0, RTFree, 0, 0);
+    }
+}
+
+void vst_cache_read(World *inWorld, void *inUserData, struct sc_msg_iter *args, void *replyAddr) {
+    if (gSearching) {
+        LOG_WARNING("can't read cache file while searching!");
+        return;
+    }
+
+    struct CacheReadCmdData { char path[1024]; };
+
+    auto data = (CacheReadCmdData *)RTAlloc(inWorld, sizeof(CacheReadCmdData));
+    if (data) {
+        auto path = args->gets();
+        if (path) {
+            snprintf(data->path, sizeof(data->path), "%s", path);
+        } else {
+            data->path[0] = '\0';
+        }
+        DoAsynchronousCommand(inWorld, replyAddr, "vst_cache_read", data, [](World*, void* data) {
+            std::string dir = static_cast<CacheReadCmdData *>(data)->path;
+            if (dir.empty()) {
+                dir = gSettingsDir;
+            }
+            readCacheFile(dir, true);
+            return false;
+        }, 0, 0, RTFree, 0, 0);
     }
 }
 
@@ -3377,6 +3437,7 @@ PluginLoad(VSTPlugin) {
 
     PluginCmd(vst_search);
     PluginCmd(vst_search_stop);
+    PluginCmd(vst_cache_read);
     PluginCmd(vst_clear);
     PluginCmd(vst_query);
 

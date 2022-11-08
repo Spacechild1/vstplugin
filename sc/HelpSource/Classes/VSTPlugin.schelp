@@ -310,6 +310,12 @@ the number of seconds to wait for a single plugin before it is regarded as being
 ## code::\exclude:: (Array)
 
 a list of directories or files to exclude from the search.
+
+## code::\cacheFileDir:: (String)
+
+cache file directory.
+
+Set this if you want to save the cache file in a custom directory.
 ::
 
 Example:
@@ -365,9 +371,9 @@ ARGUMENT:: dest
 
 a) nil: don't write search results (the default)
 
-a) String: name of a temp file where the search results should be written to.
+b) String: name of a temp file where the search results should be written to.
 
-b) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
+c) link::Classes/Buffer:: or bufnum: the plugin will fill the Buffer
 on the Server, the Client can then read the data (each float representing a single byte) and free the Buffer.
 The Buffer should be initially empty!
 
@@ -390,10 +396,29 @@ METHOD:: stopSearchMsg
 
 RETURNS:: the message for a emphasis::stopSearch:: command (see link::#*stopSearch::).
 
+METHOD:: readCache
+
+Read the plugin cache file from a custom directory.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+ARGUMENT:: dir
+the directory containing the cache file.
+
+METHOD:: readCacheMsg
+
+ARGUMENT:: dir
+(see above)
+
+RETURNS:: the message for a emphasis::readCache:: command (see link::#*readCache::).
 
 METHOD:: readPlugins
 
 get the descriptions of all locally cached plugins. For this to work, you have to call link::#*search:: at least once (with code::save: true::), then the plugin description will be available without starting a Server.
+
+ARGUMENT:: dir
+(optional) cache file directory. If code::nil::, the default cache file location will be used.
 
 RETURNS:: an link::Classes/IdentityDictionary:: containing all plugin descriptions as link::Classes/VSTPluginDesc:: instances.
 
