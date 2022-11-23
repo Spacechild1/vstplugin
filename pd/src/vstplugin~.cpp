@@ -372,9 +372,9 @@ static std::string gCacheFileName = std::string("cache_")
 
 static Mutex gFileLock;
 
-static void readCacheFile(){
+static void readCacheFile(const std::string& dir, bool loud){
     ScopedLock lock(gFileLock);
-    auto path = gSettingsDir + "/" + gCacheFileName;
+    auto path = dir + "/" + gCacheFileName;
     if (pathExists(path)){
         logpost(nullptr, PdDebug, "read cache file %s", path.c_str());
         try {
@@ -384,20 +384,39 @@ static void readCacheFile(){
         } catch (const std::exception& e){
             pd_error(nullptr, "couldn't read cache file: unexpected exception (%s)", e.what());
         }
+    } else if (loud) {
+        pd_error(nullptr, "could not find cache file in %s", dir.c_str());
     }
 }
 
-static void writeCacheFile(){
+static void readCacheFile(){
+    readCacheFile(gSettingsDir, false);
+}
+
+static void writeCacheFile(const std::string& dir) {
     ScopedLock lock(gFileLock);
     try {
-        if (!pathExists(gSettingsDir)){
+        if (pathExists(dir)) {
+            gPluginDict.write(dir + "/" + gCacheFileName);
+        } else {
+            throw Error("directory " + dir + " does not exist");
+        }
+    } catch (const Error& e) {
+        pd_error(nullptr, "couldn't write cache file: %s", e.what());
+    }
+}
+
+static void writeCacheFile() {
+    ScopedLock lock(gFileLock);
+    try {
+        if (!pathExists(gSettingsDir)) {
             createDirectory(userSettingsPath());
-            if (!createDirectory(gSettingsDir)){
+            if (!createDirectory(gSettingsDir)) {
                 throw Error("couldn't create directory " + gSettingsDir);
             }
         }
         gPluginDict.write(gSettingsDir + "/" + gCacheFileName);
-    } catch (const Error& e){
+    } catch (const Error& e) {
         pd_error(nullptr, "couldn't write cache file: %s", e.what());
     }
 }
@@ -1158,7 +1177,14 @@ static void vstplugin_search_do(t_search_data *x){
     }
 
     if (x->update && !x->cancel){
-        writeCacheFile(); // mutex protected
+        // cache file and plugin dictionary are threadsafe
+        if (!x->cachefiledir.empty()) {
+            // custom location
+            writeCacheFile(x->cachefiledir);
+        } else {
+            // default location
+            writeCacheFile();
+        }
     } else {
         LOG_DEBUG("search cancelled!");
     }
@@ -1184,6 +1210,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
     bool async = false;
     bool parallel = true; // for now, always do a parallel search
     bool update = true; // update cache file
+    std::string cachefiledir;
     std::vector<std::string> paths;
     std::vector<std::string> exclude;
 
@@ -1218,6 +1245,14 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
                     pd_error(x, "%s: missing argument for -x flag", classname(x));
                     return;
                 }
+            } else if (!strcmp(flag, "-c")) {
+                argc--; argv++;
+                if (argc > 0 && argv->a_type == A_SYMBOL){
+                    cachefiledir = atom_getsymbol(argv)->s_name;
+                } else {
+                    pd_error(x, "%s: missing argument for -c flag", classname(x));
+                    return;
+                }
             } else {
                 pd_error(x, "%s: unknown flag '%s'", classname(x), flag);
                 return;
@@ -1250,6 +1285,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         data->owner = x;
         data->paths = std::move(paths);
         data->exclude = std::move(exclude);
+        data->cachefiledir = cachefiledir;
         data->timeout = timeout;
         data->parallel = parallel;
         data->update = update;
@@ -1260,6 +1296,7 @@ static void vstplugin_search(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv
         data.owner = x;
         data.paths = std::move(paths);
         data.exclude = std::move(exclude);
+        data.cachefiledir = cachefiledir;
         data.timeout = timeout;
         data.parallel = parallel;
         data.update = update;
@@ -1279,13 +1316,25 @@ static void vstplugin_search_stop(t_vstplugin *x){
 
 /*----------------------- "search_clear" ------------------------*/
 
-static void vstplugin_search_clear(t_vstplugin *x, t_floatarg f){
-    // unloading plugins might crash, so we we first delete the cache file
+static void vstplugin_cache_clear(t_vstplugin *x, t_floatarg f){
+    // unloading plugins might crash, so we first delete the cache file
     if (f != 0){
         removeFile(gSettingsDir + "/" + gCacheFileName);
     }
     // clear the plugin description dictionary
     gPluginDict.clear();
+}
+
+/*----------------------- "cache_read" ------------------------*/
+
+static void vstplugin_cache_read(t_vstplugin *x, t_symbol *s){
+    if (*s->s_name) {
+        // custom location
+        readCacheFile(s->s_name, true);
+    } else {
+        // default location
+        readCacheFile();
+    }
 }
 
 /*----------------------- "plugin_list" -------------------------*/
@@ -3803,7 +3852,9 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search, gensym("search"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_search_stop, gensym("search_stop"), A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_search_clear, gensym("search_clear"), A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_cache_clear, gensym("search_clear"), A_DEFFLOAT, A_NULL); // deprecated
+    class_addmethod(vstplugin_class, (t_method)vstplugin_cache_clear, gensym("cache_clear"), A_DEFFLOAT, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_cache_read, gensym("cache_read"), A_DEFSYM, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_plugin_list, gensym("plugin_list"), A_NULL);
 
     class_addmethod(vstplugin_class, (t_method)vstplugin_bypass, gensym("bypass"), A_FLOAT, A_NULL);
