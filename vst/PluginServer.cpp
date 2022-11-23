@@ -9,7 +9,8 @@
 #include <cassert>
 #include <cstring>
 #include <sstream>
-#ifndef _WIN32
+
+#if VST_HOST_SYSTEM != VST_WINDOWS
 #include <signal.h>
 #endif
 
