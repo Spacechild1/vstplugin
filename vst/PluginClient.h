@@ -94,7 +94,7 @@ class PluginClient final : public DeferredPlugin {
     IFactory::const_ptr factory_; // just to ensure lifetime
     PluginDesc::const_ptr info_;
     IWindow::ptr window_;
-    IPluginListener* listener_;
+    IPluginListener* listener_ = nullptr;
     PluginBridge::ptr bridge_;
     uint32_t id_;
     std::vector<Command> commands_;

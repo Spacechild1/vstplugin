@@ -181,7 +181,7 @@ class VST2Plugin final : public IPlugin {
     bool editor_ = false;
     // UI
     IWindow::ptr window_;
-    IPluginListener* listener_;
+    IPluginListener* listener_ = nullptr;
     IFactory::const_ptr factory_; // keep alive
 };
 

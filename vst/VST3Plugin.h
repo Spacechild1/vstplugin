@@ -538,7 +538,7 @@ class VST3Plugin final :
     bool editor_ = false;
     mutable IPlugView *view_ = nullptr;
     IWindow::ptr window_;
-    IPluginListener* listener_;
+    IPluginListener* listener_ = nullptr;
     IFactory::const_ptr factory_; // keep alive
 };
 
