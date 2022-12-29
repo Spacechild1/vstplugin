@@ -20,6 +20,11 @@ It includes a Pd external called "vstplugin~" and a SuperCollider UGen called "V
 * use Windows plugins on Linux (with Wine)
 * (optional) multithreaded plugin processing
 
+### Supported platforms:
+* Windows (i386 and amd64)
+* macOS (i386, amd64 and arm64)
+* Linux (i386, amd64, arm and arm64)
+
 
 See the help files (`vstplugin~-help.pd` and `VSTPlugin.schelp`) for detailed instructions.
 

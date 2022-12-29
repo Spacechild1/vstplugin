@@ -190,22 +190,22 @@ static_assert(sizeof(Vst::ProcessData) == 48,
               "unexpected size for Vst::ProcessData");
 # endif
 
-// these structs are only different on 32-bit Linux (x86 System V):
-# if !SMTG_PLATFORM_64 && !SMTG_OS_WINDOWS
+// these structs are only different on x86 Linux/macOS (x86 System V):
+# if SMTG_CPU_X86 && !SMTG_OS_WINDOWS
 static_assert(sizeof(Vst::ProcessSetup) == 20,
               "unexpected size for Vst::ProcessSetup");
 static_assert(sizeof(Vst::AudioBusBuffers) == 16,
               "unexpected size for Vst::AudioBusBuffers");
 static_assert(sizeof(Vst::ProcessContext) == 104,
               "unexpected size for Vst::ProcessContext");
-# else // SMTG_OS_LINUX
+# else // amd64, win32, arm and arm64
 static_assert(sizeof(Vst::ProcessSetup) == 24,
               "unexpected size for Vst::ProcessSetup");
 static_assert(sizeof(Vst::AudioBusBuffers) == 24,
               "unexpected size for Vst::AudioBusBuffers");
 static_assert(sizeof(Vst::ProcessContext) == 112,
               "unexpected size for Vst::ProcessContext");
-# endif // SMTG_OS_LINUX
+# endif
 
 #endif // 32-bit Wine
 
