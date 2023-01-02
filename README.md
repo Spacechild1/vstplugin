@@ -37,7 +37,7 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 ### Known issues:
 
 * The macOS binaries are not signed/notarized, so you will have problems on macOS 10.15 (Catalina) and above.
-  See the section 'macOS 10.15+' for workarounds!
+  See the section *macOS 10.15+* for workarounds!
 
 * The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above!
 
@@ -87,8 +87,8 @@ Unfortunately, there are several different Wine versions (stable, development, s
 The binaries available at https://git.iem.at/pd/vstplugin/-/releases are built against the standard Wine version shipped with Debian.
 If you want to use a newer Wine version, you might have to build *vstplugin* from source.
 
-*vstplugin* searches for plugins in the standard Windows VST directories inside the 'drive_c' directory of your Wine folder.
-The default Wine folder is '~/.wine' and the default Wine loader is the `wine` command; both can be overriden with the `WINEPREFIX` resp. `WINELOADER` environment variables.
+*vstplugin* searches for plugins in the standard Windows VST directories inside the `drive_c` directory of your Wine folder.
+The default Wine folder is `~/.wine` and the default Wine loader is the `wine` command; both can be overriden with the `WINEPREFIX` resp. `WINELOADER` environment variables.
 
 NOTE: plugins "converted" by LinVst or Yabridge will be automatically preferred over the built-in Wine bridge. Later we might provide an option to change this.
 
@@ -126,14 +126,14 @@ Dynamic linking, on the other hand, is preferred for destributing via system pac
 
 For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
 
-You should have a folder 'vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x' with the header files 'aeffect.h' and 'affectx.h'.
+You should have a folder `vst/VST_SDK/VST2_SDK/pluginterfaces/vst2.x` with the header files `aeffect.h` and `affectx.h`.
 
-The VST2 SDK has been officially discontinued by Steinberg. If you have a VST2 license but lost the files, you can get them with '.git-ci/get_vst2.sh'.
-Otherwise you can try free alternatives like 'FST' (https://git.iem.at/zmoelnig/FST.git).
+The VST2 SDK has been officially discontinued by Steinberg. If you have a VST2 license but lost the files, you can get them with `.git-ci/get_vst2.sh`.
+Otherwise you can try free alternatives like *FST* (https://git.iem.at/zmoelnig/FST.git).
 
 For VST3 support, get the Steinberg VST3 SDK and copy it into /vst.
-You should have a folder 'vst/VST_SDK/VST3_SDK/pluginterfaces'; you don't need the rest of the SDK.
-(If you have git installed, you can easily install it with ./.git-ci/get_vst3.sh)
+You should have a folder `vst/VST_SDK/VST3_SDK/pluginterfaces`; you don't need the rest of the SDK.
+(If you have git installed, you can easily install it with `./.git-ci/get_vst3.sh`)
 
 The default setting is to build with both VST2 and VST3 support.
 If you only want to support a specific version, you can set the `VST2` and `VST3` CMake variables.
@@ -143,7 +143,7 @@ In case you already have the VST SDK(s) installed somewhere else on your system,
 you can provide the path to CMake by setting the `VST2DIR` and `VST3DIR` variables.
 
 Because earlier versions of the VST3 SDK also included the VST2 SDK headers,
-the project will also look for the VST2 headers in 'vst/VST_SDK/VST3_SDK/pluginterfaces/vst2.x'.
+the project will also look for the VST2 headers in `vst/VST_SDK/VST3_SDK/pluginterfaces/vst2.x`.
 
 ##### Pd:
 
@@ -173,9 +173,9 @@ If you don't want to build the SuperCollider extension, set `SC` to `OFF`.
 
 If you want to enable bit bridging (running 32-bit plugins on a 64-bit host and vice versa), you have to perform the following steps:
 
-1) build and install the project with a 64-bit compiler (e.g. in a 'build64' folder)
+1) build and install the project with a 64-bit compiler (e.g. in a `build64` folder)
 
-2) build and install the project with a 32-bit compiler (e.g. in a 'build32' folder)
+2) build and install the project with a 32-bit compiler (e.g. in a `build32` folder)
 
 3) 64-bit: set the `HOST32_PATH` variable to the path of the 32-bit(!) host.exe and reinstall the project.
 
@@ -248,7 +248,7 @@ To enable Wine support on Linux, you need to follow these steps:
 
     for 32-bit Wine, follow the steps for building the 32-bit host on Linux and then install `wine32-tools` or `wine-[branch]-dev`.
 
-2)  Create another build directory, e.g. 'build_wine', and `cd` into it.
+2)  Create another build directory, e.g. `build_wine`, and `cd` into it.
 
 3)  Set `BUILD_WINE` to `ON`.
    `PD_INSTALLDIR` and `SC_INSTALLDIR` should be the same as for the regular build.
