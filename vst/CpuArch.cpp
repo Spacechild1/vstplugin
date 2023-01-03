@@ -354,7 +354,6 @@ std::vector<CpuArch> readMach(vst::File& file, bool onlyPlugins){
 
 #endif
 
-// TODO figure out what to do with ARM...
 static const std::vector<const char *> gBundleBinaryPaths = {
 #if defined(_WIN32) || USE_WINE
     "Contents/x86-win", "Contents/x86_64-win",
@@ -363,7 +362,13 @@ static const std::vector<const char *> gBundleBinaryPaths = {
     "Contents/MacOS",
 #endif
 #if defined(__linux__)
+  #if defined(__i386__) || defined(__x86_64__)
+    // Intel
     "Contents/i386-linux", "Contents/x86_64-linux"
+  #elif defined(__arm__) || defined(__aarch64__)
+    // ARM - no bit bridging
+    getBundleBinaryPath()
+  #endif
 #endif
 };
 
