@@ -75,7 +75,9 @@ const char * getBundleBinaryPath(){
     return "Contents/i386-linux";
   #elif defined(__x86_64__)
     return "Contents/x86_64-linux";
-  #else
+  #elif defined(__aarch64__)
+    return "Contents/aarch64-linux";
+  #else // older ARM versions
     // The VST3 documentation says:
     // the architecture name based on the output of command-line
     // "uname -m" (machine hardware) + "-linux"
