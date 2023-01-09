@@ -83,28 +83,46 @@ VSTPluginController {
 		});
 		// custom event type for setting VST parameters:
 		Event.addEventType(\vst_set, #{ arg server;
-			var bndl, msgFunc, getParams, params, vst;
-			// custom version of envirPairs/envirGet which also supports integer keys (for parameter indices)
-			getParams = #{ arg array;
-				var result = [];
-				array.do { arg name;
-					var value = currentEnvironment.at(name);
-					value !? { result = result.add(name).add(value); };
-				};
-				result;
-			};
-			// ~params is an Array of parameter names and/or indices which are looked up in the current environment (= the Event).
-			// if ~params is omitted, we try to look up *every* parameter by name (not very efficient for large plugins!)
-			vst = ~vst.value;
+			var bndl, array, params, scan, keys, vst = ~vst.value;
 			params = ~params.value;
-			if (params.isNil) {
-				params = vst.info.parameters.collect { arg p; p.name.asSymbol };
+			params.notNil.if {
+				// look up parameter names/indices in the current environment
+				params.do { arg key;
+					var value = currentEnvironment[key];
+					value.isNil.if {
+						Error("Could not find parameter '%' in Event".format(key)).throw;
+					};
+					array = array.add(key).add(value);
+				}
+			} {
+				// recursively collect all integer keys in a Set (to prevent duplicates),
+				// then look up parameters in in the current environment.
+				scan = #{ |env, keys, scan|
+					env.keysDo { arg key;
+						if (key.isNumber) {
+							keys.add(key);
+						};
+					};
+					// continue in proto Event
+					env.proto.notNil.if {
+						scan.(env.proto, keys, scan);
+					};
+					keys;
+				};
+				keys = scan.(currentEnvironment, Set(), scan);
+				keys.do { arg key;
+					var value = currentEnvironment[key];
+					array = array.add(key).add(value);
+				}
 			};
-			bndl = getParams.(params).flop.collect { arg params;
-				// NB: asOSCArgArray helps to resolve unwanted Rests
-				vst.setMsg(*params).asOSCArgArray;
-			};
-			~schedBundleArray.value(~lag, ~timingOffset, server, bndl, ~latency);
+			array.notNil.if {
+				bndl = array.flop.collect { arg params;
+					// NB: asOSCArgArray helps to resolve unwanted Rests
+					// (it calls asControlInput on all the arguments)
+					vst.setMsg(*params).asOSCArgArray;
+				};
+				~schedBundleArray.value(~lag, ~timingOffset, server, bndl, ~latency);
+			}
 		});
 	}
 	*guiClass {
