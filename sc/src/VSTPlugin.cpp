@@ -2178,8 +2178,8 @@ void VSTPluginDelegate::setProgram(int32 index) {
         } else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
+        sendMsg("/vst_program_index", plugin_->getProgram());
     }
-    sendMsg("/vst_program_index", plugin_->getProgram());
 }
 
 void VSTPluginDelegate::setProgramName(const char *name) {
