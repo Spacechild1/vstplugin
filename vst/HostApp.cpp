@@ -256,7 +256,9 @@ int ProcessHandle::parseStatus(int status) {
 //--------------------------- HostApp ------------------------------//
 
 // should host.exe inherit file handles and print to stdout/stderr?
+#ifndef PROBE_LOG
 #define PROBE_LOG 0
+#endif
 
 // redirect stdout and stderr from child process to parent.
 // use this if you want to see debug output from the actual VST plugins.

@@ -1,3 +1,15 @@
+option(PROBE_LOG "show output of probe process" OFF)
+mark_as_advanced(PROBE_LOG)
+if (PROBE_LOG)
+    add_definitions(-DPROBE_LOG=1)
+endif()
+
+option(BRIDGE_LOG "show stdout/stderr of bridge process" OFF)
+mark_as_advanced(BRIDGE_LOG)
+if (BRIDGE_LOG)
+    add_definitions(-DBRIDGE_LOG=1)
+endif()
+
 set(SRC "Bus.h" "CpuArch.cpp" "CpuArch.h" "FileUtils.cpp" "FileUtils.h" "Interface.h"
     "HostApp.cpp" "HostApp.h" "Lockfree.h" "Log.h" "MiscUtils.cpp" "MiscUtils.h" "Module.cpp"
     "PluginCommand.h" "PluginDesc.cpp" "PluginDesc.h" "PluginDictionary.cpp" "PluginDictionary.h"
