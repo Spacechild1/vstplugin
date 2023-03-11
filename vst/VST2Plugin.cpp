@@ -1432,11 +1432,11 @@ VstIntPtr VST2Plugin::dispatch(VstInt32 opCode,
 }
 
 // Main host callback
-#ifndef DEBUG_HOSTCODE_IMPLEMENTATION
-#define DEBUG_HOSTCODE_IMPLEMENTATION 1
+#ifndef DEBUG_VST2_HOST_OPCODE
+#define DEBUG_VST2_HOST_OPCODE 1
 #endif
 
-#if DEBUG_HOSTCODE_IMPLEMENTATION
+#if DEBUG_VST2_HOST_OPCODE
 #define DEBUG_HOSTCODE(x) LOG_DEBUG("master opcode: " x)
 #else
 #define DEBUG_HOSTCODE(x)
@@ -1471,7 +1471,7 @@ VstIntPtr VSTCALLBACK VST2Plugin::hostCallback(AEffect *plugin, VstInt32 opcode,
         if (plugin && plugin->user){
             return ((VST2Plugin *)(plugin->user))->callback(opcode, index, value, ptr, opt);
         } else {
-        #if DEBUG_HOSTCODE_IMPLEMENTATION
+        #if DEBUG_VST2_HOST_OPCODE
             LOG_DEBUG("requested opcode " << opcode << " before instantiating plugin");
         #endif
             return 0;
@@ -1580,7 +1580,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         DEBUG_HOSTCODE("audioMasterCloseFileSelector");
         break;
     default:
-    #if DEBUG_HOSTCODE_IMPLEMENTATION
+    #if DEBUG_VST2_HOST_OPCODE
         LOG_DEBUG("plugin requested unknown/deprecated opcode " << opcode);
     #endif
         return 0;
