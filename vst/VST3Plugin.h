@@ -491,7 +491,6 @@ class VST3Plugin final :
                        Bypass state, bool ramp);
     void handleEvents();
     void handleOutputParameterChanges();
-    void updateAutomationState();
     void sendMessage(Vst::IMessage* msg);
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     void doSetProgram(int program);
@@ -505,8 +504,8 @@ class VST3Plugin final :
     // audio
     vst3::ProcessContext context_;
     // automation
-    int32 automationState_ = 0; // should better be atomic as well...
-    std::atomic_bool automationStateChanged_{false};
+    static constexpr uint32_t kAutomationStateChanged = 0x80000000;
+    std::atomic<uint32_t> automationState_{0};
     // bypass
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;

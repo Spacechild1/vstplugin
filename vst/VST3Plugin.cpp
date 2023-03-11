@@ -1477,33 +1477,48 @@ void VST3Plugin::setTransportRecording(bool record){
     }
 }
 
-void VST3Plugin::setTransportAutomationWriting(bool writing){
-    if (writing){
-        automationState_ |= Vst::IAutomationState::kWriteState;
-    } else {
-        automationState_ &= ~Vst::IAutomationState::kWriteState;
-    }
-    updateAutomationState();
-}
-
-void VST3Plugin::setTransportAutomationReading(bool reading){
-    if (reading){
-        automationState_ |= Vst::IAutomationState::kReadState;
-    } else {
-        automationState_ &= ~Vst::IAutomationState::kReadState;
-    }
-    updateAutomationState();
-}
-
-void VST3Plugin::updateAutomationState(){
-    if (window_){
-        automationStateChanged_.store(true, std::memory_order_release);
-    } else {
-        FUnknownPtr<Vst::IAutomationState> automationState(controller_);
-        if (automationState){
-            automationState->setAutomationState(automationState_);
+void VST3Plugin::setTransportAutomationWriting(bool writing) {
+    auto oldstate = automationState_.load(std::memory_order_relaxed);
+    uint32_t newstate;
+    do {
+        if (writing) {
+            newstate = oldstate | Vst::IAutomationState::kWriteState;
+        } else {
+            newstate = oldstate & ~Vst::IAutomationState::kWriteState;
         }
-    }
+        // if no editor, set immediately
+        if (!window_) {
+            FUnknownPtr<Vst::IAutomationState> automationState(controller_);
+            if (automationState){
+                automationState->setAutomationState(newstate);
+            }
+            return;
+        }
+        // otherwise use CAS to notify UI thread
+        newstate |= kAutomationStateChanged;
+    } while (!automationState_.compare_exchange_weak(oldstate, newstate));
+}
+
+void VST3Plugin::setTransportAutomationReading(bool reading) {
+    auto oldstate = automationState_.load(std::memory_order_relaxed);
+    uint32_t newstate;
+    do {
+        if (reading) {
+            newstate = oldstate | Vst::IAutomationState::kReadState;
+        } else {
+            newstate = oldstate & ~Vst::IAutomationState::kReadState;
+        }
+        // if no editor, set immediately
+        if (!window_) {
+            FUnknownPtr<Vst::IAutomationState> automationState(controller_);
+            if (automationState){
+                automationState->setAutomationState(newstate);
+            }
+            return;
+        }
+        // otherwise use CAS to notify UI thread
+        newstate |= kAutomationStateChanged;
+    } while (!automationState_.compare_exchange_weak(oldstate, newstate));
 }
 
 void VST3Plugin::setTransportCycleActive(bool active){
@@ -2093,12 +2108,19 @@ void VST3Plugin::updateEditor(){
         controller_->setParamNormalized(p.id, p.value);
     }
     // automation state
-    if (automationStateChanged_.exchange(false, std::memory_order_acquire)){
-        FUnknownPtr<Vst::IAutomationState> automationState(controller_);
-        if (automationState){
-            LOG_DEBUG("update automation state");
-            automationState->setAutomationState(automationState_);
+    auto oldstate = automationState_.load(std::memory_order_relaxed);
+    while (oldstate & kAutomationStateChanged) {
+        uint32_t newstate = oldstate & ~kAutomationStateChanged; // clear bit
+        if (automationState_.compare_exchange_weak(oldstate, newstate)) {
+            // CAS succeeded
+            FUnknownPtr<Vst::IAutomationState> automationState(controller_);
+            if (automationState){
+                LOG_DEBUG("update automation state");
+                automationState->setAutomationState(newstate);
+            }
+            break;
         }
+        // try again; oldstate has been updated
     }
 }
 
