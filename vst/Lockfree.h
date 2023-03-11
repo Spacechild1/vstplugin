@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <atomic>
 #include <array>
+#include <memory>
 
 namespace vst {
 
@@ -69,6 +70,10 @@ struct Node {
 // the required dummy node is a class member and therefore doesn't have to be allocated
 // dynamically in the constructor. As a consequence, we need to be extra careful when
 // freeing the nodes in the destructor (we must not delete the dummy node!)
+// Multiple producers are synchronized with a simple spin lock.
+// NB: the free list *could* be atomic, but we would need to be extra careful to avoid
+// the ABA problem. (During a CAS loop the current node could be popped and pushed again,
+// so that the CAS would succeed even though the object has changed.)
 template<typename T, typename Alloc = std::allocator<T>>
 class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
     typedef typename Alloc::template rebind<Node<T>>::other Base;
@@ -91,7 +96,7 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
     // not thread-safe!
     void reserve(size_t n){
         // check for existing empty nodes
-        auto it = first_.load();
+        auto it = first_;
         auto end = devider_.load();
         while (it != end){
             n--;
@@ -102,7 +107,7 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
             auto node = Base::allocate(1);
             new (node) Node<T>();
             node->next_ = first_;
-            first_.store(node);
+            first_ = node;
         }
     }
 
@@ -112,9 +117,29 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
 
     template<typename... TArgs>
     void emplace(TArgs&&... args){
-        auto n = getNode();
-        n->data_ = T{std::forward<TArgs>(args)...};
-        pushNode(n);
+        Node<T>* node;
+        lock();
+        // try to reuse existing node
+        if (first_ != devider_.load(std::memory_order_relaxed)) {
+            node = first_;
+            first_ = first_->next_;
+            node->next_ = nullptr; // !
+        } else {
+            // allocate new node
+            unlock();
+            node = Base::allocate(1);
+            new (node) Node<T>();
+            lock();
+        }
+        // NB: we could release the lock while calling the constructor,
+        // but in practice we only use this queue with PODs, so we rather
+        // avoid some unnecessary atomic instructions.
+        node->data_ = T{std::forward<TArgs>(args)...};
+        // push node
+        auto last = last_.load(std::memory_order_relaxed);
+        last->next_ = node;
+        last_.store(node, std::memory_order_release); // publish
+        unlock();
     }
 
     bool pop(T& result){
@@ -155,48 +180,19 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
     }
 
     bool needRelease() const {
-        return first_.load(std::memory_order_relaxed)
-                != last_.load(std::memory_order_relaxed);
+        return first_ != last_.load(std::memory_order_relaxed);
     }
 
  private:
-    std::atomic<Node<T> *> first_;
+    Node<T>* first_;
     std::atomic<Node<T> *> devider_;
     std::atomic<Node<T> *> last_;
     std::atomic<int32_t> lock_{0};
     Node<T> dummy_; // optimization
 
-    Node<T>* getNode() {
-        for (;;){
-            auto first = first_.load(std::memory_order_relaxed);
-            if (first != devider_.load(std::memory_order_relaxed)){
-                // try to reuse existing node
-                if (first_.compare_exchange_weak(first, first->next_,
-                                                 std::memory_order_acq_rel))
-                {
-                    first->next_ = nullptr; // !
-                    return first;
-                }
-            } else {
-                // make new node
-                auto n = Base::allocate(1);
-                new (n) Node<T>();
-                return n;
-            }
-        }
-    }
-
-    void pushNode(Node<T>* n){
-        while (lock_.exchange(1, std::memory_order_acquire)) ; // lock
-        auto last = last_.load(std::memory_order_relaxed);
-        last->next_ = n;
-        last_.store(n, std::memory_order_release); // publish
-        lock_.store(0, std::memory_order_release); // unlock
-    }
-
     void freeMemory() {
         // only frees memory, doesn't reset pointers!
-        auto it = first_.load(std::memory_order_relaxed);
+        auto it = first_;
         while (it){
             auto next = it->next_;
             if (it != &dummy_) {
@@ -205,6 +201,14 @@ class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
             }
             it = next;
         }
+    }
+
+    void lock() {
+        while (lock_.exchange(1, std::memory_order_acquire)) ;
+    }
+
+    void unlock() {
+        lock_.store(0, std::memory_order_release);
     }
 };
 
