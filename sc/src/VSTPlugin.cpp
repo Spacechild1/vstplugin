@@ -103,8 +103,6 @@ bool CmdData::alive() const {
     auto b = owner->alive();
     if (!b) {
         LOG_WARNING("VSTPlugin freed during background task");
-        // see setOwner()
-        owner->doClose();
     }
     return b;
 }
@@ -1473,35 +1471,7 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 }
 
 VSTPluginDelegate::~VSTPluginDelegate() {
-    // The plugin should have already been closed by setOwner(nullptr) or CmdData::alive().
-#if 0
     assert(plugin_ == nullptr);
-#else
-    if (plugin_) {
-        // Let's be nice and release the plugin in a RT safe manner.
-        LOG_WARNING("VSTPluginDelegate: closing plugin in destructor");
-        // we must unset the listener, although this is not thread-safe.
-        plugin_->setListener(nullptr);
-        auto cmdData = CmdData::create<CloseCmdData>(world());
-        if (cmdData) {
-            cmdData->plugin = std::move(plugin_);
-            cmdData->editor = editor_;
-            // don't retain ourself!
-            DoAsynchronousCommand(world(), 0, 0, cmdData,
-                [](World *world, void* inData) {
-                auto data = (CloseCmdData*)inData;
-                // release plugin on the correct thread
-                defer([&](){
-                    data->plugin = nullptr;
-                }, data->editor);
-                return false; // done
-            }, nullptr, nullptr, cmdRTfree<CloseCmdData>, 0, 0);
-        } else {
-            // rather leak it than destroy it here
-            auto plugin = plugin_.release();
-        }
-    }
-#endif
 
     if (paramQueue_) {
         if (paramQueue_->needRelease()) {
@@ -1531,19 +1501,6 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
     if (owner) {
         // cache some members
         world_ = owner->mWorld;
-    } else {
-        // Schedule for closing, but keep delegate alive.
-        // This makes sure that we don't get deleted while
-        // the plugin sends an event, see doClose().
-        // NOTE that we can't do this while we have a pending
-        // command because it would create a race condition:
-        // doClose() immediately moves the plugin, but the
-        // command might try to access it in the NRT stage.
-        // Instead, the command will call alive(), which
-        // in turn will schedule a close command.
-        if (!isSuspended()){
-            doClose();
-        }
     }
     owner_ = owner;
 }
@@ -1683,8 +1640,7 @@ void VSTPluginDelegate::doClose(){
         // we must not unset the listener in the audio thread,
         // otherwise we have a race condition.
         // Instead, we keep the delegate alive until the plugin
-        // has been closed.
-        // See setOwner(), alive() and ~VSTPluginDelegate().
+        // has been closed. See VSTPluginDelegate::release()
     #if 0
         data->plugin->setListener(nullptr);
     #endif
@@ -2648,9 +2604,15 @@ void VSTPluginDelegate::release() {
     assert(count >= 1);
     if (count == 1) {
         // last reference
-        auto world = world_;
-        this->~VSTPluginDelegate();
-        RTFree(world, this);
+        if (plugin_) {
+            // close plugin and defer deletion.
+            // (doClose() will increment the refcount again)
+            doClose();
+        } else {
+            auto world = world_;
+            this->~VSTPluginDelegate();
+            RTFree(world, this);
+        }
     }
 }
 
