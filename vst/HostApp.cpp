@@ -487,7 +487,7 @@ class WineHostApp : public HostApp {
 
     ProcessHandle probe(const std::string& pluginPath, int id,
                         const std::string& tmpPath) const override {
-        auto wine = getWineCommand();
+        auto wine = wineCmd();
         // turn id into hex string
         char idString[12];
         if (id >= 0){
@@ -496,23 +496,34 @@ class WineHostApp : public HostApp {
             sprintf(idString, "_");
         }
         // arguments: wine <host_path> probe <plugin_path> <plugin_id> <file_path>
-        return createProcess<PROBE_LOG>(wine, wine, path_.c_str(), "probe",
+        return createProcess<PROBE_LOG>(wine.c_str(), wine.c_str(), path_.c_str(), "probe",
                                         pluginPath.c_str(), idString, tmpPath.c_str());
     }
 
     ProcessHandle bridge(const std::string& shmPath, intptr_t logPipe) const override {
-        auto wine = getWineCommand();
+        auto wine = wineCmd();
         auto parent = std::to_string(getpid());
         auto pipe = std::to_string(static_cast<int>(logPipe));
         // arguments: wine <host_path> bridge <parent_pid> <shm_path>
-        return createProcess<BRIDGE_LOG>(wine, wine, path_.c_str(), "bridge",
+        return createProcess<BRIDGE_LOG>(wine.c_str(), wine.c_str(), path_.c_str(), "bridge",
                                          parent.c_str(), shmPath.c_str(), pipe.c_str());
     }
 
     bool test() const override {
         std::stringstream ss;
         ss << "\"" << path_ << "\"";
-        return doTest(getWineCommand(), ss.str());
+        return doTest(wineCmd(), ss.str());
+    }
+
+    std::string wineCmd() const {
+        std::string cmd = getWineCommand();
+        if (arch_ == CpuArch::pe_amd64) {
+            // Use wine64 loader! Otherwise our process would get reparented to
+            // init or systemd on certain Wine versions (e.g. WineHQ 8)
+            return cmd + "64";
+        } else {
+            return cmd;
+        }
     }
 };
 #endif

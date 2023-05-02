@@ -772,6 +772,7 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
     }
 #else
     parent_ = pid;
+    LOG_DEBUG("PluginServer: self: " << getpid() << ", parent: " << getppid());
 #endif
     shm_ = std::make_unique<ShmInterface>();
     shm_->connect(shmPath);
