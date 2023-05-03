@@ -133,7 +133,7 @@ void VST2Factory::doLoad(){
     }
 }
 
-IPlugin::ptr VST2Factory::create(const std::string &name) const {
+IPlugin::ptr VST2Factory::create(const std::string &name, bool editor) const {
     const_cast<VST2Factory *>(this)->doLoad(); // lazy loading
 
     if (plugins_.empty()){
@@ -148,7 +148,7 @@ IPlugin::ptr VST2Factory::create(const std::string &name) const {
     // set (global) current plugin ID (used in hostCallback)
     shellPluginID = desc->getUniqueID();
 
-    return doCreate(desc);
+    return doCreate(desc, editor);
 }
 
 PluginDesc::const_ptr VST2Factory::probePlugin(int id) const {
@@ -160,10 +160,10 @@ PluginDesc::const_ptr VST2Factory::probePlugin(int id) const {
         shellPluginID = 0;
     }
 
-    return doCreate(nullptr)->getInfo();
+    return doCreate(nullptr, false)->getInfo();
 }
 
-std::unique_ptr<VST2Plugin> VST2Factory::doCreate(PluginDesc::const_ptr desc) const {
+std::unique_ptr<VST2Plugin> VST2Factory::doCreate(PluginDesc::const_ptr desc, bool editor) const {
     AEffect *plugin = entry_(&VST2Plugin::hostCallback);
     shellPluginID = 0; // just to be sure
 
@@ -173,7 +173,7 @@ std::unique_ptr<VST2Plugin> VST2Factory::doCreate(PluginDesc::const_ptr desc) co
     if (plugin->magic != kEffectMagic){
         throw Error(Error::PluginError, "not a valid VST2.x plugin!");
     }
-    return std::make_unique<VST2Plugin>(plugin, shared_from_this(), desc);
+    return std::make_unique<VST2Plugin>(plugin, shared_from_this(), desc, editor);
 }
 
 
@@ -182,7 +182,7 @@ std::unique_ptr<VST2Plugin> VST2Factory::doCreate(PluginDesc::const_ptr desc) co
 // initial size of VstEvents queue (can grow later as needed)
 #define DEFAULT_EVENT_QUEUE_SIZE 64
 
-VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const_ptr desc)
+VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const_ptr desc, bool editor)
     : plugin_(plugin), info_(std::move(desc)), factory_(std::move(f))
 {
     plugin_->user = this;
@@ -273,6 +273,10 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
         info_ = info;
     }
     haveBypass_ = hasBypass(); // cache for performance
+
+    if (editor && hasEditor()) {
+        window_ = IWindow::create(*this);
+    }
 }
 
 VST2Plugin::~VST2Plugin(){

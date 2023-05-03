@@ -204,7 +204,7 @@ void VST3Factory::doLoad(){
     }
 }
 
-std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name) const {
+std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name, bool editor) const {
     const_cast<VST3Factory *>(this)->doLoad(); // lazy loading
 
     if (plugins_.empty()){
@@ -223,7 +223,7 @@ std::unique_ptr<IPlugin> VST3Factory::create(const std::string& name) const {
     }
     auto index = it2->second;
 
-    return std::make_unique<VST3Plugin>(factory_, index, shared_from_this(), desc);
+    return std::make_unique<VST3Plugin>(factory_, index, shared_from_this(), desc, editor);
 }
 
 PluginDesc::const_ptr VST3Factory::probePlugin(int id) const {
@@ -245,7 +245,7 @@ PluginDesc::const_ptr VST3Factory::probePlugin(int id) const {
         }
     }
     // create (sub)plugin
-    auto plugin = std::make_unique<VST3Plugin>(factory_, id, shared_from_this(), nullptr);
+    auto plugin = std::make_unique<VST3Plugin>(factory_, id, shared_from_this(), nullptr, false);
     return plugin->getInfo();
 }
 
@@ -394,7 +394,8 @@ inline IPtr<T> createInstance (IPtr<IPluginFactory> factory, TUID iid){
     }
 }
 
-VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginDesc::const_ptr desc)
+VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f,
+                       PluginDesc::const_ptr desc, bool editor)
     : info_(std::move(desc)), factory_(std::move(f))
 {
     memset(&context_, 0, sizeof(context_));
@@ -501,7 +502,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
 
     // finally set remaining info
-    if (info){
+    if (info) {
         info->setUID(uid);
         // vendor name (if still empty)
         if (info->vendor.empty()){
@@ -689,6 +690,11 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         LOG_DEBUG("IProcessContextRequirements not supported");
     }
 #endif
+
+    // NB: don't call hasEditor() because it would create the plugin view!
+    if (editor && info_->editor()) {
+        window_ = IWindow::create(*this);
+    }
 }
 
 VST3Plugin::~VST3Plugin(){

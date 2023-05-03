@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cstdint>
+#include "Interface.h"
+
 #include <sstream>
 
 // log level: 0 (error), 1 (warning), 2 (verbose), 3 (debug)

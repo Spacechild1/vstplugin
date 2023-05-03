@@ -119,9 +119,6 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     bool canResize() const override {
         return plugin_->canResize();
     }
-    void setWindow(IWindow::ptr window) override {
-        plugin_->setWindow(std::move(window));
-    }
     IWindow *getWindow() const override {
         return plugin_->getWindow();
     }

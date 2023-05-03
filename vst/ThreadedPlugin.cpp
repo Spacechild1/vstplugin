@@ -139,7 +139,7 @@ void DSPThreadPool::run(int index) {
 
 /*////////////////////// ThreadedPlugin ///////////////////////*/
 
-IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin){
+IPlugin::ptr createThreadedPlugin(IPlugin::ptr plugin){
     return std::make_unique<ThreadedPlugin>(std::move(plugin));
 }
 

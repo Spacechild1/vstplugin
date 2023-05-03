@@ -249,7 +249,6 @@ class IPlugin {
     virtual void resizeEditor(int width, int height) = 0;
     virtual bool canResize() const = 0;
 
-    virtual void setWindow(std::unique_ptr<IWindow> window) = 0;
     virtual IWindow* getWindow() const = 0;
 
     // VST2 only
@@ -366,7 +365,7 @@ class IFactory {
     virtual CpuArch arch() const = 0;
     // create a new plugin instance
     // throws an Error on failure!
-    virtual IPlugin::ptr create(const std::string& name) const = 0;
+    virtual IPlugin::ptr create(const std::string& name, bool editor) const = 0;
 };
 
 class FactoryFuture {

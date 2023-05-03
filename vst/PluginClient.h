@@ -13,7 +13,7 @@ namespace vst {
 
 class PluginClient final : public DeferredPlugin {
  public:
-    PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bool sandbox);
+    PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bool sandbox, bool editor);
     virtual ~PluginClient();
 
     const PluginDesc& info() const override {
@@ -78,10 +78,6 @@ class PluginClient final : public DeferredPlugin {
     void checkEditorSize(int& width, int& height) const override;
     void resizeEditor(int width, int height) override;
     bool canResize() const override;
-
-    void setWindow(std::unique_ptr<IWindow> window) override {
-        window_ = std::move(window);
-    }
 
     IWindow* getWindow() const override {
         return window_.get();

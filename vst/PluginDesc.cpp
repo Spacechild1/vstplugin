@@ -131,12 +131,12 @@ CpuArch PluginDesc::arch() const {
 }
 
 // ThreadedPlugin.cpp
-IPlugin::ptr makeThreadedPlugin(IPlugin::ptr plugin);
+IPlugin::ptr createThreadedPlugin(IPlugin::ptr plugin);
 
 #if USE_BRIDGE
 // PluginClient.cpp
-IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
-                               bool editor, bool sandbox);
+IPlugin::ptr createBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
+                                 bool editor, bool sandbox);
 #endif
 
 IPlugin::ptr PluginDesc::create(bool editor, bool threaded, RunMode mode) const {
@@ -148,20 +148,14 @@ IPlugin::ptr PluginDesc::create(bool editor, bool threaded, RunMode mode) const 
 #if USE_BRIDGE
     if ((mode == RunMode::Bridge) || (mode == RunMode::Sandbox) ||
             ((mode == RunMode::Auto) && bridged())){
-        plugin = makeBridgedPlugin(factory, name, editor, mode == RunMode::Sandbox);
+        plugin = createBridgedPlugin(factory, name, editor, mode == RunMode::Sandbox);
     }
     else
 #endif
-    {
-        plugin = factory->create(name);
-        if (editor && plugin->info().editor()){
-            auto window = IWindow::create(*plugin);
-            plugin->setWindow(std::move(window));
-        }
-    }
+    plugin = factory->create(name, editor);
 
     if (threaded){
-        plugin = makeThreadedPlugin(std::move(plugin));
+        plugin = createThreadedPlugin(std::move(plugin));
     }
 
     return plugin;

@@ -238,7 +238,7 @@ class VST3Factory final : public PluginFactory {
     // probe a single plugin
     PluginDesc::const_ptr probePlugin(int id) const override;
     // create a new plugin instance
-    IPlugin::ptr create(const std::string& name) const override;
+    IPlugin::ptr create(const std::string& name, bool editor) const override;
  private:
     void doLoad();
     IPtr<IPluginFactory> factory_;
@@ -366,7 +366,8 @@ class VST3Plugin final :
     #endif
 {
  public:
-    VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f, PluginDesc::const_ptr desc);
+    VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_ptr f,
+               PluginDesc::const_ptr desc, bool editor);
     ~VST3Plugin();
 
     tresult PLUGIN_API queryInterface (const TUID _iid, void** obj) override {
@@ -471,9 +472,6 @@ class VST3Plugin final :
     void resizeEditor(int width, int height) override;
     bool canResize() const override;
 
-    void setWindow(IWindow::ptr window) override {
-        window_ = std::move(window);
-    }
     IWindow *getWindow() const override {
         return window_.get();
     }

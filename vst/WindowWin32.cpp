@@ -98,8 +98,12 @@ DWORD EventLoop::run(void *user){
 
     MSG msg;
     DWORD ret;
-    while ((ret = GetMessage(&msg, NULL, 0, 0)) > 0){
-        // LOG_DEBUG("dispatch message " << msg.message);
+    while ((ret = GetMessage(&msg, NULL, 0, 0)) > 0) {
+#if 0
+        if (!(msg.hwnd == hwnd && msg.message == WM_TIMER)) {
+            LOG_DEBUG("dispatch message " << msg.message);
+        }
+#endif
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }

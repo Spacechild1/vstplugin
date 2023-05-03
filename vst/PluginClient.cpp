@@ -22,22 +22,18 @@ namespace vst {
 
 #define UNSUPPORTED_METHOD(name) LOG_WARNING(name "() not supported with bit bridging/sandboxing");
 
-IPlugin::ptr makeBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
-                               bool editor, bool sandbox)
+IPlugin::ptr createBridgedPlugin(IFactory::const_ptr factory, const std::string& name,
+                                 bool editor, bool sandbox)
 {
     auto info = factory->findPlugin(name); // should never fail
     if (!info){
         throw Error(Error::PluginError, "couldn't find subplugin");
     }
-    auto plugin = std::make_unique<PluginClient>(factory, info, sandbox);
-    if (editor){
-        auto window = std::make_unique<WindowClient>(*plugin);
-        plugin->setWindow(std::move(window));
-    }
-    return std::move(plugin); // Clang bug
+    return std::make_unique<PluginClient>(factory, info, sandbox, editor);
 }
 
-PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bool sandbox)
+PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc,
+                           bool sandbox, bool editor)
     : factory_(std::move(f)), info_(std::move(desc))
 {
     static std::atomic<uint32_t> nextID{0};
@@ -114,6 +110,10 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bo
     const ShmCommand *reply;
     while (chn.getReply(reply)){
         dispatchReply(*reply);
+    }
+
+    if (editor && info_->editor()) {
+        window_ = std::make_unique<WindowClient>(*this);
     }
 
     LOG_DEBUG("PluginClient (" << id_ << "): done!");
