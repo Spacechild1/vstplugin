@@ -85,9 +85,13 @@ void * getModuleHandle();
 #if USE_WINE
 const char * getWineCommand();
 
+const char * getWine64Command();
+
 const char * getWineFolder();
 
 bool haveWine();
+
+bool haveWine64();
 #endif
 
 int getCurrentProcessId();

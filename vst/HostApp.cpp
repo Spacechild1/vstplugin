@@ -496,7 +496,7 @@ class WineHostApp : public HostApp {
             sprintf(idString, "_");
         }
         // arguments: wine <host_path> probe <plugin_path> <plugin_id> <file_path>
-        return createProcess<PROBE_LOG>(wine.c_str(), wine.c_str(), path_.c_str(), "probe",
+        return createProcess<PROBE_LOG>(wine, wine, path_.c_str(), "probe",
                                         pluginPath.c_str(), idString, tmpPath.c_str());
     }
 
@@ -505,7 +505,7 @@ class WineHostApp : public HostApp {
         auto parent = std::to_string(getpid());
         auto pipe = std::to_string(static_cast<int>(logPipe));
         // arguments: wine <host_path> bridge <parent_pid> <shm_path>
-        return createProcess<BRIDGE_LOG>(wine.c_str(), wine.c_str(), path_.c_str(), "bridge",
+        return createProcess<BRIDGE_LOG>(wine, wine, path_.c_str(), "bridge",
                                          parent.c_str(), shmPath.c_str(), pipe.c_str());
     }
 
@@ -515,14 +515,11 @@ class WineHostApp : public HostApp {
         return doTest(wineCmd(), ss.str());
     }
 
-    std::string wineCmd() const {
-        std::string cmd = getWineCommand();
+    const char * wineCmd() const {
         if (arch_ == CpuArch::pe_amd64) {
-            // Use wine64 loader! Otherwise our process would get reparented to
-            // init or systemd on certain Wine versions (e.g. WineHQ 8)
-            return cmd + "64";
+            return getWine64Command();
         } else {
-            return cmd;
+            return getWineCommand();
         }
     }
 };
@@ -564,7 +561,14 @@ IHostApp* IHostApp::get(CpuArch arch) {
 
 #if USE_WINE
     bool isWine = false;
-    if (arch == CpuArch::pe_i386 || arch == CpuArch::pe_amd64){
+    if (arch == CpuArch::pe_amd64) {
+        // check if the 'wine64' command can be found and works.
+        if (!haveWine64()){
+            gHostAppDict[arch] = nullptr;
+            return nullptr;
+        }
+        isWine = true;
+    } else if (arch == CpuArch::pe_i386) {
         // check if the 'wine' command can be found and works.
         if (!haveWine()){
             gHostAppDict[arch] = nullptr;

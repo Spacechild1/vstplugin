@@ -357,7 +357,55 @@ const char * getWineCommand(){
     // users can override the 'wine' command with the
     // 'WINELOADER' environment variable
     const char *cmd = getenv("WINELOADER");
-    return cmd ? cmd : "wine";
+    if (cmd) {
+        LOG_DEBUG("WINELOADER = " << cmd);
+        return cmd;
+    } else {
+        return "wine";
+    }
+}
+
+const char * getWine64Command(){
+    static auto cmd = []() -> std::string {
+        auto commandExists = [](const std::string& cmd) {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "which %s > /dev/null 2>&1", cmd.c_str());
+            return system(buf) == 0;
+        };
+        // users can override the 'wine' command with the
+        // 'WINELOADER' environment variable
+        const char *cmd = getenv("WINELOADER");
+        if (cmd) {
+            LOG_DEBUG("WINELOADER = " << cmd);
+            // try 64-bit variant
+            auto wine64 = std::string(cmd) + "64";
+            if (commandExists(wine64)) {
+                return wine64;
+            } else {
+                return cmd;
+            }
+        } else {
+            // Some wine distros don't have wine64 in their path.
+            // Instead, 'wine' is just a shell script that redirects
+            // to the actual 'wine' resp. 'wine64' binaries, e.g. in
+            // /usr/lib/wine. The script may default to 'wine' because
+            // the latter can actually handle both 64-bit and 32-bit apps,
+            // However, this 'wine' launcher may need to fork a new process,
+            // leading our watchdog to think that our subprocess has terminated!
+            // That's why we try to find the actual 'wine64' loader.
+            std::string wine64 = "wine64";
+            if (commandExists(wine64)) {
+                return wine64;
+            }
+            wine64 = "/usr/lib/wine/wine64";
+            if (commandExists(wine64)) {
+                return wine64;
+            }
+            LOG_WARNING("Could not find 'wine64' command");
+            return "wine"; // fallback
+        }
+    }();
+    return cmd.c_str();
 }
 
 const char * getWineFolder(){
@@ -367,27 +415,34 @@ const char * getWineFolder(){
     return prefix ? prefix : "~/.wine";
 }
 
+static bool testWine(const char *cmd) {
+    try {
+        // we pass valid arguments, so the exit code should be 0.
+        auto code = runCommand(cmd, "--version");
+        if (code == EXIT_SUCCESS){
+            LOG_DEBUG("'" << cmd << "' command is working");
+            return true; // success
+        } else if (code == EXIT_FAILURE) {
+            LOG_VERBOSE("'" << cmd << "' command failed or not available");
+        } else {
+            LOG_ERROR("'" << cmd << "' command failed with exit code " << code);
+        }
+    } catch (const Error& e) {
+        LOG_ERROR("'" << cmd << "' command failed :" << e.what());
+    }
+    return false;
+}
+
 bool haveWine(){
     // we only need to do this once!
-    static bool _haveWine = [](){
-        auto winecmd = getWineCommand();
-        try {
-            // we pass valid arguments, so the exit code should be 0.
-            auto code = runCommand(winecmd, "--version");
-            if (code == EXIT_SUCCESS){
-                LOG_DEBUG("'" << winecmd << "' command is working");
-                return true; // success
-            } else if (code == EXIT_FAILURE) {
-                LOG_VERBOSE("'" << winecmd << "' command failed or not available");
-            } else {
-                LOG_ERROR("'" << winecmd << "' command failed with exit code " << code);
-            }
-        } catch (const Error& e) {
-            LOG_ERROR("'" << winecmd << "' command failed :" << e.what());
-        }
-        return false;
-    }();
-    return _haveWine;
+    static bool result = testWine(getWineCommand());
+    return result;
+}
+
+bool haveWine64(){
+    // we only need to do this once!
+    static bool result = testWine(getWine64Command());
+    return result;
 }
 
 #endif
