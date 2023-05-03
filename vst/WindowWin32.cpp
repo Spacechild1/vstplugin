@@ -90,7 +90,7 @@ DWORD EventLoop::run(void *user){
     );
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)obj);
     obj->hwnd_ = hwnd;
-    obj->notify();
+    obj->event_.set(); // notify constructor
     LOG_DEBUG("Win32: start message loop");
 
     // setup timer
@@ -128,17 +128,11 @@ LRESULT WINAPI EventLoop::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         // LOG_DEBUG("WM_CALL");
         auto cb = (UIThread::Callback)wParam;
         auto data = (void *)lParam;
-        cb(data);
-        return true;
-    }
-    case WM_SYNC:
-        // LOG_DEBUG("WM_SYNC");
-        if (obj){
-            obj->notify();
-        } else {
-            LOG_ERROR("Win32: bug GetWindowLongPtr");
+        if (cb) {
+            cb(data);
         }
         return true;
+    }
     case WM_TIMER:
         // LOG_DEBUG("WM_TIMER");
         if (obj){
@@ -285,12 +279,16 @@ bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
     return PostMessage(hwnd_, msg, (WPARAM)data1, (LPARAM)data2);
 }
 
+bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
+    return SendMessage(hwnd_, msg, (WPARAM)data1, (LPARAM)data2);
+}
+
 bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
         return true;
     } else {
-        return postMessage(WM_CALL, (void *)cb, (void *)user);
+        return postMessage(WM_CALL, (void *)cb, user);
     }
 }
 
@@ -299,12 +297,8 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
         cb(user);
         return true;
     } else {
-        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
-        if (postMessage(WM_CALL, (void *)cb, (void *)user)
-                && postMessage(WM_SYNC))
-        {
-            LOG_DEBUG("Win32: waiting...");
-            event_.wait();
+        LOG_DEBUG("Win32: waiting...");
+        if (sendMessage(WM_CALL, (void *)cb, user)){
             LOG_DEBUG("Win32: done");
             return true;
         } else {
@@ -317,10 +311,8 @@ bool EventLoop::sync(){
     if (UIThread::isCurrentThread()){
         return true;
     } else {
-        std::lock_guard<std::mutex> lock(mutex_); // prevent concurrent calls
-        if (postMessage(WM_SYNC)){
-            LOG_DEBUG("Win32: waiting...");
-            event_.wait();
+        LOG_DEBUG("Win32: waiting...");
+        if (sendMessage(WM_CALL)){
             LOG_DEBUG("Win32: done");
             return true;
         } else {
@@ -340,10 +332,6 @@ UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
 void EventLoop::removePollFunction(UIThread::Handle handle){
     std::lock_guard<std::mutex> lock(pollFunctionMutex_);
     pollFunctions_.erase(handle);
-}
-
-void EventLoop::notify(){
-    event_.set();
 }
 
 void EventLoop::timer(UINT_PTR id) {

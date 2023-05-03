@@ -15,12 +15,11 @@ namespace vst {
 namespace Win32 {
 
 enum Message {
-    WM_CALL = WM_APP + 2867,
-    WM_SYNC
+    WM_CALL = WM_APP + 2867
 };
 
 class EventLoop {
- public:
+public:
     static const int updateInterval = 30;
 
     static EventLoop& instance();
@@ -29,25 +28,24 @@ class EventLoop {
     ~EventLoop();
 
     bool sync();
-    bool callAsync(UIThread::Callback cb, void *user); // blocking
+    bool callAsync(UIThread::Callback cb, void *user);
     bool callSync(UIThread::Callback cb, void *user);
 
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
     void removePollFunction(UIThread::Handle handle);
 
     bool checkThread();
- private:
+private:
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
+    bool sendMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // blocking
 
     static DWORD WINAPI run(void *user);
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-    void notify();
     void timer(UINT_PTR id);
     HANDLE thread_ = NULL;
     DWORD threadID_ = 0;
     HWND hwnd_ = NULL;
-    std::mutex mutex_;
-    SyncCondition event_;
+    SyncCondition event_; // for message loop creation
 
     UIThread::Handle nextPollFunctionHandle_ = 0;
     std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
@@ -55,7 +53,7 @@ class EventLoop {
 };
 
 class Window : public IWindow {
- public:
+public:
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
     Window(IPlugin& plugin);
@@ -68,7 +66,7 @@ class Window : public IWindow {
 
     void resize(int w, int h) override;
     void update() override;
- private:
+private:
     void doOpen();
     void doClose();
     void saveCurrentPosition();
