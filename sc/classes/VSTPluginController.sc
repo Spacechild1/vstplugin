@@ -46,7 +46,9 @@ VSTPluginController {
 			hasGate = ~hasGate ? true;
 			midicmd = ~midicmd;
 			sel = (midicmd ++ "Msg").asSymbol;
-			bndl = ~midiEventFunctions[midicmd].valueEnvir.asCollection.flop;
+			// NB: asControlInput resolves unwanted Rests in arrays, otherwise sendMidiMsg()
+			// would throw an error when trying to build the Int8Array.
+			bndl = ~midiEventFunctions[midicmd].valueEnvir.asCollection.asControlInput.flop;
 			bndl = bndl.collect({ arg args;
 				vst.performList(sel, args);
 			});
@@ -60,7 +62,7 @@ VSTPluginController {
 			};
 
 			if (hasGate and: { midicmd === \noteOn }) {
-				noteoffs = ~midiEventFunctions[\noteOff].valueEnvir.asCollection.flop;
+				noteoffs = ~midiEventFunctions[\noteOff].valueEnvir.asCollection.asControlInput.flop;
 				noteoffs = noteoffs.collect({ arg args;
 					vst.noteOffMsg(*args);
 				});
@@ -99,7 +101,8 @@ VSTPluginController {
 				params = vst.info.parameters.collect { arg p; p.name.asSymbol };
 			};
 			bndl = getParams.(params).flop.collect { arg params;
-				vst.value.setMsg(*params);
+				// NB: asOSCArgArray helps to resolve unwanted Rests
+				vst.setMsg(*params).asOSCArgArray;
 			};
 			~schedBundleArray.value(~lag, ~timingOffset, server, bndl, ~latency);
 		});
