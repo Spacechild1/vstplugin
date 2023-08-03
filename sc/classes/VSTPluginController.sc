@@ -264,15 +264,12 @@ VSTPluginController {
 		this.changed(\free);
 	}
 	prCheckPlugin { arg method;
-		this.loaded.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
+		this.isOpen.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
 	}
 	prCheckLocal { arg method;
 		synth.server.isLocal.not.if {
 			MethodError("'%' only works with a local Server".format(method.name), this).throw;
 		}
-	}
-	loaded {
-		^this.info.notNil;
 	}
 	editor { arg show=true;
 		window.if { this.sendMsg('/vis', show.asInteger); }
@@ -400,6 +397,13 @@ VSTPluginController {
 		^this.makeMsg('/open', path.asString.standardizePath,
 			editor.asInteger, multiThreading.asInteger, intMode);
 	}
+	isOpen {
+		^this.info.notNil;
+	}
+	// deprecated in favor of isOpen
+	loaded {
+		^this.isOpen;
+	}
 	prClear {
 		info !? { info.removeDependant(this) };
 		window = false; latency = nil; info = nil;
@@ -410,7 +414,7 @@ VSTPluginController {
 	addDependant { arg dependant;
 		super.addDependant(dependant);
 		// query after adding dependant!
-		this.loaded.if {
+		this.isOpen.if {
 			needQueryParams.if { this.prQueryParams };
 			needQueryPrograms.if { this.prQueryPrograms };
 		};

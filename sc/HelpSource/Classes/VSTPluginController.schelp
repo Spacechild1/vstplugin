@@ -491,6 +491,9 @@ select a run mode.
 
 RETURNS:: the message for an emphasis::open:: command (see link::#-open::).
 
+METHOD:: isOpen
+returns:: whether a plugin is currently open.
+
 METHOD:: close
 METHOD:: closeMsg
 close the current plugin (but don't free the Synth!). You can open another plugin later.
@@ -546,9 +549,6 @@ RETURNS:: a new link::Classes/VSTPluginGui:: instance.
 
 METHOD:: info
 returns:: the (static) plugin description (see link::Classes/VSTPluginDesc::).
-
-METHOD:: loaded
-returns:: whether a plugin is currently loaded.
 
 METHOD:: latency
 returns:: the current processing latency in samples.
