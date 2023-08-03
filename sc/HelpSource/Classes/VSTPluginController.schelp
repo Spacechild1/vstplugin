@@ -453,7 +453,9 @@ ARGUMENT:: verbose
 post the plugin info to the console if loaded successfully.
 
 ARGUMENT:: action
-an action to be called with code::this:: and a Boolean (success/fail).
+a function that will be called with the object itself and a Boolean (success/fail) when the operation has completed.
+
+note::You must not use link::Classes/Server#-sync:: to wait for completion! If you prefer to write sequential code instead of callbacks, you may use a link::Classes/Condition:: resp. link::Classes/CondVar:: and signal it from the action function.::
 
 ARGUMENT:: multiThreading
 process the plugin in a seperate worker thread to utilize more CPU cores.
@@ -472,6 +474,7 @@ See also link::Classes/VSTPlugin#Bridging and Sandboxing::.
 
 DISCUSSION::
 This method is realtime-safe because the VST plugin is opened asynchronously (in the NRT thread).
+
 
 METHOD:: openMsg
 
@@ -705,7 +708,7 @@ ARGUMENT:: index
 the index/name of the parameter.
 
 ARGUMENT:: action
-an action to be evaluated with the value passed as an argument.
+a function that will receive the requested value.
 
 discussion::
 code::
@@ -725,7 +728,7 @@ ARGUMENT:: count
 the number of sequential parameter values. -1 will return all parameters starting from emphasis::index::.
 
 ARGUMENT:: action
-an action be evaluated with the values passed as an Array.
+a function that will receive the requested values as an Array.
 
 discussion::
 code::
@@ -790,7 +793,7 @@ You can create a new preset by passing a non-existing preset name to code::saveP
 
 ARGUMENT:: action
 
-an action which is called with code::this:: and a Boolean (success/fail).
+a function that will be called with the object itself and a Boolean (success/fail) when the operation has completed.
 
 ARGUMENT:: async
 
@@ -853,7 +856,7 @@ The file extension is arbitrary but it is good practice to use emphasis::.fxp:: 
 
 ARGUMENT:: action
 
-an action to be called with code::this:: and a Boolean (success/fail).
+a function that will be called with the object itself and a Boolean (success/fail) when the operation has completed.
 
 ARGUMENT:: async
 
@@ -910,7 +913,7 @@ ARGUMENT:: data
 the raw plugin data.
 
 ARGUMENT:: action
-an action to be called with code::this:: and a Boolean (success/fail).
+a function that will be called with the object itself and a Boolean (success/fail) when the operation has completed.
 
 ARGUMENT:: async
 where to perform the plugin method, see link::#Realtime Safety::.
@@ -921,7 +924,7 @@ METHOD:: getBankData
 get the current program/bank state as an link::Classes/Int8Array::.
 
 ARGUMENT:: action
-an action to pass the data - or code::nil:: if the method failed.
+a function that will receive the data - or code::nil:: if the method failed.
 
 ARGUMENT:: async
 see above.
@@ -942,7 +945,7 @@ ARGUMENT:: wait
 temporarily overwrites link::#-wait:: if not code::nil::.
 
 ARGUMENT:: action
-an action to be called with code::this:: and a Boolean (success/fail).
+a function that will be called with the object itself and a Boolean (success/fail) when the operation has completed.
 
 ARGUMENT:: async
 where to perform the plugin method, see link::#Realtime Safety::.
@@ -959,7 +962,7 @@ ARGUMENT:: timeout
 the number of seconds to wait before giving up.
 
 ARGUMENT:: action
-an action to pass the data.
+a function that will receive the data.
 
 ARGUMENT:: async
 see above.
@@ -1025,7 +1028,7 @@ METHOD:: getTransportPos
 get the current transport position (in quarter notes).
 
 ARGUMENT:: action
-will be called with current transport position.
+a function that will receive current transport position.
 
 subsection:: VST2 only
 
@@ -1037,7 +1040,7 @@ ARGUMENT:: what
 a string describing the capability. Some of these are documented in the VST SDK, but others are not.
 
 ARGUMENT:: action
-will be called with an Integer result.
+a function that will be called with an Integer result.
 table::
 ## 1 || yes
 ## -1 || no
@@ -1058,7 +1061,7 @@ ARGUMENT:: opt
 a Float.
 
 ARGUMENT:: action
-will be called with an Integer result. The meaning depends on the VST plugin.
+a function that will be called with an Integer result. The meaning depends on the VST plugin.
 
 ARGUMENT:: async
 see link::#Realtime Safety::.
