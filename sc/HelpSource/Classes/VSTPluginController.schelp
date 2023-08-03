@@ -285,7 +285,9 @@ table::
 ## code::\vst:: || the VSTPluginController instance
 ## code::\midicmd:: || the MIDI method (see below)
 ## code::\chan:: || the MIDI channel; the default is 0
-## code::\midinote:: || MIDI pitch for code::\noteOn::, code::\noteOff:: and code::\polyTouch::
+## code::\midinote:: || MIDI pitch for code::\noteOn::, code::\noteOff:: and code::\polyTouch::;
+
+	may be a fractional value (= microtonal), see link::Classes/VSTPluginMIDIProxy#-noteOn::.
 ## code::\amp:: || amplitude (0.0 - 1.0) for code::\noteOn:: and code::\noteOff::
 ## code::\ctlNum:: || CC number for code::\control::
 ## code::\control:: || CC value for code::\control::

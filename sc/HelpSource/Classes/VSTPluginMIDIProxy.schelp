@@ -1,6 +1,6 @@
 TITLE:: VSTPluginMIDIProxy
 summary:: MIDI interface for VSTPluginController
-categories:: Server->Abstractions
+categories:: Server>Abstractions
 related:: Classes/VSTPluginController, Classes/VSTPlugin
 
 DESCRIPTION::
