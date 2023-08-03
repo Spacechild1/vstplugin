@@ -239,6 +239,14 @@ static void writeCacheFile(){
     }
 }
 
+static PluginDictionary& getPluginDict() {
+    static bool once = []() {
+        readCacheFile();
+        return true;
+    }();
+    return gPluginDict;
+}
+
 // VST2: plug-in name
 // VST3: plug-in name + ".vst3"
 static std::string makeKey(const PluginDesc& desc) {
@@ -260,12 +268,13 @@ void serializePlugin(std::ostream& os, const PluginDesc& desc) {
 
 static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     IFactory::ptr factory;
+    auto& dict = getPluginDict();
 
-    if (gPluginDict.findFactory(path)) {
+    if (dict.findFactory(path)) {
         LOG_ERROR("bug in 'loadFactory'");
         return nullptr;
     }
-    if (gPluginDict.isException(path)) {
+    if (dict.isException(path)) {
         if (verbose) {
             Print("'%s' is black-listed.\n", path.c_str());
         }
@@ -277,7 +286,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     } catch (const Error& e){
         // always print error
         LOG_ERROR("couldn't load '" << path << "': " << e.what());
-        gPluginDict.addException(path);
+        dict.addException(path);
         return nullptr;
     }
 
@@ -285,20 +294,21 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
 }
 
 static void addFactory(const std::string& path, IFactory::ptr factory){
+    auto& dict = getPluginDict();
     if (factory->numPlugins() == 1) {
         auto plugin = factory->getPlugin(0);
         // factories with a single plugin can also be aliased by their file path(s)
-        gPluginDict.addPlugin(plugin->path(), plugin);
-        gPluginDict.addPlugin(path, plugin);
+        dict.addPlugin(plugin->path(), plugin);
+        dict.addPlugin(path, plugin);
     }
-    gPluginDict.addFactory(path, factory);
+    dict.addFactory(path, factory);
     for (int i = 0; i < factory->numPlugins(); ++i) {
         auto plugin = factory->getPlugin(i);
     #if 0
         // search for presets
         const_cast<PluginDesc&>(*plugin).scanPresets();
     #endif
-        gPluginDict.addPlugin(makeKey(*plugin), plugin);
+        dict.addPlugin(makeKey(*plugin), plugin);
     }
 }
 
@@ -360,7 +370,7 @@ static IFactory::ptr probePlugin(const std::string& path,
     } catch (const Error& e){
         if (verbose) postResult(e);
     }
-    gPluginDict.addException(path);
+    getPluginDict().addException(path);
     return nullptr;
 }
 
@@ -406,7 +416,7 @@ static FactoryFuture probePluginAsync(const std::string& path,
                     addFactory(path, factory);
                     out = factory; // success
                 } else {
-                    gPluginDict.addException(path);
+                    getPluginDict().addException(path);
                     out = nullptr;
                 }
                 return true;
@@ -421,7 +431,7 @@ static FactoryFuture probePluginAsync(const std::string& path,
                 Print("probing %s... ", path.c_str());
                 postResult(e);
             }
-            gPluginDict.addException(path);
+            getPluginDict().addException(path);
             out = nullptr;
             return true;
         });
@@ -470,17 +480,18 @@ static const PluginDesc* queryPlugin(std::string path) {
         if (c == '\\') c = '/';
     }
 #endif
+    auto& dict = getPluginDict();
     // query plugin
-    auto desc = gPluginDict.findPlugin(path);
+    auto desc = dict.findPlugin(path);
     if (!desc) {
         // try as file path
         auto absPath = resolvePath(path);
         if (absPath.empty()){
             LOG_WARNING("'" << path << "' is neither an existing plugin name nor a valid file path.");
-        } else if (!(desc = gPluginDict.findPlugin(absPath))){
+        } else if (!(desc = dict.findPlugin(absPath))){
             // finally probe plugin
             if (probePlugin(absPath, 0, getVerbosity() >= 0)) {
-                desc = gPluginDict.findPlugin(absPath);
+                desc = dict.findPlugin(absPath);
                 // findPlugin() fails if the module contains several plugins,
                 // which means the path can't be used as a key.
                 if (!desc){
@@ -549,6 +560,8 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         }
     };
 
+    auto& dict = getPluginDict();
+
     vst::search(path, [&](const std::string & absPath) {
         if (!gSearching){
             return;
@@ -560,7 +573,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         }
 #endif
         // check if module has already been loaded
-        auto factory = gPluginDict.findFactory(pluginPath);
+        auto factory = dict.findFactory(pluginPath);
         if (factory) {
             // just post names of valid plugins
             if (verbose) {
@@ -579,7 +592,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
             // make sure we have the plugin keys!
             for (int i = 0; i < numPlugins; ++i){
                 auto plugin = factory->getPlugin(i);
-                gPluginDict.addPlugin(makeKey(*plugin), plugin);
+                dict.addPlugin(makeKey(*plugin), plugin);
             }
         } else {
             // probe (will post results and add plugins)
@@ -3031,7 +3044,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 #if 1
     // filter duplicate/stale plugins
     plugins.erase(std::remove_if(plugins.begin(), plugins.end(), [](auto& p){
-        return gPluginDict.findPlugin(makeKey(*p)) != p;
+        return getPluginDict().findPlugin(makeKey(*p)) != p;
     }), plugins.end());
 #endif
     // write new info to file (only for local Servers) or buffer
@@ -3184,7 +3197,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
                     // remove cache file
                     removeFile(gSettingsDir + "/" + gCacheFileName);
                 }
-                gPluginDict.clear();
+                getPluginDict().clear();
                 return false;
             }, 0, 0, RTFree, 0, 0);
         }
@@ -3383,8 +3396,10 @@ PluginLoad(VSTPlugin) {
 
     LOG_VERBOSE("VSTPlugin " << getVersionString());
 
-    // read cached plugin info
+#if 0
+    // only read cache file when needed
     readCacheFile();
+#endif
 }
 
 
