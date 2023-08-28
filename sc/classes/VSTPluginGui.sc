@@ -85,7 +85,7 @@ VSTPluginGui : ObjectGui {
 	prFree {
 		(this.closeOnFree ?? this.class.closeOnFree).if {
 			embedded.not.if {
-				view.close;
+				view !? { view.close };
 				^this;
 			};
 		};
@@ -332,20 +332,22 @@ VSTPluginGui : ObjectGui {
 
 			layout.add(paramView);
 		} {
-			layout.add(nil)
+			paramSliders = nil;
+			paramDisplays = nil;
+			layout.add(nil);
 		};
 		view.layout_(layout);
 	}
 
 	prParamChanged { arg index, value, display;
-		showParams.if {
+		paramSliders.notNil.if {
 			paramSliders[index].value_(value);
 			paramDisplays[index].string_(display);
 		}
 	}
 
 	prProgramIndex { arg index;
-		presetMenu !? {
+		presetMenu.notNil.if {
 			presetMenu.value_(index + 1); // skip label
 			updateButtons.value;
 		}
