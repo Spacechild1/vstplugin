@@ -527,6 +527,8 @@ void ShmInterface::openShm(const std::string &path, bool create){
         }
     }
 
+    orphaned_.store(false);
+
 #if VST_HOST_SYSTEM == VST_WINDOWS
     HANDLE hMapFile;
     if (create){
@@ -682,7 +684,7 @@ void ShmInterface::closeShm(){
 #else
     if (data_){
         munmap(data_, size_);
-        if (owner_){
+        if (owner_ || orphaned_.load()){
             shm_unlink(path_.c_str());
         }
     }

@@ -887,6 +887,9 @@ void PluginServer::checkIfParentAlive(){
   #endif
 #endif
     if (!alive){
+        // tell the shared memory interface that it is now the owner
+        // so that it will unlink the shared memory object (on Unix)
+        shm_->setOrphaned();
         LOG_WARNING("parent (" << parent_ << ") terminated!");
         quit();
     }

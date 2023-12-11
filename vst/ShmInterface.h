@@ -190,6 +190,10 @@ class ShmInterface {
     const std::string& path() const { return path_; }
     size_t size() const { return size_; }
 
+    void setOrphaned() {
+        orphaned_.store(true);
+    }
+
     // access channels
     int numChannels() const {
         return channels_.size();
@@ -209,6 +213,7 @@ class ShmInterface {
  private:
     std::vector<ShmChannel> channels_;
     bool owner_ = false;
+    std::atomic<bool> orphaned_{false};
     std::string path_;
 #if VST_HOST_SYSTEM == VST_WINDOWS
     void *hMapFile_ = nullptr;

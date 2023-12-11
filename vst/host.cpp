@@ -137,9 +137,9 @@ int bridge(int pid, const std::string& path, int logChannel){
     setThreadPriority(Priority::Low);
     try {
         // create and run server
-        auto server = std::make_unique<PluginServer>(pid, path);
+        PluginServer server(pid, path);
 
-        server->run();
+        server.run();
 
         LOG_DEBUG("bridge end");
 
