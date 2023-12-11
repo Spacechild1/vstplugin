@@ -7,10 +7,6 @@
 
 static InterfaceTable *ft;
 
-namespace rt {
-    InterfaceTable* interfaceTable;
-}
-
 // TODO: Multiple Server instances would mutually override the verbosity...
 // In practice, this is not a big issue because people mostly use a single Server per process.
 static std::atomic<int> gVerbosity{0};
@@ -3292,14 +3288,6 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 
 /*** plugin entry point ***/
 
-void VSTPlugin_Ctor(VSTPlugin* unit){
-    new (unit) VSTPlugin();
-}
-
-void VSTPlugin_Dtor(VSTPlugin* unit){
-    unit->~VSTPlugin();
-}
-
 using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 
 // When a Synth is created on the Server, the UGen constructors are only called during
@@ -3346,9 +3334,9 @@ void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
 PluginLoad(VSTPlugin) {
     // InterfaceTable *inTable implicitly given as argument to the load function
     ft = inTable; // store pointer to InterfaceTable
-    rt::interfaceTable = inTable; // for "rt_shared_ptr.h"
 
-    DefineDtorCantAliasUnit(VSTPlugin);
+    registerUnit<VSTPlugin>(inTable, "VSTPlugin", true);
+
     UnitCmd(open);
     UnitCmd(close);
     UnitCmd(reset);
