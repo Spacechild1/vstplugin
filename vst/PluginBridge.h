@@ -93,8 +93,10 @@ class PluginBridge final
     static PluginBridge::ptr create(CpuArch arch);
 
     PluginBridge(CpuArch arch, bool shared);
-    PluginBridge(const PluginBridge&) = delete;
     ~PluginBridge();
+
+    PluginBridge(const PluginBridge&) = delete;
+    PluginBridge(PluginBridge&&) = delete;
 
     bool shared() const {
         return shared_;

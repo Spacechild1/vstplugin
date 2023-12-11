@@ -172,10 +172,9 @@ class ShmInterface {
     // SharedMemory();
     ShmInterface();
     ~ShmInterface();
+
     ShmInterface(const ShmInterface&) = delete;
-    ShmInterface(ShmInterface&&) = default;
-    ShmInterface& operator=(const ShmInterface&) = delete;
-    ShmInterface& operator=(ShmInterface&&) = default;
+    ShmInterface(ShmInterface&&) = delete;
 
     // connect to existing shared memory interface
     void connect(const std::string& path);

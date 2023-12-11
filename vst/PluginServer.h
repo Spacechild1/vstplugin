@@ -111,6 +111,9 @@ class PluginServer {
     PluginServer(int pid, const std::string& shmPath);
     ~PluginServer();
 
+    PluginServer(const PluginServer&) = delete;
+    PluginServer(PluginServer&&) = delete;
+
     void run();
 
     bool postUIThread(const ShmUICommand& cmd);

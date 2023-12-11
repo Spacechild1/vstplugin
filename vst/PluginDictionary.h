@@ -14,6 +14,10 @@ namespace vst {
 
 class PluginDictionary {
  public:
+    PluginDictionary() = default;
+    PluginDictionary(const PluginDictionary&) = delete;
+    PluginDictionary(PluginDictionary&&) = delete;
+
     // factories
     void addFactory(const std::string& path, IFactory::ptr factory);
     IFactory::const_ptr findFactory(const std::string& path) const;

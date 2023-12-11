@@ -25,6 +25,9 @@ class PluginFactory :
     PluginFactory(const std::string& path);
     virtual ~PluginFactory(){}
 
+    PluginFactory(const PluginFactory&) = delete;
+    PluginFactory(PluginFactory&&) = delete;
+
     ProbeFuture probeAsync(float timeout, bool nonblocking) override;
 
     void addPlugin(PluginDesc::ptr desc) override;
