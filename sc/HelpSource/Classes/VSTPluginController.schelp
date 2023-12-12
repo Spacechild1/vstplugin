@@ -578,20 +578,6 @@ see link::#Realtime Safety::.
 DISCUSSION::
 Depending on the plugin, emphasis::reset:: can involve expensive operations, like clearing a large delay line, and might not be realtime-safe, so be careful with setting code::async:: to code::false::.
 
-METHOD:: setOffline
-METHOD:: setOfflineMsg
-
-enable/disable offline processing.
-
-DISCUSSION::
-
-In non-realtime (NRT) synthesis, some VST plugins don't render correctly unless you explicitly put them into offline processing mode. Some plugins also render at a higher quality in offline mode than in realtime mode.
-
-On the other hand, with a few buggy plugins, certain plugin methods only work correctly in realtime mode, so you have to switch modes accordingly.
-
-For an example, see link::Classes/VSTPluginController#Non-Realtime Synthesis::.
-
-
 METHOD:: synth
 returns:: the link::Classes/Synth:: containing the currently controlled link::Classes/VSTPlugin:: instance.
 
@@ -1351,12 +1337,6 @@ SynthDef.new(\my_instrument, { arg out;
 ~score.add([0.0, ~vst[0].fx.setMsg(0, 0.2)]); // delay time
 ~score.add([0.0, ~vst[0].fx.setMsg(1, 0.5)]); // delay feedback
 ~score.add([0.0, ~vst[1].fx.setMsg(0, 0.9)]); // chorus depth
-
-// (optionally) put plugins into offline processing mode (might yield better results)
-~score.add([0.0, ~vst[0].vsti.setOfflineMsg(true)]);
-~score.add([0.0, ~vst[0].fx.setOfflineMsg(true)]);
-~score.add([0.0, ~vst[1].vsti.setOfflineMsg(true)]);
-~score.add([0.0, ~vst[1].fx.setOfflineMsg(true)]);
 
 // make a random melody
 ~melody = Pbind(

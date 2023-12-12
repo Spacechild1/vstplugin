@@ -1378,7 +1378,7 @@ void VSTPlugin::next(int inNumSamples) {
         // process
         ProcessData data;
         data.precision = ProcessPrecision::Single;
-        data.mode = processMode_;
+        data.mode = mWorld->mRealTime ? ProcessMode::Realtime : ProcessMode::Offline;
         data.numInputs = numPluginInputs_;
         data.inputs = pluginInputs_;
         data.numOutputs = numPluginOutputs_;
@@ -1714,7 +1714,9 @@ bool cmdOpen(World *world, void* cmdData) {
                 LOG_DEBUG("suspend");
                 data->plugin->suspend();
                 if (info->hasPrecision(ProcessPrecision::Single)) {
-                    LOG_DEBUG("setupProcessing");
+                    LOG_DEBUG("setupProcessing ("
+                              << ((data->processMode == ProcessMode::Realtime) ? "realtime" : "offline")
+                              << ")");
                     data->plugin->setupProcessing(data->sampleRate, data->blockSize,
                                                   ProcessPrecision::Single, data->processMode);
                 } else {
@@ -1818,7 +1820,7 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         cmdData->runMode = mode;
         cmdData->sampleRate = owner_->sampleRate();
         cmdData->blockSize = owner_->blockSize();
-        cmdData->processMode = owner_->processMode();
+        cmdData->processMode = world_->mRealTime ? ProcessMode::Realtime : ProcessMode::Offline;
         // copy ugen input busses
         assert(owner_->numInputBusses() > 0);
         cmdData->numInputs = owner_->numInputBusses();
@@ -1993,39 +1995,6 @@ void VSTPluginDelegate::reset(bool async) {
             plugin_->suspend();
             plugin_->resume();
         }
-    }
-}
-
-void VSTPluginDelegate::setProcessMode(ProcessMode mode) {
-    owner_->setProcessMode(mode);
-    if (check(false)) {
-        // update in the NRT thread
-        suspend();
-
-        auto cmd = CmdData::create<SetupCmdData>(world());
-        cmd->sampleRate = owner_->sampleRate();
-        cmd->blockSize = owner_->blockSize();
-        cmd->processMode = owner_->processMode();
-
-        doCmd(cmd,
-            [](World *world, void *cmdData){
-                auto data = (SetupCmdData *)cmdData;
-                defer([&](){
-                    auto lock = data->owner->scopedLock();
-                    data->owner->plugin()->suspend();
-                    data->owner->plugin()->setupProcessing(data->sampleRate, data->blockSize,
-                                                           ProcessPrecision::Single, data->processMode);
-                    data->owner->plugin()->resume();
-                }, data->owner->hasEditor());
-                return true; // continue
-            },
-            [](World *world, void *cmdData){
-                auto data = (PluginCmdData *)cmdData;
-                if (!data->alive()) return false;
-                data->owner->resume();
-                return false; // done
-            }
-        );
     }
 }
 
@@ -2679,20 +2648,7 @@ void vst_reset(VSTPlugin *unit, sc_msg_iter *args) {
 }
 
 void vst_mode(VSTPlugin *unit, sc_msg_iter *args) {
-    ProcessMode mode;
-    switch (args->geti()){
-    case 0:
-        mode = ProcessMode::Realtime;
-        break;
-    case 1:
-        mode = ProcessMode::Offline;
-        break;
-    default:
-        LOG_ERROR("bad argument to '/mode' command");
-        return;
-    }
-
-    unit->delegate().setProcessMode(mode);
+    LOG_WARNING("VSTPlugin: /mode command is deprecated and will be ignored");
 }
 
 void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {

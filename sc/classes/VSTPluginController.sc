@@ -402,6 +402,7 @@ VSTPluginController {
 	}
 	// deprecated in favor of isOpen
 	loaded {
+		this.deprecated(thisMethod, this.class.findMethod(\isOpen));
 		^this.isOpen;
 	}
 	prClear {
@@ -444,10 +445,12 @@ VSTPluginController {
 	resetMsg { arg async = false;
 		^this.makeMsg('/reset', async.asInteger);
 	}
+	// deprecated
 	setOffline { arg bool;
-		this.sendMsg('/mode', bool.asInteger);
+		this.deprecated(thisMethod);
 	}
 	setOfflineMsg { arg bool;
+		this.deprecated(thisMethod);
 		^this.makeMsg('/mode',  bool.asInteger);
 	}
 	// parameters

@@ -79,7 +79,6 @@ public:
     void setEditorSize(int w, int h);
 
     void reset(bool async);
-    void setProcessMode(ProcessMode mode);
 
     // param
     void setParam(int32 index, float value);
@@ -266,12 +265,6 @@ public:
 
     int reblockPhase() const;
 
-    void setProcessMode(ProcessMode mode) {
-        processMode_ = mode;
-    }
-
-    ProcessMode processMode() const { return processMode_; }
-
     struct Bus {
         float **channelData = nullptr;
         int numChannels = 0;
@@ -378,7 +371,6 @@ private:
     float* paramState_ = nullptr;
     Mapping** paramMapping_ = nullptr;
     Bypass bypass_ = Bypass::Off;
-    ProcessMode processMode_ = ProcessMode::Realtime;
 
     void printMapping();
 };
