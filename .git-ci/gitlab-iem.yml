@@ -269,42 +269,42 @@ variables:
 ### the actual jobs: (linux,macos,windows)*(release)
 
 ### release jobs
-#Linux:
-#  extends:
-#    - .Linux
-#    - .base
-#Linux_i386:
-#  extends:
-#    - .Linux_i386
-#    - .base
-#Linux_ARM64:
-#  extends:
-#    - .Linux_ARM64
-#    - .base
-#Linux_ARMhf:
-#  extends:
-#    - .Linux_ARMhf
-#    - .base
-#Linux_wine:
-#  extends:
-#    - .Linux_wine
-#    - .base
-#Linux_wine32:
-#  extends:
-#    - .Linux_wine32
-#    - .base
+Linux:
+  extends:
+    - .Linux
+    - .base
+Linux_i386:
+  extends:
+    - .Linux_i386
+    - .base
+Linux_ARM64:
+  extends:
+    - .Linux_ARM64
+    - .base
+Linux_ARMhf:
+  extends:
+    - .Linux_ARMhf
+    - .base
+Linux_wine:
+  extends:
+    - .Linux_wine
+    - .base
+Linux_wine32:
+  extends:
+    - .Linux_wine32
+    - .base
 Darwin:
   extends:
     - .Darwin
     - .base
-#w32:
-#  extends:
-#    - .w32
-#    - .base
-#w64:
-#  extends:
-#    - .w64
-#    - .base
+w32:
+  extends:
+    - .w32
+    - .base
+w64:
+  extends:
+    - .w64
+    - .base
 package:
   extends:
     - .package
