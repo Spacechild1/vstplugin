@@ -1,3 +1,4 @@
+---
 #######################################################################
 ### based on .git-ci/gitlab-iem.yml for Pd externals: v1.2
 #######################################################################
@@ -37,14 +38,6 @@ variables:
   # For some reason, on the 'Hopper' runner that file would contain bogus file paths such as 'vst/C:/msys64/mingw32/include/c++/10.2.0/vector'
   # which will cause the following invocation of 'cmake --build ./build --target install/strip' to fail with 'multiple target patterns'.
   # As a workaround, we force the legacy behavior with -DCMAKE_DEPENDS_USE_COMPILER=OFF.
-
-### ad-hoc code signing for macOS
-.script:codesign:macos: &script_codesign_macos
-  - dir="$(pwd)/${CI_JOB_NAME}"
-  - codesign --force --sign - "${dir}/vstplugin~/vstplugin~.${PD_EXTENSION}"
-  - find ${dir}/vstplugin~ -name "host*" -exec codesign --force --sign - {} \;
-  - find ${dir}/VSTPlugin/plugins -name "*.scx" -exec codesign --force --sign - {} \;
-  - find ${dir}/VSTPlugin/plugins -name "host*" -exec codesign --force --sign - {} \;
 
 ### build snippets
 .script:make: &script_make
@@ -147,7 +140,8 @@ variables:
     - *script_deps
     - *script_cmake
   after_script:
-    - *script_codesign_macos
+    - IEM_SIGN_SRCDIR="$(pwd)/${CI_JOB_NAME}"
+    - !reference [.script:codesign:macos]
 
 .build:w32: &build_w32
   extends: .build:script
@@ -309,3 +303,8 @@ package:
   extends:
     - .package
     - .base
+
+
+include:
+  # for the codesign templates
+  - https://git.iem.at/pd/iem-ci/-/raw/main/pd-lib-builder/codesign.yml
