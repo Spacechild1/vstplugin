@@ -3912,6 +3912,19 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->update_buffers();
 }
 
+/*-------------------------- private methods ---------------------------*/
+
+void vstplugin_pdversion(t_vstplugin *x)
+{
+    t_atom msg[3];
+    int major, minor, bugfix;
+    sys_getversion(&major, &minor, &bugfix);
+    SETFLOAT(&msg[0], major);
+    SETFLOAT(&msg[1], minor);
+    SETFLOAT(&msg[2], bugfix);
+    outlet_anything(x->x_messout, gensym("pdversion"), 3, msg);
+}
+
 /*-------------------------- setup function ----------------------------*/
 
 #ifdef _WIN32
@@ -4032,6 +4045,7 @@ EXPORT void vstplugin_tilde_setup(void) {
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<BANK>, gensym("bank_write"), A_SYMBOL, A_DEFFLOAT, A_NULL);
     // private messages
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_pdversion, gensym("pdversion"), A_NULL);
 
     vstparam_setup();
 
