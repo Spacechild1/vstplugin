@@ -1819,6 +1819,17 @@ static void vstplugin_print(t_vstplugin *x){
     post("---");
 }
 
+/*-------------------------- "version" ---------------------------*/
+
+static void vstplugin_version(t_vstplugin *x){
+    t_atom msg[3];
+    SETFLOAT(&msg[0], VERSION_MAJOR);
+    SETFLOAT(&msg[1], VERSION_MINOR);
+    SETFLOAT(&msg[2], VERSION_PATCH);
+
+    outlet_anything(x->x_messout, gensym("version"), 3, msg);
+}
+
 /*-------------------------- "bypass" ----------------------------*/
 
 // bypass the plugin
@@ -3983,6 +3994,7 @@ EXPORT void vstplugin_tilde_setup(void) {
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_print, gensym("print"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
     // transport
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
