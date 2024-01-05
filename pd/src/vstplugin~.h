@@ -35,6 +35,19 @@ using namespace vst;
 #define POLL_EVENT_LOOP 0
 #endif
 
+#undef pd_class
+#define pd_class(x) (*(t_pd *)(x))
+#define classname(x) (class_getname(pd_class(x)))
+
+#if PD_MINOR_VERSION >= 54
+# define PD_HAVE_MULTICHANNEL
+#else
+# pragma message("building without multi-channel support; requires Pd 0.54+")
+# define CLASS_MULTICHANNEL 0
+#endif
+
+using t_signal_setmultiout = void (*)(t_signal **, int);
+
 enum PdLogLevel {
     PdCritical = 0,
     PdError,
@@ -78,17 +91,22 @@ class t_vstplugin {
     t_sample x_f = 0;
     t_outlet *x_messout; // message outlet
     t_canvas *x_canvas; // parent canvas
-    int x_blocksize = 64;
-    t_float x_sr = 44100;
+    int x_blocksize = 0;
+    t_float x_sr = 0;
     // signals
     struct t_signalbus {
         t_signalbus() = default;
-        t_signalbus(int n) : b_n(n) {
-            if (n > 0){
-                b_signals = std::make_unique<t_sample *[]>(n);
-                b_buffers = std::make_unique<void *[]>(n);
+        t_signalbus(int n) {
+            if (n > 0) {
+                resize(n);
             }
         }
+        void resize(int n) {
+            b_signals = std::make_unique<t_sample *[]>(n);
+            b_buffers = std::make_unique<void *[]>(n);
+            b_n = n;
+        }
+
         std::unique_ptr<t_sample *[]> b_signals;
         std::unique_ptr<void *[]> b_buffers;
         int b_n = 0;
@@ -105,6 +123,8 @@ class t_vstplugin {
     IPlugin::ptr x_plugin;
     std::unique_ptr<t_vsteditor> x_editor;
     Mutex x_mutex;
+    bool x_multi = false;
+    bool x_outchannels_changed = false;
     bool x_process = false;
     bool x_async = false;
     bool x_uithread = false;

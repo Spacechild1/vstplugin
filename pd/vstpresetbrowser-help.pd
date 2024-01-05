@@ -1,20 +1,16 @@
-#N struct 1021-button float x float y float id;
-#N canvas 235 223 485 394 10;
-#X obj 18 187 vstplugin~;
-#X msg 18 117 search -a;
-#X symbolatom 26 143 16 0 0 0 - - -;
-#X msg 26 163 open -e \$1;
-#X obj 13 21 cnv 20 160 20 empty empty empty 20 12 0 14 -233017 -66577
-0;
-#X text 19 23 vstpresetbrowser;
-#X text 15 45 load \, save \, delete and rename VST presets., f 44
-;
-#X text 17 54 (see also "pd preset" in vstplugin~-help.pd);
-#X text 16 77 optional creation arguments: 1) receive name \, 2) send
-name;
-#X obj 132 113 vstpresetbrowser;
-#X connect 0 2 9 0;
+#N canvas 235 223 472 480 12;
+#X obj 24 227 vstplugin~;
+#X msg 24 143 search -a;
+#X symbolatom 32 169 16 0 0 0 - - - 0;
+#X msg 32 197 open -e \$1;
+#X obj 21 23 cnv 20 160 25 empty empty empty 20 12 0 14 #e0e0e0 #404040 0;
+#X text 27 27 vstpresetbrowser;
+#X text 23 82 (see also "pd preset" in vstplugin~-help.pd);
+#X obj 158 139 vstpresetbrowser;
+#X text 21 61 Load \, save \, delete and rename VST presets., f 44;
+#X text 22 105 Optional creation arguments: 1) receive name \, 2) send name;
+#X connect 0 2 7 0;
 #X connect 1 0 0 0;
 #X connect 2 0 3 0;
 #X connect 3 0 0 0;
-#X connect 9 0 0 0;
+#X connect 7 0 0 0;

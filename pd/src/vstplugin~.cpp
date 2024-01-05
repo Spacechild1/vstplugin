@@ -1,11 +1,14 @@
 #include "vstplugin~.h"
 
 #include <cassert>
+#include <utility>
+#ifdef _WIN32
+# include <windows.h>
+#else // _WIN32
+# include <dlfcn.h>
+#endif
 
-#undef pd_class
-#define pd_class(x) (*(t_pd *)(x))
-#define classname(x) (class_getname(pd_class(x)))
-
+t_signal_setmultiout g_signal_setmultiout;
 
 /*===================== event loop =========================*/
 
@@ -1816,6 +1819,17 @@ static void vstplugin_print(t_vstplugin *x){
     post("---");
 }
 
+/*-------------------------- "version" ---------------------------*/
+
+static void vstplugin_version(t_vstplugin *x){
+    t_atom msg[3];
+    SETFLOAT(&msg[0], VERSION_MAJOR);
+    SETFLOAT(&msg[1], VERSION_MINOR);
+    SETFLOAT(&msg[2], VERSION_PATCH);
+
+    outlet_anything(x->x_messout, gensym("version"), 3, msg);
+}
+
 /*-------------------------- "bypass" ----------------------------*/
 
 // bypass the plugin
@@ -3400,6 +3414,12 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
         if (*flag == '-'){
             if (!strcmp(flag, "-n")){
                 gui = false;
+            } else if (!strcmp(flag, "-m")){
+                if (g_signal_setmultiout) {
+                    x_multi = true;
+                } else {
+                    pd_error(this, "%s: no multi-channel support, ignoring '-m' flag", classname(this));
+                }
             } else if (!strcmp(flag, "-i")){
                 inputs = parseBusses(argv, argc, "-i");
                 // we always have at least 1 inlet because of CLASS_MAINSIGNALIN
@@ -3482,7 +3502,12 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     // inlets (we already have a main inlet!)
     int totalin = 0;
     for (auto& in : inputs){
-        totalin += in;
+        if (x_multi) {
+            // one multi-channel inlet per bus
+            totalin++;
+        } else {
+            totalin += in;
+        }
         x_inlets.emplace_back(in);
     }
     // we already have a main inlet!
@@ -3492,10 +3517,14 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     // outlets:
     int totalout = 0;
     for (auto& out : outputs){
-        totalout += out;
+        if (x_multi) {
+            // one multi-channel inlet per bus
+            totalout++;
+        } else {
+            totalout += out;
+        }
         x_outlets.emplace_back(out);
     }
-    // we already have a main inlet!
     while (totalout--){
         outlet_new(&x_obj, &s_signal);
     }
@@ -3512,6 +3541,10 @@ t_vstplugin::t_vstplugin(int argc, t_atom *argv){
     #endif
         gDidSearch = true;
     }
+
+    // needed in setup_plugin()!
+    x_blocksize = sys_getblksize();
+    x_sr = sys_getsr();
 
     // open plugin
     if (file){
@@ -3788,33 +3821,96 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     obj_saveformat(&x->x_obj, bb);
 }
 
+/*------------------------ channels method -------------------------*/
+
+static void vstplugin_channels(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv) {
+    if (x->x_multi) {
+        for (int i = 0; i < argc; ++i) {
+            if (i < x->x_outlets.size()) {
+                int nchans = atom_getfloat(argv + i);
+                if (nchans >= 0) {
+                    x->x_outlets[i].resize(nchans);
+                } else {
+                    pd_error(x, "%s: ignoring negative channel count for bus %d", classname(x), i);
+                }
+            } else {
+                pd_error(x, "%s: output bus index %d out of range!", classname(x), i);
+            }
+        }
+        // see "dsp" method!
+        x->x_outchannels_changed = true;
+
+        canvas_update_dsp();
+    } else {
+        pd_error(x, "%s: 'channels' message requires multi-channel mode", classname(x));
+    }
+}
+
 /*-------------------------- dsp method ----------------------------*/
 
 static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
-    int oldblocksize = x->x_blocksize;
-    int oldsr = x->x_sr;
-    x->x_blocksize = sp[0]->s_n;
-    x->x_sr = sp[0]->s_sr;
+    int oldblocksize = std::exchange(x->x_blocksize, sp[0]->s_n);
+    int oldsr = std::exchange(x->x_sr, sp[0]->s_sr);
+    int channels_changed = std::exchange(x->x_outchannels_changed, false);
 
     dsp_add(vstplugin_perform, 2, (t_int)x, (t_int)x->x_blocksize);
 
     // update signal vectors
     auto ptr = sp;
-    for (auto& inlets : x->x_inlets){
-        for (int i = 0; i < inlets.b_n; ++i){
-            inlets.b_signals[i] = (*ptr++)->s_vec;
+    // inlets
+    if (x->x_multi) {
+    #ifdef PD_HAVE_MULTICHANNEL
+        // multi-channel mode
+        for (auto& inlets : x->x_inlets) {
+            int nchans = (*ptr)->s_nchans;
+            // first check and update input channel count!
+            if (nchans != inlets.b_n) {
+                inlets.resize(nchans);
+                channels_changed = true;
+            }
+            for (int i = 0; i < nchans; ++i) {
+                inlets.b_signals[i] = (*ptr)->s_vec + i * x->x_blocksize;
+            }
+            ptr++;
+        }
+    #endif
+    } else {
+        // single-channel mode
+        for (auto& inlets : x->x_inlets) {
+            for (int i = 0; i < inlets.b_n; ++i, ++ptr){
+                inlets.b_signals[i] = (*ptr)->s_vec;
+            }
         }
     }
+    // outlets
     for (auto& outlets : x->x_outlets){
-        for (int i = 0; i < outlets.b_n; ++i){
-            outlets.b_signals[i] = (*ptr++)->s_vec;
+        if (x->x_multi) {
+        #ifdef PD_HAVE_MULTICHANNEL
+            // multi-channel mode
+            // NB: we must call this before accessing s_vec!
+            g_signal_setmultiout(ptr, outlets.b_n);
+            assert(outlets.b_n == (*ptr)->s_nchans);
+            for (int i = 0; i < outlets.b_n; ++i){
+                outlets.b_signals[i] = (*ptr)->s_vec + i * x->x_blocksize;
+            }
+            ptr++;
+        #endif
+        } else {
+            // single-channel mode
+            for (int i = 0; i < outlets.b_n; ++i, ++ptr){
+                if (g_signal_setmultiout) {
+                    // NB: we must call this before accessing s_vec!
+                    g_signal_setmultiout(ptr, 1);
+                }
+                outlets.b_signals[i] = (*ptr)->s_vec;
+            }
         }
     }
 
     // protect against concurrent vstplugin_open_do()
     ScopedLock lock(x->x_mutex);
-    // only reset plugin if blocksize or samplerate has changed
-    if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr))) {
+    // only reset plugin if blocksize, samplerate or channels have changed
+    if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr) || channels_changed)) {
         x->x_editor->defer_safe<false>([&](){
             x->setup_plugin(*x->x_plugin);
         }, x->x_uithread);
@@ -3827,6 +3923,19 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->update_buffers();
 }
 
+/*-------------------------- private methods ---------------------------*/
+
+void vstplugin_pdversion(t_vstplugin *x)
+{
+    t_atom msg[3];
+    int major, minor, bugfix;
+    sys_getversion(&major, &minor, &bugfix);
+    SETFLOAT(&msg[0], major);
+    SETFLOAT(&msg[1], minor);
+    SETFLOAT(&msg[2], bugfix);
+    outlet_anything(x->x_messout, gensym("pdversion"), 3, msg);
+}
+
 /*-------------------------- setup function ----------------------------*/
 
 #ifdef _WIN32
@@ -3837,13 +3946,33 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
 #define EXPORT extern "C"
 #endif
 
-EXPORT void vstplugin_tilde_setup(void){
+EXPORT void vstplugin_tilde_setup(void) {
+    // runtime check for multichannel support:
+#ifdef _WIN32
+    // get a handle to the module containing the Pd API functions.
+    // NB: GetModuleHandle("pd.dll") does not cover all cases.
+    HMODULE module;
+    if (GetModuleHandleEx(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)&pd_typedmess, &module)) {
+        g_signal_setmultiout = (t_signal_setmultiout)(void *)GetProcAddress(
+            module, "signal_setmultiout");
+    }
+#else
+    // search recursively, starting from the main program
+    g_signal_setmultiout = (t_signal_setmultiout)dlsym(
+        dlopen(nullptr, RTLD_NOW), "signal_setmultiout");
+#endif
+
     vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)(void *)vstplugin_new,
-        (t_method)vstplugin_free, sizeof(t_vstplugin), 0, A_GIMME, A_NULL);
+        (t_method)vstplugin_free, sizeof(t_vstplugin), CLASS_MULTICHANNEL, A_GIMME, A_NULL);
     CLASS_MAINSIGNALIN(vstplugin_class, t_vstplugin, x_f);
     class_setsavefn(vstplugin_class, vstplugin_save);
     class_addmethod(vstplugin_class, (t_method)vstplugin_dsp, gensym("dsp"), A_CANT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_loadbang, gensym("loadbang"), A_FLOAT, A_NULL);
+    if (g_signal_setmultiout) {
+        class_addmethod(vstplugin_class, (t_method)vstplugin_channels, gensym("channels"), A_GIMME, A_NULL);
+    }
     // plugin
     class_addmethod(vstplugin_class, (t_method)vstplugin_open, gensym("open"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_close, gensym("close"), A_NULL);
@@ -3865,6 +3994,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_can_do, gensym("can_do"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_vendor_method, gensym("vendor_method"), A_GIMME, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_print, gensym("print"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_version, gensym("version"), A_NULL);
     // transport
     class_addmethod(vstplugin_class, (t_method)vstplugin_tempo, gensym("tempo"), A_FLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_time_signature, gensym("time_signature"), A_FLOAT, A_FLOAT, A_NULL);
@@ -3927,6 +4057,7 @@ EXPORT void vstplugin_tilde_setup(void){
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<BANK>, gensym("bank_write"), A_SYMBOL, A_DEFFLOAT, A_NULL);
     // private messages
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_pdversion, gensym("pdversion"), A_NULL);
 
     vstparam_setup();
 

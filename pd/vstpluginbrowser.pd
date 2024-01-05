@@ -1,19 +1,12 @@
 #N canvas 531 96 591 561 10;
-#X obj 107 127 bng 15 250 50 0 \$0-plugins-show empty show plug-ins
-18 7 0 10 -257985 -1 -1;
-#X obj 107 147 bng 15 250 50 0 \$0-search empty search VST directories
-18 7 0 10 -191407 -1 -1;
-#X obj 107 167 bng 15 250 50 0 \$0-search-dir empty search user directory
-18 7 0 10 -228856 -1 -1;
-#X obj 107 187 bng 15 250 50 0 \$0-file empty search plug-in file
-18 7 0 10 -262144 -1 -1;
-#X obj 107 249 tgl 15 0 \$0-editor \$0-editor editor 18 7 0 10 -262144
--1 -1 1 1;
-#X obj 101 101 cnv 15 182 20 empty empty vstpluginbrowser 5 10 0 14
--228856 -99865 0;
-#X obj 233 228 bng 15 250 50 0 \$0-open empty open 18 7 0 10 -4034
--1 -1;
-#X symbolatom 107 228 20 0 0 0 - #0-path #0-path-out;
+#X obj 107 127 bng 19 250 50 0 \$0-plugins-show empty show plug-ins 23 11 0 12 #f8fc00 #000000 #000000;
+#X obj 107 150 bng 19 250 50 0 \$0-search empty search VST directories 23 11 0 12 #b8b8b8 #000000 #000000;
+#X obj 107 174 bng 19 250 50 0 \$0-search-dir empty search user directory 23 11 0 12 #dcdcdc #000000 #000000;
+#X obj 107 198 bng 19 250 50 0 \$0-file empty search plug-in file 23 11 0 12 #fcfcfc #000000 #000000;
+#X obj 107 276 tgl 19 0 \$0-editor \$0-editor editor 23 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 101 101 cnv 15 210 20 empty empty vstpluginbrowser 5 10 0 14 #dcdcdc #606060 0;
+#X obj 255 249 bng 19 250 50 0 \$0-open empty open 23 11 0 12 #00fc04 #000000 #000000;
+#X symbolatom 107 250 20 0 0 0 - \$0-path \$0-path-out 12;
 #N canvas 241 280 450 376 \$0-open 0;
 #X obj 51 330 outlet;
 #X obj 211 8 r \$0-file;
@@ -70,19 +63,18 @@
 #X connect 23 2 25 0;
 #X connect 24 0 19 1;
 #X connect 25 0 19 1;
-#X restore 100 400 pd \$0-open;
-#X obj 100 442 outlet;
+#X restore 100 415 pd \$0-open;
+#X obj 100 457 outlet;
 #N canvas 742 179 684 612 \$0-search 0;
 #X obj 46 36 r \$0-search;
 #X obj 46 83 list trim;
-#X obj 19 30 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144 -1
--1;
+#X obj 19 30 bng 15 250 50 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000;
 #X obj 186 224 list prepend info;
 #X obj 186 245 list trim;
 #X msg 253 119 clear;
 #X obj 245 444 text define \$0-info;
 #X obj 260 160 s \$0-info;
-#X obj 80 424 text set \$0-info 1e+007;
+#X obj 80 424 text set \$0-info 1e+07;
 #X msg 265 52 vis 1;
 #X obj 265 75 s pd-\$0-plugins;
 #X obj 265 30 r \$0-plugins-show;
@@ -272,7 +264,7 @@
 #X connect 39 1 24 0;
 #X connect 40 0 26 0;
 #X restore 210 219 pd \$0-filter-category;
-#X obj 58 381 text set \$0-filtered 1e+007;
+#X obj 58 381 text set \$0-filtered 1e+07;
 #X text 68 428 select first plugin;
 #N canvas 748 36 344 481 \$0-keyword 0;
 #X obj 37 37 inlet;
@@ -532,10 +524,8 @@
 #X obj 155 158 r \$0-filter-enable;
 #X obj 46 78 t f;
 #X obj 122 201 del 0;
-#X obj 165 76 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
-1;
-#X obj 286 79 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
-1;
+#X obj 165 76 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
+#X obj 286 79 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
 #X obj 45 124 expr ($f2 && $f1 == 0) || ($f3 && $f1 == 1);
 #X connect 0 0 9 0;
 #X connect 1 0 4 0;
@@ -565,10 +555,8 @@
 #X obj 155 158 r \$0-filter-enable;
 #X obj 46 78 t f;
 #X obj 122 201 del 0;
-#X obj 165 76 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
-1;
-#X obj 286 79 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
-1;
+#X obj 165 76 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
+#X obj 286 79 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
 #X obj 124 51 r \$0-filter-fx;
 #X obj 245 52 r \$0-filter-synth;
 #X obj 45 124 expr ($f2 && $f1 == 0) || ($f3 && $f1 == 1);
@@ -600,10 +588,8 @@
 #X obj 155 158 r \$0-filter-enable;
 #X obj 46 78 t f;
 #X obj 122 201 del 0;
-#X obj 165 76 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
-1;
-#X obj 286 79 tgl 15 0 empty empty empty 17 7 0 10 -262144 -1 -1 1
-1;
+#X obj 165 76 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
+#X obj 286 79 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
 #X obj 124 51 r \$0-filter-vst2;
 #X obj 245 52 r \$0-filter-vst3;
 #X obj 45 124 expr ($f2 && $f1 == 0) || ($f3 && $f1 == 1);
@@ -760,7 +746,7 @@
 #X obj 58 334 t a b;
 #X obj 85 357 f;
 #X msg 100 191 0;
-#X obj 113 357 text set \$0-filtered-ex 1e+007;
+#X obj 113 357 text set \$0-filtered-ex 1e+07;
 #X obj 113 333 text get \$0-info-ex;
 #X msg 204 108 symbol;
 #X obj 146 476 r \$0-height;
@@ -827,7 +813,6 @@
 #X obj 23 94 f;
 #X obj 54 96 + 1;
 #X msg 62 71 0;
-#X obj 59 141 * 15;
 #X msg 69 17 10;
 #X obj 24 42 t f b b;
 #X obj 156 203 symbol pd-\$0-plugin-list;
@@ -842,34 +827,35 @@
 #X obj 21 272 append \$0-button id y x;
 #X obj 21 243 pack f f 0;
 #X obj 21 326 struct \$0-button float x float y float id;
-#X obj 20 302 filledpolygon 999 0 1 0 0 435 0 435 15 0 15;
-#X connect 0 0 9 0;
-#X connect 1 0 19 3;
+#X obj 19 302 filledpolygon 999 0 1 0 0 509 0 509 19 0 19;
+#X obj 59 141 * 19;
+#X connect 0 0 8 0;
+#X connect 1 0 18 3;
 #X connect 2 0 1 0;
 #X connect 3 0 4 0;
 #X connect 4 0 5 0;
-#X connect 4 0 14 0;
+#X connect 4 0 13 0;
 #X connect 5 0 4 1;
 #X connect 6 0 4 1;
-#X connect 7 0 11 0;
-#X connect 8 0 9 0;
-#X connect 9 0 3 0;
-#X connect 9 1 6 0;
-#X connect 9 2 10 0;
-#X connect 10 0 2 0;
-#X connect 11 0 20 1;
-#X connect 12 0 13 1;
-#X connect 13 0 20 0;
-#X connect 14 0 13 0;
-#X connect 14 1 12 0;
-#X connect 14 2 7 0;
-#X connect 15 0 18 0;
-#X connect 16 0 17 0;
-#X connect 18 0 16 0;
-#X connect 20 0 19 0;
-#X connect 21 0 15 0;
+#X connect 7 0 8 0;
+#X connect 8 0 3 0;
+#X connect 8 1 6 0;
+#X connect 8 2 9 0;
+#X connect 9 0 2 0;
+#X connect 10 0 19 1;
+#X connect 11 0 12 1;
+#X connect 12 0 19 0;
+#X connect 13 0 12 0;
+#X connect 13 1 11 0;
+#X connect 13 2 22 0;
+#X connect 14 0 17 0;
+#X connect 15 0 16 0;
+#X connect 17 0 15 0;
+#X connect 19 0 18 0;
+#X connect 20 0 14 0;
+#X connect 22 0 10 0;
 #X restore 100 294 pd \$0-make-buttons;
-#N canvas 559 352 450 416 \$0-make-labels 0;
+#N canvas 707 374 450 416 \$0-make-labels 0;
 #X obj 41 33 inlet;
 #X obj 41 56 t f b;
 #X obj 40 84 until;
@@ -935,7 +921,6 @@
 #X connect 11 4 7 0;
 #X restore 91 236 pd makelabel;
 #X text 127 266 make plugin labels;
-#X obj 40 153 * 15;
 #X obj 40 266 pack f f s \$0;
 #X obj 40 325 s pd-\$0-plugin-list;
 #X obj 40 127 t f f b;
@@ -943,28 +928,28 @@
 #X obj 81 155 v \$0-offset;
 #X obj 65 208 t f f;
 #X obj 40 181 + 1;
-#X msg 40 289 obj 1 \$1 cnv 1 433 13 empty \$4-label-\$2 \$3 10 8 0
-12 -262144 -1 0;
+#X obj 40 153 * 19;
+#X msg 39 287 obj 1 \$1 cnv 1 507 17 empty \$4-label-\$2 \$3 10 10 0 12 -262144 -1 0;
 #X connect 0 0 1 0;
 #X connect 1 0 2 0;
 #X connect 1 1 5 0;
 #X connect 2 0 3 0;
 #X connect 3 0 4 0;
-#X connect 3 0 11 0;
+#X connect 3 0 10 0;
 #X connect 4 0 3 1;
 #X connect 5 0 3 1;
-#X connect 6 0 9 2;
-#X connect 8 0 15 0;
-#X connect 9 0 16 0;
-#X connect 11 0 8 0;
-#X connect 11 1 12 0;
-#X connect 11 2 13 0;
-#X connect 12 0 14 0;
-#X connect 13 0 12 1;
-#X connect 14 0 9 1;
-#X connect 14 1 6 0;
-#X connect 15 0 9 0;
-#X connect 16 0 10 0;
+#X connect 6 0 8 2;
+#X connect 8 0 16 0;
+#X connect 10 0 15 0;
+#X connect 10 1 11 0;
+#X connect 10 2 12 0;
+#X connect 11 0 13 0;
+#X connect 12 0 11 1;
+#X connect 13 0 8 1;
+#X connect 13 1 6 0;
+#X connect 14 0 8 0;
+#X connect 15 0 14 0;
+#X connect 16 0 9 0;
 #X restore 80 315 pd \$0-make-labels;
 #X obj 73 97 s pd-\$0-plugin-list;
 #X msg 73 76 clear;
@@ -1505,7 +1490,7 @@
 #X obj 110 197 moses 0;
 #X obj 35 95 moses 0;
 #X obj 33 143 text get \$0-filtered 0;
-#X floatatom 146 108 5 0 0 0 - - -;
+#X floatatom 146 108 5 0 0 0 - - - 0;
 #X msg 122 387 \; \$2-label-\$1 color 1 0 -1;
 #X obj 67 298 moses;
 #X obj 67 254 t f b;
@@ -1556,7 +1541,7 @@
 #X obj 46 129 vstplugin~ -n 0 0;
 #X obj 245 466 text define \$0-info-ex;
 #X obj 244 509 text define \$0-filtered-ex;
-#X obj 365 323 text set \$0-info-ex 1e+007;
+#X obj 365 323 text set \$0-info-ex 1e+07;
 #X obj 271 181 s \$0-info-ex;
 #X obj 365 299 symbol;
 #X text 373 445 info used for filtering;
@@ -1564,11 +1549,9 @@
 #X obj 398 37 r \$0-search-dir;
 #X obj 398 58 openpanel 1;
 #X obj 398 79 s \$0-search;
-#X text 160 401 key \, vendor \, sdkversion \, synth \, bridged \,
-categories...;
+#X text 160 401 key \, vendor \, sdkversion \, synth \, bridged \, categories...;
 #X obj 80 378 pack s s f f f;
-#X obj 103 269 route vendor sdkversion synth bridged category path
-, f 53;
+#X obj 103 269 route vendor sdkversion synth bridged category path, f 53;
 #X text 411 298 path;
 #X obj 160 202 t s s;
 #X obj 138 -8 r \$0-clear-cache;
@@ -1623,65 +1606,41 @@ categories...;
 #X connect 60 0 33 0;
 #X connect 60 1 59 0;
 #X connect 60 2 17 0;
-#X restore 101 377 pd \$0-search;
-#N canvas 53 53 514 435 \$0-plugins 0;
+#X restore 101 392 pd \$0-search;
+#N canvas 53 53 583 537 \$0-plugins 0;
 #N canvas 435 260 711 403 \$0-filter 0;
-#X symbolatom 111 123 28 0 0 2 Keyword #0-filter-keyword-in #0-filter-keyword-out
-;
+#X symbolatom 111 123 28 0 0 2 Keyword \$0-filter-keyword-in \$0-filter-keyword-out 12;
 #X obj 104 205 loadbang;
-#X obj 481 123 bng 15 250 50 0 \$0-filter-vendor-minus \$0-dummy ‹
-4 7 0 14 -262144 -1 -1;
-#X obj 511 123 bng 15 250 50 0 \$0-filter-vendor-plus \$0-dummy ›
-4 7 0 14 -262144 -1 -1;
-#X obj 481 156 bng 15 250 50 0 \$0-filter-category-minus \$0-dummy
-‹ 4 7 0 14 -262144 -1 -1;
-#X obj 511 156 bng 15 250 50 0 \$0-filter-category-plus \$0-dummy ›
-4 7 0 14 -262144 -1 -1;
-#X obj 292 123 cnv 15 170 15 empty empty empty 20 12 0 14 -233017 -66577
-0;
-#X symbolatom 292 123 28 0 0 2 Vendor #0-filter-vendor-label #0-filter-vendor-out
-;
-#X obj 292 156 cnv 15 170 15 empty empty empty 20 12 0 14 -233017 -66577
-0;
-#X symbolatom 292 156 28 0 0 2 Category #0-filter-category-label #0-filter-category-out
-;
+#X obj 539 123 bng 19 250 50 0 \$0-filter-vendor-minus \$0-dummy ‹ 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 577 123 bng 19 250 50 0 \$0-filter-vendor-plus \$0-dummy › 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 538 161 bng 19 250 50 0 \$0-filter-category-minus \$0-dummy ‹ 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 576 161 bng 19 250 50 0 \$0-filter-category-plus \$0-dummy › 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 316 124 cnv 15 198 17 empty empty empty 20 12 0 14 #e0e0e0 #404040 0;
+#X symbolatom 316 123 28 0 0 2 Vendor \$0-filter-vendor-label \$0-filter-vendor-out 12;
+#X obj 315 162 cnv 15 198 17 empty empty empty 20 12 0 14 #e0e0e0 #404040 0;
+#X symbolatom 315 161 28 0 0 2 Category \$0-filter-category-label \$0-filter-category-out 12;
 #X obj 410 280 s \$0-filter-category;
 #X obj 403 255 s \$0-filter-vendor;
 #X obj 104 249 s \$0-filter-keyword-in;
 #X msg 104 228 symbol;
-#X obj 220 144 tgl 15 0 \$0-filter-native \$0-filter-native native
-17 7 0 10 -262144 -1 -1 1 1;
-#X obj 220 159 tgl 15 0 \$0-filter-bridged \$0-filter-bridged bridged
-17 7 0 10 -262144 -1 -1 1 1;
-#X obj 466 123 bng 15 250 50 0 \$0-filter-vendor-minus-page \$0-dummy
-« 4 7 0 14 -262144 -1 -1;
-#X obj 526 123 bng 15 250 50 0 \$0-filter-vendor-plus-page \$0-dummy
-» 4 7 0 14 -262144 -1 -1;
-#X obj 466 156 bng 15 250 50 0 \$0-filter-category-minus-page \$0-dummy
-« 4 7 0 14 -262144 -1 -1;
-#X obj 526 156 bng 15 250 50 0 \$0-filter-category-plus-page \$0-dummy
-» 4 7 0 14 -262144 -1 -1;
-#X obj 496 123 bng 15 250 50 0 \$0-filter-vendor-all \$0-dummy empty
-17 7 0 10 -257985 -1 -1;
-#X obj 496 156 bng 15 250 50 0 \$0-filter-category-all \$0-dummy empty
-4 7 0 14 -257985 -1 -1;
-#X obj 112 144 tgl 15 0 \$0-filter-vst2 \$0-filter-vst2 VST2 17 7 0
-10 -262144 -1 -1 1 1;
-#X obj 164 159 tgl 15 0 \$0-filter-synth \$0-filter-synth synth 17
-7 0 10 -262144 -1 -1 1 1;
-#X obj 112 159 tgl 15 0 \$0-filter-vst3 \$0-filter-vst3 VST3 17 7 0
-10 -262144 -1 -1 1 1;
-#X obj 164 144 tgl 15 0 \$0-filter-fx \$0-filter-fx FX 17 7 0 10 -262144
--1 -1 1 1;
+#X obj 231 145 tgl 19 0 \$0-filter-native \$0-filter-native native 22 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 231 164 tgl 19 0 \$0-filter-bridged \$0-filter-bridged bridged 22 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 520 123 bng 19 250 50 0 \$0-filter-vendor-minus-page \$0-dummy « 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 596 123 bng 19 250 50 0 \$0-filter-vendor-plus-page \$0-dummy » 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 519 161 bng 19 250 50 0 \$0-filter-category-minus-page \$0-dummy « 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 595 161 bng 19 250 50 0 \$0-filter-category-plus-page \$0-dummy » 4 8 0 18 #fcfcfc #000000 #000000;
+#X obj 558 123 bng 19 250 50 0 \$0-filter-vendor-all \$0-dummy empty 17 7 0 10 #f8fc00 #000000 #000000;
+#X obj 557 161 bng 19 250 50 0 \$0-filter-category-all \$0-dummy empty 4 7 0 14 #f8fc00 #000000 #000000;
+#X obj 111 145 tgl 19 0 \$0-filter-vst2 \$0-filter-vst2 VST2 22 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 169 164 tgl 19 0 \$0-filter-synth \$0-filter-synth synth 22 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 111 164 tgl 19 0 \$0-filter-vst3 \$0-filter-vst3 VST3 22 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 169 145 tgl 19 0 \$0-filter-fx \$0-filter-fx FX 22 11 0 12 #fcfcfc #000000 #000000 0 1;
 #X obj 403 209 loadbang;
 #X msg 403 230 0;
 #X obj 255 205 loadbang;
 #X obj 255 226 f \$0;
-#X obj 289 227 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
--1 -1;
-#X msg 255 247 \; \$1-filter-vst2 1 \; \$1-filter-vst3 1 \; \$1-filter-synth
-1 \; \$1-filter-fx 1 \; \$1-filter-native 1 \; \$1-filter-bridged 1
-;
+#X obj 289 227 bng 15 250 50 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000;
+#X msg 255 247 \; \$1-filter-vst2 1 \; \$1-filter-vst3 1 \; \$1-filter-synth 1 \; \$1-filter-fx 1 \; \$1-filter-native 1 \; \$1-filter-bridged 1;
 #X connect 1 0 13 0;
 #X connect 13 0 12 0;
 #X connect 26 0 27 0;
@@ -1690,50 +1649,37 @@ categories...;
 #X connect 28 0 29 0;
 #X connect 29 0 31 0;
 #X connect 30 0 29 0;
-#X coords 0 -1 1 1 450 80 2 100 100;
+#X coords 0 -1 1 1 528 92 2 100 100;
 #X restore 26 15 pd \$0-filter;
-#N canvas 288 337 450 300 \$0-plugin-list 0;
-#X coords 0 0 435 300 435 300 2 0 0;
-#X restore 41 95 pd \$0-plugin-list;
-#X obj 26 127 vsl 15 235 282 0 0 0 \$0-scroll \$0-scroll-bar empty
-0 -9 0 10 -262144 -1 -1 23400 0;
-#X obj 26 95 bng 15 250 50 0 \$0-scroll-page-up \$0-scroll-page-up
-« 4 7 0 14 -191407 -1 -1;
-#X obj 26 110 bng 15 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 4 7 0
-14 -228856 -1 -1;
-#X obj 26 365 bng 15 250 50 0 \$0-scroll-down \$0-scroll-down › 4
-7 0 14 -228856 -1 -1;
-#X obj 26 380 bng 15 250 50 0 \$0-scroll-page-down \$0-scroll-page-down
-» 4 7 0 14 -191407 -1 -1;
-#X obj 26 396 cnv 10 450 20 empty empty Path: 4 10 0 10 -228856 -1
-0;
-#X symbolatom 64 398 67 0 0 0 - #0-path-label #0-path-label-out;
-#X restore 101 354 pd \$0-plugins;
-#X obj 176 406 loadbang;
-#X obj 176 448 route symbol;
-#X msg 176 469 1;
-#X obj 126 468 spigot;
-#X obj 100 421 t a a;
-#X obj 176 427 list append \$1;
-#X obj 126 489 s \$1;
-#X obj 107 279 tgl 15 0 \$0-threaded \$0-threaded threaded 18 7 0 10
--262144 -1 -1 0 1;
-#X obj 194 249 vradio 15 1 0 3 \$0-mode \$0-mode empty 0 -8 0 10 -262144
--1 -1 0;
-#X obj 290 348 loadbang;
-#X obj 290 369 f \$0;
-#X obj 214 255 cnv 5 1 1 empty empty normal 0 0 0 10 -262144 -1 0;
-#X obj 214 287 cnv 5 1 1 empty empty bridge 0 0 0 10 -262144 -1 0;
-#X obj 214 271 cnv 5 1 1 empty empty sandbox 0 0 0 10 -262144 -1 0
-;
-#X obj 107 264 tgl 15 0 \$0-async \$0-async async 18 7 0 10 -262144
--1 -1 1 1;
-#X msg 290 390 \; \$1-editor 1 \; \$1-mode 0 \; \$1-threaded 0 \; \$1-async
-1 \; \$1-path-label symbol \; \$1-height 20;
-#X obj 326 370 bng 15 250 50 0 empty empty empty 17 7 0 10 -262144
--1 -1;
-#X obj 107 207 bng 15 250 50 0 \$0-clear-cache empty clear plugin cache
-18 7 0 10 -128992 -1 -1;
+#N canvas 288 337 624 414 \$0-plugin-list 0;
+#X coords 0 0 509 380 509 380 2 0 0;
+#X restore 45 107 pd \$0-plugin-list;
+#X obj 26 147 vsl 19 299 234 0 0 0 \$0-scroll \$0-scroll-bar empty 0 -9 0 10 #fcfcfc #000000 #000000 0 0;
+#X obj 26 107 bng 19 250 50 0 \$0-scroll-page-up \$0-scroll-page-up « 4 8 0 18 #b8b8b8 #000000 #000000;
+#X obj 26 126 bng 19 250 50 0 \$0-scroll-up \$0-scroll-up ‹ 4 8 0 18 #dcdcdc #000000 #000000;
+#X obj 26 449 bng 19 250 50 0 \$0-scroll-down \$0-scroll-down › 4 8 0 18 #dcdcdc #000000 #000000;
+#X obj 26 468 bng 19 250 50 0 \$0-scroll-page-down \$0-scroll-page-down » 4 8 0 18 #b8b8b8 #000000 #000000;
+#X obj 26 488 cnv 10 528 27 empty empty Path: 8 15 0 12 #dcdcdc #000000 0;
+#X symbolatom 71 492 68 0 0 0 - \$0-path-label \$0-path-label-out 12;
+#X restore 101 369 pd \$0-plugins;
+#X obj 176 421 loadbang;
+#X obj 176 463 route symbol;
+#X msg 176 484 1;
+#X obj 126 483 spigot;
+#X obj 100 436 t a a;
+#X obj 176 442 list append \$1;
+#X obj 126 504 s \$1;
+#X obj 107 314 tgl 19 0 \$0-threaded \$0-threaded threaded 23 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 194 276 vradio 19 1 0 3 \$0-mode \$0-mode empty 0 -8 0 10 #fcfcfc #000000 #000000 0;
+#X obj 290 363 loadbang;
+#X obj 290 384 f \$0;
+#X obj 218 287 cnv 5 1 1 empty empty normal 0 0 0 12 #fcfcfc #000000 0;
+#X obj 218 325 cnv 5 1 1 empty empty bridge 0 0 0 12 #fcfcfc #000000 0;
+#X obj 218 306 cnv 5 1 1 empty empty sandbox 0 0 0 12 #fcfcfc #000000 0;
+#X obj 107 295 tgl 19 0 \$0-async \$0-async async 23 11 0 12 #fcfcfc #000000 #000000 0 1;
+#X msg 290 405 \; \$1-editor 1 \; \$1-mode 0 \; \$1-threaded 0 \; \$1-async 1 \; \$1-path-label symbol \; \$1-height 20;
+#X obj 326 385 bng 15 250 50 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000;
+#X obj 107 222 bng 19 250 50 0 \$0-clear-cache empty clear plugin cache 23 11 0 12 #7c7c7c #000000 #000000;
 #X connect 8 0 16 0;
 #X connect 12 0 17 0;
 #X connect 13 0 14 0;
@@ -1745,4 +1691,4 @@ categories...;
 #X connect 21 0 22 0;
 #X connect 22 0 27 0;
 #X connect 28 0 22 0;
-#X coords 0 -1 1 1 184 200 2 100 100;
+#X coords 0 -1 1 1 212 240 2 100 100;
