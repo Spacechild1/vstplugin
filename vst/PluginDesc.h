@@ -91,15 +91,15 @@ struct PluginDesc final {
         paramMap_[key] = index;
     }
     int findParam(const std::string& key) const;
+    int numParameters() const {
+        return parameters.size();
+    }
 #if USE_VST3
     // get VST3 parameter ID from index
     uint32_t getParamID(int index) const;
     // get index from VST3 parameter ID
     int getParamIndex(uint32_t _id) const;
 #endif
-    int numParameters() const {
-        return parameters.size();
-    }
     // presets
     void scanPresets();
     int numPresets() const { return presets.size(); }
@@ -115,6 +115,18 @@ struct PluginDesc final {
     int numPrograms() const {
         return programs.size();
     }
+    // flags
+    enum Flags {
+        HasEditor = 1 << 0,
+        IsSynth = 1 << 1,
+        SinglePrecision = 1 << 2,
+        DoublePrecision = 1 << 3,
+        MidiInput = 1 << 4,
+        MidiOutput = 1 << 5,
+        SysexInput = 1 << 6,
+        SysexOutput = 1 << 7,
+        Bridged = 1 << 8
+    };
     bool editor() const {
         return flags & HasEditor;
     }
@@ -150,18 +162,6 @@ struct PluginDesc final {
     bool bridged() const {
         return flags & Bridged;
     }
-    // flags
-    enum Flags {
-        HasEditor = 1 << 0,
-        IsSynth = 1 << 1,
-        SinglePrecision = 1 << 2,
-        DoublePrecision = 1 << 3,
-        MidiInput = 1 << 4,
-        MidiOutput = 1 << 5,
-        SysexInput = 1 << 6,
-        SysexOutput = 1 << 7,
-        Bridged = 1 << 8
-    };
     uint32_t flags = 0;
  private:
     std::weak_ptr<const IFactory> factory_;

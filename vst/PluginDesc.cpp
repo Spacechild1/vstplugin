@@ -456,7 +456,7 @@ static std::string bashString(std::string name){
 }
 
 #define toHex(x) std::hex << (x) << std::dec
-#define fromHex(x) std::stol(x, 0, 16); // hex
+#define fromHex(x) std::stol(x, nullptr, 16); // hex
 
 void writeBusses(std::ostream& file, const std::vector<PluginDesc::Bus>& vec){
     int n = vec.size();
@@ -648,19 +648,13 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                     param.label = ltrim(args[1]);
                 }
                 if (args.size() >= 3){
-                    param.id = fromHex(args[2]);
+                    try {
+                        param.id = fromHex(args[2]);
+                    } catch (...) {
+                        throw Error("bad parameter ID");
+                    }
                 }
-                parameters.push_back(std::move(param));
-            }
-            // inverse mapping name -> index
-            for (int i = 0; i < (int)parameters.size(); ++i){
-                auto& param = parameters[i];
-                paramMap_[param.name] = i;
-            #if USE_VST3
-                // for VST3:
-                idToIndexMap_[param.id] = i;
-                indexToIdMap_[i] = param.id;
-            #endif
+                addParameter(std::move(param));
             }
         } else if (line == "[programs]"){
             programs.clear();
@@ -669,7 +663,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
             while (n-- && std::getline(file, line)){
                 programs.push_back(std::move(line));
             }
-            goto done;
+            break; // done
         } else if (line == "[subplugins]"){
             // get list of subplugins (only when probing)
             subPlugins.clear();
@@ -683,7 +677,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                 // LOG_DEBUG("got subplugin " << sub.name << " " << sub.id);
                 subPlugins.push_back(std::move(sub));
             }
-            goto done;
+            break; // done
         } else if (start){
             std::string key;
             std::string value;
@@ -746,7 +740,6 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
             }
         }
     }
-done:
     // restore "Bridge" flag
     auto factory = factory_.lock();
     if (factory && factory->arch() != getHostCpuArchitecture()){
