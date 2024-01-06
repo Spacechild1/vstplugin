@@ -3925,15 +3925,11 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
 
 /*-------------------------- private methods ---------------------------*/
 
-void vstplugin_pdversion(t_vstplugin *x)
+void vstplugin_multichannel(t_vstplugin *x)
 {
-    t_atom msg[3];
-    int major, minor, bugfix;
-    sys_getversion(&major, &minor, &bugfix);
-    SETFLOAT(&msg[0], major);
-    SETFLOAT(&msg[1], minor);
-    SETFLOAT(&msg[2], bugfix);
-    outlet_anything(x->x_messout, gensym("pdversion"), 3, msg);
+    t_atom a;
+    SETFLOAT(&a, g_signal_setmultiout != nullptr);
+    outlet_anything(x->x_messout, gensym("multichannel"), 1, &a);
 }
 
 /*-------------------------- setup function ----------------------------*/
@@ -3947,6 +3943,7 @@ void vstplugin_pdversion(t_vstplugin *x)
 #endif
 
 EXPORT void vstplugin_tilde_setup(void) {
+#ifdef PD_HAVE_MULTICHANNEL
     // runtime check for multichannel support:
 #ifdef _WIN32
     // get a handle to the module containing the Pd API functions.
@@ -3963,6 +3960,7 @@ EXPORT void vstplugin_tilde_setup(void) {
     g_signal_setmultiout = (t_signal_setmultiout)dlsym(
         dlopen(nullptr, RTLD_NOW), "signal_setmultiout");
 #endif
+#endif // PD_HAVE_MULTICHANNEL
 
     vstplugin_class = class_new(gensym("vstplugin~"), (t_newmethod)(void *)vstplugin_new,
         (t_method)vstplugin_free, sizeof(t_vstplugin), CLASS_MULTICHANNEL, A_GIMME, A_NULL);
@@ -4057,7 +4055,7 @@ EXPORT void vstplugin_tilde_setup(void) {
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<BANK>, gensym("bank_write"), A_SYMBOL, A_DEFFLOAT, A_NULL);
     // private messages
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
-    class_addmethod(vstplugin_class, (t_method)vstplugin_pdversion, gensym("pdversion"), A_NULL);
+    class_addmethod(vstplugin_class, (t_method)vstplugin_multichannel, gensym("multichannel"), A_NULL);
 
     vstparam_setup();
 
