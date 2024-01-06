@@ -624,6 +624,8 @@ std::vector<PluginDesc::Bus> readBusses(std::istream& file){
     return result;
 }
 
+#define DEBUG_PARAMETERS 0
+
 void PluginDesc::deserialize(std::istream& file, int versionMajor,
                              int versionMinor, int versionBugfix) {
     // first check for sections, then for keys!
@@ -755,6 +757,36 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
     if (factory && factory->arch() != getHostCpuArchitecture()){
         flags |= Bridged;
     }
+#if WARN_VST3_PARAMETERS
+    // warn if VST3 plugin has any non-automatable parameters
+    // *before* automatable parameters. See WARN_VST3_PARAMETERS.
+    if (type() == PluginType::VST3) {
+        int lastAutomatable = -1;
+        int firstNonAutomatable = -1;
+        for (int i = 0; i < parameters.size(); ++i) {
+            auto& param =  parameters[i];
+            if (param.automatable) {
+                lastAutomatable = i;
+            } else {
+                if (firstNonAutomatable < 0) {
+                    firstNonAutomatable = i;
+                #if DEBUG_PARAMETERS
+                    LOG_DEBUG("non-automatable parameters in '" << name << "':");
+                #endif
+                }
+            #if DEBUG_PARAMETERS
+                LOG_DEBUG(param.name);
+            #endif
+            }
+        }
+        if (firstNonAutomatable >= 0 && firstNonAutomatable < lastAutomatable) {
+            warnParameters = true;
+        #if DEBUG_PARAMETERS
+            LOG_DEBUG("automatable and non-automatable parameters intersect!");
+        #endif
+        }
+    }
+#endif // WARN_VST3_PARAMETERS
 }
 
 } // vst

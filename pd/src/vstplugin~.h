@@ -72,6 +72,9 @@ struct t_search_data : t_command_data<t_search_data> {
     std::vector<std::string> paths;
     std::vector<std::string> exclude;
     std::vector<PluginDesc::const_ptr> plugins;
+#if WARN_VST3_PARAMETERS
+    std::vector<PluginDesc::const_ptr> warn_plugins;
+#endif
     std::string cachefiledir;
     float timeout;
     bool parallel;

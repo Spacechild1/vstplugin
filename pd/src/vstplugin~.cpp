@@ -624,7 +624,13 @@ static void searchPlugins(const std::string& path, t_search_data *data){
                     // future finished
                     if (factory){
                         for (int i = 0; i < factory->numPlugins(); ++i){
-                            addPlugin(factory->getPlugin(i));
+                            auto plugin = factory->getPlugin(i);
+                            addPlugin(plugin);
+                        #if WARN_VST3_PARAMETERS
+                            if (data && plugin->warnParameters) {
+                                data->warn_plugins.push_back(plugin);
+                            }
+                        #endif
                         }
                     }
                     // remove future
@@ -692,8 +698,14 @@ static void searchPlugins(const std::string& path, t_search_data *data){
             } else {
                 if ((factory = probePlugin<async>(pluginPath, timeout))){
                     int numPlugins = factory->numPlugins();
-                    for (int i = 0; i < numPlugins; ++i){
-                        addPlugin(factory->getPlugin(i));
+                    for (int i = 0; i < numPlugins; ++i) {
+                        auto plugin = factory->getPlugin(i);
+                        addPlugin(plugin);
+                    #if WARN_VST3_PARAMETERS
+                        if (data && plugin->warnParameters) {
+                            data->warn_plugins.push_back(plugin);
+                        }
+                    #endif
                     }
                 }
             }
@@ -1199,6 +1211,20 @@ static void vstplugin_search_done(t_search_data *x){
     }
     x->owner->x_search_data = nullptr; // !
     logpost(x, PdNormal, "search done");
+
+#if WARN_VST3_PARAMETERS
+    // warn if VST3 plugins have non-automatable parameters
+    if (!x->warn_plugins.empty()) {
+        post("");
+        logpost(x, PdError, "WARNING: The following VST3 plugins have (non-automatable) parameters which have been "
+                "omitted in previous vstplugin~ versions. As a consequence, parameter indices might have changed!");
+        post("---");
+        for (auto& plugin : x->warn_plugins) {
+            logpost(x, PdNormal, "%s (%s)", plugin->name.c_str(), plugin->vendor.c_str());
+        }
+        post("");
+    }
+#endif
 
     for (auto& plugin : makePluginList(x->plugins)){
         t_atom msg;

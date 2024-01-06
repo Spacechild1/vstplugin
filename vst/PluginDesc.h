@@ -164,6 +164,9 @@ struct PluginDesc final {
         return flags & Bridged;
     }
     uint32_t flags = 0;
+#if WARN_VST3_PARAMETERS
+    bool warnParameters = false;
+#endif
  private:
     std::weak_ptr<const IFactory> factory_;
     std::string path_;

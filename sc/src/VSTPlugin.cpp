@@ -519,6 +519,11 @@ static const PluginDesc* queryPlugin(const std::string& path) {
 
 #define PROBE_FUTURES 8
 
+#if WARN_VST3_PARAMETERS
+// HACK
+static thread_local std::vector<PluginDesc::const_ptr> gWarnPlugins;
+#endif
+
 std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                                                  const std::vector<std::string>& exclude,
                                                  float timeout, bool parallel, bool verbose) {
@@ -546,7 +551,13 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                     // future finished
                     if (factory){
                         for (int i = 0; i < factory->numPlugins(); ++i){
-                            addPlugin(factory->getPlugin(i));
+                            auto plugin = factory->getPlugin(i);
+                            addPlugin(plugin);
+                        #if WARN_VST3_PARAMETERS
+                            if (plugin->warnParameters) {
+                                gWarnPlugins.push_back(plugin);
+                            }
+                        #endif
                         }
                     }
                     // remove future
@@ -616,7 +627,13 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                 if ((factory = probePlugin(pluginPath, timeout, verbose))) {
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i) {
-                        addPlugin(factory->getPlugin(i));
+                        auto plugin = factory->getPlugin(i);
+                        addPlugin(plugin);
+                    #if WARN_VST3_PARAMETERS
+                        if (plugin->warnParameters) {
+                            gWarnPlugins.push_back(plugin);
+                        }
+                    #endif
                     }
                 }
             }
@@ -3008,6 +3025,20 @@ bool cmdSearch(World *inWorld, void* cmdData) {
             break;
         }
     }
+#if WARN_VST3_PARAMETERS
+    // gWarnPlugins is filled in searchPlugins()
+    if (!gWarnPlugins.empty()) {
+        Print("\n");
+        Print("WARNING: The following VST3 plugins have (non-automatable) parameters which have been omitted "
+              "in previous vstplugin~ versions. As a consequence, parameter indices might have changed!\n");
+        Print("---\n");
+        for (auto& plugin : gWarnPlugins) {
+            Print("%s (%s)\n", plugin->name.c_str(), plugin->vendor.c_str());
+        }
+        Print("\n");
+        gWarnPlugins.clear();
+    }
+#endif
     if (save){
         if (data->cacheFileDir[0]) {
             // use custom cache file directory

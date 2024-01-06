@@ -62,6 +62,17 @@
 # endif
 #endif
 
+#if USE_VST3
+// Starting with v0.6 we include non-automatable parameters
+// in VST3 plugins, as long as they are not read-only or hidden.
+// If such parameters come before automatable parameters, the latter
+// would have different indices. In this case, we show a prominent
+// warning to the user. We might disable this code in future versions.
+#ifndef WARN_VST3_PARAMETERS
+#define WARN_VST3_PARAMETERS 1
+#endif
+#endif // USE_VST3
+
 namespace vst {
 
 const int VERSION_MAJOR = 0;
