@@ -82,6 +82,7 @@ struct PluginDesc final {
         std::string name;
         std::string label;
         uint32_t id = 0;
+        bool automatable = true;
     };
     std::vector<Param> parameters;
 

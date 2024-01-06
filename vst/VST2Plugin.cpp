@@ -252,6 +252,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
             p.name = getParameterName(i);
             p.label = getParameterLabel(i);
             p.id = i;
+            p.automatable = dispatch(effCanBeAutomated, i);
             info->addParameter(std::move(p));
         }
         // programs

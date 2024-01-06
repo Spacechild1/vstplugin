@@ -774,10 +774,10 @@ n=<output bus count>
 <channel count #N-1>, <type #N-1>, <name #N-1>
 [parameters]
 n=<parameter count>
-<name #0>, <label #0>, <ID #0>
-<name #1>, <label #1>, <ID #1>
+<name #0>, <label #0>, <ID #0>, <flags #0>
+<name #1>, <label #1>, <ID #1> <flags #1>
 ...
-<name #N-1>, <label #N-1>, <ID #N-1>
+<name #N-1>, <label #N-1>, <ID #N-1>, <flags #N-1>
 [programs]
 n=<program count>
 <name #0>
@@ -797,6 +797,7 @@ String values, like plugin/parameter/program names, can contain any characters e
 ##### flags
 
 `flags` is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
+
 | value ||
 | ----- |-|
 | 0x001 | supports the GUI editor
@@ -817,11 +818,17 @@ Each bus entry takes up a single line and consists of three fields, separated by
 
 ##### parameters
 
-Each parameter entry takes up a single line and consists of three fields, separated by a comma: `<name>, <label>, <ID>`.
+Each parameter entry takes up a single line and consists of three fields, separated by a comma: `<name>, <label>, <ID> <flags>`.
 
 `<label>` is the unit of measurement (e.g. "dB", "ms", "%"); it can be an empty string!
 
 The parameter ID is a hexidecimal number. For VST 2.x plugins it is the same as the parameter index, but for VST 3.x plugins it can be an arbitrary 32 bit integer.
+
+`flags` is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
+
+| value ||
+| ----- |-|
+| 0x01  | is automatable |
 
 ##### programs
 

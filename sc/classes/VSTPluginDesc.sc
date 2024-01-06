@@ -80,9 +80,9 @@ VSTPluginDesc {
 	}
 	printParameters {
 		this.parameters.do { arg param, i;
-			var label;
-			label = (param.label.size > 0).if { "(%)".format(param.label) };
-			"[%] % %".format(i, param.name, label ?? "").postln;
+			var label = (param.label.size > 0).if { " (" ++ param.label ++ ")" } { "" };
+			var auto = param.automatable.not.if { " [not automatable]" } { "" };
+			"[%] %%%".format(i, param.name, label, auto).postln;
 		}
 	}
 	printPrograms {
@@ -319,13 +319,17 @@ VSTPluginDesc {
 					line = VSTPlugin.prGetLine(stream);
 					n = VSTPlugin.prParseCount(line);
 					info.parameters = n.collect {
-						var name, label;
+						var name, label, id, flags;
 						line = VSTPlugin.prGetLine(stream);
-						#name, label = line.split($,);
+						#name, label, id, flags = line.split($,);
+						// Parameter flags have been added inVSTPlugin v0.6.
+						// Currently, there is only one flag (1 = automatable).
+						flags = flags !? { hex2int.(flags) } ?? { 1 };
 						(
 							name: name.stripWhiteSpace,
-							label: label.stripWhiteSpace
-							// id (ignore)
+							label: label.stripWhiteSpace,
+							// ignore id
+							automatable: (flags & 1).asBoolean
 							// more info later...
 						)
 					};

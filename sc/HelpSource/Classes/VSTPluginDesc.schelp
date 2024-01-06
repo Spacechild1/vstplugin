@@ -108,7 +108,8 @@ link::Classes/Array:: of (automatable) parameters. Each parameter is represented
 
 table::
 ## code::\name:: || parameter name
-## code::\label:: || the unit of measurement (e.g. 'dB')
+## code::\label:: || the unit of measurement (e.g. 'dB', 'ms' or 'Hz')
+## code::\automatable:: || a Boolean that indicates whether the parameter is suitable for automation
 ::
 
 More entries might be added later.

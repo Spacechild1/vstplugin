@@ -429,8 +429,8 @@ std::string PluginDesc::getPresetFolder(PresetType type, bool create) const {
 /// flags=<int>
 /// [parameters]
 /// n=<int>
-/// name,label
-/// name,label
+/// name,label,id,flags
+/// name,label,id,flags
 /// ...
 /// [programs]
 /// n=<int>
@@ -505,9 +505,11 @@ void PluginDesc::serialize(std::ostream& file) const {
     file << "[parameters]\n";
     file << "n=" << parameters.size() << "\n";
     for (auto& param : parameters) {
+        uint32_t flags = param.automatable;
         file << bashString(param.name) << ","
              << bashString(param.label) << ","
-             << toHex(param.id) << "\n";
+             << toHex(param.id) << ","
+             << toHex(flags) << "\n";
     }
     // programs
     file << "[programs]\n";
@@ -652,6 +654,14 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                         param.id = fromHex(args[2]);
                     } catch (...) {
                         throw Error("bad parameter ID");
+                    }
+                }
+                if (args.size() >= 4){
+                    try {
+                        auto flags = fromHex(args[3]);
+                        param.automatable = flags & 1;
+                    } catch (...) {
+                        throw Error("bad parameter flags");
                     }
                 }
                 addParameter(std::move(param));

@@ -2123,14 +2123,16 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
     }
 }
 
-// get parameter info (name + label + ...)
+// get parameter info (name + label + automatable)
 static void vstplugin_param_doinfo(const PluginDesc& info, int index, t_outlet *outlet){
-    t_atom msg[3];
+    auto& param = info.parameters[index];
+    t_atom msg[4];
     SETFLOAT(&msg[0], index);
-    SETSYMBOL(&msg[1], gensym(info.parameters[index].name.c_str()));
-    SETSYMBOL(&msg[2], gensym(info.parameters[index].label.c_str()));
+    SETSYMBOL(&msg[1], gensym(param.name.c_str()));
+    SETSYMBOL(&msg[2], gensym(param.label.c_str()));
+    SETFLOAT(&msg[3], param.automatable);
     // LATER add more info
-    outlet_anything(outlet, gensym("param_info"), 3, msg);
+    outlet_anything(outlet, gensym("param_info"), 4, msg);
 }
 
 // get parameter info (name + label + ...)

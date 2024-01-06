@@ -566,26 +566,32 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             PluginDesc::Param param;
             Vst::ParameterInfo pi;
             if (controller_->getParameterInfo(i, pi) == kResultTrue){
-                // some plugins have duplicate parameters... why?
-                if (params.count(pi.id)){
-                    continue;
-                }
                 param.name = convertString(pi.title);
                 param.label = convertString(pi.units);
                 param.id = pi.id;
+                // some plugins have duplicate parameters... why?
+                if (params.count(pi.id)){
+                    LOG_DEBUG("skip duplicate parameter '" << param.name
+                              << "' with ID " << param.id);
+                    continue;
+                }
                 if (pi.flags & Vst::ParameterInfo::kIsProgramChange){
                     info->programChange = pi.id;
                 } else if (pi.flags & Vst::ParameterInfo::kIsBypass){
                     info->bypass = pi.id;
                 } else {
-                    // Only show automatable parameters. This should hide MIDI CC parameters.
-                    // Some JUCE plugins add thousands of (automatable) MIDI CC parameters,
-                    // e.g. "MIDI CC 0|0" etc., so we need the following hack:
-                    if ((pi.flags & Vst::ParameterInfo::kCanAutomate) &&
-                            param.name.find("MIDI CC ") == std::string::npos)
-                    {
-                        params.insert(param.id);
-                        info->addParameter(std::move(param));
+                    // Only show automatable/visible parameters.
+                    if (!(pi.flags & Vst::ParameterInfo::kIsReadOnly) &&
+                        !(pi.flags & Vst::ParameterInfo::kIsHidden)) {
+                        param.automatable = pi.flags & Vst::ParameterInfo::kCanAutomate;
+                        // Some JUCE plugins add thousands of (automatable) MIDI CC parameters,
+                        // e.g. "MIDI CC 0|0" etc., so we need the following hack:
+                        if (param.name.find("MIDI CC ") == std::string::npos) {
+                            params.insert(param.id);
+                            info->addParameter(std::move(param));
+                        }
+                    } else {
+                        LOG_DEBUG("ignore parameter '" << param.name << "'");
                     }
                 }
             } else {
