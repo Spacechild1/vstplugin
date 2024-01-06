@@ -1190,7 +1190,7 @@ void VST3Plugin::handleEvents(){
         for (int i = 0; i < outputEvents_.getEventCount(); ++i){
             Vst::Event event;
             outputEvents_.getEvent(i, event);
-            if (event.type == Vst::Event::kDataEvent){
+            if (event.type == Vst::Event::kDataEvent) {
                 if (event.data.type == Vst::DataEvent::kMidiSysEx){
                     SysexEvent e((const char *)event.data.bytes, event.data.size);
                     listener_->sysexEvent(e);
@@ -1199,7 +1199,7 @@ void VST3Plugin::handleEvents(){
                 }
             } else {
                 MidiEvent e;
-                switch (event.type){
+                switch (event.type) {
                 case Vst::Event::kNoteOffEvent:
                     e.data[0] = 0x80 | event.noteOff.channel;
                     e.data[1] = event.noteOff.pitch;
@@ -1216,36 +1216,44 @@ void VST3Plugin::handleEvents(){
                     e.data[2] = norm2midi(event.polyPressure.pressure);
                     break;
                 case Vst::Event::kLegacyMIDICCOutEvent:
-                    switch (event.midiCCOut.controlNumber){
-                    case Vst::kCtrlPolyPressure:
-                        e.data[0] = 0x0a | event.midiCCOut.channel;
-                        e.data[1] = event.midiCCOut.value;
-                        e.data[2] = event.midiCCOut.value2;
-                        break;
-                    case Vst::kCtrlProgramChange:
-                        e.data[0] = 0x0c | event.midiCCOut.channel;
-                        e.data[1] = event.midiCCOut.value;
-                        e.data[2] = event.midiCCOut.value2;
-                        break;
-                    case Vst::kAfterTouch:
-                        e.data[0] = 0x0d | event.midiCCOut.channel;
-                        e.data[1] = event.midiCCOut.value;
-                        e.data[2] = event.midiCCOut.value2;
-                        break;
-                    case Vst::kPitchBend:
-                        e.data[0] = 0x0e | event.midiCCOut.channel;
-                        e.data[1] = event.midiCCOut.value;
-                        e.data[2] = event.midiCCOut.value2;
-                        break;
-                    default: // CC
+                    if (event.midiCCOut.controlNumber < 128) {
+                        // CC event
                         e.data[0] = 0xb0 | event.midiCCOut.channel;
                         e.data[1] = event.midiCCOut.controlNumber;
                         e.data[2] = event.midiCCOut.value;
+                    } else {
+                        // special events
+                        switch (event.midiCCOut.controlNumber){
+                        case Vst::kCtrlPolyPressure:
+                            e.data[0] = 0x0a | event.midiCCOut.channel;
+                            e.data[1] = event.midiCCOut.value;
+                            e.data[2] = event.midiCCOut.value2;
+                            break;
+                        case Vst::kCtrlProgramChange:
+                            e.data[0] = 0x0c | event.midiCCOut.channel;
+                            e.data[1] = event.midiCCOut.value;
+                            e.data[2] = event.midiCCOut.value2;
+                            break;
+                        case Vst::kAfterTouch:
+                            e.data[0] = 0x0d | event.midiCCOut.channel;
+                            e.data[1] = event.midiCCOut.value;
+                            e.data[2] = event.midiCCOut.value2;
+                            break;
+                        case Vst::kPitchBend:
+                            e.data[0] = 0x0e | event.midiCCOut.channel;
+                            e.data[1] = event.midiCCOut.value;
+                            e.data[2] = event.midiCCOut.value2;
+                            break;
+                        default:
+                            LOG_DEBUG("unsupported LegacyMIDICCOut type: "
+                                      << event.midiCCOut.controlNumber);
+                            continue; // go to next event
+                        }
                     }
                     break;
                 default:
                     LOG_DEBUG("got unsupported event type: " << event.type);
-                    continue;
+                    continue; // go to next event
                 }
                 listener_->midiEvent(e);
             }
