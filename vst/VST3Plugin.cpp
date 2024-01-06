@@ -15,6 +15,10 @@
 #include <locale>
 #include <cassert>
 
+#ifndef DEBUG_VST3_PARAMETERS
+#define DEBUG_VST3_PARAMETERS 0
+#endif
+
 DEF_CLASS_IID (FUnknown)
 DEF_CLASS_IID (IBStream)
 DEF_CLASS_IID (IPlugFrame)
@@ -580,18 +584,29 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 } else if (pi.flags & Vst::ParameterInfo::kIsBypass){
                     info->bypass = pi.id;
                 } else {
+                #if DEBUG_VST3_PARAMETERS
+                    LOG_DEBUG(param.name << ": id=" << pi.id << ", flags=" << pi.flags);
+                #endif
                     // Only show automatable/visible parameters.
                     if (!(pi.flags & Vst::ParameterInfo::kIsReadOnly) &&
                         !(pi.flags & Vst::ParameterInfo::kIsHidden)) {
                         param.automatable = pi.flags & Vst::ParameterInfo::kCanAutomate;
-                        // Some JUCE plugins add thousands of (automatable) MIDI CC parameters,
-                        // e.g. "MIDI CC 0|0" etc., so we need the following hack:
-                        if (param.name.find("MIDI CC ") == std::string::npos) {
+                        // Some JUCE plugins have thousands of MIDI CC parameters,
+                        // e.g. "MIDI CC 0|0" etc., so we apply the following hack:
+                        auto prefix = "MIDI CC ";
+                        auto len = sizeof(prefix) - 1;
+                        if (param.name.compare(0, len, prefix, len) != 0) {
                             params.insert(param.id);
                             info->addParameter(std::move(param));
+                        } else {
+                        #if DEBUG_VST3_PARAMETERS
+                            LOG_DEBUG("ignore JUCE MIDI CC parameter '" << param.name << "'");
+                        #endif
                         }
                     } else {
-                        LOG_DEBUG("ignore parameter '" << param.name << "'");
+                    #if DEBUG_VST3_PARAMETERS
+                        LOG_DEBUG("ignore read-only parameter '" << param.name << "'");
+                    #endif
                     }
                 }
             } else {
