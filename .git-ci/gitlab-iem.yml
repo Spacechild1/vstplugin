@@ -6,7 +6,7 @@
 variables:
   PROJECT: vstplugin
   JOBS: all
-  PDVERSION: 0.52-1
+  PDVERSION: 0.54-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
   SC_PATH: /tmp/supercollider
@@ -128,15 +128,21 @@ variables:
     OSX_ARCHITECTURES: "arm64;x86_64"
     SUPERNOVA: 1
     BUILD_HOST_AMD64: 0
+    PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.macos.zip
     PD_EXTENSION: d_fat
   only:
     variables:
       - $JOBS == "all" || $JOBS == "macos"
   before_script:
-    - wget -q -O Pd.tgz http://msp.ucsd.edu/Software/pd-${PDVERSION}-macosx7.mac.tar.gz
+    - wget -q -O Pd.zip ${PD_URL}
     - rm -rf /Applications/Pd*.app/
-    - tar -xvf Pd.tgz -C /Applications/
-    - rm -f Pd.tgz
+# unzip and install .dmg
+    - unzip -q Pd.zip
+    - hdiutil attach Pd-${PDVERSION}.dmg
+    - cp -R /Volumes/Pd-${PDVERSION}/Pd-${PDVERSION}.app /Applications
+    - hdiutil unmount /Volumes/Pd-${PDVERSION}
+    - rm -f Pd.zip
+    - rm -f Pd-${PDVERSION}.dmg
     - *script_deps
     - *script_cmake
   after_script:
