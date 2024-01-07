@@ -200,11 +200,11 @@ variables:
 .Linux_wine32:
   allow_failure: true
   <<: *build_linux_wine32
-.Darwin:
+.macOS:
   <<: *build_macos
-.w32:
+.win32:
   <<: *build_w32
-.w64:
+.win64:
   <<: *build_w64
 
 #######################################################################
@@ -293,17 +293,17 @@ Linux_wine32:
   extends:
     - .Linux_wine32
     - .base
-Darwin:
+macOS:
   extends:
-    - .Darwin
+    - .macOS
     - .base
-w32:
+win32:
   extends:
-    - .w32
+    - .win32
     - .base
-w64:
+win64:
   extends:
-    - .w64
+    - .win64
     - .base
 package:
   extends:
