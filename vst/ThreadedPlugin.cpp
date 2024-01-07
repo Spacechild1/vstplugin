@@ -7,7 +7,11 @@
 #include <fstream>
 #include <assert.h>
 
-#if 0
+#ifndef DEBUG_THREADPOOL
+#define DEBUG_THREADPOOL 0
+#endif
+
+#if DEBUG_THREADPOOL
 #define THREAD_DEBUG(x) LOG_DEBUG(x)
 #else
 #define THREAD_DEBUG(x)
@@ -17,7 +21,15 @@ namespace vst {
 
 /*/////////////////// DSPThreadPool /////////////////////////*/
 
-thread_local bool gCurrentThreadDSP;
+static std::atomic<int> gNumDSPThreads;
+
+// set the number of DSP threads (0 = default)
+void setNumDSPThreads(int numThreads) {
+    LOG_DEBUG("setNumDSPThreads: " << numThreads);
+    gNumDSPThreads.store(std::max<int>(numThreads, 0));
+}
+
+static thread_local bool gCurrentThreadDSP;
 
 // some callbacks in IThreadedPluginListener need to know whether they
 // are called from a DSP (helper) thread, so that they would push to
@@ -44,14 +56,18 @@ DSPThreadPool::DSPThreadPool() {
     running_.store(true);
 
     //  number of available hardware threads minus one (= the main audio thread)
-    int numThreads = std::max<int>(std::thread::hardware_concurrency() - 1, 1);
+    int numDSPThreads = gNumDSPThreads.load();
+    if (numDSPThreads == 0) {
+        numDSPThreads = std::thread::hardware_concurrency(); // default
+    }
+    int numThreads = std::max<int>(numDSPThreads - 1, 1);
     THREAD_DEBUG("number of DSP helper threads: " << numThreads);
 
     for (int i = 0; i < numThreads; ++i){
         std::thread thread([this, i](){
             setThreadPriority(Priority::High);
             setCurrentThreadDSP();
-            run();
+            run(i);
         });
         threads_.push_back(std::move(thread));
     }
@@ -84,7 +100,7 @@ bool DSPThreadPool::push(Callback cb, ThreadedPlugin *plugin, int numSamples){
     pushLock_.lock();
     bool result = queue_.push({ cb, plugin, numSamples });
     pushLock_.unlock();
-    THREAD_DEBUG("DSPThreadPool::push");
+    THREAD_DEBUG("DSPThreadPool: push task");
     semaphore_.post();
     return result;
 }
@@ -101,7 +117,7 @@ bool DSPThreadPool::processTask(){
     return result;
 }
 
-void DSPThreadPool::run() {
+void DSPThreadPool::run(int index) {
     // the loop
     while (running_.load()) {
         Task task;
@@ -117,7 +133,7 @@ void DSPThreadPool::run() {
         // wait for more
         semaphore_.wait();
 
-        THREAD_DEBUG("DSP thread " << i << " woke up");
+        THREAD_DEBUG("DSP helper thread " << index << " woke up");
     }
 }
 

@@ -380,6 +380,18 @@ VSTPlugin : MultiOutUGen {
 		^-1; // invalid bufnum: don't write results
 	}
 
+	*initDSPThreads { arg server, numThreads;
+		server = server ?? Server.default;
+		server.serverRunning.not.if {
+			"VSTPlugin.initDSPThreads requires the Server to be running!".warn;
+			^this;
+		};
+		server.listSendMsg(this.initDSPThreadsMsg(numThreads));
+	}
+	*initDSPThreadsMsg { arg numThreads;
+		^['/cmd', '/vst_dsp_threads', numThreads ?? 0 ];
+	}
+
 	// instance methods
 	init { arg id, info, blockSize, bypass, numIn, numOut, numParams ... args;
 		var numInputs, numOutputs, pluginInputs, inputArray, outputArray, paramArray, ugenOutputs, numUgenOutputs;

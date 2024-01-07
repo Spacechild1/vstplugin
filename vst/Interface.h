@@ -458,4 +458,6 @@ namespace UIThread {
     void removePollFunction(Handle handle);
 }
 
+void setNumDSPThreads(int numThreads);
+
 } // vst

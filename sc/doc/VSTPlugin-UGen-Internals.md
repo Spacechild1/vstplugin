@@ -184,6 +184,19 @@ Arguments:
 | int  | remove cache file; 1 = yes, 0 = no |
 
 
+##### /dsp_threads
+
+Set the number of DSP threads for multi-threaded plugin processing.
+(By default, this is the number of logical CPUs.)
+
+**NOTE**: This command only takes effect if it is sent before any (multi-threaded) plugins have been opened.
+
+Arguments:
+| type   ||
+| ------ |-|
+| int    | number of threads; 0 = default |
+
+
 ### Plugin key
 
 Plugins are stored in a server-side plugin dictionary under its *key*.

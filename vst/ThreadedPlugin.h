@@ -47,7 +47,7 @@ class DSPThreadPool {
     PaddedSpinLock pushLock_;
     PaddedSpinLock popLock_;
 
-    void run();
+    void run(int index);
 };
 
 /*//////////////////// ThreadedPlugin ////////////////*/

@@ -3951,6 +3951,13 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     x->update_buffers();
 }
 
+/*-------------------------- global methods ----------------------------*/
+
+void vstplugin_dsp_threads(t_vstplugin *x, t_floatarg f) {
+    int numthreads = f > 0 ? f : 0;
+    setNumDSPThreads(numthreads);
+}
+
 /*-------------------------- private methods ---------------------------*/
 
 void vstplugin_multichannel(t_vstplugin *x)
@@ -4081,6 +4088,8 @@ EXPORT void vstplugin_tilde_setup(void) {
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_data_get<BANK>, gensym("bank_data_get"), A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_read<BANK>, gensym("bank_read"), A_SYMBOL, A_DEFFLOAT, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_write<BANK>, gensym("bank_write"), A_SYMBOL, A_DEFFLOAT, A_NULL);
+    // global messages
+    class_addmethod(vstplugin_class, (t_method)vstplugin_dsp_threads, gensym("dsp_threads"), A_DEFFLOAT, A_NULL);
     // private messages
     class_addmethod(vstplugin_class, (t_method)vstplugin_preset_change, gensym("preset_change"), A_SYMBOL, A_NULL);
     class_addmethod(vstplugin_class, (t_method)vstplugin_multichannel, gensym("multichannel"), A_NULL);

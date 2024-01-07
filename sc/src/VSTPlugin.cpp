@@ -3332,6 +3332,11 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     }
 }
 
+void vst_dsp_threads(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr) {
+    int numThreads = args->geti();
+    setNumDSPThreads(numThreads);
+}
+
 /*** plugin entry point ***/
 
 using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
@@ -3426,6 +3431,8 @@ PluginLoad(VSTPlugin) {
     PluginCmd(vst_cache_read);
     PluginCmd(vst_clear);
     PluginCmd(vst_query);
+
+    PluginCmd(vst_dsp_threads);
 
     setLogFunction(SCLog);
 

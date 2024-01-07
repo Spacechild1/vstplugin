@@ -502,9 +502,12 @@ code::
 note::You must emphasis::not:: use link::Classes/Server#-sync:: to wait for completion! If you prefer to write sequential code instead of callbacks, you may use a link::Classes/Condition:: resp. link::Classes/CondVar:: and signal it from the action function.::
 
 ARGUMENT:: multiThreading
-process the plugin in a seperate worker thread to utilize more CPU cores.
+process the plugin in a seperate worker thread to utilize more CPU cores. See also link::Classes/VSTPlugin#*initDSPThreads::.
+
 note::This option is ignored for Supernova, which already offers multithreading with ParGroup.::
+
 note::Multithreading introduces a delay of 1 block!::
+
 
 ARGUMENT:: mode
 select a run mode.

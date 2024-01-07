@@ -455,4 +455,28 @@ note::Bridging/sandboxing can also be explictly enabled for native plugins, see 
 
 For more information, see the emphasis::Bridging/sandboxing:: section in the README.
 
+subsection:: Multithreading
+
+METHOD:: initDSPThreads
+
+Set the number of DSP threads for multithreaded plugin processing (see code::multiThreading:: argument for link::Classes/VSTPluginController#-open::).
+
+By default, this is the number of logical CPUs.
+
+This method only takes effect if it is called emphasis::before:: any (multithreaded) plugins have been opened.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+ARGUMENT:: numThreads
+the number of DSP threads; code::nil:: means default.
+
+METHOD:: initDSPThreadsMsg
+
+ARGUMENT:: numThreads
+(see above)
+
+RETURNS:: the message for a emphasis::initDSPThreads:: command (see link::#*initDSPThreads::).
+
+
 INSTANCEMETHODS::
