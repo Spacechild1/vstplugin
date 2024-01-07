@@ -58,6 +58,10 @@ VSTPlugin : MultiOutUGen {
 	}
 	*clear { arg server, remove=true;
 		server = server ?? Server.default;
+		server.serverRunning.not.if {
+			"VSTPlugin.clear requires the Server to be running!".warn;
+			^this;
+		};
 		// clear local plugin dictionary
 		pluginDict[server] = IdentityDictionary.new;
 		// clear server plugin dictionary
