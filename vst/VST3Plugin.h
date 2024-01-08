@@ -496,6 +496,8 @@ class VST3Plugin final :
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     void doSetProgram(int program);
     void updateParamCache();
+    void initView();
+
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
@@ -533,8 +535,8 @@ class VST3Plugin final :
     // programs
     int program_ = 0;
     // UI
-    bool editor_ = false;
-    mutable IPlugView *view_ = nullptr;
+    bool editorOpen_ = false;
+    IPlugView *view_ = nullptr;
     IWindow::ptr window_;
     IPluginListener* listener_ = nullptr;
     IFactory::const_ptr factory_; // keep alive

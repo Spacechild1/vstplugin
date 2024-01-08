@@ -1708,6 +1708,22 @@ void VST3Plugin::updateParamCache(){
     }
 }
 
+// NB: some plugins (e.g. JUCE) seem to expect that createView()
+// is only called if the editor is opened eventually.
+// If you don't open the editor, it would still post timer messages;
+// even worse, these timer message would continue after you free the
+// controller! If you open and close the editor, things are fine.
+// In Pd, the plugin would even crash when closed without having opened
+// the editor at least once. (This does not happen in Supercollider.)
+// As a workaround, we create the view lazily.
+// TODO: figure out what's the actual problem.
+void VST3Plugin::initView() {
+    if (!view_) {
+        LOG_DEBUG("VST3Plugin: create view");
+        view_ = controller_->createView("editor");
+    }
+}
+
 void VST3Plugin::setProgram(int program){
     if (program >= 0 && program < getNumPrograms()){
         doSetProgram(program);
@@ -1953,10 +1969,8 @@ void VST3Plugin::writeBankData(std::string& buffer){
 }
 
 bool VST3Plugin::hasEditor() const {
-    if (!view_){
-        view_ = controller_->createView("editor");
-    }
-    if (view_){
+    const_cast<VST3Plugin *>(this)->initView();
+    if (view_) {
     #if defined(_WIN32)
         return view_->isPlatformTypeSupported("HWND") == kResultOk;
     #elif defined(__APPLE__)
@@ -2009,65 +2023,55 @@ tresult VST3Plugin::unregisterTimer(Linux::ITimerHandler* handler) {
 #endif
 
 void VST3Plugin::openEditor(void * window){
-    if (editor_){
+    if (editorOpen_){
         return;
     }
-    if (!view_){
-        view_ = controller_->createView("editor");
+    initView();
+    assert(view_ != nullptr);
+    view_->setFrame(this);
+    LOG_DEBUG("attach view");
+#if defined(_WIN32)
+    auto result = view_->attached(window, "HWND");
+#elif defined(__APPLE__)
+    auto result = view_->attached(window, "NSView");
+    // TODO: iOS ("UIView")
+#else
+    auto result = view_->attached(window, "X11EmbedWindowID");
+#endif
+    if (result == kResultOk) {
+        LOG_DEBUG("opened VST3 editor");
+    } else {
+        LOG_ERROR("couldn't open VST3 editor");
     }
-    if (view_){
-        view_->setFrame(this);
-        LOG_DEBUG("attach view");
-    #if defined(_WIN32)
-        auto result = view_->attached(window, "HWND");
-    #elif defined(__APPLE__)
-        auto result = view_->attached(window, "NSView");
-        // TODO: iOS ("UIView")
-    #else
-        auto result = view_->attached(window, "X11EmbedWindowID");
-    #endif
-        if (result == kResultOk) {
-            LOG_DEBUG("opened VST3 editor");
-        } else {
-            LOG_ERROR("couldn't open VST3 editor");
-        }
-    }
-    editor_ = true;
+    editorOpen_ = true;
 }
 
 void VST3Plugin::closeEditor(){
-    if (!editor_){
+    if (!editorOpen_){
         return;
     }
-    if (!view_){
-        view_ = controller_->createView("editor");
+    assert(view_ != nullptr);
+    if (view_->removed() == kResultOk) {
+        LOG_DEBUG("closed VST3 editor");
+    } else {
+        LOG_ERROR("couldn't close VST3 editor");
     }
-    if (view_){
-        if (view_->removed() == kResultOk) {
-            LOG_DEBUG("closed VST3 editor");
-        }
-        else {
-            LOG_ERROR("couldn't close VST3 editor");
-        }
-    }
-    editor_ = false;
+    editorOpen_ = false;
 }
 
 bool VST3Plugin::getEditorRect(Rect& rect) const {
-    if (!view_){
-        view_ = controller_->createView("editor");
+    const_cast<VST3Plugin *>(this)->initView();
+    assert(view_ != nullptr);
+    ViewRect r;
+    if (view_->getSize(&r) == kResultOk){
+        rect.x = r.left;
+        rect.y = r.top;
+        rect.w = r.right - r.left;
+        rect.h = r.bottom - r.top;
+        return true;
+    } else {
+        return false;
     }
-    if (view_){
-        ViewRect r;
-        if (view_->getSize(&r) == kResultOk){
-            rect.x = r.left;
-            rect.y = r.top;
-            rect.w = r.right - r.left;
-            rect.h = r.bottom - r.top;
-            return true;
-        }
-    }
-    return false;
 }
 
 void VST3Plugin::updateEditor(){
@@ -2099,41 +2103,34 @@ void VST3Plugin::updateEditor(){
 }
 
 void VST3Plugin::checkEditorSize(int &width, int &height) const {
-    if (!view_){
-        view_ = controller_->createView("editor");
-    }
-    if (view_){
-        ViewRect rect(0, 0, width, height);
-        if (view_->checkSizeConstraint(&rect) == kResultOk){
-            width = rect.getWidth();
-            height = rect.getHeight();
-        }
+    const_cast<VST3Plugin *>(this)->initView();
+    assert(view_ != nullptr);
+    ViewRect rect(0, 0, width, height);
+    if (view_->checkSizeConstraint(&rect) == kResultOk){
+        width = rect.getWidth();
+        height = rect.getHeight();
     }
 }
 
 void VST3Plugin::resizeEditor(int width, int height) {
-    if (!view_){
-        view_ = controller_->createView("editor");
-    }
-    if (view_){
-        ViewRect rect;
-        if (view_->getSize(&rect) == kResultOk){
-            rect.right = rect.left + width;
-            rect.bottom = rect.top + height;
-            if (view_->onSize(&rect) != kResultOk){
-                LOG_ERROR("couldn't resize editor");
-            }
-        } else {
-            LOG_ERROR("couldn't get editor size");
+    initView();
+    assert(view_ != nullptr);
+    ViewRect rect;
+    if (view_->getSize(&rect) == kResultOk){
+        rect.right = rect.left + width;
+        rect.bottom = rect.top + height;
+        if (view_->onSize(&rect) != kResultOk){
+            LOG_ERROR("couldn't resize editor");
         }
+    } else {
+        LOG_ERROR("couldn't get editor size");
     }
 }
 
 bool VST3Plugin::canResize() const {
-    if (!view_){
-        view_ = controller_->createView("editor");
-    }
-    return view_ && (view_->canResize() == kResultTrue);
+    const_cast<VST3Plugin *>(this)->initView();
+    assert(view_ != nullptr);
+    return view_->canResize() == kResultTrue;
 }
 
 void VST3Plugin::sendMessage(Vst::IMessage *msg){
