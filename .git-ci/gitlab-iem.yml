@@ -147,6 +147,7 @@ variables:
     - *script_cmake
   after_script:
     - IEM_SIGN_SRCDIR="$(pwd)/${CI_JOB_NAME}"
+    - CODESIGNFLAGS="--strict --force --verbose --timestamp"
     - !reference [.script:codesign:macos]
 
 .build:w32: &build_w32
