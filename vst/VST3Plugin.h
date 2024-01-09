@@ -21,8 +21,9 @@
 #include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 
-#include <unordered_map>
 #include <atomic>
+#include <climits>
+#include <unordered_map>
 
 #ifndef VST_3_7_0_VERSION
 # define VST_3_7_0_VERSION 0x030700
@@ -494,7 +495,8 @@ class VST3Plugin final :
     void sendMessage(Vst::IMessage* msg);
     void doSetParameter(Vst::ParamID, float value, int32 sampleOffset = 0);
     void doSetProgram(int program);
-    void updateParamCache();
+    void setCacheParameter(int index, float value, bool notify);
+    void updateParameterCache();
     void initView();
 
     IPtr<Vst::IComponent> component_;
@@ -510,27 +512,47 @@ class VST3Plugin final :
     Bypass bypass_ = Bypass::Off;
     Bypass lastBypass_ = Bypass::Off;
     bool bypassSilent_ = false; // check if we can stop processing
+    ProcessMode mode_ = ProcessMode::Realtime;
     // midi
     EventList inputEvents_;
     EventList outputEvents_;
     // parameters
     ParameterChanges inputParamChanges_;
     ParameterChanges outputParamChanges_;
-    struct ParamState {
-        std::atomic<float> value{0.f};
-        std::atomic<bool> changed{false};
-    };
-    std::unique_ptr<ParamState[]> paramCache_;
-    std::atomic<bool> paramCacheChanged_{false};
+
+    // The parameter cache has two main purposes:
+    // 1. cache the parameter, so that the host can easily retrieve it
+    // from the audio thread with getParameter()
+    // 2. allow the UI to update parameters. Although  we *could* use
+    // paramChangesToGui for this purpose, this would be tricky regarding
+    // memory management, because we do not know in advance how large
+    // the queue should be.
+    std::unique_ptr<std::atomic<float>[]> paramCache_;
+    // This is an atomic bitset vector which is used to tell the UI thread
+    // which parameters have changed. We do not need another atomic variable
+    // to indicate whether *any* parameter has changed; instead, we can simply
+    // loop over the vector and check if any bin is not 0.
+    // (For example, a plugin with 500 parameters would only have 8 bins.)
+    static constexpr size_t paramCacheBits = sizeof(size_t) * CHAR_BIT;
+    std::unique_ptr<std::atomic<size_t>[]> paramCacheBins_;
+    size_t numParamCacheBins_ = 0;
+
     struct ParamChange {
-        ParamChange() : id(0), value(0) {}
+        ParamChange() : index(0), id(0), value(0) {}
         ParamChange(Vst::ParamID _id, Vst::ParamValue _value)
-            : id(_id), value(_value) {}
+            : index(0), id(_id), value(_value) {}
+        ParamChange(int32_t _index, Vst::ParamID _id, Vst::ParamValue _value)
+            : index(_index), id(_id), value(_value) {}
+        int32_t index;
         Vst::ParamID id;
         Vst::ParamValue value;
     };
     UnboundedMPSCQueue<ParamChange> paramChangesFromGui_;
-    LockfreeFifo<ParamChange, 16> paramChangesToGui_; // e.g. VU meter
+    // e.g. VU meter; NB: this has to be a fixed sized FIFO to avoid
+    // piling up commands when the window is closed. Maybe we should
+    // *always* call updateEditor() periodically - even if the window
+    // is closed?
+    LockfreeFifo<ParamChange, 64> paramChangesToGui_;
     // programs
     int program_ = 0;
     // UI

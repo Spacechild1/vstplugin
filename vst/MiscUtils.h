@@ -61,6 +61,12 @@ T prevPowerOfTwo(T v) {
     return result >> 1;
 }
 
+template<typename T>
+T alignTo(T v, size_t alignment) {
+    auto mask = alignment - 1;
+    return (v + mask) & ~mask;
+}
+
 //--------------------------------------------------------------//
 
 #ifdef _WIN32

@@ -966,9 +966,7 @@ void t_vsteditor::tick(t_vsteditor *x){
         }
         case t_event::Display:
         {
-            // update the generic GUI
-            // shouldn't be necessary because I don't see how the
-            // UpdateDisplay event can happen without UI editor...
+            // update the generic GUI, e.g. after a program change (VST3)
             x->update();
             // send message
             outlet_anything(outlet, gensym("update"), 0, nullptr);

@@ -2,6 +2,7 @@
 
 #include "Log.h"
 #include "FileUtils.h"
+#include "MiscUtils.h"
 
 #if SMTG_OS_LINUX
   #include "WindowX11.h"
@@ -657,10 +658,14 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     outputParamChanges_.setMaxNumParameters(numParams);
 
     // cache for automatable parameters
-    if (getNumParameters() > 0){
-        paramCache_ = std::make_unique<ParamState[]>(getNumParameters());
+    int numAutoParams = getNumParameters();
+    if (numAutoParams > 0) {
+        paramCache_.reset(new std::atomic<float>[numAutoParams]{});
+        int numBins = alignTo(numAutoParams, paramCacheBits) / paramCacheBits;
+        paramCacheBins_.reset(new std::atomic<size_t>[numBins]{});
+        numParamCacheBins_ = numBins;
     }
-    updateParamCache();
+    updateParameterCache();
 
     LOG_DEBUG("program change: " << info_->programChange);
     LOG_DEBUG("bypass: " << info_->bypass);
@@ -719,14 +724,15 @@ tresult VST3Plugin::beginEdit(Vst::ParamID id){
 
 tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
     int index = info().getParamIndex(id);
-    if (index >= 0){
-        if (listener_){
-            listener_->parameterAutomated(index, value);
-        }
-        paramCache_[index].value = value;
+    if (index >= 0 && listener_){
+        listener_->parameterAutomated(index, value);
     }
-    if (window_){
-        paramChangesFromGui_.push(ParamChange(id, value));
+    if (window_) {
+        paramChangesFromGui_.push(ParamChange(index, id, value));
+    } else {
+        // Can this even happen?
+        LOG_DEBUG("performEdit() called without editor: id = "
+                  << id << ", value = " << value);
     }
     return kResultOk;
 }
@@ -758,8 +764,8 @@ tresult VST3Plugin::restartComponent(int32 flags){
 
     // update parameter cache and send notification to listeners
     // NOTE: restartComponent might be called before paramCache_ is allocated
-    if ((flags & Vst::kParamValuesChanged) && paramCache_){
-        updateParamCache();
+    if ((flags & Vst::kParamValuesChanged) && paramCache_) {
+        updateParameterCache();
 
         if (listener_){
             listener_->updateDisplay();
@@ -867,6 +873,8 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
         context_.continousTimeSamples = (double)context_.continousTimeSamples * ratio;
         context_.sampleRate = sampleRate;
     }
+
+    mode_ = mode;
 }
 
 void VST3Plugin::process(ProcessData& data){
@@ -916,6 +924,8 @@ void VST3Plugin::doProcess(ProcessData& inData){
         int32 index;
         auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
         queue->addPoint(0, paramChange.value, index);
+        // update cache, but don't notify!
+        setCacheParameter(paramChange.index, paramChange.value, false);
     }
 
     // check bypass state
@@ -1269,31 +1279,53 @@ void VST3Plugin::handleEvents(){
 }
 
 void VST3Plugin::handleOutputParameterChanges(){
-    if (listener_){
+    if (listener_) {
+        bool editor = window_ != nullptr;
+        bool needQueue = editor && (mode_ == ProcessMode::Realtime);
         int numParams = outputParamChanges_.getParameterCount();
         for (int i = 0; i < numParams; ++i){
             auto data = outputParamChanges_.getParameterData(i);
-            if (data){
+            if (data) {
                 auto id = data->getParameterId();
                 int numPoints = data->getPointCount();
                 auto index = info().getParamIndex(id);
-                if (index >= 0){
+                if (index >= 0) {
                     // automatable parameter
                     for (int j = 0; j < numPoints; ++j){
                         int32 offset = 0;
                         Vst::ParamValue value = 0;
-                        if (data->getPoint(j, offset, value) == kResultOk){
+                        if (data->getPoint(j, offset, value) == kResultOk) {
+                            if (editor) {
+                                setCacheParameter(index, value, true); // notify
+                            } else {
+                                setCacheParameter(index, value, false);
+                            #if 1
+                                // TODO: is this necessary?
+                                controller_->setParamNormalized(id, value);
+                            #endif
+                            }
                             // for now we ignore the sample offset
                             listener_->parameterAutomated(index, value);
                         }
                     }
-                } else if (window_){
-                    // non-automatable parameter (e.g. VU meter)
-                    for (int j = 0; j < numPoints; ++j){
+                } else {
+                    // read-only or hidden parameters (e.g. VU meter)
+                    // some plugins use this to dispatch work to the UI thread,
+                    // so we have to make sure this also works without the editor
+                    // and with offline processing!
+                    for (int j = 0; j < numPoints; ++j) {
                         int32 offset = 0;
                         Vst::ParamValue value = 0;
-                        if (data->getPoint(j, offset, value) == kResultOk){
-                            paramChangesToGui_.emplace(id, value);
+                        if (data->getPoint(j, offset, value) == kResultOk) {
+                            if (needQueue) {
+                                // FIXME: currently, the FIFO is only drained when the editor is open!
+                                // Consider using a global FIFO and poll it regularly from the UI thread.
+                                paramChangesToGui_.emplace(id, value);
+                            } else {
+                                // NOTE: this is not really realtime-safe; for realtime processing,
+                                // people are advised to enable the VST editor instead!
+                                controller_->setParamNormalized(id, value);
+                            }
                         }
                     }
                 }
@@ -1672,54 +1704,71 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
     int32 dummy;
     inputParamChanges_.addParameterData(id, dummy)->addPoint(sampleOffset, value, dummy);
     auto index = info().getParamIndex(id);
-    if (index >= 0){
+    if (index >= 0) {
         // automatable parameter
     #if 1
         // verify parameter value
         value = controller_->normalizedParamToPlain(id, value);
         value = controller_->plainParamToNormalized(id, value);
     #endif
-        paramCache_[index].value.store(value, std::memory_order_relaxed);
-        if (window_){
-            paramCache_[index].changed.store(true, std::memory_order_relaxed);
-            paramCacheChanged_.store(true, std::memory_order_release);
+        if (window_) {
+            setCacheParameter(index, value, true); // notify
         } else {
+            setCacheParameter(index, value, false); // don't notify
+        #if 1
+            // TODO: is this necessary?
             controller_->setParamNormalized(id, value);
+        #endif
         }
     } else {
-        // non-automatable parameter
+        // non-automatable parameter or special parameters (program, bypass)
         if (window_){
             paramChangesToGui_.emplace(id, value);
         } else {
+        #if 1
+            // This might be required for the program parameter. Not sure...
             controller_->setParamNormalized(id, value);
+        #endif
         }
     }
 }
 
 float VST3Plugin::getParameter(int index) const {
-    return paramCache_[index].value;
+    return paramCache_[index].load(std::memory_order_relaxed);
 }
 
 std::string VST3Plugin::getParameterString(int index) const {
     Vst::String128 display;
     Vst::ParamID id = info().getParamID(index);
-    float value = paramCache_[index].value;
+    float value = getParameter(index);
     if (controller_->getParamStringByValue(id, value, display) == kResultOk){
         return convertString(display);
+    } else {
+        return std::string{};
     }
-    return std::string{};
 }
 
 int VST3Plugin::getNumParameters() const {
     return info().numParameters();
 }
 
-void VST3Plugin::updateParamCache(){
-    int nparams = getNumParameters();
-    for (int i = 0; i < nparams; ++i){
+void VST3Plugin::setCacheParameter(int index, float value, bool notify) {
+    paramCache_[index].store(value, std::memory_order_relaxed);
+    if (notify) {
+        int binIndex = index / paramCacheBits;
+        int bitIndex = index & (paramCacheBits - 1);
+        auto mask = (size_t)1 << bitIndex;
+        // LOG_DEBUG("cache param: " << index << " " << binIndex << " " << bitIndex);
+        paramCacheBins_[binIndex].fetch_or(mask, std::memory_order_release);
+    }
+}
+
+void VST3Plugin::updateParameterCache(){
+    int numParams = getNumParameters();
+    for (int i = 0; i < numParams; ++i){
         auto id = info().getParamID(i);
         auto value = controller_->getParamNormalized(id);
-        paramCache_[i].value.store(value, std::memory_order_relaxed);
+        paramCache_[i].store(value, std::memory_order_relaxed);
     }
 }
 
@@ -1755,7 +1804,7 @@ void VST3Plugin::doSetProgram(int program){
         doSetParameter(id, value);
         program_ = program;
     #if 0
-        // plugin should either send parameter automation messages
+        // plugin should either send parameter changes
         // or call restartComponent with kParamValuesChanged
         updateParamCache();
     #endif
@@ -1913,7 +1962,7 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
         }
     }
 
-    updateParamCache();
+    updateParameterCache();
 }
 
 void VST3Plugin::writeProgramFile(const std::string& path){
@@ -2091,20 +2140,31 @@ bool VST3Plugin::getEditorRect(Rect& rect) const {
 
 void VST3Plugin::updateEditor(){
     // automatable parameters
-    if (paramCacheChanged_.exchange(false, std::memory_order_acquire)){
-        int n = getNumParameters();
-        for (int i = 0; i < n; ++i){
-            if (paramCache_[i].changed.exchange(false, std::memory_order_relaxed)){
-                auto id = info().getParamID(i);
-                float value = paramCache_[i].value.load(std::memory_order_relaxed);
-                LOG_DEBUG("update parameter " << id << ": " << value);
-                controller_->setParamNormalized(id, value);
+    int numBins = numParamCacheBins_;
+    for (int i = 0; i < numBins; ++i) {
+        if (paramCacheBins_[i].load(std::memory_order_relaxed) != 0) {
+            auto bits = paramCacheBins_[i].exchange(0, std::memory_order_acquire);
+            for (int j = 0; j < paramCacheBits; ++j) {
+                if (bits & ((size_t)1 << j)) {
+                    int index = i * paramCacheBits + j;
+                    auto id = info().getParamID(index);
+                    auto value = paramCache_[index].load(std::memory_order_relaxed);
+                    LOG_DEBUG("update parameter (index: " << index << ", value: " << value << ")");
+                    controller_->setParamNormalized(id, value);
+                }
             }
         }
     }
     // non-automatable parameters (e.g. VU meter)
     ParamChange p;
-    while (paramChangesToGui_.pop(p)){
+    while (paramChangesToGui_.pop(p)) {
+        if (p.id == info().bypass) {
+            LOG_DEBUG("update bypass parameter: " << p.value);
+        } else if (p.id == info().programChange) {
+            LOG_DEBUG("update program parameter: " << p.value);
+        } else {
+            LOG_DEBUG("update hidden parameter (id: " << p.id << ", value: " << p.value << ")");
+        }
         controller_->setParamNormalized(p.id, p.value);
     }
     // automation state
