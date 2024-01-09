@@ -476,6 +476,8 @@ class VST3Plugin final :
     IWindow *getWindow() const override {
         return window_.get();
     }
+
+    void handleUIParamChange(Vst::ParamID id, Vst::ParamValue value);
  private:
     int getNumParameters() const;
     int getNumPrograms() const;
@@ -539,8 +541,6 @@ class VST3Plugin final :
 
     struct ParamChange {
         ParamChange() : index(0), id(0), value(0) {}
-        ParamChange(Vst::ParamID _id, Vst::ParamValue _value)
-            : index(0), id(_id), value(_value) {}
         ParamChange(int32_t _index, Vst::ParamID _id, Vst::ParamValue _value)
             : index(_index), id(_id), value(_value) {}
         int32_t index;
@@ -548,15 +548,11 @@ class VST3Plugin final :
         Vst::ParamValue value;
     };
     UnboundedMPSCQueue<ParamChange> paramChangesFromGui_;
-    // e.g. VU meter; NB: this has to be a fixed sized FIFO to avoid
-    // piling up commands when the window is closed. Maybe we should
-    // *always* call updateEditor() periodically - even if the window
-    // is closed?
-    LockfreeFifo<ParamChange, 64> paramChangesToGui_;
     // programs
     int program_ = 0;
     // UI
     bool editorOpen_ = false;
+    uint32_t uniqueId_ = 0;
     IPlugView *view_ = nullptr;
     IWindow::ptr window_;
     IPluginListener* listener_ = nullptr;

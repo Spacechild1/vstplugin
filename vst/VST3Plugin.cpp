@@ -11,6 +11,7 @@
 #include <cstring>
 #include <algorithm>
 #include <set>
+#include <unordered_map>
 #include <cmath>
 #include <codecvt>
 #include <locale>
@@ -18,6 +19,10 @@
 
 #ifndef DEBUG_VST3_PARAMETERS
 #define DEBUG_VST3_PARAMETERS 0
+#endif
+
+#ifndef DEBUG_VST3_PARAM_CHANGES
+#define DEBUG_VST3_PARAM_CHANGES 0
 #endif
 
 DEF_CLASS_IID (FUnknown)
@@ -86,6 +91,8 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 
 namespace vst {
 
+/*///////////////// string conversion //////////////////////////*/
+
 // On Wine std::wstring_convert would throw an exception
 // when using wchar_t, although it has the same size as char16_t.
 // Maybe because of some template specialization? Dunno...
@@ -134,6 +141,77 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
     } else {
         return false;
     }
+}
+
+/*//////////////////// plugin registry ////////////////////////*/
+
+static std::unordered_map<uint32_t, VST3Plugin *> gPluginMap;
+
+uint32_t registerPlugin(VST3Plugin *plugin) {
+    static uint32_t nextID = 0;
+
+    auto id = nextID++;
+
+    if (!gPluginMap.emplace(id, plugin).second) {
+        throw Error("plugin already registered!");
+    }
+
+    return id;
+}
+
+void unregisterPlugin(uint32_t id) {
+    auto it = gPluginMap.find(id);
+    if (it != gPluginMap.end()) {
+        gPluginMap.erase(it);
+    } else {
+        LOG_ERROR("cannot unregister plugin: not found!");
+    }
+}
+
+// Queue for read-only or hidden parameters; some plugins use such parameters
+// to communicate with the editor or offload work to the UI thread, so we make
+// sure that these are dispatched even when the editor is closed.
+
+struct UIParamChange {
+    UIParamChange() : pluginId(0), paramId(0), paramValue(0) {}
+    UIParamChange(uint32_t pluginId_, Vst::ParamID paramId_, Vst::ParamValue paramValue_)
+        : pluginId(pluginId_), paramId(paramId_), paramValue(paramValue_) {}
+
+    uint32_t pluginId;
+    Vst::ParamID paramId;
+    Vst::ParamValue paramValue;
+};
+
+static UnboundedMPSCQueue<UIParamChange> gParamChangesToGui;
+
+// lazy initialization, called in VST3Plugin constructor
+static void initGui() {
+    static bool initialized = false;
+
+    if (initialized) {
+        return;
+    }
+
+    gParamChangesToGui.reserve(1024);
+
+    // called periodically from UI thread.
+    UIThread::addPollFunction([](void *) {
+        UIParamChange p;
+        while (gParamChangesToGui.pop(p)) {
+            auto it = gPluginMap.find(p.pluginId);
+            if (it != gPluginMap.end()) {
+                it->second->handleUIParamChange(p.paramId, p.paramValue);
+            } else {
+            #if DEBUG_VST3_PARAM_CHANGES
+                LOG_DEBUG("ignore UI param change: plugin already freed");
+            #endif
+            }
+        }
+    }, nullptr);
+
+    initialized = true;
+
+    LOG_DEBUG("VST3 GUI system initialized");
 }
 
 /*/////////////////////// VST3Factory /////////////////////////*/
@@ -698,11 +776,19 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 
     // NB: don't call hasEditor() because it would create the plugin view!
     if (editor && info_->editor()) {
+        initGui();
+
+        uniqueId_ = registerPlugin(this);
+
         window_ = IWindow::create(*this);
     }
 }
 
-VST3Plugin::~VST3Plugin(){
+VST3Plugin::~VST3Plugin() {
+    if (window_) {
+        unregisterPlugin(uniqueId_);
+    }
+
     listener_ = nullptr; // for some buggy plugins
     window_ = nullptr;
     processor_ = nullptr;
@@ -728,7 +814,7 @@ tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
         listener_->parameterAutomated(index, value);
     }
     if (window_) {
-        paramChangesFromGui_.push(ParamChange(index, id, value));
+        paramChangesFromGui_.emplace(index, id, value);
     } else {
         // Can this even happen?
         LOG_DEBUG("performEdit() called without editor: id = "
@@ -1320,7 +1406,7 @@ void VST3Plugin::handleOutputParameterChanges(){
                             if (needQueue) {
                                 // FIXME: currently, the FIFO is only drained when the editor is open!
                                 // Consider using a global FIFO and poll it regularly from the UI thread.
-                                paramChangesToGui_.emplace(id, value);
+                                gParamChangesToGui.emplace(uniqueId_, id, value);
                             } else {
                                 // NOTE: this is not really realtime-safe; for realtime processing,
                                 // people are advised to enable the VST editor instead!
@@ -1723,7 +1809,7 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
     } else {
         // non-automatable parameter or special parameters (program, bypass)
         if (window_){
-            paramChangesToGui_.emplace(id, value);
+            gParamChangesToGui.emplace(uniqueId_, id, value);
         } else {
         #if 1
             // This might be required for the program parameter. Not sure...
@@ -1758,7 +1844,9 @@ void VST3Plugin::setCacheParameter(int index, float value, bool notify) {
         int binIndex = index / paramCacheBits;
         int bitIndex = index & (paramCacheBits - 1);
         auto mask = (size_t)1 << bitIndex;
-        // LOG_DEBUG("cache param: " << index << " " << binIndex << " " << bitIndex);
+    #if DEBUG_VST3_PARAM_CHANGES
+        // LOG_DEBUG("cache parameter: " << index << " " << binIndex << " " << bitIndex);
+    #endif
         paramCacheBins_[binIndex].fetch_or(mask, std::memory_order_release);
     }
 }
@@ -2138,7 +2226,7 @@ bool VST3Plugin::getEditorRect(Rect& rect) const {
     }
 }
 
-void VST3Plugin::updateEditor(){
+void VST3Plugin::updateEditor() {
     // automatable parameters
     int numBins = numParamCacheBins_;
     for (int i = 0; i < numBins; ++i) {
@@ -2149,23 +2237,13 @@ void VST3Plugin::updateEditor(){
                     int index = i * paramCacheBits + j;
                     auto id = info().getParamID(index);
                     auto value = paramCache_[index].load(std::memory_order_relaxed);
+                #if DEBUG_VST3_PARAM_CHANGES
                     LOG_DEBUG("update parameter (index: " << index << ", value: " << value << ")");
+                #endif
                     controller_->setParamNormalized(id, value);
                 }
             }
         }
-    }
-    // non-automatable parameters (e.g. VU meter)
-    ParamChange p;
-    while (paramChangesToGui_.pop(p)) {
-        if (p.id == info().bypass) {
-            LOG_DEBUG("update bypass parameter: " << p.value);
-        } else if (p.id == info().programChange) {
-            LOG_DEBUG("update program parameter: " << p.value);
-        } else {
-            LOG_DEBUG("update hidden parameter (id: " << p.id << ", value: " << p.value << ")");
-        }
-        controller_->setParamNormalized(p.id, p.value);
     }
     // automation state
     auto oldstate = automationState_.load(std::memory_order_relaxed);
@@ -2213,6 +2291,19 @@ bool VST3Plugin::canResize() const {
     const_cast<VST3Plugin *>(this)->initView();
     assert(view_ != nullptr);
     return view_->canResize() == kResultTrue;
+}
+
+void VST3Plugin::handleUIParamChange(Vst::ParamID id, Vst::ParamValue value) {
+#if DEBUG_VST3_PARAM_CHANGES
+    if (id == info().bypass) {
+        LOG_DEBUG("update bypass parameter: " << value);
+    } else if (id == info().programChange) {
+        LOG_DEBUG("update program parameter: " << value);
+    } else {
+        LOG_DEBUG("update hidden parameter (id: " << id << ", value: " << value << ")");
+    }
+#endif
+    controller_->setParamNormalized(id, value);
 }
 
 void VST3Plugin::sendMessage(Vst::IMessage *msg){
