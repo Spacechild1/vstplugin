@@ -235,6 +235,7 @@ EventLoop::EventLoop(){
         auto queue = dispatch_get_main_queue();
         dispatch_async(queue, createTimer);
     }
+    LOG_DEBUG("Cocoa: UI thread ready");
 }
 
 EventLoop::~EventLoop(){

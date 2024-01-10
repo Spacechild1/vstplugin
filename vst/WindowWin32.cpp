@@ -5,6 +5,7 @@
 #include "FileUtils.h"
 #include "MiscUtils.h"
 
+#include <cassert>
 #include <cstring>
 
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
@@ -80,7 +81,7 @@ DWORD EventLoop::run(void *user){
 
     setThreadPriority(Priority::Low);
 
-    auto obj = (EventLoop *)user;
+    auto self = (EventLoop *)user;
     // invisible window for postMessage()!
     // also creates the message queue.
     auto hwnd = CreateWindowW(
@@ -88,9 +89,9 @@ DWORD EventLoop::run(void *user){
           0, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, NULL, NULL
     );
-    SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)obj);
-    obj->hwnd_ = hwnd;
-    obj->event_.set(); // notify constructor
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)self);
+    self->hwnd_ = hwnd;
+    self->event_.set(); // notify constructor
     LOG_DEBUG("Win32: start message loop");
 
     // setup timer
@@ -125,7 +126,8 @@ DWORD EventLoop::run(void *user){
 // NOTE: we use a window procedure to make sure that events are also processed
 // during a modal loop!
 LRESULT WINAPI EventLoop::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam){
-    auto obj = (EventLoop *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    auto self = (EventLoop *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+
     switch (msg) {
     case WM_CALL:
     {
@@ -137,13 +139,15 @@ LRESULT WINAPI EventLoop::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         }
         return true;
     }
+    case WM_SYNC:
+        // LOG_DEBUG("WM_SYNC");
+        assert(self != nullptr);
+        self->event_.set();
+        return true;
     case WM_TIMER:
         // LOG_DEBUG("WM_TIMER");
-        if (obj){
-            obj->timer(wParam);
-        } else {
-            LOG_ERROR("Win32: bug GetWindowLongPtr");
-        }
+        assert(self != nullptr);
+        self->handleTimer(wParam);
         return true;
     default:
         LOG_DEBUG("Win32: root window received message " << msg);
@@ -276,15 +280,11 @@ bool EventLoop::checkThread() {
     return GetCurrentThreadId() == threadID_;
 }
 
+// IMPORTANT: do not use PostThreadMessage() because the message
+// would be eaten by a modal loop! Instead, we send the message
+// to an invisible window.
 bool EventLoop::postMessage(UINT msg, void *data1, void *data2){
-    // IMPORTANT: do not use PostThreadMessage() because the message
-    // would be eaten by a modal loop! Instead, we send the message
-    // to an invisible window.
     return PostMessage(hwnd_, msg, (WPARAM)data1, (LPARAM)data2);
-}
-
-bool EventLoop::sendMessage(UINT msg, void *data1, void *data2){
-    return SendMessage(hwnd_, msg, (WPARAM)data1, (LPARAM)data2);
 }
 
 bool EventLoop::callAsync(UIThread::Callback cb, void *user){
@@ -296,18 +296,35 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     }
 }
 
+// IMPORTANT: it might be tempting to use SendMessage, as it will
+// block until the window procedure has completely. However, messages
+// sent with SendMessage() are not necessarily delivered in the same
+// order as with PostMessage()! For example, if the UI thread blocks
+// in DispatchMessage() and you call PostMessage(), followed by
+// SendMessage(), the two message might be dispatched in the opposite
+// order! This can lead to weird and hard to find bugs, e.g. a Window
+// getting closed after the plugin has been destroyed.
+//
+// Instead we use a dedicated WM_SYNC message together with a
+// SyncCondition to guarantee that callAsync() and callSync() are
+// always executed in sequence.
 bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
         return true;
     } else {
-        LOG_DEBUG("Win32: waiting...");
-        if (sendMessage(WM_CALL, (void *)cb, user)){
-            LOG_DEBUG("Win32: done");
-            return true;
-        } else {
+        // This must never be called concurrently!
+        ScopedLock lock(mutex_);
+        if (!postMessage(WM_CALL, (void *)cb, user)) {
             return false;
         }
+        if (!postMessage(WM_SYNC)) {
+            return false;
+        }
+        LOG_DEBUG("Win32: wait for event...");
+        event_.wait();
+        LOG_DEBUG("Win32: synchronized");
+        return true;
     }
 }
 
@@ -315,13 +332,15 @@ bool EventLoop::sync(){
     if (UIThread::isCurrentThread()){
         return true;
     } else {
-        LOG_DEBUG("Win32: waiting...");
-        if (sendMessage(WM_CALL)){
-            LOG_DEBUG("Win32: done");
-            return true;
-        } else {
+        // This must never be called concurrently!
+        ScopedLock lock(mutex_);
+        if (!postMessage(WM_SYNC)) {
             return false;
         }
+        LOG_DEBUG("Win32: wait for event...");
+        event_.wait();
+        LOG_DEBUG("Win32: synchronized");
+        return true;
     }
 }
 
@@ -338,7 +357,7 @@ void EventLoop::removePollFunction(UIThread::Handle handle){
     pollFunctions_.erase(handle);
 }
 
-void EventLoop::timer(UINT_PTR id) {
+void EventLoop::handleTimer(UINT_PTR id) {
     if (id == 0) {
         // call poll functions
         std::lock_guard<std::mutex> lock(pollFunctionMutex_);
@@ -429,6 +448,7 @@ void Window::open(){
 }
 
 void Window::doOpen(){
+    LOG_DEBUG("Win32: open window");
     if (hwnd_){
         // just show the window
         ShowWindow(hwnd_, SW_MINIMIZE);
@@ -510,6 +530,7 @@ void Window::close(){
 }
 
 void Window::doClose(){
+    LOG_DEBUG("Win32: close window");
     if (hwnd_){
         RECT rc;
         if (GetWindowRect(hwnd_, &rc)){

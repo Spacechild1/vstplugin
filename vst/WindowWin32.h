@@ -15,7 +15,8 @@ namespace vst {
 namespace Win32 {
 
 enum Message {
-    WM_CALL = WM_APP + 2867
+    WM_CALL = WM_APP + 2867,
+    WM_SYNC
 };
 
 class EventLoop {
@@ -37,15 +38,15 @@ public:
     bool checkThread();
 private:
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
-    bool sendMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // blocking
 
     static DWORD WINAPI run(void *user);
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-    void timer(UINT_PTR id);
+    void handleTimer(UINT_PTR id);
     HANDLE thread_ = NULL;
     DWORD threadID_ = 0;
     HWND hwnd_ = NULL;
-    SyncCondition event_; // for message loop creation
+    Mutex mutex_;
+    SyncCondition event_;
 
     UIThread::Handle nextPollFunctionHandle_ = 0;
     std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
