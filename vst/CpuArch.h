@@ -5,6 +5,9 @@
 
 namespace vst {
 
+// defined by 32-bit GCC; this may cause compiler errors!
+#undef i386
+
 enum class CpuArch {
     unknown,
     amd64,
