@@ -135,6 +135,17 @@ message(STATUS "LOGLEVEL: ${LOGLEVEL}")
 add_definitions(-DLOGLEVEL=${LOGLEVEL})
 
 # compiler flags
+if (STDFS)
+    set(CMAKE_CXX_STANDARD 17)
+else()
+    set(CMAKE_CXX_STANDARD 14)
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if (MSVC)
+    add_compile_options("/Zc:__cplusplus")
+endif()
+
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_compile_options("-fvisibility=hidden")
     # disable some warnings
@@ -173,22 +184,12 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
         add_compile_options(-march=native)
     endif()
 
-    if (STDFS)
-        add_compile_options("-std=c++17")
-    else()
-        add_compile_options("-std=c++14")
-    endif()
-
     add_compile_options("-ffast-math" "-funroll-loops" "-fomit-frame-pointer")
     add_compile_options("-Wstrict-aliasing")
 
     if (CMAKE_COMPILER_IS_CLANG)
         add_compile_options("-stdlib=libc++")
     endif()
-endif()
-
-if (MSVC)
-    add_compile_options("/std:c++17") # for std::filesystem
 endif()
 
 if (MINGW)
