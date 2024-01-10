@@ -3,6 +3,9 @@
 #include <cassert>
 #include <utility>
 #ifdef _WIN32
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
 # include <windows.h>
 #else // _WIN32
 # include <dlfcn.h>
