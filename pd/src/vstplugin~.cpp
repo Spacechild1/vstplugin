@@ -1053,11 +1053,18 @@ void t_vsteditor::tick(t_vsteditor *x){
     x->e_tick = false;
 }
 
-const int xoffset = 30;
-const int yoffset = 30;
-const int maxparams = 16; // max. number of params per column
-const int row_width = 128 + 10 + 128; // slider + symbol atom + label
-const int col_height = 40;
+constexpr int font_size = 12;
+constexpr int xoffset = 30;
+constexpr int yoffset = 20;
+constexpr int max_params = 16; // max. number of params per column
+constexpr int slider_width = 162; // Pd 0.54+
+constexpr int slider_height = 18; // Pd 0.54+
+constexpr int slider_label_xoffset = -2;
+constexpr int slider_label_yoffset = -10;
+constexpr int slider_xmargin = 10; // margin between slider and display
+constexpr int slider_ymargin = 10; // vertical margin between sliders
+constexpr int row_width = 2 * slider_width; // slider + xmargin + symbol atom + label
+constexpr int col_height = 2 * slider_height + slider_xmargin;
 
 void t_vsteditor::setup(){
     if (!pd_gui()){
@@ -1075,17 +1082,21 @@ void t_vsteditor::setup(){
         e_params.emplace_back(e_owner, i);
     }
         // slider: #X obj ...
-    const char *sliderText = "25 43 hsl 128 15 0 1 0 0 snd rcv label -2 -8 0 10 -262144 -1 -1 0 1";
-    t_binbuf *sliderBuf = binbuf_new();
-    binbuf_text(sliderBuf, sliderText, strlen(sliderText));
-    t_atom *slider = binbuf_getvec(sliderBuf);
+    char slider_text[256];
+    snprintf(slider_text, sizeof(slider_text),
+             "25 43 hsl %d %d 0 1 0 0 snd rcv label %d %d 0 %d -262144 -1 -1 0 1",
+             slider_width, slider_height, slider_label_xoffset, slider_label_yoffset, font_size);
+    t_binbuf *slider_bb = binbuf_new();
+    binbuf_text(slider_bb, slider_text, strlen(slider_text));
+    t_atom *slider = binbuf_getvec(slider_bb);
         // display: #X symbolatom ...
-    const char *displayText = "165 79 10 0 0 1 label rcv snd";
-    t_binbuf *displayBuf = binbuf_new();
-    binbuf_text(displayBuf, displayText, strlen(displayText));
-    t_atom *display = binbuf_getvec(displayBuf);
+    char display_text[256];
+    snprintf(display_text, sizeof(display_text), "165 79 %d 0 0 1 label rcv snd", font_size);
+    t_binbuf *display_bb = binbuf_new();
+    binbuf_text(display_bb, display_text, strlen(display_text));
+    t_atom *display = binbuf_getvec(display_bb);
 
-    int ncolumns = nparams / maxparams + ((nparams % maxparams) != 0);
+    int ncolumns = nparams / max_params + ((nparams % max_params) != 0);
     if (!ncolumns) ncolumns = 1; // just to prevent division by zero
     int nrows = nparams / ncolumns + ((nparams % ncolumns) != 0);
 
@@ -1093,19 +1104,19 @@ void t_vsteditor::setup(){
         int col = i / nrows;
         int row = i % nrows;
         int xpos = xoffset + col * row_width;
-        int ypos = yoffset + row * col_height;
+        int ypos = yoffset + slider_height + row * col_height;
             // create slider
         SETFLOAT(slider, xpos);
         SETFLOAT(slider+1, ypos);
         SETSYMBOL(slider+9, e_params[i].p_slider);
         SETSYMBOL(slider+10, e_params[i].p_slider);
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%d: %s", i, info.parameters[i].name.c_str());
-        substitute_whitespace(buf);
-        SETSYMBOL(slider+11, gensym(buf));
+        char param_name[64];
+        snprintf(param_name, sizeof(param_name), "%d: %s", i, info.parameters[i].name.c_str());
+        substitute_whitespace(param_name);
+        SETSYMBOL(slider+11, gensym(param_name));
         send_mess(gensym("obj"), 21, slider);
             // create display
-        SETFLOAT(display, xpos + 128 + 10); // slider + space
+        SETFLOAT(display, xpos + slider_width + slider_xmargin);
         SETFLOAT(display+1, ypos);
         SETSYMBOL(display+6, gensym(info.parameters[i].label.c_str()));
         SETSYMBOL(display+7, e_params[i].p_display_rcv);
@@ -1122,8 +1133,8 @@ void t_vsteditor::setup(){
 
     update();
 
-    binbuf_free(sliderBuf);
-    binbuf_free(displayBuf);
+    binbuf_free(slider_bb);
+    binbuf_free(display_bb);
 }
 
 void t_vsteditor::update(){
