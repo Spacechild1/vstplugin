@@ -165,22 +165,30 @@ class t_vstplugin {
 
 // VST parameter responder (for Pd GUI)
 class t_vstparam {
- public:
+public:
     t_vstparam(t_vstplugin *x, int index);
     ~t_vstparam();
+
+    t_vstparam(t_vstparam&&) noexcept;
+    t_vstparam& operator=(t_vstparam&&) noexcept;
+
     void set(t_floatarg f);
 
-    t_pd p_pd;
+    t_pd p_pd = nullptr; // !
     t_vstplugin *p_owner;
     t_symbol *p_slider;
     t_symbol *p_display_rcv;
     t_symbol *p_display_snd;
     int p_index;
+private:
+    void move(t_vstparam& other);
+    void bind();
+    void unbind();
 };
 
 // VST editor
 class t_vsteditor : public IPluginListener {
- public:
+public:
     enum {
         LatencyChange = -1
     };

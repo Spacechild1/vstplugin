@@ -752,27 +752,63 @@ static std::atomic_bool gDidSearch{false};
 static t_class *vstparam_class;
 
 t_vstparam::t_vstparam(t_vstplugin *x, int index)
-    : p_owner(x), p_index(index){
-    p_pd = vstparam_class;
+    : p_pd(vstparam_class), p_owner(x), p_index(index) {
     char buf[64];
-        // slider
+    // slider
     snprintf(buf, sizeof(buf), "%p-hsl-%d", x, index);
     p_slider = gensym(buf);
-    pd_bind(&p_pd, p_slider);
-        // display
+    // display
     snprintf(buf, sizeof(buf), "%p-d-%d-snd", x, index);
     p_display_snd = gensym(buf);
-    pd_bind(&p_pd, p_display_snd);
     snprintf(buf, sizeof(buf), "%p-d-%d-rcv", x, index);
     p_display_rcv = gensym(buf);
+    // finally bind
+    bind();
 }
 
-t_vstparam::~t_vstparam(){
+t_vstparam::~t_vstparam() {
+    if (p_pd) {
+        unbind(); // only if not moved from!
+    }
+}
+
+t_vstparam::t_vstparam(t_vstparam&& other) noexcept {
+    move(other);
+}
+
+t_vstparam& t_vstparam::operator=(t_vstparam&& other) noexcept {
+    move(other);
+    return *this;
+}
+
+void t_vstparam::move(t_vstparam &other) {
+    if (p_pd) {
+        unbind(); // only if not moved from!
+    }
+    p_pd = other.p_pd;
+    p_owner = other.p_owner;
+    p_slider = other.p_slider;
+    p_display_rcv = other.p_display_rcv;
+    p_display_snd = other.p_display_snd;
+    p_index = other.p_index;
+    bind();
+    // other must be valid!
+    assert(other.p_pd != nullptr);
+    other.unbind();
+    other.p_pd = nullptr; // mark as moved!
+}
+
+void t_vstparam::bind() {
+    pd_bind(&p_pd, p_slider);
+    pd_bind(&p_pd, p_display_snd);
+}
+
+void t_vstparam::unbind() {
     pd_unbind(&p_pd, p_slider);
     pd_unbind(&p_pd, p_display_snd);
 }
 
-    // this will set the slider and implicitly call vstparam_set
+// this will set the slider and implicitly call vstparam_set
 void t_vstparam::set(t_floatarg f){
     pd_vmess(p_slider->s_thing, gensym("set"), (char *)"f", f);
 }
@@ -1034,8 +1070,7 @@ void t_vsteditor::setup(){
 
     int nparams = info.numParameters();
     e_params.clear();
-    // reserve to avoid a reallocation (which will call destructors)
-    e_params.reserve(nparams);
+    e_params.reserve(nparams); // avoid unnecessary moves
     for (int i = 0; i < nparams; ++i){
         e_params.emplace_back(e_owner, i);
     }
