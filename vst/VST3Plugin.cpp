@@ -1826,8 +1826,10 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
         if (window_){
             gParamChangesToGui.emplace(uniqueId_, id, value);
         } else {
-        #if 1
+        #if 0
             // This might be required for the program parameter. Not sure...
+            // UPDATE: juicysfplugin would actually dead-lock , but I am not
+            // sure if that's a bug in the plugin. For now, let's just disable it.
             controller_->setParamNormalized(id, value);
         #endif
         }
