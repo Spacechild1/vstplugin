@@ -1,7 +1,6 @@
 #include "PluginServer.h"
 
 #include "ShmInterface.h"
-#include "PluginDictionary.h"
 #include "Log.h"
 #include "FileUtils.h"
 #include "MiscUtils.h"
@@ -758,8 +757,6 @@ bool PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){
 
 /*////////////////// PluginServer ////////////////*/
 
-static PluginDictionary gPluginDict;
-
 PluginServer::PluginServer(int pid, const std::string& shmPath)
 {
     LOG_DEBUG("PluginServer: parent: " << pid << ", path: " << shmPath);
@@ -808,7 +805,7 @@ PluginServer::PluginServer(int pid, const std::string& shmPath)
 }
 
 PluginServer::~PluginServer(){
-    LOG_DEBUG("free PluginServer");
+    LOG_DEBUG("PluginServer: free");
 
     UIThread::removePollFunction(pollFunction_);
 
@@ -819,11 +816,11 @@ PluginServer::~PluginServer(){
     // properly destruct all remaining plugins
     // on the UI thread (in case the parent crashed)
     if (!plugins_.empty()){
-        LOG_DEBUG("release remaining " << plugins_.size() << " plugins");
+        LOG_DEBUG("PluginServer: release remaining " << plugins_.size() << " plugins");
         defer([&](){
             plugins_.clear();
         });
-        LOG_DEBUG("released plugins");
+        LOG_DEBUG("PluginServer: released plugins");
     }
 
 #if VST_HOST_SYSTEM == VST_WINDOWS
@@ -976,14 +973,14 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
         // info is transmitted in place
         std::stringstream ss;
         ss << std::string(data, size);
-        info = gPluginDict.readPlugin(ss);
+        info = pluginDict_.readPlugin(ss);
     } else {
         // info is transmitted via a tmp file
         File file(data);
         if (!file.is_open()){
             throw Error(Error::PluginError, "couldn't read plugin info!");
         }
-        info = gPluginDict.readPlugin(file);
+        info = pluginDict_.readPlugin(file);
     }
 
     LOG_DEBUG("PluginServer: did read plugin info");

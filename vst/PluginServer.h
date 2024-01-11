@@ -2,6 +2,7 @@
 
 #include "Interface.h"
 #include "PluginCommand.h"
+#include "PluginDictionary.h"
 #include "Sync.h"
 #include "Bus.h"
 #include "Lockfree.h"
@@ -153,6 +154,8 @@ class PluginServer {
 
     std::unordered_map<uint32_t, std::unique_ptr<PluginHandle>> plugins_;
     SharedMutex pluginMutex_;
+
+    PluginDictionary pluginDict_;
 };
 
 } // vst
