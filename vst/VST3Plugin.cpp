@@ -227,8 +227,10 @@ VST3Factory::VST3Factory(const std::string& path, bool probe)
 
 VST3Factory::~VST3Factory(){
     factory_ = nullptr;
-#if 0
-    // this crashes on macOS when called during program termination
+#if 1
+    // This crashes on macOS when called during program termination;
+    // However, library termination is required by certain plugins,
+    // e.g. Kontakt 7, Guitar Rig 6, etc.
     if (module_ && !module_->exit()){
         // don't throw!
         LOG_ERROR("couldn't exit module");
