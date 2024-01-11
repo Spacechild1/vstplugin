@@ -3,6 +3,7 @@
 #include "Log.h"
 #include "FileUtils.h"
 #include "MiscUtils.h"
+#include "Sync.h"
 
 #if SMTG_OS_LINUX
   #include "WindowX11.h"
@@ -233,11 +234,16 @@ VST3Factory::~VST3Factory(){
         LOG_ERROR("couldn't exit module");
     }
 #endif
-    // LOG_DEBUG("freed VST3 module " << path_);
+    // LOG_DEBUG("VST3Factory: deinitialize " << path_);
 }
 
+static Mutex gLoaderLock;
+
 void VST3Factory::doLoad(){
-    if (!module_){
+    // TODO: optimize with double checked locking?
+    ScopedLock lock(gLoaderLock);
+
+    if (!module_) {
         std::string modulePath = path_;
     #ifndef __APPLE__
         if (isDirectory(modulePath)){
@@ -323,6 +329,7 @@ PluginDesc::const_ptr VST3Factory::probePlugin(int id) const {
             id = subPlugins_[0].id; // grab the first (and only) plugin
         }
     }
+
     // create (sub)plugin
     auto plugin = std::make_unique<VST3Plugin>(factory_, id, shared_from_this(), nullptr, false);
     return plugin->getInfo();

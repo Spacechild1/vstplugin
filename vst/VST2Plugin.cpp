@@ -2,6 +2,7 @@
 
 #include "Log.h"
 #include "MiscUtils.h"
+#include "Sync.h"
 
 #include <fstream>
 #include <cmath>
@@ -109,10 +110,15 @@ VST2Factory::VST2Factory(const std::string& path, bool probe)
 }
 
 VST2Factory::~VST2Factory(){
-    // LOG_DEBUG("freed VST2 module " << path_);
+    // LOG_DEBUG("VST2Factory: deinitialize " << path_);
 }
 
-void VST2Factory::doLoad(){
+static Mutex gLoaderLock;
+
+void VST2Factory::doLoad() {
+    // TODO: optimize with double checked locking?
+    ScopedLock lock(gLoaderLock);
+
     if (!module_){
         auto module = IModule::load(path_); // throws on failure
         entry_ = module->getFnPtr<EntryPoint>("VSTPluginMain");
