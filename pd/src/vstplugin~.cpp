@@ -82,18 +82,23 @@ t_workqueue* t_workqueue::get() {
     return w;
 }
 #else
-static std::unique_ptr<t_workqueue> gWorkQueue;
+// use plain pointer - instead of unique_ptr - so that we can just leak
+// the object in case class_free() is not called.
+// For example, you can't synchronize threads in a global/static object
+// destructor in a Windows DLL because of the loader lock!
+// See https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+static t_workqueue *gWorkQueue;
 
 void t_workqueue::init() {
     if (!gWorkQueue) {
-        gWorkQueue = std::make_unique<t_workqueue>();
+        gWorkQueue = new t_workqueue;
     }
 }
 
 void t_workqueue::release() {}
 
 t_workqueue* t_workqueue::get() {
-    return gWorkQueue.get();
+    return gWorkQueue;
 }
 #endif
 
@@ -142,28 +147,18 @@ t_workqueue::t_workqueue(){
     clock_delay(w_clock, 0);
 }
 
-t_workqueue::~t_workqueue(){
-#if defined(_WIN32) && !defined(PDINSTANCE)
-    // Windows and not reference-counted:
-    // You can't synchronize threads in a global/static object
-    // destructor in a Windows DLL because of the loader lock.
-    // See https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
-    w_thread.detach();
-    LOG_DEBUG("worker thread detached");
-#else
+t_workqueue::~t_workqueue() {
     w_running.store(false);
-
     // wake up and join thread
     w_event.set();
     if (w_thread.joinable()){
         w_thread.join();
     }
     LOG_DEBUG("worker thread joined");
-#endif
-    // only free clock if t_workqueue is reference-counted!
-#ifdef PDINSTANCE
+    // The workqueue is either leaked or destroyed in the class free function,
+    // so we can safely free the clock! With PDINSTANCE this is even less of a
+    // problem because the workqueue is reference counted.
     clock_free(w_clock);
-#endif
 }
 
 void t_workqueue::clockmethod(t_workqueue *w){
@@ -222,6 +217,13 @@ void t_workqueue::poll(){
             item.cleanup(item.data);
         }
     }
+}
+
+void workqueue_terminate() {
+    // NOTE: with PDINSTANCE the workqueues are reference counted!
+#ifndef PDINSTANCE
+    delete gWorkQueue;
+#endif
 }
 
 void workqueue_setup() {
@@ -4139,6 +4141,12 @@ EXPORT void vstplugin_tilde_setup(void) {
     vstparam_setup();
 
     workqueue_setup();
+
+    // NOTE: at the time of writing (Pd 0.54), the class free function is not actually called;
+    // hopefully, this will change in future Pd versions.
+    class_setfreefn(vstplugin_class, [](t_class *) {
+        workqueue_terminate();
+    });
 
     post("vstplugin~ %s", getVersionString());
 
