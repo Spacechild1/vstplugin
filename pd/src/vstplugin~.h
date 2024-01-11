@@ -82,9 +82,9 @@ struct t_search_data : t_command_data<t_search_data> {
     std::atomic_bool cancel {false};
 };
 
-// vstplugin~ object (no virtual methods!)
+// vstplugin~ object (everything public and no virtual methods!)
 class t_vstplugin {
- public:
+public:
     static constexpr const char *glob_recv_name = "__vstplugin~__"; // receive name shared by all instances
 
     t_vstplugin(int argc, t_atom *argv);
@@ -278,7 +278,7 @@ private:
 };
 
 class t_workqueue {
- public:
+public:
     template<typename T>
     using t_fun = void (*)(T *);
 
@@ -297,7 +297,17 @@ class t_workqueue {
     void cancel(void *owner);
     void log(PdLogLevel level, std::string msg);
     void poll();
- private:
+
+#ifdef PDINSTANCE
+    static constexpr const char *bindname = "vstplugin__workqueue";
+
+    t_pd w_pd; // object header
+    // make everything public to be 100% sure that the compiler
+    // can not reorder members (which is technically allowed
+    // for classes with different access specifiers).
+#else
+private:
+#endif
     struct t_item {
         void *owner;
         void *data;

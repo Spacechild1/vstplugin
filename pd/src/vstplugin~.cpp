@@ -48,52 +48,38 @@ static void initEventLoop() {}
 
 /*============================ t_workqueue ============================*/
 
-// With PDINSTANCE the work queue is reference-counted to avoid resource leaks.
-// LATER maybe bind it to a symbol instead of using a hash table + mutex?
+// Each PDINSTANCE needs its own work queue. Since we don't know when a
+// Pd instance is freed, we use reference counting to avoid resource leaks.
 #ifdef PDINSTANCE
-namespace {
-    std::unordered_map<t_pdinstance *, std::unique_ptr<t_workqueue>> gWorkQueues;
-    SharedMutex gWorkQueueMutex;
-}
+
+t_class *workqueue_class;
 
 void t_workqueue::init() {
-    // might get called from different threads!
-    // NOTE: insertion doesn't invalidate pointers to elements,
-    // so the pointers returned by t_workqueue::get() won't become stale!
-    WriteLock lock(gWorkQueueMutex);
-    auto it = gWorkQueues.find(pd_this);
-    if (it != gWorkQueues.end()) {
-        // add reference
-        it->second->w_refcount++;
+    auto s = gensym(t_workqueue::bindname);
+    auto w = (t_workqueue *)pd_findbyclass(s, workqueue_class);
+    if (w) {
+        w->w_refcount++;
     } else {
-        // create
-        gWorkQueues.emplace(pd_this, std::make_unique<t_workqueue>());
+        w = new t_workqueue; // already has refcount of 1
+        pd_bind(&w->w_pd, s);
     }
 }
 
 void t_workqueue::release() {
-    // NOTE: deletion doesn't invalidate pointers to elements,
-    // so the pointers returned by t_workqueue::get() won't become stale!
-    WriteLock lock(gWorkQueueMutex);
-    auto it = gWorkQueues.find(pd_this);
-    if (it != gWorkQueues.end()) {
-        if (--it->second->w_refcount == 0) {
-            gWorkQueues.erase(it);
-        }
-    } else {
-        bug("t_workqueue::release");
+    auto s = gensym(t_workqueue::bindname);
+    auto w = (t_workqueue *)pd_findbyclass(s, workqueue_class);
+    assert(w != nullptr);
+    if (--w->w_refcount == 0) {
+        pd_unbind(&w->w_pd, s);
+        delete w;
     }
 }
 
-t_workqueue* t_workqueue::get(){
-    // might get called from different threads!
-    ReadLock lock(gWorkQueueMutex);
-    auto it = gWorkQueues.find(pd_this);
-    if (it != gWorkQueues.end()){
-        return it->second.get();
-    } else {
-        return nullptr; // shouldn't happen!
-    }
+t_workqueue* t_workqueue::get() {
+    auto s = gensym(t_workqueue::bindname);
+    auto w = (t_workqueue *)pd_findbyclass(s, workqueue_class);
+    assert(w != nullptr);
+    return w;
 }
 #else
 static std::unique_ptr<t_workqueue> gWorkQueue;
@@ -117,6 +103,7 @@ bool isWorkerThread() { return gWorkerThread; }
 
 t_workqueue::t_workqueue(){
 #ifdef PDINSTANCE
+    w_pd = workqueue_class;
     w_instance = pd_this;
 #endif
 
@@ -235,6 +222,14 @@ void t_workqueue::poll(){
             item.cleanup(item.data);
         }
     }
+}
+
+void workqueue_setup() {
+#ifdef PDINSTANCE
+    workqueue_class = class_new(gensym("vstplugin workqueue"),
+                                0, 0, 0, CLASS_PD, A_NULL);
+
+#endif
 }
 
 
@@ -4142,6 +4137,8 @@ EXPORT void vstplugin_tilde_setup(void) {
     class_addmethod(vstplugin_class, (t_method)vstplugin_multichannel, gensym("multichannel"), A_NULL);
 
     vstparam_setup();
+
+    workqueue_setup();
 
     post("vstplugin~ %s", getVersionString());
 
