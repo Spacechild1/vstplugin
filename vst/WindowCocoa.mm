@@ -7,6 +7,7 @@
 #error This file must be compiled without ARC!
 #endif
 
+#include <atomic>
 #include <iostream>
 #include <dispatch/dispatch.h>
 
@@ -87,7 +88,7 @@ namespace vst {
 
 namespace UIThread {
 
-static std::atomic_bool gRunning;
+static std::atomic<bool> gRunning{false};
 
 void setup(){
     Cocoa::EventLoop::instance();

@@ -368,6 +368,7 @@ class IFactory {
     virtual IPlugin::ptr create(const std::string& name, bool editor) const = 0;
 };
 
+// TODO: remove
 class FactoryFuture {
 public:
     FactoryFuture() = default;
