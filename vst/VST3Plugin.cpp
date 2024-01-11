@@ -801,14 +801,18 @@ VST3Plugin::~VST3Plugin() {
     listener_ = nullptr; // for some buggy plugins
     window_ = nullptr;
     processor_ = nullptr;
+    // destroy view
+    LOG_DEBUG("VST3Plugin: release view");
+    view_ = nullptr;
     // destroy controller
+    LOG_DEBUG("VST3Plugin: destroy controller");
     controller_->terminate();
     controller_ = nullptr;
-    LOG_DEBUG("destroyed VST3 controller");
     // destroy component
+    LOG_DEBUG("VST3Plugin: destroy component");
     component_->terminate();
     component_ = nullptr;
-    LOG_DEBUG("destroyed VST3 component");
+    LOG_DEBUG("VST3Plugin: deinitialized");
 }
 
 // IComponentHandler
@@ -1881,7 +1885,7 @@ void VST3Plugin::updateParameterCache(){
 void VST3Plugin::initView() {
     if (!view_) {
         LOG_DEBUG("VST3Plugin: create view");
-        view_ = controller_->createView("editor");
+        view_ = owned(controller_->createView("editor"));
     }
 }
 

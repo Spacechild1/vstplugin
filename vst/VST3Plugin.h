@@ -553,7 +553,7 @@ class VST3Plugin final :
     // UI
     bool editorOpen_ = false;
     uint32_t uniqueId_ = 0;
-    IPlugView *view_ = nullptr;
+    IPtr<IPlugView> view_;
     IWindow::ptr window_;
     IPluginListener* listener_ = nullptr;
     IFactory::const_ptr factory_; // keep alive
