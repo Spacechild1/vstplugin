@@ -17,6 +17,11 @@
 #include <codecvt>
 #include <locale>
 #include <cassert>
+#include <thread>
+
+#ifndef UNLOAD_VST3_MODULES
+#define UNLOAD_VST3_MODULES 1
+#endif
 
 #ifndef DEBUG_VST3_PARAMETERS
 #define DEBUG_VST3_PARAMETERS 0
@@ -227,10 +232,13 @@ VST3Factory::VST3Factory(const std::string& path, bool probe)
 
 VST3Factory::~VST3Factory(){
     factory_ = nullptr;
-#if 1
-    // This crashes on macOS when called during program termination;
-    // However, library termination is required by certain plugins,
-    // e.g. Kontakt 7, Guitar Rig 6, etc.
+#if UNLOAD_VST3_MODULES
+    // This crashes on macOS when called in a global/static object
+    // destructor! However, proper library termination is required
+    // by certain plugins, e.g. Kontakt 7, Guitar Rig 6, etc.
+    // Fortunately, SuperCollider plugins may export an "unload"
+    // function where we can clear the plugin dictionary.
+    // Hopefully, Pd will offer something similar in the future.
     if (module_ && !module_->exit()){
         // don't throw!
         LOG_ERROR("couldn't exit module");
@@ -334,7 +342,17 @@ PluginDesc::const_ptr VST3Factory::probePlugin(int id) const {
 
     // create (sub)plugin
     auto plugin = std::make_unique<VST3Plugin>(factory_, id, shared_from_this(), nullptr, false);
-    return plugin->getInfo();
+    auto desc = plugin->getInfo();
+#if 1
+    // HACK for Kontakt 7: when the plugin is destroyed immediately,
+    // the "Web Request Worker" thread segfaults with a null pointer access.
+    // As a workaround, we simply sleep for half a second. (100 ms would still
+    // occasionally crash in release mode, so let's stay on the safe side!)
+    if (startsWith(desc->name, "Kontakt ")) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+#endif
+    return desc;
 }
 
 /*///////////////////// ParamValueQueue /////////////////////*/
