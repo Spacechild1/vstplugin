@@ -497,28 +497,28 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     context_.frameRate.framesPerSecond = 60; // just pick one
 
     // are we probing?
-    auto info = !info_ ? std::make_shared<PluginDesc>(factory_) : nullptr;
+    auto newInfo = !info_ ? std::make_shared<PluginDesc>(factory_) : nullptr;
     TUID uid;
     PClassInfo2 ci2;
     auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
     if (factory2 && factory2->getClassInfo2(which, &ci2) == kResultTrue){
         memcpy(uid, ci2.cid, sizeof(TUID));
-        if (info){
-            info->name = ci2.name;
-            info->category = ci2.subCategories;
-            info->vendor = ci2.vendor;
-            info->version = ci2.version;
-            info->sdkVersion = ci2.sdkVersion;
+        if (newInfo){
+            newInfo->name = ci2.name;
+            newInfo->category = ci2.subCategories;
+            newInfo->vendor = ci2.vendor;
+            newInfo->version = ci2.version;
+            newInfo->sdkVersion = ci2.sdkVersion;
         }
     } else {
         Steinberg::PClassInfo ci;
         if (factory->getClassInfo(which, &ci) == kResultTrue){
             memcpy(uid, ci.cid, sizeof(TUID));
-            if (info){
-                info->name = ci.name;
-                info->category = "Uncategorized";
-                info->version = "0.0.0";
-                info->sdkVersion = "VST 3";
+            if (newInfo){
+                newInfo->name = ci.name;
+                newInfo->category = "Uncategorized";
+                newInfo->version = "0.0.0";
+                newInfo->sdkVersion = "VST 3";
             }
         } else {
             throw Error(Error::PluginError, "Couldn't get class info!");
@@ -588,15 +588,15 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
 
     // finally set remaining info
-    if (info) {
-        info->setUID(uid);
+    if (newInfo) {
+        newInfo->setUID(uid);
         // vendor name (if still empty)
-        if (info->vendor.empty()){
+        if (newInfo->vendor.empty()){
             PFactoryInfo i;
             if (factory->getFactoryInfo(&i) == kResultTrue){
-                info->vendor = i.vendor;
+                newInfo->vendor = i.vendor;
             } else {
-                info->vendor = "Unknown";
+                newInfo->vendor = "Unknown";
             }
         }
         // get input/output busses
@@ -617,8 +617,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             return result;
         };
 
-        info->inputs = collectBusses(Vst::kInput);
-        info->outputs = collectBusses(Vst::kOutput);
+        newInfo->inputs = collectBusses(Vst::kInput);
+        newInfo->outputs = collectBusses(Vst::kOutput);
 
         auto countMidiChannels = [this](Vst::BusDirection dir) -> int {
             auto count = component_->getBusCount(Vst::kEvent, dir);
@@ -637,7 +637,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         bool midiInput = countMidiChannels(Vst::kInput);
         bool midiOutput = countMidiChannels(Vst::kOutput);
 
-        bool isSynth = (info->category.find(Vst::PlugType::kInstrument) != std::string::npos);
+        bool isSynth = (newInfo->category.find(Vst::PlugType::kInstrument) != std::string::npos);
 
         uint32_t flags = 0;
 
@@ -648,7 +648,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         flags |= midiInput * PluginDesc::MidiInput;
         flags |= midiOutput * PluginDesc::MidiOutput;
 
-        info->flags = flags;
+        newInfo->flags = flags;
 
         // get parameters
         std::set<Vst::ParamID> params;
@@ -667,9 +667,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     continue;
                 }
                 if (pi.flags & Vst::ParameterInfo::kIsProgramChange){
-                    info->programChange = pi.id;
+                    newInfo->programChange = pi.id;
                 } else if (pi.flags & Vst::ParameterInfo::kIsBypass){
-                    info->bypass = pi.id;
+                    newInfo->bypass = pi.id;
                 } else {
                 #if DEBUG_VST3_PARAMETERS
                     LOG_DEBUG(param.name << ": id=" << pi.id << ", flags=" << pi.flags);
@@ -684,7 +684,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                         auto len = sizeof(prefix) - 1;
                         if (param.name.compare(0, len, prefix, len) != 0) {
                             params.insert(param.id);
-                            info->addParameter(std::move(param));
+                            newInfo->addParameter(std::move(param));
                         } else {
                         #if DEBUG_VST3_PARAMETERS
                             LOG_DEBUG("ignore JUCE MIDI CC parameter '" << param.name << "'");
@@ -713,10 +713,10 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     for (int i = 0; i < pli.programCount; ++i){
                         Vst::String128 name;
                         if (ui->getProgramName(pli.id, i, name) == kResultTrue){
-                            info->programs.push_back(convertString(name));
+                            newInfo->programs.push_back(convertString(name));
                         } else {
                             LOG_ERROR("couldn't get program name!");
-                            info->programs.push_back("");
+                            newInfo->programs.push_back("");
                         }
                     }
                     LOG_DEBUG("num programs: " << pli.programCount);
@@ -729,7 +729,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         } else {
             LOG_DEBUG("no unit info");
         }
-        info_ = info;
+        info_ = newInfo;
     }
 #if 0
     LOG_DEBUG("input busses: " << numInputBusses_ << ", output busses: " << numOutputBusses_);
@@ -789,6 +789,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 
         window_ = IWindow::create(*this);
     }
+
+    LOG_DEBUG("VST3Plugin: initialized");
 }
 
 VST3Plugin::~VST3Plugin() {

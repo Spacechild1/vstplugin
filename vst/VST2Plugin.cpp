@@ -216,12 +216,12 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
     // are we probing?
     if (!info_){
         // create and fill plugin info
-        auto info = std::make_shared<PluginDesc>(factory_);
-        info->setUniqueID(plugin_->uniqueID);
-        info->name = getPluginName();
-        if (info->name.empty()){
+        auto newInfo = std::make_shared<PluginDesc>(factory_);
+        newInfo->setUniqueID(plugin_->uniqueID);
+        newInfo->name = getPluginName();
+        if (newInfo->name.empty()){
             // get from file path
-            auto& path = info->path();
+            auto& path = newInfo->path();
             auto sep = path.find_last_of("\\/");
             auto dot = path.find_last_of('.');
             if (sep == std::string::npos){
@@ -230,18 +230,18 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
             if (dot == std::string::npos){
                 dot = path.size();
             }
-            info->name = path.substr(sep + 1, dot - sep - 1);
+            newInfo->name = path.substr(sep + 1, dot - sep - 1);
         }
-        info->vendor = getPluginVendor();
-        info->category = getPluginCategory();
-        info->version = getPluginVersion();
-        info->sdkVersion = getSDKVersion();
+        newInfo->vendor = getPluginVendor();
+        newInfo->category = getPluginCategory();
+        newInfo->version = getPluginVersion();
+        newInfo->sdkVersion = getSDKVersion();
         PluginDesc::Bus input;
         input.numChannels = getNumInputs();
-        info->inputs.emplace_back(std::move(input));
+        newInfo->inputs.emplace_back(std::move(input));
         PluginDesc::Bus output;
         output.numChannels = getNumOutputs();
-        info->outputs.emplace_back(std::move(output));
+        newInfo->outputs.emplace_back(std::move(output));
         // flags
         uint32_t flags = 0;
         flags |= hasEditor() * PluginDesc::HasEditor;
@@ -250,7 +250,7 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
         flags |= hasPrecision(ProcessPrecision::Double) * PluginDesc::DoublePrecision;
         flags |= hasMidiInput() * PluginDesc::MidiInput;
         flags |= hasMidiOutput() * PluginDesc::MidiOutput;
-        info->flags = flags;
+        newInfo->flags = flags;
         // get parameters
         int numParameters = getNumParameters();
         for (int i = 0; i < numParameters; ++i){
@@ -259,12 +259,12 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
             p.label = getParameterLabel(i);
             p.id = i;
             p.automatable = dispatch(effCanBeAutomated, i);
-            info->addParameter(std::move(p));
+            newInfo->addParameter(std::move(p));
         }
         // programs
         int numPrograms = getNumPrograms();
         for (int i = 0; i < numPrograms; ++i){
-            info->programs.push_back(getProgramNameIndexed(i));
+            newInfo->programs.push_back(getProgramNameIndexed(i));
         }
         // VST2 shell plugins only: get sub plugins
         if (dispatch(effGetPlugCategory) == kPlugCategShell){
@@ -273,10 +273,10 @@ VST2Plugin::VST2Plugin(AEffect *plugin, IFactory::const_ptr f, PluginDesc::const
             char name[256] = { 0 };
             while ((nextID = dispatch(effShellGetNextPlugin, 0, 0, name))){
                 LOG_DEBUG("plugin: " << name << ", ID: " << nextID);
-                info->subPlugins.push_back(PluginDesc::SubPlugin { name, nextID });
+                newInfo->subPlugins.push_back(PluginDesc::SubPlugin { name, nextID });
             }
         }
-        info_ = info;
+        info_ = newInfo;
     }
     haveBypass_ = hasBypass(); // cache for performance
 
