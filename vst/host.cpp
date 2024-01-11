@@ -126,7 +126,9 @@ int bridge(int pid, const std::string& path, int logChannel){
     } else {
         LOG_ERROR("OpenProcess() failed: " << errorMessage(GetLastError()));
     }
-    CloseHandle(hParent);
+    if (hParent) {
+        CloseHandle(hParent);
+    }
 #else
     gLogChannel = logChannel;
     setLogFunction(writeLog);
@@ -165,11 +167,11 @@ int main(int argc, const char *argv[]) {
         if (verb == "probe" && argc > 0){
             // args: <plugin_path> [<id>] [<file_path>] [<timeout>]
             std::string path = shorten(argv[0]);
-            int index;
-            try {
-                index = std::stol(argv[1], 0, 0);
-            } catch (...){
-                index = -1; // non-numeric argument
+            int index = -1;
+            if (argc > 1) {
+                try {
+                    index = std::stol(argv[1], 0, 0);
+                } catch (...) {} // non-numeric argument, e.g. '_'
             }
             std::string file = argc > 2 ? shorten(argv[2]) : "";
 
