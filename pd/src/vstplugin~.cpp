@@ -4145,6 +4145,10 @@ EXPORT void vstplugin_tilde_setup(void) {
     // NOTE: at the time of writing (Pd 0.54), the class free function is not actually called;
     // hopefully, this will change in future Pd versions.
     class_setfreefn(vstplugin_class, [](t_class *) {
+        // This makes sure that all plugin factories are released here and not
+        // in the global object destructor (which can cause crashes or deadlocks!)
+        gPluginDict.clear();
+
         workqueue_terminate();
     });
 

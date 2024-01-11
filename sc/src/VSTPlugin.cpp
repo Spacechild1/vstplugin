@@ -3362,6 +3362,10 @@ using VSTUnitCmdFunc = void (*)(VSTPlugin*, sc_msg_iter*);
 // Another problem is that the Server doesn't zero any RT memory for performance reasons.
 // This means we can't check for 0 or nullptrs... The current solution is to (ab)use 'specialIndex',
 // which *is* set to zero.
+
+// NOTE: since SC 3.11, Unit commands are queued in the Server, so our hack is not necessary anymore.
+// Unfortunately, there is no way to check the SC version at runtime. The next time the plugin API
+// version is bumped, we can eventually get rid of it!
 template<VSTUnitCmdFunc fn>
 void runUnitCmd(VSTPlugin* unit, sc_msg_iter* args) {
 #ifdef SUPERNOVA
@@ -3442,6 +3446,15 @@ PluginLoad(VSTPlugin) {
     // only read cache file when needed
     readCacheFile();
 #endif
+}
+
+// NOTE: at the time of writing (SC 3.13), the 'unload' function is not
+// documented in the official plugin API (yet), but it is already called
+// by scsynth and Supernova!
+C_LINKAGE SC_API_EXPORT void unload() {
+    // This makes sure that all plugin factories are released here and not
+    // in the global object destructor (which can cause crashes or deadlocks!)
+    gPluginDict.clear();
 }
 
 
