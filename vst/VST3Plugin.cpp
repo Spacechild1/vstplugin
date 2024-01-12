@@ -643,7 +643,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 
         uint32_t flags = 0;
 
-        flags |= hasEditor() * PluginDesc::HasEditor;
+        flags |= checkEditor() * PluginDesc::HasEditor;
         flags |= isSynth * PluginDesc::IsSynth;
         flags |= hasPrecision(ProcessPrecision::Single) * PluginDesc::SinglePrecision;
         flags |= hasPrecision(ProcessPrecision::Double) * PluginDesc::DoublePrecision;
@@ -1877,19 +1877,15 @@ void VST3Plugin::updateParameterCache(){
     }
 }
 
-// NB: some plugins (e.g. JUCE) seem to expect that createView()
-// is only called if the editor is opened eventually.
-// If you don't open the editor, it would still post timer messages;
-// even worse, these timer message would continue after you free the
-// controller! If you open and close the editor, things are fine.
-// In Pd, the plugin would even crash when closed without having opened
-// the editor at least once. (This does not happen in Supercollider.)
-// As a workaround, we create the view lazily.
-// TODO: figure out what's the actual problem.
-void VST3Plugin::initView() {
+// Create view on demand. This saves memory and reduces load times
+// in the frequent case that we create a plugin with UI support,
+// but don't actually use the editor. For example, we may only
+// need it during development, but not during performances.
+void VST3Plugin::createViewLazy(bool nullOk) {
     if (!view_) {
         LOG_DEBUG("VST3Plugin: create view");
         view_ = owned(controller_->createView("editor"));
+        assert(nullOk || view_);
     }
 }
 
@@ -2020,12 +2016,12 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
             throw Error("wrong class ID");
         }
     }
-    int64 offset;
+    int64 offset = 0;
     stream.readInt64(offset);
     // read chunk list
     stream.setPos(offset);
     checkChunkID(Vst::kChunkList);
-    int32 count;
+    int32 count = 0;
     stream.readInt32(count);
     while (count--){
         ChunkListEntry entry;
@@ -2137,8 +2133,8 @@ void VST3Plugin::writeBankData(std::string& buffer){
     throw Error("not implemented");
 }
 
-bool VST3Plugin::hasEditor() const {
-    const_cast<VST3Plugin *>(this)->initView();
+bool VST3Plugin::checkEditor() {
+    createViewLazy(true); // may be NULL!
     if (view_) {
     #if defined(_WIN32)
         return view_->isPlatformTypeSupported("HWND") == kResultOk;
@@ -2195,8 +2191,7 @@ void VST3Plugin::openEditor(void * window){
     if (editorOpen_){
         return;
     }
-    initView();
-    assert(view_ != nullptr);
+    createViewLazy();
     view_->setFrame(this);
     LOG_DEBUG("attach view");
 #if defined(_WIN32)
@@ -2229,8 +2224,7 @@ void VST3Plugin::closeEditor(){
 }
 
 bool VST3Plugin::getEditorRect(Rect& rect) const {
-    const_cast<VST3Plugin *>(this)->initView();
-    assert(view_ != nullptr);
+    const_cast<VST3Plugin *>(this)->createViewLazy();
     ViewRect r;
     if (view_->getSize(&r) == kResultOk){
         rect.x = r.left;
@@ -2280,8 +2274,7 @@ void VST3Plugin::updateEditor() {
 }
 
 void VST3Plugin::checkEditorSize(int &width, int &height) const {
-    const_cast<VST3Plugin *>(this)->initView();
-    assert(view_ != nullptr);
+    const_cast<VST3Plugin *>(this)->createViewLazy();
     ViewRect rect(0, 0, width, height);
     if (view_->checkSizeConstraint(&rect) == kResultOk){
         width = rect.getWidth();
@@ -2290,8 +2283,7 @@ void VST3Plugin::checkEditorSize(int &width, int &height) const {
 }
 
 void VST3Plugin::resizeEditor(int width, int height) {
-    initView();
-    assert(view_ != nullptr);
+    createViewLazy();
     ViewRect rect;
     if (view_->getSize(&rect) == kResultOk){
         rect.right = rect.left + width;
@@ -2305,8 +2297,7 @@ void VST3Plugin::resizeEditor(int width, int height) {
 }
 
 bool VST3Plugin::canResize() const {
-    const_cast<VST3Plugin *>(this)->initView();
-    assert(view_ != nullptr);
+    const_cast<VST3Plugin *>(this)->createViewLazy();
     return view_->canResize() == kResultTrue;
 }
 

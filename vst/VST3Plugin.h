@@ -481,7 +481,7 @@ class VST3Plugin final :
  private:
     int getNumParameters() const;
     int getNumPrograms() const;
-    bool hasEditor() const;
+    bool checkEditor();
     bool hasPrecision(ProcessPrecision precision) const;
     bool hasTail() const;
     int getTailSize() const;
@@ -499,7 +499,7 @@ class VST3Plugin final :
     void doSetProgram(int program);
     void setCacheParameter(int index, float value, bool notify);
     void updateParameterCache();
-    void initView();
+    void createViewLazy(bool nullOk = false);
 
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
