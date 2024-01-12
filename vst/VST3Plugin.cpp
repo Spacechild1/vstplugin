@@ -682,9 +682,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                         param.automatable = pi.flags & Vst::ParameterInfo::kCanAutomate;
                         // Some JUCE plugins have thousands of MIDI CC parameters,
                         // e.g. "MIDI CC 0|0" etc., so we apply the following hack:
-                        auto prefix = "MIDI CC ";
-                        auto len = sizeof(prefix) - 1;
-                        if (param.name.compare(0, len, prefix, len) != 0) {
+                        if (!startsWith(param.name, "MIDI CC ", 8)) {
                             params.insert(param.id);
                             newInfo->addParameter(std::move(param));
                         } else {

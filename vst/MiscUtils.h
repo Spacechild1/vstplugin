@@ -40,6 +40,7 @@
 #include "Interface.h"
 
 #include <string>
+#include <cstring>
 
 namespace  vst {
 
@@ -65,6 +66,22 @@ template<typename T>
 T alignTo(T v, size_t alignment) {
     auto mask = alignment - 1;
     return (v + mask) & ~mask;
+}
+
+inline bool startsWith(const std::string& s, const char *c, size_t n) {
+    if (s.size() >= n) {
+        return memcmp(s.data(), c, n) == 0;
+    } else {
+        return false;
+    }
+}
+
+inline bool startsWith(const std::string& s, const char *s2) {
+    return startsWith(s, s2, strlen(s2));
+}
+
+inline bool startsWith(const std::string& s, const std::string& s2) {
+    return startsWith(s, s2.data(), s2.size());
 }
 
 //--------------------------------------------------------------//
