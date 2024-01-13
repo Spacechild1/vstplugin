@@ -92,10 +92,18 @@ class EventLoop {
     public:
         Timer(TimerCallback cb, void *obj, double interval)
             : cb_(cb), obj_(obj), interval_(interval) {}
-        void update(double delta){
+        void update(double delta) {
+            assert(cb_ != nullptr);
             elapsed_ += delta;
-            while (elapsed_ > interval_){
-                cb_(obj_);
+            while (elapsed_ > interval_) {
+                // NB: if the interval is short, the timer may invalidate
+                // itself from within the while loop, so we need to check it!
+                // This happened with an actual plugin (sfizz.vst3)!
+                if (active()) {
+                    cb_(obj_);
+                } else {
+                    LOG_DEBUG("X11: timer canceled within update()!");
+                }
                 elapsed_ -= interval_;
             }
         }
