@@ -266,7 +266,7 @@ EventLoop::~EventLoop() {
     #if 0
         if (postMessage(WM_QUIT)){
             WaitForSingleObject(thread_, INFINITE);
-            LOG_DEBUG("Win32: joined thread");
+            LOG_DEBUG("Win32: joined UI thread");
         } else {
             LOG_DEBUG("Win32: couldn't post quit message!");
         }
@@ -321,7 +321,7 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
         if (!postMessage(WM_SYNC)) {
             return false;
         }
-        LOG_DEBUG("Win32: wait for event...");
+        LOG_DEBUG("Win32: wait for sync event...");
         event_.wait();
         LOG_DEBUG("Win32: synchronized");
         return true;
@@ -337,7 +337,7 @@ bool EventLoop::sync(){
         if (!postMessage(WM_SYNC)) {
             return false;
         }
-        LOG_DEBUG("Win32: wait for event...");
+        LOG_DEBUG("Win32: wait for sync event...");
         event_.wait();
         LOG_DEBUG("Win32: synchronized");
         return true;

@@ -2,10 +2,9 @@
 
 #include "PluginDesc.h"
 #include "MiscUtils.h"
-#include "Log.h"
 
+#include <algorithm>
 #include <cstring>
-#include <cassert>
 #include <chrono>
 
 #include <sys/eventfd.h>
@@ -125,7 +124,7 @@ EventLoop::~EventLoop(){
         running_.store(false);
         notify();
         thread_.join();
-        LOG_VERBOSE("X11: terminated UI thread");
+        LOG_DEBUG("X11: terminated UI thread");
     }
     if (display_){
     #if 1
@@ -142,7 +141,7 @@ EventLoop::~EventLoop(){
 }
 
 void EventLoop::pushCommand(UIThread::Callback cb, void *user){
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(commandMutex_);
     commands_.push_back({ cb, user });
     notify();
 }
@@ -152,47 +151,25 @@ void EventLoop::run(){
 
     LOG_DEBUG("X11: start event loop");
 
-    auto last = std::chrono::high_resolution_clock::now();
+    lastTime_ = std::chrono::high_resolution_clock::now();
 
-    while (running_.load()){
-        pollEvents();
-
-        // call after pollEvents()!
-        // this makes sure that there are no pending X11 events
+    while (running_.load()) {
         pollFds();
 
-        auto now = std::chrono::high_resolution_clock::now();
-        auto delta = std::chrono::duration<double>(now - last).count();
-        last = now;
+        handleTimers();
 
-        // handle timers
-        // lock because timers can be added from another thread!
-        std::unique_lock<std::mutex> lock(mutex_);
-        for (auto it = timerList_.begin(); it != timerList_.end(); ){
-            auto& timer = *it;
-            if (timer.active()){
-                timer.update(delta);
-                ++it;
-            } else {
-                // remove stale timer
-                it = timerList_.erase(it);
-            }
-        }
-        // handle commands
-        // don't execute callbacks while holding the lock to
-        // avoid a deadlock (e.g. PluginBridge calls addPollFunction())
-        std::vector<Command> commands = std::move(commands_);
-        commands_.clear();
-        lock.unlock();
-        for (auto& cmd : commands){
-            cmd.cb(cmd.obj);
-        }
+        handleCommands();
+
+        // Call at the end! This makes sure that all pending
+        // X11 events are flushed, so we can safely go to sleep
+        // in case there are no commands or windows.
+        pollX11Events();
     }
 }
 
 void EventLoop::pollFds(){
-    std::unique_lock<std::mutex> lock(mutex_);
-
+    // NB: we copy the fd array to prevent it from being modified
+    // from within event handlers!
     int count = eventHandlers_.size();
     // allocate extra fd for eventfd_
     auto fds = (pollfd *)alloca(sizeof(pollfd) * (count + 1));
@@ -206,18 +183,15 @@ void EventLoop::pollFds(){
     fds[count].events = POLLIN;
     fds[count].revents = 0;
 
-    // wait if there are no registered windows and timers
-    // (poll() will wake up when commands are pushed)
-    int timeout =  windows_.empty() && timerList_.empty() ? -1 : sleepGrain;
-    if (timeout < 0){
-        LOG_DEBUG("X11: wait");
+    // sleep if there are no windows and timers.
+    // NB: poll() will wake up when commands are pushed (or eventfds become ready).
+    int timeout =  windows_.empty() && timers_.empty() ? -1 : sleepGrain;
+    if (timeout < 0) {
+        LOG_DEBUG("X11: waiting...");
     }
-    // unlock before poll!
-    lock.unlock();
+
     auto result = poll(fds, count + 1, timeout);
     if (result > 0){
-        // lock again!
-        lock.lock();
         // check registered event handler fds
         for (int i = 0; i < count; ++i){
             auto revents = fds[i].revents;
@@ -257,7 +231,7 @@ void EventLoop::pollFds(){
     }
 }
 
-void EventLoop::pollEvents(){
+void EventLoop::pollX11Events(){
     while (XPending(display_)){
         XEvent event;
         XNextEvent(display_, &event);
@@ -291,6 +265,45 @@ void EventLoop::pollEvents(){
     }
 }
 
+void EventLoop::handleTimers() {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto delta = std::chrono::duration<double>(now - lastTime_).count();
+    lastTime_ = now;
+
+    // add new timers, see registerTimer()
+    if (!newTimers_.empty()) {
+        timers_.insert(timers_.end(), newTimers_.begin(), newTimers_.end());
+        newTimers_.clear();
+    }
+    // then update timers
+    for (auto it = timers_.begin(); it != timers_.end(); ){
+        auto& timer = *it;
+        if (timer.active()) {
+            timer.update(delta);
+            ++it;
+        } else {
+            // remove stale timer
+            it = timers_.erase(it);
+        }
+    }
+}
+
+void EventLoop::handleCommands() {
+    std::unique_lock<std::mutex> lock(commandMutex_);
+    while (!commands_.empty()) {
+        // first swap pending commands
+        std::vector<Command> commands;
+        std::swap(commands, commands_);
+        // execute callbacks without the mutex locked to avoid deadlocks
+        // (although it is unlikely that a command will push another command in turn).
+        lock.unlock();
+        for (auto& cmd : commands){
+            cmd.cb(cmd.obj);
+        }
+        lock.lock();
+    }
+}
+
 void EventLoop::notify(){
     uint64_t i = 1;
     if (write(eventfd_, &i, sizeof(i)) < 0){
@@ -313,9 +326,9 @@ bool EventLoop::sync(){
         pushCommand([](void *x){
             static_cast<EventLoop *>(x)->event_.set();
         }, this);
-        LOG_DEBUG("X11: waiting...");
+        LOG_DEBUG("X11: wait for sync event...");
         event_.wait();
-        LOG_DEBUG("X11: done");
+        LOG_DEBUG("X11: synchronized!");
     }
     return true;
 }
@@ -324,7 +337,7 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
     } else {
-        std::lock_guard<std::mutex> lock(syncMutex_); // prevent concurrent calls
+        std::lock_guard<std::mutex> lock(syncMutex_); // prevent concurrent calls!
         auto cmd = [&](){
             cb(user);
             event_.set();
@@ -333,9 +346,9 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
             // call the lambda
             (*static_cast<decltype (cmd) *>(x))();
         }, &cmd);
-        LOG_DEBUG("X11: waiting...");
+        LOG_DEBUG("X11: wait for sync event...");
         event_.wait();
-        LOG_DEBUG("X11: done");
+        LOG_DEBUG("X11: synchronized");
     }
     return true;
 }
@@ -350,32 +363,58 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
 }
 
 UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
-                                            void *context){
-    std::lock_guard<std::mutex> lock(mutex_);
+                                            void *context) {
+    struct Args {
+        EventLoop *self;
+        UIThread::PollFunction fn;
+        void *context;
+        UIThread::Handle handle;
+    };
+
     auto handle = nextPollFunctionHandle_++;
-    pollFunctions_.emplace(handle, context);
-    doRegisterTimer(updateInterval, fn, context);
+
+    pushCommand([](void *x) {
+        auto args = static_cast<Args *>(x);
+        args->self->pollFunctions_.emplace(args->handle, args->context);
+        args->self->doRegisterTimer(updateInterval, args->fn, args->context);
+        delete args;
+    }, new Args {this, fn, context, handle});
+
     return handle;
 }
 
-void EventLoop::removePollFunction(UIThread::Handle handle){
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = pollFunctions_.find(handle);
-    if (it != pollFunctions_.end()){
-        // we assume that we only ever register a single
-        // poll function for a given context
-        doUnregisterTimer(it->second);
-        pollFunctions_.erase(it);
-    } else {
-        LOG_ERROR("X11: couldn't remove poll function");
-    }
+void EventLoop::removePollFunction(UIThread::Handle handle) {
+    struct Args {
+        EventLoop *self;
+        UIThread::Handle handle;
+    };
+
+    pushCommand([](void *x) {
+        auto args = static_cast<Args *>(x);
+        auto& pollFunctions = args->self->pollFunctions_;
+        auto it = pollFunctions.find(args->handle);
+        if (it != pollFunctions.end()){
+            // we assume that we only ever register a single
+            // poll function for a given context
+            args->self->doUnregisterTimer(it->second);
+            pollFunctions.erase(it);
+        } else {
+            LOG_ERROR("X11: couldn't remove poll function");
+        }
+        delete args;
+    }, new Args {this, handle});
+
+    // synchronize with UI thread to ensure that the poll function
+    // has been removed before we return from this function.
+    sync();
 }
 
 bool EventLoop::checkThread(){
     return std::this_thread::get_id() == thread_.get_id();
 }
 
-void EventLoop::registerWindow(Window *w){
+void EventLoop::registerWindow(Window *w) {
+    assert(UIThread::isCurrentThread());
     for (auto& it : windows_){
         if (it == w){
             LOG_ERROR("X11::EventLoop::registerWindow: bug");
@@ -388,72 +427,75 @@ void EventLoop::registerWindow(Window *w){
     }, w);
 }
 
-void EventLoop::unregisterWindow(Window *w){
-    for (auto it = windows_.begin(); it != windows_.end(); ++it){
-        if (*it == w){
-            doUnregisterTimer(w);
-            windows_.erase(it);
-            return;
-        }
+void EventLoop::unregisterWindow(Window *w) {
+    assert(UIThread::isCurrentThread());
+    auto it = std::find(windows_.begin(), windows_.end(), w);
+    if (it != windows_.end()) {
+        doUnregisterTimer(w);
+        windows_.erase(it);
+        return;
     }
     LOG_ERROR("X11::EventLoop::unregisterWindow: bug");
 }
 
 void EventLoop::registerEventHandler(int fd, EventHandlerCallback cb, void *obj){
-#if 1
-    assert(UIThread::isCurrentThread());
-#else
-    std::lock_guard<std::mutex> lock(mutex_);
-#endif
-    eventHandlers_[fd] = EventHandler { obj, cb };
+    bool ok = UIThread::isCurrentThread();
+    assert(ok);
+    if (ok) {
+        eventHandlers_[fd] = EventHandler { obj, cb };
+    } else {
+        LOG_ERROR("X11: registerEventHandler() called from on thread!");
+    }
 }
 
 void EventLoop::unregisterEventHandler(void *obj){
-#if 1
-    assert(UIThread::isCurrentThread());
-#else
-    std::lock_guard<std::mutex> lock(mutex_);
-#endif
-    int count = 0;
-    for (auto it = eventHandlers_.begin(); it != eventHandlers_.end(); ){
-        if (it->second.obj == obj){
-            it = eventHandlers_.erase(it);
-            count++;
-        } else {
-            ++it;
+    bool ok = UIThread::isCurrentThread();
+    assert(ok);
+    if (ok) {
+        int count = 0;
+        for (auto it = eventHandlers_.begin(); it != eventHandlers_.end(); ){
+            if (it->second.obj == obj){
+                it = eventHandlers_.erase(it);
+                count++;
+            } else {
+                ++it;
+            }
         }
+        LOG_DEBUG("X11: unregistered " << count << " event handlers");
+    } else {
+        LOG_ERROR("X11: unregisterEventHandler() called on wrong thread!");
     }
-    LOG_DEBUG("X11: unregistered " << count << " handlers");
 }
 
 void EventLoop::registerTimer(int64_t ms, TimerCallback cb, void *obj){
-#if 1
-    assert(UIThread::isCurrentThread());
-#else
-    std::lock_guard<std::mutex> lock(mutex_);
-#endif
-    doRegisterTimer(ms, cb, obj);
+    bool ok = UIThread::isCurrentThread();
+    assert(ok);
+    if (ok) {
+        doRegisterTimer(ms, cb, obj);
+    } else {
+        LOG_ERROR("X11: registerTimer() called on wrong thread!");
+    }
 }
 
 void EventLoop::doRegisterTimer(int64_t ms, TimerCallback cb, void *obj){
-    timerList_.emplace_back(cb, obj, (double)ms * 0.001);
+    newTimers_.emplace_back(cb, obj, (double)ms * 0.001);
 }
 
-void EventLoop::unregisterTimer(void *obj){
-#if 1
-    assert(UIThread::isCurrentThread());
-#else
-    // don't do this - can deadlock!
-    std::lock_guard<std::mutex> lock(mutex_);
-#endif
-    doUnregisterTimer(obj);
+void EventLoop::unregisterTimer(void *obj) {
+    bool ok = UIThread::isCurrentThread();
+    assert(ok);
+    if (ok) {
+        doUnregisterTimer(obj);
+    } else {
+        LOG_ERROR("X11: unregisterTimer() called on wrong thread!");
+    }
 }
 
 void EventLoop::doUnregisterTimer(void *obj){
     int count = 0;
-    for (auto& timer : timerList_){
-        if (timer.match(obj)){
-            // don't actually delete here!
+    for (auto& timer : timers_) {
+        if (timer.match(obj)) {
+            // just invalidate, don't delete!
             timer.invalidate();
             count++;
         }

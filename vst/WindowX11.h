@@ -1,10 +1,13 @@
 #pragma once
 
 #include "Interface.h"
+#include "Log.h"
 #include "Sync.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+
+#include <cassert>
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -56,8 +59,10 @@ class EventLoop {
     void doRegisterTimer(int64_t ms, TimerCallback cb, void *obj);
     void doUnregisterTimer(void *obj);
     void run();
-    void pollEvents();
+    void pollX11Events();
     void pollFds();
+    void handleTimers();
+    void handleCommands();
     void notify();
     Window* findWindow(::Window handle);
 
@@ -66,7 +71,6 @@ class EventLoop {
     std::thread thread_;
     int eventfd_ = -1;
     std::atomic<bool> running_{false};
-    std::mutex mutex_;
     std::mutex syncMutex_;
     SyncCondition event_;
     std::vector<Window *> windows_;
@@ -76,6 +80,7 @@ class EventLoop {
         void *obj;
     };
     std::vector<Command> commands_;
+    std::mutex commandMutex_;
 
     struct EventHandler {
         void *obj;
@@ -103,12 +108,11 @@ class EventLoop {
         double interval_;
         double elapsed_ = 0;
     };
-    // use a linked list, so we can safely add timers from within a callback.
-    // e.g. in a subprocess, the WindowOpen command is called from the
-    // PluginServer poll function and will in turn register a timer.
-    std::list<Timer> timerList_;
+    std::vector<Timer> timers_;
+    std::vector<Timer> newTimers_;
+    std::chrono::high_resolution_clock::time_point lastTime_;
 
-    UIThread::Handle nextPollFunctionHandle_ = 0;
+    std::atomic<UIThread::Handle> nextPollFunctionHandle_{0};
     std::unordered_map<UIThread::Handle, void *> pollFunctions_;
 };
 
