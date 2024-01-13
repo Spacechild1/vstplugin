@@ -188,15 +188,20 @@ struct UIParamChange {
     Vst::ParamValue paramValue;
 };
 
+// NOTE: param changes can be safely pushed from multiple threads
+// (in case of multithreaded plugin processing).
 static UnboundedMPSCQueue<UIParamChange> gParamChangesToGui;
 
-// lazy initialization, called in VST3Plugin constructor
+// Lazy initialization, called in VST3Plugin constructor.
+// NB: always called on UI thread - no locking required!
 static void initGui() {
     static bool initialized = false;
 
     if (initialized) {
         return;
     }
+
+    assert(UIThread::isCurrentThread());
 
     gParamChangesToGui.reserve(1024);
 
@@ -815,21 +820,14 @@ VST3Plugin::~VST3Plugin() {
     if (window_) {
         unregisterPlugin(uniqueId_);
     }
-
     listener_ = nullptr; // for some buggy plugins
     window_ = nullptr;
-    processor_ = nullptr;
-    // destroy view
-    LOG_DEBUG("VST3Plugin: release view");
-    view_ = nullptr;
-    // destroy controller
-    LOG_DEBUG("VST3Plugin: destroy controller");
+    // terminate controller
+    LOG_DEBUG("VST3Plugin: terminate controller");
     controller_->terminate();
-    controller_ = nullptr;
-    // destroy component
-    LOG_DEBUG("VST3Plugin: destroy component");
+    // terminate component
+    LOG_DEBUG("VST3Plugin: terminate component");
     component_->terminate();
-    component_ = nullptr;
     LOG_DEBUG("VST3Plugin: deinitialized");
 }
 
@@ -2176,28 +2174,30 @@ tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
 #if SMTG_OS_LINUX
 tresult VST3Plugin::registerEventHandler(Linux::IEventHandler* handler,
                                          Linux::FileDescriptor fd) {
-    LOG_DEBUG("registerEventHandler (fd: " << fd << ")");
+    LOG_DEBUG("VST3Plugin: registerEventHandler (fd: " << fd << ")");
     X11::EventLoop::instance().registerEventHandler(fd,
         [](int fd, void *obj){ static_cast<Linux::IEventHandler *>(obj)->onFDIsSet(fd); }, handler);
     return kResultOk;
 }
 
 tresult VST3Plugin::unregisterEventHandler(Linux::IEventHandler* handler) {
-    LOG_DEBUG("unregisterEventHandler");
+    LOG_DEBUG("VST3Plugin: unregisterEventHandler");
     X11::EventLoop::instance().unregisterEventHandler(handler);
     return kResultOk;
 }
 
 tresult VST3Plugin::registerTimer(Linux::ITimerHandler* handler,
                                   Linux::TimerInterval milliseconds) {
-    LOG_DEBUG("registerTimer (" << milliseconds << " ms)");
-    X11::EventLoop::instance().registerTimer(milliseconds,
-        [](void *obj){ static_cast<Linux::ITimerHandler *>(obj)->onTimer(); }, handler);
+    LOG_DEBUG("VST3Plugin: registerTimer (" << milliseconds << " ms)");
+    auto fn = [](void *obj){
+        static_cast<Linux::ITimerHandler *>(obj)->onTimer();
+    };
+    X11::EventLoop::instance().registerTimer(milliseconds, fn, handler);
     return kResultOk;
 }
 
 tresult VST3Plugin::unregisterTimer(Linux::ITimerHandler* handler) {
-    LOG_DEBUG("unregisterTimer");
+    LOG_DEBUG("VST3Plugin: unregisterTimer");
     X11::EventLoop::instance().unregisterTimer(handler);
     return kResultOk;
 }
