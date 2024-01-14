@@ -3033,7 +3033,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
               "in previous vstplugin~ versions. As a consequence, parameter indices might have changed!\n");
         Print("---\n");
         for (auto& plugin : gWarnPlugins) {
-            Print("%s (%s)\n", plugin->name.c_str(), plugin->vendor.c_str());
+            Print("%s (%s)\n", makeKey(*plugin).c_str(), plugin->vendor.c_str());
         }
         Print("\n");
         gWarnPlugins.clear();

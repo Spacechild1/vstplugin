@@ -1264,7 +1264,7 @@ static void vstplugin_search_done(t_search_data *x){
                 "omitted in previous vstplugin~ versions. As a consequence, parameter indices might have changed!");
         post("---");
         for (auto& plugin : x->warn_plugins) {
-            logpost(x, PdNormal, "%s (%s)", plugin->name.c_str(), plugin->vendor.c_str());
+            logpost(x, PdNormal, "%s (%s)", makeKey(*plugin).c_str(), plugin->vendor.c_str());
         }
         post("");
     }
