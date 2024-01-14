@@ -262,21 +262,11 @@ static PluginDictionary& getPluginDict() {
     return gPluginDict;
 }
 
-// VST2: plug-in name
-// VST3: plug-in name + ".vst3"
-static std::string makeKey(const PluginDesc& desc) {
-    if (desc.type() == PluginType::VST3){
-        return desc.name + ".vst3";
-    } else {
-        return desc.name;
-    }
-}
-
 void serializePlugin(std::ostream& os, const PluginDesc& desc) {
     desc.serialize(os);
     os << "[keys]\n";
     os << "n=1\n";
-    os << makeKey(desc) << "\n";
+    os << desc.key() << "\n";
 }
 
 // load factory and probe plugins
@@ -323,7 +313,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
         // search for presets
         const_cast<PluginDesc&>(*plugin).scanPresets();
     #endif
-        dict.addPlugin(makeKey(*plugin), plugin);
+        dict.addPlugin(plugin->key(), plugin);
     }
 }
 
@@ -616,7 +606,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
             // make sure we have the plugin keys!
             for (int i = 0; i < numPlugins; ++i){
                 auto plugin = factory->getPlugin(i);
-                dict.addPlugin(makeKey(*plugin), plugin);
+                dict.addPlugin(plugin->key(), plugin);
             }
         } else {
             // probe (will post results and add plugins)
@@ -3033,7 +3023,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
               "in previous vstplugin~ versions. As a consequence, parameter indices might have changed!\n");
         Print("---\n");
         for (auto& plugin : gWarnPlugins) {
-            Print("%s (%s)\n", makeKey(*plugin).c_str(), plugin->vendor.c_str());
+            Print("%s (%s)\n", plugin->key().c_str(), plugin->vendor.c_str());
         }
         Print("\n");
         gWarnPlugins.clear();
@@ -3051,7 +3041,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
 #if 1
     // filter duplicate/stale plugins
     plugins.erase(std::remove_if(plugins.begin(), plugins.end(), [](auto& p){
-        return getPluginDict().findPlugin(makeKey(*p)) != p;
+        return getPluginDict().findPlugin(p->key()) != p;
     }), plugins.end());
 #endif
     // write new info to file (only for local Servers) or buffer

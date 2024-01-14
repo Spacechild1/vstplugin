@@ -45,6 +45,16 @@ struct PluginDesc final {
     SubPluginList subPlugins;
 
     PluginType type() const { return type_; }
+
+    std::string key() const {
+        if (type_ == PluginType::VST3){
+            // VST3: plug-in name + ".vst3"
+            return name + ".vst3";
+        } else {
+            // VST2: plug-in name
+            return name;
+        }
+    }
     // info data
     std::string uniqueID;
     std::string name;

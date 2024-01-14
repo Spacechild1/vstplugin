@@ -449,16 +449,6 @@ static IFactory::ptr loadFactory(const std::string& path){
     return factory;
 }
 
-// VST2: plug-in name
-// VST3: plug-in name + ".vst3"
-static std::string makeKey(const PluginDesc& desc){
-    if (desc.type() == PluginType::VST3){
-        return desc.name + ".vst3";
-    } else {
-        return desc.name;
-    }
-}
-
 static void addFactory(const std::string& path, IFactory::ptr factory){
     // LOG_DEBUG("add factory: " << path << " (" << cpuArchToString(factory->arch()) << ")");
     if (factory->numPlugins() == 1){
@@ -481,7 +471,7 @@ static void addFactory(const std::string& path, IFactory::ptr factory){
         // search for presets
         const_cast<PluginDesc&>(*plugin).scanPresets();
         // add plugin
-        auto key = makeKey(*plugin);
+        auto key = plugin->key();
         gPluginDict.addPlugin(key, plugin);
         bash_name(key); // also add bashed version!
         gPluginDict.addPlugin(key, plugin);
@@ -579,7 +569,7 @@ std::vector<t_symbol *> makePluginList(const std::vector<PluginDesc::const_ptr>&
     std::vector<t_symbol *> result;
     // convert plugin names to symbols
     for (auto& plugin : plugins){
-        auto key = makeKey(*plugin);
+        auto key = plugin->key();
         bash_name(key);
         result.push_back(gensym(key.c_str()));
     }
@@ -685,7 +675,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
             // make sure we have the plugin keys!
             for (int i = 0; i < numPlugins; ++i){
                 auto plugin = factory->getPlugin(i);
-                auto key = makeKey(*plugin);
+                auto key = plugin->key();
                 gPluginDict.addPlugin(key, plugin);
                 bash_name(key); // also add bashed version!
                 gPluginDict.addPlugin(key, plugin);
@@ -1264,7 +1254,7 @@ static void vstplugin_search_done(t_search_data *x){
                 "omitted in previous vstplugin~ versions. As a consequence, parameter indices might have changed!");
         post("---");
         for (auto& plugin : x->warn_plugins) {
-            logpost(x, PdNormal, "%s (%s)", makeKey(*plugin).c_str(), plugin->vendor.c_str());
+            logpost(x, PdNormal, "%s (%s)", plugin->key().c_str(), plugin->vendor.c_str());
         }
         post("");
     }
@@ -1575,7 +1565,7 @@ static void vstplugin_open_done(t_open_data *data){
         }
 
         // store key (mainly needed for preset change notification)
-        x->x_key = gensym(makeKey(info).c_str());
+        x->x_key = gensym(info.key().c_str());
         // store path symbol (to avoid reopening the same plugin)
         x->x_path = data->pathsym;
         // receive events from plugin
