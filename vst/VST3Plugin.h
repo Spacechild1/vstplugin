@@ -18,7 +18,15 @@
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/ivstautomationstate.h"
+#include "pluginterfaces/vst/ivstrepresentation.h"
+#include "pluginterfaces/vst/ivstplugview.h"
+#include "pluginterfaces/vst/ivstcontextmenu.h"
 #include "pluginterfaces/vst/ivstunits.h"
+#include "pluginterfaces/vst/ivstchannelcontextinfo.h"
+#include "pluginterfaces/vst/ivstprefetchablesupport.h"
+#include "pluginterfaces/vst/ivstphysicalui.h"
+#include "pluginterfaces/vst/ivstmidilearn.h"
+
 #include "pluginterfaces/gui/iplugview.h"
 
 #include <atomic>
@@ -663,22 +671,9 @@ protected:
 
 Vst::IHostApplication * getHostContext();
 
-class PlugInterfaceSupport : public Vst::IPlugInterfaceSupport {
-public:
-    PlugInterfaceSupport ();
-    MY_IMPLEMENT_QUERYINTERFACE(Vst::IPlugInterfaceSupport)
-    DUMMY_REFCOUNT_METHODS
-
-    //--- IPlugInterfaceSupport ---------
-    tresult PLUGIN_API isPlugInterfaceSupported (const TUID _iid) override;
-    void addInterface(const TUID _id);
-private:
-    std::vector<FUID> supportedInterfaces_;
-};
-
-//-----------------------------------------------------------------------------
-
-class HostApplication : public Vst::IHostApplication {
+class HostApplication :
+    public Vst::IHostApplication,
+    public Vst::IPlugInterfaceSupport {
 public:
     HostApplication ();
     virtual ~HostApplication ();
@@ -687,8 +682,10 @@ public:
 
     tresult PLUGIN_API getName (Vst::String128 name) override;
     tresult PLUGIN_API createInstance (TUID cid, TUID _iid, void** obj) override;
+
+    tresult PLUGIN_API isPlugInterfaceSupported(const TUID _iid) override;
 protected:
-    std::unique_ptr<PlugInterfaceSupport> interfaceSupport_;
+    std::vector<std::tuple<vst::FUID, const char *, bool>> supportedInterfaces_;
 };
 
 //-----------------------------------------------------------------------------

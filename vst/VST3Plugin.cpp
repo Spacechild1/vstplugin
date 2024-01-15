@@ -53,12 +53,24 @@ DEF_CLASS_IID (Vst::IComponent)
 DEF_CLASS_IID (Vst::IComponentHandler)
 DEF_CLASS_IID (Vst::IConnectionPoint)
 DEF_CLASS_IID (Vst::IEditController)
+DEF_CLASS_IID (Vst::IEditController2)
+DEF_CLASS_IID (Vst::IParameterFinder)
 DEF_CLASS_IID (Vst::IAutomationState)
 DEF_CLASS_IID (Vst::IMidiMapping)
 DEF_CLASS_IID (Vst::IAudioProcessor)
 DEF_CLASS_IID (Vst::IUnitInfo)
 DEF_CLASS_IID (Vst::IUnitData)
 DEF_CLASS_IID (Vst::IProgramListData)
+DEF_CLASS_IID (Vst::IAudioPresentationLatency)
+DEF_CLASS_IID (Vst::IKeyswitchController)
+DEF_CLASS_IID (Vst::IContextMenuTarget)
+DEF_CLASS_IID (Vst::IEditControllerHostEditing)
+DEF_CLASS_IID (Vst::IXmlRepresentationController)
+DEF_CLASS_IID (Vst::INoteExpressionController)
+DEF_CLASS_IID (Vst::ChannelContext::IInfoListener)
+DEF_CLASS_IID (Vst::IPrefetchableSupport)
+DEF_CLASS_IID (Vst::INoteExpressionPhysicalUIMapping)
+DEF_CLASS_IID (Vst::IMidiLearn)
 
 #if VST_VERSION >= VST_3_7_0_VERSION
 DEF_CLASS_IID (Vst::IProcessContextRequirements)
@@ -2615,68 +2627,6 @@ void MemoryStream::release(std::string &dest){
     cursor_ = 0;
 }
 
-/*///////////////////// PlugInterfaceSupport //////////////////////////*/
-
-PlugInterfaceSupport::PlugInterfaceSupport ()
-{
-    // add minimum set
-    //---VST 3.0.0--------------------------------
-    addInterface(Vst::IComponent::iid);
-    addInterface(Vst::IAudioProcessor::iid);
-    addInterface(Vst::IEditController::iid);
-    addInterface(Vst::IConnectionPoint::iid);
-
-    addInterface(Vst::IUnitInfo::iid);
-    addInterface(Vst::IUnitData::iid);
-    addInterface(Vst::IProgramListData::iid);
-
-    //---VST 3.0.1--------------------------------
-    addInterface(Vst::IMidiMapping::iid);
-
-    //---VST 3.1----------------------------------
-    // addInterface(Vst::EditController2::iid);
-
-    //---VST 3.0.2--------------------------------
-    // addInterface(Vst::IParameterFinder::iid);
-
-    //---VST 3.1----------------------------------
-    // addInterface(Vst::IAudioPresentationLatency::iid);
-
-    //---VST 3.5----------------------------------
-    // addInterface(Vst::IKeyswitchController::iid);
-    // addInterface(Vst::IContextMenuTarget::iid);
-    // addInterface(Vst::IEditControllerHostEditing::iid);
-    // addInterface(Vst::IXmlRepresentationController::iid);
-    // addInterface(Vst::INoteExpressionController::iid);
-
-    //---VST 3.6.5--------------------------------
-    // addInterface(Vst::ChannelContext::IInfoListener::iid);
-    // addInterface(Vst::IPrefetchableSupport::iid);
-    addInterface(Vst::IAutomationState::iid);
-
-    //---VST 3.6.11--------------------------------
-    // addInterface(Vst::INoteExpressionPhysicalUIMapping::iid);
-
-    //---VST 3.6.12--------------------------------
-    // addInterface(Vst::IMidiLearn::iid);
-}
-
-tresult PLUGIN_API PlugInterfaceSupport::isPlugInterfaceSupported (const TUID _iid)
-{
-    for (auto& uid : supportedInterfaces_){
-        if (uid == _iid){
-            LOG_DEBUG("interface supported!");
-            return kResultTrue;
-        }
-    }
-    LOG_DEBUG("interface not supported!");
-    return kResultFalse;
-}
-
-void PlugInterfaceSupport::addInterface(const TUID _id){
-    supportedInterfaces_.emplace_back(_id);
-}
-
 /*///////////////////// HostApplication //////////////////////////*/
 
 Vst::IHostApplication *getHostContext(){
@@ -2684,14 +2634,60 @@ Vst::IHostApplication *getHostContext(){
     return app;
 }
 
-HostApplication::HostApplication()
-    : interfaceSupport_(std::make_unique<PlugInterfaceSupport>())
-{}
+HostApplication::HostApplication() {
+// NOTE: unfortunately, we cannot do Vst::##name##::id
+#define IID(name, supported) { FUID(name), #name, supported }
+
+    supportedInterfaces_ = {
+        // add minimum set
+        //---VST 3.0.0--------------------------------
+        IID(Vst::IComponent::iid, true),
+        IID(Vst::IAudioProcessor::iid, true),
+        IID(Vst::IEditController::iid, true),
+        IID(Vst::IConnectionPoint::iid, true),
+
+        IID(Vst::IUnitInfo::iid, true),
+        IID(Vst::IUnitData::iid, true),
+        IID(Vst::IProgramListData::iid, true),
+
+        //---VST 3.0.1--------------------------------
+        IID(Vst::IMidiMapping::iid, true),
+
+        //---VST 3.1----------------------------------
+        IID(Vst::IEditController2::iid, false),
+
+        //---VST 3.0.2--------------------------------
+        IID(Vst::IParameterFinder::iid, false),
+
+        //---VST 3.1----------------------------------
+        IID(Vst::IAudioPresentationLatency::iid, false),
+
+        //---VST 3.5----------------------------------
+        IID(Vst::IKeyswitchController::iid, false),
+        IID(Vst::IContextMenuTarget::iid, false),
+        IID(Vst::IEditControllerHostEditing::iid, false),
+        IID(Vst::IXmlRepresentationController::iid, false),
+        IID(Vst::INoteExpressionController::iid, false),
+
+        //---VST 3.6.5--------------------------------
+        IID(Vst::ChannelContext::IInfoListener::iid, false),
+        IID(Vst::IPrefetchableSupport::iid, false),
+        IID(Vst::IAutomationState::iid, true),
+
+        //---VST 3.6.11--------------------------------
+        IID(Vst::INoteExpressionPhysicalUIMapping::iid, false),
+
+        //---VST 3.6.12--------------------------------
+        IID(Vst::IMidiLearn::iid, false)
+    };
+
+#undef IID
+}
 
 HostApplication::~HostApplication() {}
 
 tresult PLUGIN_API HostApplication::getName (Vst::String128 name){
-    LOG_DEBUG("host: getName");
+    LOG_DEBUG("HostApplication: getName");
 #ifdef PD
     convertString("vstplugin~", name);
 #else
@@ -2716,6 +2712,7 @@ tresult PLUGIN_API HostApplication::createInstance (TUID cid, TUID _iid, void** 
         *obj = (Vst::IAttributeList *)new HostAttributeList;
         return kResultTrue;
     }
+    LOG_DEBUG("HostApplication: cannot create instance");
     *obj = nullptr;
     return kResultFalse;
 }
@@ -2724,10 +2721,30 @@ tresult PLUGIN_API HostApplication::queryInterface (const char* _iid, void** obj
     // LOG_DEBUG("host: query interface");
     QUERY_INTERFACE (_iid, obj, FUnknown::iid, IHostApplication)
     QUERY_INTERFACE (_iid, obj, IHostApplication::iid, IHostApplication)
-    if (interfaceSupport_ && interfaceSupport_->queryInterface (iid, obj) == kResultTrue)
-        return kResultOk;
-
+    QUERY_INTERFACE (_iid, obj, IPlugInterfaceSupport::iid, IPlugInterfaceSupport)
     *obj = nullptr;
+    return kResultFalse;
+}
+
+tresult PLUGIN_API HostApplication::isPlugInterfaceSupported(const TUID _iid)
+{
+    for (auto& item : supportedInterfaces_) {
+        // LATER use structured binding
+        FUID fuid;
+        const char *name;
+        bool supported;
+        std::tie(fuid, name, supported) = item;
+        if (fuid == _iid) {
+            if (supported) {
+                LOG_DEBUG("HostApplication: interface " << name << " supported!");
+                return kResultTrue;
+            } else {
+                LOG_DEBUG("HostApplication: interface " << name << " not supported!");
+                return kResultFalse;
+            }
+        }
+    }
+    LOG_DEBUG("HostApplication: unknown interface (" << FUID(_iid).toString() << ")!");
     return kResultFalse;
 }
 
