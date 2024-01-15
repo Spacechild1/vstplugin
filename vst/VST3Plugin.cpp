@@ -562,32 +562,34 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         }
     }
     // create component
+    LOG_DEBUG("VST3Plugin: create component");
     if (!(component_ = createInstance<Vst::IComponent>(factory, uid))){
         throw Error(Error::PluginError, "Couldn't create VST3 component");
     }
-    LOG_DEBUG("created VST3 component");
     // initialize component
+    LOG_DEBUG("VST3Plugin: initialize component");
     if (component_->initialize(getHostContext()) != kResultOk){
         throw Error(Error::PluginError, "Couldn't initialize VST3 component");
     }
     // first try to get controller from the component part (simple plugins)
-    auto controller = FUnknownPtr<Vst::IEditController>(component_);
+    FUnknownPtr<Vst::IEditController> controller(component_);
     if (controller){
+        LOG_DEBUG("VST3Plugin: get controller from component");
         controller_ = shared(controller.getInterface());
     } else {
         // if this fails, try to instantiate controller class and initialize it
+        LOG_DEBUG("VST3Plugin: create controller");
         TUID controllerCID;
         if (component_->getControllerClassId(controllerCID) == kResultTrue){
             controller_ = createInstance<Vst::IEditController>(factory, controllerCID);
-            if (controller_ && (controller_->initialize(getHostContext()) != kResultOk)){
+            if (!controller_) {
+                throw Error(Error::PluginError, "Couldn't create VST3 controller");
+            }
+            LOG_DEBUG("VST3Plugin: initialize controller");
+            if (controller_->initialize(getHostContext()) != kResultOk){
                 throw Error(Error::PluginError, "Couldn't initialize VST3 controller");
             }
         }
-    }
-    if (controller_){
-        LOG_DEBUG("created VST3 controller");
-    } else {
-        throw Error(Error::PluginError, "Couldn't get VST3 controller!");
     }
     if (controller_->setComponentHandler(this) != kResultOk){
         throw Error(Error::PluginError, "Couldn't set component handler");
@@ -607,21 +609,21 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         componentCP->connect(this);
         controllerCP->connect(this);
     #endif
-        LOG_DEBUG("connected component and controller");
+        LOG_DEBUG("VST3Plugin: connected component and controller");
     }
     // synchronize state
     MemoryStream stream;
     if (component_->getState(&stream) == kResultTrue){
         stream.rewind();
         if (controller_->setComponentState(&stream) == kResultTrue){
-            LOG_DEBUG("synchronized state");
+            LOG_DEBUG("VST3Plugin: synchronized state");
         } else {
-            LOG_DEBUG("didn't synchronize state");
+            LOG_DEBUG("VST3Plugin: didn't synchronize state");
         }
     }
     // check processor
     if (!(processor_ = FUnknownPtr<Vst::IAudioProcessor>(component_))){
-        throw Error(Error::PluginError, "Couldn't get VST3 processor");
+        throw Error(Error::PluginError, "Could not get VST3 processor");
     }
 
     // finally set remaining info
@@ -787,9 +789,6 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
     updateParameterCache();
 
-    LOG_DEBUG("program change: " << info_->programChange);
-    LOG_DEBUG("bypass: " << info_->bypass);
-
 #if 1 && VST_VERSION >= VST_3_7_0_VERSION
     // process context requirements
     FUnknownPtr<Vst::IProcessContextRequirements> contextRequirements(processor_);
@@ -834,9 +833,11 @@ VST3Plugin::~VST3Plugin() {
     }
     listener_ = nullptr; // for some buggy plugins
     window_ = nullptr;
-    // terminate controller
-    LOG_DEBUG("VST3Plugin: terminate controller");
-    controller_->terminate();
+    // terminate controller - but only if we had to create it!
+    if (!FUnknownPtr<Vst::IEditController>(component_)) {
+        LOG_DEBUG("VST3Plugin: terminate controller");
+        controller_->terminate();
+    }
     // terminate component
     LOG_DEBUG("VST3Plugin: terminate component");
     component_->terminate();
