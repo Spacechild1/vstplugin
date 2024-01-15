@@ -532,7 +532,7 @@ std::string PluginClient::getParameterString(int index) const {
 void PluginClient::setProgramName(const std::string& name){
     programCache_[program_] = name;
 
-    Command cmd(Command::SetProgram);
+    Command cmd(Command::SetProgramName);
     cmd.s = new char[name.size() + 1];
     memcpy(cmd.s, name.c_str(), name.size() + 1);
 

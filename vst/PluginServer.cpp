@@ -611,7 +611,7 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             plugin_->setProgram(cmd->i);
             {
                 // program change event
-                Command event(Command::SetProgram);
+                Command event(Command::ProgramNumber);
                 event.i = cmd->i;
                 events_.push_back(event);
             }
