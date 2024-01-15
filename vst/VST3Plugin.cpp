@@ -1832,20 +1832,18 @@ void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset
             setCacheParameter(index, value, true); // notify
         } else {
             setCacheParameter(index, value, false); // don't notify
-        #if 1
-            // TODO: is this necessary?
-            controller_->setParamNormalized(id, value);
-        #endif
+            controller_->setParamNormalized(id, value); // is this necessary?
         }
     } else {
         // non-automatable parameter or special parameters (program, bypass)
         if (window_){
             gParamChangesToGui.emplace(uniqueId_, id, value);
         } else {
-        #if 0
-            // This might be required for the program parameter. Not sure...
-            // UPDATE: juicysfplugin would actually dead-lock , but I am not
-            // sure if that's a bug in the plugin. For now, let's just disable it.
+        #if 1
+            // This is required for the program parameter, so that the
+            // editor can call restartComponent() with kParamValuesChanged.
+            // NOTE: juicysfplugin would actually dead-lock, but that's
+            // probably a bug in the plugin...
             controller_->setParamNormalized(id, value);
         #endif
         }
