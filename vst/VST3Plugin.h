@@ -509,10 +509,13 @@ class VST3Plugin final :
     void updateParameterCache();
     void createViewLazy(bool nullOk = false);
 
+    // NB: factory_ must be the first member, so it gets destructed last!
+    IFactory::const_ptr factory_; // keep alive!
+    PluginDesc::const_ptr info_;
+
     IPtr<Vst::IComponent> component_;
     IPtr<Vst::IEditController> controller_;
     FUnknownPtr<Vst::IAudioProcessor> processor_;
-    PluginDesc::const_ptr info_;
     // audio
     vst3::ProcessContext context_;
     // automation
@@ -564,7 +567,6 @@ class VST3Plugin final :
     IPtr<IPlugView> view_;
     IWindow::ptr window_;
     IPluginListener* listener_ = nullptr;
-    IFactory::const_ptr factory_; // keep alive
 };
 
 //--------------------------------------------------------------------------------

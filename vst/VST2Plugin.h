@@ -160,8 +160,9 @@ class VST2Plugin final : public IPlugin {
     // data members
     VstIntPtr callback(VstInt32 opcode, VstInt32 index,
                            VstIntPtr value, void *ptr, float opt);
-    AEffect *plugin_ = nullptr;
+    IFactory::const_ptr factory_; // keep alive
     PluginDesc::const_ptr info_;
+    AEffect *plugin_ = nullptr;
     // processing
     int latency_ = 0;
     ProcessMode mode_ = ProcessMode::Realtime;
@@ -179,7 +180,6 @@ class VST2Plugin final : public IPlugin {
     // UI
     IWindow::ptr window_;
     IPluginListener* listener_ = nullptr;
-    IFactory::const_ptr factory_; // keep alive
 };
 
 } // vst
