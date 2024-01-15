@@ -561,19 +561,38 @@ class VST3Plugin final :
 
 //--------------------------------------------------------------------------------
 
+// Steinberg's FUID class is not header-only, so we make our own.
 struct FUID {
-    FUID(){
+    static const int32 kStringLen = 32; // length of ASCII-encoded FUID
+
+    FUID() {
         memset(uid, 0, sizeof(TUID));
     }
-    FUID(const TUID _iid){
-        memcpy(uid, _iid, sizeof(TUID));
+    FUID(const TUID iid) {
+        memcpy(uid, iid, sizeof(TUID));
     }
-    bool operator==(const TUID _iid) const {
-        return memcmp(uid, _iid, sizeof(TUID)) == 0;
+
+    bool operator==(const TUID iid) const {
+        return memcmp(uid, iid, sizeof(TUID)) == 0;
     }
-    bool operator!=(const TUID _iid) const {
-        return !(*this == _iid);
+    bool operator!=(const TUID iid) const {
+        return !(*this == iid);
     }
+
+    void toString(char *buffer, size_t size);
+
+    std::string toString() {
+        char buffer[33];
+        toString(buffer, 33);
+        return buffer;
+    }
+
+    static void fromString(const char *s, TUID tuid);
+
+    void fromString(const char *s) {
+        fromString(s, uid);
+    }
+
     TUID uid;
 };
 

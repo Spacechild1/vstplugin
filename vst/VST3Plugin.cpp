@@ -2342,6 +2342,48 @@ void VST3Plugin::sendMessage(Vst::IMessage *msg){
     }
 }
 
+/*///////////////////// FUID /////////////////////////////*/
+
+struct GUIDStruct {
+    uint32_t data1;
+    uint16_t data2;
+    uint16_t data3;
+    uint8_t data4[8];
+};
+
+void FUID::toString(char *buffer, size_t size) {
+    int i = 0;
+    assert(size >= Vst::kClassIDSize + 1);
+#if COM_COMPATIBLE
+    GUIDStruct guid;
+    memcpy(&guid, uid, sizeof(GUIDStruct));
+    sprintf(buffer, "%08X%04X%04X", guid.data1, guid.data2, guid.data3);
+    i += 8;
+#endif
+    for (; i < (int)sizeof(TUID); ++i){
+        // we have to cast to uint8_t!
+        sprintf(buffer + 2 * i, "%02X", (uint8_t)uid[i]);
+    }
+}
+
+void FUID::fromString(const char *s, TUID tuid) {
+    int i = 0;
+    assert(strlen(s) == Vst::kClassIDSize);
+#if COM_COMPATIBLE
+    GUIDStruct guid;
+    sscanf(s, "%08x", &guid.data1);
+    sscanf(s+8, "%04hx", &guid.data2);
+    sscanf(s+12, "%04hx", &guid.data3);
+    memcpy(tuid, &guid, sizeof(TUID) / 2);
+    i += 16;
+#endif
+    for (; i < Vst::kClassIDSize; i += 2){
+        uint32_t temp;
+        sscanf(s + i, "%02X", &temp);
+        tuid[i / 2] = temp;
+    }
+}
+
 /*///////////////////// BaseStream ///////////////////////*/
 
 #define DEBUG_STREAM 0
@@ -2468,28 +2510,10 @@ bool BaseStream::writeChunkID(const Vst::ChunkID id){
     return bytesWritten == sizeof(Vst::ChunkID);
 }
 
-struct GUIDStruct {
-    uint32_t data1;
-    uint16_t data2;
-    uint16_t data3;
-    uint8_t data4[8];
-};
-
 bool BaseStream::writeTUID(const TUID tuid){
     int32 bytesWritten = 0;
-    int i = 0;
-    char buf[Vst::kClassIDSize+1];
-#if COM_COMPATIBLE
-    GUIDStruct guid;
-    memcpy(&guid, tuid, sizeof(GUIDStruct));
-    sprintf(buf, "%08X%04X%04X", guid.data1, guid.data2, guid.data3);
-    i += 8;
-#endif
-    for (; i < (int)sizeof(TUID); ++i){
-        // we have to cast to uint8_t!
-        sprintf(buf + 2 * i, "%02X", (uint8_t)tuid[i]);
-    }
-    write(buf, Vst::kClassIDSize, &bytesWritten);
+    auto str = FUID(tuid).toString();
+    write((void *)str.data(), str.size(), &bytesWritten);
     return bytesWritten == Vst::kClassIDSize;
 }
 
@@ -2527,20 +2551,7 @@ bool BaseStream::readTUID(TUID tuid){
     read((void *)buf, Vst::kClassIDSize, &bytesRead);
     if (bytesRead == Vst::kClassIDSize){
         buf[Vst::kClassIDSize] = 0;
-        int i = 0;
-    #if COM_COMPATIBLE
-        GUIDStruct guid;
-        sscanf(buf, "%08x", &guid.data1);
-        sscanf(buf+8, "%04hx", &guid.data2);
-        sscanf(buf+12, "%04hx", &guid.data3);
-        memcpy(tuid, &guid, sizeof(TUID) / 2);
-        i += 16;
-    #endif
-        for (; i < Vst::kClassIDSize; i += 2){
-            uint32_t temp;
-            sscanf(buf + i, "%02X", &temp);
-            tuid[i / 2] = temp;
-        }
+        FUID::fromString(buf, tuid);
         return true;
     } else {
         return false;
