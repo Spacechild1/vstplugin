@@ -1039,8 +1039,10 @@ void VST3Plugin::doProcess(ProcessData& inData){
         int32 index;
         auto queue = inputParamChanges_.addParameterData(paramChange.id, index);
         queue->addPoint(0, paramChange.value, index);
-        // update cache, but don't notify!
-        setCacheParameter(paramChange.index, paramChange.value, false);
+        // update cache, but don't notify! NOTE: check for hidden parameter!
+        if (paramChange.index >= 0) {
+            setCacheParameter(paramChange.index, paramChange.value, false);
+        }
     }
 
     // check bypass state
