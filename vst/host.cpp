@@ -11,7 +11,16 @@
 #include <string.h>
 #include <mutex>
 
-#define PROBE_IN_UI_THREAD 0
+// a) probe on main thread without event loop
+#define PROBE_WITHOUT_UI_THREAD 0
+// b) run event loop on main thread, but probe plugin on another thread
+#define PROBE_WITH_UI_THREAD 1
+// c) probe plugin inside the event loop (on the main thread)
+#define PROBE_IN_UI_THREAD 2
+
+#ifndef PROBE_MODE
+#define PROBE_MODE PROBE_WITHOUT_UI_THREAD
+#endif // PROBE_MODE
 
 using namespace vst;
 
@@ -48,7 +57,7 @@ int probe(const std::string& pluginPath, int pluginIndex, const std::string& fil
 
     LOG_DEBUG("probing " << pluginPath << " " << pluginIndex);
     try {
-    #if PROBE_IN_UI_THREAD
+#if PROBE_MODE != PROBE_WITHOUT_UI_THREAD
         // setup UI event loop
         LOG_DEBUG("setup event loop");
         UIThread::setup();
@@ -64,23 +73,41 @@ int probe(const std::string& pluginPath, int pluginIndex, const std::string& fil
                 error = e;
             }
 
+            LOG_DEBUG("quit event loop");
             UIThread::quit();
         };
 
+#if PROBE_MODE == PROBE_IN_UI_THREAD
         UIThread::callAsync([](void *x) {
+            LOG_DEBUG("probe plugin on UI thread");
             (*static_cast<decltype(fn)*>(x))();
         }, &fn);
+#else // PROBE_WITH_UI_THREAD
+        std::thread thread([&]() {
+            LOG_DEBUG("probe plugin on thread");
+            fn();
+        });
+#endif // PROBE_MODE
 
         // run until quit in lambda
+        LOG_DEBUG("run event loop");
         UIThread::run();
+        LOG_DEBUG("event loop did quit");
+
+#if PROBE_MODE == PROBE_WITH_UI_THREAD
+        thread.join();
+#endif
 
         if (error.code() != Error::NoError) {
             throw error; // rethrow!
         }
-    #else
+
+#else // PROBE_WITHOUT_UI_THREAD
+
         auto factory = vst::IFactory::load(pluginPath, true);
         auto desc = factory->probePlugin(pluginIndex);
-    #endif
+
+#endif // PROBE_MODE
 
         if (!filePath.empty()) {
             vst::File file(filePath, File::WRITE);
