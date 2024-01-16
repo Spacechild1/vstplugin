@@ -372,6 +372,7 @@ void PluginBridge::postUIThread(const ShmUICommand& cmd){
         // other side polls regularly
         // channel.post();
     } else {
+        // TODO: loop + sleep for 1 second, see PluginServer
         LOG_ERROR("PluginBridge: couldn't post to UI thread");
     }
 }

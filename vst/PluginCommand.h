@@ -6,11 +6,14 @@ namespace vst {
 
 // commands
 struct Command {
+    static constexpr size_t maxShortStringSize = 15;
+
     // type
     enum Type {
         // RT commands
         SetParamValue, // 0
         SetParamString,
+        SetParamStringShort,
         SetBypass,
         SetTempo,
         SetTimeSignature,
@@ -27,13 +30,13 @@ struct Command {
         SetProgram,
         SetProgramName,
         // NRT commands
-        CreatePlugin, // 17
+        CreatePlugin, // 18
         DestroyPlugin,
         Suspend,
         Resume,
         SetNumSpeakers,
         SetupProcessing,
-        ReadProgramFile, // 23
+        ReadProgramFile, // 24
         ReadProgramData,
         ReadBankFile,
         ReadBankData,
@@ -42,26 +45,26 @@ struct Command {
         WriteBankFile,
         WriteBankData,
         // window
-        WindowOpen, // 31
+        WindowOpen, // 32
         WindowClose,
         WindowSetPos,
         WindowSetSize,
         // events/replies
-        PluginData, // 35
+        PluginData, // 36
         PluginDataFile,
         SpeakerArrangement,
         ProgramChange,
         ProgramNumber,
         ProgramName,
         ProgramNameIndexed,
-        ParameterUpdate, // 42
+        ParameterUpdate, // 43
         ParamAutomated,
         LatencyChanged,
         UpdateDisplay,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error, // 48
+        Error, // 49
         Process,
         Quit
     };
@@ -70,12 +73,13 @@ struct Command {
 
     static const size_t headerSize = 8;
 
-    // data
     // NOTE: the union needs to be 8 byte aligned
     // and we make the padding explicit.
     uint32_t type;
     uint32_t padding;
 
+    // NOTE: with a few exceptions, the union members are
+    // layout compatible with the ones in ShmCommand.
     union {
         // no data
         struct {} empty;
@@ -85,7 +89,7 @@ struct Command {
         float f;
         // generic double
         double d;
-        // string
+        // C string
         char *s;
         // param automated
         struct {
@@ -94,16 +98,24 @@ struct Command {
         } paramAutomated;
         // param value
         struct {
-            int32_t offset;
-            int32_t index;
+            uint16_t offset;
+            uint16_t index;
             float value;
         } paramValue;
         // param string
         struct {
-            int32_t offset;
-            int32_t index;
-            char* display;
+            uint16_t offset;
+            uint16_t index;
+            uint32_t size;
+            char* str;
         } paramString;
+        // short param string
+        // (avoid heap allocation, same size as paramString on 64-bit)
+        struct {
+            uint16_t offset;
+            uint16_t index;
+            uint8_t pstr[12]; // pascal string!
+        } paramStringShort;
         // time signature
         struct {
             int32_t num;
@@ -141,34 +153,34 @@ struct ShmCommand {
         float f;
         // generic double
         double d;
-        // flat string
+        // flat C string
         char s[1];
         // generic buffer (e.g. preset data)
         struct {
             int32_t size;
             char data[1];
         } buffer;
-        // param value
+        // param value, for setParameter()
         struct {
-            int32_t offset;
-            int32_t index;
+            uint16_t offset;
+            uint16_t index;
             float value;
         } paramValue;
-        // flat param string
+        // flat param string, for setParameterString()
         struct {
-            int32_t offset;
-            int32_t index;
-            char display[1];
+            uint16_t offset;
+            uint16_t index;
+            uint8_t pstr[1]; // pascal string!
         } paramString;
-        // flat param state
+        // flat param state, for parameter updates
         struct {
-            int32_t index;
             float value;
-            char display[1];
+            uint16_t index;
+            uint8_t pstr[1]; // pascal string!
         } paramState;
         // program name (indexed)
         struct {
-            int32_t index;
+            uint16_t index;
             char name[1];
         } programName;
         // midi message

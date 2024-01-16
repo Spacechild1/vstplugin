@@ -547,9 +547,10 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             }
             break;
         case Command::SetParamString:
-            if (plugin_->setParameter(cmd->paramString.index, cmd->paramString.display,
-                                  cmd->paramString.offset))
-            {
+        {
+            auto& param = cmd->paramString;
+            std::string str((char *)&param.pstr[1], param.pstr[0]);
+            if (plugin_->setParameter(param.index, str, param.offset)) {
                 // parameter update event
                 Command event(Command::ParameterUpdate);
                 int index = cmd->paramValue.index;
@@ -558,6 +559,7 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
                 events_.push_back(event);
             }
             break;
+        }
         case Command::SetProgram:
             plugin_->setProgram(cmd->i);
             {
@@ -738,17 +740,18 @@ void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
 void PluginHandle::sendParam(ShmChannel &channel, int index,
                              float value, bool automated)
 {
-    std::string display = plugin_->getParameterString(index);
-
-    auto size  = CommandSize(ShmCommand, paramState, display.size() + 1);
-    auto reply = (ShmCommand *)alloca(size);
+    auto display = plugin_->getParameterString(index);
+    // NB: use extra byte from pstr[1] for pascal string size!
+    auto cmdSize  = CommandSize(ShmCommand, paramState, display.size());
+    auto reply = (ShmCommand *)alloca(cmdSize);
     new (reply) ShmCommand(automated ? Command::ParamAutomated
                                      : Command::ParameterUpdate);
     reply->paramState.index = index;
     reply->paramState.value = value;
-    memcpy(reply->paramState.display, display.c_str(), display.size() + 1);
+    reply->paramState.pstr[0] = display.size();
+    memcpy(&reply->paramState.pstr[1], display.data(), display.size());
 
-    addReply(channel, reply, size);
+    addReply(channel, reply, cmdSize);
 }
 
 bool PluginHandle::addReply(ShmChannel& channel, const void *cmd, size_t size){

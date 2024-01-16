@@ -118,10 +118,10 @@ protected:
     // use fixed sized arrays to avoid potential heap allocations with std::string
     // After all, parameter displays are typically rather short. If the string
     // happens to be larger than the array, we just truncate it.
-    using ParamDisplay = std::array<char, 16>;
-    std::unique_ptr<ParamDisplay[]> paramDisplayCache_;
-    using ProgramName = std::array<char, 32>;
-    std::unique_ptr<ProgramName[]> programNameCache_;
+    using ParamDisplay = std::array<uint8_t, 16>;
+    std::unique_ptr<ParamDisplay[]> paramDisplayCache_; // pascal string!
+    using ProgramName = std::array<uint8_t, 32>;
+    std::unique_ptr<ProgramName[]> programNameCache_; // pascal string!
     // Normally, these are accessed on the same thread, so there would be
     // no contention. Notable exceptions: the plugin is multi-threaded
     // or we need to get the parameters from a different thread.

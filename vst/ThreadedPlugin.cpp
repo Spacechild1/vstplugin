@@ -159,7 +159,7 @@ ThreadedPlugin::~ThreadedPlugin() {
     for (int i = 0; i < 2; ++i){
         for (auto& cmd : commands_[i]){
             if (cmd.type == Command::SetParamString){
-                delete[] cmd.paramString.display;
+                delete[] cmd.paramString.str;
             } else if (cmd.type == Command::SendSysex){
                 delete[] cmd.sysex.data;
             }
@@ -228,10 +228,18 @@ void ThreadedPlugin::dispatchCommands() {
                                   command.paramValue.offset);
             break;
         case Command::SetParamString:
-            plugin_->setParameter(command.paramString.index, command.paramString.display,
+            plugin_->setParameter(command.paramString.index, command.paramString.str,
                                   command.paramString.offset);
-            delete[] command.paramString.display; // !
+            delete[] command.paramString.str; // !
             break;
+        case Command::SetParamStringShort:
+        {
+            auto& cmd = command.paramStringShort;
+            assert(cmd.pstr[0] <= Command::maxShortStringSize);
+            std::string str((char *)&cmd.pstr[1], cmd.pstr[0]);
+            plugin_->setParameter(cmd.index, str, cmd.offset);
+            break;
+        }
         case Command::SetBypass:
             plugin_->setBypass(static_cast<Bypass>(command.i));
             break;
@@ -438,14 +446,14 @@ void ThreadedPlugin::setNumSpeakers(int *input, int numInputs,
 }
 
 float ThreadedPlugin::getParameter(int index) const {
-    // this should be threadsafe, but we might read an old value.
-    // we can't set a parameter and immediately retrieve it,
+    // This should be threadsafe, but we might read an old value.
+    // We can't set a parameter and immediately retrieve it,
     // instead we need one block of delay.
     return plugin_->getParameter(index);
 }
 
 std::string ThreadedPlugin::getParameterString(int index) const {
-    // see above
+    // see getParameter() above
     return plugin_->getParameterString(index);
 }
 
@@ -455,6 +463,7 @@ void ThreadedPlugin::setProgramName(const std::string& name) {
 }
 
 int ThreadedPlugin::getProgram() const {
+    // NB: is this thread-safe?
     return plugin_->getProgram();
 }
 

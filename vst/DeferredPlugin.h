@@ -19,16 +19,31 @@ class DeferredPlugin : public IPlugin {
     }
 
     bool setParameter(int index, const std::string& str, int sampleOffset) override {
-        // copy string (LATER improve)
-        auto buf = new char[str.size() + 1];
-        memcpy(buf, str.data(), str.size() + 1);
+        auto size = str.size();
+        if (size > Command::maxShortStringSize) {
+            // bummer, we need to allocate on the heap
+            auto buf = new char[size + 1];
+            memcpy(buf, str.data(), size + 1);
 
-        Command command(Command::SetParamString);
-        auto& param = command.paramString;
-        param.index = index;
-        param.display = buf;
-        param.offset = sampleOffset;
-        pushCommand(command);
+            Command command(Command::SetParamString);
+            auto& param = command.paramString;
+            param.offset = sampleOffset;
+            param.index = index;
+            param.size = size;
+            param.str = buf;
+
+            pushCommand(command);
+        } else {
+            Command command(Command::SetParamStringShort);
+            auto& param = command.paramStringShort;
+            param.offset = sampleOffset;
+            param.index = index;
+            // pascal string!!
+            param.pstr[0] = (uint8_t)size;
+            memcpy(&param.pstr[1], str.data(), size);
+
+            pushCommand(command);
+        }
 
         return true; // what shall we do?
     }

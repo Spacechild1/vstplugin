@@ -150,7 +150,7 @@ PluginClient::~PluginClient(){
     // avoid memleak with param string and sysex command
     for (auto& cmd : commands_){
         if (cmd.type == Command::SetParamString){
-            delete[] cmd.paramString.display;
+            delete[] cmd.paramString.str;
         } else if (cmd.type == Command::SendSysex){
             delete[] cmd.sysex.data;
         }
@@ -274,18 +274,39 @@ void PluginClient::sendCommands(RTChannel& channel){
             break;
         case Command::SetParamString:
         {
-            auto displayLen = strlen(cmd.paramString.display) + 1;
-            auto cmdSize = CommandSize(ShmCommand, paramString, displayLen);
+            auto& param = cmd.paramString;
+            // NB: use extra byte from pstr[1] for pascal string size!
+            assert(param.size < 256); // TODO: use proper constant
+            auto cmdSize = CommandSize(ShmCommand, paramString, param.size);
             auto shmCmd = (ShmCommand *)alloca(cmdSize);
             new (shmCmd) ShmCommand(Command::SetParamString);
-            shmCmd->paramString.index = cmd.paramString.index;
-            shmCmd->paramString.offset = cmd.paramString.offset;
-            memcpy(shmCmd->paramString.display,
-                   cmd.paramString.display, displayLen);
-
-            delete[] cmd.paramString.display; // free!
+            shmCmd->paramString.index = param.index;
+            shmCmd->paramString.offset = param.offset;
+            shmCmd->paramString.pstr[0] = param.size;
+            memcpy(&shmCmd->paramString.pstr[1], param.str, param.size);
 
             channel.addCommand(shmCmd, cmdSize);
+
+            delete[] cmd.paramString.str; // free!
+
+            break;
+        }
+        case Command::SetParamStringShort:
+        {
+            auto& param = cmd.paramStringShort;
+            auto psize = param.pstr[0];
+            assert(psize <= Command::maxShortStringSize);
+            // NB: use extra byte from pstr[1] for pascal string size!
+            auto cmdSize = CommandSize(ShmCommand, paramString, psize);
+            auto shmCmd = (ShmCommand *)alloca(cmdSize);
+            new (shmCmd) ShmCommand(Command::SetParamString);
+            shmCmd->paramString.index = param.index;
+            shmCmd->paramString.offset = param.offset;
+            shmCmd->paramString.pstr[0] = psize;
+            memcpy(&shmCmd->paramString.pstr[1], &param.pstr[1], psize);
+
+            channel.addCommand(shmCmd, cmdSize);
+
             break;
         }
         case Command::SetProgramName:
@@ -338,17 +359,16 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
     {
         auto index = reply.paramState.index;
         auto value = reply.paramState.value;
-        auto display = reply.paramState.display;
+        auto pstr = reply.paramState.pstr;
 
         paramValueCache_[index].store(value, std::memory_order_relaxed);
         {
             auto& cache = paramDisplayCache_[index];
-            auto size = std::min(strlen(display), cache.size() - 1);
-
+            auto size = std::min<size_t>(pstr[0], cache.size() - 1);
             // must be thread-safe!
             ScopedLock lock(cacheLock_);
-            memcpy(cache.data(), display, size);
-            cache[size] = 0;
+            cache[0] = size; // pascal string!
+            memcpy(&cache[1], &pstr[1], size);
         }
 
         if (reply.type == Command::ParamAutomated){
@@ -359,7 +379,8 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
                       << " automated ");
         } else {
             LOG_DEBUG("PluginClient (" << id_ << "): parameter " << index
-                      << " updated to " << value << " " << display);
+                      << " updated to " << value << " "
+                      << std::string((char *)&pstr[1], pstr[0]));
         }
         break;
     }
@@ -369,11 +390,10 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
             auto name = reply.programName.name;
             auto& cache = programNameCache_[index];
             auto size = std::min(strlen(name), cache.size() - 1);
-
             // must be thread-safe!
             ScopedLock lock(cacheLock_);
-            memcpy(cache.data(), name, size);
-            cache[size] = 0;
+            cache[0] = size; // pascal string!
+            memcpy(&cache[1], name, size);
         }
         break;
     case Command::ProgramNumber:
@@ -557,11 +577,10 @@ bool PluginClient::setParameter(int index, const std::string &str, int sampleOff
     {
         auto& cache = paramDisplayCache_[index];
         auto size = std::min(str.size(), cache.size() - 1);
-
         // must be thread-safe!
         ScopedLock lock(cacheLock_);
-        memcpy(cache.data(), str, size);
-        cache[size] = 0;
+        cache[0] = size; // pascal string!
+        memcpy(&cache[1], str.data(), size);
     }
 #endif
     return DeferredPlugin::setParameter(index, str, sampleOffset);
@@ -574,7 +593,9 @@ float PluginClient::getParameter(int index) const {
 std::string PluginClient::getParameterString(int index) const {
     // must be thread-safe!
     ScopedLock lock(cacheLock_);
-    return paramDisplayCache_[index].data();
+    auto& param = paramDisplayCache_[index];
+    assert(param[0] < param.size()); // pascal string!
+    return std::string((char *)&param[1], param[0]);
 }
 
 void PluginClient::setProgram(int index) {
@@ -595,30 +616,30 @@ void PluginClient::setProgramName(const std::string& name) {
     {
         auto& cache = programNameCache_[program_];
         auto size = std::min(name.size(), cache.size() - 1);
-
         // must be thread-safe!
         ScopedLock lock(cacheLock_);
-        memcpy(cache.data(), name.data(), size);
-        cache[size] = 0;
+        cache[0] = size; // pascal string!
+        memcpy(&cache[1], name.data(), size);
     }
 #endif
 
     Command cmd(Command::SetProgramName);
     cmd.s = new char[name.size() + 1];
-    memcpy(cmd.s, name.c_str(), name.size() + 1);
+    memcpy(cmd.s, name.data(), name.size() + 1);
 
     commands_.push_back(cmd);
 }
 
 std::string PluginClient::getProgramName() const {
-    // must be thread-safe!
-    ScopedLock lock(cacheLock_);
-    return programNameCache_[program_].data();
+    return getProgramNameIndexed(program_);
 }
 
 std::string PluginClient::getProgramNameIndexed(int index) const {
+    // must be thread-safe!
     ScopedLock lock(cacheLock_);
-    return programNameCache_[index].data();
+    auto& name = programNameCache_[index];
+    assert(name[0] < name.size()); // pascal string!
+    return std::string((char *)&name[1], name[0]);
 }
 
 void PluginClient::readProgramFile(const std::string& path){
