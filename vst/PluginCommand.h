@@ -50,17 +50,18 @@ struct Command {
         PluginData, // 35
         PluginDataFile,
         SpeakerArrangement,
+        ProgramChange,
         ProgramNumber,
         ProgramName,
         ProgramNameIndexed,
-        ParameterUpdate, // 41
+        ParameterUpdate, // 42
         ParamAutomated,
         LatencyChanged,
         UpdateDisplay,
         MidiReceived,
         SysexReceived,
         // for plugin bridge
-        Error, // 47
+        Error, // 48
         Process,
         Quit
     };

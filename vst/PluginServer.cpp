@@ -558,6 +558,15 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
                 events_.push_back(event);
             }
             break;
+        case Command::SetProgram:
+            plugin_->setProgram(cmd->i);
+            {
+                // special program change event which cause parameter updates
+                Command event(Command::ProgramChange);
+                event.i = cmd->i;
+                events_.push_back(event);
+            }
+            break;
         case Command::SetProgramName:
             plugin_->setProgramName(cmd->s);
             break;
@@ -607,15 +616,6 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
                 plugin_->sendSysexEvent(sysex);
             }
             break;
-        case Command::SetProgram:
-            plugin_->setProgram(cmd->i);
-            {
-                // program change event
-                Command event(Command::ProgramNumber);
-                event.i = cmd->i;
-                events_.push_back(event);
-            }
-            break;
         default:
             LOG_ERROR("PluginHandle (" << id_ << "): unknown RT command " << cmd->type);
             break;
@@ -657,11 +657,11 @@ void PluginHandle::sendEvents(ShmChannel& channel){
             addReply(channel, reply, size);
             break;
         }
-        case Command::SetProgram:
+        case Command::ProgramChange:
             sendParameterUpdate(channel);
             break;
         default:
-            LOG_ERROR("bug PluginHandle::sendEvents");
+            LOG_ERROR("PluginHandle::sendEvents: unknown event type " << event.type);
             break;
         }
     }
