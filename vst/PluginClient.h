@@ -3,7 +3,10 @@
 #include "Interface.h"
 #include "PluginDesc.h"
 #include "DeferredPlugin.h"
+#include "MiscUtils.h"
 #include "PluginBridge.h"
+
+#include <array>
 
 #ifndef DEBUG_CLIENT_PROCESS
 #define DEBUG_CLIENT_PROCESS 0
@@ -11,9 +14,11 @@
 
 namespace vst {
 
-class PluginClient final : public DeferredPlugin {
- public:
-    PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc, bool sandbox, bool editor);
+class alignas(CACHELINE_SIZE) PluginClient final : public DeferredPlugin {
+public:
+    PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc,
+                 bool sandbox, bool editor);
+
     virtual ~PluginClient();
 
     const PluginDesc& info() const override {
@@ -45,8 +50,9 @@ class PluginClient final : public DeferredPlugin {
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
-    void setProgramName(const std::string& name) override;
+    void setProgram(int index) override;
     int getProgram() const override;
+    void setProgramName(const std::string& name) override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
 
@@ -86,25 +92,7 @@ class PluginClient final : public DeferredPlugin {
     // VST2 only
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
- protected:
-    IFactory::const_ptr factory_; // just to ensure lifetime
-    PluginDesc::const_ptr info_;
-    IWindow::ptr window_;
-    IPluginListener* listener_ = nullptr;
-    PluginBridge::ptr bridge_;
-    uint32_t id_;
-    std::vector<Command> commands_;
-    // cache
-    struct Param {
-        float value;
-        std::string display;
-    };
-    std::unique_ptr<Param[]> paramCache_;
-    std::unique_ptr<std::string[]> programCache_;
-    int program_ = 0;
-    int latency_ = 0;
-    double transport_;
-
+protected:
     int numParameters() const { return info_->numParameters(); }
     int numPrograms() const { return info_->numPrograms(); }
     void pushCommand(const Command& cmd) override {
@@ -114,6 +102,33 @@ class PluginClient final : public DeferredPlugin {
     void doProcess(ProcessData& data);
     void sendCommands(RTChannel& channel);
     void dispatchReply(const ShmCommand &reply);
+
+    IFactory::const_ptr factory_; // keep alive!
+    PluginDesc::const_ptr info_;
+    IWindow::ptr window_;
+    IPluginListener* listener_ = nullptr;
+    PluginBridge::ptr bridge_;
+    uint32_t id_;
+    std::vector<Command> commands_;
+    int program_ = 0;
+    int latency_ = 0;
+    double transport_;
+    // cache
+    std::unique_ptr<std::atomic<float>[]> paramValueCache_;
+    // use fixed sized arrays to avoid potential heap allocations with std::string
+    // After all, parameter displays are typically rather short. If the string
+    // happens to be larger than the array, we just truncate it.
+    using ParamDisplay = std::array<char, 16>;
+    std::unique_ptr<ParamDisplay[]> paramDisplayCache_;
+    using ProgramName = std::array<char, 32>;
+    std::unique_ptr<ProgramName[]> programNameCache_;
+    // Normally, these are accessed on the same thread, so there would be
+    // no contention. Notable exceptions: the plugin is multi-threaded
+    // or we need to get the parameters from a different thread.
+    // However, we always pay for the atomic operations...
+    using ScopedLock = std::lock_guard<SpinLock>;
+    mutable SpinLock cacheLock_;
+    char padding[60];
 };
 
 class WindowClient : public IWindow {

@@ -44,8 +44,26 @@
 
 namespace  vst {
 
+class ScopeGuard {
+public:
+    ~ScopeGuard() { fn_(); }
+
+    template<typename Func>
+    ScopeGuard(const Func& fn)
+        : fn_(fn) {}
+private:
+    std::function<void()> fn_;
+};
+
+//--------------------------------------------------------------//
+
 template<typename T>
-T nextPowerOfTwo(T v) {
+constexpr bool isPowerOfTwo(T v) {
+    return (v & (v - 1)) == 0;
+}
+
+template<typename T>
+constexpr T nextPowerOfTwo(T v) {
     T result = 1;
     while (result < v) {
         result *= 2;
@@ -54,7 +72,7 @@ T nextPowerOfTwo(T v) {
 }
 
 template<typename T>
-T prevPowerOfTwo(T v) {
+constexpr T prevPowerOfTwo(T v) {
     T result = 1;
     while (result <= v) {
         result *= 2;

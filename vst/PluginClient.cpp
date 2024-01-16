@@ -36,19 +36,31 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc,
                            bool sandbox, bool editor)
     : factory_(std::move(f)), info_(std::move(desc))
 {
+    // Since C++17, new() can handle alignments larger than max_align_t.
+    // For C++14, let's just ignore the misalignment for now.
+#if __cplusplus >= 201703L
+    if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
+        LOG_WARNING("PaddedSpinLock is not properly aligned!");
+    }
+#endif
+
     static std::atomic<uint32_t> nextID{0};
     id_ = ++nextID; // atomic increment!
 
+    int numParams = info_->numParameters();
     if (info_->numParameters() > 0){
-        paramCache_ = std::make_unique<Param[]>(info_->numParameters());
+        paramValueCache_.reset(new std::atomic<float>[numParams]{}); // !
+        paramDisplayCache_ = std::make_unique<ParamDisplay[]>(numParams);
     }
+    int numPrograms = info_->numPrograms();
     if (info_->numPrograms() > 0){
-        programCache_ = std::make_unique<std::string[]>(info_->numPrograms());
+        programNameCache_ = std::make_unique<ProgramName[]>(numPrograms);
     }
-    LOG_DEBUG("PluginClient (" << id_ << "): get plugin bridge");
     if (sandbox){
+        LOG_DEBUG("PluginClient (" << id_ << "): create sandbox");
         bridge_ = PluginBridge::create(factory_->arch());
     } else {
+        LOG_DEBUG("PluginClient (" << id_ << "): get plugin bridge");
         bridge_ = PluginBridge::getShared(factory_->arch());
     }
 
@@ -123,6 +135,8 @@ PluginClient::~PluginClient(){
     if (listener_){
         bridge_->removeUIClient(id_);
     }
+    // destroy window
+    window_ = nullptr;
     // destroy plugin
     // (not necessary with exlusive bridge)
     if (bridge_->shared() && bridge_->alive()){
@@ -252,10 +266,11 @@ void PluginClient::doProcess(ProcessData& data){
 
 void PluginClient::sendCommands(RTChannel& channel){
     for (auto& cmd : commands_){
-        // we have to handle some commands specially:
+        // We have to handle some commands specially because their
+        // struct layout differs from the corresponding ShmCommand.
         switch (cmd.type){
         case Command::SetParamValue:
-            channel.AddCommand(cmd, paramValue);
+            channel.AddCommand(cmd, paramValue); // optimize for space!
             break;
         case Command::SetParamString:
         {
@@ -303,8 +318,9 @@ void PluginClient::sendCommands(RTChannel& channel){
             channel.addCommand(shmCmd, cmdSize);
             break;
         }
-        // all other commands take max. 8 bytes and they are
-        // rare enough that we don't have to optimize for space
+        // All other commands are layout compatible with ShmCommand.
+        // They all take max. 12 bytes and are rare enough that we
+        // don't have to optimize for space
         default:
             channel.AddCommand(cmd, d);
             break;
@@ -322,9 +338,18 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
     {
         auto index = reply.paramState.index;
         auto value = reply.paramState.value;
+        auto display = reply.paramState.display;
 
-        paramCache_[index].value = value;
-        paramCache_[index].display = reply.paramState.display;
+        paramValueCache_[index].store(value, std::memory_order_relaxed);
+        {
+            auto& cache = paramDisplayCache_[index];
+            auto size = std::min(strlen(display), cache.size() - 1);
+
+            // must be thread-safe!
+            ScopedLock lock(cacheLock_);
+            memcpy(cache.data(), display, size);
+            cache[size] = 0;
+        }
 
         if (reply.type == Command::ParamAutomated){
             if (listener_){
@@ -334,14 +359,21 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
                       << " automated ");
         } else {
             LOG_DEBUG("PluginClient (" << id_ << "): parameter " << index
-                      << " updated to " << value);
+                      << " updated to " << value << " " << display);
         }
         break;
     }
     case Command::ProgramNameIndexed:
-        if (info().numPrograms() > 0){
-            programCache_[reply.programName.index]
-                    = reply.programName.name;
+        if (info().numPrograms() > 0) {
+            auto index = reply.programName.index;
+            auto name = reply.programName.name;
+            auto& cache = programNameCache_[index];
+            auto size = std::min(strlen(name), cache.size() - 1);
+
+            // must be thread-safe!
+            ScopedLock lock(cacheLock_);
+            memcpy(cache.data(), name, size);
+            cache[size] = 0;
         }
         break;
     case Command::ProgramNumber:
@@ -512,25 +544,64 @@ double PluginClient::getTransportPosition() const {
 }
 
 void PluginClient::setParameter(int index, float value, int sampleOffset){
-    paramCache_[index].value = value; // cache value
+    // don't cache immediately, so that value and display stay in sync.
+#if 0
+    paramValueCache_[index].store(value, std::memory_order_relaxed); // cache value
+#endif
     DeferredPlugin::setParameter(index, value, sampleOffset);
 }
 
 bool PluginClient::setParameter(int index, const std::string &str, int sampleOffset){
-    paramCache_[index].display = str; // cache display
+    // don't cache immediately, so that value and display stay in sync.
+#if 0
+    {
+        auto& cache = paramDisplayCache_[index];
+        auto size = std::min(str.size(), cache.size() - 1);
+
+        // must be thread-safe!
+        ScopedLock lock(cacheLock_);
+        memcpy(cache.data(), str, size);
+        cache[size] = 0;
+    }
+#endif
     return DeferredPlugin::setParameter(index, str, sampleOffset);
 }
 
 float PluginClient::getParameter(int index) const {
-    return paramCache_[index].value;
+    return paramValueCache_[index].load(std::memory_order_relaxed);
 }
 
 std::string PluginClient::getParameterString(int index) const {
-    return paramCache_[index].display;
+    // must be thread-safe!
+    ScopedLock lock(cacheLock_);
+    return paramDisplayCache_[index].data();
 }
 
-void PluginClient::setProgramName(const std::string& name){
-    programCache_[program_] = name;
+void PluginClient::setProgram(int index) {
+    // let's cache immediately
+#if 1
+    program_ = index;
+#endif
+    DeferredPlugin::setProgram(index);
+}
+
+int PluginClient::getProgram() const {
+    return program_;
+}
+
+void PluginClient::setProgramName(const std::string& name) {
+    // let's cache immediately
+#if 1
+    {
+        auto& cache = programNameCache_[program_];
+        auto size = std::min(name.size(), cache.size() - 1);
+
+        // must be thread-safe!
+        ScopedLock lock(cacheLock_);
+        memcpy(cache.data(), name.data(), size);
+        cache[size] = 0;
+    }
+#endif
 
     Command cmd(Command::SetProgramName);
     cmd.s = new char[name.size() + 1];
@@ -539,16 +610,15 @@ void PluginClient::setProgramName(const std::string& name){
     commands_.push_back(cmd);
 }
 
-int PluginClient::getProgram() const {
-    return program_;
-}
-
 std::string PluginClient::getProgramName() const {
-    return programCache_[program_];
+    // must be thread-safe!
+    ScopedLock lock(cacheLock_);
+    return programNameCache_[program_].data();
 }
 
 std::string PluginClient::getProgramNameIndexed(int index) const {
-    return programCache_[index];
+    ScopedLock lock(cacheLock_);
+    return programNameCache_[index].data();
 }
 
 void PluginClient::readProgramFile(const std::string& path){
