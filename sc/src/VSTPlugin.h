@@ -25,7 +25,7 @@ using namespace vst;
 const size_t MAX_OSC_PACKET_SIZE = 1600;
 
 class VSTPlugin;
-class OpenCmdData;
+struct OpenCmdData;
 
 // This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.
 // It is managed by a rt::shared_ptr and therefore kept alive during the execution of commands, which means
@@ -64,7 +64,6 @@ public:
     bool isSuspended() const { return suspended_; }
     void suspend() { suspended_ = true; }
     void resume() { suspended_ = false; }
-    Lock scopedLock();
     bool tryLock();
     void unlock();
 
@@ -79,6 +78,7 @@ public:
     void setEditorSize(int w, int h);
 
     void reset(bool async);
+    void doReset();
 
     // param
     void setParam(int32 index, float value);
@@ -99,6 +99,7 @@ public:
     void doReadPreset(const std::string& data, bool bank);
     template<bool bank, typename T>
     void writePreset(T dest, bool async);
+    void doWritePreset(std::string& buffer, bool bank);
 
     // midi
     void sendMidiMsg(int32 status, int32 data1, int32 data2, float detune = 0.f);

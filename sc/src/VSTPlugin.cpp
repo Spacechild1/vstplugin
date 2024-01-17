@@ -1630,6 +1630,7 @@ void VSTPluginDelegate::update(){
 }
 
 void VSTPluginDelegate::handleEvents(){
+    // TODO: rate limit?
     if (paramQueue_) {
         ParamChange p;
         while (paramQueue_->pop(p)){
@@ -1644,10 +1645,6 @@ void VSTPluginDelegate::handleEvents(){
             }
         }
     }
-}
-
-Lock VSTPluginDelegate::scopedLock(){
-    return Lock(mutex_);
 }
 
 bool VSTPluginDelegate::tryLock() {
@@ -1972,6 +1969,12 @@ void VSTPluginDelegate::setEditorSize(int w, int h){
     }
 }
 
+void VSTPluginDelegate::doReset() {
+    Lock lock(mutex_);
+    plugin_->suspend();
+    plugin_->resume();
+}
+
 void VSTPluginDelegate::reset(bool async) {
     if (check()) {
     #if 1
@@ -1989,9 +1992,7 @@ void VSTPluginDelegate::reset(bool async) {
                 [](World *world, void *cmdData){
                     auto data = (PluginCmdData *)cmdData;
                     defer([&](){
-                        auto lock = data->owner->scopedLock();
-                        data->owner->plugin()->suspend();
-                        data->owner->plugin()->resume();
+                        data->owner->doReset();
                     }, data->owner->hasEditor());
                     return true; // continue
                 },
@@ -2004,9 +2005,7 @@ void VSTPluginDelegate::reset(bool async) {
             );
         } else {
             // reset in the RT thread
-            auto lock = scopedLock(); // avoid concurrent read/writes
-            plugin_->suspend();
-            plugin_->resume();
+            doReset();
         }
     }
 }
@@ -2086,16 +2085,16 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
             } else {
                 count = std::min<int32>(count, nparam - index);
             }
-            const int bufsize = count + 2; // for index + count
-            if (bufsize * sizeof(float) < MAX_OSC_PACKET_SIZE){
-                float *buf = (float *)alloca(sizeof(float) * bufsize);
+            const int nargs = count + 2; // for index + count
+            if (nargs * sizeof(float) < MAX_OSC_PACKET_SIZE){
+                float *buf = (float *)alloca(sizeof(float) * nargs);
                 buf[0] = index;
                 buf[1] = count;
                 for (int i = 0; i < count; ++i) {
                     float value = plugin_->getParameter(i + index);
                     buf[i + 2] = value;
                 }
-                sendMsg("/vst_setn", bufsize, buf);
+                sendMsg("/vst_setn", nargs, buf);
                 return;
             } else {
                 LOG_WARNING("VSTPlugin: too many parameters requested!");
@@ -2297,8 +2296,16 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
     }
 }
 
+void VSTPluginDelegate::doWritePreset(std::string& buffer, bool bank) {
+    Lock lock(mutex_);
+    if (bank)
+        plugin_->writeBankData(buffer);
+    else
+        plugin_->writeProgramData(buffer);
+}
+
 template<bool bank>
-bool cmdWritePreset(World *world, void *cmdData){
+bool cmdWritePreset(World *world, void *cmdData) {
     auto data = (PresetCmdData *)cmdData;
     auto plugin = data->owner->plugin();
     auto& buffer = data->buffer;
@@ -2312,11 +2319,7 @@ bool cmdWritePreset(World *world, void *cmdData){
             buffer.reserve(1024);
             // get and write preset data
             defer([&](){
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->writeBankData(buffer);
-                else
-                    plugin->writeProgramData(buffer);
+                data->owner->doWritePreset(buffer, bank);
             }, data->owner->hasEditor());
         }
         if (data->bufnum < 0) {
@@ -2379,13 +2382,9 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
         if (async){
             suspend();
         } else {
+            // TODO: this should probably be deprecated...
             try {
-                auto lock = scopedLock(); // avoid concurrent read/write
-                if (bank){
-                    plugin_->writeBankData(data->buffer);
-                } else {
-                    plugin_->writeProgramData(data->buffer);
-                }
+                doWritePreset(data->buffer, bank);
             } catch (const Error& e){
                 LOG_ERROR("couldn't write " << (bank ? "bank: " : "program: ") << e.what());
                 goto fail;
