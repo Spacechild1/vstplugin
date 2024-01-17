@@ -1540,13 +1540,19 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
 
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
     if (isCurrentThreadRT()) {
-        // only if caused by /set! ignore UGen input automation and parameter mappings.
-        if (paramSet_) {
+        // only if caused by /set! ignore UGen input automation and parameter mappings
+        // and also parameter changes caused by setProgram(). (The latter might flood
+        // the client with message, so instead the client queries the parameter values
+        // at its own pace, and only if they need it!)
+        if (isSettingParam_) {
             sendParameterAutomated(index, value);
         }
     } else if (paramQueue_) {
-        // from UI/NRT thread - push to queue
-        paramQueue_->emplace(index, value); // thread-safe!
+        // from UI/NRT thread -> push to queue
+        // Ignore if sent as a result of reading program/bank data! See comment above.
+        if (!isSettingState_) {
+            paramQueue_->emplace(index, value); // thread-safe!
+        }
     }
 }
 
@@ -2008,14 +2014,15 @@ void VSTPluginDelegate::reset(bool async) {
 void VSTPluginDelegate::setParam(int32 index, float value) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            paramSet_ = true;
+            isSettingParam_ = true;
             int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
             plugin_->setParameter(index, value, sampleOffset);
+            // TODO: handle deferred plugin
             float newValue = plugin_->getParameter(index);
             owner_->paramState_[index] = newValue;
             sendParameter(index, newValue);
             owner_->unmap(index);
-            paramSet_ = false;
+            isSettingParam_ = false;
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2025,16 +2032,17 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
 void VSTPluginDelegate::setParam(int32 index, const char* display) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            paramSet_ = true;
+            isSettingParam_ = true;
             int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
             if (!plugin_->setParameter(index, display, sampleOffset)) {
                 LOG_WARNING("VSTPlugin: couldn't set parameter " << index << " to " << display);
             }
+            // TODO: handle deferred plugin
             float newValue = plugin_->getParameter(index);
             owner_->paramState_[index] = newValue;
             sendParameter(index, newValue);
             owner_->unmap(index);
-            paramSet_ = false;
+            isSettingParam_ = false;
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2173,10 +2181,23 @@ void VSTPluginDelegate::queryPrograms(int32 index, int32 count) {
     }
 }
 
+void VSTPluginDelegate::doReadPreset(const std::string& data, bool bank) {
+    // NB: readProgramData() can throw, hence the scope guard!
+    isSettingState_ = true;
+    ScopeGuard guard([this]() {
+        isSettingState_ = false;
+    });
+
+    Lock lock(mutex_);
+    if (bank)
+        plugin_->readBankData(data);
+    else
+        plugin_->readProgramData(data);
+}
+
 template<bool bank>
 bool cmdReadPreset(World* world, void* cmdData) {
     auto data = (PresetCmdData*)cmdData;
-    auto plugin = data->owner->plugin();
     auto& buffer = data->buffer;
     bool async = data->async;
     bool result = true;
@@ -2206,12 +2227,8 @@ bool cmdReadPreset(World* world, void* cmdData) {
         if (async) {
             // load preset now
             // NOTE: we avoid readProgram() to minimize the critical section
-            defer([&](){
-                auto lock = data->owner->scopedLock();
-                if (bank)
-                    plugin->readBankData(buffer);
-                else
-                    plugin->readProgramData(buffer);
+            defer([&]() {
+                data->owner->doReadPreset(buffer, bank);
             }, data->owner->hasEditor());
         }
     } catch (const Error& e) {
@@ -2232,12 +2249,9 @@ bool cmdReadPresetDone(World *world, void *cmdData){
         data->owner->resume();
     } else if (data->result) {
         // read preset data
+        // TODO: this should probably be deprecated...
         try {
-            auto lock = data->owner->scopedLock(); // avoid concurrent read/write
-            if (bank)
-                owner->plugin()->readBankData(data->buffer);
-            else
-                owner->plugin()->readProgramData(data->buffer);
+            data->owner->doReadPreset(data->buffer, bank);
         } catch (const Error& e){
             LOG_ERROR("couldn't read " << (bank ? "bank: " : "program: ") << e.what());
             data->result = 0;

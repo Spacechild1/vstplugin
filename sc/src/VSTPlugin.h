@@ -96,6 +96,7 @@ public:
     void queryPrograms(int32 index, int32 count);
     template<bool bank, typename T>
     void readPreset(T dest, bool async);
+    void doReadPreset(const std::string& data, bool bank);
     template<bool bank, typename T>
     void writePreset(T dest, bool async);
 
@@ -148,7 +149,8 @@ private:
     bool editor_ = false;
     bool threaded_ = false;
     bool isLoading_ = false;
-    bool paramSet_ = false; // did we just set a parameter manually?
+    bool isSettingParam_ = false; // are we manually setting a parameter?
+    bool isSettingState_ = false; // are we setting the plugin state?
     bool suspended_ = false;
     Mutex mutex_; // actually, this could probably be a spinlock...
     // events
