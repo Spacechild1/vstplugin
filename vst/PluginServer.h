@@ -68,6 +68,7 @@ private:
     void sendEvents(ShmChannel& channel);
 
     void sendParameterUpdate(ShmChannel& channel);
+    void sendPresetParamChanges(ShmChannel& channel);
     void sendProgramUpdate(ShmChannel& channel, bool bank);
 
     static bool addReply(ShmChannel& channel, const void *cmd, size_t size = 0);
@@ -85,13 +86,15 @@ private:
     std::vector<char> buffer_;
     std::vector<Command> events_;
 
-    // parameter automation from GUI
-    // -> ask RT thread to send parameter state
+    // parameter automation from GUI, see parameterAutomated()
     struct Param {
         int32_t index;
         float value;
     };
     UnboundedMPSCQueue<Param> paramAutomated_;
+    // parameter automation during preset loading (on the UI thread)
+    std::vector<Param> presetParamChanges_;
+    bool presetInProgress_ = false;
     std::atomic<bool> updateDisplay_{false};
 
     static const int paramAutomationRateLimit = 64;

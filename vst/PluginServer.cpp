@@ -162,19 +162,27 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
     case Command::ReadProgramFile:
         LOG_DEBUG("PluginHandle (" << id_ << "): ReadProgramFile");
         defer([&](){
+            // see parameterAutomated()
+            presetInProgress_ = true;
             plugin_->readProgramFile(cmd.buffer.data);
+            presetInProgress_ = false;
         });
         channel.clear(); // !
         sendParameterUpdate(channel);
+        sendPresetParamChanges(channel);
         sendProgramUpdate(channel, false);
         break;
     case Command::ReadBankFile:
         LOG_DEBUG("PluginHandle (" << id_ << "): ReadBankFile");
         defer([&](){
+            // see parameterAutomated()
+            presetInProgress_ = true;
             plugin_->readBankFile(cmd.buffer.data);
+            presetInProgress_ = false;
         });
         channel.clear(); // !
         sendParameterUpdate(channel);
+        sendPresetParamChanges(channel);
         sendProgramUpdate(channel, true);
         break;
     case Command::ReadProgramData:
@@ -192,12 +200,16 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         }
 
         defer([&](){
+            // see parameterAutomated()
+            presetInProgress_ = true;
             plugin_->readProgramData((const char *)data, realSize);
+            presetInProgress_ = false;
         });
 
         channel.clear(); // !
 
         sendParameterUpdate(channel);
+        sendPresetParamChanges(channel);
         sendProgramUpdate(channel, false);
         break;
     }
@@ -216,12 +228,16 @@ void PluginHandle::handleRequest(const ShmCommand &cmd,
         }
 
         defer([&](){
+            // see parameterAutomated()
+            presetInProgress_ = true;
             plugin_->readBankData((const char *)data, realSize);
+            presetInProgress_ = false;
         });
 
         channel.clear(); // !
 
         sendParameterUpdate(channel);
+        sendPresetParamChanges(channel);
         sendProgramUpdate(channel, true);
         break;
     }
@@ -333,27 +349,39 @@ void PluginHandle::handleUICommand(const ShmUICommand &cmd){
 }
 
 void PluginHandle::parameterAutomated(int index, float value) {
-    if (UIThread::isCurrentThread()){
-        LOG_DEBUG("UI thread: ParameterAutomated");
-        ShmUICommand cmd(Command::ParamAutomated, id_);
-        cmd.paramAutomated.index = index;
-        cmd.paramAutomated.value = value;
+    if (UIThread::isCurrentThread()) {
+        if (presetInProgress_) {
+            LOG_DEBUG("PluginHandle: parameter " << index << " automated by preset change");
+            // If this method is called from within readProgram() or readProgramData(),
+            // the host is already blocking in the UI thread and thus won't be able to
+            // drain the queue! As a consequence, this could block for a long time if
+            // the plugin sends many parameter changes! Instead we push the values to
+            // a dedicated queue, see sendPresetParamChanges().
+            // NB: presets are currently *always* loaded on the UI thread, even if plugin
+            // has been opened without an editor!
+            presetParamChanges_.push_back({ index, value });
+        } else {
+            LOG_DEBUG("PluginHandle: parameter " << index << " automated on UI thread");
 
-        // UI queue is bounded! For now, just sleep until
-        // the other side has drained the queue...
-        // Well behaved plugins shouldn't really overflow the queue anyway.
-        int counter = 0;
-        while (!server_->postUIThread(cmd)){
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            counter++;
-            if (counter > 1000) {
-                LOG_WARNING("PluginHandle (" << id_ << "): postUIThread() blocked for over 1 second");
-                break;
+            // UI queue is bounded! For now, just sleep until the other side has drained the queue.
+            ShmUICommand cmd(Command::ParamAutomated, id_);
+            cmd.paramAutomated.index = index;
+            cmd.paramAutomated.value = value;
+
+            int counter = 0;
+            while (!server_->postUIThread(cmd)){
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                counter++;
+                if (counter > 1000) {
+                    LOG_WARNING("PluginHandle (" << id_ << "): postUIThread() blocked for over 1 second");
+                    break;
+                }
             }
+            paramAutomated_.emplace(index, value);
         }
-        paramAutomated_.emplace(index, value);
     } else {
-        LOG_DEBUG("RT thread: ParameterAutomated");
+        LOG_DEBUG("PluginHandle: parameter automated on RT thread");
+
         Command cmd(Command::ParamAutomated);
         cmd.paramAutomated.index = index;
         cmd.paramAutomated.value = value;
@@ -704,6 +732,17 @@ void PluginHandle::sendParameterUpdate(ShmChannel& channel){
             paramState_[i] = value;
         }
     }
+}
+
+void PluginHandle::sendPresetParamChanges(ShmChannel& channel) {
+    // Dispatch parameter automations caught during preset change,
+    // see parameterAutomated().
+    // NB: in theory we should protect presetParamChanges_ with a mutex,
+    // but items are only ever pushed in the same call stack.
+    for (auto& p : presetParamChanges_) {
+        sendParam(channel, p.index, p.value, true);
+    }
+    presetParamChanges_.clear();
 }
 
 void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
