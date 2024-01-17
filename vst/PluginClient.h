@@ -25,6 +25,8 @@ public:
         return *info_;
     }
 
+    bool isBridged() const override { return true; }
+
     PluginBridge& bridge() {
         return *bridge_;
     }

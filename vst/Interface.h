@@ -187,6 +187,8 @@ class IPlugin {
     virtual ~IPlugin(){}
 
     virtual const PluginDesc& info() const = 0;
+    virtual bool isThreaded() const { return false; }
+    virtual bool isBridged() const { return false; }
 
     virtual void setupProcessing(double sampleRate, int maxBlockSize,
                                  ProcessPrecision precision, ProcessMode mode) = 0;
@@ -217,6 +219,7 @@ class IPlugin {
     virtual void setParameter(int index, float value, int sampleOffset = 0) = 0;
     virtual bool setParameter(int index, const std::string& str, int sampleOffset = 0) = 0;
     virtual float getParameter(int index) const = 0;
+    // TODO: change to void getParameterString(int index, std::string& str) const = 0;
     virtual std::string getParameterString(int index) const = 0;
 
     virtual void setProgram(int index) = 0;

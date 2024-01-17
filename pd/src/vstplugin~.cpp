@@ -1,6 +1,7 @@
 #include "vstplugin~.h"
 
 #include <cassert>
+#include <climits>
 #include <utility>
 #ifdef _WIN32
 # ifndef NOMINMAX
@@ -811,7 +812,7 @@ static void vstparam_symbol(t_vstparam *x, t_symbol *s){
 }
 
 static void vstparam_set(t_vstparam *x, t_floatarg f){
-        // this method updates the display next to the label. implicitly called by t_vstparam::set
+    // this method updates the display next to the label. implicitly called by t_vstparam::set
     IPlugin &plugin = *x->p_owner->x_plugin;
     int index = x->p_index;
     char buf[64];
@@ -963,8 +964,58 @@ static void vstplugin_close(t_vstplugin *x);
 
 void t_vsteditor::tick(t_vsteditor *x){
     t_outlet *outlet = x->e_owner->x_messout;
-    x->e_tick = true; // prevent recursion
 
+    // check for deferred updates
+    if (!x->e_param_bitset.empty()) {
+        auto& plugin = x->e_owner->x_plugin;
+        auto threaded = x->e_owner->x_threaded;
+        auto size = x->e_param_bitset_size;
+        auto full_size = size * 2;
+        // NB: if threaded, dispatch *previous* param changes
+        auto param_change = threaded ? x->e_param_bitset.data() + full_size
+                                     : x->e_param_bitset.data();
+        auto param_auto = param_change + size;
+        for (int i = 0; i < size; ++i) {
+            if (param_change[i].any()) {
+                auto nparams = plugin->info().numParameters();
+                for (int j = 0; j < param_num_bits; ++j) {
+                    if (param_change[i].test(j)) {
+                        auto index = i * param_num_bits+ j;
+                        // NB: we need to check the parameter count! See update()
+                        if (index < nparams) {
+                            auto automated = param_auto[i].test(j);
+                            x->param_changed(index, plugin->getParameter(index), automated);
+                        }
+                    }
+                }
+                // clear bitset!
+                param_change[i].reset();
+                param_auto[i].reset(); // !
+            }
+        }
+        if (threaded) {
+            // check *new* parameter changes and request clock if necessary
+            auto new_param_change = x->e_param_bitset.data();
+            if (std::any_of(new_param_change, new_param_change + size,
+                            [](auto& x) { return x.any(); })) {
+                x->e_needclock.store(true);
+            }
+            // finally, swap bitsets
+#if 0 // C++17 only
+            std::swap_ranges(new_param_change, param_change, param_change);
+#else
+            for (int i = 0; i < full_size; ++i) {
+                std::swap(new_param_change[i], param_change[i]);
+            }
+#endif
+            // all bits should be zero now!
+            assert(std::all_of(new_param_change, new_param_change + full_size,
+                               [](auto& x) { return x.none(); }));
+        }
+    }
+
+    // dispatch events
+    x->e_tick = true; // prevent recursion
     t_event e;
     while (x->e_events.pop(e)) {
         switch (e.type){
@@ -993,7 +1044,7 @@ void t_vsteditor::tick(t_vsteditor *x){
         case t_event::Display:
         {
             // update the generic GUI, e.g. after a program change (VST3)
-            x->update();
+            x->update(true);
             // send message
             outlet_anything(outlet, gensym("update"), 0, nullptr);
             break;
@@ -1053,22 +1104,39 @@ constexpr int slider_ymargin = 10; // vertical margin between sliders
 constexpr int row_width = 2 * slider_width; // slider + xmargin + symbol atom + label
 constexpr int col_height = 2 * slider_height + slider_xmargin;
 
-void t_vsteditor::setup(){
+void t_vsteditor::setup() {
+    e_param_bitset.clear(); // always clear!
+    e_param_bitset_size = 0;
+
     if (!pd_gui()){
         return;
     }
-    auto& info = e_owner->x_plugin->info();
 
+    auto& plugin = e_owner->x_plugin;
+    auto& info = plugin->info();
+    int nparams = info.numParameters();
+
+    if (e_owner->deferred()) {
+        // deferred plugin needs deferred parameter updates
+        auto d = std::div(nparams, param_num_bits);
+        auto size = d.quot + (d.rem > 0);
+        // NB: threaded plugins need double buffering!
+        auto real_size = e_owner->x_threaded ? size * 4 : 2 * 2;
+        e_param_bitset.clear(); // !
+        e_param_bitset.resize(real_size);
+        e_param_bitset_size = size;
+    }
+
+    // setup generic UI
     send_vmess(gensym("rename"), (char *)"s", gensym(info.name.c_str()));
     send_mess(gensym("clear"));
 
-    int nparams = info.numParameters();
     e_params.clear();
     e_params.reserve(nparams); // avoid unnecessary moves
     for (int i = 0; i < nparams; ++i){
         e_params.emplace_back(e_owner, i);
     }
-        // slider: #X obj ...
+    // slider: #X obj ...
     char slider_text[256];
     snprintf(slider_text, sizeof(slider_text),
              "25 43 hsl %d %d 0 1 0 0 snd rcv label %d %d 0 %d -262144 -1 -1 0 1",
@@ -1076,7 +1144,7 @@ void t_vsteditor::setup(){
     t_binbuf *slider_bb = binbuf_new();
     binbuf_text(slider_bb, slider_text, strlen(slider_text));
     t_atom *slider = binbuf_getvec(slider_bb);
-        // display: #X symbolatom ...
+    // display: #X symbolatom ...
     char display_text[256];
     snprintf(display_text, sizeof(display_text), "165 79 %d 0 0 1 label rcv snd", font_size);
     t_binbuf *display_bb = binbuf_new();
@@ -1092,7 +1160,7 @@ void t_vsteditor::setup(){
         int row = i % nrows;
         int xpos = xoffset + col * row_width;
         int ypos = yoffset + slider_height + row * col_height;
-            // create slider
+        // create slider
         SETFLOAT(slider, xpos);
         SETFLOAT(slider+1, ypos);
         SETSYMBOL(slider+9, e_params[i].p_slider);
@@ -1102,7 +1170,7 @@ void t_vsteditor::setup(){
         substitute_whitespace(param_name);
         SETSYMBOL(slider+11, gensym(param_name));
         send_mess(gensym("obj"), 21, slider);
-            // create display
+        // create display
         SETFLOAT(display, xpos + slider_width + slider_xmargin);
         SETFLOAT(display+1, ypos);
         SETSYMBOL(display+6, gensym(info.parameters[i].label.c_str()));
@@ -1118,17 +1186,29 @@ void t_vsteditor::setup(){
     height_ = height;
     send_vmess(gensym("vis"), "i", 0);
 
-    update();
+    update(false);
 
     binbuf_free(slider_bb);
     binbuf_free(display_bb);
 }
 
-void t_vsteditor::update(){
+void t_vsteditor::update(bool allow_defer) {
     if (pd_gui()) {
-        int n = e_owner->x_plugin->info().numParameters();
-        for (int i = 0; i < n; ++i){
-            param_changed(i, e_owner->x_plugin->getParameter(i));
+        if (allow_defer && !e_param_bitset.empty()) {
+            // defer update
+            // NB: do not set automated!
+            for (int i = 0; i < e_param_bitset_size; ++i) {
+                e_param_bitset[i].set();
+            }
+            // NB: deferred plugins require that DSP is running.
+            e_needclock.store(true);
+        } else {
+            // immediate update
+            auto& plugin = e_owner->x_plugin;
+            int n = plugin->info().numParameters();
+            for (int i = 0; i < n; ++i){
+                param_changed(i, plugin->getParameter(i));
+            }
         }
     }
 }
@@ -1140,6 +1220,24 @@ void t_vsteditor::param_changed(int index, float value, bool automated){
         if (automated){
             parameterAutomated(index, value);
         }
+    }
+}
+
+// defer parameter update in generic UI.
+// This is necessary because the parameter display is not immediately
+// available if processing is deferred (threaded or bridged/sandboxed).
+void t_vsteditor::param_changed_deferred(int index, bool automated) {
+    if (pd_gui()) {
+        // set corresponding bit in bitset
+        auto i = (uint64_t)index / param_num_bits;
+        auto j = (uint64_t)index % param_num_bits;
+        assert(i >= 0 && i < e_param_bitset_size);
+        e_param_bitset[i].set(j);
+        if (automated) {
+            e_param_bitset[e_param_bitset_size + i].set(j);
+        }
+        // NB: deferred plugins require that DSP is running.
+        e_needclock.store(true);
     }
 }
 
@@ -1570,7 +1668,7 @@ static void vstplugin_open_done(t_open_data *data){
         x->x_path = data->pathsym;
         // receive events from plugin
         x->x_plugin->setListener(x->x_editor.get());
-        // update Pd editor
+        // setup Pd editor
         x->x_editor->setup();
 
         logpost(x, PdDebug, "opened '%s'", info.name.c_str());
@@ -2325,7 +2423,7 @@ static void vstplugin_program_set(t_vstplugin *x, t_floatarg _index){
     int index = _index;
     if (index >= 0 && index < x->x_plugin->info().numPrograms()){
         x->x_plugin->setProgram(index);
-        x->x_editor->update();
+        x->x_editor->update(true);
     } else {
         pd_error(x, "%s: program number %d out of range!", classname(x), index);
     }
@@ -2435,7 +2533,7 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
             else
                 x->x_plugin->readProgramData(buffer);
         }, x->x_uithread);
-        x->x_editor->update();
+        x->x_editor->update(false);
     } catch (const Error& e) {
         pd_error(x, "%s: couldn't set %s data: %s",
                  classname(x), presetName(type), e.what());
@@ -2533,7 +2631,7 @@ static void vstplugin_preset_read_done(t_preset_data *data){
     // command finished
     x->x_suspended = false;
     // *now* update
-    x->x_editor->update();
+    x->x_editor->update(false);
 
     vstplugin_preset_read_notify<type>(x, data->success);
 }
@@ -3085,7 +3183,11 @@ void t_vstplugin::set_param(int index, float value, bool automated){
         value = std::max(0.f, std::min(1.f, value));
         int offset = x_plugin->info().type() == PluginType::VST3 ? get_sample_offset() : 0;
         x_plugin->setParameter(index, value, offset);
-        x_editor->param_changed(index, value, automated);
+        if (deferred()) {
+            x_editor->param_changed_deferred(index, automated);
+        } else {
+            x_editor->param_changed(index, value, automated);
+        }
     } else {
         pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
     }
@@ -3096,9 +3198,13 @@ void t_vstplugin::set_param(int index, const char *s, bool automated){
         int offset = x_plugin->info().type() == PluginType::VST3 ? get_sample_offset() : 0;
         if (!x_plugin->setParameter(index, s, offset)){
             pd_error(this, "%s: bad string value for parameter %d!", classname(this), index);
+            // NB: some plugins don't just ignore bad string input, but reset the parameter to some value...
         }
-            // some plugins don't just ignore bad string input but reset the parameter to some value...
-        x_editor->param_changed(index, x_plugin->getParameter(index), automated);
+        if (deferred()) {
+            x_editor->param_changed_deferred(index, automated);
+        } else {
+            x_editor->param_changed(index, x_plugin->getParameter(index), automated);
+        }
     } else {
         pd_error(this, "%s: parameter index %d out of range!", classname(this), index);
     }

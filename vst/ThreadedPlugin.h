@@ -65,6 +65,9 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
         return plugin_->info();
     }
 
+    bool isThreaded() const override { return true; }
+    bool isBridged() const override { return plugin_->isBridged(); }
+
     void setupProcessing(double sampleRate, int maxBlockSize,
                          ProcessPrecision precision, ProcessMode mode) override;
     void process(ProcessData& data) override;
@@ -148,7 +151,7 @@ private:
     DSPThreadPool *threadPool_;
     IPlugin::ptr plugin_;
     IPluginListener* listener_ = nullptr;
-    mutable Mutex mutex_;
+    mutable Mutex mutex_; // use spinlock instead?
     Event event_;
     // commands/events
     void pushCommand(const Command& command) override {

@@ -15,6 +15,7 @@
 using namespace vst;
 
 #include <memory>
+#include <bitset>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -161,6 +162,12 @@ public:
     int get_sample_offset();
 
     std::string resolve_plugin_path(const char *s);
+
+    bool deferred() const {
+        // NOTE: don't use x_runmode because we also
+        // need to consider bit-bridging!
+        return x_threaded || x_plugin->isBridged();
+    }
 };
 
 // VST parameter responder (for Pd GUI)
@@ -193,14 +200,16 @@ public:
         LatencyChange = -1
     };
 
-    t_vsteditor(t_vstplugin &owner, bool gui);
+    t_vsteditor(t_vstplugin& owner, bool gui);
     ~t_vsteditor();
     // setup the generic Pd editor
     void setup();
     // update the parameter displays
-    void update();
+    void update(bool allow_defer);
     // notify generic GUI for parameter changes
     void param_changed(int index, float value, bool automated = false);
+    // notify generic GUI for parameter changes
+    void param_changed_deferred(int index, bool automated = false);
     // flush parameter, MIDI and sysex queues
     void flush_queues();
     // safely defer to UI thread
@@ -275,6 +284,14 @@ private:
     std::atomic_bool e_locked {false};
     bool e_tick = false;
     UnboundedMPSCQueue<t_event> e_events;
+    // for deferred parameter updates
+    // The first half tells if/which parameters need to be updated;
+    // the second half tells if the parameter has been automated.
+    // For threaded plugins, the whole bitset is then duplicated
+    // to allow double buffering.
+    static constexpr size_t param_num_bits = 64;
+    std::vector<std::bitset<param_num_bits>> e_param_bitset;
+    int e_param_bitset_size = 0;
 };
 
 class t_workqueue {
