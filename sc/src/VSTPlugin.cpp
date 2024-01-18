@@ -1126,6 +1126,7 @@ void VSTPlugin::setupPlugin(const int *inputs, int numInputs,
     auto outDummy = dummyBuffer_ +
             (reblock_ ? reblock_->blockSize : bufferSize());
 
+    // setup buffers
     if (reblock_){
         if (!setupBuffers(pluginInputs_, numPluginInputs_,
                           numPluginInputChannels_,
@@ -1414,6 +1415,60 @@ void VSTPlugin::next(int inNumSamples) {
             plugin->process(data);
         }
 
+        // see VSTPluginDelegate::setParam() and parameterAutomated()
+        delegate().isSettingParam_ = false;
+
+        // handle deferred parameter updates
+        if (delegate().paramBitset_) {
+            auto bitset = delegate().paramBitset_;
+            auto size = delegate().paramBitsetSize_;
+            auto numbits = VSTPluginDelegate::paramNumBits;
+            auto threaded = delegate().threaded_;
+            // NB: if threaded, dispatch *previous* param changes
+            auto paramChange = threaded ? bitset + size : bitset;
+            for (int i = 0; i < size; ++i) {
+                if (paramChange[i].any()) {
+                    auto numParams = plugin->info().numParameters();
+                    for (int j = 0; j < numbits; ++j) {
+                        if (paramChange[i].test(j)) {
+                            // cache and send parameter
+                            // NB: we need to check the parameter count! See update()
+                            auto index = i * numbits + j;
+                            if (index < numParams) {
+                                auto value = plugin->getParameter(index);
+                                paramState_[index] = value;
+                                delegate().sendParameter(index, value);
+                            }
+                        }
+                    }
+                    // clear bitset!
+                    paramChange[i].reset();
+                }
+            }
+            if (threaded) {
+                // check *new* parameter changes.
+                // NB: if any parameter causes outgoing parameter changes, these will
+                // be sent in the *next* process function call, that's why we set
+                // 'isSettingParam_' again.
+                auto newParamChange = bitset;
+                if (std::any_of(newParamChange, newParamChange + size,
+                                [](auto& x) { return x.any(); })) {
+                    delegate().isSettingParam_ = true;
+                }
+                // finally, swap bitsets
+#if 0 // C++17 only
+            std::swap_ranges(newParamChange, paramChange, paramChange);
+#else
+                for (int i = 0; i < size; ++i) {
+                    std::swap(newParamChange[i], paramChange[i]);
+                }
+#endif
+                // all bits should be zero now!
+                assert(std::all_of(newParamChange, newParamChange + size,
+                                   [](auto& x) { return x.none(); }));
+            }
+        }
+
         // zero remaining Ugen outputs
         if (numUgenOutputs_ == 1){
             // plugin outputs might be destributed
@@ -1522,6 +1577,10 @@ VSTPluginDelegate::~VSTPluginDelegate() {
         }
     }
 
+    if (paramBitset_) {
+        RTFree(world(), paramBitset_);
+    }
+
     LOG_DEBUG("VSTPluginDelegate destroyed");
 }
 
@@ -1540,10 +1599,16 @@ void VSTPluginDelegate::setOwner(VSTPlugin *owner) {
 
 void VSTPluginDelegate::parameterAutomated(int index, float value) {
     if (isCurrentThreadRT()) {
-        // only if caused by /set! ignore UGen input automation and parameter mappings
-        // and also parameter changes caused by setProgram(). (The latter might flood
-        // the client with message, so instead the client queries the parameter values
-        // at its own pace, and only if they need it!)
+        // Only send outgoing parameter changes if caused by /set or /setn!
+        // Ignore parameter changes caused by UGen input automation, control/audio bus
+        // mappings or program changes to prevent flooding the client with messages.
+        //
+        // NB: we can only unset 'isSettingParam_' at the end of theVSTPlugin::next()
+        // function because outgoing parameter changes might be sent in the plugin
+        // process function, e.g. with VST3 plugins or bridged plugins.
+        // Unfortunately, this allows other parameter changes to pass through for
+        // the duration of that block. I don't see a real solution for this...
+        // In practice, the generic UI and UGen input automation are at odds anyway.
         if (isSettingParam_) {
             sendParameterAutomated(index, value);
         }
@@ -1627,6 +1692,32 @@ bool VSTPluginDelegate::check(bool loud) const {
 
 void VSTPluginDelegate::update(){
     if (paramQueue_) paramQueue_->clear();
+
+    isSettingParam_ = false; // just to be sure
+
+    if (paramBitset_) {
+        RTFree(world(),paramBitset_);
+        paramBitset_ = nullptr;
+        paramBitsetSize_ = 0;
+    }
+    // allocate parameter bitset if plugin processing is deferred
+    auto numParams = plugin()->info().numParameters();
+    if (numParams > 0 && plugin()->isBridged() || plugin()->isThreaded()) {
+        auto d = std::div(numParams, paramNumBits);
+        auto size = d.quot + (d.rem > 0);
+        // threaded plugin needs twice the size for double buffering
+        auto realSize = plugin()->isThreaded() ? size * 2 : size;
+        auto bitset = (ParamBitset *)RTAlloc(world(), realSize * sizeof(ParamBitset));
+        if (bitset) {
+            for (int i = 0; i < realSize; ++i) {
+                new (&bitset[i]) ParamBitset{};
+            }
+            paramBitset_ = bitset;
+            paramBitsetSize_ = size;
+        } else {
+            LOG_ERROR("RTAlloc failed!");
+        }
+    }
 }
 
 void VSTPluginDelegate::handleEvents(){
@@ -2013,15 +2104,24 @@ void VSTPluginDelegate::reset(bool async) {
 void VSTPluginDelegate::setParam(int32 index, float value) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            isSettingParam_ = true;
+            isSettingParam_ = true; // see parameterAutomated()
             int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
             plugin_->setParameter(index, value, sampleOffset);
-            // TODO: handle deferred plugin
-            float newValue = plugin_->getParameter(index);
-            owner_->paramState_[index] = newValue;
-            sendParameter(index, newValue);
+            if (paramBitset_) {
+                // defer! set corresponding bit in parameter bitset
+                auto i = (uint64_t)index / paramNumBits;
+                auto j = (uint64_t)index % paramNumBits;
+                assert(i >= 0 && i < paramBitsetSize_);
+                paramBitset_[i].set(j);
+
+            } else {
+                // cache and send immediately; use actual value!
+                float newValue = plugin_->getParameter(index);
+                owner_->paramState_[index] = newValue;
+                sendParameter(index, newValue);
+            }
+            // NB: isSettingsParam_ will be unset in VSTPlugin::next()!
             owner_->unmap(index);
-            isSettingParam_ = false;
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2031,17 +2131,26 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
 void VSTPluginDelegate::setParam(int32 index, const char* display) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            isSettingParam_ = true;
+            isSettingParam_ = true; // see parameterAutomated()
             int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
             if (!plugin_->setParameter(index, display, sampleOffset)) {
                 LOG_WARNING("VSTPlugin: couldn't set parameter " << index << " to " << display);
+                // NB: some plugins don't just ignore bad string input, but reset the parameter to some value...
             }
-            // TODO: handle deferred plugin
-            float newValue = plugin_->getParameter(index);
-            owner_->paramState_[index] = newValue;
-            sendParameter(index, newValue);
+            if (paramBitset_) {
+                // defer! set corresponding bit in parameter bitset
+                auto i = (uint64_t)index / paramNumBits;
+                auto j = (uint64_t)index % paramNumBits;
+                assert(i >= 0 && i < paramBitsetSize_);
+                paramBitset_[i].set(j);
+            } else {
+                // cache and send immediately
+                float newValue = plugin_->getParameter(index);
+                owner_->paramState_[index] = newValue;
+                sendParameter(index, newValue);
+            }
+            // NB: isSettingsParam_ will be unset in VSTPlugin::next()!
             owner_->unmap(index);
-            isSettingParam_ = false;
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }

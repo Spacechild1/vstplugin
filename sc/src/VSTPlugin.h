@@ -13,6 +13,7 @@
 
 using namespace vst;
 
+#include <bitset>
 #include <thread>
 #include <mutex>
 #include <memory>
@@ -145,15 +146,25 @@ public:
 private:
     std::atomic<int32_t> refcount_{0}; // doesn't really have to be atomic...
     VSTPlugin *owner_ = nullptr;
-    IPlugin::ptr plugin_;
     World* world_ = nullptr;
+    IPlugin::ptr plugin_;
     bool editor_ = false;
     bool threaded_ = false;
     bool isLoading_ = false;
-    bool isSettingParam_ = false; // are we manually setting a parameter?
+    bool isSettingParam_= false; // see parameterAutomated()
     bool isSettingState_ = false; // are we setting the plugin state?
     bool suspended_ = false;
-    Mutex mutex_; // actually, this could probably be a spinlock...
+    // deferred parameter updates
+    // This tells which parameters need to be updated.
+    // For threaded plugins, the whole bitset is then
+    // duplicated to allow double buffering.
+    static constexpr size_t paramNumBits = 64;
+    using ParamBitset = std::bitset<paramNumBits>;
+    ParamBitset *paramBitset_ = nullptr;
+    int paramBitsetSize_ = 0;
+    // TODO: mutex construction is not really realtime safe;
+    // should we use a spinlock or sleeplock instead?
+    Mutex mutex_;
     // events
     struct ParamChange {
         int index; // parameter index or EventType (negative)
@@ -258,7 +269,7 @@ public:
     }
     void queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args);
     void runUnitCmds();
-    VSTPluginDelegate& delegate() { return *delegate_;  }
+    VSTPluginDelegate& delegate() { return *delegate_; }
 
     void next(int inNumSamples);
 
