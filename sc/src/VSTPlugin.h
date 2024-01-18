@@ -152,7 +152,8 @@ private:
     bool threaded_ = false;
     bool isLoading_ = false;
     bool isSettingParam_= false; // see parameterAutomated()
-    bool isSettingState_ = false; // are we setting the plugin state?
+    bool isSettingProgram_ = false; // see parameterAutomated()
+    bool isSettingState_ = false; // see parameterAutomated()
     bool suspended_ = false;
     // deferred parameter updates
     // This tells which parameters need to be updated.

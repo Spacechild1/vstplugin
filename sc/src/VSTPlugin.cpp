@@ -1415,11 +1415,12 @@ void VSTPlugin::next(int inNumSamples) {
             plugin->process(data);
         }
 
-        // see VSTPluginDelegate::setParam() and parameterAutomated()
+        // see VSTPluginDelegate::setParam(), setProgram and parameterAutomated()
         delegate().isSettingParam_ = false;
+        delegate().isSettingProgram_ = false;
 
         // handle deferred parameter updates
-        if (delegate().paramBitset_) {
+        if (delegate().paramBitset_ && paramState_) {
             auto bitset = delegate().paramBitset_;
             auto size = delegate().paramBitsetSize_;
             auto numbits = VSTPluginDelegate::paramNumBits;
@@ -1609,7 +1610,7 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         // Unfortunately, this allows other parameter changes to pass through for
         // the duration of that block. I don't see a real solution for this...
         // In practice, the generic UI and UGen input automation are at odds anyway.
-        if (isSettingParam_) {
+        if (isSettingParam_ && !isSettingProgram_) {
             sendParameterAutomated(index, value);
         }
     } else if (paramQueue_) {
@@ -1694,6 +1695,7 @@ void VSTPluginDelegate::update(){
     if (paramQueue_) paramQueue_->clear();
 
     isSettingParam_ = false; // just to be sure
+    isSettingProgram_ = false;
 
     if (paramBitset_) {
         RTFree(world(),paramBitset_);
@@ -2248,7 +2250,9 @@ void VSTPluginDelegate::unmapAll() {
 void VSTPluginDelegate::setProgram(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numPrograms()) {
+            isSettingProgram_ = true;
             plugin_->setProgram(index);
+            // NB: isSettingProgram_ will be unset in VSTPlugin::next()
         } else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
