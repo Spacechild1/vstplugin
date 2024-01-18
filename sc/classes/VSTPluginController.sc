@@ -26,6 +26,7 @@ VSTPluginController {
 	var browser; // handle to currently opened browser
 	var needQueryParams;
 	var needQueryPrograms;
+	var deferred; // deferred processing?
 
 	*initClass {
 		Class.initClassTree(Event);
@@ -200,6 +201,7 @@ VSTPluginController {
 		window = false;
 		needQueryParams = true;
 		needQueryPrograms = true;
+		deferred = false;
 		midi = VSTPluginMIDIProxy(this);
 		oscFuncs = List.new;
 		// parameter changed:
@@ -379,6 +381,7 @@ VSTPluginController {
 						"couldn't open '%'".format(path).error;
 					};
 					loading = false;
+					deferred = multiThreading || (mode.asSymbol != \auto) || info.bridged;
 					this.changed(\open, path, loaded);
 					action.value(this, loaded);
 					// report latency (if loaded)
@@ -724,7 +727,7 @@ VSTPluginController {
 			program = number; // update!
 			// notify dependends
 			this.changed(\program_index, number);
-			this.prQueryParams;
+			this.prQueryParams(needFork: true); // never block!
 		} {
 			MethodError("program number % out of range".format(number), this).throw;
 		};
@@ -994,32 +997,42 @@ VSTPluginController {
 			^msg[(onset+1)..(onset+len)].collectAs({arg item; item.asInteger.asAscii}, String);
 		} { ^"" };
 	}
-	prQueryParams { arg wait;
+	prQueryParams { arg wait, needFork=false;
 		(this.dependants.size > 0).if {
-			this.prQuery(wait, this.numParameters, '/param_query');
+			needFork.if {
+				fork {
+					// make sure that values/displays are really up-to-date!
+					deferred.if { synth.server.sync };
+					this.prQuery(wait, this.numParameters, '/param_query');
+				}
+			} {
+				forkIfNeeded {
+					this.prQuery(wait, this.numParameters, '/param_query');
+				}
+			};
 			needQueryParams = false;
 		} { needQueryParams = true; }
 	}
 	prQueryPrograms { arg wait;
 		(this.dependants.size > 0).if {
-			this.prQuery(wait, this.numPrograms, '/program_query');
+			forkIfNeeded {
+				this.prQuery(wait, this.numPrograms, '/program_query');
+			};
 			needQueryPrograms = false;
 		} { needQueryPrograms = true; }
 	}
 	prQuery { arg wait, num, cmd;
-		{
-			var div, mod;
-			div = num.div(16);
-			mod = num.mod(16);
-			wait = wait ?? this.wait;
-			// request 16 parameters/programs at once
-			div.do { arg i;
-				this.sendMsg(cmd, i * 16, 16);
-				if(wait >= 0) { wait.wait } { synth.server.sync };
-			};
-			// request remaining parameters/programs
-			(mod > 0).if { this.sendMsg(cmd, num - mod, mod) };
-		}.forkIfNeeded;
+		var div, mod;
+		div = num.div(16);
+		mod = num.mod(16);
+		wait = wait ?? this.wait;
+		// request 16 parameters/programs at once
+		div.do { arg i;
+			this.sendMsg(cmd, i * 16, 16);
+			if (wait >= 0) { wait.wait } { synth.server.sync };
+		};
+		// request remaining parameters/programs
+		(mod > 0).if { this.sendMsg(cmd, num - mod, mod) };
 	}
 }
 
