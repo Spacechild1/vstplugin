@@ -721,6 +721,9 @@ VSTPluginController {
 	program_ { arg number;
 		((number >= 0) && (number < this.numPrograms)).if {
 			this.sendMsg('/program_set', number);
+			program = number; // update!
+			// notify dependends
+			this.changed(\program_index, number);
 			this.prQueryParams;
 		} {
 			MethodError("program number % out of range".format(number), this).throw;

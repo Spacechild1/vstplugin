@@ -409,8 +409,6 @@ Arguments:
 | ---- |-|
 | int  | program index |
 
-Replies with `/vst_program_index`, see "Events" section.
-
 ##### /program_name
 
 Change the current program name.

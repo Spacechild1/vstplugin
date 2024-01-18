@@ -2256,7 +2256,10 @@ void VSTPluginDelegate::setProgram(int32 index) {
         } else {
             LOG_WARNING("VSTPlugin: program number " << index << " out of range!");
         }
+#if 0
+        // don't do this, the program has been actively set by the user!
         sendMsg("/vst_program_index", plugin_->getProgram());
+#endif
     }
 }
 
