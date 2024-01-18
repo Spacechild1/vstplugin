@@ -87,8 +87,10 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
-    void setProgramName(const std::string& name) override;
+    void setProgram(int index) override;
     int getProgram() const override;
+
+    void setProgramName(const std::string& name) override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
 
@@ -163,6 +165,7 @@ private:
     std::vector<Command> commands_[2];
     std::vector<Command> events_[2];
     int current_ = 0;
+    int program_ = 0; // current program number
     // buffer
     int blockSize_ = 0;
     ProcessPrecision precision_ = ProcessPrecision::Single;

@@ -457,14 +457,22 @@ std::string ThreadedPlugin::getParameterString(int index) const {
     return plugin_->getParameterString(index);
 }
 
-void ThreadedPlugin::setProgramName(const std::string& name) {
-    ScopedLock lock(mutex_);
-    plugin_->setProgramName(name);
+void ThreadedPlugin::setProgram(int index) {
+    // let's cache immediately
+#if 1
+    program_ = index;
+#endif
+    DeferredPlugin::setProgram(index);
 }
 
 int ThreadedPlugin::getProgram() const {
     // NB: is this thread-safe?
     return plugin_->getProgram();
+}
+
+void ThreadedPlugin::setProgramName(const std::string& name) {
+    ScopedLock lock(mutex_);
+    plugin_->setProgramName(name);
 }
 
 std::string ThreadedPlugin::getProgramName() const {
@@ -528,6 +536,8 @@ void ThreadedPlugin::readBankFile(const std::string& path) {
 void ThreadedPlugin::readBankData(const char *data, size_t size) {
     ScopedLock lock(mutex_);
     plugin_->readBankData(data, size);
+    // update program number
+    program_ = plugin_->getProgram();
 }
 
 void ThreadedPlugin::writeBankFile(const std::string& path) {
