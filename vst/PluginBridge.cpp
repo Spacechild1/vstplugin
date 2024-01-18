@@ -61,6 +61,8 @@ PluginBridge::ptr PluginBridge::create(CpuArch arch){
     return bridge;
 }
 
+int getNumDSPThreads();
+
 PluginBridge::PluginBridge(CpuArch arch, bool shared)
     : shared_(shared)
 {
@@ -71,13 +73,17 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
     shm_.addChannel(ShmChannel::Queue, queueSize, "ui_rcv");
     if (shared){
         // --- shared plugin bridge ---
-        // a single NRT channel followed by several RT channels.
+        // A single NRT channel followed by several RT channels.
         //
-        // the bridge can be used from several threads concurrently!
-        // this is necessary for hosts with multi-threaded audio processing,
-        // like Supernova, some libpd apps - and maybe even Pd itself :-)
-        // for the actual algorithm, see getRTChannel().
-        numThreads_ = std::thread::hardware_concurrency();
+        // The bridge can be used from several threads concurrently!
+        // This is necessary for hosts with multi-threaded audio processing
+        // (like Supernova), some libpd apps - and maybe even Pd itself :-)
+        // For the actual channel allocation algorithm, see getRTChannel().
+        //
+        // NB: getNumDSPThreads() defaults to the number of logical CPUs,
+        // unless explicitly overriden by the user (which implies that they
+        // really want to use *our* multithreading implemention).
+        numThreads_ = getNumDSPThreads();
         LOG_DEBUG("PluginBridge: using " << numThreads_ << " RT threads");
         shm_.addChannel(ShmChannel::Request, nrtRequestSize, "nrt");
         for (int i = 0; i < numThreads_; ++i){
@@ -447,9 +453,9 @@ RTChannel PluginBridge::getRTChannel(){
                 }
             #if 0
                 // pause CPU everytime we cycle through all spinlocks
-                const int spin_count = 1000;
                 if (index == threadIndex) {
-                    for (int i = 0; i < spin_count; ++i) {
+                    int spinCount = 1000;
+                    while (spinCount--) {
                         pauseCpu();
                     }
                 }

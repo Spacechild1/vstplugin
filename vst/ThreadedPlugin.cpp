@@ -23,10 +23,24 @@ namespace vst {
 
 static std::atomic<int> gNumDSPThreads;
 
+int getNumLogicalCPUs() {
+    static auto n = std::thread::hardware_concurrency();
+    return n;
+}
+
 // set the number of DSP threads (0 = default)
 void setNumDSPThreads(int numThreads) {
     LOG_DEBUG("setNumDSPThreads: " << numThreads);
     gNumDSPThreads.store(std::max<int>(numThreads, 0));
+}
+
+int getNumDSPThreads() {
+    auto numThreads = gNumDSPThreads.load();
+    if (numThreads > 0) {
+        return numThreads;
+    } else {
+        return getNumLogicalCPUs(); // default
+    }
 }
 
 static thread_local bool gCurrentThreadDSP;
@@ -56,11 +70,7 @@ DSPThreadPool::DSPThreadPool() {
     running_.store(true);
 
     //  number of available hardware threads minus one (= the main audio thread)
-    int numDSPThreads = gNumDSPThreads.load();
-    if (numDSPThreads == 0) {
-        numDSPThreads = std::thread::hardware_concurrency(); // default
-    }
-    int numThreads = std::max<int>(numDSPThreads - 1, 1);
+    int numThreads = std::max<int>(getNumDSPThreads() - 1, 1);
     THREAD_DEBUG("number of DSP helper threads: " << numThreads);
 
     for (int i = 0; i < numThreads; ++i){
