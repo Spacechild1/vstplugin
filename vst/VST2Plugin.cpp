@@ -968,9 +968,8 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     header[5] = plugin_->version;
     header[6] = getNumParameters();
 
-    char prgName[28];
-    strncpy(prgName, getProgramName().c_str(), 27);
-    prgName[27] = '\0';
+    char pgmName[28];
+    snprintf(pgmName, sizeof(pgmName), "%s", getProgramName().c_str());
 
     if (!hasChunkData()){
             // parameters
@@ -986,7 +985,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
             bufptr += 4;
         }
             // serialize program name
-        memcpy(bufptr, prgName, 28);
+        memcpy(bufptr, pgmName, 28);
         bufptr += 28;
             // serialize parameters
         for (int i = 0; i < nparams; ++i){
@@ -1015,7 +1014,7 @@ void VST2Plugin::writeProgramData(std::string& buffer){
             bufptr += 4;
         }
             // serialize program name
-        memcpy(bufptr, prgName, 28);
+        memcpy(bufptr, pgmName, 28);
         bufptr += 28;
             // serialize chunk data
         int32_to_bytes(chunkSize, bufptr); // size
