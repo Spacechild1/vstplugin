@@ -705,10 +705,10 @@ struct HostAttribute {
     explicit HostAttribute(const Vst::TChar* s);
     explicit HostAttribute(const char * data, uint32 n);
     HostAttribute(const HostAttribute& other) = delete; // LATER
-    HostAttribute(HostAttribute&& other);
+    HostAttribute(HostAttribute&& other) noexcept;
     ~HostAttribute();
     HostAttribute& operator =(const HostAttribute& other) = delete; // LATER
-    HostAttribute& operator =(HostAttribute&& other);
+    HostAttribute& operator =(HostAttribute&& other) noexcept;
     // data
     union v
     {

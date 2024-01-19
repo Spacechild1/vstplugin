@@ -306,7 +306,7 @@ class PdLog {
 public:
     PdLog(PdLogLevel level = PdNormal)
         : level_(level){}
-    PdLog(PdLog&& other)
+    PdLog(PdLog&& other) noexcept
         : ss_(std::move(other.ss_)), level_(other.level_) {}
     ~PdLog(){
         auto str = ss_.str();

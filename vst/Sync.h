@@ -261,7 +261,7 @@ class UniqueLock {
         mutex_->lock();
     }
     UniqueLock(const UniqueLock&) = delete;
-    UniqueLock(UniqueLock&& other)
+    UniqueLock(UniqueLock&& other) noexcept
         : mutex_(other.mutex_), owns_(other.owns_)
     {
         other.mutex_ = nullptr;
@@ -275,7 +275,7 @@ class UniqueLock {
     }
 
     UniqueLock& operator=(const UniqueLock&) = delete;
-    UniqueLock& operator=(UniqueLock&& other){
+    UniqueLock& operator=(UniqueLock&& other) noexcept {
         if (owns_){
             mutex_->unlock();
         }
@@ -347,7 +347,7 @@ class ReadLock {
         mutex_->lock_shared();
     }
     ReadLock(const ReadLock&) = delete;
-    ReadLock(ReadLock&& other)
+    ReadLock(ReadLock&& other) noexcept
         : mutex_(other.mutex_), owns_(other.owns_)
     {
         other.mutex_ = nullptr;
@@ -361,7 +361,7 @@ class ReadLock {
     }
 
     ReadLock& operator=(const ReadLock&) = delete;
-    ReadLock& operator=(ReadLock&& other){
+    ReadLock& operator=(ReadLock&& other) noexcept {
         if (owns_){
             mutex_->unlock_shared();
         }

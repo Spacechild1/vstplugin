@@ -197,7 +197,7 @@ public:
         }
     }
 
-    VSTPluginDelegatePtr(VSTPluginDelegatePtr&& other) {
+    VSTPluginDelegatePtr(VSTPluginDelegatePtr&& other) noexcept {
         ptr_ = other.ptr_;
         other.ptr_ = nullptr;
         // refcount stays the same
@@ -209,7 +209,7 @@ public:
         }
     }
 
-    VSTPluginDelegatePtr& operator=(VSTPluginDelegatePtr&& other) {
+    VSTPluginDelegatePtr& operator=(VSTPluginDelegatePtr&& other) noexcept {
         if (ptr_) {
             ptr_->release();
         }

@@ -27,12 +27,12 @@ public:
         close();
     }
 
-    ProcessHandle(ProcessHandle&& other) {
+    ProcessHandle(ProcessHandle&& other) noexcept {
         pi_ = other.pi_;
         other.pi_.dwProcessId = 0; // sentinel
     }
 
-    ProcessHandle& operator=(ProcessHandle&& other) {
+    ProcessHandle& operator=(ProcessHandle&& other) noexcept {
         pi_ = other.pi_;
         other.pi_.dwProcessId = 0; // sentinel
         return *this;
@@ -43,12 +43,12 @@ public:
     ProcessHandle(int pid)
         : pid_(pid) {}
 
-    ProcessHandle(ProcessHandle&& other) {
+    ProcessHandle(ProcessHandle&& other) noexcept {
         pid_ = other.pid_;
         other.pid_ = -1; // sentinel
     }
 
-    ProcessHandle& operator=(ProcessHandle&& other) {
+    ProcessHandle& operator=(ProcessHandle&& other) noexcept {
         pid_ = other.pid_;
         other.pid_ = -1; // sentinel
         return *this;

@@ -667,7 +667,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
             std::getline(file, line);
             int n = getCount(line);
             while (n-- && std::getline(file, line)){
-                programs.push_back(std::move(line));
+                programs.push_back(line);
             }
             break; // done
         } else if (line == "[subplugins]"){
@@ -731,9 +731,9 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                 }
             } catch (const Error&){
                 throw; // rethrow
-            } catch (const std::invalid_argument& e) {
+            } catch (const std::invalid_argument&) {
                 throw Error("invalid argument for key '" + key + "': " + value);
-            } catch (const std::out_of_range& e) {
+            } catch (const std::out_of_range&) {
                 throw Error("out of range argument for key '" + key + "': " + value);
             } catch (const std::exception& e){
                 throw Error("unknown error: " + std::string(e.what()));

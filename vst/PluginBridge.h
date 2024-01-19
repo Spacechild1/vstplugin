@@ -44,7 +44,7 @@ struct _Channel {
     _Channel(ShmChannel& channel, std::unique_lock<Mutex> lock)
         : channel_(&channel), lock_(std::move(lock))
         { channel.clear(); }
-    _Channel(_Channel&& other)
+    _Channel(_Channel&& other) noexcept
         : channel_(other.channel_), lock_(std::move(other.lock_)) {}
 
     int32_t capacity() const { return channel_->capacity(); }
@@ -143,7 +143,7 @@ class PluginBridge final
 #else
     int logRead_ = -1;
 #endif
-    uint32_t numThreads_ = 0;
+    int numThreads_ = 0;
     std::unique_ptr<PaddedSpinLock[]> locks_;
     std::unordered_map<uint32_t, IPluginListener*> clients_;
     Mutex clientMutex_;

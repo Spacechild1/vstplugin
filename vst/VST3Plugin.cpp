@@ -2765,7 +2765,7 @@ HostAttribute::HostAttribute(const char * data, uint32 n) : size(n), type(kBinar
     memcpy(v.s, data, n);
 }
 
-HostAttribute::HostAttribute(HostAttribute&& other){
+HostAttribute::HostAttribute(HostAttribute&& other) noexcept {
     type = other.type;
     size = other.size;
     v = other.v;
@@ -2774,7 +2774,7 @@ HostAttribute::HostAttribute(HostAttribute&& other){
     other.v.b = nullptr; // also strings
 }
 
-HostAttribute& HostAttribute::operator=(HostAttribute&& other){
+HostAttribute& HostAttribute::operator=(HostAttribute&& other) noexcept {
     if (size > 0){
         delete[] v.b; // also strings
     }

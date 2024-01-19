@@ -26,13 +26,13 @@ struct Bus : AudioBus {
     Bus(const Bus&) = delete;
     Bus& operator=(const Bus&) = delete;
 
-    Bus(Bus&& other) {
+    Bus(Bus&& other) noexcept  {
         numChannels = other.numChannels;
         channelData32 = other.channelData32;
         other.numChannels = 0;
         other.channelData32 = nullptr;
     }
-    Bus& operator=(Bus&& other) {
+    Bus& operator=(Bus&& other) noexcept {
         numChannels = other.numChannels;
         channelData32 = other.channelData32;
         other.numChannels = 0;
