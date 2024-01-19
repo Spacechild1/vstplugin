@@ -482,16 +482,16 @@ static std::string resolvePluginPath(const std::string& s) {
 // query a plugin by its key or file path and probe if necessary.
 static const PluginDesc* queryPlugin(const std::string& path) {
     // first try as key
-    auto desc = gPluginDict.findPlugin(path);
+    auto desc = getPluginDict().findPlugin(path);
     if (!desc) {
         // then try as file path
         auto absPath = resolvePluginPath(path);
         if (!absPath.empty()){
-            desc = gPluginDict.findPlugin(absPath);
+            desc = getPluginDict().findPlugin(absPath);
             if (!desc) {
                 // finally probe plugin
                 if (probePlugin(absPath, 0, getVerbosity() >= 0)) {
-                    desc = gPluginDict.findPlugin(absPath);
+                    desc = getPluginDict().findPlugin(absPath);
                     // findPlugin() fails if the module contains several plugins,
                     // which means the path can't be used as a key.
                     if (!desc){
@@ -3422,6 +3422,7 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     const char* filename = nullptr;
     auto path = args->gets(); // plugin path/key
     auto size = strlen(path) + 1;
+    LOG_DEBUG("VSTPlugin: query " << path);
     // temp file or buffer to store the plugin info
     if (args->nextTag() == 's') {
         filename = args->gets();

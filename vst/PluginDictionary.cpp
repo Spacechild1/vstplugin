@@ -175,7 +175,7 @@ void PluginDictionary::read(const std::string& path, bool update){
                     }
                 }
                 if (plugin){
-                    LOG_DEBUG("read plugin " << plugin->name);
+                    LOG_DEBUG("read plugin " << plugin->key());
                     // store plugin at keys
                     for (auto& key : keys){
                         int index = plugin->bridged() ? BRIDGED : NATIVE;
