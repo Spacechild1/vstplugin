@@ -134,6 +134,8 @@ void quit() {
     [NSApp postEvent:event atStart:NO];
 }
 
+// NB: this check must *not* implicitly create the event loop!
+// In fact, this is actually called inside the EventLoop constructor!
 bool isCurrentThread() {
     return [NSThread isMainThread];
 }

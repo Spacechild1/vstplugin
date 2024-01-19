@@ -1550,7 +1550,6 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
         if (mode_ == ProcessMode::Offline){
             return kVstProcessLevelOffline;
         } else {
-            // make sure that we don't accidentally create the event loop!
             if (window_){
                 if (UIThread::isCurrentThread()){
                     return kVstProcessLevelUser;
@@ -1558,6 +1557,7 @@ VstIntPtr VST2Plugin::callback(VstInt32 opcode, VstInt32 index, VstIntPtr value,
                     return kVstProcessLevelRealtime;
                 }
             } else {
+                // might be RT or NRT thread...
                 return kVstProcessLevelUnknown;
             }
         }

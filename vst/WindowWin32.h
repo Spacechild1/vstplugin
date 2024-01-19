@@ -34,8 +34,6 @@ public:
 
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
     void removePollFunction(UIThread::Handle handle);
-
-    bool checkThread();
 private:
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
 
@@ -43,7 +41,6 @@ private:
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
     void handleTimer(UINT_PTR id);
     HANDLE thread_ = NULL;
-    DWORD threadID_ = 0;
     HWND hwnd_ = NULL;
     Mutex mutex_;
     SyncCondition event_;

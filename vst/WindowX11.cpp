@@ -30,8 +30,11 @@ void quit(){
     gQuitEvent_.set();
 }
 
-bool isCurrentThread(){
-    return X11::EventLoop::instance().checkThread();
+static thread_local bool gCurrentThreadUI = false;
+
+// NB: this check must *not* implicitly create the event loop!
+bool isCurrentThread() {
+    return gCurrentThreadUI;
 }
 
 bool available() {
@@ -148,6 +151,8 @@ void EventLoop::pushCommand(UIThread::Callback cb, void *user){
 
 void EventLoop::run(){
     setThreadPriority(Priority::Low);
+
+    UIThread::gCurrentThreadUI = true;
 
     LOG_DEBUG("X11: start event loop");
 
@@ -409,10 +414,6 @@ void EventLoop::removePollFunction(UIThread::Handle handle) {
     sync();
 }
 
-bool EventLoop::checkThread(){
-    return std::this_thread::get_id() == thread_.get_id();
-}
-
 void EventLoop::registerWindow(Window *w) {
     assert(UIThread::isCurrentThread());
     for (auto& it : windows_){
@@ -444,7 +445,7 @@ void EventLoop::registerEventHandler(int fd, EventHandlerCallback cb, void *obj)
     if (ok) {
         eventHandlers_[fd] = EventHandler { obj, cb };
     } else {
-        LOG_ERROR("X11: registerEventHandler() called from on thread!");
+        LOG_ERROR("X11: registerEventHandler() called on wrong thread!");
     }
 }
 

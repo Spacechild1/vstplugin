@@ -37,7 +37,6 @@ class EventLoop {
     bool callSync(UIThread::Callback cb, void *user);
     bool callAsync(UIThread::Callback cb, void *user);
 
-    bool checkThread();
     Display *getDisplay() { return display_; }
     ::Window getRoot() { return root_; }
 

@@ -22,7 +22,7 @@ void setParentProcess(int pid) {
 namespace UIThread {
 
 // fake event loop
-Event gQuitEvent_;
+static Event gQuitEvent_;
 
 void setup(){
     Win32::EventLoop::instance();
@@ -36,8 +36,11 @@ void quit(){
     gQuitEvent_.set();
 }
 
+static thread_local bool gCurrentThreadUI = false;
+
+// NB: this check must *not* implicitly create the event loop!
 bool isCurrentThread() {
-    return Win32::EventLoop::instance().checkThread();
+    return gCurrentThreadUI;
 }
 
 bool available() { return true; }
@@ -80,6 +83,8 @@ DWORD EventLoop::run(void *user){
     CoInitialize(nullptr);
 
     setThreadPriority(Priority::Low);
+
+    UIThread::gCurrentThreadUI = true;
 
     auto self = (EventLoop *)user;
     // invisible window for postMessage()!
@@ -250,7 +255,7 @@ EventLoop::EventLoop(){
         LOG_DEBUG("Win32: registered editor window class!");
     }
     // run thread
-    thread_ = CreateThread(NULL, 0, run, this, 0, &threadID_);
+    thread_ = CreateThread(NULL, 0, run, this, 0, NULL);
     if (!thread_){
         throw Error("Win32: couldn't create UI thread!");
     };
@@ -274,10 +279,6 @@ EventLoop::~EventLoop() {
         CloseHandle(thread_);
     }
     LOG_DEBUG("Win32: EventLoop quit");
-}
-
-bool EventLoop::checkThread() {
-    return GetCurrentThreadId() == threadID_;
 }
 
 // IMPORTANT: do not use PostThreadMessage() because the message
@@ -383,6 +384,8 @@ bool Window::canResize(){
     // NOTE: *don't* do this in the constructor, because it
     // can crash certain VST3 plugins (when destroyed without
     // having actually opened the editor)
+    // TODO: is this really necessary anymore? Looks like we've fixed this
+    // in the VST3 destructor
     if (!didQueryResize_){
         canResize_ = plugin_->canResize();
         LOG_DEBUG("Win32: can resize: " << (canResize_ ? "yes" : "no"));
