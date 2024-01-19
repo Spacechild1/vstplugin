@@ -311,7 +311,7 @@ class Error : public std::exception {
     };
 
     Error(ErrorCode code = NoError)
-        : code_(code) {}
+        : msg_("no error"), code_(code) {}
     Error(const std::string& msg)
         : msg_(msg), code_(UnknownError) {}
     Error(ErrorCode code, const std::string& msg)

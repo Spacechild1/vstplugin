@@ -277,18 +277,16 @@ template<typename T>
 void defer(const T& fn, bool uithread){
     // call NRT method on the correct thread
     if (uithread){
-        bool result = true;
         Error err;
         bool ok = UIThread::callSync([&](){
             try {
                 fn();
             } catch (const Error& e){
                 err = e;
-                result = false;
             }
         });
         if (ok){
-            if (!result){
+            if (err.code() != Error::NoError){
                 throw err;
             }
             return;

@@ -24,12 +24,10 @@ namespace vst {
 template<typename T>
 void defer(const T& fn){
     // call on UI thread and catch exceptions
-    bool success = false;
     Error err;
     bool ok = UIThread::callSync([&](){
         try {
             fn();
-            success = true;
         } catch (const Error& e){
             err = e;
         } catch (const std::exception& e) {
@@ -37,7 +35,7 @@ void defer(const T& fn){
         }
     });
     if (ok){
-        if (!success){
+        if (err.code() != Error::NoError) {
             throw err;
         }
         return;
