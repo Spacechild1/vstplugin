@@ -479,7 +479,6 @@ class VST3Plugin final :
     void updateEditor() override;
     void checkEditorSize(int &width, int &height) const override;
     void resizeEditor(int width, int height) override;
-    bool canResize() const override;
 
     IWindow *getWindow() const override {
         return window_.get();
@@ -490,6 +489,7 @@ class VST3Plugin final :
     int getNumParameters() const;
     int getNumPrograms() const;
     bool checkEditor();
+    bool checkEditorResizable();
     bool hasPrecision(ProcessPrecision precision) const;
     bool hasTail() const;
     int getTailSize() const;

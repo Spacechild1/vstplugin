@@ -250,7 +250,6 @@ class IPlugin {
     virtual void updateEditor() = 0;
     virtual void checkEditorSize(int& width, int& height) const = 0;
     virtual void resizeEditor(int width, int height) = 0;
-    virtual bool canResize() const = 0;
 
     virtual IWindow* getWindow() const = 0;
 

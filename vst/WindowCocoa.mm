@@ -322,17 +322,8 @@ Window::~Window(){
     LOG_DEBUG("Cocoa: destroyed Window");
 }
 
-bool Window::canResize(){
-    // cache for buggy plugins!
-    // NOTE: *don't* do this in the constructor, because it
-    // can crash certain VST3 plugins (when destroyed without
-    // having actually opened the editor)
-    if (!didQueryResize_){
-        canResize_ = plugin_->canResize();
-        LOG_DEBUG("Cocoa: can resize: " << (canResize_ ? "yes" : "no"));
-        didQueryResize_ = true;
-    }
-    return canResize_;
+bool Window::canResize() const {
+    return plugin_->info().editorResizable();
 }
 
 void Window::open(){

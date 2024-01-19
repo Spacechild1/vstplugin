@@ -537,7 +537,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     auto newInfo = !info_ ? std::make_shared<PluginDesc>(factory_) : nullptr;
     TUID uid;
     PClassInfo2 ci2;
-    auto factory2 = FUnknownPtr<IPluginFactory2> (factory);
+    auto factory2 = FUnknownPtr<IPluginFactory2>(factory);
     if (factory2 && factory2->getClassInfo2(which, &ci2) == kResultTrue){
         memcpy(uid, ci2.cid, sizeof(TUID));
         if (newInfo){
@@ -572,7 +572,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         throw Error(Error::PluginError, "Couldn't initialize VST3 component");
     }
     // first try to get controller from the component part (simple plugins)
-    FUnknownPtr<Vst::IEditController> controller(component_);
+    auto controller = FUnknownPtr<Vst::IEditController>(component_);
     if (controller){
         LOG_DEBUG("VST3Plugin: get controller from component");
         controller_ = shared(controller.getInterface());
@@ -686,6 +686,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
         flags |= hasPrecision(ProcessPrecision::Double) * PluginDesc::DoublePrecision;
         flags |= midiInput * PluginDesc::MidiInput;
         flags |= midiOutput * PluginDesc::MidiOutput;
+        flags |= checkEditorResizable() * PluginDesc::EditorResizable;
 
         newInfo->flags = flags;
 
@@ -782,9 +783,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     // cache for automatable parameters
     int numAutoParams = getNumParameters();
     if (numAutoParams > 0) {
-        paramCache_.reset(new std::atomic<float>[numAutoParams]{});
+        paramCache_.reset(new std::atomic<float>[numAutoParams]{}); // !
         int numBins = alignTo(numAutoParams, paramCacheBits) / paramCacheBits;
-        paramCacheBins_.reset(new std::atomic<size_t>[numBins]{});
+        paramCacheBins_.reset(new std::atomic<size_t>[numBins]{}); // !
         numParamCacheBins_ = numBins;
     }
     updateParameterCache();
@@ -2176,6 +2177,15 @@ bool VST3Plugin::checkEditor() {
     }
 }
 
+bool VST3Plugin::checkEditorResizable() {
+    createViewLazy(true); // may be NULL!
+    if (view_) {
+        return view_->canResize() == kResultTrue;
+    } else {
+        return false;
+    }
+}
+
 tresult VST3Plugin::resizeView(IPlugView *view, ViewRect *newSize){
     LOG_DEBUG("resizeView");
     if (window_){
@@ -2323,11 +2333,6 @@ void VST3Plugin::resizeEditor(int width, int height) {
     } else {
         LOG_ERROR("couldn't get editor size");
     }
-}
-
-bool VST3Plugin::canResize() const {
-    const_cast<VST3Plugin *>(this)->createViewLazy();
-    return view_->canResize() == kResultTrue;
 }
 
 void VST3Plugin::handleUIParamChange(Vst::ParamID id, Vst::ParamValue value) {

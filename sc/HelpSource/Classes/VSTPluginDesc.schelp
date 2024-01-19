@@ -61,6 +61,10 @@ METHOD:: editor
 
 whether the plugin has a VST GUI editor
 
+METHOD:: editorResizable
+
+whether the editor is resizable
+
 METHOD:: synth
 
 whether the plugin is a VST instrument

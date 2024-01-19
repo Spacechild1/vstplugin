@@ -1473,7 +1473,7 @@ static void vstplugin_search_stop(t_vstplugin *x){
     }
 }
 
-/*----------------------- "search_clear" ------------------------*/
+/*----------------------- "cache_clear" ------------------------*/
 
 static void vstplugin_cache_clear(t_vstplugin *x, t_floatarg f){
     // unloading plugins might crash, so we first delete the cache file
@@ -1852,6 +1852,7 @@ static void vstplugin_info(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
 #endif
     sendInfo(x, "id", ("0x"+info->uniqueID));
     sendInfo(x, "editor", info->editor());
+    sendInfo(x, "resizable", info->editorResizable());
     sendInfo(x, "synth", info->synth());
     sendInfo(x, "single", info->singlePrecision());
     sendInfo(x, "double", info->doublePrecision());
@@ -1968,6 +1969,7 @@ static void vstplugin_print(t_vstplugin *x){
     post("programs: %d", info.numPrograms());
     post("presets: %d", info.numPresets());
     post("editor: %s", info.editor() ? "yes" : "no");
+    post("resizable: %s", info.editorResizable() ? "yes" : "no");
     post("single precision: %s", info.singlePrecision() ? "yes" : "no");
     post("double precision: %s", info.doublePrecision() ? "yes" : "no");
     post("midi input: %s", info.midiInput() ? "yes" : "no");

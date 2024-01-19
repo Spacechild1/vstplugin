@@ -88,7 +88,7 @@ class Window : public IWindow {
  private:
     void *getHandle();
     void updateFrame();
-    bool canResize();
+    bool canResize() const;
 
     CocoaEditorWindow * window_ = nullptr;
     IPlugin *plugin_;
@@ -96,11 +96,6 @@ class Window : public IWindow {
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
     bool adjustSize_ = false;
     bool adjustPos_ = false;
-    // HACK: at least one plugin only reports "canResize" correctly
-    // the very first time and then always returns false, so we cache
-    // "true" results.
-    bool canResize_ = false;
-    bool didQueryResize_ = false;
     bool loading_ = false;
 
     static std::atomic<int> numWindows_;

@@ -790,7 +790,7 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
     if (chn.getReply(reply)){
         if (reply->type == Command::PluginData){
             auto realSize = reply->i;
-            // data is in a seperate message!
+            // data is in a seperate message (avoids unncessary copy)!
             const char *data;
             size_t size;
             if (chn.getReply(data, size)){
@@ -851,10 +851,6 @@ void PluginClient::checkEditorSize(int& width, int& height) const {
 
 void PluginClient::resizeEditor(int width, int height) {
     FORBIDDEN_METHOD("resizeEditor")
-}
-
-bool PluginClient::canResize() const {
-    FORBIDDEN_METHOD("canResize")
 }
 
 // VST2 only

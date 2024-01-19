@@ -15,6 +15,7 @@ VSTPluginDesc {
 	var <>presets;
 	// flags
 	var <>editor;
+	var <>editorResizable;
 	var <>synth;
 	var <>singlePrecision;
 	var <>doublePrecision;
@@ -380,7 +381,7 @@ VSTPluginDesc {
 						\flags,
 						{
 							flags = hex2int.(value);
-							#[\editor, \synth, \singlePrecision, \doublePrecision, \midiInput, \midiOutput, \sysexInput, \sysexOutput, \bridged].do { arg item, i;
+							#[\editor, \synth, \singlePrecision, \doublePrecision, \midiInput, \midiOutput, \sysexInput, \sysexOutput, \bridged, \editorResizable].do { arg item, i;
 								info.slotPut(item, (flags & (1 << i)).asBoolean)
 							}
 						},
@@ -423,6 +424,7 @@ VSTPluginDesc {
 		++ "programs: %".format(this.numPrograms) ++ sep
 		++ "presets: %".format(this.numPresets) ++ sep
 		++ "editor: %".format(this.editor) ++ sep
+		++ "resizable: %".format(this.editorResizable) ++ sep
 		// ++ "single precision: %".format(this.singlePrecision) ++ sep
 		// ++ "double precision: %".format(this.doublePrecision) ++ sep
 		++ "MIDI input: %".format(this.midiInput) ++ sep

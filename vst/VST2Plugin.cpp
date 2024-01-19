@@ -1214,8 +1214,6 @@ void VST2Plugin::checkEditorSize(int &width, int &height) const {}
 
 void VST2Plugin::resizeEditor(int width, int height) {}
 
-bool VST2Plugin::canResize() const { return false; }
-
 // private
 
 std::string VST2Plugin::getPluginName() const {

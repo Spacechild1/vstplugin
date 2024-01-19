@@ -379,19 +379,8 @@ Window::~Window(){
     doClose();
 }
 
-bool Window::canResize(){
-    // cache for buggy plugins!
-    // NOTE: *don't* do this in the constructor, because it
-    // can crash certain VST3 plugins (when destroyed without
-    // having actually opened the editor)
-    // TODO: is this really necessary anymore? Looks like we've fixed this
-    // in the VST3 destructor
-    if (!didQueryResize_){
-        canResize_ = plugin_->canResize();
-        LOG_DEBUG("Win32: can resize: " << (canResize_ ? "yes" : "no"));
-        didQueryResize_ = true;
-    }
-    return canResize_;
+bool Window::canResize() const {
+    return plugin_->info().editorResizable();
 }
 
 LRESULT WINAPI Window::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam){

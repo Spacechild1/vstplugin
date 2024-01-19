@@ -141,15 +141,13 @@ class Window : public IWindow {
 
     void *getHandle() { return (void *)window_; }
  private:
-    bool canResize();
+    bool canResize() const;
 
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;
 
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    bool canResize_ = false;
-    bool didQueryResize_ = false;
 
     // helper methods
     void doOpen();

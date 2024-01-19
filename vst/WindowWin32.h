@@ -71,7 +71,7 @@ private:
     void updateFrame();
     void onSizing(RECT& newRect);
     void onSize(int w, int h);
-    bool canResize();
+    bool canResize() const;
 
     static const UINT_PTR timerID = 0x375067f6;
     static void CALLBACK updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time);
@@ -79,8 +79,6 @@ private:
     IPlugin* plugin_ = nullptr;
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
     bool adjustSize_ = false;
-    bool canResize_ = false;
-    bool didQueryResize_ = false;
 
     struct Command {
         Window *owner;

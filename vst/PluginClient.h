@@ -69,15 +69,11 @@ public:
     void readBankData(const std::string& buffer) {
         readBankData(buffer.data(), buffer.size());
     }
-    void sendFile(Command::Type type, const std::string& path);
-    void sendData(Command::Type type, const char *data, size_t size);
 
     void writeProgramFile(const std::string& path) override;
     void writeProgramData(std::string& buffer) override;
     void writeBankFile(const std::string& path) override;
     void writeBankData(std::string& buffer) override;
-
-    void receiveData(Command::Type type, std::string& buffer);
 
     void openEditor(void *window) override;
     void closeEditor() override;
@@ -85,7 +81,6 @@ public:
     void updateEditor() override;
     void checkEditorSize(int& width, int& height) const override;
     void resizeEditor(int width, int height) override;
-    bool canResize() const override;
 
     IWindow* getWindow() const override {
         return window_.get();
@@ -95,12 +90,19 @@ public:
     int canDo(const char *what) const override;
     intptr_t vendorSpecific(int index, intptr_t value, void *p, float opt) override;
 protected:
-    int numParameters() const { return info_->numParameters(); }
-    int numPrograms() const { return info_->numPrograms(); }
     void pushCommand(const Command& cmd) override {
         commands_.push_back(cmd);
     }
+
+    int numParameters() const { return info_->numParameters(); }
+    int numPrograms() const { return info_->numPrograms(); }
+
+    void sendFile(Command::Type type, const std::string& path);
+    void sendData(Command::Type type, const char *data, size_t size);
+
+    void receiveData(Command::Type type, std::string& buffer);
     template<typename T>
+
     void doProcess(ProcessData& data);
     void sendCommands(RTChannel& channel);
     void dispatchReply(const ShmCommand &reply);

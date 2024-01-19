@@ -136,10 +136,14 @@ struct PluginDesc final {
         MidiOutput = 1 << 5,
         SysexInput = 1 << 6,
         SysexOutput = 1 << 7,
-        Bridged = 1 << 8
+        Bridged = 1 << 8,
+        EditorResizable = 1 << 9
     };
     bool editor() const {
         return flags & HasEditor;
+    }
+    bool editorResizable() const {
+        return flags & EditorResizable;
     }
     bool synth() const {
         return flags & IsSynth;

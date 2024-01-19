@@ -121,9 +121,6 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     void resizeEditor(int width, int height) override {
         plugin_->resizeEditor(width, height);
     }
-    bool canResize() const override {
-        return plugin_->canResize();
-    }
     IWindow *getWindow() const override {
         return plugin_->getWindow();
     }
