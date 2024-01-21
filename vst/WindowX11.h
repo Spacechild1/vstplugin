@@ -92,7 +92,7 @@ class EventLoop {
         Timer(TimerCallback cb, void *obj, double interval)
             : cb_(cb), obj_(obj), interval_(interval) {}
         void update(double delta) {
-            assert(cb_ != nullptr);
+            assert(active());
             elapsed_ += delta;
             while (elapsed_ > interval_) {
                 // NB: if the interval is short, the timer may invalidate

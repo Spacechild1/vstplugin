@@ -378,7 +378,7 @@ UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
 
     auto handle = nextPollFunctionHandle_++;
 
-    pushCommand([](void *x) {
+    callAsync([](void *x) {
         auto args = static_cast<Args *>(x);
         args->self->pollFunctions_.emplace(args->handle, args->context);
         args->self->doRegisterTimer(updateInterval, args->fn, args->context);
@@ -394,7 +394,9 @@ void EventLoop::removePollFunction(UIThread::Handle handle) {
         UIThread::Handle handle;
     };
 
-    pushCommand([](void *x) {
+    // synchronize with UI thread to ensure that the poll function
+    // has been removed before we return from this function!
+    callSync([](void *x) {
         auto args = static_cast<Args *>(x);
         auto& pollFunctions = args->self->pollFunctions_;
         auto it = pollFunctions.find(args->handle);
@@ -408,10 +410,6 @@ void EventLoop::removePollFunction(UIThread::Handle handle) {
         }
         delete args;
     }, new Args {this, handle});
-
-    // synchronize with UI thread to ensure that the poll function
-    // has been removed before we return from this function.
-    sync();
 }
 
 void EventLoop::registerWindow(Window *w) {
@@ -494,13 +492,17 @@ void EventLoop::unregisterTimer(void *obj) {
 
 void EventLoop::doUnregisterTimer(void *obj){
     int count = 0;
-    for (auto& timer : timers_) {
-        if (timer.match(obj)) {
-            // just invalidate, don't delete!
-            timer.invalidate();
-            count++;
+    auto unregister = [&count, obj](auto& timers) {
+        for (auto& timer : timers) {
+            if (timer.match(obj)) {
+                // just invalidate, don't delete!
+                timer.invalidate();
+                count++;
+            }
         }
-    }
+    };
+    unregister(newTimers_);
+    unregister(timers_);
     LOG_DEBUG("X11: unregistered " << count << " timers");
 }
 

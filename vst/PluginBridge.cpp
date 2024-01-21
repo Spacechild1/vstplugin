@@ -157,10 +157,12 @@ PluginBridge::PluginBridge(CpuArch arch, bool shared)
 }
 
 PluginBridge::~PluginBridge(){
+    LOG_DEBUG("PluginBridge: remove poll function");
     UIThread::removePollFunction(pollFunction_);
 
     // send quit message
     if (alive()){
+        LOG_DEBUG("PluginBridge: send quit message");
         ShmCommand cmd(Command::Quit);
 
         auto chn = getNRTChannel();
@@ -172,6 +174,7 @@ PluginBridge::~PluginBridge(){
     // this might even be dangerous if the subprocess
     // somehow got stuck. maybe use some timeout?
     if (process_) {
+        LOG_DEBUG("PluginBridge: wait for process");
         try {
             process_.wait();
         } catch (const Error& e) {
@@ -384,8 +387,11 @@ void PluginBridge::postUIThread(const ShmUICommand& cmd){
 }
 
 void PluginBridge::pollUIThread(){
-    auto& channel = shm_.getChannel(Channel::UIReceive);
+    if (!alive()) {
+        return;
+    }
 
+    auto& channel = shm_.getChannel(Channel::UIReceive);
     char buffer[64]; // larger than ShmCommand!
     size_t size = sizeof(buffer);
     // read all available events
