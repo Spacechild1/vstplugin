@@ -218,6 +218,7 @@ static void initGui() {
     gParamChangesToGui.reserve(1024);
 
     // called periodically from UI thread.
+    // TODO: remove poll function once there are no plugins
     UIThread::addPollFunction([](void *) {
         UIParamChange p;
         while (gParamChangesToGui.pop(p)) {

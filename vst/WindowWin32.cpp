@@ -99,7 +99,8 @@ DWORD EventLoop::run(void *user){
     self->event_.set(); // notify constructor
     LOG_DEBUG("Win32: start message loop");
 
-    // setup timer
+    // add timer for poll functions
+    // TODO: add/remove timer on demand!
     auto timer = SetTimer(hwnd, 0, EventLoop::updateInterval, NULL);
 
     MSG msg;

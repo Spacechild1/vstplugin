@@ -21,8 +21,9 @@ class Window;
 
 class EventLoop {
  public:
-    static const int sleepGrain = 5;
-    static const int updateInterval = 30;
+    // TODO: is pollGrain really necessary?
+    static constexpr int pollGrain = 10;
+    static constexpr int updateInterval = 30;
 
     static EventLoop& instance();
 
@@ -58,10 +59,11 @@ class EventLoop {
     void doRegisterTimer(int64_t ms, TimerCallback cb, void *obj);
     void doUnregisterTimer(void *obj);
     void run();
+    int updateTimers();
+    void pollFileDescriptors(int timeout);
     void pollX11Events();
-    void pollFds();
-    void handleTimers();
     void handleCommands();
+    void callPollFunctions();
     void notify();
     Window* findWindow(::Window handle);
 
@@ -87,40 +89,35 @@ class EventLoop {
     };
     std::unordered_map<int, EventHandler> eventHandlers_;
 
-    class Timer {
-    public:
-        Timer(TimerCallback cb, void *obj, double interval)
-            : cb_(cb), obj_(obj), interval_(interval) {}
-        void update(double delta) {
-            assert(active());
-            elapsed_ += delta;
-            while (elapsed_ > interval_) {
-                // NB: if the interval is short, the timer may invalidate
-                // itself from within the while loop, so we need to check it!
-                // This happened with an actual plugin (sfizz.vst3)!
-                if (active()) {
-                    cb_(obj_);
-                } else {
-                    LOG_DEBUG("X11: timer canceled within update()!");
-                }
-                elapsed_ -= interval_;
-            }
-        }
-        bool active() const { return cb_ != nullptr; }
-        void invalidate(){ cb_ = nullptr; obj_ = nullptr; }
-        bool match(void *obj) const { return obj == obj_; }
-    private:
-        TimerCallback cb_;
-        void *obj_;
-        double interval_;
-        double elapsed_ = 0;
-    };
-    std::vector<Timer> timers_;
-    std::vector<Timer> newTimers_;
-    std::chrono::high_resolution_clock::time_point lastTime_;
+    using Clock = std::chrono::high_resolution_clock;
+    using Milliseconds = std::chrono::milliseconds;
+    using TimePoint = std::chrono::time_point<Clock, Milliseconds>;
 
-    std::atomic<UIThread::Handle> nextPollFunctionHandle_{0};
-    std::unordered_map<UIThread::Handle, void *> pollFunctions_;
+    struct Timer {
+        struct Compare {
+            bool operator()(const Timer& a, const Timer& b) const {
+                if (a.deadline > b.deadline) {
+                    return true;
+                } else if (a.deadline < b.deadline) {
+                    return false;
+                } else {
+                    return a.sequence > b.sequence;
+                }
+            }
+        };
+
+        TimerCallback cb = nullptr;
+        void *obj = nullptr;
+        int64_t interval;
+        uint64_t sequence; // keep insertion order
+        TimePoint deadline;
+    };
+    std::vector<Timer> timerQueue_;
+    uint64_t timerSequence_ = 0;
+
+    UIThread::Handle nextPollFunctionHandle_{0};
+    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
+    std::mutex pollFunctionMutex_;
 };
 
 class Window : public IWindow {

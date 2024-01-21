@@ -224,6 +224,8 @@ EventLoop::EventLoop(){
 
     proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
 
+    // add timer for poll functions
+    // TODO: add/remove timer on demand!
     auto createTimer = [this](){
         timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
                     target:proxy_

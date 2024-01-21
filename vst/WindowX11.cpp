@@ -115,6 +115,11 @@ EventLoop::EventLoop() {
     LOG_DEBUG("X11: created root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
+    // add timer for poll functions
+    // TODO: add/remove timer on demand!
+    doRegisterTimer(updateInterval, [](void *x) {
+        static_cast<EventLoop *>(x)->callPollFunctions();
+    }, this);
     // run thread
     running_.store(true);
     thread_ = std::thread(&EventLoop::run, this);
@@ -156,12 +161,10 @@ void EventLoop::run(){
 
     LOG_DEBUG("X11: start event loop");
 
-    lastTime_ = std::chrono::high_resolution_clock::now();
-
     while (running_.load()) {
-        pollFds();
+        auto wait = updateTimers();
 
-        handleTimers();
+        pollFileDescriptors(wait);
 
         handleCommands();
 
@@ -172,7 +175,56 @@ void EventLoop::run(){
     }
 }
 
-void EventLoop::pollFds(){
+int EventLoop::updateTimers() {
+    TimePoint now = std::chrono::time_point_cast<Milliseconds>(Clock::now());
+
+    while (!timerQueue_.empty() && timerQueue_.front().deadline <= now) {
+        // NB: make copy, in case the timer function adds/removes timers!
+        Timer timer = timerQueue_.front();
+        std::pop_heap(timerQueue_.begin(), timerQueue_.end(), Timer::Compare{});
+        timerQueue_.pop_back();
+        // NB: reschedule *before* calling the function, so the timer can
+        // be found and removed from within the timer function!
+        timer.sequence = timerSequence_++;
+        if (timer.deadline == TimePoint{}) {
+            // first update
+            timer.deadline = now + Milliseconds(timer.interval);
+        } else {
+            timer.deadline += Milliseconds(timer.interval);
+        }
+        timerQueue_.push_back(timer);
+        std::push_heap(timerQueue_.begin(), timerQueue_.end(), Timer::Compare{});
+        // finally call the function
+        timer.cb(timer.obj);
+    }
+
+    int wait = 0;
+    if (!timerQueue_.empty()) {
+        // wait for next due timer
+        auto next = timerQueue_.front().deadline;
+        now = std::chrono::time_point_cast<Milliseconds>(Clock::now());
+        if (next > now) {
+            auto wait = (next - now).count();
+            // if we have (open) windows, limit wait time to pollGrain to keep the UI responsive!
+            // TODO: each Window already adds its own timer, do we really need to poll at lower intervals?
+            if (!windows_.empty()) {
+                wait = std::min<int>(wait, pollGrain);
+            }
+            // LOG_DEBUG("X11: wait for " << wait << " ms");
+            return wait;
+        } else {
+            return 0; // don't wait
+        }
+    } else if (!windows_.empty()) {
+        return pollGrain; // poll for X11 events
+    } else {
+        // NB: currently this won't ever happen because we've installed
+        // a timer that periodically calls callPollFunctions().
+        return -1; // sleep
+    }
+}
+
+void EventLoop::pollFileDescriptors(int timeout){
     // NB: we copy the fd array to prevent it from being modified
     // from within event handlers!
     int count = eventHandlers_.size();
@@ -188,9 +240,6 @@ void EventLoop::pollFds(){
     fds[count].events = POLLIN;
     fds[count].revents = 0;
 
-    // sleep if there are no windows and timers.
-    // NB: poll() will wake up when commands are pushed (or eventfds become ready).
-    int timeout =  windows_.empty() && timers_.empty() ? -1 : sleepGrain;
     if (timeout < 0) {
         LOG_DEBUG("X11: waiting...");
     }
@@ -270,29 +319,6 @@ void EventLoop::pollX11Events(){
     }
 }
 
-void EventLoop::handleTimers() {
-    auto now = std::chrono::high_resolution_clock::now();
-    auto delta = std::chrono::duration<double>(now - lastTime_).count();
-    lastTime_ = now;
-
-    // add new timers, see registerTimer()
-    if (!newTimers_.empty()) {
-        timers_.insert(timers_.end(), newTimers_.begin(), newTimers_.end());
-        newTimers_.clear();
-    }
-    // then update timers
-    for (auto it = timers_.begin(); it != timers_.end(); ){
-        auto& timer = *it;
-        if (timer.active()) {
-            timer.update(delta);
-            ++it;
-        } else {
-            // remove stale timer
-            it = timers_.erase(it);
-        }
-    }
-}
-
 void EventLoop::handleCommands() {
     std::unique_lock<std::mutex> lock(commandMutex_);
     while (!commands_.empty()) {
@@ -306,6 +332,13 @@ void EventLoop::handleCommands() {
             cmd.cb(cmd.obj);
         }
         lock.lock();
+    }
+}
+
+void EventLoop::callPollFunctions() {
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    for (auto& it : pollFunctions_){
+       it.second();
     }
 }
 
@@ -369,47 +402,15 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
 
 UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
                                             void *context) {
-    struct Args {
-        EventLoop *self;
-        UIThread::PollFunction fn;
-        void *context;
-        UIThread::Handle handle;
-    };
-
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
     auto handle = nextPollFunctionHandle_++;
-
-    callAsync([](void *x) {
-        auto args = static_cast<Args *>(x);
-        args->self->pollFunctions_.emplace(args->handle, args->context);
-        args->self->doRegisterTimer(updateInterval, args->fn, args->context);
-        delete args;
-    }, new Args {this, fn, context, handle});
-
+    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
     return handle;
 }
 
 void EventLoop::removePollFunction(UIThread::Handle handle) {
-    struct Args {
-        EventLoop *self;
-        UIThread::Handle handle;
-    };
-
-    // synchronize with UI thread to ensure that the poll function
-    // has been removed before we return from this function!
-    callSync([](void *x) {
-        auto args = static_cast<Args *>(x);
-        auto& pollFunctions = args->self->pollFunctions_;
-        auto it = pollFunctions.find(args->handle);
-        if (it != pollFunctions.end()){
-            // we assume that we only ever register a single
-            // poll function for a given context
-            args->self->doUnregisterTimer(it->second);
-            pollFunctions.erase(it);
-        } else {
-            LOG_ERROR("X11: couldn't remove poll function");
-        }
-        delete args;
-    }, new Args {this, handle});
+    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+    pollFunctions_.erase(handle);
 }
 
 void EventLoop::registerWindow(Window *w) {
@@ -477,7 +478,9 @@ void EventLoop::registerTimer(int64_t ms, TimerCallback cb, void *obj){
 }
 
 void EventLoop::doRegisterTimer(int64_t ms, TimerCallback cb, void *obj){
-    newTimers_.emplace_back(cb, obj, (double)ms * 0.001);
+    timerQueue_.push_back(Timer{cb, obj, ms, timerSequence_++});
+    std::push_heap(timerQueue_.begin(), timerQueue_.end(), Timer::Compare{});
+    LOG_DEBUG("X11: registered timer (" << obj << ")");
 }
 
 void EventLoop::unregisterTimer(void *obj) {
@@ -492,18 +495,16 @@ void EventLoop::unregisterTimer(void *obj) {
 
 void EventLoop::doUnregisterTimer(void *obj){
     int count = 0;
-    auto unregister = [&count, obj](auto& timers) {
-        for (auto& timer : timers) {
-            if (timer.match(obj)) {
-                // just invalidate, don't delete!
-                timer.invalidate();
-                count++;
-            }
+    for (auto it = timerQueue_.begin(); it != timerQueue_.end();) {
+        if (it->obj == obj) {
+            it = timerQueue_.erase(it);
+            count++;
+        } else {
+            ++it;
         }
-    };
-    unregister(newTimers_);
-    unregister(timers_);
-    LOG_DEBUG("X11: unregistered " << count << " timers");
+    }
+    std::make_heap(timerQueue_.begin(), timerQueue_.end(), Timer::Compare{});
+    LOG_DEBUG("X11: unregistered " << count << " timers (" << obj << ")");
 }
 
 /*///////////////// Window ////////////////////*/
