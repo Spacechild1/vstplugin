@@ -80,7 +80,7 @@
 }
 
 - (void)poll {
-    owner_->poll();
+    owner_->doPoll();
 }
 @end
 
@@ -224,51 +224,16 @@ EventLoop::EventLoop(){
 
     proxy_ = [[EventLoopProxy alloc] initWithOwner:this];
 
-    // add timer for poll functions
-    // TODO: add/remove timer on demand!
-    auto createTimer = [this](){
-        timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateInterval * 0.001)
-                    target:proxy_
-                    selector:@selector(poll)
-                    userInfo:nil
-                    repeats:YES];
-    };
-
-    if (UIThread::isCurrentThread()){
-        createTimer();
-    } else {
-        auto queue = dispatch_get_main_queue();
-        dispatch_async(queue, createTimer);
-    }
     LOG_DEBUG("Cocoa: UI thread ready");
 }
 
 EventLoop::~EventLoop(){
-    if (haveNSApp_){
-        [timer_ invalidate];
-        timer_ = nil;
+    if (haveNSApp_) {
+        if (timer_) {
+            [timer_ invalidate];
+            timer_ = nil;
+        }
         [proxy_ release];
-    }
-}
-
-UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
-                                            void *context){
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    auto handle = nextPollFunctionHandle_++;
-    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
-    return handle;
-}
-
-void EventLoop::removePollFunction(UIThread::Handle handle){
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    pollFunctions_.erase(handle);
-}
-
-void EventLoop::poll(){
-    // LOG_DEBUG("poll functions");
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    for (auto& it : pollFunctions_){
-        it.second();
     }
 }
 
@@ -299,6 +264,25 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     } else {
         LOG_DEBUG("Cocoa: callAsync() failed - no NSApp");
         return false;
+    }
+}
+
+void EventLoop::startPolling() {
+    if (timer_) {
+        LOG_ERROR("EventLoop: poll function timer already installed!");
+        return;
+    }
+    timer_ = [NSTimer scheduledTimerWithTimeInterval:(updateIntervalMillis * 0.001)
+                target:proxy_
+                selector:@selector(poll)
+                userInfo:nil
+                repeats:YES];
+}
+
+void EventLoop::stopPolling() {
+    if (timer_) {
+        [timer_ invalidate];
+        timer_ = nil;
     }
 }
 
@@ -397,7 +381,7 @@ void Window::doOpen(){
             plugin_->openEditor(getHandle());
         }
 
-        timer_ = [NSTimer scheduledTimerWithTimeInterval:(EventLoop::updateInterval * 0.001)
+        timer_ = [NSTimer scheduledTimerWithTimeInterval:(EventLoop::updateIntervalMillis * 0.001)
                     target:window_
                     selector:@selector(updateEditor)
                     userInfo:nil

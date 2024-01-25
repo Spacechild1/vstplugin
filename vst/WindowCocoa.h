@@ -1,3 +1,4 @@
+#include "EventLoop.h"
 #include "Interface.h"
 
 #import <Cocoa/Cocoa.h>
@@ -38,10 +39,8 @@ class EventLoop;
 namespace vst {
 namespace Cocoa {
 
-class EventLoop {
- public:
-    static const int updateInterval = 30;
-
+class EventLoop : public BaseEventLoop {
+public:
     static EventLoop& instance();
 
     EventLoop();
@@ -51,22 +50,18 @@ class EventLoop {
 
     bool callAsync(UIThread::Callback cb, void *user);
 
-    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
-
-    void removePollFunction(UIThread::Handle handle);
-
-    void poll();
-
     bool available() const {
         return haveNSApp_;
     }
- private:
+
+    using BaseEventLoop::doPoll; // make public
+private:
+    void startPolling() override;
+    void stopPolling() override;
+
     bool haveNSApp_ = false;
-    EventLoopProxy *proxy_;
-    NSTimer *timer_;
-    UIThread::Handle nextPollFunctionHandle_ = 0;
-    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
-    std::mutex pollFunctionMutex_;
+    EventLoopProxy *proxy_ = nil;
+    NSTimer *timer_ = nil;
 };
 
 class Window : public IWindow {

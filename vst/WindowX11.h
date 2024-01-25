@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EventLoop.h"
 #include "Interface.h"
 #include "Log.h"
 #include "Sync.h"
@@ -19,11 +20,10 @@ namespace X11 {
 
 class Window;
 
-class EventLoop {
- public:
+class EventLoop : public BaseEventLoop {
+public:
     // TODO: is pollGrain really necessary?
     static constexpr int pollGrain = 10;
-    static constexpr int updateInterval = 30;
 
     static EventLoop& instance();
 
@@ -41,9 +41,6 @@ class EventLoop {
     Display *getDisplay() { return display_; }
     ::Window getRoot() { return root_; }
 
-    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
-    void removePollFunction(UIThread::Handle handle);
-
     void registerWindow(Window* w);
     void unregisterWindow(Window* w);
 
@@ -54,7 +51,10 @@ class EventLoop {
     using TimerCallback = void (*)(void *obj);
     void registerTimer(int64_t ms, TimerCallback cb, void *obj);
     void unregisterTimer(void *obj);
- private:
+private:
+    void startPolling() override;
+    void stopPolling() override;
+
     void pushCommand(UIThread::Callback cb, void *obj);
     void doRegisterTimer(int64_t ms, TimerCallback cb, void *obj);
     void doUnregisterTimer(void *obj);
@@ -63,7 +63,6 @@ class EventLoop {
     void pollFileDescriptors(int timeout);
     void pollX11Events();
     void handleCommands();
-    void callPollFunctions();
     void notify();
     Window* findWindow(::Window handle);
 
@@ -114,10 +113,6 @@ class EventLoop {
     };
     std::vector<Timer> timerQueue_;
     uint64_t timerSequence_ = 0;
-
-    UIThread::Handle nextPollFunctionHandle_{0};
-    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
-    std::mutex pollFunctionMutex_;
 };
 
 class Window : public IWindow {

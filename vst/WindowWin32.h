@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EventLoop.h"
 #include "Interface.h"
 #include "Sync.h"
 
@@ -20,9 +21,8 @@ enum Message {
     WM_SYNC
 };
 
-class EventLoop {
+class EventLoop : public BaseEventLoop {
 public:
-    static const int updateInterval = 30;
     static const UINT_PTR pollTimerID = 1;
 
     static EventLoop& instance();
@@ -33,24 +33,19 @@ public:
     bool sync();
     bool callAsync(UIThread::Callback cb, void *user);
     bool callSync(UIThread::Callback cb, void *user);
-
-    UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
-    void removePollFunction(UIThread::Handle handle);
 private:
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
     void run();
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
     void handleTimer(UINT_PTR id);
+    void startPolling() override;
+    void stopPolling() override;
 
     std::thread thread_;
     HWND hwnd_ = NULL;
     Mutex mutex_;
     SyncCondition event_;
-
-    UIThread::Handle nextPollFunctionHandle_ = 0;
-    std::unordered_map<UIThread::Handle, std::function<void()>> pollFunctions_;
-    std::mutex pollFunctionMutex_;
 };
 
 class Window : public IWindow {

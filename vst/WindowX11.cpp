@@ -115,11 +115,7 @@ EventLoop::EventLoop() {
     LOG_DEBUG("X11: created root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
-    // add timer for poll functions
-    // TODO: add/remove timer on demand!
-    doRegisterTimer(updateInterval, [](void *x) {
-        static_cast<EventLoop *>(x)->callPollFunctions();
-    }, this);
+
     // run thread
     running_.store(true);
     thread_ = std::thread(&EventLoop::run, this);
@@ -335,13 +331,6 @@ void EventLoop::handleCommands() {
     }
 }
 
-void EventLoop::callPollFunctions() {
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    for (auto& it : pollFunctions_){
-       it.second();
-    }
-}
-
 void EventLoop::notify(){
     uint64_t i = 1;
     if (write(eventfd_, &i, sizeof(i)) < 0){
@@ -400,19 +389,6 @@ bool EventLoop::callAsync(UIThread::Callback cb, void *user){
     return true;
 }
 
-UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
-                                            void *context) {
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    auto handle = nextPollFunctionHandle_++;
-    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
-    return handle;
-}
-
-void EventLoop::removePollFunction(UIThread::Handle handle) {
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    pollFunctions_.erase(handle);
-}
-
 void EventLoop::registerWindow(Window *w) {
     assert(UIThread::isCurrentThread());
     for (auto& it : windows_){
@@ -422,7 +398,7 @@ void EventLoop::registerWindow(Window *w) {
         }
     }
     windows_.push_back(w);
-    doRegisterTimer(updateInterval, [](void *x){
+    doRegisterTimer(updateIntervalMillis, [](void *x){
         static_cast<Window *>(x)->onUpdate();
     }, w);
 }
@@ -505,6 +481,21 @@ void EventLoop::doUnregisterTimer(void *obj){
     }
     std::make_heap(timerQueue_.begin(), timerQueue_.end(), Timer::Compare{});
     LOG_DEBUG("X11: unregistered " << count << " timers (" << obj << ")");
+}
+
+void EventLoop::startPolling() {
+    if (std::find_if(timerQueue_.begin(), timerQueue_.end(),
+                     [&](auto& x) { return x.obj == this; }) != timerQueue_.end()) {
+        LOG_ERROR("EventLoop: poll function timer already installed!");
+        return;
+    }
+    doRegisterTimer(updateIntervalMillis, [](void *x) {
+        static_cast<EventLoop *>(x)->doPoll();
+    }, this);
+}
+
+void EventLoop::stopPolling() {
+    doUnregisterTimer(this);
 }
 
 /*///////////////// Window ////////////////////*/

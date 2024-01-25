@@ -44,6 +44,8 @@
 
 namespace  vst {
 
+// TODO: with C++17 we cold directly store a lambda because
+// of class template argument deduction in constructors.
 class ScopeGuard {
 public:
     ~ScopeGuard() { fn_(); }

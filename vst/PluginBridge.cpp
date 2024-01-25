@@ -353,6 +353,8 @@ void PluginBridge::checkStatus(){
             }
             LOG_DEBUG("PluginBridge: notify clients");
             // notify all clients
+            // NB: clients shall not close the plugin from within
+            // the callback function, so this won't deadlock!
             ScopedLock lock(clientMutex_);
             for (auto& it : clients_) {
                 it.second->pluginCrashed();

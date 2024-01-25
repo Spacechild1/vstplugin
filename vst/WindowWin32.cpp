@@ -101,15 +101,8 @@ void EventLoop::run() {
     );
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
     event_.set(); // notify constructor
+
     LOG_DEBUG("Win32: start message loop");
-
-    // add timer for poll functions
-    // TODO: add/remove timer on demand!
-    // FIXME: according to the docs, SetTimer() only returns
-    // a new timer ID if hWnd is NULL, otherwise it just
-    // returns a non-zero integer to signify success.
-    SetTimer(hwnd_, pollTimerID, updateInterval, NULL);
-
     MSG msg;
     DWORD ret;
     while ((ret = GetMessage(&msg, NULL, 0, 0)) > 0) {
@@ -125,8 +118,6 @@ void EventLoop::run() {
         LOG_ERROR("Win32: GetMessage() failed (" << GetLastError() << ")");
     }
     LOG_DEBUG("Win32: quit message loop");
-
-    KillTimer(hwnd_, pollTimerID);
 
     DestroyWindow(hwnd_);
 
@@ -349,29 +340,20 @@ bool EventLoop::sync(){
     }
 }
 
-UIThread::Handle EventLoop::addPollFunction(UIThread::PollFunction fn,
-                                            void *context){
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    auto handle = nextPollFunctionHandle_++;
-    pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
-    return handle;
-}
-
-void EventLoop::removePollFunction(UIThread::Handle handle){
-    std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-    pollFunctions_.erase(handle);
-}
-
 void EventLoop::handleTimer(UINT_PTR id) {
     if (id == pollTimerID) {
-        // call poll functions
-        std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-        for (auto& it : pollFunctions_){
-           it.second();
-        }
+        doPoll(); // call poll functions
     } else {
         LOG_DEBUG("Win32: unknown timer " << id);
     }
+}
+
+void EventLoop::startPolling() {
+    SetTimer(hwnd_, pollTimerID, updateIntervalMillis, NULL);
+}
+
+void EventLoop::stopPolling() {
+    KillTimer(hwnd_, pollTimerID);
 }
 
 /*///////////////////////// Window ///////////////////////////*/
@@ -514,7 +496,7 @@ void Window::doOpen(){
     ShowWindow(hwnd_, SW_RESTORE);
 #endif
 
-    SetTimer(hwnd_, timerID, EventLoop::updateInterval, &updateEditor);
+    SetTimer(hwnd_, timerID, EventLoop::updateIntervalMillis, &updateEditor);
 
     LOG_DEBUG("Win32: setup Window done");
 }
