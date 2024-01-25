@@ -8,6 +8,7 @@
 # endif
 #include <windows.h>
 #include <mutex>
+#include <thread>
 #include <functional>
 #include <unordered_map>
 
@@ -22,6 +23,7 @@ enum Message {
 class EventLoop {
 public:
     static const int updateInterval = 30;
+    static const UINT_PTR pollTimerID = 1;
 
     static EventLoop& instance();
 
@@ -35,12 +37,13 @@ public:
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context);
     void removePollFunction(UIThread::Handle handle);
 private:
-    bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
-
-    static DWORD WINAPI run(void *user);
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+
+    void run();
+    bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
     void handleTimer(UINT_PTR id);
-    HANDLE thread_ = NULL;
+
+    std::thread thread_;
     HWND hwnd_ = NULL;
     Mutex mutex_;
     SyncCondition event_;

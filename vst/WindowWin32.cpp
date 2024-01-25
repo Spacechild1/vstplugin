@@ -11,6 +11,12 @@
 #define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
 #define VST_ROOT_CLASS_NAME L"VST Plugin Root Class"
 
+// NB: can't synchronize threads in a global/static
+// object constructor in a Windows DLL!
+#ifndef JOIN_UI_THREAD
+#define JOIN_UI_THREAD 0
+#endif
+
 namespace vst {
 
 static DWORD gParentProcessId = 0;
@@ -78,7 +84,7 @@ EventLoop& EventLoop::instance(){
     return thread;
 }
 
-DWORD EventLoop::run(void *user){
+void EventLoop::run() {
     // some plugin UIs (e.g. VSTGUI) need COM!
     CoInitialize(nullptr);
 
@@ -86,22 +92,23 @@ DWORD EventLoop::run(void *user){
 
     UIThread::gCurrentThreadUI = true;
 
-    auto self = (EventLoop *)user;
     // invisible window for postMessage()!
     // also creates the message queue.
-    auto hwnd = CreateWindowW(
+    hwnd_ = CreateWindowW(
           VST_ROOT_CLASS_NAME, L"Untitled",
           0, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
           NULL, NULL, NULL, NULL
     );
-    SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)self);
-    self->hwnd_ = hwnd;
-    self->event_.set(); // notify constructor
+    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
+    event_.set(); // notify constructor
     LOG_DEBUG("Win32: start message loop");
 
     // add timer for poll functions
     // TODO: add/remove timer on demand!
-    auto timer = SetTimer(hwnd, 0, EventLoop::updateInterval, NULL);
+    // FIXME: according to the docs, SetTimer() only returns
+    // a new timer ID if hWnd is NULL, otherwise it just
+    // returns a non-zero integer to signify success.
+    SetTimer(hwnd_, pollTimerID, updateInterval, NULL);
 
     MSG msg;
     DWORD ret;
@@ -119,14 +126,12 @@ DWORD EventLoop::run(void *user){
     }
     LOG_DEBUG("Win32: quit message loop");
 
-    KillTimer(hwnd, timer);
+    KillTimer(hwnd_, pollTimerID);
 
-    DestroyWindow(hwnd);
+    DestroyWindow(hwnd_);
 
     // let's be nice
     CoUninitialize();
-
-    return 0;
 }
 
 // NOTE: we use a window procedure to make sure that events are also processed
@@ -256,29 +261,27 @@ EventLoop::EventLoop(){
         LOG_DEBUG("Win32: registered editor window class!");
     }
     // run thread
-    thread_ = CreateThread(NULL, 0, run, this, 0, NULL);
-    if (!thread_){
-        throw Error("Win32: couldn't create UI thread!");
-    };
+    thread_ = std::thread(&EventLoop::run, this);
+#if !JOIN_UI_THREAD
+    thread_.detach();
+#endif
     // wait for thread to create message queue
     event_.wait();
     LOG_DEBUG("Win32: EventLoop ready");
 }
 
 EventLoop::~EventLoop() {
-    if (thread_){
-        // can't synchronize threads in a global/static
-        // object constructor in a Windows DLL.
-    #if 0
-        if (postMessage(WM_QUIT)){
-            WaitForSingleObject(thread_, INFINITE);
+#if JOIN_UI_THREAD
+    if (thread_.joinable()) {
+        if (postMessage(WM_QUIT)) {
+            thread_.join();
             LOG_DEBUG("Win32: joined UI thread");
         } else {
             LOG_DEBUG("Win32: couldn't post quit message!");
+            thread_.detach();
         }
-    #endif
-        CloseHandle(thread_);
     }
+#endif
     LOG_DEBUG("Win32: EventLoop quit");
 }
 
@@ -360,7 +363,7 @@ void EventLoop::removePollFunction(UIThread::Handle handle){
 }
 
 void EventLoop::handleTimer(UINT_PTR id) {
-    if (id == 0) {
+    if (id == pollTimerID) {
         // call poll functions
         std::lock_guard<std::mutex> lock(pollFunctionMutex_);
         for (auto& it : pollFunctions_){
