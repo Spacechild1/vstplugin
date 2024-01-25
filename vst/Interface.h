@@ -456,6 +456,7 @@ namespace UIThread {
 
     using PollFunction = void (*)(void *);
     using Handle = int32_t;
+    constexpr Handle invalidHandle = -1;
 
     Handle addPollFunction(PollFunction fn, void *context);
 

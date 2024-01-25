@@ -163,33 +163,14 @@ bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
 
 /*//////////////////// plugin registry ////////////////////////*/
 
+// NB: these globals are only ever accessed from the UI thread,
+// so we don't need a mutex!
 static std::unordered_map<uint32_t, VST3Plugin *> gPluginMap;
-
-uint32_t registerPlugin(VST3Plugin *plugin) {
-    static uint32_t nextID = 0;
-
-    auto id = nextID++;
-
-    if (!gPluginMap.emplace(id, plugin).second) {
-        throw Error("plugin already registered!");
-    }
-
-    return id;
-}
-
-void unregisterPlugin(uint32_t id) {
-    auto it = gPluginMap.find(id);
-    if (it != gPluginMap.end()) {
-        gPluginMap.erase(it);
-    } else {
-        LOG_ERROR("cannot unregister plugin: not found!");
-    }
-}
+static UIThread::Handle gPollFunction = UIThread::invalidHandle;
 
 // Queue for read-only or hidden parameters; some plugins use such parameters
 // to communicate with the editor or offload work to the UI thread, so we make
 // sure that these are dispatched even when the editor is closed.
-
 struct UIParamChange {
     UIParamChange() : pluginId(0), paramId(0), paramValue(0) {}
     UIParamChange(uint32_t pluginId_, Vst::ParamID paramId_, Vst::ParamValue paramValue_)
@@ -203,39 +184,66 @@ struct UIParamChange {
 // NOTE: param changes can be safely pushed from multiple threads
 // (in case of multithreaded plugin processing).
 static UnboundedMPSCQueue<UIParamChange> gParamChangesToGui;
+bool gParamChangesInitialized = false;
 
-// Lazy initialization, called in VST3Plugin constructor.
-// NB: always called on UI thread - no locking required!
-static void initGui() {
-    static bool initialized = false;
-
-    if (initialized) {
-        return;
-    }
-
+// called in VST3Plugin ctor (if it has a window)
+uint32_t registerPlugin(VST3Plugin *plugin) {
     assert(UIThread::isCurrentThread());
 
-    gParamChangesToGui.reserve(1024);
+    // lazily initialization, before adding the poll function!!
+    if (!gParamChangesInitialized) {
+        LOG_DEBUG("VST3: initialize UI queue");
+        gParamChangesToGui.reserve(1024);
+        gParamChangesInitialized = true;
+    }
 
-    // called periodically from UI thread.
-    // TODO: remove poll function once there are no plugins
-    UIThread::addPollFunction([](void *) {
-        UIParamChange p;
-        while (gParamChangesToGui.pop(p)) {
-            auto it = gPluginMap.find(p.pluginId);
-            if (it != gPluginMap.end()) {
-                it->second->handleUIParamChange(p.paramId, p.paramValue);
-            } else {
-            #if DEBUG_VST3_PARAM_CHANGES
-                LOG_DEBUG("ignore UI param change: plugin already freed");
-            #endif
+    static uint32_t nextID = 0;
+
+    auto id = nextID++;
+
+    if (!gPluginMap.emplace(id, plugin).second) {
+        throw Error("plugin already registered!");
+    }
+
+    // register poll function, if needed
+    if (gPollFunction == UIThread::invalidHandle) {
+        LOG_DEBUG("VST3: add poll function");
+        gPollFunction = UIThread::addPollFunction([](void *) {
+            UIParamChange p;
+            while (gParamChangesToGui.pop(p)) {
+                auto it = gPluginMap.find(p.pluginId);
+                if (it != gPluginMap.end()) {
+                    it->second->handleUIParamChange(p.paramId, p.paramValue);
+                } else {
+                #if DEBUG_VST3_PARAM_CHANGES
+                    LOG_DEBUG("ignore UI param change: plugin already freed");
+                #endif
+                }
             }
+        }, nullptr);
+    }
+
+    return id;
+}
+
+// called in VST3Plugin dtor (if it has a window)
+void unregisterPlugin(uint32_t id) {
+    assert(UIThread::isCurrentThread());
+
+    auto it = gPluginMap.find(id);
+    if (it != gPluginMap.end()) {
+        gPluginMap.erase(it);
+
+        // remove poll function, if not needed anymore
+        if (gPluginMap.empty()) {
+            LOG_DEBUG("VST3: remove poll function");
+            assert(gPollFunction != UIThread::invalidHandle);
+            UIThread::removePollFunction(gPollFunction);
+            gPollFunction = UIThread::invalidHandle;
         }
-    }, nullptr);
-
-    initialized = true;
-
-    LOG_DEBUG("VST3 GUI system initialized");
+    } else {
+        LOG_ERROR("cannot unregister plugin: not found!");
+    }
 }
 
 /*/////////////////////// VST3Factory /////////////////////////*/
@@ -819,10 +827,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
 
     // NB: don't call hasEditor() because it would create the plugin view!
     if (editor && info_->editor()) {
-        initGui();
-
         uniqueId_ = registerPlugin(this);
-
         window_ = IWindow::create(*this);
     }
 
