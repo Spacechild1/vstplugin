@@ -4103,7 +4103,11 @@ void vstplugin_dsp_threads(t_vstplugin *x, t_floatarg f) {
 void vstplugin_multichannel(t_vstplugin *x)
 {
     t_atom a;
+#ifdef PD_HAVE_MULTICHANNEL
     SETFLOAT(&a, g_signal_setmultiout != nullptr);
+#else
+    SETFLOAT(&a, -1); // compiled without multichannel support
+#endif
     outlet_anything(x->x_messout, gensym("multichannel"), 1, &a);
 }
 
