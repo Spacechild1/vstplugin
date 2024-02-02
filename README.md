@@ -1,4 +1,4 @@
-vstplugin v0.5.4
+vstplugin v0.6.0-pre1
 ================
 
 This project allows you to use VST plugins in Pd and SuperCollider on Windows, MacOS and Linux.
@@ -36,8 +36,8 @@ Please report any issues or feature requests to https://git.iem.at/pd/vstplugin/
 
 ### Known issues:
 
-* The macOS binaries are not signed/notarized, so you will have problems on macOS 10.15 (Catalina) and above.
-  See the section *macOS 10.15+* for workarounds!
+* **ATTENTION macOS users**: the binaries are not signed/notarized, so you might have problems on macOS 10.15 (Catalina) and above.
+  If you get security popups and the plugin refuses to load, please follow the steps in the section *macOS 10.15+* at the bottom!
 
 * The Supernova version of VSTPlugin only works on SuperCollider 3.11 and above!
 
@@ -122,7 +122,7 @@ Dynamic linking, on the other hand, is preferred for destributing via system pac
 
 #### Prerequisites:
 
-##### VST SDK:
+#### VST SDK:
 
 For VST2 support, get the Steinberg VST2 SDK and copy it into /vst.
 
@@ -145,7 +145,7 @@ you can provide the path to CMake by setting the `VST2DIR` and `VST3DIR` variabl
 Because earlier versions of the VST3 SDK also included the VST2 SDK headers,
 the project will also look for the VST2 headers in `vst/VST_SDK/VST3_SDK/pluginterfaces/vst2.x`.
 
-##### Pd:
+#### Pd:
 
 Make sure you have Pd installed somewhere. If Pd is not found automatically, you have to do the following:
 
@@ -157,7 +157,7 @@ By default, *vstplugin~* is installed to the standard externals directory, but y
 
 If you don't want to build the Pd external, set `PD` to `OFF`.
 
-##### SuperCollider:
+#### SuperCollider:
 
 Get the SuperCollider source code (e.g. https://github.com/supercollider/supercollider).
 `SC_INCLUDEDIR` must point to the folder containing the SuperCollider source code (with the subfolders *common/* and *include/*).
@@ -260,7 +260,7 @@ To enable Wine support on Linux, you need to follow these steps:
 
 ### macOS 10.15+
 
-How to workaround macOS GateKeeper (many thanks to Joseph Anderson):
+How to workaround the macOS GateKeeper (many thanks to Joseph Anderson):
 
 1)  un-quarantine VSTPlugin/vstplugin~ executables:
 
@@ -274,7 +274,7 @@ How to workaround macOS GateKeeper (many thanks to Joseph Anderson):
 
     Using the terminal, navigate to the folder(s) containing VSTs to enable. The following will create a label, ApprovedVSTs, and then add all VSTs in the directory:
 
-    `spctl --add --label "ApprovedVSTs" *.vst`
+    `spctl --add --label "ApprovedVSTs" *.vst *.vst3`
 
     Once this is done, the following informs Gatekeeper these are approved:
 
