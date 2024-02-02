@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.1)
+cmake_minimum_required (VERSION 3.5)
 
 # minimum macOS deployment target; must come before project()!
 if (APPLE)
