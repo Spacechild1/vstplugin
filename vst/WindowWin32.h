@@ -13,6 +13,15 @@
 #include <functional>
 #include <unordered_map>
 
+#define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
+#define VST_ROOT_CLASS_NAME L"VST Plugin Root Class"
+
+// NB: can't synchronize threads in a global/static
+// object constructor in a Windows DLL!
+#ifndef JOIN_UI_THREAD
+#define JOIN_UI_THREAD 0
+#endif
+
 namespace vst {
 namespace Win32 {
 
@@ -30,15 +39,18 @@ public:
     EventLoop();
     ~EventLoop();
 
+    void run();
+    void quit();
     bool sync();
     bool callAsync(UIThread::Callback cb, void *user);
     bool callSync(UIThread::Callback cb, void *user);
 private:
     static LRESULT WINAPI procedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+    static HICON getIcon();
 
-    void run();
     bool postMessage(UINT msg, void *data1 = nullptr, void *data2 = nullptr); // non-blocking
     void handleTimer(UINT_PTR id);
+    void initUIThread();
     void startPolling() override;
     void stopPolling() override;
 

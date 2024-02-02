@@ -869,6 +869,7 @@ PluginServer::~PluginServer(){
 }
 
 void PluginServer::run(){
+    LOG_DEBUG("PluginServer: run");
     UIThread::run();
 }
 

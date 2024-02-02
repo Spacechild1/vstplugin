@@ -8,15 +8,6 @@
 #include <cassert>
 #include <cstring>
 
-#define VST_EDITOR_CLASS_NAME L"VST Plugin Editor Class"
-#define VST_ROOT_CLASS_NAME L"VST Plugin Root Class"
-
-// NB: can't synchronize threads in a global/static
-// object constructor in a Windows DLL!
-#ifndef JOIN_UI_THREAD
-#define JOIN_UI_THREAD 0
-#endif
-
 namespace vst {
 
 static DWORD gParentProcessId = 0;
@@ -27,26 +18,25 @@ void setParentProcess(int pid) {
 
 namespace UIThread {
 
-// fake event loop
-static Event gQuitEvent_;
-
-void setup(){
-    Win32::EventLoop::instance();
-}
-
-void run(){
-    gQuitEvent_.wait();
-}
-
-void quit(){
-    gQuitEvent_.set();
-}
-
 static thread_local bool gCurrentThreadUI = false;
 
 // NB: this check must *not* implicitly create the event loop!
 bool isCurrentThread() {
     return gCurrentThreadUI;
+}
+
+void setup() {
+    // HACK: this tells the EventLoop constructor that it shouldn't create an UI thread
+    gCurrentThreadUI = true;
+    Win32::EventLoop::instance();
+}
+
+void run() {
+    Win32::EventLoop::instance().run();
+}
+
+void quit() {
+    Win32::EventLoop::instance().quit();
 }
 
 bool available() { return true; }
@@ -84,47 +74,6 @@ EventLoop& EventLoop::instance(){
     return thread;
 }
 
-void EventLoop::run() {
-    // some plugin UIs (e.g. VSTGUI) need COM!
-    CoInitialize(nullptr);
-
-    setThreadPriority(Priority::Low);
-
-    UIThread::gCurrentThreadUI = true;
-
-    // invisible window for postMessage()!
-    // also creates the message queue.
-    hwnd_ = CreateWindowW(
-          VST_ROOT_CLASS_NAME, L"Untitled",
-          0, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-          NULL, NULL, NULL, NULL
-    );
-    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
-    event_.set(); // notify constructor
-
-    LOG_DEBUG("Win32: start message loop");
-    MSG msg;
-    DWORD ret;
-    while ((ret = GetMessage(&msg, NULL, 0, 0)) > 0) {
-#if 0
-        if (!(msg.hwnd == hwnd && msg.message == WM_TIMER)) {
-            LOG_DEBUG("dispatch message " << msg.message);
-        }
-#endif
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-    if (ret < 0) {
-        LOG_ERROR("Win32: GetMessage() failed (" << GetLastError() << ")");
-    }
-    LOG_DEBUG("Win32: quit message loop");
-
-    DestroyWindow(hwnd_);
-
-    // let's be nice
-    CoUninitialize();
-}
-
 // NOTE: we use a window procedure to make sure that events are also processed
 // during a modal loop!
 LRESULT WINAPI EventLoop::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam){
@@ -158,7 +107,7 @@ LRESULT WINAPI EventLoop::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 }
 
 EventLoop::EventLoop(){
-    LOG_DEBUG("Win32: start EventLoop");
+    LOG_DEBUG("Win32: setup EventLoop");
     // setup window classes
     WNDCLASSEXW wcex;
     // 1. root window class
@@ -176,88 +125,31 @@ EventLoop::EventLoop(){
     wcex.cbSize = sizeof(WNDCLASSEXW);
     wcex.lpfnWndProc = Window::procedure;
     wcex.lpszClassName =  VST_EDITOR_CLASS_NAME;
-#ifndef __WINE__
-    // On Wine, for some reason, QueryFullProcessImageName() would silently truncate
-    // the path name after a certain number of characters...
-    // NOTE: Wine also requires to link explicitly to "shell32" for 'ExtractIconW'!
-    // Generally, the question is whether the icon is actually useful on Linux;
-    // with Gnome, at least, it doesn't seem so, but I need to test other desktops.
-    wchar_t exeFileName[MAX_PATH];
-    exeFileName[0] = 0;
-    // 1) first try to get icon from the (parent) process
-    if (gParentProcessId != 0) {
-        // get file path of parent process
-        auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                                    FALSE, gParentProcessId);
-        if (hProcess){
-            DWORD size = MAX_PATH;
-            if (!QueryFullProcessImageNameW(hProcess, 0, exeFileName, &size)) {
-                LOG_ERROR("QueryFullProcessImageName() failed: " << errorMessage(GetLastError()));
-            }
-        } else {
-            LOG_ERROR("OpenProcess() failed: " << errorMessage(GetLastError()));
-        }
-        CloseHandle(hProcess);
-    } else {
-        // get file path of this process
-        if (GetModuleFileNameW(NULL, exeFileName, MAX_PATH) == 0) {
-            LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
-        }
-    }
-    auto hIcon = ExtractIconW(NULL, exeFileName, 0);
-    if ((uintptr_t)hIcon > 1) {
-        LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
-        wcex.hIcon = hIcon;
-    } else {
-        LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
-        // 2) try to get icon from our plugin DLL
-        auto hInstance = (HINSTANCE)getModuleHandle();
-        if (hInstance) {
-            // a) we are inside the DLL
-            if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) != 0) {
-                hIcon = ExtractIconW(NULL, exeFileName, 0);
-                if ((uintptr_t)hIcon > 1) {
-                    LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
-                    wcex.hIcon = hIcon;
-                } else {
-                    LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
-                }
-            } else {
-                LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
-            }
-        } else {
-            // b) we are inside the host process
-            std::vector<std::string> pluginPaths = {
-                getModuleDirectory() + "\\VSTPlugin.scx",
-                getModuleDirectory() + "\\VSTPlugin_supernova.scx"
-            };
-            for (auto& path : pluginPaths) {
-                if (pathExists(path)) {
-                    hIcon = ExtractIconW(NULL, widen(path).c_str(), 0);
-                    if ((uintptr_t)hIcon > 1) {
-                        wcex.hIcon = hIcon;
-                        LOG_DEBUG("Win32: extracted icon from " << path);
-                        break;
-                    } else {
-                        LOG_DEBUG("Win32: could not extract icon from " << path);
-                    }
-                }
-            }
-        }
-    }
-#endif
+    wcex.hIcon = getIcon();
     if (!RegisterClassExW(&wcex)){
         LOG_WARNING("Win32: couldn't register editor window class!");
     } else {
         LOG_DEBUG("Win32: registered editor window class!");
     }
-    // run thread
-    thread_ = std::thread(&EventLoop::run, this);
-#if !JOIN_UI_THREAD
-    thread_.detach();
-#endif
-    // wait for thread to create message queue
-    event_.wait();
+
+    if (UIThread::isCurrentThread()) {
+        initUIThread();
+    } else {
+        // create UI thread
+        LOG_DEBUG("Win32: start UI thread");
+        thread_ = std::thread([this](){
+            initUIThread();
+            event_.set(); // notify constructor
+            run();
+        });
+    #if !JOIN_UI_THREAD
+        thread_.detach();
+    #endif
+        // wait for thread to create message queue
+        LOG_DEBUG("Win32: wait for event");
+        event_.wait();
+    }
+
     LOG_DEBUG("Win32: EventLoop ready");
 }
 
@@ -274,6 +166,57 @@ EventLoop::~EventLoop() {
     }
 #endif
     LOG_DEBUG("Win32: EventLoop quit");
+}
+
+void EventLoop::run() {
+    assert(UIThread::isCurrentThread());
+    LOG_DEBUG("Win32: start message loop");
+    MSG msg;
+    DWORD ret;
+    while ((ret = GetMessage(&msg, NULL, 0, 0)) > 0) {
+#if 0
+        if (!(msg.hwnd == hwnd && msg.message == WM_TIMER)) {
+            LOG_DEBUG("dispatch message " << msg.message);
+        }
+#endif
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    if (ret < 0) {
+        LOG_ERROR("Win32: GetMessage() failed (" << GetLastError() << ")");
+    }
+    LOG_DEBUG("Win32: quit message loop");
+
+    DestroyWindow(hwnd_);
+
+    // let's be nice
+    CoUninitialize();
+}
+
+void EventLoop::quit() {
+    if (!postMessage(WM_QUIT)) {
+        LOG_ERROR("Win32: could not post WM_QUIT message!");
+    }
+}
+
+void EventLoop::initUIThread() {
+    setThreadPriority(Priority::Low);
+
+    // some plugin UIs (e.g. VSTGUI) need COM!
+    CoInitialize(nullptr);
+
+    UIThread::gCurrentThreadUI = true;
+    // invisible window for postMessage()!
+    // also creates the message queue
+    hwnd_ = CreateWindowW(
+          VST_ROOT_CLASS_NAME, L"Untitled",
+          0, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+          NULL, NULL, NULL, NULL
+    );
+    if (hwnd_ == NULL) {
+        throw Error(Error::SystemError, "Win32: could not create root window!");
+    }
+    SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
 }
 
 // IMPORTANT: do not use PostThreadMessage() because the message
@@ -354,6 +297,80 @@ void EventLoop::startPolling() {
 
 void EventLoop::stopPolling() {
     KillTimer(hwnd_, pollTimerID);
+}
+
+HICON EventLoop::getIcon() {
+#ifndef __WINE__
+    // On Wine, for some reason, QueryFullProcessImageName() would silently truncate
+    // the path name after a certain number of characters...
+    // NOTE: Wine also requires to link explicitly to "shell32" for 'ExtractIconW'!
+    // Generally, the question is whether the icon is actually useful on Linux;
+    // with Gnome, at least, it doesn't seem so, but I need to test other desktops.
+    wchar_t exeFileName[MAX_PATH];
+    exeFileName[0] = 0;
+    // 1) first try to get icon from the (parent) process
+    if (gParentProcessId != 0) {
+        // get file path of parent process
+        auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                                    FALSE, gParentProcessId);
+        if (hProcess){
+            DWORD size = MAX_PATH;
+            if (!QueryFullProcessImageNameW(hProcess, 0, exeFileName, &size)) {
+                LOG_ERROR("QueryFullProcessImageName() failed: " << errorMessage(GetLastError()));
+            }
+        } else {
+            LOG_ERROR("OpenProcess() failed: " << errorMessage(GetLastError()));
+        }
+        CloseHandle(hProcess);
+    } else {
+        // get file path of this process
+        if (GetModuleFileNameW(NULL, exeFileName, MAX_PATH) == 0) {
+            LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
+        }
+    }
+    auto hIcon = ExtractIconW(NULL, exeFileName, 0);
+    if ((uintptr_t)hIcon > 1) {
+        LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+        return hIcon;
+    } else {
+        LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+        // 2) try to get icon from our plugin DLL
+        auto hInstance = (HINSTANCE)getModuleHandle();
+        if (hInstance) {
+            // a) we are inside the DLL
+            if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) != 0) {
+                hIcon = ExtractIconW(NULL, exeFileName, 0);
+                if ((uintptr_t)hIcon > 1) {
+                    LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+                    return hIcon;
+                } else {
+                    LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
+                }
+            } else {
+                LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
+            }
+        } else {
+            // b) we are inside the host process
+            std::vector<std::string> pluginPaths = {
+                getModuleDirectory() + "\\VSTPlugin.scx",
+                getModuleDirectory() + "\\VSTPlugin_supernova.scx"
+            };
+            for (auto& path : pluginPaths) {
+                if (pathExists(path)) {
+                    hIcon = ExtractIconW(NULL, widen(path).c_str(), 0);
+                    if ((uintptr_t)hIcon > 1) {
+                        return hIcon;
+                        LOG_DEBUG("Win32: extracted icon from " << path);
+                        break;
+                    } else {
+                        LOG_DEBUG("Win32: could not extract icon from " << path);
+                    }
+                }
+            }
+        }
+    }
+#endif
+    return (HICON)0;
 }
 
 /*///////////////////////// Window ///////////////////////////*/
