@@ -34,6 +34,8 @@ public:
         return display_ != nullptr;
     }
 
+    void run();
+    void quit();
     bool sync();
     bool callSync(UIThread::Callback cb, void *user);
     bool callAsync(UIThread::Callback cb, void *user);
@@ -55,10 +57,10 @@ private:
     void startPolling() override;
     void stopPolling() override;
 
+    void initUIThread();
     void pushCommand(UIThread::Callback cb, void *obj);
     void doRegisterTimer(int64_t ms, TimerCallback cb, void *obj);
     void doUnregisterTimer(void *obj);
-    void run();
     int updateTimers();
     void pollFileDescriptors(int timeout);
     void pollX11Events();

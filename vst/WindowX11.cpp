@@ -15,26 +15,25 @@ namespace vst {
 
 namespace UIThread {
 
-// fake event loop
-Event gQuitEvent_;
-
-void setup(){
-    X11::EventLoop::instance();
-}
-
-void run(){
-    gQuitEvent_.wait();
-}
-
-void quit(){
-    gQuitEvent_.set();
-}
-
 static thread_local bool gCurrentThreadUI = false;
 
 // NB: this check must *not* implicitly create the event loop!
 bool isCurrentThread() {
     return gCurrentThreadUI;
+}
+
+void setup() {
+    // HACK: this tells the EventLoop constructor that it shouldn't create an UI thread
+    gCurrentThreadUI = true;
+    X11::EventLoop::instance();
+}
+
+void run() {
+    X11::EventLoop::instance().run();
+}
+
+void quit() {
+    X11::EventLoop::instance().quit();
 }
 
 bool available() {
@@ -116,10 +115,17 @@ EventLoop::EventLoop() {
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
 
-    // run thread
     running_.store(true);
-    thread_ = std::thread(&EventLoop::run, this);
-    LOG_DEBUG("X11: UI thread ready");
+    if (UIThread::isCurrentThread()) {
+        initUIThread();
+    } else {
+        // start thread
+        LOG_DEBUG("X11: start UI thread");
+        thread_ = std::thread([&](){
+            initUIThread();
+            run();
+        });
+    }
 }
 
 EventLoop::~EventLoop(){
@@ -144,19 +150,9 @@ EventLoop::~EventLoop(){
     }
 }
 
-void EventLoop::pushCommand(UIThread::Callback cb, void *user){
-    std::lock_guard<std::mutex> lock(commandMutex_);
-    commands_.push_back({ cb, user });
-    notify();
-}
-
-void EventLoop::run(){
-    setThreadPriority(Priority::Low);
-
-    UIThread::gCurrentThreadUI = true;
-
+void EventLoop::run() {
+    assert(UIThread::isCurrentThread());
     LOG_DEBUG("X11: start event loop");
-
     while (running_.load()) {
         auto wait = updateTimers();
 
@@ -169,6 +165,23 @@ void EventLoop::run(){
         // in case there are no commands or windows.
         pollX11Events();
     }
+    LOG_DEBUG("X11: quit event loop");
+}
+
+void EventLoop::quit() {
+    running_.store(false);
+    notify();
+}
+
+void EventLoop::initUIThread() {
+    setThreadPriority(Priority::Low);
+    UIThread::gCurrentThreadUI = true;
+}
+
+void EventLoop::pushCommand(UIThread::Callback cb, void *user){
+    std::lock_guard<std::mutex> lock(commandMutex_);
+    commands_.push_back({ cb, user });
+    notify();
 }
 
 int EventLoop::updateTimers() {
