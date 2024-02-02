@@ -573,8 +573,8 @@ void Window::doOpen(){
 
     // set window coordinates
     bool didOpen = false;
-    if (canResize() && rect_.valid()){
-        LOG_DEBUG("X11: restore editor size");
+    if (rect_.valid()) {
+        LOG_DEBUG("X11: restore editor rect");
         // just restore from cached rect
     } else {
         // get window dimensions from plugin

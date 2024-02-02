@@ -351,8 +351,8 @@ void Window::doOpen(){
         // set window coordinates
         loading_ = true;
         bool didOpen = false;
-        if (canResize() && rect_.valid()){
-            LOG_DEBUG("Cocoa: restore editor size");
+        if (rect_.valid()){
+            LOG_DEBUG("Cocoa: restore editor rect");
         } else {
             // get window dimensions from plugin
             Rect r;

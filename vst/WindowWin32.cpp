@@ -473,8 +473,8 @@ void Window::doOpen(){
 
     // set window coordinates
     bool didOpen = false;
-    if (canResize() && rect_.valid()){
-        LOG_DEBUG("Win32: restore editor size");
+    if (rect_.valid()){
+        LOG_DEBUG("Win32: restore editor rect");
         // restore from cached rect
         // NOTE: restoring the size doesn't work if openEditor()
         // calls setSize() in turn! I've tried various workarounds,
