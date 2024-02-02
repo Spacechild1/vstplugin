@@ -203,7 +203,7 @@ static std::string gCacheFileName = std::string("cache_")
 static Mutex gFileLock;
 
 static void readCacheFile(const std::string& dir, bool loud) {
-    ScopedLock lock(gFileLock);
+    std::lock_guard lock(gFileLock);
     auto path = dir + "/" + gCacheFileName;
     if (pathExists(path)){
         LOG_VERBOSE("read cache file " << path);
@@ -224,7 +224,7 @@ static void readCacheFile(){
 }
 
 static void writeCacheFile(const std::string& dir) {
-    ScopedLock lock(gFileLock);
+    std::lock_guard lock(gFileLock);
     try {
         if (pathExists(dir)) {
             gPluginDict.write(dir + "/" + gCacheFileName);
@@ -237,7 +237,7 @@ static void writeCacheFile(const std::string& dir) {
 }
 
 static void writeCacheFile() {
-    ScopedLock lock(gFileLock);
+    std::lock_guard lock(gFileLock);
     try {
         if (!pathExists(gSettingsDir)) {
             createDirectory(userSettingsPath());
@@ -584,8 +584,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         }
 #endif
         // check if module has already been loaded
-        auto factory = dict.findFactory(pluginPath);
-        if (factory) {
+        if (auto factory = dict.findFactory(pluginPath)) {
             // just post names of valid plugins
             if (verbose) {
                 LOG_VERBOSE(pluginPath);
@@ -611,7 +610,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                 futures.push_back(probePluginAsync(pluginPath, timeout, verbose));
                 processFutures(PROBE_FUTURES);
             } else {
-                if ((factory = probePlugin(pluginPath, timeout, verbose))) {
+                if (auto factory = probePlugin(pluginPath, timeout, verbose)) {
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i) {
                         auto plugin = factory->getPlugin(i);
@@ -1454,13 +1453,7 @@ void VSTPlugin::next(int inNumSamples) {
                     delegate().isSettingParam_ = true;
                 }
                 // finally, swap bitsets
-#if 0 // C++17 only
-            std::swap_ranges(newParamChange, paramChange, paramChange);
-#else
-                for (int i = 0; i < size; ++i) {
-                    std::swap(newParamChange[i], paramChange[i]);
-                }
-#endif
+                std::swap_ranges(newParamChange, paramChange, paramChange);
                 // all bits should be zero now!
                 assert(std::all_of(newParamChange, newParamChange + size,
                                    [](auto& x) { return x.none(); }));
@@ -2060,7 +2053,7 @@ void VSTPluginDelegate::setEditorSize(int w, int h){
 }
 
 void VSTPluginDelegate::doReset() {
-    Lock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->suspend();
     plugin_->resume();
 }
@@ -2300,7 +2293,7 @@ void VSTPluginDelegate::doReadPreset(const std::string& data, bool bank) {
         isSettingState_ = false;
     });
 
-    Lock lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (bank)
         plugin_->readBankData(data);
     else
@@ -2410,7 +2403,7 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
 }
 
 void VSTPluginDelegate::doWritePreset(std::string& buffer, bool bank) {
-    Lock lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (bank)
         plugin_->writeBankData(buffer);
     else

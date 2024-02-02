@@ -179,7 +179,7 @@ void EventLoop::initUIThread() {
 }
 
 void EventLoop::pushCommand(UIThread::Callback cb, void *user){
-    std::lock_guard<std::mutex> lock(commandMutex_);
+    std::lock_guard lock(commandMutex_);
     commands_.push_back({ cb, user });
     notify();
 }
@@ -329,7 +329,7 @@ void EventLoop::pollX11Events(){
 }
 
 void EventLoop::handleCommands() {
-    std::unique_lock<std::mutex> lock(commandMutex_);
+    std::unique_lock lock(commandMutex_);
     while (!commands_.empty()) {
         // first swap pending commands
         std::vector<Command> commands;
@@ -362,7 +362,7 @@ Window* EventLoop::findWindow(::Window handle){
 
 bool EventLoop::sync(){
     if (!UIThread::isCurrentThread()){
-        std::lock_guard<std::mutex> lock(syncMutex_); // prevent concurrent calls
+        std::lock_guard lock(syncMutex_); // prevent concurrent calls
         pushCommand([](void *x){
             static_cast<EventLoop *>(x)->event_.set();
         }, this);
@@ -377,7 +377,7 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
     if (UIThread::isCurrentThread()){
         cb(user);
     } else {
-        std::lock_guard<std::mutex> lock(syncMutex_); // prevent concurrent calls!
+        std::lock_guard lock(syncMutex_); // prevent concurrent calls!
         auto cmd = [&](){
             cb(user);
             event_.set();

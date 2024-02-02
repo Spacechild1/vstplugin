@@ -277,7 +277,7 @@ static Mutex gLoaderLock;
 
 void VST3Factory::doLoad(){
     // TODO: optimize with double checked locking?
-    ScopedLock lock(gLoaderLock);
+    std::lock_guard lock(gLoaderLock);
 
     if (!module_) {
         std::string modulePath = path_;
@@ -2879,9 +2879,7 @@ tresult PLUGIN_API HostAttributeList::getBinary (AttrID aid, const void*& data, 
 }
 
 void HostAttributeList::print(){
-    for (auto& it : list_){
-        auto& id = it.first;
-        auto& attr = it.second;
+    for (auto& [id, attr] : list_) {
         Log log;
         log << id << ": ";
         switch (attr.type){

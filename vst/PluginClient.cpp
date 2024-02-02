@@ -36,13 +36,9 @@ PluginClient::PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc,
                            bool sandbox, bool editor)
     : factory_(std::move(f)), info_(std::move(desc))
 {
-    // Since C++17, new() can handle alignments larger than max_align_t.
-    // For C++14, let's just ignore the misalignment for now.
-#if __cplusplus >= 201703L
     if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
-        LOG_WARNING("PaddedSpinLock is not properly aligned!");
+        LOG_WARNING("PluginClient is not properly aligned!");
     }
-#endif
 
     static std::atomic<uint32_t> nextID{0};
     id_ = ++nextID; // atomic increment!
@@ -366,7 +362,7 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
             auto& cache = paramDisplayCache_[index];
             auto size = std::min<size_t>(pstr[0], cache.size() - 1);
             // must be thread-safe!
-            ScopedLock lock(cacheLock_);
+            std::lock_guard lock(cacheLock_);
             cache[0] = size; // pascal string!
             memcpy(&cache[1], &pstr[1], size);
         }
@@ -391,7 +387,7 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
             auto& cache = programNameCache_[index];
             auto size = std::min(strlen(name), cache.size() - 1);
             // must be thread-safe!
-            ScopedLock lock(cacheLock_);
+            std::lock_guard lock(cacheLock_);
             cache[0] = size; // pascal string!
             memcpy(&cache[1], name, size);
         }
@@ -578,7 +574,7 @@ bool PluginClient::setParameter(int index, const std::string &str, int sampleOff
         auto& cache = paramDisplayCache_[index];
         auto size = std::min(str.size(), cache.size() - 1);
         // must be thread-safe!
-        ScopedLock lock(cacheLock_);
+        std::lock_guard lock(cacheLock_);
         cache[0] = size; // pascal string!
         memcpy(&cache[1], str.data(), size);
     }
@@ -592,7 +588,7 @@ float PluginClient::getParameter(int index) const {
 
 std::string PluginClient::getParameterString(int index) const {
     // must be thread-safe!
-    ScopedLock lock(cacheLock_);
+    std::lock_guard lock(cacheLock_);
     auto& param = paramDisplayCache_[index];
     assert(param[0] < param.size()); // pascal string!
     return std::string((char *)&param[1], param[0]);
@@ -617,7 +613,7 @@ void PluginClient::setProgramName(const std::string& name) {
         auto& cache = programNameCache_[program_];
         auto size = std::min(name.size(), cache.size() - 1);
         // must be thread-safe!
-        ScopedLock lock(cacheLock_);
+        std::lock_guard lock(cacheLock_);
         cache[0] = size; // pascal string!
         memcpy(&cache[1], name.data(), size);
     }
@@ -636,7 +632,7 @@ std::string PluginClient::getProgramName() const {
 
 std::string PluginClient::getProgramNameIndexed(int index) const {
     // must be thread-safe!
-    ScopedLock lock(cacheLock_);
+    std::lock_guard lock(cacheLock_);
     auto& name = programNameCache_[index];
     assert(name[0] < name.size()); // pascal string!
     return std::string((char *)&name[1], name[0]);
@@ -864,7 +860,6 @@ intptr_t PluginClient::vendorSpecific(int index, intptr_t value, void *p, float 
     UNSUPPORTED_METHOD("vendorSpecific");
     return 0;
 }
-
 
 /*///////////////////// WindowClient ////////////////////*/
 

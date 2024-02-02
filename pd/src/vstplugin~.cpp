@@ -128,7 +128,7 @@ t_workqueue::t_workqueue(){
         while (w_running.load()) {
             w_event.wait();
 
-            std::unique_lock<std::mutex> lock(w_mutex); // for cancellation
+            std::unique_lock lock(w_mutex); // for cancellation
             t_item item;
             while (w_nrt_queue.pop(item)){
                 if (item.workfn){
@@ -181,7 +181,7 @@ void t_workqueue::dopush(void *owner, void *data, t_fun<void> workfn,
 
 // cancel all running commands belonging to owner
 void t_workqueue::cancel(void *owner){
-    std::lock_guard<std::mutex> lock(w_mutex);
+    std::lock_guard lock(w_mutex);
     // NRT queue
     w_nrt_queue.forEach([&](t_item& i){
         if (i.owner == owner) {
@@ -375,7 +375,7 @@ static std::string gCacheFileName = std::string("cache_")
 static Mutex gFileLock;
 
 static void readCacheFile(const std::string& dir, bool loud){
-    ScopedLock lock(gFileLock);
+    std::lock_guard lock(gFileLock);
     auto path = dir + "/" + gCacheFileName;
     if (pathExists(path)){
         logpost(nullptr, PdDebug, "read cache file %s", path.c_str());
@@ -396,7 +396,7 @@ static void readCacheFile(){
 }
 
 static void writeCacheFile(const std::string& dir) {
-    ScopedLock lock(gFileLock);
+    std::lock_guard lock(gFileLock);
     try {
         if (pathExists(dir)) {
             gPluginDict.write(dir + "/" + gCacheFileName);
@@ -409,7 +409,7 @@ static void writeCacheFile(const std::string& dir) {
 }
 
 static void writeCacheFile() {
-    ScopedLock lock(gFileLock);
+    std::lock_guard lock(gFileLock);
     try {
         if (!pathExists(gSettingsDir)) {
             createDirectory(userSettingsPath());
@@ -655,8 +655,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
         std::string pluginPath = absPath;
         sys_unbashfilename(&pluginPath[0], &pluginPath[0]);
         // check if module has already been loaded
-        auto factory = gPluginDict.findFactory(pluginPath);
-        if (factory){
+        if (auto factory = gPluginDict.findFactory(pluginPath)) {
             // just post paths of valid plugins
             PdLog<async>(PdDebug) << factory->path();
 
@@ -685,7 +684,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
                 futures.push_back(probePluginAsync<async>(pluginPath, timeout));
                 processFutures(PROBE_FUTURES);
             } else {
-                if ((factory = probePlugin<async>(pluginPath, timeout))){
+                if (auto factory = probePlugin<async>(pluginPath, timeout)) {
                     int numPlugins = factory->numPlugins();
                     for (int i = 0; i < numPlugins; ++i) {
                         auto plugin = factory->getPlugin(i);
@@ -999,13 +998,7 @@ void t_vsteditor::tick(t_vsteditor *x){
                 x->e_needclock.store(true);
             }
             // finally, swap bitsets
-#if 0 // C++17 only
             std::swap_ranges(new_param_change, param_change, param_change);
-#else
-            for (int i = 0; i < full_size; ++i) {
-                std::swap(new_param_change[i], param_change[i]);
-            }
-#endif
             // all bits should be zero now!
             assert(std::all_of(new_param_change, new_param_change + full_size,
                                [](auto& x) { return x.none(); }));
@@ -1614,7 +1607,7 @@ static void vstplugin_open_do(t_open_data *data){
                 data->plugin = info->create(data->editor, data->threaded, data->mode);
                 // setup plugin
                 // protect against concurrent vstplugin_dsp() and vstplugin_save()
-                ScopedLock lock(x->x_mutex);
+                std::lock_guard lock(x->x_mutex);
                 x->setup_plugin(*data->plugin);
             }, data->editor);
             LOG_DEBUG("done");
@@ -2030,7 +2023,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
                 auto& plugin = x->owner->x_plugin;
                 x->owner->x_editor->defer_safe<true>([&](){
                     // protect against vstplugin_dsp() and vstplugin_save()
-                    ScopedLock lock(x->owner->x_mutex);
+                    std::lock_guard lock(x->owner->x_mutex);
                     plugin->suspend();
                     plugin->resume();
                 }, x->owner->x_uithread);
@@ -2045,7 +2038,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     } else {
         // protect against concurrent reads/writes
         x->x_editor->defer_safe<false>([&](){
-            ScopedLock lock(x->x_mutex);
+            std::lock_guard lock(x->x_mutex);
             x->x_plugin->suspend();
             x->x_plugin->resume();
         }, x->x_uithread);
@@ -2061,7 +2054,7 @@ static void vstplugin_offline(t_vstplugin *x, t_floatarg f){
 
     if (x->x_plugin && (mode != x->x_mode)){
         x->x_editor->defer_safe<false>([&](){
-            ScopedLock lock(x->x_mutex);
+            std::lock_guard lock(x->x_mutex);
             x->x_plugin->suspend();
             x->x_plugin->setupProcessing(x->x_sr, x->x_blocksize,
                                          x->x_realprecision, mode);
@@ -2527,7 +2520,7 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
     }
     try {
         x->x_editor->defer_safe<false>([&](){
-            ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
+            std::lock_guard lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
@@ -2550,7 +2543,7 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
     std::string buffer;
     try {
        x->x_editor->defer_safe<false>([&](){
-            ScopedLock lock(x->x_mutex); // avoid concurrent reads/writes
+            std::lock_guard lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
@@ -2597,7 +2590,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
 
         x->x_editor->defer_safe<async>([&](){
             // protect against vstplugin_dsp() and vstplugin_save()
-            ScopedLock lock(x->x_mutex);
+            std::lock_guard lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
@@ -2697,7 +2690,7 @@ static void vstplugin_preset_write_do(t_preset_data *data){
         }
         // protect against vstplugin_dsp() and vstplugin_save()
         x->x_editor->defer_safe<async>([&](){
-            ScopedLock lock(x->x_mutex);
+            std::lock_guard lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
@@ -2749,7 +2742,7 @@ static void vstplugin_preset_write_done(t_preset_data *data){
             preset.type = y->type;
             {
             #ifdef PDINSTANCE
-                WriteLock lock(gPresetMutex);
+                std::lock_guard lock(gPresetMutex);
             #endif
                 const_cast<PluginDesc&>(info).addPreset(std::move(preset));
             }
@@ -2798,7 +2791,7 @@ static void vstplugin_preset_count(t_vstplugin *x){
     t_atom msg;
     {
     #ifdef PDINSTANCE
-        ReadLock lock(gPresetMutex);
+        std::shared_lock lock(gPresetMutex);
     #endif
         SETFLOAT(&msg, info.numPresets());
     }
@@ -2813,7 +2806,7 @@ static void vstplugin_preset_doinfo(t_vstplugin *x, const PluginDesc& info, int 
     // outputting the presets. Since we have to unlock before sending to the outlet to avoid
     // deadlocks, I don't see what we can do... maybe add a recursion check?
     // At least we always do a range check.
-    ReadLock lock(gPresetMutex);
+    std::shared_lock lock(gPresetMutex);
 #endif
     if (index >= 0 && index < info.numPresets()){
         auto& preset = info.presets[index];
@@ -2873,7 +2866,7 @@ static void vstplugin_preset_list(t_vstplugin *x, t_symbol *s){
     {
     #ifdef PDINSTANCE
         // see comment in vstplugin_preset_doinfo
-        ReadLock lock(gPresetMutex);
+        std::shared_lock lock(gPresetMutex);
     #endif
         numpresets = info->numPresets();
     }
@@ -2968,7 +2961,7 @@ static void vstplugin_preset_load(t_vstplugin *x, t_symbol *s, int argc, t_atom 
     t_symbol *path;
     {
     #ifdef PDINSTANCE
-        ReadLock lock(gPresetMutex);
+        std::shared_lock lock(gPresetMutex);
     #endif
         int index = vstplugin_preset_index(x, argc, argv);
         if (index < 0){
@@ -2997,7 +2990,7 @@ static void vstplugin_preset_save(t_vstplugin *x, t_symbol *s, int argc, t_atom 
 
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    WriteLock lock(gPresetMutex);
+    std::unique_lock lock(gPresetMutex);
 #endif
     Preset preset;
     bool add = false;
@@ -3072,7 +3065,7 @@ static void vstplugin_preset_rename(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    WriteLock lock(gPresetMutex);
+    std::unique_lock lock(gPresetMutex);
 #endif
 
     auto notify = [](t_vstplugin *x, bool result){
@@ -3134,7 +3127,7 @@ static void vstplugin_preset_delete(t_vstplugin *x, t_symbol *s, int argc, t_ato
     if (!x->check_plugin()) return;
     auto& info = x->x_plugin->info();
 #ifdef PDINSTANCE
-    WriteLock lock(gPresetMutex);
+    std::unique_lock lock(gPresetMutex);
 #endif
 
     auto notify = [](t_vstplugin *x, bool result){
@@ -3945,7 +3938,7 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
         // protect against concurrent vstplugin_open_do()
-        ScopedLock lock(x->x_mutex);
+        std::lock_guard lock(x->x_mutex);
         // 1) plugin
         binbuf_addv(bb, "ss", gensym("#A"), gensym("open"));
         if (x->x_uithread) {
@@ -4076,7 +4069,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     }
 
     // protect against concurrent vstplugin_open_do()
-    ScopedLock lock(x->x_mutex);
+    std::lock_guard lock(x->x_mutex);
     // only reset plugin if blocksize, samplerate or channels have changed
     if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr) || channels_changed)) {
         x->x_editor->defer_safe<false>([&](){

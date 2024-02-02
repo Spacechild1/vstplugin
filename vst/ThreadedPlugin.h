@@ -56,8 +56,6 @@ class DSPThreadPool {
 class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
 {
  public:
-    friend class ThreadedPluginListener;
-
     ThreadedPlugin(IPlugin::ptr plugin);
     ~ThreadedPlugin();
 

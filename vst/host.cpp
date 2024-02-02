@@ -154,14 +154,14 @@ void writeLog(int level, const char *msg){
     header.size = strlen(msg) + 1;
 #if VST_HOST_SYSTEM == VST_WINDOWS
     if (gLogChannel) {
-        std::lock_guard<std::mutex> lock(gLogMutex);
+        std::lock_guard lock(gLogMutex);
         DWORD bytesWritten;
         WriteFile(gLogChannel, &header, sizeof(header), &bytesWritten, NULL);
         WriteFile(gLogChannel, msg, header.size, &bytesWritten, NULL);
     }
 #else
     if (gLogChannel >= 0) {
-        std::lock_guard<std::mutex> lock(gLogMutex);
+        std::lock_guard lock(gLogMutex);
         write(gLogChannel, &header, sizeof(header));
         write(gLogChannel, msg, header.size);
     }

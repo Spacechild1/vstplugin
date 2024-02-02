@@ -38,23 +38,61 @@
 #endif
 
 #include "Interface.h"
+#include "Log.h"
 
 #include <string>
 #include <cstring>
+#include <stdlib.h>
 
 namespace  vst {
 
-// TODO: with C++17 we cold directly store a lambda because
-// of class template argument deduction in constructors.
+#ifdef __APPLE__
+// apparently, aligned default delete is only available on macOS 10.14+,
+// so we need to manually override operator new and operator delete!
+template<typename T>
+class AlignedClass {
+public:
+    void* operator new(size_t size) {
+        void *ptr = nullptr;
+        if (posix_memalign(&ptr, alignof(T), size) != 0) {
+            LOG_WARNING("posix_memalign() failed");
+            ptr = std::malloc(size);
+            if (!ptr) {
+                throw std::bad_alloc();
+            }
+        }
+        return ptr;
+    }
+
+    void operator delete(void* ptr) {
+        std::free(ptr);
+    }
+
+    void* operator new[](size_t size) {
+        return operator new(size);
+    }
+
+    void operator delete[](void *ptr) {
+        return operator delete(ptr);
+    }
+};
+#else
+template<typename T>
+class AlignedClass {};
+#endif
+
+//---------------------------------------------------------------//
+
+// NB: requires CTAD (C++17 and above)
+template<typename T>
 class ScopeGuard {
 public:
-    ~ScopeGuard() { fn_(); }
-
-    template<typename Func>
-    ScopeGuard(const Func& fn)
+    ScopeGuard(const T& fn)
         : fn_(fn) {}
+
+    ~ScopeGuard() { fn_(); }
 private:
-    std::function<void()> fn_;
+    T fn_;
 };
 
 //--------------------------------------------------------------//

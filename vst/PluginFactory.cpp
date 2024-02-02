@@ -198,11 +198,11 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         result.plugin = desc;
         result.total = 1;
         // wait for process to finish
-        int code = -1;
+        int exitCode = -1;
         try {
             if (nonblocking) {
-                auto ret = process->tryWait(0);
-                if (!ret.first) {
+                auto [done, code] = process->tryWait(0);
+                if (!done) {
                     if (timeout > 0) {
                         using seconds = std::chrono::duration<double>;
                         auto now = std::chrono::system_clock::now();
@@ -218,10 +218,10 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                     }
                     return false;
                 }
-                code = ret.second;
+                exitCode = code;
             } else if (timeout > 0) {
-                auto ret = process->tryWait(timeout);
-                if (!ret.first) {
+                auto [done, code] = process->tryWait(timeout);
+                if (!done) {
                     if (process->terminate()) {
                         LOG_DEBUG("terminated hanging subprocess");
                     }
@@ -229,9 +229,9 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                     msg << "subprocess timed out after " << timeout << " seconds!";
                     throw Error(Error::SystemError, msg.str());
                 }
-                code = ret.second;
+                exitCode = code;
             } else {
-                code = process->wait();
+                exitCode = process->wait();
             }
         } catch (const Error& e){
             result.error = e;
@@ -239,7 +239,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
         }
         /// LOG_DEBUG("return code: " << ret);
         TmpFile file(tmpPath); // removes the file on destruction
-        if (code == EXIT_SUCCESS) {
+        if (exitCode == EXIT_SUCCESS) {
             // get info from temp file
             if (file.is_open()) {
                 try {
@@ -265,7 +265,7 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                     result.error = Error(Error::SystemError, "couldn't read temp file!");
                 }
             }
-        } else if (code == EXIT_FAILURE) {
+        } else if (exitCode == EXIT_FAILURE) {
             // get error from temp file
             if (file.is_open()) {
                 int err;

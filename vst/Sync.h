@@ -2,8 +2,21 @@
 
 // only for VST_HOST_SYSTEM
 #include "Interface.h"
+#include "Log.h"
+#include "MiscUtils.h"
 
 #include <stddef.h>
+
+// for SpinLock
+// Intel
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+#define CPU_INTEL
+#include <immintrin.h>
+#endif
+// ARM
+#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
+#define CPU_ARM
+#endif
 
 // Wine executables segfaults during static initialization
 // of mutex/event/semaphore objects which use the Win32 API,
@@ -21,6 +34,9 @@
 #endif
 
 #include <atomic>
+#include <mutex>
+#include <shared_mutex>
+#include <thread>
 
 namespace vst {
 
@@ -156,7 +172,15 @@ class Event {
 
 /*///////////////////// SpinLock /////////////////////*/
 
-void pauseCpu();
+inline void pauseCpu() {
+#if defined(CPU_INTEL)
+    _mm_pause();
+#elif defined(CPU_ARM)
+    __asm__ __volatile__("yield");
+#else // fallback
+    std::this_thread::yield();
+#endif
+}
 
 // simple spin lock
 
@@ -188,16 +212,15 @@ class SpinLock {
 
 const size_t CACHELINE_SIZE = 64;
 
-class alignas(CACHELINE_SIZE) PaddedSpinLock : public SpinLock {
+class alignas(CACHELINE_SIZE) PaddedSpinLock
+    : public SpinLock, public AlignedClass<PaddedSpinLock> {
  public:
-    PaddedSpinLock();
-    // before C++17, new() couldn't handle alignments larger than max_align_t
-#if __cplusplus < 201703L
-    void* operator new(size_t size);
-    void* operator new[](size_t size);
-    void operator delete(void*);
-    void operator delete[](void*);
-#endif
+    PaddedSpinLock() {
+        static_assert(sizeof(PaddedSpinLock) == CACHELINE_SIZE, "");
+        if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
+            LOG_WARNING("PaddedSpinLock is not properly aligned!");
+        }
+    }
  private:
     // pad and align to prevent false sharing
     char pad_[CACHELINE_SIZE - sizeof(locked_)];
@@ -238,68 +261,6 @@ private:
 };
 #endif
 
-class ScopedLock {
-    Mutex& mutex_;
- public:
-    ScopedLock(Mutex& mutex)
-        : mutex_(mutex){ mutex_.lock(); }
-    ~ScopedLock(){ mutex_.unlock(); }
-    ScopedLock(ScopedLock&&) = delete;
-    ScopedLock& operator=(ScopedLock&&) = delete;
-};
-
-template<typename T>
-class UniqueLock {
- protected:
-    T* mutex_;
-    bool owns_;
- public:
-    UniqueLock() : mutex_(nullptr), owns_(false){}
-    UniqueLock(T& mutex)
-        : mutex_(&mutex), owns_(true)
-    {
-        mutex_->lock();
-    }
-    UniqueLock(const UniqueLock&) = delete;
-    UniqueLock(UniqueLock&& other) noexcept
-        : mutex_(other.mutex_), owns_(other.owns_)
-    {
-        other.mutex_ = nullptr;
-        other.owns_ = false;
-    }
-
-    ~UniqueLock(){
-        if (owns_){
-            mutex_->unlock();
-        }
-    }
-
-    UniqueLock& operator=(const UniqueLock&) = delete;
-    UniqueLock& operator=(UniqueLock&& other) noexcept {
-        if (owns_){
-            mutex_->unlock();
-        }
-        mutex_ = other.mutex_;
-        owns_ = other.owns_;
-        other.mutex_ = nullptr;
-        other.owns_ = false;
-    }
-
-    void lock(){
-        mutex_->lock();
-        owns_ = true;
-    }
-
-    void unlock(){
-        mutex_->unlock();
-        owns_ = false;
-    }
-};
-
-class Lock : public UniqueLock<Mutex> {
-    using UniqueLock::UniqueLock;
-};
-
 /*//////////////////////// SharedMutex ///////////////////////////*/
 
 #if VST_HOST_SYSTEM == VST_WINDOWS
@@ -330,58 +291,5 @@ private:
     pthread_rwlock_t rwlock_;
 };
 #endif
-
-class WriteLock : public UniqueLock<SharedMutex> {
-    using UniqueLock::UniqueLock;
-};
-
-class ReadLock {
- protected:
-    SharedMutex* mutex_;
-    bool owns_;
- public:
-    ReadLock() : mutex_(nullptr), owns_(false){}
-    ReadLock(SharedMutex& mutex)
-        : mutex_(&mutex), owns_(true)
-    {
-        mutex_->lock_shared();
-    }
-    ReadLock(const ReadLock&) = delete;
-    ReadLock(ReadLock&& other) noexcept
-        : mutex_(other.mutex_), owns_(other.owns_)
-    {
-        other.mutex_ = nullptr;
-        other.owns_ = false;
-    }
-
-    ~ReadLock(){
-        if (owns_){
-            mutex_->unlock_shared();
-        }
-    }
-
-    ReadLock& operator=(const ReadLock&) = delete;
-    ReadLock& operator=(ReadLock&& other) noexcept {
-        if (owns_){
-            mutex_->unlock_shared();
-        }
-        mutex_ = other.mutex_;
-        owns_ = other.owns_;
-        other.mutex_ = nullptr;
-        other.owns_ = false;
-        return *this;
-    }
-
-    void lock(){
-        mutex_->lock_shared();
-        owns_ = true;
-    }
-
-    void unlock(){
-        mutex_->unlock_shared();
-        owns_ = false;
-    }
-};
-
 
 } //  vst

@@ -14,7 +14,8 @@
 
 namespace vst {
 
-class alignas(CACHELINE_SIZE) PluginClient final : public DeferredPlugin {
+class alignas(CACHELINE_SIZE) PluginClient final
+    : public DeferredPlugin, public AlignedClass<PluginClient> {
 public:
     PluginClient(IFactory::const_ptr f, PluginDesc::const_ptr desc,
                  bool sandbox, bool editor);
@@ -130,7 +131,6 @@ protected:
     // no contention. Notable exceptions: the plugin is multi-threaded
     // or we need to get the parameters from a different thread.
     // However, we always pay for the atomic operations...
-    using ScopedLock = std::lock_guard<SpinLock>;
     mutable SpinLock cacheLock_;
     char padding[60];
 };

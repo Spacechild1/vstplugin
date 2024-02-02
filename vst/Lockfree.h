@@ -75,8 +75,8 @@ struct Node {
 // the ABA problem. (During a CAS loop the current node could be popped and pushed again,
 // so that the CAS would succeed even though the object has changed.)
 template<typename T, typename Alloc = std::allocator<T>>
-class UnboundedMPSCQueue : protected Alloc::template rebind<Node<T>>::other {
-    typedef typename Alloc::template rebind<Node<T>>::other Base;
+class UnboundedMPSCQueue : protected std::allocator_traits<Alloc>::template rebind_alloc<Node<T>> {
+    typedef typename std::allocator_traits<Alloc>::template rebind_alloc<Node<T>> Base;
  public:
     UnboundedMPSCQueue(const Alloc& alloc = Alloc {}) : Base(alloc) {
         // add dummy node

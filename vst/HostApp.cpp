@@ -47,9 +47,9 @@ bool ProcessHandle::valid() const {
 }
 
 int ProcessHandle::wait() {
-    auto result = tryWait(-1);
-    assert(result.first);
-    return result.second;
+    auto [done, code] = tryWait(-1);
+    assert(done);
+    return code;
 }
 
 std::pair<bool, int> ProcessHandle::tryWait(double timeout) {
@@ -553,7 +553,7 @@ std::unordered_map<CpuArch, std::unique_ptr<IHostApp>> gHostAppDict;
 // we only have to protect against concurrent insertion to avoid race conditions
 // during the lookup process. The actual IHostApp pointer will never be invalidated.
 IHostApp* IHostApp::get(CpuArch arch) {
-    std::lock_guard<std::mutex> lock(gHostAppMutex);
+    std::lock_guard lock(gHostAppMutex);
     auto it = gHostAppDict.find(arch);
     if (it != gHostAppDict.end()){
         return it->second.get();
@@ -597,8 +597,8 @@ IHostApp* IHostApp::get(CpuArch arch) {
         }
         if (app->test()) {
             LOG_DEBUG("host app '" << path << "' is working");
-            auto result = gHostAppDict.emplace(arch, std::move(app));
-            return result.first->second.get();
+            auto [result, _] = gHostAppDict.emplace(arch, std::move(app));
+            return result->second.get();
         }
     } else {
     #ifdef __APPLE__
@@ -610,8 +610,8 @@ IHostApp* IHostApp::get(CpuArch arch) {
                 if (app->test()) {
                     LOG_DEBUG("host app '" << path << "' ("
                               << cpuArchToString(arch) << ") is working");
-                    auto result = gHostAppDict.emplace(arch, std::move(app));
-                    return result.first->second.get();
+                    auto [result, _] = gHostAppDict.emplace(arch, std::move(app));
+                    return result->second.get();
                 } else {
                     break;
                 }

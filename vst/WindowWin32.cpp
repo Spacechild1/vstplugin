@@ -253,7 +253,7 @@ bool EventLoop::callSync(UIThread::Callback cb, void *user){
         return true;
     } else {
         // This must never be called concurrently!
-        ScopedLock lock(mutex_);
+        std::lock_guard lock(mutex_);
         if (!postMessage(WM_CALL, (void *)cb, user)) {
             return false;
         }
@@ -272,7 +272,7 @@ bool EventLoop::sync(){
         return true;
     } else {
         // This must never be called concurrently!
-        ScopedLock lock(mutex_);
+        std::lock_guard lock(mutex_);
         if (!postMessage(WM_SYNC)) {
             return false;
         }

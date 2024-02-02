@@ -31,7 +31,7 @@ static std::unordered_map<CpuArch, std::weak_ptr<PluginBridge>> gPluginBridgeMap
 PluginBridge::ptr PluginBridge::getShared(CpuArch arch){
     PluginBridge::ptr bridge;
 
-    std::lock_guard<std::mutex> lock(gPluginBridgeMutex);
+    std::lock_guard lock(gPluginBridgeMutex);
 
     auto it = gPluginBridgeMap.find(arch);
     if (it != gPluginBridgeMap.end()){
@@ -355,9 +355,9 @@ void PluginBridge::checkStatus(){
             // notify all clients
             // NB: clients shall not close the plugin from within
             // the callback function, so this won't deadlock!
-            ScopedLock lock(clientMutex_);
-            for (auto& it : clients_) {
-                it.second->pluginCrashed();
+            std::lock_guard lock(clientMutex_);
+            for (auto& [_, client] : clients_) {
+                client->pluginCrashed();
             }
         }
     }
@@ -365,18 +365,17 @@ void PluginBridge::checkStatus(){
 
 void PluginBridge::addUIClient(uint32_t id, IPluginListener* client){
     LOG_DEBUG("PluginBridge: add client " << id);
-    ScopedLock lock(clientMutex_);
+    std::lock_guard lock(clientMutex_);
     clients_.emplace(id, client);
 }
 
 void PluginBridge::removeUIClient(uint32_t id){
     LOG_DEBUG("PluginBridge: remove client " << id);
-    ScopedLock lock(clientMutex_);
+    std::lock_guard lock(clientMutex_);
     clients_.erase(id);
 }
 
-void PluginBridge::postUIThread(const ShmUICommand& cmd){
-    // ScopedLock lock(uiMutex_);
+void PluginBridge::postUIThread(const ShmUICommand& cmd) {
     // sizeof(cmd) is a bit lazy, but we don't care too much about space here
     auto& channel = shm_.getChannel(Channel::UISend);
     if (channel.writeMessage(&cmd, sizeof(cmd))){
@@ -400,7 +399,7 @@ void PluginBridge::pollUIThread(){
     while (channel.readMessage(buffer, size)){
         auto cmd = (const ShmUICommand *)buffer;
         // find client with matching ID
-        ScopedLock lock(clientMutex_);
+        std::lock_guard lock(clientMutex_);
 
         auto client = findClient(cmd->id);
         if (client){
@@ -472,7 +471,7 @@ RTChannel PluginBridge::getRTChannel(){
             // LOG_DEBUG("PluginBridge: found free index " << index);
         }
         return RTChannel(shm_.getChannel(Channel::NRT + 1 + index),
-                         std::unique_lock<PaddedSpinLock>(locks_[index], std::adopt_lock));
+                         std::unique_lock(locks_[index], std::adopt_lock));
     } else {
         // plugin sandbox: RT channel = NRT channel
         return RTChannel(shm_.getChannel(Channel::NRT));
@@ -482,7 +481,7 @@ RTChannel PluginBridge::getRTChannel(){
 NRTChannel PluginBridge::getNRTChannel(){
     if (locks_){
         return NRTChannel(shm_.getChannel(Channel::NRT),
-                          std::unique_lock<Mutex>(nrtMutex_));
+                          std::unique_lock(nrtMutex_));
     } else {
         // channel 2 is both NRT and RT channel
         return NRTChannel(shm_.getChannel(Channel::NRT));
@@ -513,7 +512,7 @@ WatchDog::~WatchDog(){
     thread_.detach();
 #else
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         processes_.clear(); // !
         running_ = false;
         condition_.notify_one();
@@ -525,7 +524,7 @@ WatchDog::~WatchDog(){
 
 void WatchDog::registerProcess(PluginBridge::ptr process){
     LOG_DEBUG("WatchDog: register process");
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     processes_.push_back(process);
     condition_.notify_one();
 }
@@ -533,7 +532,7 @@ void WatchDog::registerProcess(PluginBridge::ptr process){
 void WatchDog::run(){
     vst::setThreadPriority(Priority::Low);
 
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock(mutex_);
     while (running_) {
         LOG_DEBUG("WatchDog: waiting...");
         // wait until a process has been added or we should quit

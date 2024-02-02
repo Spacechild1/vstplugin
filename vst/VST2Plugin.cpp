@@ -117,7 +117,7 @@ static Mutex gLoaderLock;
 
 void VST2Factory::doLoad() {
     // TODO: optimize with double checked locking?
-    ScopedLock lock(gLoaderLock);
+    std::lock_guard lock(gLoaderLock);
 
     if (!module_){
         auto module = IModule::load(path_); // throws on failure

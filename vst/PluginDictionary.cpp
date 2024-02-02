@@ -14,12 +14,12 @@
 namespace vst {
 
 void PluginDictionary::addFactory(const std::string& path, IFactory::ptr factory) {
-    WriteLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     factories_[path] = std::move(factory);
 }
 
 IFactory::const_ptr PluginDictionary::findFactory(const std::string& path) const {
-    ReadLock lock(mutex_);
+    std::shared_lock lock(mutex_);
     auto factory = factories_.find(path);
     if (factory != factories_.end()){
         return factory->second;
@@ -29,17 +29,17 @@ IFactory::const_ptr PluginDictionary::findFactory(const std::string& path) const
 }
 
 void PluginDictionary::addException(const std::string &path){
-    WriteLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     exceptions_.insert(path);
 }
 
 bool PluginDictionary::isException(const std::string& path) const {
-    ReadLock lock(mutex_);
+    std::shared_lock lock(mutex_);
     return exceptions_.count(path) != 0;
 }
 
 void PluginDictionary::addPlugin(const std::string& key, PluginDesc::const_ptr plugin) {
-    WriteLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     int index = plugin->bridged() ? BRIDGED : NATIVE;
 #if USE_WINE
     if (index == BRIDGED){
@@ -59,7 +59,7 @@ void PluginDictionary::addPlugin(const std::string& key, PluginDesc::const_ptr p
 }
 
 PluginDesc::const_ptr PluginDictionary::findPlugin(const std::string& key) const {
-    ReadLock lock(mutex_);
+    std::shared_lock lock(mutex_);
     // first try to find native plugin
     auto it = plugins_[NATIVE].find(key);
     if (it != plugins_[NATIVE].end()){
@@ -74,12 +74,12 @@ PluginDesc::const_ptr PluginDictionary::findPlugin(const std::string& key) const
 }
 
 std::vector<PluginDesc::const_ptr> PluginDictionary::pluginList() const {
-    ReadLock lock(mutex_);
+    std::shared_lock lock(mutex_);
     // inverse mapping (plugin -> keys)
     std::unordered_set<PluginDesc::const_ptr> pluginSet;
     for (auto& plugins : plugins_){
-        for (auto& it : plugins){
-            pluginSet.insert(it.second);
+        for (auto& [_, desc] : plugins){
+            pluginSet.insert(desc);
         }
     }
     std::vector<PluginDesc::const_ptr> plugins;
@@ -91,7 +91,7 @@ std::vector<PluginDesc::const_ptr> PluginDictionary::pluginList() const {
 }
 
 void PluginDictionary::clear() {
-    WriteLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     factories_.clear();
     for (auto& plugins : plugins_){
         plugins.clear();
@@ -121,7 +121,7 @@ static double getPluginTimestamp(const std::string& path) {
 }
 
 void PluginDictionary::read(const std::string& path, bool update){
-    ReadLock lock(mutex_);
+    std::shared_lock lock(mutex_);
     int versionMajor = 0, versionMinor = 0, versionBugfix = 0;
     bool outdated = false;
 
@@ -228,7 +228,7 @@ void PluginDictionary::read(const std::string& path, bool update){
 }
 
 PluginDesc::const_ptr PluginDictionary::readPlugin(std::istream& stream){
-    WriteLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     return doReadPlugin(stream, -1, VERSION_MAJOR,
                         VERSION_MINOR, VERSION_PATCH);
 }
@@ -289,7 +289,7 @@ PluginDesc::const_ptr PluginDictionary::doReadPlugin(std::istream& stream, doubl
 }
 
 void PluginDictionary::write(const std::string &path) const {
-    WriteLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     doWrite(path);
 }
 
@@ -300,9 +300,9 @@ void PluginDictionary::doWrite(const std::string& path) const {
     }
     // inverse mapping (plugin -> keys)
     std::unordered_map<PluginDesc::const_ptr, std::vector<std::string>> pluginMap;
-    for (auto& plugins : plugins_){
-        for (auto& it : plugins){
-            pluginMap[it.second].push_back(it.first);
+    for (auto& plugins : plugins_) {
+        for (auto& [key, value] : plugins){
+            pluginMap[value].push_back(key);
         }
     }
     // write version number
@@ -319,15 +319,15 @@ void PluginDictionary::doWrite(const std::string& path) const {
     // serialize plugins
     file << "[plugins]\n";
     file << "n=" << pluginMap.size() << "\n";
-    for (auto& it : pluginMap){
+    for (auto& [desc, keys] : pluginMap){
         // serialize plugin info
-        it.first->serialize(file);
+        desc->serialize(file);
         // serialize keys
         file << "[keys]\n";
-        auto& keys = it.second;
         file << "n=" << keys.size() << "\n";
         // sort by length, so that the short key comes first
-        std::sort(keys.begin(), keys.end(), [](auto& a, auto& b){ return a.size() < b.size(); });
+        std::sort(keys.begin(), keys.end(),
+                  [](auto& a, auto& b) { return a.size() < b.size(); });
         for (auto& key : keys){
             file << key << "\n";
         }

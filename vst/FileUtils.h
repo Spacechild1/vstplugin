@@ -33,8 +33,8 @@ std::string fileBaseName(const std::string& path);
 
 double fileTimeLastModified(const std::string& path);
 
-// cross platform fstream, taking UTF-8 file paths.
-// will become obsolete when we can switch the whole project to C++17
+// Cross platform fstream, taking UTF-8 file paths.
+// Will become obsolete when we ditch macOS versions below 10.15.
 class File : public std::fstream {
 public:
     enum Mode {

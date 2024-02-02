@@ -73,10 +73,10 @@ static std::string getPresetLocation(PresetType presetType, PluginType pluginTyp
     {
         result = expandPath("~/.");
         // VST directories might not exist yet
-        ReadLock rdlock(gFileLock);
+        std::shared_lock rdlock(gFileLock);
         if (!gDidCreateVstFolders){
             rdlock.unlock();
-            WriteLock wrlock(gFileLock);
+            std::lock_guard wrlock(gFileLock);
             // LATER do some error handling
         #if USE_VST2
             createDirectory(result + "vst");

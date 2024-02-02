@@ -1043,13 +1043,13 @@ void PluginServer::createPlugin(uint32_t id, const char *data, size_t size,
     auto handle = std::make_unique<PluginHandle>(
                 *this, std::move(plugin), id, channel);
 
-    WriteLock lock(pluginMutex_);
+    std::lock_guard lock(pluginMutex_);
     plugins_.emplace(id, std::move(handle));
 }
 
 void PluginServer::destroyPlugin(uint32_t id){
     LOG_DEBUG("PluginServer: destroy plugin " << id);
-    WriteLock lock(pluginMutex_);
+    std::unique_lock lock(pluginMutex_);
     auto it = plugins_.find(id);
     if (it != plugins_.end()){
         auto plugin = it->second.release();
@@ -1063,7 +1063,7 @@ void PluginServer::destroyPlugin(uint32_t id){
 }
 
 PluginHandle * PluginServer::findPlugin(uint32_t id){
-    ReadLock lock(pluginMutex_);
+    std::shared_lock lock(pluginMutex_);
     auto it = plugins_.find(id);
     if (it != plugins_.end()){
         return it->second.get();

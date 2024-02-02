@@ -45,8 +45,8 @@ int getNumDSPThreads() {
 
 static thread_local bool gCurrentThreadDSP;
 
-// some callbacks in IThreadedPluginListener need to know whether they
-// are called from a DSP (helper) thread, so that they would push to
+// some callbacks in IPluginListener need to know whether they are
+// called from a DSP (helper) thread, so that they would push to
 // a queue instead of forwarding to the "real" listener.
 // This is simpler and faster than saving and checking thread IDs.
 void setCurrentThreadDSP() {
@@ -188,7 +188,7 @@ void ThreadedPlugin::setListener(IPluginListener* listener){
 
 void ThreadedPlugin::setupProcessing(double sampleRate, int maxBlockSize,
                                      ProcessPrecision precision, ProcessMode mode) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->setupProcessing(sampleRate, maxBlockSize, precision, mode);
 
     if (maxBlockSize != blockSize_ || precision != precision_){
@@ -426,18 +426,18 @@ void ThreadedPlugin::process(ProcessData& data) {
 }
 
 void ThreadedPlugin::suspend() {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->suspend();
 }
 
 void ThreadedPlugin::resume() {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->resume();
 }
 
 void ThreadedPlugin::setNumSpeakers(int *input, int numInputs,
                                     int *output, int numOutputs) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->setNumSpeakers(input, numInputs, output, numOutputs);
     // create input busses
     inputs_ = numInputs > 0 ? std::make_unique<Bus[]>(numInputs) : nullptr;
@@ -481,19 +481,19 @@ int ThreadedPlugin::getProgram() const {
 }
 
 void ThreadedPlugin::setProgramName(const std::string& name) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->setProgramName(name);
 }
 
 std::string ThreadedPlugin::getProgramName() const {
     // LATER improve
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     return plugin_->getProgramName();
 }
 
 std::string ThreadedPlugin::getProgramNameIndexed(int index) const {
     // LATER improve
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     return plugin_->getProgramNameIndexed(index);
 }
 
@@ -511,7 +511,7 @@ void ThreadedPlugin::readProgramFile(const std::string& path) {
 }
 
 void ThreadedPlugin::readProgramData(const char *data, size_t size) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->readProgramData(data, size);
 }
 
@@ -526,7 +526,7 @@ void ThreadedPlugin::writeProgramFile(const std::string& path) {
 }
 
 void ThreadedPlugin::writeProgramData(std::string& buffer) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->writeProgramData(buffer);
 }
 
@@ -544,7 +544,7 @@ void ThreadedPlugin::readBankFile(const std::string& path) {
 }
 
 void ThreadedPlugin::readBankData(const char *data, size_t size) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->readBankData(data, size);
     // update program number
     program_ = plugin_->getProgram();
@@ -561,12 +561,12 @@ void ThreadedPlugin::writeBankFile(const std::string& path) {
 }
 
 void ThreadedPlugin::writeBankData(std::string& buffer) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     plugin_->writeBankData(buffer);
 }
 
 intptr_t ThreadedPlugin::vendorSpecific(int index, intptr_t value, void *p, float opt) {
-    ScopedLock lock(mutex_);
+    std::lock_guard lock(mutex_);
     return plugin_->vendorSpecific(index, value, p, opt);
 }
 

@@ -1,7 +1,5 @@
 #include "Sync.h"
 
-#include "Log.h"
-
 #if VST_HOST_SYSTEM == VST_WINDOWS
 # ifndef NOMINMAX
 #  define NOMINMAX
@@ -13,17 +11,6 @@
 #endif
 
 #include <climits>
-
-// for PaddedSpinLock
-// Intel
-#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
-  #define CPU_INTEL
-  #include <immintrin.h>
-#endif
-// ARM
-#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
-  #define CPU_ARM
-#endif
 
 namespace vst {
 
@@ -132,64 +119,6 @@ void Semaphore::wait(){
     while (sem_wait(&sem_) == -1 && errno == EINTR) continue;
 #endif
 }
-
-/*///////////////////// SpinLock ////////////////////////*/
-
-void pauseCpu() {
-#if defined(CPU_INTEL)
-    _mm_pause();
-#elif defined(CPU_ARM)
-    __asm__ __volatile__("yield");
-#else // fallback
-    std::this_thread::yield();
-#endif
-}
-
-/*///////////////////// PaddedSpinLock ////////////////////////*/
-
-PaddedSpinLock::PaddedSpinLock(){
-    static_assert(sizeof(PaddedSpinLock) == CACHELINE_SIZE, "");
-    if ((reinterpret_cast<uintptr_t>(this) & (CACHELINE_SIZE-1)) != 0){
-        LOG_WARNING("PaddedSpinLock is not properly aligned!");
-    }
-}
-
-#if __cplusplus < 201703L
-void* PaddedSpinLock::operator new(size_t size){
-    // Wine doesn't seem to have _aligned_malloc/_aligned_free
-#if VST_HOST_SYSTEM == VST_WINDOWS
-    void *ptr = _aligned_malloc(size, alignof(PaddedSpinLock));
-#else
-    void *ptr = nullptr;
-    posix_memalign(&ptr, alignof(PaddedSpinLock), size);
-    if (!ptr){
-        LOG_WARNING("posix_memalign() failed");
-        ptr = malloc(size);
-    }
-#endif
-    if (!ptr){
-        throw std::bad_alloc();
-    }
-    return ptr;
-}
-
-void PaddedSpinLock::operator delete(void* ptr){
-    // see above
-#if VST_HOST_SYSTEM == VST_WINDOWS
-    _aligned_free(ptr);
-#else
-    std::free(ptr);
-#endif
-}
-
-void *PaddedSpinLock::operator new[](size_t size){
-    return PaddedSpinLock::operator new(size);
-}
-
-void PaddedSpinLock::operator delete[](void *ptr){
-    return PaddedSpinLock::operator delete(ptr);
-}
-#endif
 
 /*////////////////////// SharedMutex ///////////////////*/
 

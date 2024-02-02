@@ -29,9 +29,7 @@ std::vector<std::pair<std::string, std::string>> pathList = {
 };
 
 int main(int argc, const char *argv[]) {
-    for (auto& entry : pathList) {
-        auto& test = entry.first;
-        auto& expected = entry.second;
+    for (auto& [test, expected] : pathList) {
         auto normalized = vst::normalizePath(test);
         if (normalized != expected) {
             LOG_ERROR("path " << normalized << " (normalized from "

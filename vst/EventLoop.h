@@ -14,7 +14,7 @@ public:
     virtual ~BaseEventLoop() {}
 
     UIThread::Handle addPollFunction(UIThread::PollFunction fn, void *context) {
-        std::unique_lock<std::mutex> lock(pollFunctionMutex_);
+        std::unique_lock lock(pollFunctionMutex_);
         auto handle = nextPollFunctionHandle_++;
         pollFunctions_.emplace(handle, [context, fn](){ fn(context); });
         lock.unlock();
@@ -27,7 +27,7 @@ public:
 
     void removePollFunction(UIThread::Handle handle) {
         {
-            std::lock_guard<std::mutex> lock(pollFunctionMutex_);
+            std::lock_guard lock(pollFunctionMutex_);
             pollFunctions_.erase(handle);
         }
         // defer to UI thread!
@@ -38,9 +38,9 @@ public:
 protected:
     // called by derived classes in poll timer function
     void doPoll() {
-        std::lock_guard<std::mutex> lock(pollFunctionMutex_);
-        for (auto& it : pollFunctions_) {
-            it.second();
+        std::lock_guard lock(pollFunctionMutex_);
+        for (auto& [_, fn] : pollFunctions_) {
+            fn();
         }
     }
 
@@ -50,7 +50,7 @@ protected:
     virtual void stopPolling() = 0;
 private:
     void updatePollFunctions() {
-        std::unique_lock<std::mutex> lock(pollFunctionMutex_);
+        std::unique_lock lock(pollFunctionMutex_);
         bool empty = pollFunctions_.empty();
         lock.unlock();
         // This is called whenever poll functions have been added/removed,
