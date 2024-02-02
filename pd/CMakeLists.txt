@@ -94,6 +94,10 @@ endif()
 # the Pd external
 add_library(${PROJECT} MODULE ${SRC})
 set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME ${FILENAME})
+if (WIN32 AND HAVE_WINDRES)
+    # resource file for sclang icon
+    target_sources(${PROJECT} PRIVATE "src/${FILENAME}.rc")
+endif()
 target_link_libraries(${PROJECT} ${LIBS})
 set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 if (PD_MULTI_INSTANCE)

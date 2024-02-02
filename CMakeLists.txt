@@ -116,6 +116,37 @@ if (WIN32 OR BUILD_WINE)
     add_definitions(-DUSE_WMAIN=$<BOOL:${WMAIN}>)
 endif()
 
+# windres
+if (WIN32 AND MINGW)
+    # set windres.exe options
+    # for some reason, CMake does not automatically take the correct windres.exe;
+    # instead, it just grabs the first one it can find. For example, it might use a
+    # 64-bit windres.exe while building with mingw32, which would lead to linker errors.
+    # As a workaround, we explicitly pass the desired target architectre.
+    if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(CMAKE_RC_FLAGS --target=pe-i386 ${CMAKE_RC_FLAGS})
+    else()
+        set(CMAKE_RC_FLAGS --target=pe-x86-64 ${CMAKE_RC_FLAGS})
+    endif()
+    # message(STATUS "CMAKE_RC_COMPILER: ${CMAKE_RC_COMPILER}")
+    # message(STATUS "CMAKE_RC_FLAGS: ${CMAKE_RC_FLAGS}")
+
+    # The solution above does not always work (e.g. when using a 32-bit windres.exe with mingw64),
+    # so we need a feature test.
+    if (NOT DEFINED HAVE_WINDRES)
+        set(RC_TEST_OPTIONS -O coff ${CMAKE_RC_FLAGS} -i "${CMAKE_CURRENT_SOURCE_DIR}/sc/src/${PROJECT}.rc"
+            -o "${CMAKE_CURRENT_BINARY_DIR}/rc_test.obj")
+        execute_process(COMMAND "${CMAKE_RC_COMPILER}" ${RC_TEST_OPTIONS} RESULT_VARIABLE RC_TEST_RESULT)
+        if (RC_TEST_RESULT EQUAL 0)
+            set(HAVE_WINDRES 1 CACHE INTERNAL "RC compiler test")
+            message(STATUS "windres.exe works!")
+        else()
+            set(HAVE_WINDRES 0 CACHE INTERNAL "RC compiler test")
+            message(WARNING "Wrong windres.exe! Try to explicitly set CMAKE_RC_COMPILER.")
+        endif()
+    endif()
+endif()
+
 # Windows paths
 if (WIN32)
     # check if "Program Files (x86)" exists (64-bit Windows) and if we compile for 32-bit

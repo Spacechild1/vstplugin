@@ -334,37 +334,38 @@ HICON EventLoop::getIcon() {
         return hIcon;
     } else {
         LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
-        // 2) try to get icon from our plugin DLL
-        auto hInstance = (HINSTANCE)getModuleHandle();
-        if (hInstance) {
-            // a) we are inside the DLL
-            if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) != 0) {
-                hIcon = ExtractIconW(NULL, exeFileName, 0);
-                if ((uintptr_t)hIcon > 1) {
-                    LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
-                    return hIcon;
-                } else {
-                    LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
-                }
+    }
+    // 2) try to get icon from our plugin DLL
+    auto hInstance = (HINSTANCE)getModuleHandle();
+    if (hInstance) {
+        // a) we are inside the DLL
+        if (GetModuleFileNameW(hInstance, exeFileName, MAX_PATH) != 0) {
+            hIcon = ExtractIconW(NULL, exeFileName, 0);
+            if ((uintptr_t)hIcon > 1) {
+                LOG_DEBUG("Win32: extracted icon from " << shorten(exeFileName));
+                return hIcon;
             } else {
-                LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
+                LOG_DEBUG("Win32: could not extract icon from " << shorten(exeFileName));
             }
         } else {
-            // b) we are inside the host process
-            std::vector<std::string> pluginPaths = {
-                getModuleDirectory() + "\\VSTPlugin.scx",
-                getModuleDirectory() + "\\VSTPlugin_supernova.scx"
-            };
-            for (auto& path : pluginPaths) {
-                if (pathExists(path)) {
-                    hIcon = ExtractIconW(NULL, widen(path).c_str(), 0);
-                    if ((uintptr_t)hIcon > 1) {
-                        return hIcon;
-                        LOG_DEBUG("Win32: extracted icon from " << path);
-                        break;
-                    } else {
-                        LOG_DEBUG("Win32: could not extract icon from " << path);
-                    }
+            LOG_ERROR("GetModuleFileName() failed: " << errorMessage(GetLastError()));
+        }
+    } else {
+        // b) we are inside the host process
+        std::vector<std::string> pluginPaths = {
+            getModuleDirectory() + "\\vstplugin~.dll", // for now assume the default extension
+            getModuleDirectory() + "\\VSTPlugin.scx",
+            getModuleDirectory() + "\\VSTPlugin_supernova.scx"
+        };
+        for (auto& path : pluginPaths) {
+            if (pathExists(path)) {
+                hIcon = ExtractIconW(NULL, widen(path).c_str(), 0);
+                if ((uintptr_t)hIcon > 1) {
+                    return hIcon;
+                    LOG_DEBUG("Win32: extracted icon from " << path);
+                    break;
+                } else {
+                    LOG_DEBUG("Win32: could not extract icon from " << path);
                 }
             }
         }
