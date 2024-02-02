@@ -583,6 +583,9 @@ void Window::doOpen(){
             // HACK for plugins which don't report the window size
             // without the editor being opened
             LOG_DEBUG("X11: couldn't get editor rect!");
+            // Flush before opening the editor! Otherwise, some plugins
+            // (e.g. LSP plugins) would only show a blank window.
+            XFlush(display_);
             plugin_->openEditor(getHandle());
             plugin_->getEditorRect(r);
             didOpen = true;
