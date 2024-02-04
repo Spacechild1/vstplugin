@@ -114,11 +114,11 @@ struct PluginDesc final {
     // presets
     void scanPresets();
     int numPresets() const { return presets.size(); }
-    int findPreset(const std::string& name) const;
-    Preset makePreset(const std::string& name, PresetType type = PresetType::User) const;
+    int findPreset(std::string_view name) const;
+    Preset makePreset(std::string_view name, PresetType type = PresetType::User) const;
     int addPreset(Preset preset);
     bool removePreset(int index, bool del = true);
-    bool renamePreset(int index, const std::string& newName);
+    bool renamePreset(int index, std::string_view newName);
     std::string getPresetFolder(PresetType type, bool create = false) const;
     PresetList presets;
     // default programs

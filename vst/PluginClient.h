@@ -49,13 +49,13 @@ public:
     double getTransportPosition() const override;
 
     void setParameter(int index, float value, int sampleOffset) override;
-    bool setParameter(int index, const std::string& str, int sampleOffset) override;
+    bool setParameter(int index, std::string_view str, int sampleOffset) override;
     float getParameter(int index) const override;
     std::string getParameterString(int index) const override;
 
     void setProgram(int index) override;
     int getProgram() const override;
-    void setProgramName(const std::string& name) override;
+    void setProgramName(std::string_view name) override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
 

@@ -33,7 +33,7 @@ void setLogFunction(LogFunction f){
     gLogFunction = f;
 }
 
-void logMessage(int level, const char *msg){
+void logMessage(int level, const char* msg){
     if (gLogFunction){
         gLogFunction(level, msg);
     } else {
@@ -42,9 +42,9 @@ void logMessage(int level, const char *msg){
     }
 }
 
-void logMessage(int level, const std::string& msg){
+void logMessage(int level, std::string_view msg){
     if (gLogFunction){
-        gLogFunction(level, msg.c_str());
+        gLogFunction(level, msg.data());
     } else {
         std::cerr << msg;
         std::flush(std::cerr);
@@ -93,7 +93,7 @@ void bypass(ProcessData &data){
 //-----------------------------------------------------------------//
 
 #ifdef _WIN32
-std::wstring widen(const std::string& s){
+std::wstring widen(std::string_view s){
     if (s.empty()){
         return std::wstring();
     }
@@ -103,7 +103,8 @@ std::wstring widen(const std::string& s){
     MultiByteToWideChar(CP_UTF8, 0, s.data(), s.size(), &buf[0], n);
     return buf;
 }
-std::string shorten(const std::wstring& s){
+
+std::string shorten(std::wstring_view s){
     if (s.empty()){
         return std::string();
     }
@@ -114,12 +115,6 @@ std::string shorten(const std::wstring& s){
     return buf;
 }
 #endif
-
-bool stringCompare(const std::string& lhs, const std::string& rhs){
-    return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
-        [](const auto& c1, const auto& c2){ return std::tolower(c1) < std::tolower(c2); }
-    );
-}
 
 std::string getTmpDirectory(){
 #ifdef _WIN32
@@ -229,7 +224,7 @@ int getCurrentProcessId() {
 #endif // WIN32
 
 #ifdef _WIN32
-int runCommand(const std::string& cmd, const std::string& args) {
+int runCommand(std::string_view cmd, std::string_view args) {
     auto wcmd = widen(cmd);
     fflush(stdout);
     // don't use system() or _wspawnl() to avoid console popping up
@@ -243,7 +238,7 @@ int runCommand(const std::string& cmd, const std::string& args) {
 
     std::stringstream cmdline;
     // NOTE: to be 100% safe, let's quote the command
-    cmdline << "\"" << fileName(cmd) << "\" " << args;
+    cmdline << "\"" << fileName(std::string{cmd}) << "\" " << args;
     auto wcmdline = widen(cmdline.str());
 
     if (!CreateProcessW(wcmd.c_str(), &wcmdline[0], NULL, NULL, 0,
@@ -274,7 +269,7 @@ int runCommand(const std::string& cmd, const std::string& args) {
 #else
     // still shows console...
     // NOTE: to be 100% safe, let's quote the command
-    auto quotecmd = L"\"" + widen(fileName(cmd)) + L"\"";
+    auto quotecmd = L"\"" + widen(fileName(std::string{cmd})) + L"\"";
     auto wargs = widen(args);
     auto result = _wspawnl(_P_WAIT, wcmd.c_str(),
                            quotecmd.c_str(), wargs.c_str(), NULL);
@@ -313,10 +308,10 @@ void restoreOutput() {
     close(stderrfd);
 }
 
-int runCommand(const std::string& cmd, const std::string& args) {
+int runCommand(std::string_view cmd, std::string_view args) {
     char cmdline[1024];
     snprintf(cmdline, sizeof(cmdline), "\"%s\" %s",
-             cmd.c_str(), args.c_str());
+             cmd.data(), args.data());
 
     fflush(stdout);
 #if SUPPRESS_OUTPUT
@@ -367,9 +362,9 @@ const char * getWineCommand(){
 
 const char * getWine64Command(){
     static auto cmd = []() -> std::string {
-        auto commandExists = [](const std::string& cmd) {
+        auto commandExists = [](std::string_view cmd) {
             char buf[256];
-            snprintf(buf, sizeof(buf), "which %s > /dev/null 2>&1", cmd.c_str());
+            snprintf(buf, sizeof(buf), "which %s > /dev/null 2>&1", cmd.data());
             return system(buf) == 0;
         };
         // users can override the 'wine' command with the

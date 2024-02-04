@@ -15,9 +15,6 @@
 #if USE_STDFS
 # include <filesystem>
 namespace fs = std::filesystem;
-# ifndef _WIN32
-#  define widen(x) x
-# endif
 #elif VST_HOST_SYSTEM != VST_WINDOWS
 # include <dirent.h>
 # include <unistd.h>

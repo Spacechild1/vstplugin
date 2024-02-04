@@ -18,7 +18,7 @@ class DeferredPlugin : public IPlugin {
         pushCommand(command);
     }
 
-    bool setParameter(int index, const std::string& str, int sampleOffset) override {
+    bool setParameter(int index, std::string_view str, int sampleOffset) override {
         auto size = str.size();
         if (size > Command::maxShortStringSize) {
             // bummer, we need to allocate on the heap

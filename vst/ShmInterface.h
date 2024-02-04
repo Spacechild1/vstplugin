@@ -94,8 +94,7 @@ class ShmChannel {
     static const size_t alignment = 64;
 
     ShmChannel() = default;
-    ShmChannel(Type type, int32_t size,
-               const std::string& name);
+    ShmChannel(Type type, int32_t size, std::string_view name);
     ShmChannel(const ShmChannel&) = delete;
     ShmChannel(ShmChannel&&) = default;
     ~ShmChannel();
@@ -182,7 +181,7 @@ class ShmInterface {
 
     // create shared memory interface
     void addChannel(ShmChannel::Type type,
-                    size_t size, const std::string& name);
+                    size_t size, std::string_view name);
     void create();
     void close();
 

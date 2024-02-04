@@ -86,7 +86,7 @@ const char * cpuArchToString(CpuArch arch){
     }
 }
 
-static std::unordered_map<std::string, CpuArch> gCpuArchMap = {
+static std::unordered_map<std::string_view, CpuArch> gCpuArchMap = {
     { "i386", CpuArch::i386 },
     { "amd64", CpuArch::amd64 },
     { "arm", CpuArch::arm },
@@ -100,7 +100,7 @@ static std::unordered_map<std::string, CpuArch> gCpuArchMap = {
 #endif
 };
 
-CpuArch cpuArchFromString(const std::string &name){
+CpuArch cpuArchFromString(std::string_view name){
     auto it = gCpuArchMap.find(name);
     if (it != gCpuArchMap.end()){
         return it->second;

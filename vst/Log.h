@@ -11,9 +11,9 @@
 
 namespace vst {
 
-void logMessage(int level, const char * msg);
+void logMessage(int level, const char* msg);
 
-void logMessage(int level, const std::string& msg);
+void logMessage(int level, std::string_view msg);
 
 class Log {
 public:

@@ -7,9 +7,6 @@
 #if USE_STDFS
 # include <filesystem>
 namespace fs = std::filesystem;
-# ifndef _WIN32
-#  define widen(x) x
-# endif
 #else
 # include <dirent.h>
 # include <unistd.h>
@@ -396,6 +393,7 @@ void search(const std::string &dir, std::function<void(const std::string&)> fn,
             LOG_WARNING(e.what());
         };
     };
+
     searchDir(widen(dir));
 #else // USE_STDFS
     std::function<void(const std::string&)> searchDir = [&](const std::string& dirname) {

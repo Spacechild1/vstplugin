@@ -36,7 +36,7 @@ using namespace vst;
 # define shorten(x) x
 #endif
 
-void writeErrorMsg(Error::ErrorCode code, const char* msg, const std::string& path){
+void writeErrorMsg(Error::ErrorCode code, std::string_view msg, const std::string& path){
     if (!path.empty()){
         // this part should be async signal safe
         vst::File file(path, File::WRITE);

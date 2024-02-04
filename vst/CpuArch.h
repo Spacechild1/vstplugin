@@ -27,7 +27,7 @@ CpuArch getHostCpuArchitecture();
 
 const char * cpuArchToString(CpuArch arch);
 
-CpuArch cpuArchFromString(const std::string& name);
+CpuArch cpuArchFromString(std::string_view name);
 
 std::vector<CpuArch> getPluginCpuArchitectures(const std::string& path);
 

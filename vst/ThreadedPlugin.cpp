@@ -480,7 +480,7 @@ int ThreadedPlugin::getProgram() const {
     return plugin_->getProgram();
 }
 
-void ThreadedPlugin::setProgramName(const std::string& name) {
+void ThreadedPlugin::setProgramName(std::string_view name) {
     std::lock_guard lock(mutex_);
     plugin_->setProgramName(name);
 }

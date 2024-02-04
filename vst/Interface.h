@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <iostream>
@@ -217,13 +218,13 @@ class IPlugin {
     virtual void sendSysexEvent(const SysexEvent& event) = 0;
 
     virtual void setParameter(int index, float value, int sampleOffset = 0) = 0;
-    virtual bool setParameter(int index, const std::string& str, int sampleOffset = 0) = 0;
+    virtual bool setParameter(int index, std::string_view str, int sampleOffset = 0) = 0;
     virtual float getParameter(int index) const = 0;
     // TODO: change to void getParameterString(int index, std::string& str) const = 0;
     virtual std::string getParameterString(int index) const = 0;
 
     virtual void setProgram(int index) = 0;
-    virtual void setProgramName(const std::string& name) = 0;
+    virtual void setProgramName(std::string_view name) = 0;
     virtual int getProgram() const = 0;
     virtual std::string getProgramName() const = 0;
     virtual std::string getProgramNameIndexed(int index) const = 0;
@@ -231,14 +232,14 @@ class IPlugin {
     // the following methods throw an Error exception on failure!
     virtual void readProgramFile(const std::string& path) = 0;
     virtual void readProgramData(const char *data, size_t size) = 0;
-    void readProgramData(const std::string& buffer) {
+    void readProgramData(std::string_view buffer) {
         readProgramData(buffer.data(), buffer.size());
     }
     virtual void writeProgramFile(const std::string& path) = 0;
     virtual void writeProgramData(std::string& buffer) = 0;
     virtual void readBankFile(const std::string& path) = 0;
     virtual void readBankData(const char *data, size_t size) = 0;
-    void readBankData(const std::string& buffer) {
+    void readBankData(std::string_view buffer) {
         readBankData(buffer.data(), buffer.size());
     }
     virtual void writeBankFile(const std::string& path) = 0;
@@ -311,9 +312,9 @@ class Error : public std::exception {
 
     Error(ErrorCode code = NoError)
         : msg_("no error"), code_(code) {}
-    Error(const std::string& msg)
+    Error(std::string_view msg)
         : msg_(msg), code_(UnknownError) {}
-    Error(ErrorCode code, const std::string& msg)
+    Error(ErrorCode code, std::string_view msg)
         : msg_(msg), code_(code) {}
     const char * what() const noexcept override {
         return msg_.c_str();

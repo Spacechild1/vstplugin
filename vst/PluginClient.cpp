@@ -567,7 +567,7 @@ void PluginClient::setParameter(int index, float value, int sampleOffset){
     DeferredPlugin::setParameter(index, value, sampleOffset);
 }
 
-bool PluginClient::setParameter(int index, const std::string &str, int sampleOffset){
+bool PluginClient::setParameter(int index, std::string_view str, int sampleOffset){
     // don't cache immediately, so that value and display stay in sync.
 #if 0
     {
@@ -606,7 +606,7 @@ int PluginClient::getProgram() const {
     return program_;
 }
 
-void PluginClient::setProgramName(const std::string& name) {
+void PluginClient::setProgramName(std::string_view name) {
     // let's cache immediately
 #if 1
     {

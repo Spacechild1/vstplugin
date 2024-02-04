@@ -66,7 +66,7 @@ static void syncBuffer(World *world, int32 index) {
     world->mSndBufUpdates[index].writes++;
 }
 
-static void allocReadBuffer(SndBuf* buf, const std::string& data) {
+static void allocReadBuffer(SndBuf* buf, std::string_view data) {
     auto n = data.size();
     BufAlloc(buf, 1, n, 1.0);
     for (int i = 0; i < n; ++i) {
@@ -151,7 +151,7 @@ bool SearchCmdData::nrtFree(World *world, void *cmdData){
 // This is needed because the current plugin API only
 // allows float arrays as arguments to Node replies.
 // Format: size, ASCII chars...
-int string2floatArray(const std::string& src, float *dest, int maxSize) {
+int string2floatArray(std::string_view src, float *dest, int maxSize) {
     int len = std::min<int>(src.size(), maxSize-1);
     if (len >= 0) {
         *dest++ = len;

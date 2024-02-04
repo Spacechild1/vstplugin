@@ -744,12 +744,12 @@ void PluginHandle::sendPresetParamChanges(ShmChannel& channel) {
 }
 
 void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
-    auto sendProgramName = [&](int index, const std::string& name){
+    auto sendProgramName = [&](int index, std::string_view name){
         auto size  = CommandSize(ShmCommand, programName, name.size() + 1);
         auto reply = (ShmCommand *)alloca(size);
         reply->type = Command::ProgramNameIndexed;
         reply->programName.index = index;
-        memcpy(reply->programName.name, name.c_str(), name.size() + 1);
+        memcpy(reply->programName.name, name.data(), name.size() + 1);
 
         addReply(channel, reply, size);
     };

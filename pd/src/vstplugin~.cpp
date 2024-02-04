@@ -1798,10 +1798,10 @@ static void vstplugin_open(t_vstplugin *x, t_symbol *s, int argc, t_atom *argv){
 
 /*-------------------------- "info" -------------------------*/
 
-static void sendInfo(t_vstplugin *x, const char *what, const std::string& value){
+static void sendInfo(t_vstplugin *x, const char *what, std::string_view value){
     t_atom msg[2];
     SETSYMBOL(&msg[0], gensym(what));
-    SETSYMBOL(&msg[1], gensym(value.c_str()));
+    SETSYMBOL(&msg[1], gensym(value.data()));
     outlet_anything(x->x_messout, gensym("info"), 2, msg);
 }
 

@@ -139,7 +139,7 @@ void VST2Factory::doLoad() {
     }
 }
 
-IPlugin::ptr VST2Factory::create(const std::string &name, bool editor) const {
+IPlugin::ptr VST2Factory::create(const std::string& name, bool editor) const {
     const_cast<VST2Factory *>(this)->doLoad(); // lazy loading
 
     if (plugins_.empty()){
@@ -814,9 +814,9 @@ void VST2Plugin::setParameter(int index, float value, int sampleOffset){
     plugin_->setParameter(plugin_, index, value);
 }
 
-bool VST2Plugin::setParameter(int index, const std::string &str, int sampleOffset){
+bool VST2Plugin::setParameter(int index, std::string_view str, int sampleOffset) {
     // VST2 can't do sample accurate automation
-    return dispatch(effString2Parameter, index, 0, (void *)str.c_str());
+    return dispatch(effString2Parameter, index, 0, (void *)str.data());
 }
 
 float VST2Plugin::getParameter(int index) const {
@@ -844,8 +844,8 @@ void VST2Plugin::setProgram(int program){
     }
 }
 
-void VST2Plugin::setProgramName(const std::string& name){
-    dispatch(effSetProgramName, 0, 0, (void*)name.c_str());
+void VST2Plugin::setProgramName(std::string_view name){
+    dispatch(effSetProgramName, 0, 0, (void*)name.data());
 }
 
 int VST2Plugin::getProgram() const {

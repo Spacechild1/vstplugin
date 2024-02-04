@@ -299,7 +299,7 @@ void PluginDesc::sortPresets(bool userOnly){
     });
 }
 
-int PluginDesc::findPreset(const std::string &name) const {
+int PluginDesc::findPreset(std::string_view name) const {
     for (int i = 0; i < presets.size(); ++i){
         if (presets[i].name == name){
             return i;
@@ -318,7 +318,7 @@ bool PluginDesc::removePreset(int index, bool del){
     return false;
 }
 
-bool PluginDesc::renamePreset(int index, const std::string& newName){
+bool PluginDesc::renamePreset(int index, std::string_view newName){
     // make preset before creating the lock!
     if (index >= 0 && index < presets.size()
             && presets[index].type == PresetType::User){
@@ -335,7 +335,7 @@ bool PluginDesc::renamePreset(int index, const std::string& newName){
 }
 
 static std::string bashPath(std::string path){
-    for (auto& c : path){
+    for (auto& c : path) {
         switch (c){
         case '/':
         case '\\':
@@ -374,11 +374,11 @@ int PluginDesc::addPreset(Preset preset) {
     return index;
 }
 
-Preset PluginDesc::makePreset(const std::string &name, PresetType type) const {
+Preset PluginDesc::makePreset(std::string_view name, PresetType type) const {
     Preset preset;
     auto folder = getPresetFolder(type, true);
     if (!folder.empty()){
-        preset.path = folder + "/" + bashPath(name) +
+        preset.path = folder + "/" + bashPath(std::string{name}) +
                 (type_ == PluginType::VST3 ? ".vstpreset" : ".fxp");
         preset.name = name;
         preset.type = type;
@@ -515,49 +515,50 @@ void PluginDesc::serialize(std::ostream& file) const {
 
 namespace {
 
-std::string ltrim(std::string str){
+std::string ltrim(std::string_view str) {
     auto pos = str.find_first_not_of(" \t");
     if (pos != std::string::npos && pos > 0){
-        return str.substr(pos);
+        return std::string{str.substr(pos)};
     } else {
-        return str;
+        return std::string{str};
     }
 }
 
-std::string rtrim(std::string str){
+std::string rtrim(std::string_view str) {
     auto pos = str.find_last_not_of(" \t") + 1;
     if (pos != std::string::npos && pos < str.size()){
-        return str.substr(0, pos);
+        return std::string{str.substr(0, pos)};
     } else {
-        return str;
+        return std::string{str};
     }
 }
 
-bool isComment(const std::string& line){
+bool isComment(std::string_view line){
     auto c = line.front();
     return c == ';' || c == '#';
 }
 
-void getKeyValuePair(const std::string& line, std::string& key, std::string& value){
+std::pair<std::string, std::string> getKeyValuePair(std::string_view line) {
     auto pos = line.find('=');
     if (pos == std::string::npos){
-        throw Error("missing '=' after key: " + line);
+        throw Error("missing '=' after key: " + std::string{line});
     }
-    key = rtrim(line.substr(0, pos));
-    value = ltrim(line.substr(pos + 1));
+    auto key = rtrim(line.substr(0, pos));
+    auto value = ltrim(line.substr(pos + 1));
+    return std::make_pair(std::move(key), std::move(value));
 }
 
-std::vector<std::string> splitString(const std::string& str, char sep){
+std::vector<std::string> splitString(std::string_view str, char sep){
     std::vector<std::string> result;
     auto pos = 0;
     while (true){
         auto newpos = str.find(sep, pos);
         if (newpos != std::string::npos){
             int len = newpos - pos;
-            result.push_back(str.substr(pos, len));
+            result.push_back(std::string{str.substr(pos, len)});
             pos = newpos + 1;
         } else {
-            result.push_back(str.substr(pos)); // remaining string
+            result.push_back(std::string{str.substr(pos)}); // remaining string
             break;
         }
     }
@@ -685,9 +686,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
             }
             break; // done
         } else if (start){
-            std::string key;
-            std::string value;
-            getKeyValuePair(line, key, value);
+            auto [key, value] = getKeyValuePair(line);
 
         #define MATCH(name, field) else if (name == key) { parseArg(field, value); }
         #define IGNORE(name) else if (name == key) {}

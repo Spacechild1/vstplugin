@@ -85,8 +85,7 @@ constexpr size_t align_to(size_t s, size_t alignment){
 /*/////////////// ShmChannel ////////////*/
 
 
-ShmChannel::ShmChannel(Type type, int32_t size,
-                       const std::string& name)
+ShmChannel::ShmChannel(Type type, int32_t size, std::string_view name)
     : owner_(true), type_(type), bufferSize_(size), name_(name)
 {
 #if SHM_FUTEX || SHM_EVENT
@@ -470,7 +469,7 @@ void ShmInterface::disconnect(){
 }
 
 void ShmInterface::addChannel(ShmChannel::Type type,
-                              size_t size, const std::string &name)
+                              size_t size, std::string_view name)
 {
     if (data_){
         throw Error(Error::SystemError,

@@ -126,38 +126,38 @@ T alignTo(T v, size_t alignment) {
     return (v + mask) & ~mask;
 }
 
-inline bool startsWith(const std::string& s, const char *c, size_t n) {
-    if (s.size() >= n) {
-        return memcmp(s.data(), c, n) == 0;
+//------------------- string utilities --------------------------//
+
+#ifdef _WIN32
+std::wstring widen(std::string_view s);
+std::string shorten(std::wstring_view s);
+#else
+// No-op versions. Yes, this creates unnecessary copies, but this does not really
+// matter in the context where these functions are typically used (file I/O).
+// NB: we cannot use a macro because it conflicts with the widen() function in the stdlib.
+inline std::string widen(std::string_view s) { return std::string{s}; }
+inline std::string shorten(std::string_view s) { return std::string{s}; }
+#endif
+
+inline bool startsWith(std::string_view s, std::string_view s2) {
+    if (s.size() >= s2.size()) {
+        return memcmp(s.data(), s2.data(), s2.size()) == 0;
     } else {
         return false;
     }
 }
 
-inline bool startsWith(const std::string& s, const char *s2) {
-    return startsWith(s, s2, strlen(s2));
-}
-
-inline bool startsWith(const std::string& s, const std::string& s2) {
-    return startsWith(s, s2.data(), s2.size());
-}
-
-//--------------------------------------------------------------//
-
-#ifdef _WIN32
-std::wstring widen(const std::string& s);
-
-std::string shorten(const std::wstring& s);
-#endif
-
-std::string getTmpDirectory();
-
 // lexicographical case-insensitive string comparison function
-bool stringCompare(const std::string& lhs, const std::string& rhs);
+inline bool stringCompare(std::string_view lhs, std::string_view rhs) {
+    return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
+        [](const auto& c1, const auto& c2){ return std::tolower(c1) < std::tolower(c2); });
+}
+
+//------------------- system utilities --------------------------//
 
 std::string errorMessage(int err);
 
-//---------------------------------------------------------------//
+std::string getTmpDirectory();
 
 const std::string& getModuleDirectory();
 
@@ -177,7 +177,7 @@ bool haveWine64();
 
 int getCurrentProcessId();
 
-int runCommand(const std::string& cmd, const std::string& args);
+int runCommand(std::string_view cmd, std::string_view args);
 
 enum class Priority {
     Low,

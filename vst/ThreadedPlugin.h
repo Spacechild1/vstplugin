@@ -88,7 +88,7 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     void setProgram(int index) override;
     int getProgram() const override;
 
-    void setProgramName(const std::string& name) override;
+    void setProgramName(std::string_view name) override;
     std::string getProgramName() const override;
     std::string getProgramNameIndexed(int index) const override;
 

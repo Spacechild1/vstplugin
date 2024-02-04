@@ -136,7 +136,7 @@ static StringCoverter& stringConverter(){
 #endif
 }
 
-std::string convertString (const Vst::String128 str){
+std::string convertString(const Vst::String128 str){
     try {
         return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
     } catch (const std::range_error& e){
@@ -144,10 +144,10 @@ std::string convertString (const Vst::String128 str){
     }
 }
 
-bool convertString (const std::string& src, Steinberg::Vst::String128 dst){
+bool convertString (std::string_view src, Steinberg::Vst::String128 dst){
     if (src.size() < 128){
         try {
-            auto wstr = stringConverter().from_bytes(src);
+            auto wstr = stringConverter().from_bytes(src.begin(), src.end());
             for (int i = 0; i < (int)wstr.size(); ++i){
                 dst[i] = wstr[i];
             }
@@ -729,7 +729,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                         param.automatable = pi.flags & Vst::ParameterInfo::kCanAutomate;
                         // Some JUCE plugins have thousands of MIDI CC parameters,
                         // e.g. "MIDI CC 0|0" etc., so we apply the following hack:
-                        if (!startsWith(param.name, "MIDI CC ", 8)) {
+                        if (!startsWith(param.name, "MIDI CC ")) {
                             params.insert(param.id);
                             newInfo->addParameter(std::move(param));
                         } else {
@@ -1824,7 +1824,7 @@ void VST3Plugin::setParameter(int index, float value, int sampleOffset){
     doSetParameter(id, value, sampleOffset);
 }
 
-bool VST3Plugin::setParameter(int index, const std::string &str, int sampleOffset){
+bool VST3Plugin::setParameter(int index, std::string_view str, int sampleOffset){
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
@@ -1948,8 +1948,8 @@ void VST3Plugin::doSetProgram(int program){
     }
 }
 
-void VST3Plugin::setProgramName(const std::string& name){
-    // ?
+void VST3Plugin::setProgramName(std::string_view name){
+    throw Error("not implemented");
 }
 
 int VST3Plugin::getProgram() const {
