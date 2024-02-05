@@ -157,7 +157,7 @@ struct Rect {
     }
 };
 
-struct PluginDesc;
+class PluginDesc;
 
 class IWindow;
 

@@ -1,10 +1,14 @@
 #pragma once
 
 #include "Interface.h"
+#include "HashTable.h"
+
+#include <assert.h>
 
 namespace vst {
 
-struct PluginDesc final {
+class PluginDesc final {
+public:
     static const uint32_t NoParamID = 0xffffffff;
 
     using ptr = std::shared_ptr<PluginDesc>;
@@ -97,19 +101,27 @@ struct PluginDesc final {
     std::vector<Param> parameters;
 
     void addParameter(Param param);
+    void addParamAlias(int index, std::string_view key);
 
-    void addParamAlias(int index, const std::string& key){
-        paramMap_[key] = index;
+    // returns -1 if the parameter is not found
+    int findParam(std::string_view key) const {
+        return paramMap_.findOr(key, -1);
     }
-    int findParam(const std::string& key) const;
     int numParameters() const {
         return parameters.size();
     }
 #if USE_VST3
     // get VST3 parameter ID from index
-    uint32_t getParamID(int index) const;
+    uint32_t getParamID(int index) const {
+        auto result = indexToIdMap_.find(index);
+        assert(result); // throw?
+        return *result;
+    }
     // get index from VST3 parameter ID
-    int getParamIndex(uint32_t _id) const;
+    // returns -1 if the parameter is not found (not automatable)
+    int getParamIndex(uint32_t id) const {
+        return idToIndexMap_.findOr(id, -1);
+    }
 #endif
     // presets
     void scanPresets();
@@ -184,13 +196,13 @@ struct PluginDesc final {
  private:
     std::weak_ptr<const IFactory> factory_;
     std::string path_;
-    // param name to param index
-    std::unordered_map<std::string, int> paramMap_;
+    // param name -> param index mapping
+    HashTable<std::string, int, std::string_view> paramMap_;
 #if USE_VST3
     // param index to ID (VST3 only)
-    std::unordered_map<int, uint32_t> indexToIdMap_;
+    HashTable<int, uint32_t> indexToIdMap_;
     // param ID to index (VST3 only)
-    std::unordered_map<uint32_t, int> idToIndexMap_;
+    HashTable<uint32_t, int> idToIndexMap_;
 #endif
     PluginType type_;
     union ID {

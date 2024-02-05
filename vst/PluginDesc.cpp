@@ -198,48 +198,21 @@ static void conformPath(std::string& path){
 
 void PluginDesc::addParameter(Param param){
     auto index = parameters.size();
-    // inverse mapping
-    paramMap_[param.name] = index;
+    // name -> index mapping
+    paramMap_.insert(param.name, index);
 #if USE_VST3
     // index -> ID mapping
-    indexToIdMap_[index] = param.id;
+    indexToIdMap_.insert(index, param.id);
     // ID -> index mapping
-    idToIndexMap_[param.id] = index;
+    idToIndexMap_.insert(param.id, index);
 #endif
-    // add parameter
+    // finally add parameter
     parameters.push_back(std::move(param));
 }
 
-int PluginDesc::findParam(const std::string& key) const {
-    auto it = paramMap_.find(key);
-    if (it != paramMap_.end()){
-        return it->second;
-    } else {
-        return -1;
-    }
+void PluginDesc::addParamAlias(int index, std::string_view key) {
+    paramMap_.insert(key, index);
 }
-
-#if USE_VST3
-uint32_t PluginDesc::getParamID(int index) const {
-    auto it = indexToIdMap_.find(index);
-    if (it != indexToIdMap_.end()){
-        return it->second;
-    }
-    else {
-        return 0; // throw?
-    }
-}
-
-int PluginDesc::getParamIndex(uint32_t _id) const {
-    auto it = idToIndexMap_.find(_id);
-    if (it != idToIndexMap_.end()){
-        return it->second;
-    }
-    else {
-        return -1; // not automatable
-    }
-}
-#endif
 
 void PluginDesc::scanPresets(){
     const std::vector<PresetType> presetTypes = {
