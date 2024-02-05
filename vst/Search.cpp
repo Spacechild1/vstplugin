@@ -346,7 +346,7 @@ private:
 #endif
 
 // recursively search a directory for VST plugins. for every plugin, 'fn' is called with the full absolute path.
-void search(const std::string &dir, std::function<void(const std::string&)> fn,
+void search(const std::string &dir, SearchCallback fn,
             bool filterByExtension, const std::vector<std::string>& excludePaths) {
     if (!pathExists(dir)){
         // LOG_DEBUG("search: '" << dir << "' doesn't exist");

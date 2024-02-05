@@ -373,24 +373,10 @@ class IFactory {
     virtual IPlugin::ptr create(const std::string& name, bool editor) const = 0;
 };
 
-// TODO: remove
-class FactoryFuture {
-public:
-    FactoryFuture() = default;
-    FactoryFuture(const std::string& path,
-                  std::function<bool(IFactory::ptr&)>&& fn)
-        : path_(path), fn_(std::move(fn)) {}
-    const std::string& path() const { return path_; }
-    bool operator()(IFactory::ptr& f){
-        return fn_(f);
-    }
-private:
-    std::string path_;
-    std::function<bool(IFactory::ptr&)> fn_;
-};
+using SearchCallback = std::function<void(const std::string&)>;
 
 // recursively search 'dir' for VST plug-ins. for each plugin, the callback function is evaluated with the absolute path.
-void search(const std::string& dir, std::function<void(const std::string&)> fn,
+void search(const std::string& dir, SearchCallback fn,
             bool filterByExtension = true, const std::vector<std::string>& excludePaths = {});
 
 // recursively search 'dir' for a VST plugin. returns empty string on failure

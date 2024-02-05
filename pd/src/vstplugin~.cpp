@@ -519,48 +519,48 @@ static IFactory::ptr probePlugin(const std::string& path, float timeout){
     return nullptr;
 }
 
+using FactoryFutureResult = std::pair<bool, IFactory::ptr>;
+using FactoryFuture = std::function<FactoryFutureResult()>;
+
 template<bool async>
 static FactoryFuture probePluginAsync(const std::string& path, float timeout){
     auto factory = loadFactory<async>(path);
-    if (!factory){
-        return FactoryFuture(path, [](IFactory::ptr& out) {
-            out = nullptr;
-            return true;
-        });
+    if (!factory) {
+        return []() -> FactoryFutureResult {
+            return { true, nullptr };
+        };
     }
     try {
         // start probing process
         auto future = factory->probeAsync(timeout, true);
         // return future
-        return FactoryFuture(path, [=](IFactory::ptr& out) {
+        return [=]() -> FactoryFutureResult {
             // wait for results
             bool done = future([&](const ProbeResult& result){
                 postProbeResult<async>(path, result);
             }); // collect result(s)
 
-            if (done){
+            if (done) {
                 if (factory->valid()){
                     addFactory(path, factory);
-                    out = factory; // success
+                    return { true, factory }; // success
                 } else {
                     gPluginDict.addException(path);
-                    out = nullptr;
+                    return { true, nullptr };
                 }
-                return true;
             } else {
-                return false;
+                return { false, nullptr }; // not ready
             }
-        });
+        };
     } catch (const Error& e){
         // return future which prints the error message
-        return FactoryFuture(path, [=](IFactory::ptr& out) {
+        return [=]() -> FactoryFutureResult {
             ProbeResult result;
             result.error = e;
             postProbeResult<async>(path, result);
             gPluginDict.addException(path);
-            out = nullptr;
-            return true;
-        });
+            return { true, nullptr };
+        };
     }
 }
 
@@ -600,7 +600,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
         count++;
     };
 
-    std::vector<FactoryFuture> futures;
+    std::vector<std::pair<FactoryFuture, std::string>> futures;
 
     auto last = std::chrono::system_clock::now();
 
@@ -608,8 +608,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
         while (futures.size() > limit){
             bool didSomething = false;
             for (auto it = futures.begin(); it != futures.end(); ){
-                IFactory::ptr factory;
-                if ((*it)(factory)){
+                if (auto [done, factory] = it->first(); done) {
                     // future finished
                     if (factory){
                         for (int i = 0; i < factory->numPlugins(); ++i){
@@ -636,8 +635,8 @@ static void searchPlugins(const std::string& path, t_search_data *data){
                 using seconds = std::chrono::duration<double>;
                 auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
                 if (elapsed > 4.0){
-                    for (auto& f : futures){
-                        PdLog<async>() << "waiting for '" << f.path() << "'...";
+                    for (auto& x : futures){
+                        PdLog<async>() << "waiting for '" << x.second << "'...";
                     }
                     // PdLog<async> log(PD_NORMAL, "...");
                     last = now;
@@ -681,7 +680,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
         } else {
             // probe (will post results and add plugins)
             if (parallel){
-                futures.push_back(probePluginAsync<async>(pluginPath, timeout));
+                futures.emplace_back(probePluginAsync<async>(pluginPath, timeout), pluginPath);
                 processFutures(PROBE_FUTURES);
             } else {
                 if (auto factory = probePlugin<async>(pluginPath, timeout)) {

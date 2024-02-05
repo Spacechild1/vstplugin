@@ -376,20 +376,22 @@ static IFactory::ptr probePlugin(const std::string& path,
     return nullptr;
 }
 
+using FactoryFutureResult = std::pair<bool, IFactory::ptr>;
+using FactoryFuture = std::function<FactoryFutureResult()>;
+
 static FactoryFuture probePluginAsync(const std::string& path,
                                       float timeout, bool verbose) {
     auto factory = loadFactory(path, verbose);
     if (!factory){
-        return FactoryFuture(path, [](IFactory::ptr& out) {
-            out = nullptr;
-            return true;
-        });
+        return []() -> FactoryFutureResult {
+            return { true, nullptr };
+        };
     }
     // start probing process
     try {
         auto future = factory->probeAsync(timeout, true);
         // return future
-        return FactoryFuture(path, [=](IFactory::ptr& out) {
+        return [=]() -> FactoryFutureResult {
             // wait for results
             bool done = future([&](const ProbeResult& result) {
                 if (verbose) {
@@ -416,27 +418,25 @@ static FactoryFuture probePluginAsync(const std::string& path,
                 // collect results
                 if (factory->valid()){
                     addFactory(path, factory);
-                    out = factory; // success
+                    return { true, factory }; // success
                 } else {
                     getPluginDict().addException(path);
-                    out = nullptr;
+                    return { true, nullptr };
                 }
-                return true;
             } else {
-                return false;
+                return { false, nullptr }; // not ready
             }
-        });
+        };
     } catch (const Error& e) {
         // return future which prints the error message
-        return FactoryFuture(path, [=](IFactory::ptr& out) {
+        return [=]() -> FactoryFutureResult {
             if (verbose) {
                 Print("probing %s... ", path.c_str());
                 postResult(e);
             }
             getPluginDict().addException(path);
-            out = nullptr;
-            return true;
-        });
+            return { true, nullptr };
+        };
     }
 }
 
@@ -525,7 +525,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         results.push_back(plugin);
     };
 
-    std::vector<FactoryFuture> futures;
+    std::vector<std::pair<FactoryFuture, std::string>> futures;
 
     auto last = std::chrono::system_clock::now();
 
@@ -533,8 +533,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         while (futures.size() > limit){
             bool didSomething = false;
             for (auto it = futures.begin(); it != futures.end(); ){
-                IFactory::ptr factory;
-                if ((*it)(factory)){
+                if (auto [done, factory] = it->first(); done) {
                     // future finished
                     if (factory){
                         for (int i = 0; i < factory->numPlugins(); ++i){
@@ -561,8 +560,8 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                 using seconds = std::chrono::duration<double>;
                 auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
                 if (elapsed > 4.0){
-                    for (auto& f : futures){
-                        LOG_VERBOSE("waiting for '" << f.path() << "'...");
+                    for (auto& x : futures){
+                        LOG_VERBOSE("waiting for '" << x.second << "'...");
                     }
                     last = now;
                 }
@@ -607,7 +606,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         } else {
             // probe (will post results and add plugins)
             if (parallel){
-                futures.push_back(probePluginAsync(pluginPath, timeout, verbose));
+                futures.emplace_back(probePluginAsync(pluginPath, timeout, verbose), pluginPath);
                 processFutures(PROBE_FUTURES);
             } else {
                 if (auto factory = probePlugin(pluginPath, timeout, verbose)) {
