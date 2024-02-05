@@ -17,19 +17,41 @@ variables:
   PDVERSION: 0.54-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
+  PD_PATH: /tmp/pd
+  PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.src.tar.gz
   SC_PATH: /tmp/supercollider
   PDLIBNAME: vstplugin~
   SCLIBNAME: VSTPlugin
 
 ### script snippets
 
-.script:deps: &script_deps
+# download VST SDK files
+.script:vst: &script_vst
   - .git-ci/get_vst2.sh "${VST2DIR}"
   - .git-ci/get_vst3.sh "${VST3DIR}"
+
+# clone SC repository
+.script:sc: &script_sc
   - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
   - pushd "${SC_PATH}"
   - git submodule update --init
   - popd
+
+# download Pd sources
+.script:pd: &script_pd
+  - wget -q -O Pd.tgz ${PD_URL}
+  - rm -rf ${PD_PATH}; mkdir -p ${PD_PATH}
+  - tar -xf Pd.tgz -C ${PD_PATH}
+  - rm -f Pd.tgz
+  - mv "${PD_PATH}"/*/* "${PD_PATH}"
+
+# download Pd application (with sources)
+.script:pd_app: &script_pd_app
+  - wget -q -O Pd.zip ${PD_URL}
+  - rm -rf "${PD_PATH}"; mkdir -p "${PD_PATH}"
+  - unzip -q Pd.zip -d "${PD_PATH}"
+  - rm -f Pd.zip
+  - mv "${PD_PATH}"/*/* "${PD_PATH}"
 
 # NOTE: we have to use absolute paths for PD_INSTALLDIR and SC_INSTALLDIR.
 # For some reason, relative paths (including '.') are not appended to CMAKE_INSTALL_PREFIX
@@ -40,8 +62,8 @@ variables:
    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_OSX_ARCHITECTURES="${OSX_ARCHITECTURES}"
    -DLOGLEVEL=${LOGLEVEL} -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DWINE=${WINE}
    -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST32=${BUILD_HOST32} -DBUILD_HOST_AMD64=${BUILD_HOST_AMD64}
-   -DPD_EXTENSION=${PD_EXTENSION} -DPD_DIR="${PD_PATH}" -DPD_INSTALLDIR="${prefix}"
-   -DSUPERNOVA=${SUPERNOVA} -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}"
+   -DPD_INCLUDEDIR="${PD_PATH}/src" -DPD_BINDIR="${PD_PATH}/bin" -DPD_INSTALLDIR="${prefix}" -DPD_EXTENSION=${PD_EXTENSION}
+   -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}" -DSUPERNOVA=${SUPERNOVA}
    -DSTATIC_LIBS=${STATIC_LIBS} -DCMAKE_DEPENDS_USE_COMPILER=OFF
   # NOTE: by default, CMake 3.21+ uses the compiler to obtain dependencies for makefiles ('compiler_depends.make').
   # For some reason, on the 'Hopper' runner that file would contain bogus file paths such as 'vst/C:/msys64/mingw32/include/c++/10.2.0/vector'
@@ -83,9 +105,11 @@ variables:
       - $JOBS == "all" || $JOBS == "linux"
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends
-      make cmake wget git libx11-dev${TARGETDEBARCH:+:}${TARGETDEBARCH} puredata-dev puredata
+      make cmake wget git libx11-dev${TARGETDEBARCH:+:}${TARGETDEBARCH}
     - test "x${TARGETDEBARCH}" != "x" && { export CXX=${TARGETARCH}-g++; }
-    - *script_deps
+    - *script_vst
+    - *script_pd
+    - *script_sc
     - *script_cmake
 
 .build:linux_i386: &build_linux_i386
@@ -121,8 +145,7 @@ variables:
     - test "x${DEB_TARGET_ARCH_BITS}" = "x32" &&
       { export CXXFLAGS="-m32"; apt-get install gcc-multilib g++-multilib; }
     - apt-get install make cmake wget git libx11-dev wine${DEB_TARGET_ARCH_BITS}-tools wine
-    - .git-ci/get_vst2.sh "${VST2DIR}"
-    - .git-ci/get_vst3.sh "${VST3DIR}"
+    - *script_vst
     - *script_cmake
 
 .build:linux_wine32: &build_linux_wine32
@@ -137,22 +160,14 @@ variables:
     OSX_ARCHITECTURES: "arm64;x86_64"
     SUPERNOVA: 1
     BUILD_HOST_AMD64: 0
-    PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.macos.zip
     PD_EXTENSION: d_fat
   only:
     variables:
       - $JOBS == "all" || $JOBS == "macos"
   before_script:
-    - wget -q -O Pd.zip ${PD_URL}
-    - rm -rf /Applications/Pd*.app/
-# unzip and install .dmg
-    - unzip -q Pd.zip
-    - hdiutil attach Pd-${PDVERSION}.dmg
-    - cp -R /Volumes/Pd-${PDVERSION}/Pd-${PDVERSION}.app /Applications
-    - hdiutil unmount /Volumes/Pd-${PDVERSION}
-    - rm -f Pd.zip
-    - rm -f Pd-${PDVERSION}.dmg
-    - *script_deps
+    - *script_vst
+    - *script_pd
+    - *script_sc
     - *script_cmake
   after_script:
     - IEM_SIGN_SRCDIR="$(pwd)/${CI_JOB_NAME}"
@@ -174,14 +189,9 @@ variables:
       - $JOBS == "all" || $JOBS == "windows"
   before_script:
     - pacman --noconfirm -S ${CMAKE}
-    - wget -q -O Pd.zip ${PD_URL}
-# install locally to avoid hassles with Windows vs. Unix file paths.
-# NOTE: PD_PATH is also used in .script:cmake.
-    - export PD_PATH=/tmp/pd
-    - rm -rf "${PD_PATH}"; mkdir -p "${PD_PATH}"
-    - unzip -q Pd.zip -d "${PD_PATH}"
-    - mv -v "${PD_PATH}"/*/* "${PD_PATH}"
-    - *script_deps
+    - *script_vst
+    - *script_pd_app
+    - *script_sc
     - *script_cmake
 
 .build:w64: &build_w64
