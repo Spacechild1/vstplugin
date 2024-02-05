@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -180,6 +181,8 @@ struct ProcessData {
 
 void bypass(ProcessData& data);
 
+using ParamStringBuffer = std::array<char, 128>;
+
 class IPlugin {
  public:
     using ptr = std::unique_ptr<IPlugin>;
@@ -220,8 +223,7 @@ class IPlugin {
     virtual void setParameter(int index, float value, int sampleOffset = 0) = 0;
     virtual bool setParameter(int index, std::string_view str, int sampleOffset = 0) = 0;
     virtual float getParameter(int index) const = 0;
-    // TODO: change to void getParameterString(int index, std::string& str) const = 0;
-    virtual std::string getParameterString(int index) const = 0;
+    virtual size_t getParameterString(int index, ParamStringBuffer& buffer) const = 0;
 
     virtual void setProgram(int index) = 0;
     virtual void setProgramName(std::string_view name) = 0;

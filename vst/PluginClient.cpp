@@ -586,12 +586,16 @@ float PluginClient::getParameter(int index) const {
     return paramValueCache_[index].load(std::memory_order_relaxed);
 }
 
-std::string PluginClient::getParameterString(int index) const {
+size_t PluginClient::getParameterString(int index, ParamStringBuffer& buffer) const {
     // must be thread-safe!
     std::lock_guard lock(cacheLock_);
     auto& param = paramDisplayCache_[index];
-    assert(param[0] < param.size()); // pascal string!
-    return std::string((char *)&param[1], param[0]);
+    auto size = param[0];
+    assert(size < param.size());
+    // NB: pascal strings are not null-terminated!
+    memcpy(buffer.data(), &param[1], size);
+    buffer[size] = 0;
+    return size;
 }
 
 void PluginClient::setProgram(int index) {

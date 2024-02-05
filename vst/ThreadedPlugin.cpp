@@ -462,9 +462,9 @@ float ThreadedPlugin::getParameter(int index) const {
     return plugin_->getParameter(index);
 }
 
-std::string ThreadedPlugin::getParameterString(int index) const {
+size_t ThreadedPlugin::getParameterString(int index, ParamStringBuffer& buffer) const {
     // see getParameter() above
-    return plugin_->getParameterString(index);
+    return plugin_->getParameterString(index, buffer);
 }
 
 void ThreadedPlugin::setProgram(int index) {

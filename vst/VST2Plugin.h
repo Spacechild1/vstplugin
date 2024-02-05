@@ -84,7 +84,7 @@ class VST2Plugin final : public IPlugin {
     void setParameter(int index, float value, int sampleOffset = 0) override;
     bool setParameter(int index, std::string_view str, int sampleOffset = 0) override;
     float getParameter(int index) const override;
-    std::string getParameterString(int index) const override;
+    size_t getParameterString(int index, ParamStringBuffer& buffer) const override;
 
     void setProgram(int program) override;
     void setProgramName(std::string_view name) override;

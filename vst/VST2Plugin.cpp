@@ -823,10 +823,10 @@ float VST2Plugin::getParameter(int index) const {
     return (plugin_->getParameter)(plugin_, index);
 }
 
-std::string VST2Plugin::getParameterString(int index) const {
-    char buf[256] = {0};
-    dispatch(effGetParamDisplay, index, 0, buf);
-    return std::string(buf);
+size_t VST2Plugin::getParameterString(int index, ParamStringBuffer& buffer) const {
+    buffer[0] = 0;
+    dispatch(effGetParamDisplay, index, 0, buffer.data());
+    return strlen(buffer.data());
 }
 
 int VST2Plugin::getNumParameters() const {

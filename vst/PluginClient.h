@@ -51,7 +51,7 @@ public:
     void setParameter(int index, float value, int sampleOffset) override;
     bool setParameter(int index, std::string_view str, int sampleOffset) override;
     float getParameter(int index) const override;
-    std::string getParameterString(int index) const override;
+    size_t getParameterString(int index, ParamStringBuffer& buffer) const override;
 
     void setProgram(int index) override;
     int getProgram() const override;

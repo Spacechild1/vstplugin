@@ -83,7 +83,7 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     }
 
     float getParameter(int index) const override;
-    std::string getParameterString(int index) const override;
+    size_t getParameterString(int index, ParamStringBuffer& buffer) const override;
 
     void setProgram(int index) override;
     int getProgram() const override;

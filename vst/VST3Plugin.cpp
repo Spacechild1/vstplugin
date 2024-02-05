@@ -23,6 +23,12 @@
 #define UNLOAD_VST3_MODULES 1
 #endif
 
+// assume that VST3 parameter display strings
+// are always ASCII (for performance reasons)
+#ifndef VST3_PARAM_DISPLAY_ASCII
+#define VST3_PARAM_DISPLAY_ASCII 1
+#endif
+
 #ifndef DEBUG_VST3_PARAMETERS
 #define DEBUG_VST3_PARAMETERS 0
 #endif
@@ -145,18 +151,18 @@ std::string convertString(const Vst::String128 str){
 }
 
 bool convertString (std::string_view src, Steinberg::Vst::String128 dst){
-    if (src.size() < 128){
-        try {
-            auto wstr = stringConverter().from_bytes(src.begin(), src.end());
-            for (int i = 0; i < (int)wstr.size(); ++i){
-                dst[i] = wstr[i];
-            }
-            dst[src.size()] = 0;
-        } catch (const std::range_error& e){
-            throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
+    if (src.size() >= 128) {
+        return false;
+    }
+    try {
+        auto wstr = stringConverter().from_bytes(src.begin(), src.end());
+        int n = wstr.size() + 1;
+        for (int i = 0; i < n; ++i){
+            dst[i] = wstr[i];
         }
         return true;
-    } else {
+    } catch (const std::range_error& e){
+        LOG_ERROR("convertString() failed: " << + e.what());
         return false;
     }
 }
@@ -1828,13 +1834,25 @@ bool VST3Plugin::setParameter(int index, std::string_view str, int sampleOffset)
     Vst::ParamValue value;
     Vst::String128 string;
     auto id = info().getParamID(index);
-    if (convertString(str, string)){
-        if (controller_->getParamValueByString(id, string, value) == kResultOk){
-            doSetParameter(id, value, sampleOffset);
-            return true;
-        }
+#if VST3_PARAM_DISPLAY_ASCII
+    if (str.size() >= 128) {
+        return false;
     }
-    return false;
+    for (int i = 0; i < str.size(); ++i) {
+        string[i] = str[i];
+    }
+    string[str.size()] = 0;
+#else
+    if (!convertString(str, string)) {
+        return false;
+    }
+#endif
+    if (controller_->getParamValueByString(id, string, value) == kResultOk){
+        doSetParameter(id, value, sampleOffset);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void VST3Plugin::doSetParameter(Vst::ParamID id, float value, int32 sampleOffset){
@@ -1874,14 +1892,31 @@ float VST3Plugin::getParameter(int index) const {
     return paramCache_[index].load(std::memory_order_relaxed);
 }
 
-std::string VST3Plugin::getParameterString(int index) const {
+size_t VST3Plugin::getParameterString(int index, ParamStringBuffer& buffer) const {
     Vst::String128 display;
     Vst::ParamID id = info().getParamID(index);
     float value = getParameter(index);
-    if (controller_->getParamStringByValue(id, value, display) == kResultOk){
-        return convertString(display);
+    if (controller_->getParamStringByValue(id, value, display) == kResultOk) {
+    #if VST3_PARAM_DISPLAY_ASCII
+        int count = 0;
+        while (true) {
+            auto c = buffer[count] = display[count];
+            if (c != 0) {
+                count++;
+            } else {
+                break;
+            }
+        }
+        return count;
+    #else
+        auto str = convertString(display);
+        assert(str.size() < buffer.size());
+        memcpy(buffer.data(), str.data(), str.size() + 1);
+        return str.size();
+    #endif
     } else {
-        return std::string{};
+        buffer[0] = 0;
+        return 0;
     }
 }
 

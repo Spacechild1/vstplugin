@@ -777,16 +777,17 @@ void PluginHandle::sendProgramUpdate(ShmChannel &channel, bool bank){
 void PluginHandle::sendParam(ShmChannel &channel, int index,
                              float value, bool automated)
 {
-    auto display = plugin_->getParameterString(index);
+    ParamStringBuffer display;
+    auto displaySize = plugin_->getParameterString(index, display);
     // NB: use extra byte from pstr[1] for pascal string size!
-    auto cmdSize  = CommandSize(ShmCommand, paramState, display.size());
+    auto cmdSize  = CommandSize(ShmCommand, paramState, displaySize);
     auto reply = (ShmCommand *)alloca(cmdSize);
     new (reply) ShmCommand(automated ? Command::ParamAutomated
                                      : Command::ParameterUpdate);
     reply->paramState.index = index;
     reply->paramState.value = value;
-    reply->paramState.pstr[0] = display.size();
-    memcpy(&reply->paramState.pstr[1], display.data(), display.size());
+    reply->paramState.pstr[0] = displaySize;
+    memcpy(&reply->paramState.pstr[1], display.data(), displaySize);
 
     addReply(channel, reply, cmdSize);
 }

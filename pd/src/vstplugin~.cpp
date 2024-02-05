@@ -811,9 +811,9 @@ static void vstparam_set(t_vstparam *x, t_floatarg f){
     // this method updates the display next to the label. implicitly called by t_vstparam::set
     IPlugin &plugin = *x->p_owner->x_plugin;
     int index = x->p_index;
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%s", plugin.getParameterString(index).c_str());
-    pd_vmess(x->p_display_rcv->s_thing, gensym("set"), (char *)"s", gensym(buf));
+    ParamStringBuffer buf;
+    plugin.getParameterString(index, buf);
+    pd_vmess(x->p_display_rcv->s_thing, gensym("set"), (char *)"s", gensym(buf.data()));
 }
 
 static void vstparam_setup(){
@@ -2262,11 +2262,14 @@ static void vstplugin_param_get(t_vstplugin *x, t_symbol *s, int argc, t_atom *a
     }
     int index = -1;
     if (!findParamIndex(x, argv, index)) return;
-    if (index >= 0 && index < x->x_plugin->info().numParameters()){
+    if (index >= 0 && index < x->x_plugin->info().numParameters()) {
+        ParamStringBuffer str;
+        x->x_plugin->getParameterString(index, str);
+
         t_atom msg[3];
         SETFLOAT(&msg[0], index);
         SETFLOAT(&msg[1], x->x_plugin->getParameter(index));
-        SETSYMBOL(&msg[2], gensym(x->x_plugin->getParameterString(index).c_str()));
+        SETSYMBOL(&msg[2], gensym(str.data()));
         outlet_anything(x->x_messout, gensym("param_state"), 3, msg);
     } else {
         pd_error(x, "%s: parameter index %d out of range!", classname(x), index);

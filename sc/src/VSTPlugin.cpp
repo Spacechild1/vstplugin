@@ -2648,7 +2648,9 @@ void VSTPluginDelegate::sendParameter(int32 index, float value) {
     // msg format: index, value, display length, display chars...
     buf[0] = index;
     buf[1] = value;
-    int size = string2floatArray(plugin_->getParameterString(index), buf + 2, maxSize - 2);
+    ParamStringBuffer str;
+    auto len = plugin_->getParameterString(index, str);
+    int size = string2floatArray(std::string_view{str.data(), len}, buf + 2, maxSize - 2);
     sendMsg("/vst_param", size + 2, buf);
 }
 
