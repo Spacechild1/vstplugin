@@ -874,6 +874,10 @@ tresult VST3Plugin::performEdit(Vst::ParamID id, Vst::ParamValue value){
         // Can this even happen?
         LOG_DEBUG("performEdit() called without editor: id = "
                   << id << ", value = " << value);
+        // update param cache!
+        if (index >= 0) {
+            paramCache_[index].store(value, std::memory_order_relaxed);
+        }
     }
     return kResultOk;
 }
