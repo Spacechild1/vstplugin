@@ -6,7 +6,7 @@ namespace vst {
 
 // commands
 struct Command {
-    static constexpr size_t maxShortStringSize = 15;
+    static constexpr size_t maxShortStringSize = 11;
 
     // type
     enum Type {
@@ -114,8 +114,9 @@ struct Command {
         struct {
             uint16_t offset;
             uint16_t index;
-            uint8_t pstr[12]; // pascal string!
+            uint8_t pstr[maxShortStringSize + 1]; // pascal string!
         } paramStringShort;
+        static_assert(sizeof(paramStringShort) == 16, "wrong size for paramStringShort member");
         // time signature
         struct {
             int32_t num;
