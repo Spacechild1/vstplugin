@@ -88,10 +88,9 @@ variables:
     paths:
       - "${CI_JOB_NAME}/${PDLIBNAME}"
       - "${CI_JOB_NAME}/${SCLIBNAME}"
+    # we only need the job artifacts to create the packages
+    expire_in: 1h
 
-.base:
-  artifacts:
-    expire_in: 1 day
 
 .build:linux: &build_linux
   extends: .build:script
@@ -174,7 +173,7 @@ variables:
     - CODESIGNFLAGS="--strict --force --verbose --timestamp"
     - !reference [.script:codesign:macos]
 
-.build:w32: &build_w32
+.build:win32: &build_win32
   extends: .build:script
   tags:
     - windows
@@ -194,143 +193,177 @@ variables:
     - *script_sc
     - *script_cmake
 
-.build:w64: &build_w64
-  extends: .build:w32
+.build:win64: &build_win64
+  extends: .build:win32
   variables:
     IEMCI_CONFIGURATIONS: mingw64
     PD_EXTENSION: m_amd64
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
     CMAKE: mingw-w64-x86_64-cmake
 
-### job templates
-.Linux:
-  <<: *build_linux
-.Linux_i386:
-  allow_failure: true
-  <<: *build_linux_i386
-.Linux_ARMhf:
-  allow_failure: true
-  <<: *build_linux_armhf
-.Linux_ARM64:
-  allow_failure: true
-  <<: *build_linux_arm64
-.Linux_wine:
-  allow_failure: true
-  <<: *build_linux_wine
-.Linux_wine32:
-  allow_failure: true
-  <<: *build_linux_wine32
-.macOS:
-  <<: *build_macos
-.win32:
-  <<: *build_w32
-.win64:
-  <<: *build_w64
-
 #######################################################################
 ### create deken packages and (optionally) upload them;
 ### if you want to automatically upload a package, you need to
 ### set DEKEN_USERNAME/DEKEN_PASSWORD in the CI-project settings.
 ### (https://git.iem.at/help/ci/variables/README#variables)
-.package:
+.package:deps: &package_deps
+  - apt-get update && apt-get --no-install-recommends -y install deken git zip
+
+.package:script:
   stage: deploy
   image: debian:buster
   variables:
     DEKEN_ROOT: "yes"
-  only:
-    variables:
-      - $JOBS == "all"
-  before_script:
-    - apt-get update && apt-get --no-install-recommends -y install deken git zip
+  artifacts:
+    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME}
+    paths:
+      - ./*.zip
+      - ./*.dek
+    expire_in: 1d
   script:
-# copy win32 host to win64 package and vice versa
-    - if [ -e ./w32 ] && [ -e ./w64 ]; then
-        for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-          cp ./w32/$x/host.exe ./w64/$x/host_i386.exe;
-          cp ./w64/$x/host.exe ./w32/$x/host_amd64.exe
-        ; done
-      ; fi
-# copy Wine hosts to Linux packages
-    - if [ -e ./Linux ]; then
-        for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-          [ -e ./Linux_wine ] && cp -r ./Linux_wine/${PDLIBNAME}/. ./Linux/${x};
-          [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PDLIBNAME}/. ./Linux/${x}
-        ; done
-      ; fi
-    - if [ -e ./Linux_i386 ]; then
-        for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-          [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/${PDLIBNAME}/. ./Linux_i386/${x}
-        ; done
-      ; fi
-# HACK: remove Linux_wine folders because we don't want to package them
-    - rm -rf ./Linux_wine ./Linux_wine32
-# create zip files for all platform (e.g. vstplugin~_v0.3.0_w32.zip)
+# create zip files for platform (e.g. vstplugin~_v0.3.0_w32.zip)
+# NB: this has the advantage that I can just grab the zip files
+# and upload them to the release page.
     - rm -f ./*.zip
     - for lib in ${PDLIBNAME} ${SCLIBNAME}; do
-        for dir in ./*/$lib; do
-          name=${lib}_${CI_COMMIT_REF_NAME}_$(basename "${dir%/$lib}");
-          echo zipping $name ;
-          (cd "${dir}/.." && zip -r "../${name}.zip" ./${lib})
-        ; done
+        name=${lib}_${CI_COMMIT_REF_NAME}_$JOBNAME ;
+        echo zipping $name ;
+        (cd "./${JOBNAME}" && zip -r "../${name}.zip" ./${lib})
       ; done
-# create binary deken packages for all platforms
+# create binary deken package
     - rm -f ./*.dek
-    - deken package --version="${CI_COMMIT_TAG#v}" ./*/${PDLIBNAME}
+    - deken package --version="${CI_COMMIT_TAG#v}" ./$JOBNAME/${PDLIBNAME}
 # upload deken package (optional)
     - test -z "${CI_COMMIT_TAG}" || test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}" || deken upload --no-source-error ./*.dek
   after_script:
     - du -ch *.dek *.zip
-  artifacts:
-    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_package
-    paths:
-      - ./*.dek
-      - ./*.zip
 
+.package:linux_base: &package_linux_base
+  extends: .package:script
+  variables:
+    JOBNAME: Linux
+  only:
+    variables:
+      - $JOBS == "all" || $JOBS == "linux"
+  before_script:
+    - *package_deps
+
+.package:linux: &package_linux
+  extends: .package:linux_base
+  variables:
+    JOBNAME: Linux
+  before_script:
+    - *package_deps
+# copy Wine hosts to Linux package
+    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        [ -e ./Linux_wine ] && cp -r ./Linux_wine/$x/. ./$JOBNAME/$x;
+        [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/$x/. ./$JOBNAME/$x
+      ; done
+
+.package:linux_i386: &package_linux_i386
+  extends: .package:linux_base
+  variables:
+    JOBNAME: Linux_i386
+  before_script:
+    - *package_deps
+# copy Wine host to Linux package
+    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/$x/. ./$JOBNAME/$x
+      ; done
+
+.package:linux_armhf: &package_linux_armhf
+  extends: .package:linux_base
+  variables:
+    JOBNAME: Linux_ARMhf
+
+.package:linux_arm64: &package_linux_arm64
+  extends: .package:linux_base
+  variables:
+    JOBNAME: Linux_ARM64
+
+.package:macos: &package_macos
+  extends: .package:script
+  variables:
+    JOBNAME: macOS
+  only:
+    variables:
+      - $JOBS == "all" || $JOBS == "macos"
+  before_script:
+    - *package_deps
+
+.package:win64: &package_win64
+  extends: .package:script
+  variables:
+    JOBNAME: win64
+  only:
+    variables:
+      - $JOBS == "all" || $JOBS == "windows"
+  before_script:
+    - *package_deps
+# copy 32-bit host to package
+    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        cp ./win32/$x/host.exe ./$JOBNAME/$x/host_i386.exe
+      ; done
+
+.package:win32: &package_win32
+  extends: .package:script
+  variables:
+    JOBNAME: win32
+  only:
+    variables:
+      - $JOBS == "all" || $JOBS == "windows"
+  before_script:
+    - *package_deps
+# copy 64-bit host to package
+    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        cp ./win64/$x/host.exe ./$JOBNAME/$x/host_amd64.exe
+      ; done
 
 #######################################################################
-### the actual jobs: (linux,macos,windows)*(release)
 
-### release jobs
+### the actual jobs:
 Linux:
-  extends:
-    - .Linux
-    - .base
+  <<: *build_linux
 Linux_i386:
-  extends:
-    - .Linux_i386
-    - .base
-Linux_ARM64:
-  extends:
-    - .Linux_ARM64
-    - .base
+  allow_failure: true
+  <<: *build_linux_i386
 Linux_ARMhf:
-  extends:
-    - .Linux_ARMhf
-    - .base
+  allow_failure: true
+  <<: *build_linux_armhf
+Linux_ARM64:
+  allow_failure: true
+  <<: *build_linux_arm64
 Linux_wine:
-  extends:
-    - .Linux_wine
-    - .base
+  allow_failure: true
+  <<: *build_linux_wine
 Linux_wine32:
-  extends:
-    - .Linux_wine32
-    - .base
+  allow_failure: true
+  <<: *build_linux_wine32
 macOS:
-  extends:
-    - .macOS
-    - .base
+  <<: *build_macos
 win32:
-  extends:
-    - .win32
-    - .base
+  <<: *build_win32
 win64:
-  extends:
-    - .win64
-    - .base
-package:
-  extends:
-    - .package
-    - .base
+  <<: *build_win64
+
+## release packages
+Linux_package:
+  <<: *package_linux
+Linux_i386_package:
+  allow_failure: true
+  <<: *package_linux_i386
+Linux_ARMhf_package:
+  allow_failure: true
+  <<: *package_linux_armhf
+Linux_ARM64_package:
+  allow_failure: true
+  <<: *package_linux_arm64
+macOS_package:
+  <<: *package_macos
+win32_package:
+  <<: *package_win32
+win64_package:
+  <<: *package_win64
 
 
 include:
