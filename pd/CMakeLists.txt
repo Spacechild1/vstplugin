@@ -33,6 +33,7 @@ else()
         set(PD_BINDIR "${PD_DIR}/bin" CACHE PATH "Pd binaries" FORCE)
     endif()
 endif()
+
 include_directories(${PD_INCLUDEDIR})
 message(STATUS "PD_INCLUDEDIR: ${PD_INCLUDEDIR}")
 if (WIN32)

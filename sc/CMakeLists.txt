@@ -6,7 +6,7 @@ set(SRC "src/${PROJECT}.h" "src/${PROJECT}.cpp")
 include_directories(src)
 
 # SuperCollider API:
-set(SC_INCLUDEDIR "" CACHE PATH "SuperCollider source files")
+set(SC_INCLUDEDIR "" CACHE PATH "Path to SuperCollider respository")
 message(STATUS "SC_INCLUDEDIR: ${SC_INCLUDEDIR}")
 include_directories(${SC_INCLUDEDIR}/include/plugin_interface)
 include_directories(${SC_INCLUDEDIR}/include/common)
