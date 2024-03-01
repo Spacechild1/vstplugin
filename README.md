@@ -260,19 +260,20 @@ To enable Wine support on Linux, you need to follow these steps:
 
 ### macOS 10.15+
 
-How to workaround the macOS GateKeeper (many thanks to Joseph Anderson):
+Please follow these steps (many thanks to Joseph Anderson) after downloading and installing:
 
 1)  un-quarantine VSTPlugin/vstplugin~ executables:
 
-    Using the terminal, navigate to the folder containing the .scx/.pd_darwin file and then run:
+    Using the terminal, navigate to your Pd external resp. SC extension folder and then run:
 
-    SC: `xattr -rd com.apple.quarantine *.scx host*`
+    SC: `xattr -rd com.apple.quarantine ./VSTPlugin`
 
-    Pd: `xattr -rd com.apple.quarantine *.pd_darwin host*`
+    Pd: `xattr -rd com.apple.quarantine ./vstplugin~`
 
-2)  add unsigned VSTs to Gatekeeper's enabled list:
+2)  add unsigned VST plugins to Gatekeeper's enabled list:
 
-    Using the terminal, navigate to the folder(s) containing VSTs to enable. The following will create a label, ApprovedVSTs, and then add all VSTs in the directory:
+    Using the terminal, navigate to the folder(s) containing VSTs to enable.
+    The following will create a label, ApprovedVSTs, and then add all VSTs in the directory:
 
     `spctl --add --label "ApprovedVSTs" *.vst *.vst3`
 
