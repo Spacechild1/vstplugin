@@ -14,6 +14,9 @@ variables:
   LOGLEVEL:
     value: 2
     description: "Set log level"
+  STATIC_LINKING:
+    value: 1
+    description: "Static linking"
   PDVERSION: 0.54-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
@@ -60,11 +63,11 @@ variables:
   - prefix="$(pwd)/${CI_JOB_NAME}"
   - cmake -H. -Bbuild -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${prefix}"
    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_OSX_ARCHITECTURES="${OSX_ARCHITECTURES}"
-   -DLOGLEVEL=${LOGLEVEL} -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DWINE=${WINE}
-   -DBUILD_WINE=${BUILD_WINE} -DBUILD_HOST32=${BUILD_HOST32} -DBUILD_HOST_AMD64=${BUILD_HOST_AMD64}
+   -DCMAKE_DEPENDS_USE_COMPILER=OFF -DLOGLEVEL=${LOGLEVEL} -DSTATIC_LIBS=${STATIC_LIBS}
+   -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DWINE=${WINE} -DBUILD_WINE=${BUILD_WINE}
+   -DBUILD_HOST32=${BUILD_HOST32} -DBUILD_HOST_AMD64=${BUILD_HOST_AMD64}
    -DPD_INCLUDEDIR="${PD_PATH}/src" -DPD_BINDIR="${PD_PATH}/bin" -DPD_INSTALLDIR="${prefix}" -DPD_EXTENSION=${PD_EXTENSION}
    -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}" -DSUPERNOVA=${SUPERNOVA}
-   -DSTATIC_LIBS=${STATIC_LIBS} -DCMAKE_DEPENDS_USE_COMPILER=OFF
   # NOTE: by default, CMake 3.21+ uses the compiler to obtain dependencies for makefiles ('compiler_depends.make').
   # For some reason, on the 'Hopper' runner that file would contain bogus file paths such as 'vst/C:/msys64/mingw32/include/c++/10.2.0/vector'
   # which will cause the following invocation of 'cmake --build ./build --target install/strip' to fail with 'multiple target patterns'.
@@ -96,8 +99,8 @@ variables:
   extends: .build:script
   image: registry.git.iem.at/devtools/docker/debiancross:amd64
   variables:
+    STATIC_LIBS: ${STATIC_LINKING}
     SUPERNOVA: 1
-    STATIC_LIBS: 1
     WINE: 1
   only:
     variables:
@@ -133,7 +136,7 @@ variables:
   extends: .build:script
   image: registry.git.iem.at/devtools/docker/debiancross:amd64
   variables:
-    STATIC_LIBS: 1
+    STATIC_LIBS: ${STATIC_LINKING}
     BUILD_WINE: 1
   only:
     variables:
@@ -178,11 +181,11 @@ variables:
   tags:
     - windows
   variables:
-    IEMCI_CONFIGURATIONS: mingw32
-    SUPERNOVA: 1
-    STATIC_LIBS: 1
-    PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
     CMAKE: mingw-w64-i686-cmake
+    IEMCI_CONFIGURATIONS: mingw32
+    PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
+    STATIC_LIBS: ${STATIC_LINKING}
+    SUPERNOVA: 1
   only:
     variables:
       - $JOBS == "all" || $JOBS == "windows"
