@@ -114,10 +114,14 @@ If you only want to only build the Pd or Supercollider version, simply set the `
 
 ##### Static linking
 
-When compiling with GCC on Linux or MinGW, we offer the option `STATIC_LIBS` to link statically with libstd++ and libgcc; the default is `ON`.
+If `STATIC_LIBS` is `ON`, the binaries are linked statically with `libstdc++` and `libgcc` (for MinGW also `libpthread`);
+otherwise they are linked dynamically. The default is `ON` for MinGW (Windows) and `OFF` for Linux.
+On other platforms (Visual Studio, macOS), the option has no effect and you always get a dynamically linked build.
 
 Static linking helps if you want to share the binaries with other people because they might not have the required library versions installed on their system.
-Dynamic linking, on the other hand, is preferred for destributing via system package managers like "apt".
+This is particularly true for Windows. On Linux, however, static linking can lead to symbol collisions under certain circumstances.
+
+Dynamic linking is generally preferred for destributing binaries through system package managers like "apt".
 
 
 #### Prerequisites:
