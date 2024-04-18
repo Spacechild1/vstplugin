@@ -8,7 +8,7 @@ DESCRIPTION::
 This class is used to control a specific link::Classes/VSTPlugin:: instance in a link::Classes/Synth::, so you can
 open plugins, automate parameters, change programs, send MIDI messages, etc.
 
-Have a look at the examples at the bottom!
+Have a look at the link::#Examples:: at the bottom!
 
 Subsection:: Introduction
 
@@ -1100,6 +1100,7 @@ ARGUMENT:: async
 see link::#Realtime Safety::.
 
 EXAMPLES::
+ANCHOR::Examples::
 
 The following code is needed for most examples:
 
