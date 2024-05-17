@@ -22,9 +22,6 @@ class Window;
 
 class EventLoop : public BaseEventLoop {
 public:
-    // TODO: is pollGrain really necessary?
-    static constexpr int pollGrain = 10;
-
     static EventLoop& instance();
 
     EventLoop();
@@ -71,6 +68,7 @@ private:
     Display *display_ = nullptr;
     ::Window root_ = 0;
     std::thread thread_;
+    int displayfd_ = -1;
     int eventfd_ = -1;
     std::atomic<bool> running_{false};
     std::mutex syncMutex_;

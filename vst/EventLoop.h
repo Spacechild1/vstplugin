@@ -38,6 +38,11 @@ public:
 protected:
     // called by derived classes in poll timer function
     void doPoll() {
+        // We hold the mutex across the whole for-loop so that
+        // removePollFunction() is guaranteed to remove the poll
+        // function synchronously.
+        // NB: we never remove a poll function from within itself,
+        // so there is no risk of deadlocking!
         std::lock_guard lock(pollFunctionMutex_);
         for (auto& [_, fn] : pollFunctions_) {
             fn();

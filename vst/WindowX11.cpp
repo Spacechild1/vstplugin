@@ -87,6 +87,7 @@ EventLoop::EventLoop() {
         LOG_ERROR("X11: couldn't open display! No X11 server?");
         return;
     }
+    displayfd_ = ::XConnectionNumber(display_);
     // install error handler, so our program won't die on a bad X11 request
     XSetErrorHandler([](Display *d, XErrorEvent *e){
         char buf[256];
@@ -158,12 +159,9 @@ void EventLoop::run() {
 
         pollFileDescriptors(wait);
 
-        handleCommands();
-
-        // Call at the end! This makes sure that all pending
-        // X11 events are flushed, so we can safely go to sleep
-        // in case there are no commands or windows.
         pollX11Events();
+
+        handleCommands();
     }
     LOG_DEBUG("X11: quit event loop");
 }
@@ -207,28 +205,18 @@ int EventLoop::updateTimers() {
         timer.cb(timer.obj);
     }
 
-    int wait = 0;
     if (!timerQueue_.empty()) {
         // wait for next due timer
         auto next = timerQueue_.front().deadline;
         now = std::chrono::time_point_cast<Milliseconds>(Clock::now());
         if (next > now) {
             auto wait = (next - now).count();
-            // if we have (open) windows, limit wait time to pollGrain to keep the UI responsive!
-            // TODO: each Window already adds its own timer, do we really need to poll at lower intervals?
-            if (!windows_.empty()) {
-                wait = std::min<int>(wait, pollGrain);
-            }
             // LOG_DEBUG("X11: wait for " << wait << " ms");
             return wait;
         } else {
             return 0; // don't wait
         }
-    } else if (!windows_.empty()) {
-        return pollGrain; // poll for X11 events
     } else {
-        // NB: currently this won't ever happen because we've installed
-        // a timer that periodically calls callPollFunctions().
         return -1; // sleep
     }
 }
@@ -237,28 +225,32 @@ void EventLoop::pollFileDescriptors(int timeout){
     // NB: we copy the fd array to prevent it from being modified
     // from within event handlers!
     int count = eventHandlers_.size();
-    // allocate extra fd for eventfd_
-    auto fds = (pollfd *)alloca(sizeof(pollfd) * (count + 1));
+    // allocate extra fds for eventfd_ and displayfd_
+    auto fds = (pollfd *)alloca(sizeof(pollfd) * (count + 2));
     auto it = eventHandlers_.begin();
     for (int i = 0; i < count; ++i, ++it){
         fds[i].fd = it->first;
         fds[i].events = POLLIN;
         fds[i].revents = 0;
     }
-    fds[count].fd = eventfd_;
-    fds[count].events = POLLIN;
-    fds[count].revents = 0;
+    auto event_index = count;
+    fds[event_index].fd = eventfd_;
+    fds[event_index].events = POLLIN;
+    fds[event_index].revents = 0;
+    auto display_index = count + 1;
+    fds[display_index].fd = displayfd_;
+    fds[display_index].events = POLLIN;
+    fds[display_index].revents = 0;
 
     if (timeout < 0) {
         LOG_DEBUG("X11: waiting...");
     }
 
     auto result = poll(fds, count + 1, timeout);
-    if (result > 0){
+    if (result > 0) {
         // check registered event handler fds
-        for (int i = 0; i < count; ++i){
-            auto revents = fds[i].revents;
-            if (revents != 0){
+        for (int i = 0; i < count; ++i) {
+            if (auto revents = fds[i].revents; revents != 0){
                 auto fd = fds[i].fd;
                 // check if handler still exists!
                 auto it = eventHandlers_.find(fd);
@@ -276,8 +268,7 @@ void EventLoop::pollFileDescriptors(int timeout){
             }
         }
         // check our eventfd
-        auto revents = fds[count].revents;
-        if (revents != 0){
+        if (auto revents = fds[event_index].revents; revents != 0) {
             if (revents & POLLIN){
                 uint64_t data;
                 auto n = read(eventfd_, &data, sizeof(data));
@@ -287,7 +278,16 @@ void EventLoop::pollFileDescriptors(int timeout){
                     LOG_ERROR("X11: read wrong number of bytes from eventfd");
                 }
             } else {
-                LOG_ERROR("X11: eventfd error");
+                LOG_ERROR("X11: eventfd poll error");
+                running_.store(false);
+            }
+        }
+        // check displayfd
+        if (auto revents = fds[display_index].revents; revents != 0) {
+            if (revents & POLLIN){
+                // LOG_DEBUG("X11: display ready");
+            } else {
+                LOG_ERROR("X11: display poll error");
                 running_.store(false);
             }
         }
