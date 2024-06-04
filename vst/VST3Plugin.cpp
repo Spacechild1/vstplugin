@@ -155,7 +155,7 @@ bool convertString (std::string_view src, Steinberg::Vst::String128 dst){
         return false;
     }
     try {
-        auto wstr = stringConverter().from_bytes(src.begin(), src.end());
+        auto wstr = stringConverter().from_bytes(&*src.begin(), &*src.end());
         int n = wstr.size() + 1;
         for (int i = 0; i < n; ++i){
             dst[i] = wstr[i];

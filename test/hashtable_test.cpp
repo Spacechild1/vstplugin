@@ -13,7 +13,7 @@ constexpr size_t maxStringSize = 64;
 
 std::string randomString(std::mt19937& mt) {
     std::uniform_int_distribution<size_t> d(0, maxStringSize);
-    std::uniform_int_distribution<char> d2;
+    std::uniform_int_distribution<int> d2(0, 127);
     std::string result;
 
     auto size = d(mt);
