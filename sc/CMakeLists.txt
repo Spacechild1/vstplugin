@@ -1,17 +1,4 @@
-set(PROJECT "VSTPlugin")
-message(STATUS "---\n*** ${PROJECT} ***")
-
-set(SRC "src/${PROJECT}.h" "src/${PROJECT}.cpp")
-
-include_directories(src)
-
-# SuperCollider API:
-set(SC_INCLUDEDIR "" CACHE PATH "Path to SuperCollider respository")
-message(STATUS "SC_INCLUDEDIR: ${SC_INCLUDEDIR}")
-include_directories(${SC_INCLUDEDIR}/include/plugin_interface)
-include_directories(${SC_INCLUDEDIR}/include/common)
-include_directories(${SC_INCLUDEDIR}/plugin_interface)
-include_directories(${SC_INCLUDEDIR}/common)
+message(STATUS "---\n*** VSTPlugin ***")
 
 # Installation path
 # install directory:
@@ -30,97 +17,123 @@ message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
 
 if (BUILD_WINE)
     # install wine hosts
-    install(PROGRAMS "${HOST_PATH}.exe.so" RENAME "${HOST}"
-        DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+    install(TARGETS host
+        RENAME $<TARGET_FILE_BASE_NAME:host>
+        DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
 
     if (BUILD_HOST32)
-        install(PROGRAMS "${HOST32_PATH}.exe.so" RENAME "${HOST32}"
-            DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+        install(TARGETS host32
+            RENAME $<TARGET_FILE_BASE_NAME:host32>
+            DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     endif()
 
     # don't actually build UGens
     return()
 endif()
 
-# plugin extension
-set(CMAKE_SHARED_MODULE_PREFIX "") # no prefix!
-if(APPLE OR WIN32)
-set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
-endif()
+# SuperCollider API:
+set(SC_INCLUDEDIR "" CACHE PATH "Path to SuperCollider respository")
+message(STATUS "SC_INCLUDEDIR: ${SC_INCLUDEDIR}")
 
 option(SUPERNOVA "Build plugins for supernova" OFF)
-if (SUPERNOVA)
-    # for <nova-tt/spin_lock.h>
-    include_directories(${SC_INCLUDEDIR}/external_libraries/nova-tt)
-    # for <boost/atomic.hpp>
-    include_directories(${SC_INCLUDEDIR}/external_libraries/boost)
-endif()
 message(STATUS "SUPERNOVA: ${SUPERNOVA}")
 
-# the UGen
-add_library(${PROJECT} MODULE ${SRC})
+# common properties
+add_library(sc_common INTERFACE)
+
+target_sources(sc_common INTERFACE "src/VSTPlugin.h" "src/VSTPlugin.cpp")
+
+target_include_directories(sc_common INTERFACE
+    ${SC_INCLUDEDIR}/include/plugin_interface
+    ${SC_INCLUDEDIR}/include/common
+    ${SC_INCLUDEDIR}/plugin_interface
+    ${SC_INCLUDEDIR}/common)
+
+# plugin extension
+if(APPLE OR WIN32)
+    set(SUFFIX ".scx")
+else()
+    set(SUFFIX ${CMAKE_SHARED_MODULE_SUFFIX})
+endif()
+
 if (WIN32 AND HAVE_WINDRES)
     # resource file for sclang icon
-    target_sources(${PROJECT} PRIVATE "src/${PROJECT}.rc")
+    target_sources(sc_common INTERFACE "src/VSTPlugin.rc")
 endif()
-target_link_libraries(${PROJECT} ${LIBS})
-set_target_properties(${PROJECT} PROPERTIES LINK_FLAGS_RELEASE -s)
 
-if(SUPERNOVA)
-    add_library(${PROJECT}_supernova MODULE ${SRC})
-    if (WIN32 AND HAVE_WINDRES)
-        # resource file for sclang icon
-        target_sources(${PROJECT}_supernova PRIVATE "src/${PROJECT}.rc")
-    endif()
-    target_compile_definitions(${PROJECT}_supernova PUBLIC -DSUPERNOVA=1)
-    target_link_libraries(${PROJECT}_supernova ${LIBS})
-    set_target_properties(${PROJECT}_supernova PROPERTIES LINK_FLAGS_RELEASE -s)
+target_link_libraries(sc_common INTERFACE vst)
+
+# the UGen
+add_library(sc MODULE)
+target_link_libraries(sc PRIVATE sc_common)
+set_target_properties(sc PROPERTIES
+    PREFIX "" # no prefix!
+    OUTPUT_NAME "VSTPlugin"
+    SUFFIX ${SUFFIX})
+
+# the Supernova UGen
+if (SUPERNOVA)
+    add_library(sc_supernova MODULE)
+    target_compile_definitions(sc_supernova PRIVATE SUPERNOVA=1)
+    # for <nova-tt/spin_lock.h>
+    target_include_directories(sc_supernova PRIVATE
+        ${SC_INCLUDEDIR}/external_libraries/nova-tt)
+    # for <boost/atomic.hpp>
+    target_include_directories(sc_supernova PRIVATE
+        ${SC_INCLUDEDIR}/external_libraries/boost)
+    target_link_libraries(sc_supernova PRIVATE sc_common)
+    set_target_properties(sc_supernova PROPERTIES
+        PREFIX "" # no prefix!
+        OUTPUT_NAME "VSTPlugin_supernova"
+        SUFFIX ${SUFFIX})
 endif()
 
 # installation
-if (HOST)
-    add_dependencies(${PROJECT} ${HOST})
-endif()
-if (HOST32)
-    add_dependencies(${PROJECT} ${HOST32})
-endif()
-if (HOST_AMD64)
-    add_dependencies(${PROJECT} ${HOST_AMD64})
+
+install(TARGETS sc DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
+if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:sc> OPTIONAL DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
 endif()
 
-install(TARGETS ${PROJECT} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
-if (MSVC)
-    install(FILES $<TARGET_PDB_FILE:${PROJECT}> OPTIONAL DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
-endif()
 if (SUPERNOVA)
-    install(TARGETS ${PROJECT}_supernova DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+    install(TARGETS sc_supernova DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     if (MSVC)
-        install(FILES $<TARGET_PDB_FILE:${PROJECT}_supernova> OPTIONAL DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+        install(FILES $<TARGET_PDB_FILE:sc_supernova> OPTIONAL DESTINATION "${SC_INSTALLDIR}/scvst/plugins")
     endif()
 endif()
-if (HOST)
-    install(PROGRAMS ${HOST_PATH} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+
+# installation
+if (TARGET host)
+    add_dependencies(sc_common host)
+    install(TARGETS host DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     if (MSVC)
-        install(FILES ${HOST_PDB_PATH} OPTIONAL DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+        install(FILES $<TARGET_PDB_FILE:host> OPTIONAL DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     endif()
 endif()
-if (HOST32)
-    install(PROGRAMS ${HOST32_PATH} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+
+if (TARGET host32)
+    add_dependencies(sc_common host32)
+    install(TARGETS host32 DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
 endif()
-if (HOST_AMD64)
-    install(PROGRAMS ${HOST_AMD64_PATH} DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+
+if (TARGET host_amd64)
+    add_dependencies(sc_common host_amd64)
+    install(TARGETS host_amd64 DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
 endif()
+
 if (WIN32)
     if (HOST32_PATH)
         install(PROGRAMS "${HOST32_PATH}" RENAME "host_i386.exe"
-            DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+            DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     endif()
+
     if (HOST_AMD64_PATH)
         install(PROGRAMS "${HOST_AMD64_PATH}" RENAME "host_amd64.exe"
-            DESTINATION "${SC_INSTALLDIR}/${PROJECT}/plugins")
+            DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     endif()
 endif()
-install(DIRECTORY "classes" DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
-install(DIRECTORY "doc" DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
-install(DIRECTORY "HelpSource" DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
-install(FILES "../README.md" "../LICENSE.txt" DESTINATION "${SC_INSTALLDIR}/${PROJECT}")
+
+install(DIRECTORY "classes" DESTINATION "${SC_INSTALLDIR}/VSTPlugin")
+install(DIRECTORY "doc" DESTINATION "${SC_INSTALLDIR}/VSTPlugin")
+install(DIRECTORY "HelpSource" DESTINATION "${SC_INSTALLDIR}/VSTPlugin")
+install(FILES "../README.md" "../LICENSE.txt" DESTINATION "${SC_INSTALLDIR}/VSTPlugin")
