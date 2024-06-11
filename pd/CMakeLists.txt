@@ -45,14 +45,19 @@ message(STATUS "PD_INSTALLDIR: ${PD_INSTALLDIR}")
 # wine host installation
 if (BUILD_WINE)
     # install wine hosts
-    # NB: we need to specify the path of the .exe.so file
-    install(PROGRAMS "$<TARGET_FILE_DIR:host>/$<TARGET_FILE_BASE_NAME:host>.exe.so"
-        RENAME $<TARGET_FILE_BASE_NAME:host>
+    # NB: we cannot install it as a target because CMake would use the wrong
+    # output name, so we need to use PROGRAMS with the full absolute file path.
+    # NB: generator expressions are only supported for RENAME with CMake 3.20+,
+    # so we use the OUTPUT_NAME property instead.
+    get_target_property(hostname host OUTPUT_NAME)
+    install(PROGRAMS "$<TARGET_FILE_DIR:host>/${hostname}.exe.so"
+        RENAME "${hostname}"
         DESTINATION "${PD_INSTALLDIR}/vstplugin~")
 
     if (BUILD_HOST32)
-        install(PROGRAMS "$<TARGET_FILE_DIR:host32>/$<TARGET_FILE_BASE_NAME:host32>.exe.so"
-            RENAME $<TARGET_FILE_BASE_NAME:host32>
+        get_target_property(host32name host32 OUTPUT_NAME)
+        install(PROGRAMS "$<TARGET_FILE_DIR:host32>/${host32name}.exe.so"
+            RENAME ${host32name}
             DESTINATION "${PD_INSTALLDIR}/vstplugin~")
     endif()
 
