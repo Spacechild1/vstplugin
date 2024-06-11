@@ -17,12 +17,13 @@ message(STATUS "SC_INSTALLDIR: ${SC_INSTALLDIR}")
 
 if (BUILD_WINE)
     # install wine hosts
-    install(TARGETS host
+    # NB: we need to specify the path of the .exe.so file
+    install(PROGRAMS "$<TARGET_FILE_DIR:host>/$<TARGET_FILE_BASE_NAME:host>.exe.so"
         RENAME $<TARGET_FILE_BASE_NAME:host>
         DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
 
     if (BUILD_HOST32)
-        install(TARGETS host32
+        install(PROGRAMS "$<TARGET_FILE_DIR:host32>/$<TARGET_FILE_BASE_NAME:host32>.exe.so"
             RENAME $<TARGET_FILE_BASE_NAME:host32>
             DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     endif()
