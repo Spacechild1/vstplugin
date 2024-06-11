@@ -235,6 +235,13 @@ if (WIN32 OR BUILD_WINE)
     target_link_libraries(vst_common INTERFACE ole32)
 endif()
 
+if (BUILD_WINE)
+    # HACK: --strip resp. install/strip only works for binaries installed as targets,
+    # but we need to install the wine host(s) as programs. As a workaround, we manually
+    # strip the symbols at link time - but only in Release mode.
+    add_link_options($<$<CONFIG:RELEASE>:-s>)
+endif()
+
 if (MINGW)
     if (STATIC_LIBS)
         target_link_libraries(vst_common INTERFACE -static-libstdc++ -static-libgcc "-static -lpthread")

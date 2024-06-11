@@ -105,10 +105,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (MSVC)
-    add_compile_options(/Zc:__cplusplus)
-    if (CMAKE_BUILD_TYPE STREQUAL Debug)
-        add_compile_options(/fp:fast)
-    endif()
+    add_compile_options(/Zc:__cplusplus /fp:fast)
 endif()
 
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
@@ -159,6 +156,9 @@ endif()
 
 if (MINGW)
     add_compile_options(-mstackrealign)
+    # HACK: somehow --strip resp. install/strip target do not work on MSys2,
+    # so we manually strip the symbols at link time - but only in Release mode.
+    add_link_options($<$<CONFIG:RELEASE>:-s>)
 endif()
 
 # vst library

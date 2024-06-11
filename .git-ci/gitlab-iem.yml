@@ -75,9 +75,9 @@ variables:
 
 ### build snippets
 .script:make: &script_make
-  - cmake --build ./build --config Release -j -- VERBOSE=1
+  - cmake --build ./build --config Release -j -v
 .script:make_install: &script_make_install
-  - cmake --build ./build --config Release --target install/strip -- VERBOSE=1
+  - cmake --install ./build --config Release -v --strip
 
 #######################################################################
 ### configuration templates (to be used for snapshot and release builds)
