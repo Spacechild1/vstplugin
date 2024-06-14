@@ -118,8 +118,9 @@ VSTPluginController {
 			};
 			array.notNil.if {
 				bndl = array.flop.collect { arg params;
-					// NB: asOSCArgArray helps to resolve unwanted Rests
-					// (it calls asControlInput on all the arguments)
+					// NB: asOSCArgArray calls asControlInput on all arguments,
+					// which makes sure to resolve unwanted Rests, call .value
+					// on Functions, etc.
 					vst.setMsg(*params).asOSCArgArray;
 				};
 				~schedBundleArray.value(~lag, ~timingOffset, server, bndl, ~latency);
