@@ -22,7 +22,7 @@ class LockfreeFifo {
     template<typename... TArgs>
     bool emplace(TArgs&&... args){
         int next = (writeHead_.load(std::memory_order_relaxed) + 1) % N;
-        if (next == readHead_.load(std::memory_order_relaxed)){
+        if (next == readHead_.load(std::memory_order_acquire)){
             return false; // FIFO is full
         }
         data_[next] = T { std::forward<TArgs>(args)... };
@@ -31,7 +31,7 @@ class LockfreeFifo {
     }
     bool pop(T& data){
         int pos = readHead_.load(std::memory_order_relaxed);
-        if (pos == writeHead_.load()){
+        if (pos == writeHead_.load(std::memory_order_acquire)) {
             return false; // FIFO is empty
         }
         int next = (pos + 1) % N;
@@ -120,7 +120,7 @@ class UnboundedMPSCQueue : protected std::allocator_traits<Alloc>::template rebi
         Node<T>* node;
         lock();
         // try to reuse existing node
-        if (first_ != devider_.load(std::memory_order_relaxed)) {
+        if (first_ != devider_.load(std::memory_order_acquire)) {
             node = first_;
             first_ = first_->next_;
             node->next_ = nullptr; // !
@@ -156,7 +156,7 @@ class UnboundedMPSCQueue : protected std::allocator_traits<Alloc>::template rebi
 
     bool empty() const {
         return devider_.load(std::memory_order_relaxed)
-                == last_.load(std::memory_order_relaxed);
+                == last_.load(std::memory_order_acquire);
     }
 
     void clear(){
