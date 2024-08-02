@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Sync.h"
+
 #include <stddef.h>
 #include <atomic>
 #include <array>
@@ -117,29 +119,27 @@ class UnboundedMPSCQueue : protected std::allocator_traits<Alloc>::template rebi
 
     template<typename... TArgs>
     void emplace(TArgs&&... args){
-        Node<T>* node;
-        lock();
-        // try to reuse existing node
-        if (first_ != devider_.load(std::memory_order_acquire)) {
-            node = first_;
-            first_ = first_->next_;
-            node->next_ = nullptr; // !
-        } else {
+        Node<T>* node = nullptr;
+        {
+            // try to reuse existing node
+            std::lock_guard lock(lock_);
+            if (first_ != devider_.load(std::memory_order_acquire)) {
+                node = first_;
+                first_ = first_->next_;
+                node->next_ = nullptr; // !
+            }
+        }
+        if (!node) {
             // allocate new node
-            unlock();
             node = Base::allocate(1);
             new (node) Node<T>();
-            lock();
         }
-        // NB: we could release the lock while calling the constructor,
-        // but in practice we only use this queue with PODs, so we rather
-        // avoid some unnecessary atomic instructions.
         node->data_ = T{std::forward<TArgs>(args)...};
         // push node
+        std::lock_guard lock(lock_);
         auto last = last_.load(std::memory_order_relaxed);
         last->next_ = node;
         last_.store(node, std::memory_order_release); // publish
-        unlock();
     }
 
     bool pop(T& result){
@@ -187,7 +187,7 @@ class UnboundedMPSCQueue : protected std::allocator_traits<Alloc>::template rebi
     Node<T>* first_;
     std::atomic<Node<T> *> devider_;
     std::atomic<Node<T> *> last_;
-    std::atomic<int32_t> lock_{0};
+    SpinLock lock_;
     Node<T> dummy_; // optimization
 
     void freeMemory() {
@@ -201,14 +201,6 @@ class UnboundedMPSCQueue : protected std::allocator_traits<Alloc>::template rebi
             }
             it = next;
         }
-    }
-
-    void lock() {
-        while (lock_.exchange(1, std::memory_order_acquire)) ;
-    }
-
-    void unlock() {
-        lock_.store(0, std::memory_order_release);
     }
 };
 
