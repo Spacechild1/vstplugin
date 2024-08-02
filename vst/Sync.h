@@ -207,6 +207,12 @@ class SpinLock {
     bool try_lock(){
         return !locked_.exchange(true, std::memory_order_acquire);
     }
+    bool try_lock(int numTries) {
+        for (int i = 0; i < numTries; i++) {
+            if (try_lock()) return true;
+        }
+        return false;
+    }
     void unlock(){
         locked_.store(false, std::memory_order_release);
     }
@@ -214,7 +220,6 @@ class SpinLock {
     // data
     std::atomic<int32_t> locked_{false};
 };
-
 
 const size_t CACHELINE_SIZE = 64;
 
