@@ -1606,7 +1606,7 @@ static void vstplugin_open_do(t_open_data *data){
                 data->plugin = info->create(data->editor, data->threaded, data->mode);
                 // setup plugin
                 // protect against concurrent vstplugin_dsp() and vstplugin_save()
-                std::lock_guard lock(x->x_mutex);
+                t_scoped_nrt_lock lock(x->x_mutex);
                 x->setup_plugin(*data->plugin);
             }, data->editor);
             LOG_DEBUG("done");
@@ -2022,7 +2022,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
                 auto& plugin = x->owner->x_plugin;
                 x->owner->x_editor->defer_safe<true>([&](){
                     // protect against vstplugin_dsp() and vstplugin_save()
-                    std::lock_guard lock(x->owner->x_mutex);
+                    t_scoped_nrt_lock lock(x->owner->x_mutex);
                     plugin->suspend();
                     plugin->resume();
                 }, x->owner->x_uithread);
@@ -2037,7 +2037,7 @@ static void vstplugin_reset(t_vstplugin *x, t_floatarg f){
     } else {
         // protect against concurrent reads/writes
         x->x_editor->defer_safe<false>([&](){
-            std::lock_guard lock(x->x_mutex);
+            t_scoped_nrt_lock lock(x->x_mutex);
             x->x_plugin->suspend();
             x->x_plugin->resume();
         }, x->x_uithread);
@@ -2053,7 +2053,7 @@ static void vstplugin_offline(t_vstplugin *x, t_floatarg f){
 
     if (x->x_plugin && (mode != x->x_mode)){
         x->x_editor->defer_safe<false>([&](){
-            std::lock_guard lock(x->x_mutex);
+            t_scoped_nrt_lock lock(x->x_mutex);
             x->x_plugin->suspend();
             x->x_plugin->setupProcessing(x->x_sr, x->x_blocksize,
                                          x->x_realprecision, mode);
@@ -2522,7 +2522,7 @@ static void vstplugin_preset_data_set(t_vstplugin *x, t_symbol *s, int argc, t_a
     }
     try {
         x->x_editor->defer_safe<false>([&](){
-            std::lock_guard lock(x->x_mutex); // avoid concurrent reads/writes
+            t_scoped_nrt_lock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
@@ -2545,7 +2545,7 @@ static void vstplugin_preset_data_get(t_vstplugin *x){
     std::string buffer;
     try {
        x->x_editor->defer_safe<false>([&](){
-            std::lock_guard lock(x->x_mutex); // avoid concurrent reads/writes
+            t_scoped_nrt_lock lock(x->x_mutex); // avoid concurrent reads/writes
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
@@ -2592,7 +2592,7 @@ static void vstplugin_preset_read_do(t_preset_data *data){
 
         x->x_editor->defer_safe<async>([&](){
             // protect against vstplugin_dsp() and vstplugin_save()
-            std::lock_guard lock(x->x_mutex);
+            t_scoped_nrt_lock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->readBankData(buffer);
             else
@@ -2692,7 +2692,7 @@ static void vstplugin_preset_write_do(t_preset_data *data){
         }
         // protect against vstplugin_dsp() and vstplugin_save()
         x->x_editor->defer_safe<async>([&](){
-            std::lock_guard lock(x->x_mutex);
+            t_scoped_nrt_lock lock(x->x_mutex);
             if (type == BANK)
                 x->x_plugin->writeBankData(buffer);
             else
@@ -3283,7 +3283,7 @@ void t_vstplugin::setup_plugin(IPlugin& plugin){
     setupSpeakers(plugin.info().outputs, x_outlets, outputs, "outputs");
 
     plugin.setNumSpeakers(inputs.data(), inputs.size(),
-                           outputs.data(), outputs.size());
+                          outputs.data(), outputs.size());
 
     x_inputs.resize(inputs.size());
     x_input_channels = 0;
@@ -3861,10 +3861,13 @@ static t_int *vstplugin_perform(t_int *w){
     // checking only x_process wouldn't be thread-safe!
     auto process = (x->x_plugin != nullptr) && x->x_process;
     // if async command is running, try to lock the mutex or bypass on failure
-    if (x->x_suspended){
-        process = x->x_mutex.try_lock();
-        if (!process){
-            LOG_DEBUG("couldn't lock mutex");
+    std::unique_lock<SpinLock> lock;
+    if (x->x_suspended) {
+        // NB: we only need to lock if suspended!
+        lock = std::unique_lock(x->x_mutex, std::try_to_lock);
+        if (process && !lock) {
+            LOG_DEBUG("vstplugin~: couldn't lock mutex");
+            process = false;
         }
     }
     if (process){
@@ -3872,9 +3875,6 @@ static t_int *vstplugin_perform(t_int *w){
             vstplugin_doperform<double>(x, n);
         } else { // single precision
             vstplugin_doperform<float>(x, n);
-        }
-        if (x->x_suspended){
-            x->x_mutex.unlock();
         }
     } else {
         // bypass/zero
@@ -3940,7 +3940,7 @@ static void vstplugin_save(t_gobj *z, t_binbuf *bb){
     binbuf_addsemi(bb);
     if (x->x_keep && x->x_plugin){
         // protect against concurrent vstplugin_open_do()
-        std::lock_guard lock(x->x_mutex);
+        t_scoped_nrt_lock lock(x->x_mutex);
         // 1) plugin
         binbuf_addv(bb, "ss", gensym("#A"), gensym("open"));
         if (x->x_uithread) {
@@ -4071,7 +4071,7 @@ static void vstplugin_dsp(t_vstplugin *x, t_signal **sp){
     }
 
     // protect against concurrent vstplugin_open_do()
-    std::lock_guard lock(x->x_mutex);
+    t_scoped_nrt_lock lock(x->x_mutex);
     // only reset plugin if blocksize, samplerate or channels have changed
     if (x->x_plugin && ((x->x_blocksize != oldblocksize) || (x->x_sr != oldsr) || channels_changed)) {
         x->x_editor->defer_safe<false>([&](){

@@ -83,6 +83,19 @@ struct t_search_data : t_command_data<t_search_data> {
     std::atomic_bool cancel {false};
 };
 
+class t_scoped_nrt_lock {
+public:
+    t_scoped_nrt_lock(SpinLock& lock) : lock_(lock) {
+        // first spin, then yield back to the scheduler
+        while (!lock_.try_lock(1000)) {
+            std::this_thread::yield();
+        }
+    }
+    ~t_scoped_nrt_lock() { lock_.unlock(); }
+private:
+    SpinLock& lock_;
+};
+
 // vstplugin~ object (everything public and no virtual methods!)
 class t_vstplugin {
 public:
@@ -126,7 +139,7 @@ public:
     // VST plugin
     IPlugin::ptr x_plugin;
     std::unique_ptr<t_vsteditor> x_editor;
-    Mutex x_mutex;
+    SpinLock x_mutex;
     bool x_multi = false;
     bool x_outchannels_changed = false;
     bool x_process = false;
