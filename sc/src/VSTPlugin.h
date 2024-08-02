@@ -29,6 +29,19 @@ const size_t MAX_OSC_PACKET_SIZE = 1600;
 class VSTPlugin;
 struct OpenCmdData;
 
+class ScopedNRTLock {
+public:
+    ScopedNRTLock(SpinLock& lock) : lock_(lock) {
+        // first spin, then yield back to the scheduler
+        while (!lock_.try_lock(1000)) {
+            std::this_thread::yield();
+        }
+    }
+    ~ScopedNRTLock() { lock_.unlock(); }
+private:
+    SpinLock& lock_;
+};
+
 // This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.
 // It is managed by a rt::shared_ptr and therefore kept alive during the execution of commands, which means
 // we don't have to worry about the actual UGen being freed concurrently while a command is still running.
@@ -66,8 +79,9 @@ public:
     bool isSuspended() const { return suspended_; }
     void suspend() { suspended_ = true; }
     void resume() { suspended_ = false; }
-    bool tryLock();
-    void unlock();
+    std::unique_lock<SpinLock> tryLock() {
+        return std::unique_lock(spinMutex_, std::try_to_lock);
+    }
 
     void open(const char* path, bool editor,
               bool threaded, RunMode mode);
@@ -164,9 +178,7 @@ private:
     using ParamBitset = std::bitset<paramNumBits>;
     ParamBitset *paramBitset_ = nullptr;
     int paramBitsetSize_ = 0;
-    // TODO: mutex construction is not really realtime safe;
-    // should we use a spinlock or sleeplock instead?
-    Mutex mutex_;
+    SpinLock spinMutex_;
     // events
     struct ParamChange {
         int index; // parameter index or EventType (negative)

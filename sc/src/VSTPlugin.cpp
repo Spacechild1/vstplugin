@@ -1260,15 +1260,18 @@ void VSTPlugin::next(int inNumSamples) {
 
     auto plugin = delegate_->plugin();
     bool process = plugin && plugin->info().hasPrecision(ProcessPrecision::Single);
-    bool suspended = delegate_->isSuspended();
-    if (process && suspended){
-        // Whenever an asynchronous command is executing, the plugin is temporarily
-        // suspended. This is mainly for blocking other commands until the async
-        // command has finished. The actual critical section is protected by a mutex.
-        // We use tryLock() and bypass on failure, so we don't block the whole Server.
-        process = delegate_->tryLock();
-        if (!process){
-            LOG_DEBUG("couldn't lock mutex");
+
+    // Whenever an asynchronous command is executing, the plugin is temporarily
+    // suspended. This is mainly for blocking other commands until the async
+    // command has finished, but it also means we only have to lock if we're
+    // suspended. The actual critical section is protected by a spinlock.
+    std::unique_lock<SpinLock> lock;
+    if (delegate_->isSuspended()) {
+        // We try to lock and bypass on failure so we don't block the whole Server.
+        lock = delegate_->tryLock();
+        if (process && !lock) {
+            LOG_DEBUG("VSTPlugin: couldn't lock mutex");
+            process = false;
         }
     }
 
@@ -1481,10 +1484,6 @@ void VSTPlugin::next(int inNumSamples) {
 
         // send parameter automation notification posted from the GUI thread [or NRT thread]
         delegate().handleEvents();
-
-        if (suspended){
-            delegate_->unlock(); // !
-        }
     } else {
         // bypass
         if (reblock_){
@@ -1729,14 +1728,6 @@ void VSTPluginDelegate::handleEvents(){
     }
 }
 
-bool VSTPluginDelegate::tryLock() {
-    return mutex_.try_lock();
-}
-
-void VSTPluginDelegate::unlock() {
-    mutex_.unlock();
-}
-
 // try to close the plugin in the NRT thread with an asynchronous command
 void VSTPluginDelegate::close() {
     if (!check()) return;
@@ -1884,7 +1875,7 @@ void VSTPluginDelegate::open(const char *path, bool editor,
         sendMsg("/vst_open", 0);
         return;
     }
-    if (isSuspended()){
+    if (suspended_){
         LOG_WARNING("VSTPlugin: temporarily suspended!");
         sendMsg("/vst_open", 0);
         return;
@@ -2052,7 +2043,7 @@ void VSTPluginDelegate::setEditorSize(int w, int h){
 }
 
 void VSTPluginDelegate::doReset() {
-    std::lock_guard lock(mutex_);
+    ScopedNRTLock lock(spinMutex_);
     plugin_->suspend();
     plugin_->resume();
 }
@@ -2292,7 +2283,7 @@ void VSTPluginDelegate::doReadPreset(const std::string& data, bool bank) {
         isSettingState_ = false;
     });
 
-    std::lock_guard lock(mutex_);
+    ScopedNRTLock lock(spinMutex_);
     if (bank)
         plugin_->readBankData(data);
     else
@@ -2402,7 +2393,7 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
 }
 
 void VSTPluginDelegate::doWritePreset(std::string& buffer, bool bank) {
-    std::lock_guard lock(mutex_);
+    ScopedNRTLock lock(spinMutex_);
     if (bank)
         plugin_->writeBankData(buffer);
     else
