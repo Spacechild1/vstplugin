@@ -1,7 +1,5 @@
 #pragma once
 
-#include "SC_PlugIn.hpp"
-
 #include "Interface.h"
 #include "PluginDictionary.h"
 #include "FileUtils.h"
@@ -10,6 +8,9 @@
 #include "Log.h"
 #include "Sync.h"
 #include "CpuArch.h"
+
+// include last because of conflicts with Windows.h
+#include "SC_PlugIn.hpp"
 
 using namespace vst;
 

@@ -8,6 +8,8 @@
 #  define NOMINMAX
 # endif
 #include <windows.h>
+#include <objbase.h>
+#include <shellapi.h>
 #include <mutex>
 #include <thread>
 #include <functional>

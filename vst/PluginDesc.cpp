@@ -10,6 +10,9 @@
 #include <sstream>
 #include <cstring>
 
+// for Windows.h
+#undef IGNORE
+
 namespace vst {
 
 #define STR_HELPER(x) #x

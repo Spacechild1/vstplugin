@@ -7,15 +7,17 @@
 
 #include <stddef.h>
 
-// for SpinLock
-// Intel
-#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
-#define CPU_INTEL
-#include <immintrin.h>
-#endif
-// ARM
-#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
-#define CPU_ARM
+// for spinlock
+#if defined(_MSC_VER)
+# ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <Windows.h>
+#elif defined(__SSE2__)
+# include <immintrin.h>
 #endif
 
 // Wine executables segfaults during static initialization
@@ -173,12 +175,16 @@ class Event {
 /*///////////////////// SpinLock /////////////////////*/
 
 inline void pauseCpu() {
-#if defined(CPU_INTEL)
+#if defined(_MSC_VER)
+    YieldProcessor();
+#elif defined(__SSE2__)
     _mm_pause();
-#elif defined(CPU_ARM)
+#elif defined(__aarch64__)
+    __asm__ __volatile__("isb");
+#elif defined(__arm__)
     __asm__ __volatile__("yield");
-#else // fallback
-    std::this_thread::yield();
+#else
+# warning "Cannot pause CPU, falling back to busy-waiting."
 #endif
 }
 
