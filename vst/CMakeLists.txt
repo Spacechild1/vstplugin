@@ -7,9 +7,10 @@ add_library(vst_common INTERFACE)
 target_include_directories(vst_public INTERFACE ".")
 
 # logging
-set(LOGLEVEL 2 CACHE STRING "LOGLEVEL")
-message(STATUS "LOGLEVEL: ${LOGLEVEL}")
-target_compile_definitions(vst_public INTERFACE LOGLEVEL=${LOGLEVEL})
+set(LOG_LEVEL "INFO" CACHE STRING "Log level")
+set_property(CACHE LOG_LEVEL PROPERTY STRINGS "SILENT;ERROR;WARNING;INFO;DEBUG;VERBOSE")
+message(STATUS "Log level: ${LOG_LEVEL}")
+target_compile_definitions(vst_public INTERFACE LOG_LEVEL=LOG_LEVEL_${LOG_LEVEL})
 
 # Windows version
 if (WIN32)
@@ -220,6 +221,7 @@ if (LINUX)
     if (BUILD_WINE)
         target_link_libraries(vst_common INTERFACE -lpthread)
     else()
+        target_compile_options(vst_common INTERFACE -pthread)
         target_link_libraries(vst_common INTERFACE -pthread -ldl -L/usr/X11R6/lib -lX11)
     endif()
     if(STATIC_LIBS)

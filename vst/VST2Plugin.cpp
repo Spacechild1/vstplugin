@@ -324,12 +324,12 @@ void VST2Plugin::setupProcessing(double sampleRate, int maxBlockSize,
             timeInfo_.sampleRate = sampleRate;
         }
     } else {
-        LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
+        LOG_ERROR("VST2Plugin::setupProcessing: sample rate must be greater than 0!");
     }
     if (maxBlockSize > 0){
         dispatch(effSetBlockSize, 0, maxBlockSize);
     } else {
-        LOG_ERROR("setupProcessing: block size be greater than 0!");
+        LOG_ERROR("VST2Plugin::setupProcessing: block size be greater than 0!");
     }
     dispatch(effSetProcessPrecision, 0,
              precision == ProcessPrecision::Double ?  kVstProcessPrecision64 : kVstProcessPrecision32);
@@ -685,7 +685,7 @@ void VST2Plugin::setTempoBPM(double tempo){
         timeInfo_.tempo = tempo;
         timeInfo_.flags |= kVstTransportChanged;
     } else {
-        LOG_WARNING("setTempoBPM: tempo must be greater than 0!");
+        LOG_WARNING("VST2Plugin::setTempoBPM: tempo must be greater than 0!");
     }
 }
 
@@ -696,7 +696,7 @@ void VST2Plugin::setTimeSignature(int numerator, int denominator){
         timeInfo_.timeSigDenominator = denominator;
         timeInfo_.flags |= kVstTransportChanged;
     } else {
-        LOG_WARNING("setTimeSignature: bad time signature "
+        LOG_WARNING("VST2Plugin::setTimeSignature: bad time signature "
                     << numerator << "/" << denominator << "!");
     }
 }
@@ -1387,7 +1387,7 @@ void VST2Plugin::preProcess(int nsamples){
         vstEvents_->events[n++] = (VstEvent *)&sysex;
     }
     if (n != numEvents){
-        LOG_ERROR("preProcess bug: wrong number of events!");
+        LOG_ERROR("VST2Plugin::preProcess: wrong number of events!");
     } else {
             // always call this, even if there are no events. some plugins depend on this...
         dispatch(effProcessEvents, 0, 0, vstEvents_);
@@ -1428,7 +1428,7 @@ void VST2Plugin::processEvents(VstEvents *events){
                 auto *sysexEvent = (VstMidiSysexEvent *)event;
                 listener_->sysexEvent(SysexEvent(sysexEvent->sysexDump, sysexEvent->dumpBytes, sysexEvent->deltaFrames));
             } else {
-                LOG_VERBOSE("VST2Plugin::processEvents: couldn't process event");
+                LOG_INFO("VST2Plugin: couldn't process event");
             }
         }
     }

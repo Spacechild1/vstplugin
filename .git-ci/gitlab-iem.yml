@@ -12,7 +12,7 @@ variables:
     value: "Release"
     description: "Set CMake build type"
   LOGLEVEL:
-    value: 2
+    value: "INFO"
     description: "Set log level"
   STATIC_LINKING:
     value: 1
@@ -64,7 +64,7 @@ variables:
   - prefix="$(pwd)/${CI_JOB_NAME}"
   - cmake -H. -Bbuild -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${prefix}"
    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_OSX_ARCHITECTURES="${OSX_ARCHITECTURES}"
-   -DCMAKE_DEPENDS_USE_COMPILER=OFF -DLOGLEVEL=${LOGLEVEL} -DSTATIC_LIBS=${STATIC_LIBS}
+   -DCMAKE_DEPENDS_USE_COMPILER=OFF -DLOG_LEVEL=${LOGLEVEL} -DSTATIC_LIBS=${STATIC_LIBS}
    -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DWINE=${WINE} -DBUILD_WINE=${BUILD_WINE}
    -DBUILD_HOST32=${BUILD_HOST32} -DBUILD_HOST_AMD64=${BUILD_HOST_AMD64}
    -DPD_INCLUDEDIR="${PD_PATH}/src" -DPD_BINDIR="${PD_PATH}/bin" -DPD_INSTALLDIR="${prefix}" -DPD_EXTENSION=${PD_EXTENSION}

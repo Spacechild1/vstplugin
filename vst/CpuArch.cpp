@@ -489,9 +489,9 @@ void printCpuArchitectures(const std::string& path){
         for (auto& arch : archs){
             ss << cpuArchToString(arch) << " ";
         }
-        LOG_VERBOSE("CPU architectures: " << ss.str());
+        LOG_INFO("CPU architectures: " << ss.str());
     } else {
-        LOG_VERBOSE("CPU architectures: none");
+        LOG_INFO("CPU architectures: none");
     }
 }
 

@@ -117,17 +117,17 @@ int probe(const std::string& pluginPath, int pluginIndex, const std::string& fil
                 LOG_ERROR("ERROR: couldn't write info file " << filePath);
             }
         }
-        LOG_VERBOSE("probe succeeded");
+        LOG_INFO("Probe succeeded.");
         return EXIT_SUCCESS;
     } catch (const Error& e){
         writeErrorMsg(e.code(), e.what(), filePath);
-        LOG_ERROR("probe failed: " << e.what());
+        LOG_ERROR("Probe failed: " << e.what());
     } catch (const std::exception& e) {
         writeErrorMsg(Error::UnknownError, e.what(), filePath);
-        LOG_ERROR("probe failed: " << e.what());
+        LOG_ERROR("Probe failed: " << e.what());
     } catch (...) {
         writeErrorMsg(Error::UnknownError, "unknown exception", filePath);
-        LOG_ERROR("probe failed: unknown exception");
+        LOG_ERROR("Probe failed: unknown exception.");
     }
     return EXIT_FAILURE;
 }

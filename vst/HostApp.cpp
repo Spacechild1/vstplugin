@@ -102,7 +102,7 @@ bool ProcessHandle::terminate() {
         close();
         return true;
     } else {
-        LOG_ERROR("couldn't terminate subprocess: " << errorMessage(GetLastError()));
+        LOG_ERROR("VSTPlugin: couldn't terminate subprocess: " << errorMessage(GetLastError()));
         return false;
     }
 }
@@ -221,7 +221,7 @@ bool ProcessHandle::terminate() {
         pid_ = -1; // sentinel
         return true;
     } else {
-        LOG_ERROR("couldn't terminate subprocess: " << errorMessage(errno));
+        LOG_ERROR("VSTPlugin: couldn't terminate subprocess: " << errorMessage(errno));
         return false;
     }
 }
@@ -311,12 +311,12 @@ bool HostApp::doTest(const std::string& cmd, const std::string& args) const {
         if (exitCode == EXIT_SUCCESS){
             return true; // success
         } else if (exitCode == EXIT_FAILURE) {
-            LOG_ERROR("host app '" << path_ << "' failed (version mismatch)");
+            LOG_ERROR("VSTPlugin: host app '" << path_ << "' failed (version mismatch)");
         } else {
-            LOG_ERROR("host app '" << path_ << "' failed with exit code " << exitCode);
+            LOG_ERROR("VSTPlugin: host app '" << path_ << "' failed with exit code " << exitCode);
         }
     } catch (const Error& e) {
-        LOG_ERROR("failed to execute host app '" << path_ << "': " << e.what());
+        LOG_ERROR("VSTPlugin: failed to execute host app '" << path_ << "': " << e.what());
     }
     return false;
 }
@@ -401,7 +401,7 @@ ProcessHandle HostApp::createProcess(const char *cmd, T&&... args) {
         // NOTE: we must not quote arguments to exec!
         // NOTE: use PATH for "arch", "wine", etc.
         if (execlp(cmd, args..., nullptr) < 0) {
-            LOG_ERROR("execl() failed: " << errorMessage(errno));
+            LOG_ERROR("VSTPlugin: execl() failed: " << errorMessage(errno));
         }
         std::exit(EXIT_FAILURE);
     }
@@ -620,7 +620,7 @@ IHostApp* IHostApp::get(CpuArch arch) {
     #endif // __APPLE__
     }
     // failure
-    LOG_VERBOSE("no appropriate host app for CPU architecture " << cpuArchToString(arch));
+    LOG_INFO("VSTPlugin: no appropriate host app for CPU architecture " << cpuArchToString(arch));
     gHostAppDict[arch] = nullptr;
     return nullptr;
 }

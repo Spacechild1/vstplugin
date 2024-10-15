@@ -177,7 +177,7 @@ const std::string& getModuleDirectory(){
             // LOG_DEBUG("dll directory: " << shorten(wpath));
             return shorten(wpath);
         } else {
-            LOG_ERROR("getModuleDirectory: GetModuleFileNameW() failed!");
+            LOG_ERROR("GetModuleFileNameW() failed!");
             return std::string();
         }
     }();
@@ -396,7 +396,7 @@ const char * getWine64Command(){
             if (commandExists(wine64)) {
                 return wine64;
             }
-            LOG_WARNING("Could not find 'wine64' command");
+            LOG_WARNING("VSTPlugin: could not find 'wine64' command");
             return "wine"; // fallback
         }
     }();
@@ -418,7 +418,7 @@ static bool testWine(const char *cmd) {
             LOG_DEBUG("'" << cmd << "' command is working");
             return true; // success
         } else if (code == EXIT_FAILURE) {
-            LOG_VERBOSE("'" << cmd << "' command failed or not available");
+            LOG_INFO("'" << cmd << "' command failed or not available");
         } else {
             LOG_ERROR("'" << cmd << "' command failed with exit code " << code);
         }
@@ -461,11 +461,11 @@ void setThreadPriority(Priority p){
     #if 0
         // disable priority boost
         if (!SetThreadPriorityBoost(thread, (p == Priority::Low))){
-            LOG_WARNING("couldn't disable thread priority boost");
+            LOG_WARNING("VSTPlugin: couldn't disable thread priority boost");
         }
     #endif
     } else {
-        LOG_WARNING("couldn't set thread priority");
+        LOG_WARNING("VSTPlugin: couldn't set thread priority");
     }
 #else
     // set priority
@@ -476,7 +476,7 @@ void setThreadPriority(Priority p){
     param.sched_priority = (p == Priority::High) ?
                 sched_get_priority_max(SCHED_FIFO) - 7 : 0;
     if (pthread_setschedparam(pthread_self(), policy, &param) != 0){
-        LOG_WARNING("couldn't set thread priority");
+        LOG_WARNING("VSTPlugin: couldn't set thread priority");
     }
 #endif
 }

@@ -252,9 +252,9 @@ void PluginDesc::scanPresets(){
     sortPresets(false);
 #if 0
     if (numPresets()){
-        LOG_VERBOSE("presets:");
+        LOG_DEBUG("presets:");
         for (auto& preset : presets){
-            LOG_VERBOSE("\t" << preset.path);
+            LOG_DEBUG("\t" << preset.path);
         }
     }
 #endif
@@ -699,7 +699,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                 MATCH("flags", flags) // hex
                 else {
                     if (future){
-                        LOG_WARNING("unknown key: " << key);
+                        LOG_WARNING("VSTPlugin: unknown key: " << key);
                     } else {
                         throw Error("unknown key: " + key);
                     }
@@ -715,7 +715,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
             }
         } else {
             if (future){
-                LOG_WARNING("bad data: " << line);
+                LOG_WARNING("VSTPlugin: bad data: " << line);
             } else {
                 throw Error("bad data: " + line);
             }

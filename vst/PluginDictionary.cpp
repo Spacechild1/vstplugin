@@ -197,20 +197,20 @@ void PluginDictionary::read(const std::string& path, bool update){
                         if (t < timestamp) {
                             exceptions_.insert(line);
                         } else {
-                            LOG_VERBOSE("black-listed plugin " << line << " has changed");
+                            LOG_INFO("Black-listed plugin " << line << " has changed");
                             outdated = true;
                         }
                     } catch (const Error& e) {
-                        LOG_ERROR("could not get timestamp for " << line << ": " << e.what());
+                        LOG_ERROR("Could not get timestamp for " << line << ": " << e.what());
                         outdated = true;
                     }
                 } else {
-                    LOG_VERBOSE("black-listed plugin " << line << " has been removed");
+                    LOG_INFO("Black-listed plugin " << line << " has been removed");
                     outdated = true;
                 }
             }
         } else {
-            throw Error("bad data: " + line);
+            throw Error("Bad data: " + line);
         }
     }
     if (update && outdated){
@@ -221,9 +221,9 @@ void PluginDictionary::read(const std::string& path, bool update){
         } catch (const Error& e){
             throw Error("couldn't update cache file: " + std::string(e.what()));
         }
-        LOG_VERBOSE("updated cache file");
+        LOG_INFO("Updated cache file");
     }
-    LOG_DEBUG("cache file version: v" << versionMajor
+    LOG_DEBUG("Cache file version: v" << versionMajor
               << "." << versionMinor << "." << versionBugfix);
 }
 
@@ -240,22 +240,22 @@ PluginDesc::const_ptr PluginDictionary::doReadPlugin(std::istream& stream, doubl
     try {
         desc->deserialize(stream, versionMajor, versionMinor, versionPatch);
     } catch (const Error& e){
-        LOG_ERROR("couldn't deserialize plugin info for '" << desc->name << "': " << e.what());
+        LOG_ERROR("VSTPlugin: couldn't deserialize plugin info for '" << desc->name << "': " << e.what());
         return nullptr;
     }
 
     // check if the plugin has been removed or changed since the last cache file update
     if (!pathExists(desc->path())) {
-        LOG_WARNING("plugin " << desc->path() << " has been removed");
+        LOG_WARNING("VSTPlugin: plugin " << desc->path() << " has been removed");
         return nullptr; // skip
     }
     try {
         if (timestamp >= 0 && getPluginTimestamp(desc->path()) > timestamp) {
-            LOG_WARNING("plugin " << desc->path() << " has changed");
+            LOG_WARNING("VSTPlugin: plugin " << desc->path() << " has changed");
             return nullptr; // skip
         }
     } catch (const Error& e) {
-        LOG_ERROR("could not get timestamp for " << desc->path()
+        LOG_ERROR("VSTPlugin: could not get timestamp for " << desc->path()
                     << ": " << e.what());
         return nullptr;  // skip
     }

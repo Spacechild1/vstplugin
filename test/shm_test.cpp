@@ -63,21 +63,21 @@ void sleep_ms(int ms){
 }
 
 void server_test_queue(ShmInterface& shm){
-    LOG_VERBOSE("---");
-    LOG_VERBOSE("test request");
-    LOG_VERBOSE("---");
+    LOG_INFO("---");
+    LOG_INFO("test request");
+    LOG_INFO("---");
 
-    LOG_VERBOSE("server: queue");
+    LOG_INFO("server: queue");
 
     auto& channel = shm.getChannel(0);
     channel.clear();
-    LOG_VERBOSE("server: channel " << channel.name());
+    LOG_INFO("server: channel " << channel.name());
 
     for (int i = 0; i < TEST_QUEUE_COUNT; ++i){
        char buf[64];
        snprintf(buf, sizeof(buf), "msg %d", i+1);
        if (channel.writeMessage(buf, strlen(buf) + 1)){
-           LOG_VERBOSE("server: write message " << buf);
+           LOG_INFO("server: write message " << buf);
            channel.post();
        } else {
            LOG_ERROR("server: couldn't write message " << buf);
@@ -86,29 +86,29 @@ void server_test_queue(ShmInterface& shm){
        sleep_ms(1); // prevent queue overflow
     }
 
-    LOG_VERBOSE("server: send quit");
+    LOG_INFO("server: send quit");
     const char *quit = "quit";
     channel.writeMessage(quit, strlen(quit) + 1);
     channel.post();
 
-    LOG_VERBOSE("server: done");
+    LOG_INFO("server: done");
 }
 
 void client_test_queue(ShmInterface& shm){
-    LOG_VERBOSE("client: queue");
+    LOG_INFO("client: queue");
 
     auto& channel = shm.getChannel(0);
-    LOG_VERBOSE("client: channel " << channel.name());
+    LOG_INFO("client: channel " << channel.name());
 
     int count = 0;
     for (;;){
         char buf[64];
         size_t size = sizeof(buf);
         while (channel.readMessage(buf, size)){
-            LOG_VERBOSE("client: got message " << buf);
+            LOG_INFO("client: got message " << buf);
             if (!strcmp(buf, "quit")){
-                LOG_VERBOSE("---");
-                LOG_VERBOSE("client: got " << count << " messages");
+                LOG_INFO("---");
+                LOG_INFO("client: got " << count << " messages");
                 return;
             } else {
                 count++;
@@ -117,7 +117,7 @@ void client_test_queue(ShmInterface& shm){
         if (size > sizeof(buf)){
             LOG_ERROR("client: couldn't read message");
         } else {
-            LOG_VERBOSE("client: waiting for message");
+            LOG_INFO("client: waiting for message");
         }
 
         channel.wait();
@@ -125,67 +125,67 @@ void client_test_queue(ShmInterface& shm){
 }
 
 void server_test_request(ShmInterface& shm){
-    LOG_VERBOSE("---");
-    LOG_VERBOSE("test request");
-    LOG_VERBOSE("---");
+    LOG_INFO("---");
+    LOG_INFO("test request");
+    LOG_INFO("---");
 
-    LOG_VERBOSE("server: request");
+    LOG_INFO("server: request");
 
     auto& channel = shm.getChannel(1);
     channel.clear();
-    LOG_VERBOSE("server: channel " << channel.name());
+    LOG_INFO("server: channel " << channel.name());
     // post message
     const char* msg[] = { "testing", "shared", "memory", "interface" };
     for (int i = 0; i < 4; ++i){
-        LOG_VERBOSE("server: add msg: " << msg[i]);
+        LOG_INFO("server: add msg: " << msg[i]);
         channel.addMessage(msg[i], strlen(msg[i]) + 1);
     }
-    LOG_VERBOSE("server: send msg");
+    LOG_INFO("server: send msg");
     channel.post();
     // wait for reply
-    LOG_VERBOSE("server: wait for reply");
+    LOG_INFO("server: wait for reply");
 
     channel.waitReply();
     const void *reply;
     size_t replySize;
     channel.getMessage(reply, replySize);
 
-    LOG_VERBOSE("server: got reply: " << (const char *)reply);
+    LOG_INFO("server: got reply: " << (const char *)reply);
 }
 
 void client_test_request(ShmInterface& shm){
-    LOG_VERBOSE("client: request");
+    LOG_INFO("client: request");
 
     auto& channel = shm.getChannel(1);
 
-    LOG_VERBOSE("client: channel " << channel.name());
+    LOG_INFO("client: channel " << channel.name());
     // wait for messages
-    LOG_VERBOSE("client: wait for message");
+    LOG_INFO("client: wait for message");
     channel.wait();
     for (int i = 0; i < 4; ++i){
         const void *msg;
         size_t msgSize;
         channel.getMessage(msg, msgSize);
-        LOG_VERBOSE("client: got message: " << (const char *)msg);
+        LOG_INFO("client: got message: " << (const char *)msg);
     }
 
     // post reply
     auto reply = "ok";
-    LOG_VERBOSE("client: send reply: " << reply);
+    LOG_INFO("client: send reply: " << reply);
     channel.clear();
     channel.addMessage(reply, strlen(reply) + 1);
     channel.postReply();
 }
 
 void server_benchmark(ShmInterface& shm){
-    LOG_VERBOSE("---");
-    LOG_VERBOSE("test benchmark");
-    LOG_VERBOSE("---");
+    LOG_INFO("---");
+    LOG_INFO("test benchmark");
+    LOG_INFO("---");
 
-    LOG_VERBOSE("server: benchmark");
+    LOG_INFO("server: benchmark");
 
     auto& channel = shm.getChannel(1);
-    LOG_VERBOSE("server: channel " << channel.name());
+    LOG_INFO("server: channel " << channel.name());
 
     plf::nanotimer timer;
     timer.start();
@@ -193,14 +193,14 @@ void server_benchmark(ShmInterface& shm){
     {
         auto t1 = timer.get_elapsed_us();
         auto t2 = timer.get_elapsed_us();
-        LOG_VERBOSE("server: no sleep = " << (t2 - t1) << " us");
+        LOG_INFO("server: no sleep = " << (t2 - t1) << " us");
     }
 
     {
         auto t1 = timer.get_elapsed_us();
         sleep_ms(0);
         auto t2 = timer.get_elapsed_us();
-        LOG_VERBOSE("server: sleep(0) = " << (t2 - t1) << " us");
+        LOG_INFO("server: sleep(0) = " << (t2 - t1) << " us");
     }
 
     double avg_outer = 0;
@@ -213,12 +213,12 @@ void server_benchmark(ShmInterface& shm){
         channel.addMessage(msg, strlen(msg) + 1);
         auto t2 = timer.get_elapsed_us();
     #if TEST_BENCHMARK_DEBUG
-        LOG_VERBOSE("server: post");
+        LOG_INFO("server: post");
     #endif
         channel.post();
         // wait for reply
     #if TEST_BENCHMARK_DEBUG
-        LOG_VERBOSE("server: wait for reply");
+        LOG_INFO("server: wait for reply");
     #endif
         channel.waitReply();
         auto t3 = timer.get_elapsed_us();
@@ -236,7 +236,7 @@ void server_benchmark(ShmInterface& shm){
             avg_outer += outer;
             avg_inner += inner;
         }
-        LOG_VERBOSE("server: full delta = " << outer << " us, "
+        LOG_INFO("server: full delta = " << outer << " us, "
                     << "inner delta = " << inner << " us");
 
     #if TEST_BENCHMARK_SLEEP >= 0
@@ -245,24 +245,24 @@ void server_benchmark(ShmInterface& shm){
     #endif
     }
     auto divisor = TEST_BENCHMARK_COUNT - TEST_BENCHMARK_AVG_OFFSET;
-    LOG_VERBOSE("---");
-    LOG_VERBOSE("server: average full delta = "
+    LOG_INFO("---");
+    LOG_INFO("server: average full delta = "
                 << (avg_outer / divisor) << " us");
-    LOG_VERBOSE("server: average inner delta = "
+    LOG_INFO("server: average inner delta = "
                 << (avg_inner / divisor) << " us");
 }
 
 void client_benchmark(ShmInterface& shm){
-    LOG_VERBOSE("client: benchmark");
+    LOG_INFO("client: benchmark");
 
     auto& channel = shm.getChannel(1);
 
-    LOG_VERBOSE("client: channel " << channel.name());
+    LOG_INFO("client: channel " << channel.name());
 
     for (int i = 0; i < TEST_BENCHMARK_COUNT; ++i){
         // wait for message
     #if TEST_BENCHMARK_DEBUG
-        LOG_VERBOSE("client: wait");
+        LOG_INFO("client: wait");
     #endif
         channel.wait();
 
@@ -272,7 +272,7 @@ void client_benchmark(ShmInterface& shm){
 
         // post reply
     #if TEST_BENCHMARK_DEBUG
-        LOG_VERBOSE("client: post reply");
+        LOG_INFO("client: post reply");
     #endif
         auto reply = "ok";
         channel.clear();
@@ -280,20 +280,20 @@ void client_benchmark(ShmInterface& shm){
         channel.postReply();
     }
 
-    LOG_VERBOSE("client: done");
+    LOG_INFO("client: done");
 }
 
 int server_run(){
-    LOG_VERBOSE("---");
-    LOG_VERBOSE("server: start");
-    LOG_VERBOSE("---");
+    LOG_INFO("---");
+    LOG_INFO("server: start");
+    LOG_INFO("---");
     ShmInterface shm;
     shm.addChannel(ShmChannel::Queue, TEST_QUEUE_BUFSIZE, "queue");
     shm.addChannel(ShmChannel::Request, TEST_REQUEST_BUFSIZE, "request");
     shm.addChannel(ShmChannel::Request, 0, "sync");
     shm.create();
 
-    LOG_VERBOSE("server: created shared memory interface " << shm.path());
+    LOG_INFO("server: created shared memory interface " << shm.path());
 
     // spawn child process
 #ifdef _WIN32
@@ -381,20 +381,20 @@ int server_run(){
         throw Error(Error::SystemError, "waitpid() failed: " + errorMessage(errno));
     }
 #endif
-    LOG_VERBOSE("child process finished with exit code " << code);
+    LOG_INFO("child process finished with exit code " << code);
 
     return EXIT_SUCCESS;
 }
 
 int client_run(const char *path){
-    LOG_VERBOSE("---");
-    LOG_VERBOSE("client: start");
-    LOG_VERBOSE("---");
+    LOG_INFO("---");
+    LOG_INFO("client: start");
+    LOG_INFO("---");
 
     ShmInterface shm;
     shm.connect(path);
 
-    LOG_VERBOSE("client: connected to shared memory interface " << path);
+    LOG_INFO("client: connected to shared memory interface " << path);
 
     auto& sync = shm.getChannel(2);
 

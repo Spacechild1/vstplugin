@@ -294,7 +294,7 @@ void ThreadedPlugin::dispatchCommands() {
             plugin_->setProgram(command.i);
             break;
         default:
-            LOG_ERROR("bug: unknown command in ThreadedPlugin");
+            LOG_ERROR("ThreadedPlugin::dispatchCommands: unknown command");
             break;
         }
     }
@@ -376,7 +376,7 @@ void ThreadedPlugin::doProcess(ProcessData& data){
         plugin->threadFunction<T>(numSamples);
     };
     if (!threadPool_->push(cb, this, data.numSamples)){
-        LOG_WARNING("couldn't push DSP task!");
+        LOG_WARNING("ThreadedPlugin: couldn't push DSP task!");
         // skip processing and clear outputs
         for (int i = 0; i < numOutputs_; ++i){
             auto& output = outputs_[i];

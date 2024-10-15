@@ -273,7 +273,7 @@ VST3Factory::~VST3Factory(){
     // Hopefully, Pd will offer something similar in the future.
     if (module_ && !module_->exit()){
         // don't throw!
-        LOG_ERROR("couldn't exit module");
+        LOG_ERROR("VST3Factory: couldn't exit module");
     }
 #endif
     // LOG_DEBUG("VST3Factory: deinitialize " << path_);
@@ -468,7 +468,7 @@ Vst::IParamValueQueue* PLUGIN_API ParameterChanges::addParameterData(const Vst::
         parameterChanges_[index].setParameterId(id);
         return &parameterChanges_[index];
     } else {
-        LOG_ERROR("bug addParameterData");
+        LOG_ERROR("VST3Plugin::addParameterData: index out of range.");
         index = 0;
         return nullptr;
     }
@@ -750,7 +750,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                     }
                 }
             } else {
-                LOG_ERROR("couldn't get parameter info!");
+                LOG_ERROR("VST3Plugin: couldn't get parameter info!");
             }
         }
         // programs
@@ -768,13 +768,13 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                         if (ui->getProgramName(pli.id, i, name) == kResultTrue){
                             newInfo->programs.push_back(convertString(name));
                         } else {
-                            LOG_ERROR("couldn't get program name!");
+                            LOG_ERROR("VST3Plugin: couldn't get program name!");
                             newInfo->programs.push_back("");
                         }
                     }
                     LOG_DEBUG("num programs: " << pli.programCount);
                 } else {
-                    LOG_ERROR("couldn't get program list info");
+                    LOG_ERROR("VST3Plugin: couldn't get program list info");
                 }
             } else {
                 LOG_DEBUG("no program list");
@@ -933,7 +933,7 @@ tresult VST3Plugin::disconnect(Vst::IConnectionPoint *other){
 void printMessage(Vst::IMessage *message){
     auto msg = dynamic_cast<HostMessage *>(message);
     if (msg){
-    #if LOGLEVEL > 2
+    #if LOG_LEVEL >= LOG_LEVEL_VERBOSE
         msg->print();
     #endif
     } else {
@@ -942,7 +942,7 @@ void printMessage(Vst::IMessage *message){
 }
 
 tresult VST3Plugin::notify(Vst::IMessage *message){
-#if LOGLEVEL > 2
+#if LOG_LEVEL >= LOG_LEVEL_VERBOSE
     printMessage(message);
 #endif
     sendMessage(message);
@@ -995,11 +995,11 @@ void VST3Plugin::setupProcessing(double sampleRate, int maxBlockSize,
               << ", precision: " << ((precision == ProcessPrecision::Single) ? "single" : "double")
               << ", mode: " << ((mode == ProcessMode::Offline) ? "offline" : "realtime") << ")");
     if (sampleRate <= 0){
-        LOG_ERROR("setupProcessing: sample rate must be greater than 0!");
+        LOG_ERROR("VST3Plugin::setupProcessing: sample rate must be greater than 0!");
         sampleRate = 44100;
     }
     if (maxBlockSize <= 0){
-        LOG_ERROR("setupProcessing: block size must be greater than 0!");
+        LOG_ERROR("VST3Plugin::setupProcessing: block size must be greater than 0!");
         maxBlockSize = 64;
     }
 
@@ -1596,7 +1596,7 @@ void VST3Plugin::setNumSpeakers(int *input, int numInputs, int *output, int numO
                 busses[i] = Vst::SpeakerArr::getChannelCount(arr);
             } else {
                 // ?
-                LOG_WARNING("setNumSpeakers: getBusArrangement not supported");
+                LOG_WARNING("VST3Plugin::setNumSpeakers: getBusArrangement not supported");
             }
             // only activate bus if number of speakers is greater than zero
             component_->activateBus(Vst::kAudio, dir, i, active);
@@ -1624,7 +1624,7 @@ void VST3Plugin::setTempoBPM(double tempo){
         LOG_DEBUG("setTempoBPM: " << tempo);
         context_.tempo = tempo;
     } else {
-        LOG_ERROR("setTempoBPM: tempo must be greater than 0!");
+        LOG_ERROR("VST3Plugin::setTempoBPM: tempo must be greater than 0!");
     }
 }
 
@@ -1634,7 +1634,7 @@ void VST3Plugin::setTimeSignature(int numerator, int denominator){
         context_.timeSigNumerator = numerator;
         context_.timeSigDenominator = denominator;
     } else {
-        LOG_ERROR("setTimeSignature: bad time signature "
+        LOG_ERROR("VST3Plugin::setTimeSignature: bad time signature "
                   << numerator << "/" << denominator);
     }
 }
@@ -1770,7 +1770,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, data1, id) == kResultOk){
                 doSetParameter(id, data2 / 127.f, event.delta); // don't use plainParamToNormalized()
             } else {
-                LOG_WARNING("MIDI CC control number " << data1 << " not supported");
+                LOG_WARNING("VST3Plugin: MIDI CC control number " << data1 << " not supported");
             }
             return;
         }
@@ -1802,7 +1802,7 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
             if (midiMapping && midiMapping->getMidiControllerAssignment (0, channel, Vst::kAfterTouch, id) == kResultOk){
                 doSetParameter(id, data1 / 127.f, event.delta);
             } else {
-                LOG_WARNING("MIDI channel aftertouch not supported");
+                LOG_WARNING("VST3Plugin: MIDI channel aftertouch not supported");
             }
             return;
         }
@@ -1814,12 +1814,12 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
                 uint32_t bend = data1 | (data2 << 7);
                 doSetParameter(id, (float)bend / 16383.f, event.delta);
             } else {
-                LOG_WARNING("MIDI pitch bend not supported");
+                LOG_WARNING("VST3Plugin: MIDI pitch bend not supported");
             }
             return;
         }
     default:
-        LOG_WARNING("MIDI system messages not supported!");
+        LOG_WARNING("VST3Plugin: MIDI system messages not supported!");
         return;
     }
     inputEvents_.addEvent(e);
@@ -1966,7 +1966,7 @@ void VST3Plugin::setProgram(int program){
     if (program >= 0 && program < getNumPrograms()){
         doSetProgram(program);
     } else {
-        LOG_WARNING("program number out of range!");
+        LOG_WARNING("VST3Plugin: program number out of range!");
     }
 }
 
@@ -2073,12 +2073,12 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
         }
         // 3) compare again
         if (memcmp(classID, wrongID, sizeof(TUID)) == 0) {
-            LOG_WARNING("This preset data has a wrong class ID from v0.3.0 or below.\n"
+            LOG_WARNING("VST3Plugin: this preset data has a wrong class ID from v0.3.0 or below.\n"
                 "Please save it to fix the problem.");
         } else
     #endif
         {
-        #if LOGLEVEL > 2
+        #if LOG_LEVEL >= LOG_LEVEL_VERBOSE
             fprintf(stderr, "preset: ");
             for (int i = 0; i < 16; ++i) {
                 fprintf(stderr, "%02X", (uint8_t)classID[i]);
@@ -2119,20 +2119,20 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
                     LOG_DEBUG("couldn't restore component state for controller");
                 }
             } else {
-                LOG_WARNING("couldn't restore component state");
+                LOG_WARNING("VST3Plugin: couldn't restore component state");
             }
         } else if (isChunkType(entry.id, Vst::kControllerState)){
             LOG_DEBUG("set controller state");
             if (controller_->setState(&state) == kResultOk){
                 LOG_DEBUG("restored controller state");
             } else {
-                LOG_WARNING("couldn't restore controller state");
+                LOG_WARNING("VST3Plugin: couldn't restore controller state");
             }
         } else {
             char type[5];
             memcpy(type, entry.id, 4);
             type[4] = '\0';
-            LOG_WARNING("unsupported chunk type '" << type << "'");
+            LOG_WARNING("VST3Plugin: unsupported chunk type '" << type << "'");
         }
     }
 
@@ -2919,7 +2919,7 @@ tresult PLUGIN_API HostAttributeList::getBinary (AttrID aid, const void*& data, 
 
 void HostAttributeList::print(){
     for (auto& [id, attr] : list_) {
-        Log log;
+        Log log(LOG_LEVEL_DEBUG);
         log << id << ": ";
         switch (attr.type){
         case HostAttribute::kInteger:
@@ -2948,7 +2948,7 @@ Vst::IAttributeList* PLUGIN_API HostMessage::getAttributes () {
     if (!attributes_){
         attributes_.reset(new HostAttributeList);
     }
-#if 0 && LOGLEVEL > 2
+#if 0 && LOG_LEVEL >= LOG_LEVEL_VERBOSE
     attributes_->print();
 #endif
     return attributes_.get();

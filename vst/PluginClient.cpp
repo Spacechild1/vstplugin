@@ -425,7 +425,7 @@ void PluginClient::dispatchReply(const ShmCommand& reply){
         reply.throwError();
         break;
     default:
-        LOG_ERROR("got unknown reply " << reply.type);
+        LOG_ERROR("PluginClient: got unknown reply " << reply.type);
         break;
     }
 }
@@ -520,10 +520,10 @@ void PluginClient::setNumSpeakers(int *input, int numInputs,
         } else if (reply->type == Command::Error){
             reply->throwError();
         } else {
-            LOG_ERROR("setNumSpeakers: unknown reply");
+            LOG_ERROR("PluginClient::setNumSpeakers: unknown reply");
         }
     } else {
-        LOG_ERROR("setNumSpeakers: missing reply!");
+        LOG_ERROR("PluginClient::setNumSpeakers: missing reply!");
     }
 
     LOG_DEBUG("actual bus arrangement:");

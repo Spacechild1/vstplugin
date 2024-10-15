@@ -55,7 +55,7 @@ public:
     void* operator new(size_t size) {
         void *ptr = nullptr;
         if (posix_memalign(&ptr, alignof(T), size) != 0) {
-            LOG_WARNING("posix_memalign() failed");
+            LOG_WARNING("VSTPlugin: posix_memalign() failed");
             ptr = std::malloc(size);
             if (!ptr) {
                 throw std::bad_alloc();

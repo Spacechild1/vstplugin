@@ -24,13 +24,23 @@ void SCLog(int level, const char *s){
     // verbosity -1: only errors
     // verbosity -2: nothing
     auto verbosity = getVerbosity();
-    if (verbosity >= 0 || (verbosity == -1 && (level == 0))) {
-        if (level == 0){
+    if (verbosity >= 0 || (verbosity == -1 && (level == LOG_LEVEL_ERROR))) {
+        switch (level) {
+        case LOG_LEVEL_ERROR:
             Print("ERROR: %s", s);
-        } else if (level == 1) {
+            break;
+        case LOG_LEVEL_WARNING:
             Print("WARNING: %s", s);
-        } else {
+            break;
+        case LOG_LEVEL_INFO:
             Print("%s", s);
+            break;
+        case LOG_LEVEL_DEBUG:
+            Print("DEBUG: %s", s);
+            break;
+        default:
+            Print("VERBOSE: %s", s);
+            break;
         }
     }
 }
@@ -206,16 +216,16 @@ static void readCacheFile(const std::string& dir, bool loud) {
     std::lock_guard lock(gFileLock);
     auto path = dir + "/" + gCacheFileName;
     if (pathExists(path)){
-        LOG_VERBOSE("read cache file " << path);
+        LOG_INFO("VSTPlugin: read cache file " << path);
         try {
             gPluginDict.read(path);
         } catch (const Error& e){
-            LOG_ERROR("couldn't read cache file: " << e.what());
+            LOG_ERROR("VSTPlugin: couldn't read cache file: " << e.what());
         } catch (const std::exception& e){
-            LOG_ERROR("couldn't read cache file: unexpected exception (" << e.what() << ")");
+            LOG_ERROR("VSTPlugin: couldn't read cache file: unexpected exception (" << e.what() << ")");
         }
     } else if (loud) {
-        LOG_ERROR("could not find cache file in " << dir);
+        LOG_ERROR("VSTPlugin: could not find cache file in " << dir);
     }
 }
 
@@ -232,7 +242,7 @@ static void writeCacheFile(const std::string& dir) {
             throw Error("directory " + dir + " does not exist");
         }
     } catch (const Error& e) {
-        LOG_ERROR("couldn't write cache file: " << e.what());
+        LOG_ERROR("VSTPlugin: couldn't write cache file: " << e.what());
     }
 }
 
@@ -247,7 +257,7 @@ static void writeCacheFile() {
         }
         gPluginDict.write(gSettingsDir + "/" + gCacheFileName);
     } catch (const Error& e) {
-        LOG_ERROR("couldn't write cache file: " << e.what());
+        LOG_ERROR("VSTPlugin: couldn't write cache file: " << e.what());
     }
 }
 
@@ -273,7 +283,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
     auto& dict = getPluginDict();
 
     if (dict.findFactory(path)) {
-        LOG_ERROR("bug in 'loadFactory'");
+        LOG_ERROR("VSTPlugin: bug in 'loadFactory'");
         return nullptr;
     }
     if (dict.isException(path)) {
@@ -287,7 +297,7 @@ static IFactory::ptr loadFactory(const std::string& path, bool verbose = false){
         factory = IFactory::load(path);
     } catch (const Error& e){
         // always print error
-        LOG_ERROR("couldn't load '" << path << "': " << e.what());
+        LOG_ERROR("Couldn't load '" << path << "': " << e.what());
         dict.addException(path);
         return nullptr;
     }
@@ -514,7 +524,7 @@ static thread_local std::vector<PluginDesc::const_ptr> gWarnPlugins;
 std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                                                  const std::vector<std::string>& exclude,
                                                  float timeout, bool parallel, bool verbose) {
-    LOG_VERBOSE("searching in '" << path << "'...");
+    LOG_INFO("VSTPlugin: searching in '" << path << "'...");
 
     std::vector<PluginDesc::const_ptr> results;
 
@@ -561,7 +571,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
                 auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
                 if (elapsed > 4.0){
                     for (auto& x : futures){
-                        LOG_VERBOSE("waiting for '" << x.second << "'...");
+                        LOG_INFO("Waiting for '" << x.second << "'...");
                     }
                     last = now;
                 }
@@ -586,7 +596,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
         if (auto factory = dict.findFactory(pluginPath)) {
             // just post names of valid plugins
             if (verbose) {
-                LOG_VERBOSE(pluginPath);
+                LOG_INFO(pluginPath);
             }
 
             auto numPlugins = factory->numPlugins();
@@ -629,9 +639,9 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
 
     int numResults = results.size();
     if (numResults == 1){
-        LOG_VERBOSE("found 1 plugin");
+        LOG_INFO("Found 1 plugin.");
     } else {
-        LOG_VERBOSE("found " << numResults << " plugins");
+        LOG_INFO("Found " << numResults << " plugins.");
     }
     return results;
 }
@@ -1651,7 +1661,7 @@ void VSTPluginDelegate::sysexEvent(const SysexEvent & sysex) {
     // so far, we only handle SysEx events that come from the RT thread
     if (isCurrentThreadRT()) {
         if ((sysex.size * sizeof(float)) > MAX_OSC_PACKET_SIZE) {
-            LOG_WARNING("sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
+            LOG_WARNING("VSTPlugin: sysex message (" << sysex.size << " bytes) too large for UDP packet - dropped!");
             return;
         }
         float* buf = (float*)alloca(sysex.size * sizeof(float));
@@ -1883,13 +1893,13 @@ void VSTPluginDelegate::open(const char *path, bool editor,
     doClose();
     if (plugin_) {
         // shouldn't happen...
-        LOG_ERROR("couldn't close current plugin!");
+        LOG_ERROR("VSTPlugin: couldn't close current plugin!");
         sendMsg("/vst_open", 0);
         return;
     }
 #ifdef SUPERNOVA
     if (threaded){
-        LOG_WARNING("multiprocessing option ignored on Supernova!");
+        LOG_WARNING("VSTPlugin: multiprocessing option ignored on Supernova!");
         threaded = false;
     }
 #endif
@@ -2054,7 +2064,7 @@ void VSTPluginDelegate::reset(bool async) {
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
         if (editor_ && !async){
-            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            LOG_INFO("VSTPlugin: 'async' can't be 'false' when using the VST editor");
             async = true;
         }
     #endif
@@ -2373,7 +2383,7 @@ void VSTPluginDelegate::readPreset(T dest, bool async){
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
         if (editor_ && !async){
-            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            LOG_INFO("VSTPlugin: 'async' can't be 'false' when using the VST editor");
             async = true;
         }
     #endif
@@ -2470,7 +2480,7 @@ void VSTPluginDelegate::writePreset(T dest, bool async) {
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
         if (editor_ && !async){
-            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            LOG_INFO("VSTPlugin: 'async' can't be 'false' when using the VST editor");
             async = true;
         }
     #endif
@@ -2576,7 +2586,7 @@ void VSTPluginDelegate::vendorSpecific(int32 index, int32 value, size_t size,
         // force async if we have a plugin UI to avoid
         // race conditions with concurrent UI updates.
         if (editor_ && !async){
-            LOG_VERBOSE("'async' can't be 'false' when using the VST editor");
+            LOG_INFO("VSTPlugin: 'async' can't be 'false' when using the VST editor");
             async = true;
         }
     #endif
@@ -2677,7 +2687,7 @@ void VSTPluginDelegate::sendMsg(const char *cmd, float f) {
     if (owner_){
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, 1, &f);
     } else {
-        LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
+        LOG_ERROR("bug in VSTPluginDelegate::sendMsg");
     }
 }
 
@@ -2685,7 +2695,7 @@ void VSTPluginDelegate::sendMsg(const char *cmd, int n, const float *data) {
     if (owner_) {
         SendNodeReply(&owner_->mParent->mNode, owner_->mParentIndex, cmd, n, data);
     } else {
-        LOG_ERROR("BUG: VSTPluginDelegate::sendMsg");
+        LOG_ERROR("bug in VSTPluginDelegate::sendMsg");
     }
 }
 
@@ -2752,7 +2762,7 @@ void vst_open(VSTPlugin *unit, sc_msg_iter *args) {
     if (path) {
         unit->delegate().open(path, editor, threaded, mode);
     } else {
-        LOG_WARNING("vst_open: expecting string argument!");
+        LOG_WARNING("/vst_open: expecting string argument!");
     }
 }
 
@@ -2766,7 +2776,7 @@ void vst_reset(VSTPlugin *unit, sc_msg_iter *args) {
 }
 
 void vst_mode(VSTPlugin *unit, sc_msg_iter *args) {
-    LOG_WARNING("VSTPlugin: /mode command is deprecated and will be ignored");
+    LOG_WARNING("/vst_mode: command is deprecated and will be ignored");
 }
 
 void vst_vis(VSTPlugin* unit, sc_msg_iter *args) {
@@ -2794,11 +2804,11 @@ bool vst_param_index(VSTPlugin* unit, sc_msg_iter *args, int& index) {
         if (plugin){
             index = plugin->info().findParam(name);
             if (index < 0) {
-                LOG_ERROR("parameter '" << name << "' not found!");
+                LOG_ERROR("VSTPlugin: parameter '" << name << "' not found!");
                 return false;
             }
         } else {
-            LOG_WARNING("no plugin loaded!");
+            LOG_WARNING("VSTPlugin: no plugin loaded!");
             return false;
         }
     } else {
@@ -2938,7 +2948,7 @@ void vst_program_name(VSTPlugin* unit, sc_msg_iter *args) {
     if (name) {
         unit->delegate().setProgramName(name);
     } else {
-        LOG_WARNING("vst_program_name: expecting string argument!");
+        LOG_WARNING("/vst_program_name: expecting string argument!");
     }
 }
 
@@ -2953,7 +2963,7 @@ void vst_program_read(VSTPlugin* unit, sc_msg_iter *args) {
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
             unit->delegate().readPreset<false>(buf, async);
         } else {
-            LOG_ERROR("vst_program_read: bufnum " << buf << " out of range");
+            LOG_ERROR("/vst_program_read: bufnum " << buf << " out of range");
         }
     }
 }
@@ -2969,7 +2979,7 @@ void vst_program_write(VSTPlugin *unit, sc_msg_iter *args) {
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
             unit->delegate().writePreset<false>(buf, async);
         } else {
-            LOG_ERROR("vst_program_write: bufnum " << buf << " out of range");
+            LOG_ERROR("/vst_program_write: bufnum " << buf << " out of range");
         }
     }
 }
@@ -3002,7 +3012,7 @@ void vst_bank_write(VSTPlugin* unit, sc_msg_iter *args) {
         if (buf >= 0 && buf < (int)unit->mWorld->mNumSndBufs) {
             unit->delegate().writePreset<true>(buf, async);
         } else {
-            LOG_ERROR("vst_bank_write: bufnum " << buf << " out of range");
+            LOG_ERROR("/vst_bank_write: bufnum " << buf << " out of range");
         }
     }
 }
@@ -3011,7 +3021,7 @@ void vst_midi_msg(VSTPlugin* unit, sc_msg_iter *args) {
     char data[4];
     int32 len = args->getbsize();
     if (len > 4) {
-        LOG_WARNING("vst_midi_msg: midi message too long (" << len << " bytes)");
+        LOG_WARNING("/vst_midi_msg: midi message too long (" << len << " bytes)");
     }
     args->getb(data, len);
     auto detune = args->getf();
@@ -3021,12 +3031,12 @@ void vst_midi_msg(VSTPlugin* unit, sc_msg_iter *args) {
 void vst_midi_sysex(VSTPlugin* unit, sc_msg_iter *args) {
     int len = args->getbsize();
     if (len < 0){
-        LOG_WARNING("vst_midi_sysex: no data!");
+        LOG_WARNING("/vst_midi_sysex: no data!");
         return;
     }
     if (len > 65536){
         // arbitrary limit (can only be reached with TCP)
-        LOG_WARNING("vst_midi_sysex: message exceeding internal limit of 64 kB");
+        LOG_WARNING("/vst_midi_sysex: message exceeding internal limit of 64 kB");
         return;
     }
     // LATER avoid unnecessary copying.
@@ -3075,7 +3085,7 @@ void vst_vendor_method(VSTPlugin* unit, sc_msg_iter *args) {
     if (size > 0) {
         if (size > 65536){
             // arbitrary limit (can only be reached with TCP)
-            LOG_WARNING("vst_vendor_method: message exceeding internal limit of 64 kB");
+            LOG_WARNING("/vst_vendor_method: message exceeding internal limit of 64 kB");
             return;
         }
         data = (char *)alloca(size);
@@ -3206,7 +3216,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     setVerbosity(inWorld->mVerbosity);
 
     if (gSearching) {
-        LOG_WARNING("already searching!");
+        LOG_WARNING("VSTPlugin: already searching!");
         return;
     }
     int32 bufnum = -1;
@@ -3220,7 +3230,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
         bufnum = args->geti();
         // negative bufnum allowed (= don't write result)!
         if (bufnum >= (int)inWorld->mNumSndBufs) {
-            LOG_ERROR("vst_search: bufnum " << bufnum << " out of range");
+            LOG_ERROR("/vst_search: bufnum " << bufnum << " out of range");
             return;
         }
     }
@@ -3248,7 +3258,7 @@ void vst_search(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
                     break;
                 }
             } else {
-                LOG_ERROR("wrong number of paths!");
+                LOG_ERROR("/vst_search: wrong number of paths!");
                 break;
             }
         }
@@ -3300,7 +3310,7 @@ void vst_search_stop(World* inWorld, void* inUserData, struct sc_msg_iter*args, 
 
 void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void* replyAddr) {
     if (gSearching) {
-        LOG_WARNING("can't clear while searching!");
+        LOG_WARNING("VSTPlugin: can't clear while searching!");
         return;
     }
 
@@ -3324,7 +3334,7 @@ void vst_clear(World* inWorld, void* inUserData, struct sc_msg_iter* args, void*
 
 void vst_cache_read(World *inWorld, void *inUserData, struct sc_msg_iter *args, void *replyAddr) {
     if (gSearching) {
-        LOG_WARNING("can't read cache file while searching!");
+        LOG_WARNING("VSTPlugin: can't read cache file while searching!");
         return;
     }
 
@@ -3393,11 +3403,11 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     setVerbosity(inWorld->mVerbosity);
 
     if (gSearching) {
-        LOG_WARNING("currently searching!");
+        LOG_WARNING("VSTPlugin: currently searching!");
         return;
     }
     if (args->nextTag() != 's') {
-        LOG_ERROR("vst_query: first argument must be a string (plugin path/key)!");
+        LOG_ERROR("/vst_query: first argument must be a string (plugin path/key)!");
         return;
     }
     int32 bufnum = -1;
@@ -3412,7 +3422,7 @@ void vst_query(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         bufnum = args->geti();
         // negative bufnum allowed (= don't write result)!
         if (bufnum >= (int)inWorld->mNumSndBufs) {
-            LOG_ERROR("vst_query: bufnum " << bufnum << " out of range");
+            LOG_ERROR("/vst_query: bufnum " << bufnum << " out of range");
             return;
         }
     }
@@ -3542,7 +3552,7 @@ PluginLoad(VSTPlugin) {
 
     setLogFunction(SCLog);
 
-    LOG_VERBOSE("VSTPlugin " << getVersionString());
+    LOG_INFO("VSTPlugin " << getVersionString());
 
 #if 0
     // only read cache file when needed

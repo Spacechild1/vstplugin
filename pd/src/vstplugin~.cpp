@@ -898,7 +898,7 @@ void t_vsteditor::post_event(const t_event& event){
                 clock_delay(e_clock, 0);
                 sys_unlock();
             } else {
-                LOG_WARNING("received event from unknown thread; cannot dispatch with DSP turned off");
+                LOG_WARNING("VSTPlugin: received event from unknown thread; cannot dispatch with DSP turned off");
                 // will be dispatched when DSP is turned on
             }
         }
