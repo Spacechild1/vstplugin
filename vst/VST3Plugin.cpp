@@ -126,18 +126,18 @@ using unichar = wchar_t;
 using unichar = char16_t;
 #endif
 
-using StringCoverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
+using StringConverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
 
-static StringCoverter& stringConverter(){
+static StringConverter& stringConverter(){
 #ifdef _WIN32
     static_assert(sizeof(wchar_t) == sizeof(char16_t), "bad size for wchar_t!");
 #endif
 #ifdef __MINGW32__
     // because of a mingw32 bug, destructors of thread_local STL objects segfault...
-    thread_local auto conv = new StringCoverter;
+    thread_local auto conv = new StringConverter;
     return *conv;
 #else
-    thread_local StringCoverter conv;
+    thread_local StringConverter conv;
     return conv;
 #endif
 }
@@ -155,7 +155,7 @@ bool convertString (std::string_view src, Steinberg::Vst::String128 dst){
         return false;
     }
     try {
-        auto wstr = stringConverter().from_bytes(&*src.begin(), &*src.end());
+        auto wstr = stringConverter().from_bytes(src.data(), src.data() + src.size());
         int n = wstr.size() + 1;
         for (int i = 0; i < n; ++i){
             dst[i] = wstr[i];
