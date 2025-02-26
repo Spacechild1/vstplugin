@@ -35,7 +35,9 @@ variables:
 
 # clone SC repository
 .script:sc: &script_sc
-  - git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/supercollider/supercollider.git "${SC_PATH}"
+  # NB: we only need the nova-tt submodule!
+  - git clone --depth 1 --recurse-submodules=external_libraries/nova-tt
+    --shallow-submodules https://github.com/supercollider/supercollider.git "${SC_PATH}"
 
 # download Pd sources
 .script:pd: &script_pd
