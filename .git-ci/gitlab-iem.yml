@@ -210,120 +210,67 @@ variables:
 ### if you want to automatically upload a package, you need to
 ### set DEKEN_USERNAME/DEKEN_PASSWORD in the CI-project settings.
 ### (https://git.iem.at/help/ci/variables/README#variables)
-.package:deps: &package_deps
-  - apt-get update && apt-get --no-install-recommends -y install deken git zip
-
-.package:script:
+.package:
   stage: deploy
-  image: debian:buster
-  variables:
-    DEKEN_ROOT: "yes"
+  image: registry.git.iem.at/pd/deken:latest
   artifacts:
-    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME}
+    name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}
     paths:
-      - ./pd*
-      - ./sc*
+      - ./*.zip
+      - ./deken
     expire_in: 1d
+  before_script:
+    - apt-get update && apt-get --no-install-recommends -y install zip
   script:
-# create zip files for platform (e.g. vstplugin_v0.6.0_win64.zip)
-# with the following structure:
-# - pd/vstplugin~
-# - pd/vstplugin~[v0.6.0](Windows-amd64-32).dek
-# - sc/VSTPlugin
-    - rm -rf ./pd
-    - rm -rf ./sc
-    - mkdir pd
-    - mkdir sc
-    - mv ${JOBNAME}/${PDLIBNAME} ./pd
-    - mv ${JOBNAME}/${SCLIBNAME} ./sc
-# create binary deken package
-# --output-dir is apparently not supported on older Deken version...
-    - pushd ./pd; deken package --version="${CI_COMMIT_TAG#v}" ./${PDLIBNAME}; popd
-# upload deken package (optional)
-    - test -z "${CI_COMMIT_TAG}" || test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}" || deken upload --no-source-error ./pd/*.dek
+    # create zip files for platform (e.g. vstplugin_v0.6.0_win64.zip)
+    # with the following structure:
+    # - pd/vstplugin~
+    # - sc/VSTPlugin
+    # also create deken packages
+
+    # wine hosts on linux
+    - test ! -d Linux_wine || for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        for p in Linux; do
+          test ! -d ${p} || cp -r Linux_wine/${x}/* ${p}/${x}/;
+        done;
+      done
+    - test ! -d Linux_wine32 || for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        for p in Linux Linux_i386; do
+          test ! -d ${p} || cp -r Linux_wine32/${x}/* ${p}/${x}/;
+        done;
+      done
+    - rm -rf Linux_wine Linux_wine32
+
+    # other-arch hosts on Windows
+    - test ! -d win64 || test ! -d win32 ||
+      for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+        cp -r win64/${x}/host.exe win32/${x}/host_amd64.exe;
+        cp -r win32/${x}/host.exe win64/${x}/host_i386.exe;
+      done
+
+    # re-organize the binaries
+    - for f in */${PDLIBNAME}; do d=${f%/*}/pd; mkdir -p ${d}; mv ${f} ${d}; done
+    - for f in */${SCLIBNAME}; do d=${f%/*}/sc; mkdir -p ${d}; mv ${f} ${d}; done
+
+    # create zip-files
+    - rm -f ./*.zip
+    - for d in */pd; do
+        d=${d%/pd};
+        echo "zipping ${d}";
+        (cd ${d}; zip -qr ../${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${d}.zip pd sc);
+      done
+
+    # create deken-packages
+    - rm -rf ./deken; mkdir -p ./deken
+    - deken --verbose package --output-dir ./deken --version="${CI_COMMIT_TAG#v}" */pd/*
+
+    # upload deken package (optional)
+    - test -z "${CI_COMMIT_TAG}" || test -z "${DEKEN_USERNAME}" || test -z "${DEKEN_PASSWORD}"
+      || deken upload --no-source-error ./deken/*.dek
+
   after_script:
-    - du -ch ./pd/* ./sc/*
+    - find * -type f -ls
 
-.package:linux_base: &package_linux_base
-  extends: .package:script
-  variables:
-    JOBNAME: Linux
-  only:
-    variables:
-      - $JOBS == "all" || $JOBS == "linux"
-  before_script:
-    - *package_deps
-
-.package:linux: &package_linux
-  extends: .package:linux_base
-  variables:
-    JOBNAME: Linux
-  before_script:
-    - *package_deps
-# copy Wine hosts to Linux package
-    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-        [ -e ./Linux_wine ] && cp -r ./Linux_wine/$x/. ./$JOBNAME/$x;
-        [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/$x/. ./$JOBNAME/$x
-      ; done
-
-.package:linux_i386: &package_linux_i386
-  extends: .package:linux_base
-  variables:
-    JOBNAME: Linux_i386
-  before_script:
-    - *package_deps
-# copy Wine host to Linux package
-    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-        [ -e ./Linux_wine32 ] && cp -r ./Linux_wine32/$x/. ./$JOBNAME/$x
-      ; done
-
-.package:linux_armhf: &package_linux_armhf
-  extends: .package:linux_base
-  variables:
-    JOBNAME: Linux_ARMhf
-
-.package:linux_arm64: &package_linux_arm64
-  extends: .package:linux_base
-  variables:
-    JOBNAME: Linux_ARM64
-
-.package:macos: &package_macos
-  extends: .package:script
-  variables:
-    JOBNAME: macOS
-  only:
-    variables:
-      - $JOBS == "all" || $JOBS == "macos"
-  before_script:
-    - *package_deps
-
-.package:win64: &package_win64
-  extends: .package:script
-  variables:
-    JOBNAME: win64
-  only:
-    variables:
-      - $JOBS == "all" || $JOBS == "windows"
-  before_script:
-    - *package_deps
-# copy 32-bit host to package
-    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-        cp ./win32/$x/host.exe ./$JOBNAME/$x/host_i386.exe
-      ; done
-
-.package:win32: &package_win32
-  extends: .package:script
-  variables:
-    JOBNAME: win32
-  only:
-    variables:
-      - $JOBS == "all" || $JOBS == "windows"
-  before_script:
-    - *package_deps
-# copy 64-bit host to package
-    - for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
-        cp ./win64/$x/host.exe ./$JOBNAME/$x/host_amd64.exe
-      ; done
 
 #######################################################################
 
@@ -353,23 +300,9 @@ win64:
   <<: *build_win64
 
 ## release packages
-Linux_package:
-  <<: *package_linux
-Linux_i386_package:
-  allow_failure: true
-  <<: *package_linux_i386
-Linux_ARMhf_package:
-  allow_failure: true
-  <<: *package_linux_armhf
-Linux_ARM64_package:
-  allow_failure: true
-  <<: *package_linux_arm64
-macOS_package:
-  <<: *package_macos
-win32_package:
-  <<: *package_win32
-win64_package:
-  <<: *package_win64
+package:
+  extends:
+    - .package
 
 
 include:
