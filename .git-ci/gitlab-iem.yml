@@ -180,10 +180,10 @@ variables:
 .build:win32: &build_win32
   extends: .build:script
   tags:
-    - windows
+    - sardinecake
+  image: registry.git.iem.at/devtools/sardinecake/windows:mingw32
   variables:
     CMAKE: mingw-w64-i686-cmake
-    IEMCI_CONFIGURATIONS: mingw32
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
     STATIC_LIBS: ${STATIC_LINKING}
     SUPERNOVA: 1
@@ -199,8 +199,8 @@ variables:
 
 .build:win64: &build_win64
   extends: .build:win32
+  image: registry.git.iem.at/devtools/sardinecake/windows:mingw64
   variables:
-    IEMCI_CONFIGURATIONS: mingw64
     PD_EXTENSION: m_amd64
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}.msw.zip
     CMAKE: mingw-w64-x86_64-cmake
