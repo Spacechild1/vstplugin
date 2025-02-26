@@ -35,10 +35,7 @@ variables:
 
 # clone SC repository
 .script:sc: &script_sc
-  - git clone https://github.com/supercollider/supercollider.git "${SC_PATH}"
-  - pushd "${SC_PATH}"
-  - git submodule update --init
-  - popd
+  - git clone --depth 0 --recurse-submodules --shallow-submodules https://github.com/supercollider/supercollider.git "${SC_PATH}"
 
 # download Pd sources
 .script:pd: &script_pd
