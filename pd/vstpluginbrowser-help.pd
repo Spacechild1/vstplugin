@@ -39,5 +39,13 @@
 #X text 265 367 WARNING: on macOS the VST editor runs on the audio thread! See the README for more information., f 52;
 #X text 20 85 See also;
 #X text 20 43 Search \, show and open available VST plugins., f 22;
+#N canvas 1027 342 494 344 META 0;
+#X text 12 5 KEYWORDS plugin VST VST3;
+#X text 12 85 AUTHOR Christof Ressi;
+#X text 12 25 LICENSE BSD-3-clause;
+#X text 12 105 HELP_PATCH_AUTHORS Christof Ressi \, "pd meta" information added by IOhannes m zmölnig;
+#X text 12 65 OUTLET_1 info messages;
+#X text 12 45 DESCRIPTION search \, show and open available VST plugins.;
+#X restore 25 550 pd META;
 #X connect 15 0 17 0;
 #X connect 16 0 18 0;

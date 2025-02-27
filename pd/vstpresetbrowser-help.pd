@@ -9,6 +9,15 @@
 #X obj 158 139 vstpresetbrowser;
 #X text 21 61 Load \, save \, delete and rename VST presets., f 44;
 #X text 22 105 Optional creation arguments: 1) receive name \, 2) send name;
+#N canvas 1027 342 494 344 META 0;
+#X text 12 5 KEYWORDS plugin VST VST3;
+#X text 12 105 AUTHOR Christof Ressi;
+#X text 12 25 LICENSE BSD-3-clause;
+#X text 12 125 HELP_PATCH_AUTHORS Christof Ressi \, "pd meta" information added by IOhannes m zmölnig;
+#X text 12 45 DESCRIPTION load \, save \, delete and rename VST presets;
+#X text 12 85 OUTLET_1 messages (to [vstplugin~]);
+#X text 11 65 INLET_1 messages (from [vstplugin~]);
+#X restore 15 430 pd META;
 #X connect 0 2 7 0;
 #X connect 1 0 0 0;
 #X connect 2 0 3 0;
