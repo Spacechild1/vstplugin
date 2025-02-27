@@ -1128,6 +1128,17 @@
 #X text 594 589 plugin info;
 #X text 23 24 [vstplugin~] - use VST plugins in Pd on all platforms;
 #X text 304 366 print plugin info to the console, f 18;
+#N canvas 1027 342 494 344 META 0;
+#X text 12 5 KEYWORDS plugin VST VST3;
+#X text 12 165 AUTHOR Christof Ressi;
+#X text 12 25 LICENSE BSD-3-clause;
+#X text 12 75 INLET_0 signal \, ...;
+#X text 12 95 INLET_N signal;
+#X text 12 115 OUTLET_N signal;
+#X text 12 135 OUTLET_R info messages;
+#X text 12 185 HELP_PATCH_AUTHORS Christof Ressi \, "pd meta" information added by IOhannes m zmölnig;
+#X text 12 45 DESCRIPTION use VST2 and VST3 audio plugins in your patch;
+#X restore 668 22 pd META;
 #X connect 1 0 18 0;
 #X connect 1 1 18 1;
 #X connect 2 0 6 0;
