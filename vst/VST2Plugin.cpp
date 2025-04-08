@@ -906,19 +906,20 @@ void VST2Plugin::readProgramData(const char *data, size_t size){
         throw Error("fxProgram: bad header size");
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
-    const VstInt32 byteSize = bytes_to_int32(data+4);
-        // byteSize excludes 'chunkMagic' and 'byteSize' fields
-    const size_t totalSize = byteSize + 8;
-    const VstInt32 fxMagic = bytes_to_int32(data+8);
-    // const VstInt32 version = bytes_to_int32(data+12);
-    // const VstInt32 fxID = bytes_to_int32(data+16);
-    // const VstInt32 fxVersion = bytes_to_int32(data+20);
-    const VstInt32 numParams = bytes_to_int32(data+24);
-    const char *prgName = data+28;
+    const VstInt32 byteSize = bytes_to_int32(data + 4);
+    const VstInt32 fxMagic = bytes_to_int32(data + 8);
+    // const VstInt32 version = bytes_to_int32(data + 12);
+    // const VstInt32 fxID = bytes_to_int32(data + 16);
+    // const VstInt32 fxVersion = bytes_to_int32(data + 20);
+    const VstInt32 numParams = bytes_to_int32(data + 24);
+    const char *prgName = data + 28;
     const char *prgData = data + fxProgramHeaderSize;
+
     if (chunkMagic != cMagic){
         throw Error("fxProgram: bad format");
     }
+    // byteSize excludes 'chunkMagic' and 'byteSize' fields
+    const size_t totalSize = byteSize + 8;
     if (totalSize > size){
         throw Error("fxProgram: too little data");
     }
@@ -939,9 +940,20 @@ void VST2Plugin::readProgramData(const char *data, size_t size){
         if (!hasChunkData()){
             throw Error("fxProgram: plugin doesn't expect chunk data");
         }
+        if (size < fxProgramHeaderSize + 4){
+            throw Error("fxProgram: missing 'chunkSize' field");
+        }
         const size_t chunkSize = bytes_to_int32(prgData);
-        if (chunkSize != totalSize - fxProgramHeaderSize - 4){
-            throw Error("fxProgram: wrong chunk size");
+        // chunkSize excludes 'chunkSize' field
+        // NB: some hosts, like Max/MSP, just set the 'byteSize' field to zero...
+        if (byteSize != 0) {
+            if (chunkSize != totalSize - fxProgramHeaderSize - 4){
+                throw Error("fxProgram: wrong chunk size");
+            }
+        } else {
+            if (chunkSize > size - fxProgramHeaderSize - 4){
+                throw Error("fxProgram: chunk size too large");
+            }
         }
         setProgramName(prgName);
         setProgramChunkData(prgData + 4, chunkSize);
@@ -968,55 +980,55 @@ void VST2Plugin::writeProgramData(std::string& buffer){
     header[5] = plugin_->version;
     header[6] = getNumParameters();
 
-    char pgmName[28];
-    snprintf(pgmName, sizeof(pgmName), "%s", getProgramName().c_str());
-
     if (!hasChunkData()){
-            // parameters
+        // parameters
         header[2] = fMagic;
         const int nparams = header[6];
         const size_t totalSize = fxProgramHeaderSize + nparams * sizeof(float);
-        header[1] = totalSize - 8; // byte size: totalSize - 'chunkMagic' - 'byteSize'
+        // byte size: totalSize without 'chunkMagic' and 'byteSize' fields
+        header[1] = totalSize - 8;
         buffer.resize(totalSize);
         char *bufptr = &buffer[0];
-            // serialize header
+        // serialize header
         for (int i = 0; i < 7; ++i){
             int32_to_bytes(header[i], bufptr);
             bufptr += 4;
         }
-            // serialize program name
-        memcpy(bufptr, pgmName, 28);
+        // serialize program name (with zero padding!)
+        strncpy(bufptr, getProgramName().c_str(), 28);
+        bufptr[27] = 0;
         bufptr += 28;
-            // serialize parameters
+        // serialize parameters
         for (int i = 0; i < nparams; ++i){
             float_to_bytes(getParameter(i), bufptr);
             bufptr += sizeof(float);
         }
     } else {
-            // chunk data
+        // chunk data
         header[2] = chunkPresetMagic;
         char *chunkData = nullptr;
         size_t chunkSize = 0;
         getProgramChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
-                // shouldn't happen...
+            // shouldn't happen...
             throw Error("fxProgram bug: couldn't get chunk data");
         }
-            // totalSize: header size + 'size' field + actual chunk data
+        // totalSize: header size + 'chunkSize' field + actual chunk data
         const size_t totalSize = fxProgramHeaderSize + 4 + chunkSize;
-            // byte size: totalSize - 'chunkMagic' - 'byteSize'
+        // byte size: totalSize without 'chunkMagic' and 'byteSize' fields
         header[1] = totalSize - 8;
         buffer.resize(totalSize);
         char *bufptr = &buffer[0];
-            // serialize header
+        // serialize header
         for (int i = 0; i < 7; ++i){
             int32_to_bytes(header[i], bufptr);
             bufptr += 4;
         }
-            // serialize program name
-        memcpy(bufptr, pgmName, 28);
+        // serialize program name (with zero padding!)
+        strncpy(bufptr, getProgramName().c_str(), 28);
+        bufptr[27] = 0;
         bufptr += 28;
-            // serialize chunk data
+        // serialize chunk data
         int32_to_bytes(chunkSize, bufptr); // size
         memcpy(bufptr + 4, chunkData, chunkSize); // data
     }
@@ -1040,19 +1052,20 @@ void VST2Plugin::readBankData(const char *data, size_t size){
         throw Error("fxBank: bad header size");
     }
     const VstInt32 chunkMagic = bytes_to_int32(data);
-    const VstInt32 byteSize = bytes_to_int32(data+4);
-        // byteSize excludes 'chunkMagic' and 'byteSize' fields
-    const size_t totalSize = byteSize + 8;
-    const VstInt32 fxMagic = bytes_to_int32(data+8);
-    // const VstInt32 version = bytes_to_int32(data+12);
-    // const VstInt32 fxID = bytes_to_int32(data+16);
-    // const VstInt32 fxVersion = bytes_to_int32(data+20);
-    const VstInt32 numPrograms = bytes_to_int32(data+24);
+    const VstInt32 byteSize = bytes_to_int32(data + 4);
+    const VstInt32 fxMagic = bytes_to_int32(data + 8);
+    // const VstInt32 version = bytes_to_int32(data + 12);
+    // const VstInt32 fxID = bytes_to_int32(data + 16);
+    // const VstInt32 fxVersion = bytes_to_int32(data + 20);
+    const VstInt32 numPrograms = bytes_to_int32(data + 24);
     const VstInt32 currentProgram = bytes_to_int32(data + 28);
-    const char *bankData = data + fxBankHeaderSize;
+    const char* bankData = data + fxBankHeaderSize;
+
     if (chunkMagic != cMagic){
         throw Error("fxBank: bad format");
     }
+    // byteSize excludes 'chunkMagic' and 'byteSize' fields
+    const size_t totalSize = byteSize + 8;
     if (totalSize > size){
         throw Error("fxBank: too little data");
     }
@@ -1075,9 +1088,20 @@ void VST2Plugin::readBankData(const char *data, size_t size){
         if (!hasChunkData()){
             throw Error("fxBank: plugin doesn't expect chunk data");
         }
+        if (size < fxBankHeaderSize + 4){
+            throw Error("fxBank: missing 'chunkSize' field");
+        }
         const size_t chunkSize = bytes_to_int32(bankData);
-        if (chunkSize != totalSize - fxBankHeaderSize - 4){
-            throw Error("fxBank: wrong chunk size");
+        // chunkSize excludes 'chunkSize' field
+        // NB: some hosts, like Max/MSP, just set the 'byteSize' field to zero...
+        if (byteSize != 0) {
+            if (chunkSize != totalSize - fxBankHeaderSize - 4){
+                throw Error("fxBank: wrong chunk size");
+            }
+        } else {
+            if (chunkSize > size - fxBankHeaderSize - 4) {
+                throw Error("fxBank: chunk size too large");
+            }
         }
         setBankChunkData(bankData + 4, chunkSize);
     } else {
@@ -1105,27 +1129,32 @@ void VST2Plugin::writeBankData(std::string& buffer){
     header[7] = getProgram();
 
     if (!hasChunkData()){
-            // programs
+        // programs
         header[2] = bankMagic;
         const int nprograms = header[6];
         const size_t programSize = fxProgramHeaderSize + getNumParameters() * sizeof(float);
         const size_t totalSize = fxBankHeaderSize + nprograms * programSize;
-        header[1] = totalSize - 8; // byte size: totalSize - 'chunkMagic' - 'byteSize'
+        // byte size: totalSize without 'chunkMagic' and 'byteSize' fields
+        header[1] = totalSize - 8;
         buffer.resize(totalSize);
         char *bufptr = &buffer[0];
-            // serialize header
+        // serialize header
         for (int i = 0; i < 8; ++i){
             int32_to_bytes(header[i], bufptr);
             bufptr += 4;
         }
+        // zero remaining header bytes
+        std::fill(bufptr, &buffer[fxBankHeaderSize], 0);
+
         bufptr = &buffer[fxBankHeaderSize];
-            // serialize programs
-        std::string progData; // use intermediate buffer so we can reuse writeProgramData
+        // serialize programs
+        // use intermediate buffer so we can reuse writeProgramData
+        std::string progData;
         for (int i = 0; i < nprograms; ++i){
             setProgram(i);
             writeProgramData(progData);
             if (progData.size() != programSize){
-                    // shouldn't happen...
+                // shouldn't happen...
                 buffer.clear();
                 throw Error("fxBank bug: wrong program data size");
             }
@@ -1134,28 +1163,31 @@ void VST2Plugin::writeBankData(std::string& buffer){
         }
         setProgram(header[7]); // restore current program
     } else {
-            // chunk data
+        // chunk data
         header[2] = chunkBankMagic;
         char *chunkData = nullptr;
         size_t chunkSize = 0;
         getBankChunkData((void **)&chunkData, &chunkSize);
         if (!(chunkData && chunkSize)){
-                // shouldn't happen...
+            // shouldn't happen...
             throw Error("fxBank bug: couldn't get chunk data");
         }
-            // totalSize: header size + 'size' field + actual chunk data
+        // totalSize: header size + 'size' field + actual chunk data
         size_t totalSize = fxBankHeaderSize + 4 + chunkSize;
-            // byte size: totalSize - 'chunkMagic' - 'byteSize'
+       // byte size: totalSize without 'chunkMagic' and 'byteSize' fields
         header[1] = totalSize - 8;
         buffer.resize(totalSize);
         char *bufptr = &buffer[0];
-            // serialize header
+        // serialize header
         for (int i = 0; i < 8; ++i){
             int32_to_bytes(header[i], bufptr);
             bufptr += 4;
         }
+        // zero remaining header bytes
+        std::fill(bufptr, &buffer[fxBankHeaderSize], 0);
+
         bufptr = &buffer[fxBankHeaderSize];
-            // serialize chunk data
+        // serialize chunk data
         int32_to_bytes(chunkSize, bufptr); // size
         memcpy(bufptr + 4, chunkData, chunkSize); // data
     }
