@@ -265,7 +265,7 @@ int main(int argc, const char *argv[]) {
                 return EXIT_SUCCESS;
             } else {
                 LOG_ERROR("version mismatch");
-                return EXIT_FAILURE;
+                return kHostAppVersionMismatch;
             }
         } else if (verb == "--version") {
             std::cout << "vstplugin " << getVersionString() << std::endl;

@@ -77,6 +77,11 @@
 
 namespace vst {
 
+// exit code for version mismatch
+// We need a dedicated exit code because the host app may fail for other
+// reasons, particularly if called through another application (e.g. Wine)
+const int kHostAppVersionMismatch = 2;
+
 const int VERSION_MAJOR = 0;
 const int VERSION_MINOR = 6;
 const int VERSION_PATCH = 1;

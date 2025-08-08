@@ -310,7 +310,7 @@ bool HostApp::doTest(const std::string& cmd, const std::string& args) const {
         int exitCode = runCommand(cmd, ss.str());
         if (exitCode == EXIT_SUCCESS){
             return true; // success
-        } else if (exitCode == EXIT_FAILURE) {
+        } else if (exitCode == kHostAppVersionMismatch) {
             LOG_ERROR("VSTPlugin: host app '" << path_ << "' failed (version mismatch)");
         } else {
             LOG_ERROR("VSTPlugin: host app '" << path_ << "' failed with exit code " << exitCode);
