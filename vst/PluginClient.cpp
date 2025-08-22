@@ -805,12 +805,12 @@ void PluginClient::receiveData(Command::Type type, std::string &buffer){
             auto path = reply->buffer.data;
             File file(path, File::READ);
             if (!file){
+                throw Error(Error::SystemError, "PluginClient: couldn't open tmp file");
+            }
+            buffer = file.readAll();
+            if (!file){
                 throw Error(Error::SystemError, "PluginClient: couldn't read tmp file");
             }
-            file.seekg(0, std::ios_base::end);
-            buffer.resize(file.tellg());
-            file.seekg(0, std::ios_base::beg);
-            file.read(&buffer[0], buffer.size());
             file.close();
 
             // we have to remove the tmp file!

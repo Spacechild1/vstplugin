@@ -1,5 +1,6 @@
 #include "VST2Plugin.h"
 
+#include "FileUtils.h"
 #include "Log.h"
 #include "MiscUtils.h"
 #include "Sync.h"
@@ -889,16 +890,11 @@ void VST2Plugin::getBankChunkData(void **data, size_t *size) const {
 }
 
 void VST2Plugin::readProgramFile(const std::string& path){
-    std::ifstream file(path, std::ios_base::binary);
+    File file(path, File::READ);
     if (!file.is_open()){
         throw Error("couldn't open file " + path);
     }
-    file.seekg(0, std::ios_base::end);
-    std::string buffer;
-    buffer.resize(file.tellg());
-    file.seekg(0, std::ios_base::beg);
-    file.read(&buffer[0], buffer.size());
-    readProgramData(buffer.data(), buffer.size());
+    IPlugin::readProgramData(file.readAll());
 }
 
 void VST2Plugin::readProgramData(const char *data, size_t size){
@@ -921,7 +917,10 @@ void VST2Plugin::readProgramData(const char *data, size_t size){
     // byteSize excludes 'chunkMagic' and 'byteSize' fields
     const size_t totalSize = byteSize + 8;
     if (totalSize > size){
-        throw Error("fxProgram: too little data");
+        std::stringstream ss;
+        ss << "fxProgram: too little data (expected "
+           << totalSize << " bytes, received " << size << " bytes)";
+        throw Error(ss.str());
     }
 
     if (fxMagic == fMagic){ // list of parameters
@@ -1035,16 +1034,11 @@ void VST2Plugin::writeProgramData(std::string& buffer){
 }
 
 void VST2Plugin::readBankFile(const std::string& path){
-    std::ifstream file(path, std::ios_base::binary);
+    File file(path, File::READ);
     if (!file.is_open()){
         throw Error("couldn't open file " + path);
     }
-    file.seekg(0, std::ios_base::end);
-    std::string buffer;
-    buffer.resize(file.tellg());
-    file.seekg(0, std::ios_base::beg);
-    file.read(&buffer[0], buffer.size());
-    readBankData(buffer.data(), buffer.size());
+    IPlugin::readBankData(file.readAll());
 }
 
 void VST2Plugin::readBankData(const char *data, size_t size){
@@ -1067,7 +1061,10 @@ void VST2Plugin::readBankData(const char *data, size_t size){
     // byteSize excludes 'chunkMagic' and 'byteSize' fields
     const size_t totalSize = byteSize + 8;
     if (totalSize > size){
-        throw Error("fxBank: too little data");
+        std::stringstream ss;
+        ss << "fxBank: too little data (expected "
+           << totalSize << " bytes, received " << size << " bytes)";
+        throw Error(ss.str());
     }
 
     if (fxMagic == bankMagic){ // list of parameters

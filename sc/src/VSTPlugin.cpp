@@ -2315,10 +2315,7 @@ bool cmdReadPreset(World* world, void* cmdData) {
             } else {
                 throw Error("couldn't open file " + std::string(data->path));
             }
-            file.seekg(0, std::ios_base::end);
-            buffer.resize(file.tellg());
-            file.seekg(0, std::ios_base::beg);
-            file.read(&buffer[0], buffer.size());
+            buffer = file.readAll();
             if (file){
                 LOG_DEBUG("successfully read " << buffer.size() << " bytes");
             } else {

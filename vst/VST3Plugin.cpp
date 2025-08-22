@@ -2012,16 +2012,11 @@ int VST3Plugin::getNumPrograms() const {
 }
 
 void VST3Plugin::readProgramFile(const std::string& path){
-    std::ifstream file(path, std::ios_base::binary);
+    File file(path, File::READ);
     if (!file.is_open()){
         throw Error("couldn't open file " + path);
     }
-    std::string buffer;
-    file.seekg(0, std::ios_base::end);
-    buffer.resize(file.tellg());
-    file.seekg(0, std::ios_base::beg);
-    file.read(&buffer[0], buffer.size());
-    readProgramData(buffer.data(), buffer.size());
+    IPlugin::readProgramData(file.readAll());
 }
 
 struct ChunkListEntry {

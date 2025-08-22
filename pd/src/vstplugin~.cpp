@@ -2575,15 +2575,11 @@ static void vstplugin_preset_read_do(t_preset_data *data){
     try {
         auto x = data->owner;
         // NOTE: avoid readProgramFile() to minimize the critical section
-        std::string buffer;
         vst::File file(data->path);
         if (!file.is_open()){
             throw Error("couldn't open file");
         }
-        file.seekg(0, std::ios_base::end);
-        buffer.resize(file.tellg());
-        file.seekg(0, std::ios_base::beg);
-        file.read(&buffer[0], buffer.size());
+        auto buffer = file.readAll();
         if (file){
             LOG_DEBUG("successfully read " << buffer.size() << " bytes");
         } else {

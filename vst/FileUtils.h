@@ -42,6 +42,8 @@ public:
         WRITE
     };
     File(const std::string& path, Mode mode = READ);
+
+    std::string readAll();
 };
 
 // RAII class for automatic cleanup

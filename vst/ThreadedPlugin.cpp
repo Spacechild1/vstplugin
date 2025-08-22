@@ -1,5 +1,6 @@
 #include "ThreadedPlugin.h"
 
+#include "FileUtils.h"
 #include "Log.h"
 #include "MiscUtils.h"
 
@@ -498,16 +499,11 @@ std::string ThreadedPlugin::getProgramNameIndexed(int index) const {
 }
 
 void ThreadedPlugin::readProgramFile(const std::string& path) {
-    std::ifstream file(path, std::ios_base::binary);
+    File file(path, File::READ);
     if (!file.is_open()){
         throw Error("couldn't open file " + path);
     }
-    file.seekg(0, std::ios_base::end);
-    std::string buffer;
-    buffer.resize(file.tellg());
-    file.seekg(0, std::ios_base::beg);
-    file.read(&buffer[0], buffer.size());
-    readProgramData(buffer.data(), buffer.size());
+    IPlugin::readProgramData(file.readAll());
 }
 
 void ThreadedPlugin::readProgramData(const char *data, size_t size) {
@@ -531,16 +527,11 @@ void ThreadedPlugin::writeProgramData(std::string& buffer) {
 }
 
 void ThreadedPlugin::readBankFile(const std::string& path) {
-    std::ifstream file(path, std::ios_base::binary);
+    File file(path, File::READ);
     if (!file.is_open()){
         throw Error("couldn't open file " + path);
     }
-    file.seekg(0, std::ios_base::end);
-    std::string buffer;
-    buffer.resize(file.tellg());
-    file.seekg(0, std::ios_base::beg);
-    file.read(&buffer[0], buffer.size());
-    readBankData(buffer.data(), buffer.size());
+    IPlugin::readBankData(file.readAll());
 }
 
 void ThreadedPlugin::readBankData(const char *data, size_t size) {
