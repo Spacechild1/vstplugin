@@ -337,20 +337,26 @@ void ThreadedPlugin::doProcess(ProcessData& data){
 
     // check event without blocking.
     // LOG_DEBUG("try to wait for task");
-    while (!event_.try_wait()){
-        // instead of waiting, try to process a task
-        // NOTE: we only process a single task at a time and then check again,
-        // because in the meantime another thread might have finished our task.
-        // in this case, we can move on and let the DSP threads do the remaining work.
+    if (!event_.try_wait()){
         setCurrentThreadDSP(); // !
-        if (!threadPool_->processTask()){
-            // no tasks left -> wait
-            // LOG_DEBUG("wait for task");
-            event_.wait();
-            break;
-        } else {
-            // LOG_DEBUG("process task");
-        }
+        bool didWait = false;
+        do {
+            // instead of waiting, try to process a task.
+            // NOTE: we only process a single task at a time and then check again,
+            // because in the meantime another thread might have finished our task.
+            // in this case, we can move on and let the DSP threads do the remaining work.
+            if (!threadPool_->processTask()){
+                if (!didWait) {
+                    // LOG_DEBUG("wait for task");
+                    didWait = true;
+                }
+                for (int count = 1000; count > 0; count--) {
+                    pauseCpu();
+                }
+            } else {
+                // LOG_DEBUG("process task");
+            }
+        } while (!event_.try_wait());
     }
 
     auto copyChannels = [](auto& from, auto& to, int nsamples){

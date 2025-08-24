@@ -42,6 +42,20 @@
 
 namespace vst {
 
+inline void pauseCpu() {
+#if defined(_MSC_VER)
+    YieldProcessor();
+#elif defined(__SSE2__)
+    _mm_pause();
+#elif defined(__aarch64__)
+    __asm__ __volatile__("isb");
+#elif defined(__arm__)
+    __asm__ __volatile__("yield");
+#else
+# warning "Cannot pause CPU, falling back to busy-waiting."
+#endif
+}
+
 /*/////////////////// SyncCondition ///////////////////////*/
 
 class SyncCondition {
@@ -173,20 +187,6 @@ class Event {
 };
 
 /*///////////////////// SpinLock /////////////////////*/
-
-inline void pauseCpu() {
-#if defined(_MSC_VER)
-    YieldProcessor();
-#elif defined(__SSE2__)
-    _mm_pause();
-#elif defined(__aarch64__)
-    __asm__ __volatile__("isb");
-#elif defined(__arm__)
-    __asm__ __volatile__("yield");
-#else
-# warning "Cannot pause CPU, falling back to busy-waiting."
-#endif
-}
 
 // simple spin lock
 
