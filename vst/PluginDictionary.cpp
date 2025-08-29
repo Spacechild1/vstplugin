@@ -6,7 +6,6 @@
 # include "CpuArch.h"
 #endif
 
-#include <fstream>
 #include <cstdlib>
 #include <sstream>
 #include <algorithm>

@@ -6,7 +6,6 @@
 #include "Sync.h"
 
 #include <array>
-#include <fstream>
 #include <cmath>
 #include <cstring>
 #include <algorithm>

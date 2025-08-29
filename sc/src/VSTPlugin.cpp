@@ -3165,7 +3165,7 @@ bool cmdSearch(World *inWorld, void* cmdData) {
     // write new info to file (only for local Servers) or buffer
     if (data->path[0]) {
         // write to file
-        std::ofstream file(data->path, std::ios_base::binary | std::ios_base::trunc);
+        File file(data->path, File::WRITE);
         if (file.is_open()) {
             LOG_DEBUG("writing plugin info to file");
             file << "[plugins]\n";
@@ -3365,7 +3365,7 @@ bool cmdQuery(World *inWorld, void *cmdData) {
         if (data->path[0]) {
             // write to file
             LOG_DEBUG("writing plugin info to file");
-            std::ofstream file(data->path, std::ios_base::binary | std::ios_base::trunc);
+            File file(data->path, File::WRITE);
             if (file.is_open()) {
                 serializePlugin(file, *desc);
             }

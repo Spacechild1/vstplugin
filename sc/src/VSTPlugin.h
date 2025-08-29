@@ -21,7 +21,6 @@ using namespace vst;
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <fstream>
 #include <sstream>
 
 const size_t MAX_OSC_PACKET_SIZE = 1600;

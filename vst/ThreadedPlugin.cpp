@@ -5,7 +5,6 @@
 #include "MiscUtils.h"
 
 #include <string.h>
-#include <fstream>
 #include <assert.h>
 
 #ifndef DEBUG_THREADPOOL
@@ -518,7 +517,7 @@ void ThreadedPlugin::readProgramData(const char *data, size_t size) {
 }
 
 void ThreadedPlugin::writeProgramFile(const std::string& path) {
-    std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
+    File file(path, File::WRITE);
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
     }
@@ -548,7 +547,7 @@ void ThreadedPlugin::readBankData(const char *data, size_t size) {
 }
 
 void ThreadedPlugin::writeBankFile(const std::string& path) {
-    std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
+    File file(path, File::WRITE);
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
     }

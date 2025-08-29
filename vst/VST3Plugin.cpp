@@ -2135,7 +2135,7 @@ void VST3Plugin::readProgramData(const char *data, size_t size){
 }
 
 void VST3Plugin::writeProgramFile(const std::string& path){
-    std::ofstream file(path, std::ios_base::binary | std::ios_base::trunc);
+    File file(path, File::WRITE);
     if (!file.is_open()){
         throw Error("couldn't create file " + path);
     }
