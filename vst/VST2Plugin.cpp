@@ -874,19 +874,19 @@ bool VST2Plugin::hasChunkData() const {
 }
 
 void VST2Plugin::setProgramChunkData(const void *data, size_t size){
-    dispatch(effSetChunk, true, size, const_cast<void *>(data));
+    dispatch(effSetChunk, 1, size, const_cast<void *>(data));
 }
 
 void VST2Plugin::getProgramChunkData(void **data, size_t *size) const {
-    *size = dispatch(effGetChunk, true, 0, data);
+    *size = dispatch(effGetChunk, 1, 0, data);
 }
 
 void VST2Plugin::setBankChunkData(const void *data, size_t size){
-    dispatch(effSetChunk, false, size, const_cast<void *>(data));
+    dispatch(effSetChunk, 0, size, const_cast<void *>(data));
 }
 
 void VST2Plugin::getBankChunkData(void **data, size_t *size) const {
-    *size = dispatch(effGetChunk, false, 0, data);
+    *size = dispatch(effGetChunk, 0, 0, data);
 }
 
 void VST2Plugin::readProgramFile(const std::string& path){
