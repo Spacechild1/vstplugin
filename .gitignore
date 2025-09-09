@@ -2,7 +2,7 @@
 bin**
 vst/VST_SDK**
 build**
-install**
+install/**
 *.qbs*
 *.vs
 *.pd_darwin
