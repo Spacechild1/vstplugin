@@ -48,6 +48,13 @@ If a plugin is bypassed, processing is suspended and each input is passed straig
 * 1 -> hard bypass; processing is suspended immediately and the plugin's own bypass method is called (if available). Good plugins will do a short crossfade, others will cause a click. |
 * 2 -> soft bypass; if the plugin has a tail (e.g. reverb or delay), it will fade out. Also, this doesn't call the plugin's bypass method, so we can always do a nice crossfade. |
 
+---
+
+Here is an example for a VSTPlugin instance with 2 input busses (2 and 1 channels), 2 output busses (2 and 1 channels) and 4 parameter controls:
+
+```
+0 0 <bypass> 2 2 <chn1> <chn2> 1 <chn1> 2 2 1 4 <index1> <value1> <index2> <value2> <index3> <value3> <index4> <value4>
+```
 
 ### UGen outputs
 
