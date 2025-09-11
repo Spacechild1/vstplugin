@@ -63,15 +63,11 @@ variables:
   - prefix="$(pwd)/${CI_JOB_NAME}"
   - cmake -H. -Bbuild -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${prefix}"
    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_OSX_ARCHITECTURES="${OSX_ARCHITECTURES}"
-   -DCMAKE_DEPENDS_USE_COMPILER=OFF -DLOG_LEVEL=${LOGLEVEL} -DSTATIC_LIBS=${STATIC_LIBS}
+   -DLOG_LEVEL=${LOGLEVEL} -DSTATIC_LIBS=${STATIC_LIBS}
    -DVST2DIR="${VST2DIR}" -DVST3DIR="${VST3DIR}" -DWINE=${WINE} -DBUILD_WINE=${BUILD_WINE}
    -DBUILD_HOST32=${BUILD_HOST32} -DBUILD_HOST_AMD64=${BUILD_HOST_AMD64}
-   -DPD_INCLUDEDIR="${PD_PATH}/src" -DPD_BINDIR="${PD_PATH}/bin" -DPD_INSTALLDIR="${prefix}" -DPD_EXTENSION=${PD_EXTENSION}
-   -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}" -DSUPERNOVA=${SUPERNOVA}
-  # NOTE: by default, CMake 3.21+ uses the compiler to obtain dependencies for makefiles ('compiler_depends.make').
-  # For some reason, on the 'Hopper' runner that file would contain bogus file paths such as 'vst/C:/msys64/mingw32/include/c++/10.2.0/vector'
-  # which will cause the following invocation of 'cmake --build ./build --target install/strip' to fail with 'multiple target patterns'.
-  # As a workaround, we force the legacy behavior with -DCMAKE_DEPENDS_USE_COMPILER=OFF.
+   -DPD_INCLUDEDIR="${PD_PATH}/src" -DPD_BINDIR="${PD_PATH}/bin" -DPD_INSTALLDIR="${prefix}/pd" -DPD_EXTENSION=${PD_EXTENSION}
+   -DSC_INCLUDEDIR="${SC_PATH}" -DSC_INSTALLDIR="${prefix}/sc" -DSUPERNOVA=${SUPERNOVA}
 
 ### build snippets
 .script:make: &script_make
@@ -89,8 +85,8 @@ variables:
   artifacts:
     name: ${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_JOB_NAME}
     paths:
-      - "${CI_JOB_NAME}/${PDLIBNAME}"
-      - "${CI_JOB_NAME}/${SCLIBNAME}"
+      - "${CI_JOB_NAME}/pd/${PDLIBNAME}"
+      - "${CI_JOB_NAME}/sc/${SCLIBNAME}"
     # we only need the job artifacts to create the packages
     expire_in: 1h
 
@@ -229,12 +225,12 @@ variables:
     # also create deken packages
 
     # wine hosts on linux
-    - test ! -d Linux_wine || for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+    - test ! -d Linux_wine || for x in pd/${PDLIBNAME} sc/${SCLIBNAME}/plugins; do
         for p in Linux; do
           test ! -d ${p} || cp -r Linux_wine/${x}/* ${p}/${x}/;
         done;
       done
-    - test ! -d Linux_wine32 || for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+    - test ! -d Linux_wine32 || for x in pd/${PDLIBNAME} sc/${SCLIBNAME}/plugins; do
         for p in Linux Linux_i386; do
           test ! -d ${p} || cp -r Linux_wine32/${x}/* ${p}/${x}/;
         done;
@@ -243,14 +239,10 @@ variables:
 
     # other-arch hosts on Windows
     - test ! -d win64 || test ! -d win32 ||
-      for x in ${PDLIBNAME} ${SCLIBNAME}/plugins; do
+      for x in pd/${PDLIBNAME} sc/${SCLIBNAME}/plugins; do
         cp -r win64/${x}/host.exe win32/${x}/host_amd64.exe;
         cp -r win32/${x}/host.exe win64/${x}/host_i386.exe;
       done
-
-    # re-organize the binaries
-    - for f in */${PDLIBNAME}; do d=${f%/*}/pd; mkdir -p ${d}; mv ${f} ${d}; done
-    - for f in */${SCLIBNAME}; do d=${f%/*}/sc; mkdir -p ${d}; mv ${f} ${d}; done
 
     # create zip-files
     - rm -f ./*.zip
@@ -259,7 +251,6 @@ variables:
         echo "zipping ${d}";
         (cd ${d}; zip -qr ../${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${d}.zip pd sc);
       done
-
 
     # create source package
     - git archive --format=tar --prefix=Sources/pd/${PDLIBNAME}/ HEAD | tar xf -
