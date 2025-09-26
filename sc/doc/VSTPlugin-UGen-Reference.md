@@ -265,7 +265,7 @@ Arguments:
 | int  | x-coordinate |
 | int  | y-coordinate |
 
-##### /vis
+##### /size
 
 Resize the GUI editor.
 This only works for VST3 plugins with a resizable GUI.
@@ -775,9 +775,9 @@ vendor=<vendor name>
 category=<category name>
 version=<plugin version string>
 sdkversion=<VST SDK version string>
-pgmchange=<program change parameter index in hex> // optional
-bypass=<bypass parameter index in hex> // optional
 flags=<bitset>
+pgmchange=<program change parameter index in hex> (optional)
+bypass=<bypass parameter index in hex> (optional)
 [inputs]
 n=<input bus count>
 <channel count #0>, <type #0>, <name #0>
@@ -812,6 +812,9 @@ n=<number of keys>
 
 String values, like plugin/parameter/program names, can contain any characters except newlines and commas (those are bashed to a replacement symbol by the UGen).
 
+**NOTE**: do not rely on the order of entries in the `[plugin]` section!
+In the future we might add/insert more entries and possibly reorder them.
+
 ##### flags
 
 `flags` is a bitset of boolean properties, written as a hexidecimal number. The following flags can be combined with a bitwise OR operation:
@@ -834,6 +837,8 @@ Each bus entry takes up a single line and consists of three fields, separated by
 
 `<type>` can be either 0 (= main) or 1 (= aux). `<name` is always empty for VST2 plugins (because they only have a single input/output bus).
 
+In the future we might add more fields.
+
 ##### parameters
 
 Each parameter entry takes up a single line and consists of three fields, separated by a comma: `<name>, <label>, <ID> <flags>`.
@@ -848,10 +853,17 @@ The parameter ID is a hexidecimal number. For VST 2.x plugins it is the same as 
 | ----- |-|
 | 0x01  | is automatable |
 
+In the future we might add more fields.
+
 ##### programs
+
+Every program consists of a single field, which is the program name.
 
 **NOTE**: Program names can be empty strings; this means that empty lines after the `[programs]` section are significant and must not be ignored!
 
+In the future we might add more fields.
+
+---
 
 Each plugin can be referred to by one or more *keys*. The primary key always comes first in the list.
 
