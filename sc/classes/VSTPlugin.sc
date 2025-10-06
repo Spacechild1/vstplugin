@@ -2,7 +2,7 @@ VSTPlugin : MultiOutUGen {
 	// class members
 	classvar <versionMajor=0;
 	classvar <versionMinor=6;
-	classvar <versionBugfix=0;
+	classvar <versionBugfix=1;
 	classvar pluginDict;
 	classvar <platformExtension;
 	// instance members

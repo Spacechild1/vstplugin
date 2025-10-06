@@ -1,4 +1,4 @@
-# VSTPlugin v0.6.0 - UGen documentation
+# VSTPlugin v0.6.1 - UGen documentation
 
 This document is meant for developers who want to interface with the VSTPlugin UGen from other programs or build their own client abstractions.
 
