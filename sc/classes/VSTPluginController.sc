@@ -134,6 +134,7 @@ VSTPluginController {
 
 	*new { arg synth, id, synthDef, wait= -1;
 		var plugins, desc, info;
+		synth.isNil.if { ^MethodError("'synth' argument must not be nil", thisMethod).throw };
 		// if the synthDef is nil, we try to get the metadata from the global SynthDescLib
 		plugins = this.prFindPlugins(synth, synthDef);
 		id.notNil.if {
@@ -287,17 +288,24 @@ VSTPluginController {
 		oscFuncs.do { arg func;
 			func.free;
 		};
+		this.synth = nil;
 		this.prClear;
 		this.changed(\free);
 	}
 
 	prCheckPlugin { arg method;
-		this.isOpen.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
+		this.isOpen.not.if { MethodError("cannot call '%' method without plugin!".format(method.name), this).throw }
 	}
 
 	prCheckLocal { arg method;
 		synth.server.isLocal.not.if {
-			MethodError("'%' only works with a local Server".format(method.name), this).throw;
+			MethodError("'%' method requires a local Server".format(method.name), this).throw;
+		}
+	}
+
+	prCheckEmpty { arg method;
+		synth.isNil.if {
+			MethodError("cannot call '%' method without Synth".format(method.name), this).throw;
 		}
 	}
 
@@ -333,6 +341,7 @@ VSTPluginController {
 	}
 
 	browse {
+		this.prCheckEmpty(thisMethod);
 		// prevent opening the dialog multiple times
 		browser.isNil.if {
 			// create dialog
@@ -344,6 +353,7 @@ VSTPluginController {
 
 	open { arg path, editor=true, verbose=false, action, multiThreading=false, mode;
 		var intMode = 0;
+		this.prCheckEmpty(thisMethod);
 		loading.if {
 			// should be rather throw an Error?
 			"VSTPluginController: already opening another plugin".warn;
@@ -479,9 +489,11 @@ VSTPluginController {
 	}
 
 	close {
-		this.sendMsg('/close');
-		this.prClear;
-		this.changed(\close);
+		this.isOpen.if {
+			this.sendMsg('/close');
+			this.prClear;
+			this.changed(\close);
+		}
 	}
 
 	closeMsg {
@@ -701,7 +713,6 @@ VSTPluginController {
 	loadPresetMsg { arg preset, async=true;
 		var result;
 		this.prCheckLocal(thisMethod);
-		this.prCheckPlugin(thisMethod);
 
 		result = this.prGetPreset(preset); // throws on error
 		^this.readProgramMsg(result.path, async);
@@ -777,6 +788,8 @@ VSTPluginController {
 	}
 
 	program_ { arg number;
+		this.prCheckPlugin(thisMethod);
+
 		((number >= 0) && (number < this.numPrograms)).if {
 			this.sendMsg('/program_set', number);
 			program = number; // update!
@@ -800,6 +813,7 @@ VSTPluginController {
 	}
 
 	programName_ { arg name;
+		this.prCheckPlugin(thisMethod);
 		this.sendMsg('/program_name', name);
 	}
 
@@ -808,6 +822,8 @@ VSTPluginController {
 	}
 
 	readProgram { arg path, action, async=true;
+		this.prCheckPlugin(thisMethod);
+
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -822,6 +838,8 @@ VSTPluginController {
 	}
 
 	readBank { arg path, action, async=true;
+		this.prCheckPlugin(thisMethod);
+
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -837,6 +855,8 @@ VSTPluginController {
 	}
 
 	writeProgram { arg path, action, async=true;
+		this.prCheckPlugin(thisMethod);
+
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -850,6 +870,8 @@ VSTPluginController {
 	}
 
 	writeBank { arg path, action, async=true;
+		this.prCheckPlugin(thisMethod);
+
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
 			var success = msg[3].asBoolean;
@@ -863,13 +885,17 @@ VSTPluginController {
 	}
 
 	setProgramData { arg data, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prCheckLocal(thisMethod);
+
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSetData(data, action, false, async);
 	}
 
 	setBankData { arg data, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prCheckLocal(thisMethod);
+
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSetData(data, action, true, async);
 	}
@@ -890,12 +916,14 @@ VSTPluginController {
 	}
 
 	sendProgramData { arg data, wait, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		wait = wait ?? this.wait;
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSendData(data, wait, action, false, async);
 	}
 
 	sendBankData { arg data, wait, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		wait = wait ?? this.wait;
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSendData(data, wait, action, true, async);
@@ -907,7 +935,6 @@ VSTPluginController {
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
 		var buffer, sym;
-		this.prCheckPlugin(thisMethod);
 		wait = wait ?? this.wait;
 		sym = bank.if {'bank' } {'program'};
 
@@ -925,11 +952,13 @@ VSTPluginController {
 	}
 
 	getProgramData { arg action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prCheckLocal(thisMethod);
 		this.prGetData(action, false, async);
 	}
 
 	getBankData { arg action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prCheckLocal(thisMethod);
 		this.prGetData(action, true, async);
 	}
@@ -956,10 +985,12 @@ VSTPluginController {
 	}
 
 	receiveProgramData { arg wait, timeout=3, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prReceiveData(wait, timeout, action, false);
 	}
 
 	receiveBankData { arg wait, timeout=3, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prReceiveData(wait, timeout, action, true);
 	}
 
@@ -969,7 +1000,6 @@ VSTPluginController {
 		// wait = 0 might not be safe in a high traffic situation,
 		// maybe okay with tcp.
 		var address, sym;
-		this.prCheckPlugin(thisMethod);
 		wait = wait ?? this.wait;
 		sym = bank.if {'bank' } {'program'};
 		{
@@ -1049,6 +1079,7 @@ VSTPluginController {
 	}
 
 	getTransportPos { arg action;
+		this.prCheckPlugin(thisMethod);
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3]);
 		}, '/vst_transport').oneShot;
@@ -1057,6 +1088,7 @@ VSTPluginController {
 
 	// advanced
 	canDo { arg what, action;
+		this.prCheckPlugin(thisMethod);
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3].asInteger);
 		}, '/vst_can_do').oneShot;
@@ -1064,6 +1096,7 @@ VSTPluginController {
 	}
 
 	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=true;
+		this.prCheckPlugin(thisMethod);
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3].asInteger);
 		}, '/vst_vendor_method').oneShot;
@@ -1078,7 +1111,11 @@ VSTPluginController {
 
 	// internal
 	sendMsg { arg cmd ... args;
-		synth.server.sendMsg('/u_cmd', synth.nodeID, synthIndex, cmd, *args);
+		synth.notNil.if {
+			synth.server.sendMsg('/u_cmd', synth.nodeID, synthIndex, cmd, *args);
+		} {
+			"%: empty controller (no Synth)".format(this.class.name).warn;
+		}
 	}
 
 	makeMsg { arg cmd ... args;
