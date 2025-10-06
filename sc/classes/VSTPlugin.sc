@@ -9,6 +9,7 @@ VSTPlugin : MultiOutUGen {
 	var <>id;
 	var <>info;
 	var <>desc;
+
 	// class methods
 	*initClass {
 		StartUp.add {
@@ -19,6 +20,7 @@ VSTPlugin : MultiOutUGen {
 			pluginDict[Server.default] = IdentityDictionary.new;
 		}
 	}
+
 	*ar { arg input, numOut=1, bypass=0, params, id, info, blockSize;
 		input = input.asArray;
 		params = params.asArray;
@@ -27,12 +29,14 @@ VSTPlugin : MultiOutUGen {
 		};
 		^this.multiNewList([\audio, id, info, blockSize, bypass, input.size, numOut, params.size.div(2)] ++ input ++ params);
 	}
+
 	*kr { ^this.shouldNotImplement(thisMethod) }
 
 	*plugins { arg server;
 		server = server ?? Server.default;
 		^pluginDict[server];
 	}
+
 	*pluginList { arg server, sorted = false;
 		var dict = this.plugins(server);
 		var array = [];
@@ -46,9 +50,11 @@ VSTPlugin : MultiOutUGen {
 		};
 		^array;
 	}
+
 	*pluginKeys { arg server;
 		^this.pluginList(server).collect({ arg i; i.key });
 	}
+
 	*print { arg server;
 		// print plugins sorted by name in ascending order
 		// (together with path to distinguish plugins of the same name)
@@ -56,6 +62,7 @@ VSTPlugin : MultiOutUGen {
 			"% (%) [%]".format(item.key, item.vendor, item.path).postln; // rather print key instead of name
 		};
 	}
+
 	*clear { arg server, remove=true;
 		server = server ?? Server.default;
 		server.serverRunning.not.if {
@@ -68,13 +75,16 @@ VSTPlugin : MultiOutUGen {
 		// remove=true -> also delete temp file
 		server.listSendMsg(this.clearMsg(remove));
 	}
+
 	*clearMsg { arg remove=true;
 		^['/cmd', '/vst_clear', remove.asInteger];
 	}
+
 	*reset { arg server;
 		this.deprecated(thisMethod, this.class.findMethod(\clear));
 		this.clear(server);
 	}
+
 	*readCache { arg server, dir;
 		server = server ?? Server.default;
 		server.serverRunning.not.if {
@@ -83,9 +93,11 @@ VSTPlugin : MultiOutUGen {
 		};
 		server.listSendMsg(this.readCacheMsg(dir));
 	}
+
 	*readCacheMsg { arg dir;
 		^['/cmd', '/vst_cache_read', dir]
 	}
+
 	*search { arg server, dir, options, verbose=true, wait = -1, action;
 		server = server ?? Server.default;
 		server.serverRunning.not.if {
@@ -98,6 +110,7 @@ VSTPlugin : MultiOutUGen {
 		server.isLocal.if { this.prSearchLocal(server, dir, options, verbose, action) }
 		{ this.prSearchRemote(server, dir, options, verbose, wait, action) };
 	}
+
 	*searchMsg { arg dir, options, verbose=false, dest=nil;
 		var flags = 0, timeout, save = true, parallel = true, exclude, cacheFileDir;
 		// search directories
@@ -133,6 +146,7 @@ VSTPlugin : MultiOutUGen {
 		dest = this.prMakeDest(dest); // nil -> -1 = don't write results
 		^['/cmd', '/vst_search', flags, dest, timeout ?? 0.0, dir.size] ++ dir ++ exclude.size ++ exclude ++ cacheFileDir
 	}
+
 	*prSearchLocal { arg server, dir, options, verbose, action;
 		{
 			var stream, dict = pluginDict[server];
@@ -158,6 +172,7 @@ VSTPlugin : MultiOutUGen {
 			action.value;
 		}.forkIfNeeded;
 	}
+
 	*prSearchRemote { arg server, dir, options, verbose, wait, action;
 		{
 			var dict = pluginDict[server];
@@ -181,13 +196,16 @@ VSTPlugin : MultiOutUGen {
 			});
 		}.forkIfNeeded;
 	}
+
 	*stopSearch { arg server;
 		server = server ?? Server.default;
 		server.listSendMsg(this.stopSearchMsg);
 	}
+
 	*stopSearchMsg {
 		^['/cmd', '/vst_search_stop'];
 	}
+
 	*prQuery { arg server, path, wait = -1, action;
 		var info;
 		// add dictionary if it doesn't exist yet
@@ -202,9 +220,11 @@ VSTPlugin : MultiOutUGen {
 			{ this.prQueryRemote(server, path, wait, action) }
 		}
 	}
+
 	*prQueryMsg { arg path, dest;
 		^['/cmd', '/vst_query', path.asString.standardizePath, this.prMakeDest(dest)];
 	}
+
 	*prQueryLocal { arg server, path, action;
 		forkIfNeeded {
 			var stream, info, dict = pluginDict[server];
@@ -232,6 +252,7 @@ VSTPlugin : MultiOutUGen {
 			action.value(info);
 		};
 	}
+
 	*prQueryRemote { arg server, path, wait, action;
 		forkIfNeeded {
 			var dict = pluginDict[server];
@@ -258,6 +279,7 @@ VSTPlugin : MultiOutUGen {
 			});
 		}
 	}
+
 	*readPlugins { arg dir=nil;
 		var arch, cachefile, appdata, path, stream, dict = IdentityDictionary.new;
 		arch = switch(Platform.architecture,
@@ -299,6 +321,7 @@ VSTPlugin : MultiOutUGen {
 		};
 		^dict;
 	}
+
 	*prAddPlugin { arg dict, key, info;
 		key = key.asSymbol;
 		// we prefer non-bridged plugins, so we don't overwrite
@@ -308,6 +331,7 @@ VSTPlugin : MultiOutUGen {
 		};
 		dict[key] = info;
 	}
+
 	*prGetLine { arg stream, skip=false;
 		var pos, line;
 		{
@@ -320,11 +344,13 @@ VSTPlugin : MultiOutUGen {
 			^line;
 		}.loop;
 	}
+
 	*prParseCount { arg line;
 		var onset = line.find("=");
 		onset ?? { Error("expecting 'n=<number>'").throw; };
 		^line[(onset+1)..].asInteger; // will eat whitespace and stop at newline
 	}
+
 	*prParseKeyValuePair { arg line;
 		var key, value, split = line.find("=");
 		split ?? { Error("expecting 'key=value'").throw; };
@@ -335,6 +361,7 @@ VSTPlugin : MultiOutUGen {
 		} { value = "" };
 		^[key.stripWhiteSpace.asSymbol, value.stripWhiteSpace ];
 	}
+
 	*prParseIni { arg stream;
 		var line, n, indices, last = 0;
 		var major = 0, minor = 0, bugfix = 0;
@@ -364,9 +391,11 @@ VSTPlugin : MultiOutUGen {
 			};
 		}
 	}
+
 	*prMakeTmpPath {
 		^PathName.tmp +/+ "vst_" ++ UniqueID.next;
 	}
+
 	*prMakeDest { arg dest;
 		// 'dest' may be a) temp file path, b) bufnum, c) Buffer, d) nil
 		dest !? {
@@ -502,6 +531,7 @@ VSTPlugin : MultiOutUGen {
 			^ugenOutputs.clumps(outputArray);
 		} { ^ugenOutputs }
 	}
+
 	optimizeGraph {
 		// This is called exactly once during SynthDef construction!
 		var metadata;
@@ -536,6 +566,7 @@ VSTPlugin : MultiOutUGen {
 			metadata.put(false, this.desc);
 		};
 	}
+
 	synthIndex_ { arg index;
 		super.synthIndex_(index); // !
 		// update metadata (ignored if reconstructing from disk)

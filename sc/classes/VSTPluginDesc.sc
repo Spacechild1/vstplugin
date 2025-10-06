@@ -26,43 +26,55 @@ VSTPluginDesc {
 	var <>bridged;
 	// private fields
 	var <>prParamIndexMap;
+
 	// deprecated methods
 	isSynth {
 		this.deprecated(thisMethod, this.class.findMethod(\synth));
 		^this.synth;
 	}
+
 	hasEditor {
 		this.deprecated(thisMethod, this.class.findMethod(\editor));
 		^this.editor;
 	}
+
 	numInputs {
 		this.deprecated(thisMethod, this.class.findMethod(\inputs));
 		^inputs[0] !? _.channels ?? 0;
 	}
+
 	numOutputs {
 		this.deprecated(thisMethod, this.class.findMethod(\outputs));
 		^outputs[0] !? _.channels ?? 0;
 	}
+
 	numAuxInputs {
 		this.deprecated(thisMethod, this.class.findMethod(\inputs));
 		^inputs[1] !? _.channels ?? 0;
 	}
+
 	numAuxOutputs {
 		this.deprecated(thisMethod, this.class.findMethod(\outputs));
 		^outputs[1] !? _.channels ?? 0;
 	}
+
 	// public methods
 	numParameters { ^parameters.size; }
+
 	numPrograms { ^programs.size; }
+
 	numPresets { ^presets.size; }
+
 	findParamIndex { arg name;
 		^this.prParamIndexMap[name.asSymbol];
 	}
+
 	printOn { arg stream;
 		stream.atLimit.not.if {
 			stream << this.class.name << "( " << this.name << " )";
 		}
 	}
+
 	print { arg long = false;
 		"---".postln;
 		this.prToString.postln;
@@ -79,6 +91,7 @@ VSTPluginDesc {
 		};
 		"---".postln;
 	}
+
 	printParameters {
 		this.parameters.do { arg param, i;
 			var label = (param.label.size > 0).if { " (" ++ param.label ++ ")" } { "" };
@@ -86,11 +99,13 @@ VSTPluginDesc {
 			"[%] %%%".format(i, param.name, label, auto).postln;
 		}
 	}
+
 	printPrograms {
 		this.programs.do { arg pgm, i;
 			"[%] %".format(i, pgm.name).postln;
 		}
 	}
+
 	printPresets {
 		// collect presets by type
 		var result = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
@@ -110,6 +125,7 @@ VSTPluginDesc {
 			}
 		};
 	}
+
 	scanPresets {
 		var vst3 = this.sdkVersion.find("VST 3").notNil;
 		presets.clear;
@@ -134,6 +150,7 @@ VSTPluginDesc {
 		this.prSortPresets(false);
 		this.changed(\presets);
 	}
+
 	presetFolder { arg type = \user;
 		var folder, vst3 = this.sdkVersion.find("VST 3").notNil;
 		Platform.case(
@@ -168,6 +185,7 @@ VSTPluginDesc {
 			folder.standardizePath +/+ this.class.prBashPath(this.vendor) +/+ this.class.prBashPath(this.name);
 		}
 	}
+
 	presetPath { arg name, type = \user;
 		var vst3 = sdkVersion.find("VST 3").notNil;
 		^this.presetFolder(type) +/+ this.class.prBashPath(name) ++ if(vst3, ".vstpreset", ".fxp");
@@ -183,6 +201,7 @@ VSTPluginDesc {
 		}
 		^nil; // not found
 	}
+
 	prPresetIndex { arg preset;
 		preset.isKindOf(Event).if {
 			^presets.indexOf(preset);
@@ -194,6 +213,7 @@ VSTPluginDesc {
 			^nil;
 		}
 	}
+
 	prSortPresets { arg userOnly=true;
 		var temp = (user: List.new, userFactory: List.new, sharedFactory: List.new, global: List.new);
 		presets.do { arg p; temp[p.type].add(p) };
@@ -207,12 +227,14 @@ VSTPluginDesc {
 			presets = presets.addAll(temp[type]);
 		}
 	}
+
 	*prBashPath { arg path;
 		var forbidden = IdentitySet[$/, $\\, $", $?, $*, $:, $<, $>, $|];
 		^path.collect({ arg c;
 			forbidden.findMatch(c).notNil.if { $_ } { c }
 		});
 	}
+
 	addPreset { arg name, path;
 		var index = 0, preset = (name: name, path: path ?? { this.presetPath(name) }, type: \user);
 		presets.do { arg p, i;
@@ -227,6 +249,7 @@ VSTPluginDesc {
 		this.changed(\presets);
 		^index;
 	}
+
 	deletePreset { arg preset;
 		var result = preset.isKindOf(Event).if { preset } { this.findPreset(preset) };
 		// can only remove user presets!
@@ -243,6 +266,7 @@ VSTPluginDesc {
 		} {	"couldn't find preset '%'".format(preset).error	}
 		^false;
 	}
+
 	renamePreset { arg preset, name;
 		var result = preset.isKindOf(Event).if { preset } { this.findPreset(preset) };
 		var newPath = this.presetPath(name);
@@ -271,6 +295,7 @@ VSTPluginDesc {
 		} {	"couldn't find preset '%'".format(preset).error	};
 		^false;
 	}
+
 	// private methods
 	*prParse { arg stream, versionMajor, versionMinor, versionBugfix;
 		var info = VSTPluginDesc.new;
@@ -395,6 +420,7 @@ VSTPluginDesc {
 			)
 		}
 	}
+
 	prToString { arg sep = $\n;
 		var vst3 = this.sdkVersion.find("VST 3").notNil;
 		var inputs, outputs;

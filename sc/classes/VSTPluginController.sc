@@ -127,9 +127,11 @@ VSTPluginController {
 			}
 		});
 	}
+
 	*guiClass {
 		^VSTPluginGui;
 	}
+
 	*new { arg synth, id, synthDef, wait= -1;
 		var plugins, desc, info;
 		// if the synthDef is nil, we try to get the metadata from the global SynthDescLib
@@ -151,6 +153,7 @@ VSTPluginController {
 		info = desc.key !? { VSTPlugin.plugins(synth.server)[desc.key] };
 		^super.new.init(synth, desc.index, wait, info);
 	}
+
 	*collect { arg synth, ids, synthDef, wait= -1;
 		var plugins = this.prFindPlugins(synth, synthDef);
 		^this.prCollect(plugins, ids, { arg desc;
@@ -158,6 +161,7 @@ VSTPluginController {
 			super.new.init(synth, desc.index, wait, info);
 		});
 	}
+
 	*prFindPlugins { arg synth, synthDef;
 		var desc, metadata, plugins;
 		synthDef.notNil.if {
@@ -171,6 +175,7 @@ VSTPluginController {
 		(plugins.size == 0).if { MethodError("SynthDef '%' doesn't contain a VSTPlugin!".format(synth.defName), this).throw; };
 		^plugins;
 	}
+
 	*prCollect { arg plugins, ids, fn;
 		var result = ();
 		ids.notNil.if {
@@ -275,6 +280,7 @@ VSTPluginController {
 		// cleanup after synth has been freed:
 		synth.onFree { this.prFree };
 	}
+
 	prFree {
 		// "VSTPluginController: synth freed!".postln;
 		browser !? { browser.close };
@@ -284,37 +290,48 @@ VSTPluginController {
 		this.prClear;
 		this.changed(\free);
 	}
+
 	prCheckPlugin { arg method;
 		this.isOpen.not.if { MethodError("%: no plugin!".format(method.name), this).throw }
 	}
+
 	prCheckLocal { arg method;
 		synth.server.isLocal.not.if {
 			MethodError("'%' only works with a local Server".format(method.name), this).throw;
 		}
 	}
+
 	editor { arg show=true;
 		window.if { this.sendMsg('/vis', show.asInteger); }
 		{ "no editor!".postln; };
 	}
+
 	editorMsg { arg show=true;
 		^this.makeMsg('/vis', show.asInteger);
 	}
+
 	moveEditor { arg x, y;
 		^this.sendMsg('/pos', x.asInteger, y.asInteger);
 	}
+
 	moveEditorMsg { arg x, y;
 		^this.makeMsg('/pos', x.asInteger, y.asInteger);
 	}
+
 	resizeEditor { arg w, h;
 		^this.sendMsg('/size', w.asInteger, h.asInteger);
 	}
+
 	resizeEditorMsg { arg w, h;
 		^this.makeMsg('/size', w.asInteger, h.asInteger);
 	}
+
 	haveEditor { ^window; }
+
 	gui { arg parent, bounds, params=true;
 		^this.class.guiClass.new(this).gui(parent, bounds, params);
 	}
+
 	browse {
 		// prevent opening the dialog multiple times
 		browser.isNil.if {
@@ -324,6 +341,7 @@ VSTPluginController {
 		};
 		browser.front;
 	}
+
 	open { arg path, editor=true, verbose=false, action, multiThreading=false, mode;
 		var intMode = 0;
 		loading.if {
@@ -399,6 +417,7 @@ VSTPluginController {
 			};
 		});
 	}
+
 	openMsg { arg path, editor=false, multiThreading=false, mode;
 		var intMode = 0;
 		// if path is nil we try to get it from VSTPlugin
@@ -419,14 +438,17 @@ VSTPluginController {
 		^this.makeMsg('/open', path.asString.standardizePath,
 			editor.asInteger, multiThreading.asInteger, intMode);
 	}
+
 	isOpen {
 		^this.info.notNil;
 	}
+
 	// deprecated in favor of isOpen
 	loaded {
 		this.deprecated(thisMethod, this.class.findMethod(\isOpen));
 		^this.isOpen;
 	}
+
 	prClear {
 		info !? { info.removeDependant(this) };
 		window = false; latency = nil; info = nil;
@@ -434,6 +456,7 @@ VSTPluginController {
 		programCache = nil; needQueryPrograms = true;
 		program = nil; currentPreset = nil; loading = false;
 	}
+
 	addDependant { arg dependant;
 		super.addDependant(dependant);
 		// query after adding dependant!
@@ -443,6 +466,7 @@ VSTPluginController {
 		};
 
 	}
+
 	update { arg who, what ... args;
 		((who === info) and: { what == \presets }).if {
 			currentPreset !? {
@@ -453,41 +477,52 @@ VSTPluginController {
 			}
 		}
 	}
+
 	close {
 		this.sendMsg('/close');
 		this.prClear;
 		this.changed(\close);
 	}
+
 	closeMsg {
 		^this.makeMsg('/close');
 	}
+
 	reset { arg async = false;
 		this.sendMsg('/reset', async.asInteger);
 	}
+
 	resetMsg { arg async = false;
 		^this.makeMsg('/reset', async.asInteger);
 	}
+
 	// deprecated
 	setOffline { arg bool;
 		this.deprecated(thisMethod);
 	}
+
 	setOfflineMsg { arg bool;
 		this.deprecated(thisMethod);
 		^this.makeMsg('/mode',  bool.asInteger);
 	}
+
 	// parameters
 	numParameters {
 		^(info !? (_.numParameters) ?? 0);
 	}
+
 	set { arg ...args;
 		this.sendMsg('/set', *args);
 	}
+
 	setMsg { arg ...args;
 		^this.makeMsg('/set', *args);
 	}
+
 	setn { arg ...args;
 		synth.server.listSendMsg(this.setnMsg(*args));
 	}
+
 	setnMsg { arg ...args;
 		var nargs = List.new;
 		args.pairsDo { arg index, values;
@@ -499,6 +534,7 @@ VSTPluginController {
 		};
 		^this.makeMsg('/setn', *nargs);
 	}
+
 	get { arg index, action;
 		var name;
 		// We need to match the reply message against the 'index'
@@ -519,6 +555,7 @@ VSTPluginController {
 		}, '/vst_set', index.asFloat).oneShot;
 		this.sendMsg('/get', index);
 	}
+
 	getn { arg index = 0, count = -1, action;
 		var name;
 		// see comment in 'get'
@@ -535,9 +572,11 @@ VSTPluginController {
 		}, '/vst_setn', index.asFloat).oneShot;
 		this.sendMsg('/getn', index, count);
 	}
+
 	map { arg ... args;
 		synth.server.listSendBundle(nil, this.mapMsg(*args));
 	}
+
 	mapMsg { arg ... args;
 		var krVals, arVals, result;
 		krVals = List.new;
@@ -558,28 +597,36 @@ VSTPluginController {
 		(arVals.size > 0).if { result = result.add(this.makeMsg('/mapa', *arVals)) };
 		^result;
 	}
+
 	mapn { arg ... args;
 		this.sendMsg('/map', *args);
 	}
+
 	mapnMsg { arg ...args;
 		^this.makeMsg('/map', *args);
 	}
+
 	mapan { arg ... args;
 		this.sendMsg('/mapa', *args);
 	}
+
 	mapanMsg { arg ...args;
 		^this.makeMsg('/mapa', *args);
 	}
+
 	unmap { arg ...args;
 		this.sendMsg('/unmap', *args);
 	}
+
 	unmapMsg { arg ...args;
 		^this.makeMsg('/unmap', *args);
 	}
+
 	// preset management
 	preset {
 		^currentPreset;
 	}
+
 	savePreset { arg preset, action, async=true;
 		var result, name, path;
 		this.prCheckLocal(thisMethod);
@@ -629,6 +676,7 @@ VSTPluginController {
 			action.value(self, success);
 		}, async);
 	}
+
 	loadPreset { arg preset, action, async=true;
 		var result;
 		this.prCheckLocal(thisMethod);
@@ -649,6 +697,7 @@ VSTPluginController {
 			action.value(self, success);
 		}, async);
 	}
+
 	loadPresetMsg { arg preset, async=true;
 		var result;
 		this.prCheckLocal(thisMethod);
@@ -657,6 +706,7 @@ VSTPluginController {
 		result = this.prGetPreset(preset); // throws on error
 		^this.readProgramMsg(result.path, async);
 	}
+
 	prGetPreset { arg preset;
 		var result;
 		// if 'preset' is omitted, use the last preset (if possible)
@@ -685,6 +735,7 @@ VSTPluginController {
 		}
 		^result;
 	}
+
 	deletePreset { arg preset;
 		var current = false;
 		var name = preset.isKindOf(Event).if { preset.name } { preset };
@@ -704,6 +755,7 @@ VSTPluginController {
 		}
 		^false;
 	}
+
 	renamePreset { arg preset, name;
 		var oldname = preset.isKindOf(Event).if { preset.name } { preset };
 		this.prCheckLocal(thisMethod);
@@ -719,9 +771,11 @@ VSTPluginController {
 			"couldn't rename preset '%'".format(oldname).error; ^false;
 		}
 	}
+
 	numPrograms {
 		^(info !? (_.numPrograms) ?? 0);
 	}
+
 	program_ { arg number;
 		((number >= 0) && (number < this.numPrograms)).if {
 			this.sendMsg('/program_set', number);
@@ -733,21 +787,26 @@ VSTPluginController {
 			MethodError("program number % out of range".format(number), this).throw;
 		};
 	}
+
 	programMsg { arg number;
 		// we can't do bound checking here
 		^this.makeMsg('/program_set', number);
 	}
+
 	programName {
 		this.program.notNil.if {
 			^programCache[this.program];
 		} { ^nil };
 	}
+
 	programName_ { arg name;
 		this.sendMsg('/program_name', name);
 	}
+
 	programNameMsg { arg name;
 		^this.makeMsg('/program_name', name);
 	}
+
 	readProgram { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
@@ -757,9 +816,11 @@ VSTPluginController {
 		}, '/vst_program_read').oneShot;
 		this.sendMsg('/program_read', path, async.asInteger);
 	}
+
 	readProgramMsg { arg dest, async=true;
 		^this.makeMsg('/program_read', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
+
 	readBank { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
@@ -770,9 +831,11 @@ VSTPluginController {
 		}, '/vst_bank_read').oneShot;
 		this.sendMsg('/bank_read', path, async.asInteger);
 	}
+
 	readBankMsg { arg dest, async=true;
 		^this.makeMsg('/bank_read', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
+
 	writeProgram { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
@@ -781,9 +844,11 @@ VSTPluginController {
 		}, '/vst_program_write').oneShot;
 		this.sendMsg('/program_write', path, async.asInteger);
 	}
+
 	writeProgramMsg { arg dest, async=true;
 		^this.makeMsg('/program_write', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
+
 	writeBank { arg path, action, async=true;
 		path = path.asString.standardizePath;
 		this.prMakeOscFunc({ arg msg;
@@ -792,19 +857,23 @@ VSTPluginController {
 		}, '/vst_bank_write').oneShot;
 		this.sendMsg('/bank_write', path, async.asInteger);
 	}
+
 	writeBankMsg { arg dest, async=true;
 		^this.makeMsg('/bank_write', VSTPlugin.prMakeDest(dest), async.asInteger);
 	}
+
 	setProgramData { arg data, action, async=true;
 		this.prCheckLocal(thisMethod);
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSetData(data, action, false, async);
 	}
+
 	setBankData { arg data, action, async=true;
 		this.prCheckLocal(thisMethod);
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSetData(data, action, true, async);
 	}
+
 	prSetData { arg data, action, bank, async;
 		try {
 			var path = VSTPlugin.prMakeTmpPath;
@@ -819,16 +888,19 @@ VSTPluginController {
 			bank.if { this.readBank(path, cb, async) } { this.readProgram(path, cb, async) };
 		} { MethodError("Failed to write data", this).throw };
 	}
+
 	sendProgramData { arg data, wait, action, async=true;
 		wait = wait ?? this.wait;
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSendData(data, wait, action, false, async);
 	}
+
 	sendBankData { arg data, wait, action, async=true;
 		wait = wait ?? this.wait;
 		(data.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw};
 		this.prSendData(data, wait, action, true, async);
 	}
+
 	prSendData { arg data, wait, action, bank, async;
 		// stream preset data to the plugin via a Buffer.
 		// wait = -1 allows an OSC roundtrip between packets.
@@ -851,14 +923,17 @@ VSTPluginController {
 			this.sendMsg("/"++sym++"_read", VSTPlugin.prMakeDest(buf), async.asInteger);
 		});
 	}
+
 	getProgramData { arg action, async=true;
 		this.prCheckLocal(thisMethod);
 		this.prGetData(action, false, async);
 	}
+
 	getBankData { arg action, async=true;
 		this.prCheckLocal(thisMethod);
 		this.prGetData(action, true, async);
 	}
+
 	prGetData { arg action, bank, async;
 		var path = VSTPlugin.prMakeTmpPath;
 		var cb = { arg self, success;
@@ -879,12 +954,15 @@ VSTPluginController {
 		// 1) ask plugin to write data file
 		bank.if { this.writeBank(path, cb, async) } { this.writeProgram(path, cb, async.asInteger) };
 	}
+
 	receiveProgramData { arg wait, timeout=3, action, async=true;
 		this.prReceiveData(wait, timeout, action, false);
 	}
+
 	receiveBankData { arg wait, timeout=3, action, async=true;
 		this.prReceiveData(wait, timeout, action, true);
 	}
+
 	prReceiveData { arg wait, timeout, action, bank, async;
 		// stream data from the plugin via a Buffer.
 		// wait = -1 allows an OSC roundtrip between packets.
@@ -914,17 +992,21 @@ VSTPluginController {
 			});
 		}.forkIfNeeded;
 	}
+
 	// MIDI / Sysex
 	sendMidi { arg status, data1=0, data2=0, detune;
 		// LATER we might actually omit detune if nil
 		this.sendMsg('/midi_msg', Int8Array.with(status, data1, data2), detune ?? 0.0);
 	}
+
 	sendMidiMsg { arg status, data1=0, data2=0, detune;
 		^this.makeMsg('/midi_msg', Int8Array.with(status, data1, data2), detune ?? 0.0);
 	}
+
 	sendSysex { arg msg;
 		synth.server.listSendMsg(this.sendSysexMsg(msg));
 	}
+
 	sendSysexMsg { arg msg;
 		(msg.class != Int8Array).if { MethodError("'%' expects Int8Array!".format(thisMethod.name), this).throw };
 		(msg.size > oscPacketSize).if {
@@ -932,37 +1014,47 @@ VSTPluginController {
 		};
 		^this.makeMsg('/midi_sysex', msg);
 	}
+
 	// transport
 	setTempo { arg bpm=120;
 		this.sendMsg('/tempo', bpm);
 	}
+
 	setTempoMsg { arg bpm=120;
 		^this.makeMsg('/tempo', bpm);
 	}
+
 	setTimeSignature { arg num=4, denom=4;
 		this.sendMsg('/time_sig', num, denom);
 	}
+
 	setTimeSignatureMsg { arg num=4, denom=4;
 		^this.makeMsg('/time_sig', num, denom);
 	}
+
 	setPlaying { arg b;
 		this.sendMsg('/transport_play', b.asInteger);
 	}
+
 	setPlayingMsg { arg b;
 		^this.makeMsg('/transport_play', b.asInteger);
 	}
+
 	setTransportPos { arg pos;
 		this.sendMsg('/transport_set', pos);
 	}
+
 	setTransportPosMsg { arg pos;
 		^this.makeMsg('/transport_set', pos);
 	}
+
 	getTransportPos { arg action;
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3]);
 		}, '/vst_transport').oneShot;
 		this.sendMsg('/transport_get');
 	}
+
 	// advanced
 	canDo { arg what, action;
 		this.prMakeOscFunc({ arg msg;
@@ -970,6 +1062,7 @@ VSTPluginController {
 		}, '/vst_can_do').oneShot;
 		this.sendMsg('/can_do', what);
 	}
+
 	vendorMethod { arg index=0, value=0, ptr, opt=0.0, action, async=true;
 		this.prMakeOscFunc({ arg msg;
 			action.value(msg[3].asInteger);
@@ -977,20 +1070,25 @@ VSTPluginController {
 		this.sendMsg('/vendor_method', index.asInteger, value.asInteger,
 			ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}
+
 	vendorMethodMsg { arg index=0, value=0, ptr, opt=0.0, action, async=true;
 		^this.makeMsg('/vendor_method', index.asInteger, value.asInteger,
 			ptr.as(Int8Array), opt.asFloat, async.asInteger);
 	}
+
 	// internal
 	sendMsg { arg cmd ... args;
 		synth.server.sendMsg('/u_cmd', synth.nodeID, synthIndex, cmd, *args);
 	}
+
 	makeMsg { arg cmd ... args;
 		^['/u_cmd', synth.nodeID, synthIndex, cmd] ++ args;
 	}
+
 	prMakeOscFunc { arg func, path ... argTemplate;
 		^OSCFunc(func, path, synth.server.addr, argTemplate: [synth.nodeID, synthIndex] ++ argTemplate);
 	}
+
 	*msg2string { arg msg, onset=0;
 		// format: len, chars...
 		var len = msg[onset].asInteger;
@@ -998,6 +1096,7 @@ VSTPluginController {
 			^msg[(onset+1)..(onset+len)].collectAs({arg item; item.asInteger.asAscii}, String);
 		} { ^"" };
 	}
+
 	prQueryParams { arg wait, needFork=false;
 		(this.dependants.size > 0).if {
 			needFork.if {
@@ -1014,6 +1113,7 @@ VSTPluginController {
 			needQueryParams = false;
 		} { needQueryParams = true; }
 	}
+
 	prQueryPrograms { arg wait;
 		(this.dependants.size > 0).if {
 			forkIfNeeded {
@@ -1022,6 +1122,7 @@ VSTPluginController {
 			needQueryPrograms = false;
 		} { needQueryPrograms = true; }
 	}
+
 	prQuery { arg wait, num, cmd;
 		var div, mod;
 		div = num.div(16);
@@ -1046,69 +1147,90 @@ VSTPluginMIDIProxy {
 	*new { arg theOwner;
 		^super.new.owner_(theOwner);
 	}
+
 	// dummy setter/getter for compatibility with MIDIOut
 	latency { ^0; }
+
 	latency_ {
 		"Calling 'latency' on VSTPluginMIDIProxy has no effect.\n"
 		"If you want to schedule MIDI messages on the Server, use Server.bind or similar methods.".warn;
 		^this;
 	}
+
 	write { arg len, hiStatus, loStatus, a=0, b=0, detune;
 		owner.sendMidi(hiStatus bitOr: loStatus, a, b, detune);
 	}
+
 	writeMsg { arg len, hiStatus, loStatus, a=0, b=0, detune;
 		^owner.sendMidiMsg(hiStatus bitOr: loStatus, a, b, detune);
 	}
+
 	noteOn { arg chan, note=60, veloc=64;
 		this.write(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
+
 	noteOnMsg { arg chan, note=60, veloc=64;
 		^this.writeMsg(3, 16r90, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
+
 	noteOff { arg chan, note=60, veloc=64;
 		this.write(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
+
 	noteOffMsg { arg chan, note=60, veloc=64;
 		^this.writeMsg(3, 16r80, chan.asInteger, note.asInteger, veloc.asInteger, note.frac * 100);
 	}
+
 	polyTouch { arg chan, note=60, val=64;
 		this.write(3, 16rA0, chan.asInteger, note.asInteger, val.asInteger);
 	}
+
 	polyTouchMsg { arg chan, note=60, val=64;
 		^this.writeMsg(3, 16rA0, chan.asInteger, note.asInteger, val.asInteger);
 	}
+
 	control { arg chan, ctlNum=7, val=64;
 		this.write(3, 16rB0, chan.asInteger, ctlNum.asInteger, val.asInteger);
 	}
+
 	controlMsg { arg chan, ctlNum=7, val=64;
 		^this.writeMsg(3, 16rB0, chan.asInteger, ctlNum.asInteger, val.asInteger);
 	}
+
 	program { arg chan, num=1;
 		this.write(2, 16rC0, chan.asInteger, num.asInteger);
 	}
+
 	programMsg { arg chan, num=1;
 		^this.writeMsg(2, 16rC0, chan.asInteger, num.asInteger);
 	}
+
 	touch { arg chan, val=64;
 		this.write(2, 16rD0, chan.asInteger, val.asInteger);
 	}
+
 	touchMsg { arg chan, val=64;
 		^this.writeMsg(2, 16rD0, chan.asInteger, val.asInteger);
 	}
+
 	bend { arg chan, val=8192;
 		val = val.asInteger;
 		this.write(3, 16rE0, chan, val bitAnd: 127, val >> 7);
 	}
+
 	bendMsg { arg chan, val=8192;
 		val = val.asInteger;
 		^this.writeMsg(3, 16rE0, chan, val bitAnd: 127, val >> 7);
 	}
+
 	allNotesOff { arg chan;
 		this.control(chan, 123, 0);
 	}
+
 	allNotesOffMsg { arg chan;
 		^this.controlMsg(chan, 123, 0);
 	}
+
 	smpte	{ arg frames=0, seconds=0, minutes=0, hours=0, frameRate = 3;
 		var packet;
 		packet = [frames, seconds, minutes, hours]
@@ -1118,54 +1240,70 @@ VSTPluginMIDIProxy {
 		packet.put(7, packet.at(7) | ( frameRate << 1 ) );
 		packet.do({ arg v; this.write(2, 16rF0, 16r01, v); });
 	}
+
 	// smpteMsg not practicable
 	songPtr { arg songPtr;
 		songPtr = songPtr.asInteger;
 		this.write(4, 16rF0, 16r02, songPtr & 16r7f, songPtr >> 7 & 16r7f);
 	}
+
 	songPtrMsg { arg songPtr;
 		songPtr = songPtr.asInteger;
 		^this.writeMsg(4, 16rF0, 16r02, songPtr & 16r7f, songPtr >> 7 & 16r7f);
 	}
+
 	songSelect { arg song;
 		this.write(3, 16rF0, 16r03, song.asInteger);
 	}
+
 	songSelectMsg { arg song;
 		^this.writeMsg(3, 16rF0, 16r03, song.asInteger);
 	}
+
 	midiClock {
 		this.write(1, 16rF0, 16r08);
 	}
+
 	midiClockMsg {
 		^this.writeMsg(1, 16rF0, 16r08);
 	}
+
 	start {
 		this.write(1, 16rF0, 16r0A);
 	}
+
 	startMsg {
 		^this.writeMsg(1, 16rF0, 16r0A);
 	}
+
 	continue {
 		this.write(1, 16rF0, 16r0B);
 	}
+
 	continueMsg {
 		^this.writeMsg(1, 16rF0, 16r0B);
 	}
+
 	stop {
 		this.write(1, 16rF0, 16r0C);
 	}
+
 	stopMsg {
 		^this.writeMsg(1, 16rF0, 16r0C);
 	}
+
 	reset {
 		this.write(1, 16rF0, 16r0F);
 	}
+
 	resetMsg {
 		^this.writeMsg(1, 16rF0, 16r0F);
 	}
+
 	sysex { arg packet;
 		owner.sendSysex(packet);
 	}
+
 	sysexMsg { arg packet;
 		^owner.sendSysexMsg(packet);
 	}
