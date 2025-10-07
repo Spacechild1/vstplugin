@@ -409,20 +409,16 @@ std::string PluginDesc::getPresetFolder(PresetType type, bool create) const {
 /// <program2>
 /// ...
 
-static std::string bashString(std::string name){
-    // replace "forbidden" characters
-    for (auto& c : name){
-        switch (c){
-        case ',':
-        case '\n':
-        case '\r':
-            c = '_';
-            break;
-        default:
-            break;
+static std::string bashString(std::string_view str) {
+    std::string out;
+    out.reserve(str.size());
+    // skip "forbidden" characters
+    for (auto& c : str) {
+        if (c != ',' && c != '\n' && c != '\r') {
+            out.push_back(c);
         }
     }
-    return name;
+    return out;
 }
 
 #define toHex(x) std::hex << (x) << std::dec
@@ -444,16 +440,16 @@ void PluginDesc::serialize(std::ostream& file) const {
         file << "[subplugins]\n";
         file << "n=" << (int)subPlugins.size() << "\n";
         for (auto& sub : subPlugins){
-            file << sub.name << "," << toHex(sub.id) << "\n";
+            file << bashString(sub.name) << "," << toHex(sub.id) << "\n";
         }
         return;
     }
     file << "[plugin]\n";
     file << "path=" << path() << "\n";
     file << "id=" << uniqueID << "\n";
-    file << "name=" << name << "\n";
-    file << "vendor=" << vendor << "\n";
-    file << "category=" << category << "\n";
+    file << "name=" << bashString(name) << "\n";
+    file << "vendor=" << bashString(vendor) << "\n";
+    file << "category=" << bashString(category) << "\n";
     file << "version=" << version << "\n";
     file << "sdkversion=" << sdkVersion << "\n";
     file << "flags=" << toHex(flags) << "\n";
@@ -485,7 +481,7 @@ void PluginDesc::serialize(std::ostream& file) const {
     file << "[programs]\n";
     file << "n=" << programs.size() << "\n";
     for (auto& pgm : programs) {
-        file << pgm << "\n";
+        file << bashString(pgm) << "\n";
     }
 }
 
