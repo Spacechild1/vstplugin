@@ -626,7 +626,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                     try {
                         param.id = fromHex(args[2]);
                     } catch (...) {
-                        throw Error("bad parameter ID");
+                        throw Error("bad parameter ID '" + args[2] + "'");
                     }
                 }
                 if (args.size() >= 4){
@@ -634,7 +634,7 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
                         auto flags = fromHex(args[3]);
                         param.automatable = flags & 1;
                     } catch (...) {
-                        throw Error("bad parameter flags");
+                        throw Error("bad parameter flags '" + args[3] + "'");
                     }
                 }
                 addParameter(std::move(param));
@@ -652,13 +652,21 @@ void PluginDesc::deserialize(std::istream& file, int versionMajor,
             subPlugins.clear();
             std::getline(file, line);
             int n = getCount(line);
-            while (n-- && std::getline(file, line)){
-                auto pos = line.find(',');
-                SubPlugin sub;
-                sub.name = rtrim(line.substr(0, pos));
-                sub.id = fromHex(line.substr(pos + 1));
-                // LOG_DEBUG("got subplugin " << sub.name << " " << sub.id);
-                subPlugins.push_back(std::move(sub));
+            while (n-- && std::getline(file, line)) {
+                auto args = splitString(line, ',');
+                if (args.size() == 2) {
+                    SubPlugin sub;
+                    sub.name = args[0];
+                    try {
+                        sub.id = fromHex(args[1]);
+                    } catch (...) {
+                        throw Error("bad sub plugin ID '" + args[1] + "'");
+                    }
+                    // LOG_DEBUG("got subplugin " << sub.name << " " << sub.id);
+                    subPlugins.push_back(std::move(sub));
+                } else {
+                    throw Error("bad sub-plugin arguments");
+                }
             }
             break; // done
         } else if (start){

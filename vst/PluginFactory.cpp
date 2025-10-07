@@ -245,6 +245,8 @@ PluginFactory::ProbeResultFuture PluginFactory::doProbePlugin(
                 try {
                     desc->deserialize(file);
                 } catch (const Error& e) {
+                    LOG_ERROR("VSTPlugin: could not read plugin info: "
+                              + std::string(e.what()));
                     result.error = e;
                 }
             } else {
