@@ -37,6 +37,7 @@ PRIVATE:: prMakePluginBrowser
 INSTANCEMETHODS::
 
 PRIVATE:: guify, prOpen, prClose, prFree, prParam, prProgram, prProgramIndex, prUpdateGui, writeName
+PRIVATE:: prBrowse, prParamChanged, prPresetSelect, prUpdatePresets, viewDidClose
 
 METHOD:: gui
 Initialize the GUI.
