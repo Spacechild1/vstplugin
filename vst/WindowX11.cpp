@@ -155,11 +155,14 @@ void EventLoop::run() {
     assert(UIThread::isCurrentThread());
     LOG_DEBUG("X11: start event loop");
     while (running_.load()) {
+        // NB: check for pending X11 events *before* polling the display fd!
+        // The display fd only becomes ready when there are incoming messages from
+        // the X11 server, not when there are pending events in the internal queue.
+        pollX11Events();
+
         auto wait = updateTimers();
 
         pollFileDescriptors(wait);
-
-        pollX11Events();
 
         handleCommands();
     }
@@ -224,20 +227,21 @@ int EventLoop::updateTimers() {
 void EventLoop::pollFileDescriptors(int timeout){
     // NB: we copy the fd array to prevent it from being modified
     // from within event handlers!
-    int count = eventHandlers_.size();
+    int numEventHandlers = eventHandlers_.size();
     // allocate extra fds for eventfd_ and displayfd_
-    auto fds = (pollfd *)alloca(sizeof(pollfd) * (count + 2));
+    int fdcount = numEventHandlers + 2;
+    auto fds = (pollfd *)alloca(sizeof(pollfd) * fdcount);
     auto it = eventHandlers_.begin();
-    for (int i = 0; i < count; ++i, ++it){
+    for (int i = 0; i < numEventHandlers; ++i, ++it) {
         fds[i].fd = it->first;
         fds[i].events = POLLIN;
         fds[i].revents = 0;
     }
-    auto event_index = count;
+    auto event_index = numEventHandlers;
     fds[event_index].fd = eventfd_;
     fds[event_index].events = POLLIN;
     fds[event_index].revents = 0;
-    auto display_index = count + 1;
+    auto display_index = numEventHandlers + 1;
     fds[display_index].fd = displayfd_;
     fds[display_index].events = POLLIN;
     fds[display_index].revents = 0;
@@ -246,18 +250,18 @@ void EventLoop::pollFileDescriptors(int timeout){
         LOG_DEBUG("X11: waiting...");
     }
 
-    auto result = poll(fds, count + 1, timeout);
+    auto result = poll(fds, fdcount, timeout);
     if (result > 0) {
         // check registered event handler fds
-        for (int i = 0; i < count; ++i) {
-            if (auto revents = fds[i].revents; revents != 0){
+        for (int i = 0; i < numEventHandlers; ++i) {
+            if (auto revents = fds[i].revents; revents != 0) {
                 auto fd = fds[i].fd;
                 // check if handler still exists!
                 auto it = eventHandlers_.find(fd);
-                if (it != eventHandlers_.end()){
+                if (it != eventHandlers_.end()) {
                     auto& handler = it->second;
-                    if (revents & POLLIN){
-                        LOG_DEBUG("X11: fd " << fd << " became ready!");
+                    if (revents & POLLIN) {
+                        // LOG_DEBUG("X11: fd " << fd << " became ready!");
                         handler.cb(fd, handler.obj);
                     } else {
                         LOG_ERROR("X11: eventfd " << fd
@@ -272,9 +276,9 @@ void EventLoop::pollFileDescriptors(int timeout){
             if (revents & POLLIN){
                 uint64_t data;
                 auto n = read(eventfd_, &data, sizeof(data));
-                if (n < 0){
+                if (n < 0) {
                     LOG_ERROR("X11: couldn't read eventfd: " << strerror(errno));
-                } else if (n != sizeof(data)){
+                } else if (n != sizeof(data)) {
                     LOG_ERROR("X11: read wrong number of bytes from eventfd");
                 }
             } else {
@@ -284,7 +288,7 @@ void EventLoop::pollFileDescriptors(int timeout){
         }
         // check displayfd
         if (auto revents = fds[display_index].revents; revents != 0) {
-            if (revents & POLLIN){
+            if (revents & POLLIN) {
                 // LOG_DEBUG("X11: display ready");
             } else {
                 LOG_ERROR("X11: display poll error");
