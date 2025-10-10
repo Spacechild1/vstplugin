@@ -11,6 +11,12 @@ set(LOG_LEVEL "INFO" CACHE STRING "Log level")
 set_property(CACHE LOG_LEVEL PROPERTY STRINGS "SILENT;ERROR;WARNING;INFO;DEBUG;VERBOSE")
 message(STATUS "Log level: ${LOG_LEVEL}")
 target_compile_definitions(vst_public INTERFACE LOG_LEVEL=LOG_LEVEL_${LOG_LEVEL})
+# warn about old LOGLEVEL variable and remove it from the cache
+if (DEFINED LOGLEVEL)
+    message(WARNING "The LOGLEVEL option has been removed, please use LOG_LEVEL instead. "
+            "Note that the log level is now provided as a string, e.g. 'INFO'")
+    unset(LOGLEVEL CACHE)
+endif()
 
 # Windows version
 if (WIN32)
