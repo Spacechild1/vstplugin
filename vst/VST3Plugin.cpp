@@ -831,7 +831,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
     }
 #endif
 
-    // NB: don't call hasEditor() because it would create the plugin view!
+    // NB: don't call checkEditor() because it would create the plugin view!
     if (editor && info_->editor()) {
         uniqueId_ = registerPlugin(this);
         window_ = IWindow::create(*this);
@@ -846,6 +846,7 @@ VST3Plugin::~VST3Plugin() {
     }
     listener_ = nullptr; // for some buggy plugins
     window_ = nullptr;
+    view_ = nullptr;
     // terminate controller - but only if we had to create it!
     if (!FUnknownPtr<Vst::IEditController>(component_)) {
         LOG_DEBUG("VST3Plugin: terminate controller");
