@@ -344,15 +344,10 @@ File::File(const std::string& path, Mode mode)
 // might create problems on Windows... LATER fix this
     : std::fstream(path,
 #endif
-                   ios_base::binary |
-                   (mode == READ ? ios_base::in : (ios_base::out | ios_base::trunc))) {}
+                   binary | (mode == READ ? in : (out | trunc))) {}
 
 std::string File::readAll()
 {
-    // NB: we might be tempted to get the file size with tellg(), allocate the
-    // buffer and then read everything with a single read() call. Unfortunately,
-    // the return value of tellg() is not 100% reliable. For example, on macOS
-    // it is rounded down to multiples of the block size!
     return std::string{std::istreambuf_iterator<char>{*this}, std::istreambuf_iterator<char>{}};
 }
 
