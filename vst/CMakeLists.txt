@@ -18,6 +18,15 @@ if (DEFINED LOGLEVEL)
     unset(LOGLEVEL CACHE)
 endif()
 
+# settings
+if (LINUX)
+    option(USE_RTLD_DEEPBIND "Load plugin modules with RTLD_DEEPBIND flag" OFF)
+    if (USE_RTLD_DEEPBIND)
+        message(STATUS "Load plugin modules with RTLD_DEEPBIND flag.")
+    endif()
+    target_compile_definitions(vst_common INTERFACE USE_RTLD_DEEPBIND=$<BOOL:${USE_RTLD_DEEPBIND}>)
+endif()
+
 # Windows version
 if (WIN32)
     # requires at least Windows 7

@@ -129,8 +129,13 @@ class ModuleSO : public IModule {
  public:
     typedef bool (PLUGIN_API* InitFunc) (void*);
     typedef bool (PLUGIN_API* ExitFunc) ();
-    ModuleSO(const std::string& path){
-        handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_DEEPBIND);
+    ModuleSO(const std::string& path) {
+#if USE_RTLD_DEEPBIND
+        int flags = RTLD_NOW | RTLD_DEEPBIND;
+#else
+        int flags = RTLD_NOW;
+#endif
+        handle_ = dlopen(path.c_str(), flags);
         if (!handle_) {
             auto error = dlerror();
             std::stringstream ss;

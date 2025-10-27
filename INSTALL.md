@@ -116,6 +116,8 @@ sudo apt-get update
 sudo apt-get install libx11-dev:i386 gcc-multilib g++-multilib
 ```
 
+The `USE_RTLD_DEEPBIND` option controls whether plugin modules are loaded with the `RTLD_DEEPBIND` flag.
+For more information see the "Known issues" section in [pd/README.md](pd/README.md).
 
 #### Build project:
 
