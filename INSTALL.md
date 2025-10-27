@@ -9,7 +9,7 @@ If you only want to only build the Pd or Supercollider version, simply set the `
 
 ##### Static linking
 
-If `STATIC_LIBS` is `ON`, the binaries are linked statically with `libstdc++` and `libgcc` (for MinGW also `libpthread`);
+If `STATIC_LIBS` is `ON`, the binaries are linked statically with `libstdc++` and `libgcc` (and `libpthread` for MinGW);
 otherwise they are linked dynamically. The default is `ON` for MinGW (Windows) and `OFF` for Linux.
 On other platforms (Visual Studio, macOS), the option has no effect and you always get a dynamically linked build.
 
@@ -84,15 +84,6 @@ By default, the minimum Windows deployment target is Windows 7. You may choose a
 
 If you compile with MinGW, make sure to choose the appropriate generator with `cmake .. -G "Unix Makefiles"`.
 Alternatively, you can pick a generator in cmake-gui when you first click "Configure". In this case you should also select the correct toolchain.
-
-##### Warning about 32-bit MinGW
-
-If you build a 32-bit(!) version with MinGW and the host (Pd or Supercollider) has also been compiled with MinGW, exception handling might be broken due to a compiler bug.
-This only seems to happen if either the plugin or the host (but not both!) link statically against libstdc++ and libgcc. By default we link statically, so we don't have to ship additional DLLs.
-This generally works fine (because Pd is statically linked and Supercollider is nowadays built with MSVC), but it might cause troubles if you build a *dynamically* linked 32-bit Supercollider/Pd with MinGW.
-In this special case you should set `STATIC_LIBS` to `OFF` so that `VSTPlugin` resp. `vstplugin~` are also linked dynamically.
-To sum it up: MinGW <-> Visual Studio should always work, but MinGW (32-bit, dynamically linked) <-> MinGW (32-bit, statically linked) causes big troubles.
-I know, it's ridiculous!
 
 
 #### macOS
