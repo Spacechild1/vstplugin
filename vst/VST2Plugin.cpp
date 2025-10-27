@@ -917,7 +917,7 @@ void VST2Plugin::readProgramData(const char *data, size_t size){
     // validate 'byteSize' field against the actual data size.
     // NB: byteSize excludes 'chunkMagic' and 'byteSize' fields
     const size_t totalByteSize = byteSize + 8;
-    if (totalByteSize < size){
+    if (size < totalByteSize) {
         std::stringstream ss;
         ss << "fxProgram: wrong data size (expected "
            << totalByteSize << " bytes, received " << size << " bytes)";
