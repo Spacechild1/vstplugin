@@ -14,9 +14,6 @@ variables:
   LOGLEVEL:
     value: "INFO"
     description: "Set log level"
-  STATIC_LINKING:
-    value: 1
-    description: "Static linking"
   PDVERSION: 0.54-1
   VST2DIR: /tmp/vst2sdk
   VST3DIR: /tmp/vst3sdk
@@ -95,7 +92,7 @@ variables:
   extends: .build:script
   image: registry.git.iem.at/devtools/docker/debiancross:amd64
   variables:
-    STATIC_LIBS: ${STATIC_LINKING}
+    STATIC_LIBS: 0
     SUPERNOVA: 1
     WINE: 1
   only:
@@ -132,7 +129,7 @@ variables:
   extends: .build:script
   image: registry.git.iem.at/devtools/docker/debiancross:amd64
   variables:
-    STATIC_LIBS: ${STATIC_LINKING}
+    STATIC_LIBS: 0
     BUILD_WINE: 1
   only:
     variables:
@@ -181,7 +178,7 @@ variables:
   variables:
     CMAKE: mingw-w64-i686-cmake
     PD_URL: http://msp.ucsd.edu/Software/pd-${PDVERSION}-i386.msw.zip
-    STATIC_LIBS: ${STATIC_LINKING}
+    STATIC_LIBS: 1
     SUPERNOVA: 1
   only:
     variables:
