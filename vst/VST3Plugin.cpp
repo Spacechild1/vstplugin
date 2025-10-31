@@ -1749,13 +1749,26 @@ void VST3Plugin::sendMidiEvent(const MidiEvent &event){
         e.noteOff.tuning = event.detune;
         break;
     case 0x90: // note on
-        e.type = Vst::Event::kNoteOnEvent;
-        e.noteOn.channel = channel;
-        e.noteOn.noteId = -1;
-        e.noteOn.pitch = data1;
-        e.noteOn.velocity = data2 / 127.f;
-        e.noteOn.length = 0;
-        e.noteOn.tuning = event.detune;
+        // VST3 pretends not to know about MIDI so plugins are not required
+        // to treat a note-on message with velocity 0 as a note-off message.
+        // There are indeed some plugins that do that, which would lead to
+        // hanging notes.
+        if (data2 > 0) {
+            e.type = Vst::Event::kNoteOnEvent;
+            e.noteOn.channel = channel;
+            e.noteOn.noteId = -1;
+            e.noteOn.pitch = data1;
+            e.noteOn.velocity = data2 / 127.f;
+            e.noteOn.length = 0;
+            e.noteOn.tuning = event.detune;
+        } else {
+            e.type = Vst::Event::kNoteOffEvent;
+            e.noteOff.channel = channel;
+            e.noteOff.noteId = -1;
+            e.noteOff.pitch = data1;
+            e.noteOff.velocity = 0;
+            e.noteOff.tuning = event.detune;
+        }
         break;
     case 0xa0: // polytouch
         e.type = Vst::Event::kPolyPressureEvent;
