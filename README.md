@@ -83,6 +83,39 @@ Please report any problems on the issue tracker (https://git.iem.at/pd/vstplugin
 
 ---
 
+### macOS 10.15+
+
+Please follow these steps (many thanks to Joseph Anderson!) after downloading and installing:
+
+1)  un-quarantine VSTPlugin/vstplugin~ executables:
+
+    Using the terminal, navigate to your Pd external resp. SC extension folder and then run:
+
+    SC: `xattr -rd com.apple.quarantine ./VSTPlugin`
+
+    Pd: `xattr -rd com.apple.quarantine ./vstplugin~`
+
+2)  add unsigned VST plugins to Gatekeeper's enabled list:
+
+    Using the terminal, navigate to the folder(s) containing VSTs to enable.
+    The following will create a label, ApprovedVSTs, and then add all VSTs in the directory:
+
+    `spctl --add --label "ApprovedVSTs" *.vst *.vst3`
+
+    Once this is done, the following informs Gatekeeper these are approved:
+
+    `spctl --enable --label "ApprovedVSTs"`
+
+3)  clear the plugin cache
+
+    It is a good idea to go ahead and clear the plugin cache, in case some quarantined plugins have been black-listed already.
+
+    SC: boot the SuperCollider Server, then evaluate: `VSTPlugin.clear`
+
+    PD: open `vstplugin~-help.pd`, visit `[pd search]` and click the `[clear 1(` message.
+
+---
+
 ### Licensing:
 
 The source code for the Pd external and Supercollider UGen is permissively licensed, but note that you also have to comply with the licensing terms of the VST SDK(s) you're using!

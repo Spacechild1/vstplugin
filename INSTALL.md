@@ -148,35 +148,3 @@ To enable Wine support on Linux, you need to follow these steps:
 
 4)  Build + install the project with `cmake --build . -j -v -t install`;
     this will install `host_pe_amd64` (and optionally `host_pe_i386`) in the specified directories.
-
-
-### macOS 10.15+
-
-Please follow these steps (many thanks to Joseph Anderson) after downloading and installing:
-
-1)  un-quarantine VSTPlugin/vstplugin~ executables:
-
-    Using the terminal, navigate to your Pd external resp. SC extension folder and then run:
-
-    SC: `xattr -rd com.apple.quarantine ./VSTPlugin`
-
-    Pd: `xattr -rd com.apple.quarantine ./vstplugin~`
-
-2)  add unsigned VST plugins to Gatekeeper's enabled list:
-
-    Using the terminal, navigate to the folder(s) containing VSTs to enable.
-    The following will create a label, ApprovedVSTs, and then add all VSTs in the directory:
-
-    `spctl --add --label "ApprovedVSTs" *.vst *.vst3`
-
-    Once this is done, the following informs Gatekeeper these are approved:
-
-    `spctl --enable --label "ApprovedVSTs"`
-
-3)  clear the plugin cache
-
-    It is a good idea to go ahead and clear the plugin cache, in case some quarantined plugins have been black-listed already.
-
-    SC: boot the SuperCollider Server, then evaluate: `VSTPlugin.clear`
-
-    PD: open `vstplugin~-help.pd`, visit `[pd search]` and click the `[clear 1(` message.
