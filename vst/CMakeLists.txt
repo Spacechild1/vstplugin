@@ -37,16 +37,23 @@ if (WIN32)
 endif()
 
 target_sources(vst_common INTERFACE
-    "Bus.h" "CpuArch.cpp" "CpuArch.h"
+    "Bus.h"
+    "CpuArch.cpp" "CpuArch.h"
     "FileUtils.cpp" "FileUtils.h"
-    "HostApp.cpp" "HostApp.h"
-    "Interface.h" "Lockfree.h" "Log.h"
-    "MiscUtils.cpp" "MiscUtils.h" "Module.cpp"
-    "PluginCommand.h" "PluginDesc.cpp" "PluginDesc.h"
-    "PluginDictionary.cpp" "PluginDictionary.h"
-    "PluginFactory.cpp" "PluginFactory.h"
-    "Search.cpp" "Sync.cpp" "Sync.h"
-    "ThreadedPlugin.cpp" "ThreadedPlugin.h")
+    "HostApp.h" "HostApp.cpp"
+    "Interface.h"
+    "Lockfree.h"
+    "Log.h"
+    "MiscUtils.h" "MiscUtils.cpp"
+    "Module.cpp"
+    "PluginCommand.h"
+    "PluginDesc.h" "PluginDesc.cpp"
+    "PluginDictionary.h" "PluginDictionary.cpp"
+    "PluginFactory.h" "PluginFactory.cpp"
+    "Search.cpp"
+    "StringConvert.h" "StringConvert.cpp"
+    "Sync.h" "Sync.cpp"
+    "ThreadedPlugin.h" "ThreadedPlugin.cpp")
 
 # platform specific VST sources and defines
 if (WIN32 OR BUILD_WINE)

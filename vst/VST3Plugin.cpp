@@ -3,6 +3,7 @@
 #include "Log.h"
 #include "FileUtils.h"
 #include "MiscUtils.h"
+#include "StringConvert.h"
 #include "Sync.h"
 
 #if SMTG_OS_LINUX
@@ -114,58 +115,6 @@ const Vst::ChunkID& getChunkID (Vst::ChunkType type)
 
 
 namespace vst {
-
-/*///////////////// string conversion //////////////////////////*/
-
-// On Wine std::wstring_convert would throw an exception
-// when using wchar_t, although it has the same size as char16_t.
-// Maybe because of some template specialization? Dunno...
-#if defined(_WIN32) && !defined(__WINE__)
-using unichar = wchar_t;
-#else
-using unichar = char16_t;
-#endif
-
-using StringConverter = std::wstring_convert<std::codecvt_utf8_utf16<unichar>, unichar>;
-
-static StringConverter& stringConverter(){
-#ifdef _WIN32
-    static_assert(sizeof(wchar_t) == sizeof(char16_t), "bad size for wchar_t!");
-#endif
-#ifdef __MINGW32__
-    // because of a mingw32 bug, destructors of thread_local STL objects segfault...
-    thread_local auto conv = new StringConverter;
-    return *conv;
-#else
-    thread_local StringConverter conv;
-    return conv;
-#endif
-}
-
-std::string convertString(const Vst::String128 str){
-    try {
-        return stringConverter().to_bytes(reinterpret_cast<const unichar *>(str));
-    } catch (const std::range_error& e){
-        throw Error(Error::SystemError, std::string("convertString() failed: ") + e.what());
-    }
-}
-
-bool convertString (std::string_view src, Steinberg::Vst::String128 dst){
-    if (src.size() >= 128) {
-        return false;
-    }
-    try {
-        auto wstr = stringConverter().from_bytes(src.data(), src.data() + src.size());
-        int n = wstr.size() + 1;
-        for (int i = 0; i < n; ++i){
-            dst[i] = wstr[i];
-        }
-        return true;
-    } catch (const std::range_error& e){
-        LOG_ERROR("convertString() failed: " << + e.what());
-        return false;
-    }
-}
 
 /*//////////////////// plugin registry ////////////////////////*/
 
@@ -662,7 +611,7 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 if (component_->getBusInfo(Vst::kAudio, dir, i, busInfo) == kResultTrue){
                     PluginDesc::Bus bus;
                     bus.numChannels = busInfo.channelCount;
-                    bus.label = convertString(busInfo.name);
+                    bus.label = StringConvert::convert(busInfo.name).value_or("?");
                     bus.type = (busInfo.busType == Vst::kAux) ?
                                 PluginDesc::Bus::Aux : PluginDesc::Bus::Main;
                     result.push_back(std::move(bus));
@@ -712,8 +661,8 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
             PluginDesc::Param param;
             Vst::ParameterInfo pi;
             if (controller_->getParameterInfo(i, pi) == kResultTrue){
-                param.name = convertString(pi.title);
-                param.label = convertString(pi.units);
+                param.name = StringConvert::convert(pi.title).value_or("?");
+                param.label = StringConvert::convert(pi.units).value_or("?");
                 param.id = pi.id;
                 // some plugins have duplicate parameters... why?
                 if (params.count(pi.id)){
@@ -765,8 +714,9 @@ VST3Plugin::VST3Plugin(IPtr<IPluginFactory> factory, int which, IFactory::const_
                 if (ui->getProgramListInfo(0, pli) == kResultTrue){
                     for (int i = 0; i < pli.programCount; ++i){
                         Vst::String128 name;
-                        if (ui->getProgramName(pli.id, i, name) == kResultTrue){
-                            newInfo->programs.push_back(convertString(name));
+                        if (ui->getProgramName(pli.id, i, name) == kResultTrue) {
+                            auto str = StringConvert::convert(name).value_or("?");
+                            newInfo->programs.push_back(std::move(str));
                         } else {
                             LOG_ERROR("VST3Plugin: couldn't get program name!");
                             newInfo->programs.push_back("");
@@ -965,9 +915,9 @@ tresult VST3Plugin::start(ProgressType type, const tchar *description, ID& id) {
         what = "unknown task";
     }
     std::string desc;
-    if (description){
+    if (description) {
     #ifdef UNICODE
-        desc = stringConverter().to_bytes(reinterpret_cast<const unichar *>(description));
+        desc = StringConvert::convert(description).value_or("?");
     #else
         desc = description;
     #endif
@@ -2748,12 +2698,12 @@ HostApplication::~HostApplication() {}
 
 tresult PLUGIN_API HostApplication::getName (Vst::String128 name){
     LOG_DEBUG("HostApplication: getName");
-#ifdef PD
-    convertString("vstplugin~", name);
-#else
-    convertString("VSTPlugin", name);
-#endif
-    return kResultTrue;
+    // TODO: get host program at runtime so we can print either "vstplugin~" or "VSTPlugin".
+    if (StringConvert::convert("VSTPlugin", name)) {
+        return kResultTrue;
+    } else {
+        return kOutOfMemory;
+    }
 }
 
 tresult PLUGIN_API HostApplication::createInstance (TUID cid, TUID _iid, void** obj){
@@ -2938,7 +2888,7 @@ void HostAttributeList::print(){
             log << attr.v.f;
             break;
         case HostAttribute::kString:
-            log << convertString(attr.v.s);
+            log << StringConvert::convert(attr.v.s).value_or("?");
             break;
         case HostAttribute::kBinary:
             log << ": [binary]";
