@@ -730,6 +730,55 @@ Arguments:
 | int        | node ID
 | int        | synth index
 
+### /vst_editor_pos
+
+The editor position has changed. This is sent whenever the user
+moves the editor, either manually or with the /vst_pos message.
+It is also sent when the editor is opened for the first time.
+
+Arguments:
+| type       ||
+| ---------- |-|
+| int        | node ID
+| int        | synth index
+| int        | window x coordinate
+| int        | window y coordinate
+
+### /vst_editor_size
+
+The editor size has changed. This is sent whenever the user
+resizes the editor, either manually or with the /vst_size message.
+It is also sent when the editor is opened for the first time.
+
+Arguments:
+| type       ||
+| ---------- |-|
+| int        | node ID
+| int        | synth index
+| int        | window width
+| int        | window height
+
+### /vst_editor_vis
+
+The editor visibility has changed.
+
+Arguments:
+| type       ||
+| ---------- |-|
+| int        | node ID
+| int        | synth index
+| int        | 1: visible, 0: hidden
+
+### /vst_editor_closed
+
+The editor has been closed by the user.
+
+Arguments:
+| type       ||
+| ---------- |-|
+| int        | node ID
+| int        | synth index
+
 ### /vst_crash
 
 The plugin has crashed.

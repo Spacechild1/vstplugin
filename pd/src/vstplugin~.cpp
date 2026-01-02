@@ -935,6 +935,31 @@ void t_vsteditor::pluginCrashed(){
     post_event(e);
 }
 
+// comes from the UI thread
+void t_vsteditor::editorMoved(int x, int y) {
+    t_event e(t_event::EditorMoved);
+    e.editorMoved.x = x;
+    e.editorMoved.y = y;
+
+    post_event(e);
+}
+
+// comes from the UI thread
+void t_vsteditor::editorResized(int w, int h) {
+    t_event e(t_event::EditorResized);
+    e.editorResized.w = w;
+    e.editorResized.h = h;
+
+    post_event(e);
+}
+
+// comes from the UI thread
+void t_vsteditor::editorClosed() {
+    t_event e(t_event::EditorClosed);
+
+    post_event(e);
+}
+
 // MIDI and SysEx events might be send from both the audio thread (e.g. arpeggiator) or GUI thread (MIDI controller)
 void t_vsteditor::midiEvent(const MidiEvent &event){
     t_event e(t_event::Midi);
@@ -1037,6 +1062,29 @@ void t_vsteditor::tick(t_vsteditor *x){
             x->update(true);
             // send message
             outlet_anything(outlet, gensym("update"), 0, nullptr);
+            break;
+        }
+        case t_event::EditorMoved:
+        {
+            t_atom msg[2];
+            SETFLOAT(&msg[0], e.editorMoved.x);
+            SETFLOAT(&msg[1], e.editorMoved.y);
+            outlet_anything(outlet, gensym("editor_pos"), 2, msg);
+            break;
+        }
+        case t_event::EditorResized:
+        {
+            t_atom msg[2];
+            SETFLOAT(&msg[0], e.editorResized.w);
+            SETFLOAT(&msg[1], e.editorResized.h);
+            outlet_anything(outlet, gensym("editor_size"), 2, msg);
+            break;
+        }
+        case t_event::EditorClosed:
+        {
+            t_atom msg;
+            SETFLOAT(&msg, 0);
+            outlet_anything(outlet, gensym("editor_vis"), 1, &msg);
             break;
         }
         case t_event::Crash:
@@ -1254,14 +1302,18 @@ void t_vsteditor::defer_safe(const T& fn, bool uithread){
     }
 }
 
-void t_vsteditor::vis(bool v){
+void t_vsteditor::vis(bool v) {
     auto win = window();
-    if (win){
-        if (v){
+    if (win) {
+        if (v) {
             win->open();
         } else {
             win->close();
         }
+        // for now only send visibility status of VST editor
+        t_atom msg;
+        SETFLOAT(&msg, v ? 1.0 : 0.0);
+        outlet_anything(e_owner->x_messout, gensym("editor_vis"), 1, &msg);
     } else if (e_canvas) {
         send_vmess(gensym("vis"), "i", (int)v);
     }
@@ -2067,7 +2119,7 @@ static void vstplugin_offline(t_vstplugin *x, t_floatarg f){
 /*~~~~~~~~~~~~~~~~~~~~ editor window ~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 // show/hide editor window
-static void vstplugin_vis(t_vstplugin *x, t_floatarg f){
+static void vstplugin_vis(t_vstplugin *x, t_floatarg f) {
     if (!x->check_plugin()) return;
     x->x_editor->vis(f);
 }

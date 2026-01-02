@@ -45,6 +45,7 @@ public:
     int getLatencySamples() override;
 
     void setListener(IPluginListener* listener) override;
+    IPluginListener* getListener() const override { return listener_; }
 
     double getTransportPosition() const override;
 

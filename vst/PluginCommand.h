@@ -63,8 +63,11 @@ struct Command {
         UpdateDisplay,
         MidiReceived,
         SysexReceived,
+        EditorMoved,
+        EditorResized,
+        EditorClosed,
         // for plugin bridge
-        Error, // 49
+        Error, // 52
         Process,
         Quit
     };
@@ -250,12 +253,12 @@ struct ShmUICommand {
     union {
         // no data
         struct {} empty;
-        // window position
+        // window position (both directions)
         struct {
             int32_t x;
             int32_t y;
         } windowPos;
-        // window size
+        // window size (both directions)
         struct {
             int32_t width;
             int32_t height;

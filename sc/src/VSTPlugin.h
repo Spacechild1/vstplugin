@@ -52,12 +52,6 @@ class VSTPluginDelegate : public IPluginListener
     friend class VSTPlugin;
     friend class VSTPluginDelegatePtr;
 public:
-    enum EventType {
-        LatencyChange = -3,
-        UpdateDisplay,
-        PluginCrash
-    };
-
     VSTPluginDelegate(VSTPlugin& owner);
     ~VSTPluginDelegate();
 
@@ -71,6 +65,9 @@ public:
     void pluginCrashed() override;
     void midiEvent(const MidiEvent& midi) override;
     void sysexEvent(const SysexEvent& sysex) override;
+    void editorMoved(int x, int y) override;
+    void editorResized(int w, int h) override;
+    void editorClosed() override;
 
     // plugin
     IPlugin* plugin() { return plugin_.get(); }
@@ -144,7 +141,7 @@ public:
     int32 latencySamples() const;
     void sendLatencyChange(int nsamples);
     void sendUpdateDisplay();
-    void sendPluginCrash();
+    void sendEditorVis(bool vis);
 
     // perform sequenced command
     template<typename T>
@@ -179,15 +176,40 @@ private:
     int paramBitsetSize_ = 0;
     SpinLock spinMutex_;
     // events
-    struct ParamChange {
-        int index; // parameter index or EventType (negative)
-        float value;
+    struct Event {
+        enum EventType {
+            ParamAutomated,
+            LatencyChanged,
+            UpdateDisplay,
+            EditorMoved,
+            EditorResized,
+            EditorClosed,
+            PluginCrash
+        };
+
+        int type;
+        union {
+            struct {
+                int index; // parameter index or EventType (negative)
+                float value;
+            } paramAutomated;
+            int latency;
+            struct {
+                int x;
+                int y;
+            } editorMoved;
+            struct {
+                int w;
+                int h;
+            } editorResized;
+        };
+
     };
     // don't use RT allocator! only non-realtime threads are allowed
     // to push to the queue. Also, the internal queue memory (if any)
     // has to be disposed in the NRT thread, see ~VSTPluginDelegate().
-    using ParamQueue = UnboundedMPSCQueue<ParamChange>;
-    ParamQueue* paramQueue_;
+    using EventQueue = UnboundedMPSCQueue<Event>;
+    EventQueue* eventQueue_;
 
     void addRef();
     void release();

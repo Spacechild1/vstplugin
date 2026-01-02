@@ -656,6 +656,8 @@ void Window::setFixedSize(int w, int h){
     }
 }
 
+// QUESTION: do we actually need this? We already cache the position
+// in onConfigure().
 void Window::savePosition(){
     auto root = EventLoop::instance().getRoot();
     int x, y;
@@ -718,16 +720,16 @@ void Window::resize(int w, int h){
         if (!canResize()){
             setFixedSize(w, h);
         }
+        // always generates a XConfigureEvent, see onConfigure()
         XResizeWindow(display_, window_, w, h);
         XFlush(display_);
-
-        // cache!
-        rect_.w = w;
-        rect_.h = h;
     }
 }
 
 void Window::onClose(){
+    if (auto listener = plugin_->getListener()) {
+        listener->editorClosed();
+    }
     doClose();
 }
 
@@ -736,13 +738,28 @@ void Window::onUpdate(){
 }
 
 void Window::onConfigure(int x, int y, int width, int height){
-    LOG_DEBUG("X11: onConfigure: x: "<< x << ", y: " << y
+    LOG_DEBUG("X11: onConfigure: x: " << x << ", y: " << y
               << ", w: " << width << ", h: " << height);
-    if (canResize() && (rect_.w != width || rect_.h != height)){
-        LOG_DEBUG("X11: size changed");
-        plugin_->resizeEditor(width, height);
+    if (x != rect_.x || y != rect_.y) {
+        LOG_DEBUG("X11: window moved");
+        // cache pos
+        rect_.x = x;
+        rect_.y = y;
+        if (auto listener = plugin_->getListener()) {
+            listener->editorMoved(x, y);
+        }
+    }
+    if (rect_.w != width || rect_.h != height){
+        LOG_DEBUG("X11: window size changed");
+        if (canResize()) {
+            plugin_->resizeEditor(width, height);
+        }
+        // cache size
         rect_.w = width;
         rect_.h = height;
+        if (auto listener = plugin_->getListener()) {
+            listener->editorResized(width, height);
+        }
     }
 }
 

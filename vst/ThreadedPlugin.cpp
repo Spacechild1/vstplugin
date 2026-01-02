@@ -590,22 +590,43 @@ void ThreadedPlugin::latencyChanged(int nsamples) {
         pushEvent(e);
     } else {
         // UI or NRT thread
-        if (listener_){
+        if (listener_) {
             listener_->latencyChanged(nsamples);
         }
     }
 }
 
 void ThreadedPlugin::updateDisplay() {
-    if (listener_){
+    if (listener_) {
         listener_->updateDisplay();
     }
 }
 
 void ThreadedPlugin::pluginCrashed(){
     // UI or NRT thread
-    if (listener_){
+    if (listener_) {
         listener_->pluginCrashed();
+    }
+}
+
+void ThreadedPlugin::editorMoved(int x, int y) {
+    // UI or NRT thread
+    if (listener_) {
+        listener_->editorMoved(x, y);
+    }
+}
+
+void ThreadedPlugin::editorResized(int w, int h) {
+    // UI or NRT thread
+    if (listener_) {
+        listener_->editorResized(w, h);
+    }
+}
+
+void ThreadedPlugin::editorClosed() {
+    // UI or NRT thread
+    if (listener_) {
+        listener_->editorClosed();
     }
 }
 
@@ -617,7 +638,7 @@ void ThreadedPlugin::midiEvent(const MidiEvent& event) {
         pushEvent(e);
     } else {
         // UI or NRT thread
-        if (listener_){
+        if (listener_) {
             listener_->midiEvent(event);
         }
     }
@@ -637,7 +658,7 @@ void ThreadedPlugin::sysexEvent(const SysexEvent& event) {
         pushEvent(e);
     } else {
         // UI or NRT thread
-        if (listener_){
+        if (listener_) {
             listener_->sysexEvent(event);
         }
     }

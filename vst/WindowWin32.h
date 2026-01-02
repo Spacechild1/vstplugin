@@ -79,18 +79,20 @@ public:
 private:
     void doOpen();
     void doClose();
-    void saveCurrentPosition();
-    void updateFrame();
-    void onSizing(RECT& newRect);
-    void onSize(int w, int h);
     bool canResize() const;
+    void updateGeometry();
+    void onSizing(RECT& newRect);
+    void onClose();
+    void onMove(int x, int y);
+    void onSize(int w, int h);
 
     static const UINT_PTR timerID = 0x375067f6;
     static void CALLBACK updateEditor(HWND hwnd, UINT msg, UINT_PTR id, DWORD time);
     HWND hwnd_ = nullptr;
     IPlugin* plugin_ = nullptr;
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    bool adjustSize_ = false;
+    Rect lastRect_;
+    bool isRestoring_ = false;
 
     struct Command {
         Window *owner;

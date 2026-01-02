@@ -53,6 +53,9 @@ public:
     void pluginCrashed() override {} // never called inside the bridge
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
+    void editorMoved(int x, int y) override;
+    void editorResized(int w, int h) override;
+    void editorClosed() override;
 private:
     friend class PluginHandleListener;
 

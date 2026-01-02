@@ -248,6 +248,9 @@ public:
     void pluginCrashed() override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
+    void editorMoved(int x, int y) override;
+    void editorResized(int w, int h) override;
+    void editorClosed() override;
 private:
     // helper functions
     void send_mess(t_symbol *sel, int argc = 0, t_atom *argv = 0){
@@ -266,7 +269,10 @@ private:
             Sysex,
             Latency,
             Crash,
-            Display
+            Display,
+            EditorMoved,
+            EditorResized,
+            EditorClosed
         };
         t_event() : type(Unknown) {}
         t_event(t_type _type) : type(_type){}
@@ -280,6 +286,14 @@ private:
             }  param;
             MidiEvent midi;
             SysexEvent sysex;
+            struct {
+                int x;
+                int y;
+            } editorMoved;
+            struct {
+                int w;
+                int h;
+            } editorResized;
         };
     };
     void post_event(const t_event& event);

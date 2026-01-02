@@ -394,7 +394,23 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_CLOSE: // intercept close event!
     {
         if (window){
-            window->doClose();
+            window->onClose();
+        } else {
+            LOG_ERROR("Win32: bug GetWindowLongPtr");
+        }
+        return true;
+    }
+    case WM_MOVE:
+    {
+        // LOG_DEBUG("Win32: WM_MOVE");
+        if (window) {
+            // NB: lParam contains the coordinatees of the client
+            // area, but we really want the window position.
+            // NB: ignore WM_MOVE events while the window is minimized!
+            RECT rc;
+            if (!IsIconic(hWnd) && GetWindowRect(hWnd, &rc)) {
+                window->onMove(rc.left, rc.top);
+            }
         } else {
             LOG_ERROR("Win32: bug GetWindowLongPtr");
         }
@@ -402,7 +418,7 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     case WM_SIZING:
     {
-        LOG_DEBUG("Win32: WM_SIZING");
+        // LOG_DEBUG("Win32: WM_SIZING");
         if (window){
             window->onSizing(*(RECT *)lParam);
         } else {
@@ -412,13 +428,19 @@ LRESULT WINAPI Window::procedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     case WM_SIZE:
     {
-        LOG_DEBUG("Win32: WM_SIZE");
+        // LOG_DEBUG("Win32: WM_SIZE");
         if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED){
-            if (window){
-                window->onSize(LOWORD(lParam), HIWORD(lParam));
+            if (window) {
+                // lParam contains the size of the client area,
+                // which is exactly what we want.
+                int w = LOWORD(lParam);
+                int h = HIWORD(lParam);
+                window->onSize(w, h);
             } else {
                 LOG_ERROR("Win32: bug GetWindowLongPtr");
             }
+        } else if (wParam == SIZE_MINIMIZED) {
+            LOG_DEBUG("Win32: window minimized");
         }
         return true;
     }
@@ -472,14 +494,11 @@ void Window::doOpen(){
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
 
     // set window coordinates
-    bool didOpen = false;
+    bool didOpenEditor = false;
     if (rect_.valid()){
         LOG_DEBUG("Win32: restore editor rect");
         // restore from cached rect
-        // NOTE: restoring the size doesn't work if openEditor()
-        // calls setSize() in turn! I've tried various workarounds,
-        // like setting a flag and bashing the size in setSize(),
-        // but they all cause weirdness...
+        isRestoring_ = true; // see resize()
     } else {
         // get window dimensions from plugin
         Rect r;
@@ -489,22 +508,27 @@ void Window::doOpen(){
             LOG_DEBUG("Win32: couldn't get editor rect!");
             plugin_->openEditor(hwnd_);
             plugin_->getEditorRect(r);
-            didOpen = true;
+            didOpenEditor = true;
         }
         LOG_DEBUG("Win32: editor size: " << r.w << " * " << r.h);
         rect_.w = r.w;
         rect_.h = r.h;
-        adjustSize_ = true; // !
+        // report initial position and size
+        if (auto listener = plugin_->getListener()) {
+            listener->editorMoved(rect_.x, rect_.y);
+            listener->editorResized(rect_.w, rect_.h);
+        }
     }
 
-    updateFrame();
+    updateGeometry();
 
     // open VST editor
-    if (!didOpen){
+    if (!didOpenEditor){
         plugin_->openEditor(hwnd_);
     }
 
     // show window
+    LOG_DEBUG("Win32: show window");
 #if 0
     SetForegroundWindow(hwnd_);
     ShowWindow(hwnd_, SW_SHOW);
@@ -517,6 +541,7 @@ void Window::doOpen(){
     SetTimer(hwnd_, timerID, EventLoop::updateIntervalMillis, &updateEditor);
 
     LOG_DEBUG("Win32: setup Window done");
+    isRestoring_ = false;
 }
 
 void Window::close(){
@@ -527,17 +552,7 @@ void Window::close(){
 
 void Window::doClose(){
     LOG_DEBUG("Win32: close window");
-    if (hwnd_){
-        RECT rc;
-        if (GetWindowRect(hwnd_, &rc)){
-            // cache position and size
-            rect_.x = rc.left;
-            rect_.y = rc.top;
-            rect_.w = rc.right - rc.left;
-            rect_.h = rc.bottom - rc.top;
-            adjustSize_ = false; // !
-        }
-
+    if (hwnd_) {
         KillTimer(hwnd_, timerID);
 
         plugin_->closeEditor();
@@ -548,15 +563,17 @@ void Window::doClose(){
     }
 }
 
-void Window::setPos(int x, int y){
+void Window::setPos(int x, int y) {
+    LOG_DEBUG("Win32: setPos: " << x << ", " << y);
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        // update position
+        // save position
         owner->rect_.x = cmd->x;
         owner->rect_.y = cmd->y;
-        if (owner->hwnd_){
-            owner->updateFrame();
+        if (owner->hwnd_) {
+            // will cause WM_MOVE event
+            owner->updateGeometry();
         }
         delete cmd;
     }, new Command { this, x, y });
@@ -567,64 +584,62 @@ void Window::setSize(int w, int h){
     LOG_DEBUG("Win32: setSize: " << w << ", " << h);
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
+        auto w = cmd->x;
+        auto h = cmd->y;
         auto owner = cmd->owner;
-        if (owner->canResize()){
+        if (owner->canResize()) {
             // update and adjust size
-            owner->rect_.w = cmd->x;
-            owner->rect_.h = cmd->y;
-            owner->adjustSize_ = true; // !
-            if (owner->hwnd_){
-                owner->saveCurrentPosition(); // !
-                owner->updateFrame();
+            owner->rect_.w = w;
+            owner->rect_.h = h;
+            if (owner->hwnd_) {
+                owner->updateGeometry();
+                // will cause WM_SIZE event
             }
         }
-
         delete cmd;
     }, new Command { this, w, h });
 }
 
 // client rect size!
-void Window::resize(int w, int h){
-    LOG_DEBUG("Win32: resized by plugin: " << w << ", " << h);
-    // should only be called if the window is open
-    if (hwnd_){
-        saveCurrentPosition(); // !
-        // update and adjust size
-        rect_.w = w;
-        rect_.h = h;
-        adjustSize_ = true; // !
-        updateFrame();
+void Window::resize(int w, int h) {
+    // ignore resize requests when restoring a resizable plugin.
+    // NB: this doesn't seem to work with "resizable" VST2 plugins.
+    if (isRestoring_ && canResize()) {
+        LOG_DEBUG("Win32: ignore resize request while restoring window");
+    } else {
+        LOG_DEBUG("Win32: resized by plugin: " << w << ", " << h);
+        // should only be called if the window is open
+        if (hwnd_) {
+            if (auto listener = plugin_->getListener()) {
+                listener->editorResized(w, h);
+            }
+            // update and adjust size
+            rect_.w = w;
+            rect_.h = h;
+            updateGeometry();
+        }
     }
 }
 
-void Window::saveCurrentPosition(){
-    // get actual position
-    RECT rc;
-    if (GetWindowRect(hwnd_, &rc)){
-        rect_.x = rc.left;
-        rect_.y = rc.top;
-    }
-}
+void Window::updateGeometry() {
+    // adjust window dimensions for borders and menu
+    const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
+    const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
+    const BOOL fMenu = GetMenu(hwnd_) != nullptr;
+    RECT r = { rect_.x, rect_.y, rect_.x + rect_.w, rect_.y + rect_.h };
+    AdjustWindowRectEx(&r, style, fMenu, exStyle);
 
-void Window::updateFrame(){
-    if (adjustSize_){
-        // adjust window dimensions for borders and menu
-        const auto style = GetWindowLongPtr(hwnd_, GWL_STYLE);
-        const auto exStyle = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
-        const BOOL fMenu = GetMenu(hwnd_) != nullptr;
-        RECT rc = { rect_.x, rect_.y, rect_.x + rect_.w, rect_.y + rect_.h };
-        AdjustWindowRectEx(&rc, style, fMenu, exStyle);
-        rect_.w = rc.right - rc.left;
-        rect_.h = rc.bottom - rc.top;
-        adjustSize_ = false;
-    }
-    LOG_DEBUG("Win32: update frame, pos: " << rect_.x << ", " << rect_.y
-              << ", size: " << rect_.w << ", " << rect_.h);
-    MoveWindow(hwnd_, rect_.x, rect_.y, rect_.w, rect_.h, TRUE);
+    auto x = rect_.x;
+    auto y = rect_.y;
+    auto w = r.right - r.left;
+    auto h = r.bottom - r.top;
+    LOG_DEBUG("Win32: update geometry: " << x << ", " << y
+              << ", " << w << " x " << h);
+    MoveWindow(hwnd_, x, y, w, h, TRUE);
 }
 
 void Window::update(){
-    if (hwnd_){
+    if (hwnd_) {
         InvalidateRect(hwnd_, nullptr, FALSE);
     }
 }
@@ -646,13 +661,44 @@ void Window::onSizing(RECT& newRect){
 #endif
 }
 
+void Window::onClose() {
+    LOG_DEBUG("Win32: window closed");
+    doClose();
+    if (auto listener = plugin_->getListener()) {
+        listener->editorClosed();
+    }
+}
+
+void Window::onMove(int x, int y) {
+    LOG_DEBUG("Win32: window moved: " << x << ", " << y);
+    // save position
+    rect_.x = x;
+    rect_.y = y;
+    // notify listener if position has changed
+    if (x != lastRect_.x || y != lastRect_.y) {
+        if (auto listener = plugin_->getListener()) {
+            listener->editorMoved(x, y);
+        }
+        lastRect_.x = x;
+        lastRect_.y = y;
+    }
+}
+
 // client rect size!
-void Window::onSize(int w, int h){
+void Window::onSize(int w, int h) {
+    LOG_DEBUG("Win32: window size changed: " << w << " x " << h);
     plugin_->resizeEditor(w, h);
+    // save size
     rect_.w = w;
     rect_.h = h;
-    adjustSize_ = true;
-    LOG_DEBUG("Win32: size changed: " << w << ", " << h);
+    // notify listener if size has changed
+    if (w != lastRect_.w || h != lastRect_.h) {
+        if (auto listener = plugin_->getListener()) {
+            listener->editorResized(w, h);
+        }
+        lastRect_.w = w;
+        lastRect_.h = h;
+    }
 }
 
 } // Win32

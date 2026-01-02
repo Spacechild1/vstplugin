@@ -389,7 +389,7 @@ void PluginHandle::parameterAutomated(int index, float value) {
 }
 
 void PluginHandle::latencyChanged(int nsamples) {
-    if (UIThread::isCurrentThread()){
+    if (UIThread::isCurrentThread()) {
         LOG_DEBUG("UI thread: LatencyChanged");
         ShmUICommand cmd(Command::LatencyChanged, id_);
         cmd.latency = nsamples;
@@ -403,6 +403,40 @@ void PluginHandle::latencyChanged(int nsamples) {
         cmd.i = nsamples;
 
         events_.push_back(cmd);
+    }
+}
+
+void PluginHandle::editorMoved(int x, int y) {
+    LOG_DEBUG("UI thread: editor moved: " << x << ", " << y);
+    ShmUICommand cmd(Command::EditorMoved, id_);
+    cmd.windowPos.x = x;
+    cmd.windowPos.y = y;
+
+    // UI queue is bounded!
+    if (!server_->postUIThread(cmd)) {
+        LOG_WARNING("PluginHandle (" << id_ << "): couldn't post editor position change!");
+    }
+}
+
+void PluginHandle::editorResized(int w, int h) {
+    LOG_DEBUG("UI thread: editor resized: " << w << ", " << h);
+    ShmUICommand cmd(Command::EditorResized, id_);
+    cmd.windowSize.width = w;
+    cmd.windowSize.height = h;
+
+    // UI queue is bounded!
+    if (!server_->postUIThread(cmd)) {
+        LOG_WARNING("PluginHandle (" << id_ << "): couldn't post editor size change!");
+    }
+}
+
+void PluginHandle::editorClosed() {
+    LOG_DEBUG("UI thread: editor moved");
+    ShmUICommand cmd(Command::EditorClosed, id_);
+
+    // UI queue is bounded!
+    if (!server_->postUIThread(cmd)) {
+        LOG_WARNING("PluginHandle (" << id_ << "): couldn't post editor close event!");
     }
 }
 

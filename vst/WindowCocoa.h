@@ -77,7 +77,10 @@ class Window : public IWindow {
     void resize(int w, int h) override;
     
     void doOpen();
+    void doClose();
+
     void onClose();
+    void onMove(int x, int h);
     void onResize(int w, int h);
     void updateEditor();
  private:
@@ -92,6 +95,7 @@ class Window : public IWindow {
     bool adjustSize_ = false;
     bool adjustPos_ = false;
     bool loading_ = false;
+    bool closing_ = false;
 
     static std::atomic<int> numWindows_;
 

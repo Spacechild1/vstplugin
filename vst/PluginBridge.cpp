@@ -418,6 +418,15 @@ void PluginBridge::pollUIThread(){
                 LOG_DEBUG("UI thread: UpdateDisplay");
                 client->updateDisplay();
                 break;
+            case Command::EditorMoved:
+                client->editorMoved(cmd->windowPos.x, cmd->windowPos.y);
+                break;
+            case Command::EditorResized:
+                client->editorResized(cmd->windowSize.width, cmd->windowSize.height);
+                break;
+            case Command::EditorClosed:
+                client->editorClosed();
+                break;
             default:
                 // ignore other events for now
                 break;

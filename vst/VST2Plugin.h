@@ -64,6 +64,7 @@ class VST2Plugin final : public IPlugin {
     void setListener(IPluginListener* listener) override {
         listener_ = listener;
     }
+    IPluginListener* getListener() const override { return listener_; }
 
     void setTempoBPM(double tempo) override;
     void setTimeSignature(int numerator, int denominator) override;

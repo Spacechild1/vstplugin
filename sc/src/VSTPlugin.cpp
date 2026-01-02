@@ -1548,11 +1548,11 @@ int VSTPlugin::reblockPhase() const {
 
 VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
     setOwner(&owner);
-    auto queue = (ParamQueue*)RTAlloc(world(), sizeof(ParamQueue));
+    auto queue = (EventQueue*)RTAlloc(world(), sizeof(EventQueue));
     if (queue) {
-        paramQueue_ = new (queue) ParamQueue();
+        eventQueue_ = new (queue) EventQueue();
     } else {
-        paramQueue_ = nullptr;
+        eventQueue_ = nullptr;
         LOG_ERROR("RTAlloc failed!");
     }
 }
@@ -1560,19 +1560,19 @@ VSTPluginDelegate::VSTPluginDelegate(VSTPlugin& owner) {
 VSTPluginDelegate::~VSTPluginDelegate() {
     assert(plugin_ == nullptr);
 
-    if (paramQueue_) {
-        if (paramQueue_->needRelease()) {
+    if (eventQueue_) {
+        if (eventQueue_->needRelease()) {
             // release internal memory on the NRT thread,
             // but param queue itself on the RT thread.
-            DoAsynchronousCommand(world(), 0, 0, paramQueue_,
+            DoAsynchronousCommand(world(), 0, 0, eventQueue_,
                 [](World *, void *inData) {
-                    static_cast<ParamQueue*>(inData)->release();
+                    static_cast<EventQueue*>(inData)->release();
                     return false;
-                }, nullptr, nullptr, cmdRTfree<ParamQueue>, 0, 0);
+                }, nullptr, nullptr, cmdRTfree<EventQueue>, 0, 0);
         } else {
             // no internal memory, free immediately on the RT thread.
-            paramQueue_->~ParamQueue();
-            RTFree(world(), paramQueue_);
+            eventQueue_->~EventQueue();
+            RTFree(world(), eventQueue_);
         }
     }
 
@@ -1611,11 +1611,15 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
         if (isSettingParam_ && !isSettingProgram_) {
             sendParameterAutomated(index, value);
         }
-    } else if (paramQueue_) {
+    } else if (eventQueue_) {
         // from UI/NRT thread -> push to queue
         // Ignore if sent as a result of reading program/bank data! See comment above.
         if (!isSettingState_) {
-            paramQueue_->emplace(index, value); // thread-safe!
+            Event e;
+            e.type = Event::ParamAutomated;
+            e.paramAutomated.index = index;
+            e.paramAutomated.value = value;
+            eventQueue_->push(e); // thread-safe!
         }
     }
 }
@@ -1623,25 +1627,63 @@ void VSTPluginDelegate::parameterAutomated(int index, float value) {
 void VSTPluginDelegate::latencyChanged(int nsamples){
     if (isCurrentThreadRT()) {
         sendLatencyChange(nsamples);
-    } else if (paramQueue_) {
+    } else if (eventQueue_) {
         // from UI/NRT thread - push to queue
-        paramQueue_->emplace(LatencyChange, (float)nsamples); // thread-safe!
+        Event e;
+        e.type = Event::LatencyChanged;
+        e.latency = nsamples;
+        eventQueue_->push(e); // thread-safe!
     }
 }
 
 void VSTPluginDelegate::updateDisplay() {
     if (isCurrentThreadRT()) {
         sendUpdateDisplay();
-    } else if (paramQueue_) {
+    } else if (eventQueue_) {
         // from UI/NRT thread - push to queue
-        paramQueue_->emplace(UpdateDisplay, 0.f); // thread-safe!
+        Event e;
+        e.type = Event::UpdateDisplay;
+        eventQueue_->push(e); // thread-safe!
     }
 }
 
 void VSTPluginDelegate::pluginCrashed(){
     // From the watch dog thread
-    if (paramQueue_) {
-        paramQueue_->emplace(PluginCrash, 0.f); // thread-safe!
+    if (eventQueue_) {
+        Event e;
+        e.type = Event::PluginCrash;
+        eventQueue_->push(e); // thread-safe!
+    }
+}
+
+void VSTPluginDelegate::editorMoved(int x, int y) {
+    // From the UI thread
+    if (eventQueue_) {
+        Event e;
+        e.type = Event::EditorMoved;
+        e.editorMoved.x = x;
+        e.editorMoved.y = y;
+        eventQueue_->push(e); // thread-safe!
+    }
+}
+
+void VSTPluginDelegate::editorResized(int w, int h) {
+    // From the UI thread
+    if (eventQueue_) {
+        Event e;
+        e.type = Event::EditorResized;
+        e.editorResized.w = w;
+        e.editorResized.h = h;
+        eventQueue_->push(e); // thread-safe!
+    }
+}
+
+void VSTPluginDelegate::editorClosed() {
+    // From the UI thread
+    if (eventQueue_) {
+        Event e;
+        e.type = Event::EditorClosed;
+        eventQueue_->push(e); // thread-safe!
     }
 }
 
@@ -1690,7 +1732,7 @@ bool VSTPluginDelegate::check(bool loud) const {
 }
 
 void VSTPluginDelegate::update(){
-    if (paramQueue_) paramQueue_->clear();
+    if (eventQueue_) eventQueue_->clear();
 
     isSettingParam_ = false; // just to be sure
     isSettingProgram_ = false;
@@ -1722,17 +1764,47 @@ void VSTPluginDelegate::update(){
 
 void VSTPluginDelegate::handleEvents(){
     // TODO: rate limit?
-    if (paramQueue_) {
-        ParamChange p;
-        while (paramQueue_->pop(p)){
-            if (p.index >= 0){
-                sendParameterAutomated(p.index, p.value);
-            } else if (p.index == VSTPluginDelegate::LatencyChange){
-                sendLatencyChange(p.value);
-            } else if (p.index == VSTPluginDelegate::UpdateDisplay){
+    if (eventQueue_) {
+        Event e;
+        while (eventQueue_->pop(e)) {
+            switch (e.type) {
+            case Event::ParamAutomated:
+                sendParameterAutomated(e.paramAutomated.index, e.paramAutomated.value);
+                break;
+            case Event::LatencyChanged:
+                sendLatencyChange(e.latency);
+                break;
+            case Event::UpdateDisplay:
                 sendUpdateDisplay();
-            } else if (p.index == VSTPluginDelegate::PluginCrash){
-                sendPluginCrash();
+                break;
+            case Event::EditorMoved:
+            {
+                std::array<float, 2> args;
+                args[0] = e.editorMoved.x;
+                args[1] = e.editorMoved.y;
+                sendMsg("/vst_editor_pos", args.size(), args.data());
+                break;
+            }
+            case Event::EditorResized:
+            {
+                std::array<float, 2> args;
+                args[0] = e.editorResized.w;
+                args[1] = e.editorResized.h;
+                sendMsg("/vst_editor_size", args.size(), args.data());
+                break;
+            }
+            case Event::EditorClosed:
+            {
+                sendMsg("/vst_editor_closed", 0, nullptr);
+                sendEditorVis(false);
+                break;
+            }
+            case Event::PluginCrash:
+                sendMsg("/vst_crash", 0, nullptr);
+                break;
+            default:
+                LOG_ERROR("Unknown event type (" << e.type << ")");
+                break;
             }
         }
     }
@@ -2006,16 +2078,24 @@ void VSTPluginDelegate::showEditor(bool show) {
         auto cmdData = CmdData::create<PluginCmdData>(world());
         if (cmdData) {
             cmdData->i = show;
-            doCmd(cmdData, [](World * inWorld, void* inData) {
-                auto data = (PluginCmdData*)inData;
-                auto window = data->owner->plugin()->getWindow();
-                if (data->i) {
-                    window->open();
-                } else {
-                    window->close();
+            doCmd(cmdData,
+                [](World* inWorld, void* inData) {
+                    auto data = (PluginCmdData*)inData;
+                    auto window = data->owner->plugin()->getWindow();
+                    if (data->i) {
+                        window->open();
+                    } else {
+                        window->close();
+                    }
+                    return true;
+                }, [](World* inWorld, void* inData) {
+                    // to keep editor visibility status in sync with
+                    // editorClosed() event.
+                    auto data = (PluginCmdData*)inData;
+                    data->owner->sendEditorVis(data->i);
+                    return false; // done
                 }
-                return false; // done
-            });
+            );
         }
     }
 }
@@ -2029,6 +2109,7 @@ void VSTPluginDelegate::setEditorPos(int x, int y) {
             doCmd(cmdData, [](World * inWorld, void* inData) {
                 auto data = (WindowCmdData*)inData;
                 auto window = data->owner->plugin()->getWindow();
+                // will trigger editorMoved() notification
                 window->setPos(data->x, data->y);
                 return false; // done
             });
@@ -2045,6 +2126,7 @@ void VSTPluginDelegate::setEditorSize(int w, int h){
             doCmd(cmdData, [](World * inWorld, void* inData) {
                 auto data = (WindowCmdData*)inData;
                 auto window = data->owner->plugin()->getWindow();
+                // will trigger editorResized() notification
                 window->setSize(data->width, data->height);
                 return false; // done
             });
@@ -2668,7 +2750,7 @@ int32 VSTPluginDelegate::latencySamples() const {
     return nsamples;
 }
 
-void VSTPluginDelegate::sendLatencyChange(int nsamples){
+void VSTPluginDelegate::sendLatencyChange(int nsamples) {
     sendMsg("/vst_latency", nsamples + latencySamples());
 }
 
@@ -2676,8 +2758,9 @@ void VSTPluginDelegate::sendUpdateDisplay() {
     sendMsg("/vst_update", 0, nullptr);
 }
 
-void VSTPluginDelegate::sendPluginCrash(){
-    sendMsg("/vst_crash", 0, nullptr);
+void VSTPluginDelegate::sendEditorVis(bool vis) {
+    float arg = vis ? 1.0 : 0.0;
+    sendMsg("/vst_editor_vis", 1, &arg);
 }
 
 void VSTPluginDelegate::sendMsg(const char *cmd, float f) {

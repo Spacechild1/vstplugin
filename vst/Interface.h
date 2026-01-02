@@ -127,6 +127,9 @@ class IPluginListener {
     virtual void updateDisplay() = 0;
     virtual void midiEvent(const MidiEvent& event) = 0;
     virtual void sysexEvent(const SysexEvent& event) = 0;
+    virtual void editorClosed() = 0;
+    virtual void editorMoved(int x, int y) = 0;
+    virtual void editorResized(int w, int h) = 0;
     virtual void pluginCrashed() = 0;
 };
 
@@ -209,6 +212,7 @@ class IPlugin {
     virtual int getLatencySamples() = 0;
 
     virtual void setListener(IPluginListener* listener) = 0;
+    virtual IPluginListener* getListener() const = 0;
 
     virtual void setTempoBPM(double tempo) = 0;
     virtual void setTimeSignature(int numerator, int denominator) = 0;

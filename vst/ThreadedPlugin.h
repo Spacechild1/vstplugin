@@ -77,6 +77,7 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     }
 
     void setListener(IPluginListener* listener) override;
+    IPluginListener* getListener() const override { return listener_; }
 
     double getTransportPosition() const override {
         return plugin_->getTransportPosition();
@@ -136,6 +137,9 @@ class ThreadedPlugin final : public DeferredPlugin, public IPluginListener
     void pluginCrashed() override;
     void midiEvent(const MidiEvent& event) override;
     void sysexEvent(const SysexEvent& event) override;
+    void editorMoved(int x, int y) override;
+    void editorResized(int w, int h) override;
+    void editorClosed() override;
 private:
     void updateBuffer();
     template<typename T>
