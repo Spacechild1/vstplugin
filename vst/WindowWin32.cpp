@@ -513,11 +513,6 @@ void Window::doOpen(){
         LOG_DEBUG("Win32: editor size: " << r.w << " * " << r.h);
         rect_.w = r.w;
         rect_.h = r.h;
-        // report initial position and size
-        if (auto listener = plugin_->getListener()) {
-            listener->editorMoved(rect_.x, rect_.y);
-            listener->editorResized(rect_.w, rect_.h);
-        }
     }
 
     updateGeometry();
