@@ -378,7 +378,7 @@ note:: If the plugin is opened with the VST GUI editor, the code::async:: option
 
 CLASSMETHODS::
 
-PRIVATE:: guiClass, msg2string, prFindPlugins
+PRIVATE:: guiClass, msg2string, prFindPlugins, prCollect
 
 METHOD:: new
 Create a new VSTPluginController for a given Synth.
@@ -439,8 +439,7 @@ SynthDef.new(\test, { arg bus = 0;
 
 INSTANCEMETHODS::
 
-PRIVATE:: prFree, prCheckPlugin, prCheckLocal, prClear, init, prQuery, prQueryParams, prQueryPrograms
-PRIVATE:: prGetPreset, prSendData, prReceiveData, prSetData, prGetData, prMakeOscFunc
+PRIVATE:: prFree, prCheckPlugin, prCheckLocal, prClear, init, prQuery, prQueryParams, prQueryPrograms, prGetPreset, prSendData, prReceiveData, prSetData, prGetData, prMakeOscFunc, prCheckEmpty, makeMsg, sendMsg, prSetCallbackDeprecated
 
 
 METHOD:: open
@@ -553,14 +552,6 @@ This will automatically bypass the plugin (i.e. the input is just passed through
 
 Just like link::#-open::, this method is realtime-safe.
 
-
-METHOD:: pluginCrashed
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin subprocess crashes.
-
-discussion::
-You could use this callback to automatically reopen the plugin, for example.
-note::This is only meant for bridged or sandboxed plugins, because a normal plugin would simply crash the server.::
-
 METHOD:: browse
 open the plugin browser dialog.
 
@@ -605,9 +596,6 @@ returns:: the current processing latency in samples.
 
 NOTE:: The reported value includes the additional latency caused by multithreading and reblocking (see the code::multiThreading:: and code::blockSize:: arguments for link::#-open::).::
 
-METHOD:: latencyChanged
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when the plugin's processing latency changes. The function receives the new latency as its only argument. See also link::#-latency::.
-
 METHOD:: reset
 METHOD:: resetMsg
 reset the plugin state.
@@ -638,6 +626,127 @@ to avoid messages getting dropped. This is mostly relevant for UDP connections,
 especially for remote Servers, high network traffic and plugins with a large number of parameters.
 
 The wait time can be changed anytime.
+
+subsection:: Event handling
+
+VSTPluginController receives various events from the plugin.
+The user can handle these events by installing corresponding event handler functions with link::#-addEventListener::.
+
+Currently, the following event types are supported:
+
+definitionlist::
+
+## code::\automated::
+|| A parameter has been automated.
+
+Arguments:
+table::
+## Integer || parameter index
+## Float || parameter value
+::
+
+For example, this can be helpful if you want to know the index of a particular parameter in the editor.
+
+note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
+In that case it is not possible to determine which parameter has been automated manually.::
+
+## code::\latency::
+|| The plugin's processing latency has changed.
+
+Arguments:
+table::
+## Integer || latency samples
+::
+
+## code::\midi::
+|| The plugin has sent a MIDI message.
+
+Arguments:
+table::
+## Integer ... || MIDI message values
+::
+
+## code::\sysex::
+|| The plugin has sent a SysEx message.
+
+Arguments:
+table::
+## Int8Array || sysex data
+::
+
+## code::\crashed::
+|| The plugin process has crashed.
+
+(No arguments.)
+
+Naturally, this event can only ever occur with bridged/sandboxes plugins; a normal plugin would simply crash the Server.
+
+For example, you could use this event to automatically reopen the plugin.
+
+## code::\editorPos::
+|| The editor window position has changed.
+
+Arguments:
+table::
+## Integer || x coordinate
+## Integer || y coordinate
+::
+
+## code::\editorSize::
+|| The editor window size has changed.
+
+Arguments:
+table::
+## Integer || window width
+## Integer || window height
+::
+
+## code::\editorVis::
+|| The editor window visibility has changed.
+
+Arguments:
+table::
+## Boolean || visible/hidden
+::
+
+## code::\editorClosed::
+|| The editor window has been closed by the user.
+
+(No arguments.)
+
+::
+
+METHOD:: addEventListener
+add an event handler function
+
+ARGUMENT:: type
+the event type as a Symbol (see link::#Event handling::).
+
+ARGUMENT:: func
+the function to be called
+
+DISCUSSION::
+
+The function arguments are specific to the given event type (see link::#Event handling::). For example:
+code::
+~vst.addEventListener(\automated, { |index, value|
+	"parameter % automated: %".format(index, value).postln;
+});
+::
+
+note::It is possible to register several functions for the same event type.::
+
+METHOD:: removeEventListener
+remove an event handler function
+
+ARGUMENT:: type
+the event type as a Symbol (see link::#Event handling::).
+
+ARGUMENT:: func
+the function to be removed. If code::func:: is code::nil::, all event handlers for the given event type will be removed.
+
+METHOD:: clearEventListeners
+remove all event handler functions
 
 subsection:: Parameters
 
@@ -771,15 +880,6 @@ code::
 // get all parameter values:
 ~fx.getn(action: {arg v; v.postln;});
 ::
-
-METHOD:: parameterAutomated
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when parameters are automated in the VST editor.
-
-discussion::
-The action receives the parameter index and value. This can be helpful if you want to know the index of a parameter in the editor.
-
-note::Some plugins link parameters, so that changing one parameter will lead to several other parameters being "automated".
-In that case it is not possible to determine which parameter has been automated manually.::
 
 METHOD:: parameterCache
 An Array containing the current state (code::[value, display]::) of each parameter. Only valid if a plugin is currently loaded!
@@ -1022,20 +1122,6 @@ METHOD:: sendSysex
 METHOD:: sendSysexMsg
 send a system exclusive message as an link::Classes/Int8Array::.
 
-METHOD:: midiReceived
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when receiving MIDI messages from the plugin.
-
-discussion::
-The 3 bytes of the MIDI message are passed as invidual arguments:
-code::
-~fx.midiReceived = {arg ...msg; "got MIDI message %".format(msg)};
-::
-
-METHOD:: sysexReceived
-a link::Classes/Function:: or link::Classes/FunctionList:: to be called when receiving SysEx messages from the plugin.
-
-discussion::
-The SysEx data is passed to the action as an link::Classes/Int8Array::.
 
 subsection:: Transport
 

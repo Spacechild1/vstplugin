@@ -1,6 +1,9 @@
 VSTPluginController {
 	// class var
 	const oscPacketSize = 1600; // safe max. OSC packet size
+	classvar eventNames;
+	classvar warnedDeprecated;
+
 	// public
 	var <>synth;
 	var <>synthIndex;
@@ -9,17 +12,12 @@ VSTPluginController {
 	var <midi;
 	var <program;
 	var <latency;
-	// callbacks
-	var <>parameterAutomated;
-	var <>midiReceived;
-	var <>sysexReceived;
-	var <>latencyChanged;
-	var <>pluginCrashed;
 	// for dependants
 	var <parameterCache;
 	var <programCache;
 	// private
 	var oscFuncs;
+	var eventListeners;
 	var currentPreset; // the current preset
 	var window; // do we have a VST editor?
 	var loading; // are we currently loading a plugin?
@@ -30,6 +28,16 @@ VSTPluginController {
 
 	*initClass {
 		Class.initClassTree(Event);
+
+		// event names for addEventListener()
+		eventNames = IdentitySet[
+			\automated, \midi, \sysex, \latency, \crashed,
+			\editorPos, \editorSize, \editorVis, \editorClosed
+		];
+
+		// for deprecation warnings
+		warnedDeprecated = IdentitySet();
+
 		// custom event type for playing VSTis:
 		Event.addEventType(\vst_midi, #{ arg server;
 			var freqs, lag, offset, strumOffset, dur, sustain, strum;
@@ -82,6 +90,7 @@ VSTPluginController {
 
 			};
 		});
+
 		// custom event type for setting VST parameters:
 		Event.addEventType(\vst_set, #{ arg server;
 			var bndl, array, params, scan, keys, vst = ~vst.value;
@@ -210,6 +219,9 @@ VSTPluginController {
 		needQueryPrograms = true;
 		deferred = false;
 		midi = VSTPluginMIDIProxy(this);
+		eventListeners = IdentityDictionary();
+
+		// OSC responders
 		oscFuncs = List.new;
 		// parameter changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
@@ -248,13 +260,13 @@ VSTPluginController {
 			var index, value;
 			index = msg[3].asInteger;
 			value = msg[4].asFloat;
-			parameterAutomated.value(index, value);
+			eventListeners[\automated].value(index, value);
 			this.changed(\automated, index, value);
 		}, '/vst_auto'));
 		// latency changed:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			latency = msg[3].asInteger;
-			latencyChanged.value(latency);
+			eventListeners[\latency].value(latency);
 			this.changed(\latency, latency);
 		}, '/vst_latency'));
 		// update display:
@@ -265,19 +277,49 @@ VSTPluginController {
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
 			"plugin '%' crashed".format(this.info.name).warn;
 			this.close;
-			pluginCrashed.value;
+			eventListeners[\crashed].value;
 			this.changed(\crashed);
 		}, '/vst_crash'));
 		// MIDI received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
-			// convert to integers and pass as args to action
-			midiReceived.value(*Int32Array.newFrom(msg[3..]));
+			// forward as individual integer arguments
+			var midi = msg[3..].collect(_.asInteger);
+			eventListeners[\midi].value(*midi);
 		}, '/vst_midi'));
 		// sysex received:
 		oscFuncs.add(this.prMakeOscFunc({ arg msg;
-			// convert to Int8Array and pass to action
-			sysexReceived.value(Int8Array.newFrom(msg[3..]));
+			// forward as Int8Array
+			var sysex = Int8Array.newFrom(msg[3..]);
+			eventListeners[\sysex].value(sysex);
 		}, '/vst_sysex'));
+		// editor pos:
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			// convert to Int8Array and pass to action
+			var x = msg[3].asInteger;
+			var y = msg[4].asInteger;
+			eventListeners[\editorPos].value(x, y);
+			this.changed(\editorPos, x, y);
+		}, '/vst_editor_pos'));
+		// editor size:
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			// convert to Int8Array and pass to action
+			var w = msg[3].asInteger;
+			var h = msg[4].asInteger;
+			eventListeners[\editorSize].value(w, h);
+			this.changed(\editorSize, w, h);
+		}, '/vst_editor_size'));
+		// editor visibility:
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			var vis = msg[3].asBoolean;
+			eventListeners[\editorVis].value(vis);
+			this.changed(\editorVis, vis);
+		}, '/vst_editor_vis'));
+		// editor closed:
+		oscFuncs.add(this.prMakeOscFunc({ arg msg;
+			eventListeners[\editorClosed].value;
+			this.changed(\editorClosed);
+		}, '/vst_editor_closed'));
+
 		// cleanup after synth has been freed:
 		synth.onFree { this.prFree };
 	}
@@ -388,8 +430,8 @@ VSTPluginController {
 				this.prClear;
 				loading = true; // HACK for prClear!
 				this.prMakeOscFunc({ arg msg;
-					var loaded = msg[3].asBoolean;
-					loaded.if {
+					var success = msg[3].asBoolean;
+					success.if {
 						window = msg[4].asBoolean;
 						latency = msg[5].asInteger;
 						this.info = info; // now set 'info' property
@@ -411,10 +453,12 @@ VSTPluginController {
 					};
 					loading = false;
 					deferred = multiThreading || (mode.asSymbol != \auto) || info.bridged;
-					this.changed(\open, path, loaded);
-					action.value(this, loaded);
-					// report latency (if loaded)
-					latency !? { latencyChanged.value(latency); }
+					this.changed(\open, path, success);
+					action.value(this, success);
+					// report latency on success
+					if (latency.notNil) {
+						eventListeners[\latency].value(latency);
+					}
 				}, '/vst_open').oneShot;
 				// don't set 'info' property yet; use original path!
 				this.sendMsg('/open', path.asString.standardizePath,
@@ -474,7 +518,6 @@ VSTPluginController {
 			needQueryParams.if { this.prQueryParams };
 			needQueryPrograms.if { this.prQueryPrograms };
 		};
-
 	}
 
 	update { arg who, what ... args;
@@ -517,6 +560,71 @@ VSTPluginController {
 		this.deprecated(thisMethod);
 		^this.makeMsg('/mode',  bool.asInteger);
 	}
+
+	// event handling
+	addEventListener { arg type, func;
+		type = type.asSymbol;
+		if (eventNames.includes(type)) {
+			eventListeners[type] = eventListeners[type].addFunc(func);
+		} {
+			MethodError("unknown event type '%'".format(type), this).throw;
+		}
+	}
+
+	removeEventListener { arg type, func;
+		type = type.asSymbol;
+		if (eventNames.includes(type)) {
+			if (func.notNil) {
+				eventListeners[type] = eventListeners[type].removeFunc(func);
+			} {
+				// remove all listeners for the given type
+				eventListeners.removeAt(type);
+			}
+		} {
+			MethodError("unknown event type '%'".format(type), this).throw;
+		}
+	}
+
+	clearEventListeners {
+		eventListeners.clear;
+	}
+
+	// callback members deprecated in favor of addEventListener()
+	prSetCallbackDeprecated { arg method, type, func;
+		// for now only warn once
+		if (warnedDeprecated.includes(method.name).not) {
+			this.deprecated(method, this.class.findMethod(\addEventListener));
+			warnedDeprecated.add(method.name);
+		};
+		// this will overwrite registered listeners!
+		// if 'func' is nil, the listener(s) will be effectively removed.
+		eventListeners[type] = func;
+	}
+
+	parameterAutomated_ { arg func;
+		this.prSetCallbackDeprecated(thisMethod, \automated, func);
+	}
+	parameterAutomated { ^eventListeners[\automated] }
+
+	midiReceived_ { arg func;
+		this.prSetCallbackDeprecated(thisMethod, \midi, func);
+	}
+	midiReceived { ^eventListeners[\midi] }
+
+	sysexReceived_ { arg func;
+		this.prSetCallbackDeprecated(thisMethod, \sysex, func);
+	}
+	sysexReceived { ^eventListeners[\sysex] }
+
+	latecenyChanged_ { arg func;
+		this.prSetCallbackDeprecated(thisMethod, \latency, func);
+	}
+	latencyChanged { ^eventListeners[\latency] }
+
+	pluginCrashed_ { arg func;
+		this.prSetCallbackDeprecated(thisMethod, \crashed, func);
+	}
+	pluginCrashed { ^eventListeners[\crashed] }
 
 	// parameters
 	numParameters {
