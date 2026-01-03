@@ -69,6 +69,7 @@ namespace X11 {
 namespace  {
 Atom wmProtocols;
 Atom wmDelete;
+Atom netFrameExtents;
 }
 
 /*//////////////// EventLoop ////////////////*/
@@ -115,6 +116,7 @@ EventLoop::EventLoop() {
     LOG_DEBUG("X11: created root window: " << root_);
     wmProtocols = XInternAtom(display_, "WM_PROTOCOLS", 0);
     wmDelete = XInternAtom(display_, "WM_DELETE_WINDOW", 0);
+    netFrameExtents = XInternAtom(display_, "_NET_FRAME_EXTENTS", 0);
 
     running_.store(true);
     if (UIThread::isCurrentThread()) {
@@ -318,13 +320,13 @@ void EventLoop::pollX11Events(){
                 LOG_DEBUG("X11: unknown client message");
             }
         } else if (event.type == ConfigureNotify){
-            XConfigureEvent& xce = event.xconfigure;
+            XConfigureEvent& e = event.xconfigure;
             LOG_DEBUG("X11: ConfigureNotify");
-            auto w = findWindow(xce.window);
-            if (w){
-                w->onConfigure(xce.x, xce.y, xce.width, xce.height);
+            auto w = findWindow(e.window);
+            if (w) {
+                w->onConfigure(e.x, e.y, e.width, e.height);
             } else {
-                LOG_ERROR("X11: ConfigureNotify: couldn't find Window " << xce.window);
+                LOG_ERROR("X11: ConfigureNotify: couldn't find Window " << e.window);
             }
         } else {
             // LOG_DEBUG("got event: " << event.type);
@@ -534,14 +536,14 @@ void Window::open(){
     }, this);
 }
 
-void Window::doOpen(){
-    if (window_){
+void Window::doOpen() {
+    LOG_DEBUG("X11: open window");
+    if (window_) {
         // just bring to foreground
         LOG_DEBUG("X11: restore");
     #if 0
         XRaiseWindow(display_, window_);
     #else
-        savePosition();
         XUnmapWindow(display_, window_);
         XMapWindow(display_, window_);
         XMoveWindow(display_, window_, rect_.x, rect_.y);
@@ -554,12 +556,14 @@ void Window::doOpen(){
     // Already set 'window_' in the beginning because openEditor()
     // might implicitly call resize()!
     int s = DefaultScreen(display_);
+    int w = rect_.w != 0 ? rect_.w : 1;
+    int h = rect_.h != 0 ? rect_.h : 1;
     window_ = XCreateSimpleWindow(display_, RootWindow(display_, s),
-                0, 0, 300, 300, 1,
+                rect_.x, rect_.y, w, h, 1,
                 BlackPixel(display_, s), WhitePixel(display_, s));
     // receive configure events
     XSelectInput(display_, window_, StructureNotifyMask);
-    // Intercept request to delete window when being closed
+    // intercept request to delete window when being closed
     XSetWMProtocols(display_, window_, &wmDelete, 1);
     // set window class hint
     XClassHint *ch = XAllocClassHint();
@@ -573,10 +577,11 @@ void Window::doOpen(){
     auto title = plugin_->info().name.c_str();
     XStoreName(display_, window_, title);
     XSetIconName(display_, window_, title);
+
     LOG_DEBUG("X11: created Window " << window_);
 
     // set window coordinates
-    bool didOpen = false;
+    bool didOpenEditor = false;
     if (rect_.valid()) {
         LOG_DEBUG("X11: restore editor rect");
         // just restore from cached rect
@@ -592,7 +597,7 @@ void Window::doOpen(){
             XFlush(display_);
             plugin_->openEditor(getHandle());
             plugin_->getEditorRect(r);
-            didOpen = true;
+            didOpenEditor = true;
         }
         LOG_DEBUG("X11: editor size: " << r.w << " * " << r.h);
         // only set size!
@@ -608,13 +613,13 @@ void Window::doOpen(){
         LOG_DEBUG("X11: enable resizing");
     }
 
-    // resize the window
     XMapWindow(display_, window_);
+    // move/resize window after mapping!
     XMoveResizeWindow(display_, window_, rect_.x, rect_.y, rect_.x, rect_.y);
     XFlush(display_);
 
     // open VST editor
-    if (!didOpen){
+    if (!didOpenEditor){
         LOG_DEBUG("X11: open editor");
         plugin_->openEditor(getHandle());
     }
@@ -630,9 +635,7 @@ void Window::close(){
 }
 
 void Window::doClose(){
-    if (window_){
-        savePosition();
-
+    if (window_) {
         LOG_DEBUG("X11: unregister Window");
         EventLoop::instance().unregisterWindow(this);
 
@@ -656,32 +659,18 @@ void Window::setFixedSize(int w, int h){
     }
 }
 
-// QUESTION: do we actually need this? We already cache the position
-// in onConfigure().
-void Window::savePosition(){
-    auto root = EventLoop::instance().getRoot();
-    int x, y;
-    ::Window child;
-    XWindowAttributes xwa;
-    XTranslateCoordinates(display_, window_, root, 0, 0, &x, &y, &child);
-    XGetWindowAttributes(display_, window_, &xwa);
-    // somehow it's 2 pixels off, probably because of the border
-    rect_.x = x - xwa.x + 2;
-    rect_.y = y - xwa.y + 2;
-    LOG_DEBUG("X11: save position " << rect_.x << ", " << rect_.y);
-}
-
 void Window::setPos(int x, int y){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto window = cmd->owner->window_;
         auto display = cmd->owner->display_;
         auto& r = cmd->owner->rect_;
-        // cache!
+        // save position!
         r.x = cmd->x;
         r.y = cmd->y;
 
-        if (window){
+        if (window) {
+            // will generate XConfigureEvent, see onConfigure().
             XMoveWindow(display, window, r.x, r.y);
             XFlush(display);
         }
@@ -699,11 +688,12 @@ void Window::setSize(int w, int h){
             auto window = owner->window_;
             auto display = owner->display_;
             auto& r = cmd->owner->rect_;
-            // cache!
+            // save size!
             r.w = cmd->x;
             r.h = cmd->y;
 
-            if (window){
+            if (window) {
+                // will generate XConfigureEvent, see onConfigure().
                 XResizeWindow(display, window, r.w, r.h);
                 XFlush(display);
             }
@@ -713,11 +703,11 @@ void Window::setSize(int w, int h){
     }, new Command { this, w, h });
 }
 
-void Window::resize(int w, int h){
+void Window::resize(int w, int h) {
     LOG_DEBUG("X11: resized by plugin: " << w << ", " << h);
     // should only be called if the window is open
-    if (window_){
-        if (!canResize()){
+    if (window_) {
+        if (!canResize()) {
             setFixedSize(w, h);
         }
         // always generates a XConfigureEvent, see onConfigure()
@@ -737,29 +727,64 @@ void Window::onUpdate(){
     plugin_->updateEditor();
 }
 
-void Window::onConfigure(int x, int y, int width, int height){
-    LOG_DEBUG("X11: onConfigure: x: " << x << ", y: " << y
-              << ", w: " << width << ", h: " << height);
-    if (x != rect_.x || y != rect_.y) {
-        LOG_DEBUG("X11: window moved");
-        // cache pos
-        rect_.x = x;
-        rect_.y = y;
+void Window::onConfigure(int x, int y, int width, int height) {
+    if (width == 1 && height == 1) {
+        LOG_DEBUG("X11: ignore initial configure event");
+        return;
+    }
+
+    if (!lastRect_.valid()) {
+        // very first configure event -> query frame extents
+        Atom actualType;
+        int actualFormat;
+        unsigned long n, extra;
+        long* data;
+        if (XGetWindowProperty(display_, window_, netFrameExtents, 0, 4, 0, XA_CARDINAL,
+                               &actualType, &actualFormat, &n, &extra, (unsigned char**)&data)
+                == Success && n == 4) {
+            int left = data[0];
+            int right = data[1];
+            int top = data[2];
+            int bottom = data[3];
+            XFree(data);
+            LOG_DEBUG("X11: frame extents: left: " << left << ", right: " << right
+                      << ", top: " << top << ", bottom: " << bottom);
+            xOffset_ = left;
+            yOffset_ = top;
+        } else {
+            LOG_ERROR("X11: could not get frame extents");
+        }
+    }
+
+    x -= xOffset_;
+    y -= yOffset_;
+
+    LOG_DEBUG("X11: on configure: " << x << ", " << y << ", " << width << " x " << height);
+
+    rect_.x = x;
+    rect_.y = y;
+    rect_.w = width;
+    rect_.h = height;
+
+    if (canResize()) {
+        plugin_->resizeEditor(width, height);
+    }
+
+    if (x != lastRect_.x || y != lastRect_.y) {
+        LOG_DEBUG("X11: window moved: " << x << ", " << y);
         if (auto listener = plugin_->getListener()) {
             listener->editorMoved(x, y);
         }
+        lastRect_.x = x;
+        lastRect_.y = y;
     }
-    if (rect_.w != width || rect_.h != height){
-        LOG_DEBUG("X11: window size changed");
-        if (canResize()) {
-            plugin_->resizeEditor(width, height);
-        }
-        // cache size
-        rect_.w = width;
-        rect_.h = height;
+    if (width != lastRect_.w || height != lastRect_.h) {
+        LOG_DEBUG("X11: window size changed: " << width << " x " << height);
         if (auto listener = plugin_->getListener()) {
             listener->editorResized(width, height);
         }
+        lastRect_.w = width;
+        lastRect_.h = height;
     }
 }
 

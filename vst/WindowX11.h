@@ -7,6 +7,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xatom.h>
 
 #include <cassert>
 #include <thread>
@@ -116,7 +117,7 @@ private:
 };
 
 class Window : public IWindow {
- public:
+public:
     Window(Display &display, IPlugin& plugin);
     ~Window();
 
@@ -132,20 +133,22 @@ class Window : public IWindow {
     void onUpdate();
 
     void *getHandle() { return (void *)window_; }
- private:
+private:
     bool canResize() const;
 
     Display *display_;
     IPlugin *plugin_;
     ::Window window_ = 0;
+    int xOffset_ = 0;
+    int yOffset_ = 0;
 
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
+    Rect lastRect_;
 
     // helper methods
     void doOpen();
     void doClose();
     void setFixedSize(int w, int h);
-    void savePosition();
 
     struct Command {
         Window *owner;
