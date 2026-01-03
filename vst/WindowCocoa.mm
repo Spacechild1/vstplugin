@@ -29,13 +29,12 @@
     // get position from *frame* rect
     auto rect = [self frame];
     auto pos = rect.origin;
-    // obtain the screen height.
+    // get the screen height
     auto screenHeight = [self screen].frame.size.height;
     // flip y coordinate
-    pos.y = screenHeight - (pos.y + rect.height);
+    pos.y = screenHeight - (pos.y + rect.size.height);
     // notify window
     static_cast<vst::Cocoa::Window *>(owner_)->onMove(pos.x, pos.y);
-    LOG_DEBUG("Cocoa: window did move");
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
@@ -49,7 +48,6 @@
     auto size = [self contentRectForFrameRect:[self frame]].size;
     // notify window
     static_cast<vst::Cocoa::Window *>(owner_)->onResize(size.width, size.height);
-    LOG_DEBUG("Cocoa: window did resize");
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
@@ -322,6 +320,8 @@ void Window::open(){
 
 // to be called on the main thread
 void Window::doOpen(){
+    LOG_DEBUG("Cocoa: open window");
+
     if (window_){
         // just bring to top
         [NSApp activateIgnoringOtherApps:YES];
@@ -342,6 +342,8 @@ void Window::doOpen(){
                 defer:NO];
     if (window_){
         [window_ setOwner:this];
+        [[NSNotificationCenter defaultCenter] addObserver:window_ selector:@selector(windowDidMove:)
+                name:NSWindowDidMoveNotification object:window_];
         [[NSNotificationCenter defaultCenter] addObserver:window_ selector:@selector(windowDidResize:)
                 name:NSWindowDidResizeNotification object:window_];
         
@@ -351,38 +353,30 @@ void Window::doOpen(){
         LOG_DEBUG("Cocoa: created Window");
 
         // set window coordinates
-        loading_ = true;
-        bool didOpen = false;
+        bool didOpenEditor = false;
         if (rect_.valid()){
             LOG_DEBUG("Cocoa: restore editor rect");
+            restoring_ = true; // see resize()
         } else {
             // get window dimensions from plugin
             Rect r;
-            if (!plugin_->getEditorRect(r)){
+            if (!plugin_->getEditorRect(r)) {
                 // HACK for plugins which don't report the window size
                 // without the editor being opened
                 LOG_DEBUG("Cocoa: couldn't get editor rect!");
                 plugin_->openEditor(getHandle());
                 plugin_->getEditorRect(r);
-                didOpen = true;
+                didOpenEditor = true;
             }
             LOG_DEBUG("Cocoa: editor size " << r.w << " * " << r.h);
             // adjust initial position and size!
             rect_.w = r.w;
             rect_.h = r.h;
-            adjustPos_ = true;
-            adjustSize_ = true;
-            // report initial position and size
-            if (auto listener = plugin_->getListener()) {
-                listener->editorMoved(rect_.x, rect_.y);
-                listener->editorResized(rect_.w, rect_.h);
-            }
         }
-        loading_ = false;
 
-        updateFrame();
+        updateGeometry();
 
-        if (!didOpen){
+        if (!didOpenEditor){
             plugin_->openEditor(getHandle());
         }
 
@@ -406,6 +400,7 @@ void Window::doOpen(){
         [window_ makeKeyAndOrderFront:nil];
 
         LOG_DEBUG("Cocoa: opened Window");
+        restoring_ = false;
     }
 }
 
@@ -418,6 +413,7 @@ void Window::close(){
 // to be called on the main thread
 void Window::doClose() {
     if (window_) {
+        LOG_DEBUG("Cocoa: close window");
         // to distinguish from manually closing the window, see onClose().
         closing_ = true;
         // will implicitly call onClose()!
@@ -427,27 +423,15 @@ void Window::doClose() {
 }
 
 // to be called on the main thread
-void Window::onClose(){
-    if (window_){
+void Window::onClose() {
+    if (window_) {
+        [[NSNotificationCenter defaultCenter] removeObserver:window_ name:NSWindowDidMoveNotification object:window_];
         [[NSNotificationCenter defaultCenter] removeObserver:window_ name:NSWindowDidResizeNotification object:window_];
 
         [timer_ invalidate];
         timer_ = nil;
 
         plugin_->closeEditor();
-
-        // cache actual position and size
-        auto pos = window_.frame.origin;
-        rect_.x = pos.x;
-        rect_.y = pos.y;
-        adjustPos_ = false; // !
-        LOG_DEBUG("Cocoa: cache pos: " << rect_.x << ", " << rect_.y);
-
-        auto size = window_.frame.size;
-        rect_.w = size.width;
-        rect_.h = size.height;
-        adjustSize_ = false; // !
-        LOG_DEBUG("Cocoa: cache size: " << rect_.w << ", " << rect_.h);
 
         if (!closing_) {
             // window has been closed manually
@@ -476,50 +460,55 @@ void * Window::getHandle(){
     return window_ ? [window_ contentView] : nullptr;
 }
 
-void Window::updateFrame(){
-    // first adjust size, because we need it to adjust pos!
-    if (adjustSize_){
-        LOG_DEBUG("Cocoa: adjust size: want size " << rect_.w << ", " << rect_.h);
-        NSRect content = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
-        NSRect frame = [window_  frameRectForContentRect:content];
-        rect_.w = frame.size.width;
-        rect_.h = frame.size.height;
-        LOG_DEBUG("Cocoa: real size " << rect_.w << ", " << rect_.h);
-        adjustSize_ = false;
-    }
-    if (adjustPos_){
-        LOG_DEBUG("Cocoa: adjust pos: want pos " << rect_.x << ", " << rect_.y);
-        // first move the window to the given x coordinate
-        [window_ setFrameOrigin:NSMakePoint(rect_.x, rect_.y)];
-        // then obtain the screen height.
-        auto screenHeight = window_.screen.frame.size.height;
-        LOG_DEBUG("Cocoa: screen height: " << screenHeight);
-        // finally flip y coordinate
-        // (don't use the actual frame height yet!)
-        rect_.y = screenHeight - (rect_.y + rect_.h);
-        LOG_DEBUG("real pos " << rect_.x << ", " << rect_.y);
-        adjustPos_ = false;
-    }
-    LOG_DEBUG("Cocoa: update frame");
-    LOG_DEBUG("x: " << rect_.x << ", y: " << rect_.y
-              << ", w: " << rect_.w << ", h: " << rect_.h);
-    NSRect frame = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
+void Window::updateGeometry() {
+    LOG_DEBUG("Cocoa: update geometry: " << rect_.x << ", " << rect_.y
+              << ", " << rect_.w << " x " << rect_.h);
+
+    // first adjust the size because we need it to adjust the position!
+    NSRect content = NSMakeRect(rect_.x, rect_.y, rect_.w, rect_.h);
+    NSRect frame = [window_ frameRectForContentRect:content];
+
+    // now move the window to the given x coordinate
+    // NB: ignore move event, see onMove().
+    ignoreMove_ = true;
+    [window_ setFrameOrigin:NSMakePoint(rect_.x, rect_.y)];
+    ignoreMove_ = false;
+    // then obtain the screen height
+    auto screenHeight = window_.screen.frame.size.height;
+    // finally bash size and flip y coordinate
+    frame.origin.x = rect_.x;
+    frame.origin.y = screenHeight - (rect_.y + frame.size.height);
+
+    LOG_DEBUG("Cocoa: setFrame: " << frame.origin.x << ", " << frame.origin.y
+              << ", " << frame.size.width << " x " << frame.size.height);
     [window_ setFrame:frame display:YES];
+
+    // TODO: verify position and size
+    if (rect_.x != lastRect_.x || rect_.y != lastRect_.y) {
+        if (auto listener = plugin_->getListener()) {
+            listener->editorMoved(rect_.x, rect_.y);
+        }
+        lastRect_.x = rect_.x;
+        lastRect_.y = rect_.y;
+    }
+    if (rect_.w != lastRect_.w || rect_.h != lastRect_.h) {
+        if (auto listener = plugin_->getListener()) {
+            listener->editorResized(rect_.w, rect_.h);
+        }
+        lastRect_.w = rect_.w;
+        lastRect_.h = rect_.h;
+    }
 }
 
 void Window::setPos(int x, int y){
     EventLoop::instance().callAsync([](void *user){
         auto cmd = static_cast<Command *>(user);
         auto owner = cmd->owner;
-        // notify unconditionally. LATER verify position
-        if (auto listener = owner->plugin_->getListener()) {
-            listener->editorMoved(cmd->x, cmd->y);
-        }
+        // save position
         owner->rect_.x = cmd->x;
         owner->rect_.y = cmd->y;
-        owner->adjustPos_ = true; // !
         if (owner->getHandle()){
-            owner->updateFrame();
+            owner->updateGeometry();
         }
         delete cmd;
     }, new Command { this, x, y });
@@ -534,24 +523,12 @@ void Window::setSize(int w, int h){
             auto h = cmd->y;
             auto owner = cmd->owner;
             // only if we can resize!
-            if (owner->canResize()){
-                // notify unconditionally. LATER verify size
-                if (auto listener = owner->plugin_->getListener()) {
-                    listener->editorResized(w, h);
-                }
-                // if the window is visible, cache real position
-                // and adjust y coordinate for height difference!
-                if (owner->getHandle()){
-                    auto frame = owner->window_.frame;
-                    NSRect contentRect = [owner->window_  contentRectForFrameRect:frame];
-                    owner->rect_.x = frame.origin.x;
-                    owner->rect_.y = frame.origin.y - (h - contentRect.size.height);
-                }
+            if (owner->canResize()) {
+                // save size
                 owner->rect_.w = w;
                 owner->rect_.h = h;
-                owner->adjustSize_ = true;
                 if (owner->getHandle()){
-                    owner->updateFrame();
+                    owner->updateGeometry();
                 }
             }
             delete cmd;
@@ -561,44 +538,56 @@ void Window::setSize(int w, int h){
 
 void Window::onMove(int x, int y) {
     LOG_DEBUG("Cocoa: onMove: " << x << ", " << y);
-    if (auto listener = plugin_->getListener()) {
-        listener->editorMoved(x, y);
+    if (!ignoreMove_) {
+        // save position
+        rect_.x = x;
+        rect_.y = y;
+        if (x != lastRect_.x || y != lastRect_.y) {
+            if (auto listener = plugin_->getListener()) {
+                listener->editorMoved(x, y);
+            }
+            lastRect_.x = x;
+            lastRect_.y = y;
+        }
+    } else {
+        LOG_DEBUG("Cocoa: ignore move");
     }
 }
 
 void Window::onResize(int w, int h) {
     LOG_DEBUG("Cocoa: onResize: " << w << ", " << h);
-    if (!loading_){
+    if (canResize()) {
         plugin_->resizeEditor(w, h);
+    }
+    // save size
+    rect_.w = w;
+    rect_.h = h;
+    if (w != lastRect_.w || h != lastRect_.h) {
         if (auto listener = plugin_->getListener()) {
             listener->editorResized(w, h);
         }
-        rect_.w = w;
-        rect_.h = h;
-        adjustSize_ = true; // !
+        lastRect_.w = w;
+        lastRect_.h = h;
     }
 }
 
-void Window::resize(int w, int h){
-    LOG_DEBUG("Cocoa: resized by plugin: " << w << ", " << h);
-    if (!loading_){
-        // cache real position and adjust y coordinate for height difference!
-        // the window is visible, so rect_ should already be adjusted.
-        auto pos = window_.frame.origin;
-        LOG_DEBUG("Cocoa: current pos: " << pos.x << ", " << pos.y);
-        NSRect rect = [window_ contentRectForFrameRect:window_.frame];
-        rect_.x = pos.x;
-        rect_.y = pos.y - (h - rect.size.height);
-        // update and adjust size
-        rect_.w = w;
-        rect_.h = h;
-        adjustSize_ = true;
-        updateFrame();
-        if (auto listener = plugin_->getListener()) {
-            // notify unconditionally. LATER verify size
-            listener->editorResized(w, h);
-        }
+void Window::resize(int w, int h) {
+    // the workaround above creates problems with certain plugins (e.g. Helm.vst3) and
+    // it doesn't seem to be necessary for certain other plugins (e.g. Surge XT.vst3),
+    // so let's disable it for now.
+#if 0
+    // ignore resize requests when restoring a resizable plugin.
+    // NB: this doesn't seem to work with "resizable" VST2 plugins.
+    if (restoring_ && canResize()) {
+        LOG_DEBUG("Cocoa: ignore resize request while restoring window");
+        return;
     }
+#endif
+
+    LOG_DEBUG("Cocoa: resized by plugin: " << w << ", " << h);
+    rect_.w = w;
+    rect_.h = h;
+    updateGeometry();
 }
 
 } // Cocoa

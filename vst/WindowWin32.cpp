@@ -682,7 +682,9 @@ void Window::onMove(int x, int y) {
 // client rect size!
 void Window::onSize(int w, int h) {
     LOG_DEBUG("Win32: window size changed: " << w << " x " << h);
-    plugin_->resizeEditor(w, h);
+    if (canResize()) {
+        plugin_->resizeEditor(w, h);
+    }
     // save size
     rect_.w = w;
     rect_.h = h;

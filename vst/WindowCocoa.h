@@ -85,17 +85,18 @@ class Window : public IWindow {
     void updateEditor();
  private:
     void *getHandle();
-    void updateFrame();
+    void updateGeometry();
     bool canResize() const;
+    CGPoint getWindowPos() const;
 
     CocoaEditorWindow * window_ = nullptr;
     IPlugin *plugin_;
     NSTimer *timer_;
     Rect rect_{ 100, 100, 0, 0 }; // empty rect!
-    bool adjustSize_ = false;
-    bool adjustPos_ = false;
-    bool loading_ = false;
+    Rect lastRect_;
+    bool restoring_ = false;
     bool closing_ = false;
+    bool ignoreMove_ = false;
 
     static std::atomic<int> numWindows_;
 
