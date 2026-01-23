@@ -1416,8 +1416,6 @@ void VST3Plugin::handleOutputParameterChanges(){
                         Vst::ParamValue value = 0;
                         if (data->getPoint(j, offset, value) == kResultOk) {
                             if (needQueue) {
-                                // FIXME: currently, the FIFO is only drained when the editor is open!
-                                // Consider using a global FIFO and poll it regularly from the UI thread.
                                 gParamChangesToGui.emplace(uniqueId_, id, value);
                             } else {
                                 // NOTE: this is not really realtime-safe; for realtime processing,

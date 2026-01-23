@@ -15,47 +15,68 @@ class LockfreeFifo {
     LockfreeFifo() = default;
 
     LockfreeFifo(const LockfreeFifo&) = delete;
-
-    LockfreeFifo& operator=(const LockfreeFifo&) = delete;
+    LockfreeFifo(LockfreeFifo&&) = delete;
 
     bool push(const T& data){
         return emplace(data);
     }
+
     template<typename... TArgs>
-    bool emplace(TArgs&&... args){
-        int next = (writeHead_.load(std::memory_order_relaxed) + 1) % N;
+    bool emplace(TArgs&&... args) {
+        size_t pos = writeHead_.load(std::memory_order_relaxed);
+        int next = (pos + 1) % N;
         if (next == readHead_.load(std::memory_order_acquire)){
             return false; // FIFO is full
         }
-        data_[next] = T { std::forward<TArgs>(args)... };
+        data_[pos] = T { std::forward<TArgs>(args)... };
         writeHead_.store(next, std::memory_order_release);
         return true;
     }
-    bool pop(T& data){
-        int pos = readHead_.load(std::memory_order_relaxed);
+
+    bool pop(T& data) {
+        size_t pos = readHead_.load(std::memory_order_relaxed);
         if (pos == writeHead_.load(std::memory_order_acquire)) {
             return false; // FIFO is empty
         }
-        int next = (pos + 1) % N;
-        data = data_[next];
+        data = data_[pos];
+        size_t next = (pos + 1) % N;
         readHead_.store(next, std::memory_order_release);
         return true;
     }
+
     void clear() {
         readHead_.store(writeHead_.load());
     }
-    bool empty() const {
-        return readHead_.load(std::memory_order_relaxed) == writeHead_.load(std::memory_order_relaxed);
+
+    // called by the writer
+    bool full() const {
+        size_t readPos = readHead_.load(std::memory_order_acquire);
+        size_t writePos = writeHead_.load(std::memory_order_relaxed);
+        int nextPos = (writePos + 1) % N;
+        return nextPos == readPos;
     }
+
+    // called by the reader
+    bool empty() const {
+        size_t readPos = readHead_.load(std::memory_order_relaxed);
+        size_t writePos = writeHead_.load(std::memory_order_acquire);
+        return readHead_ == writePos;
+    }
+
     size_t capacity() const { return N; }
+
     // raw data
-    int readPos() const { return readHead_.load(std::memory_order_relaxed); }
-    int writePos() const { return writeHead_.load(std::memory_order_relaxed); }
-    T * data() { return data_.data(); }
+    size_t readPos() const { return readHead_.load(std::memory_order_relaxed); }
+
+    size_t writePos() const { return writeHead_.load(std::memory_order_relaxed); }
+
+    T* data() { return data_.data(); }
+
     const T* data() const { return data_.data(); }
- private:
-    std::atomic<int> readHead_{0};
-    std::atomic<int> writeHead_{0};
+
+private:
+    std::atomic<size_t> readHead_{0};
+    std::atomic<size_t> writeHead_{0};
     std::array<T, N> data_;
 };
 
@@ -68,11 +89,21 @@ struct Node {
     T data_;
 };
 
-// special MPSC queue implementation that can be safely created in a RT context.
-// the required dummy node is a class member and therefore doesn't have to be allocated
+// A special MPSC queue implementation that can be safely created in a RT context.
+// Its main use case is to send events from one or more NRT threads to a RT thread
+// or from one or more RT threads to a NRT thread. (In the latter case, a sufficient
+// number of nodes must be reserved to make it RT-safe.)
+//
+// The required dummy node is a class member and therefore doesn't have to be allocated
 // dynamically in the constructor. As a consequence, we need to be extra careful when
 // freeing the nodes in the destructor (we must not delete the dummy node!)
-// Multiple producers are synchronized with a simple spin lock.
+//
+// Multiple producers are synchronized with a simple spin lock. This is fine because
+// the producer threads are either NRT threads or RT threads, but never both. In the
+// unlikely case that a NRT thread is preempted while holding the spinlock, the worst
+// thing that can happen is that another NRT thread is burning CPU cycles waiting on
+// the lock. RT threads, on the other hand, shouldn't be preempted in the first place.
+//
 // NB: the free list *could* be atomic, but we would need to be extra careful to avoid
 // the ABA problem. (During a CAS loop the current node could be popped and pushed again,
 // so that the CAS would succeed even though the object has changed.)
