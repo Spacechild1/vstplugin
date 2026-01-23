@@ -1,7 +1,6 @@
 message(STATUS "---\n*** VSTPlugin ***")
 
 # Installation path
-# install directory:
 if (WIN32)
     set(SC_INSTALLDIR "${LOCALAPPDATA}/SuperCollider/Extensions/" CACHE PATH "Installation directoy")
 elseif(APPLE)
@@ -104,7 +103,7 @@ endif()
 if (SUPERNOVA)
     install(TARGETS sc_supernova DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     if (MSVC)
-        install(FILES $<TARGET_PDB_FILE:sc_supernova> OPTIONAL DESTINATION "${SC_INSTALLDIR}/scvst/plugins")
+        install(FILES $<TARGET_PDB_FILE:sc_supernova> OPTIONAL DESTINATION "${SC_INSTALLDIR}/VSTPlugin/plugins")
     endif()
 endif()
 
