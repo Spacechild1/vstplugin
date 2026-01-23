@@ -308,7 +308,7 @@ public:
 
     void next(int inNumSamples);
 
-    int getBypass() const { return (int)in0(2); }
+    int getBypass() const { return (int)in0(BypassIndex); }
 
     int blockSize() const;
 
@@ -357,6 +357,15 @@ private:
     static const int Initialized = 1;
     static const int UnitCmdQueued = 2;
     static const int Valid = 4;
+
+    enum {
+        FlagIndex = 0,
+        ReblockIndex = 1,
+        BypassIndex = 2,
+        NumInputsIndex = 3,
+        MinNumUGenInputs = 6
+    };
+
     // data members
     struct UnitCmdQueueItem {
         UnitCmdQueueItem *next;

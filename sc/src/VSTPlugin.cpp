@@ -678,12 +678,10 @@ VSTPlugin::VSTPlugin(){
     //     input: nchannels, chn1, chn2, ...
     //     output: nchannels
     //     params: index, value
-    assert(numInputs() >= 6);
-    // int flags = in0(0);
-    int reblockSize = in0(1);
-    // int bypass = in0(2);
+    assert(numInputs() >= MinNumUGenInputs);
+    int reblockSize = in0(ReblockIndex);
 
-    int offset = 3;
+    int offset = NumInputsIndex;
 
     // setup input busses
     {
