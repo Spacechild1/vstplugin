@@ -91,28 +91,23 @@ Please follow these steps (many thanks to Joseph Anderson!) after downloading an
 
     Using the terminal, navigate to your Pd external resp. SC extension folder and then run:
 
-    SC: `xattr -rd com.apple.quarantine ./VSTPlugin`
+    SuperCollider: `xattr -rd com.apple.quarantine ./VSTPlugin`
 
-    Pd: `xattr -rd com.apple.quarantine ./vstplugin~`
+    Pure Data: `xattr -rd com.apple.quarantine ./vstplugin~`
 
-2)  add unsigned VST plugins to Gatekeeper's enabled list:
+2)  un-quarantine VST plugins:
 
-    Using the terminal, navigate to the folder(s) containing VSTs to enable.
-    The following will create a label, ApprovedVSTs, and then add all VSTs in the directory:
+    Do the same with your plugin folders, e.g. `~/Library/Audio/Plug-Ins/VST3`:
 
-    `spctl --add --label "ApprovedVSTs" *.vst *.vst3`
-
-    Once this is done, the following informs Gatekeeper these are approved:
-
-    `spctl --enable --label "ApprovedVSTs"`
+    `xattr -rd com.apple.quarantine <vst-plugin-folder>`
 
 3)  clear the plugin cache
 
     It is a good idea to go ahead and clear the plugin cache, in case some quarantined plugins have been black-listed already.
 
-    SC: boot the SuperCollider Server, then evaluate: `VSTPlugin.clear`
+    SuperCollider: boot the SuperCollider Server, then evaluate: `VSTPlugin.clear`
 
-    PD: open `vstplugin~-help.pd`, visit `[pd search]` and click the `[clear 1(` message.
+    Pure Data: open `vstplugin~-help.pd`, visit `[pd search]` and click the `[clear 1(` message.
 
 ---
 
