@@ -1038,13 +1038,13 @@ void VSTPlugin::initReblocker(int reblockSize){
         }
 
         // allocate buffer
-        int bufsize = sizeof(float) * totalNumChannels * reblock_->blockSize;
-        reblock_->buffer = (float *)RTAlloc(mWorld, bufsize);
+        int bufsize = totalNumChannels * reblock_->blockSize;
+        reblock_->buffer = (float *)RTAlloc(mWorld, bufsize * sizeof(float));
 
         if (reblock_->buffer){
             auto bufptr = reblock_->buffer;
             // zero
-            memset(bufptr, 0, bufsize);
+            std::fill(bufptr, bufptr + bufsize, 0.0);
             // allocate and assign channel vectors
             auto initBusses = [&](Bus * busses, int count, int blockSize){
                 for (int i = 0; i < count; ++i){
@@ -1115,6 +1115,7 @@ void VSTPlugin::freeReblocker(){
         }
         RTFree(mWorld, reblock_->inputs);
         RTFree(mWorld, reblock_->outputs);
+        RTFree(mWorld, reblock_->buffer);
         RTFree(mWorld, reblock_);
     }
 }
