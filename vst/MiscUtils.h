@@ -40,6 +40,7 @@
 #include "Interface.h"
 #include "Log.h"
 
+#include <cassert>
 #include <string>
 #include <cstring>
 #include <stdlib.h>
@@ -121,7 +122,8 @@ constexpr T prevPowerOfTwo(T v) {
 }
 
 template<typename T>
-T alignTo(T v, size_t alignment) {
+constexpr T alignTo(T v, size_t alignment) {
+    assert(isPowerOfTwo(alignment));
     auto mask = alignment - 1;
     return (v + mask) & ~mask;
 }

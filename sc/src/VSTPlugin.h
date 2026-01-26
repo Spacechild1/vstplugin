@@ -41,6 +41,20 @@ private:
     SpinLock& lock_;
 };
 
+using ParamBitset = size_t;
+
+constexpr size_t ParamBitsetSize = sizeof(ParamBitset) * CHAR_BIT;
+
+inline void setBit(ParamBitset& bitset, size_t index) {
+    assert(index < ParamBitsetSize);
+    bitset |= (size_t)1 << index;
+}
+
+inline bool checkBit(const ParamBitset& bitset, size_t index) {
+    assert(index < ParamBitsetSize);
+    return bitset & ((size_t)1 << index);
+}
+
 // This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.
 // It is managed by a rt::shared_ptr and therefore kept alive during the execution of commands, which means
 // we don't have to worry about the actual UGen being freed concurrently while a command is still running.
@@ -167,13 +181,16 @@ private:
     bool isSettingState_ = false; // see parameterAutomated()
     bool suspended_ = false;
     // deferred parameter updates
-    // This tells which parameters need to be updated.
-    // For threaded plugins, the whole bitset is then
-    // duplicated to allow double buffering.
-    static constexpr size_t paramNumBits = 64;
-    using ParamBitset = std::bitset<paramNumBits>;
+    // When a plugin is sandboxed/bridged and the user sets a parameter,
+    // we cannot immediately obtain the actual parameter value/string
+    // and send it back to the client. Instead, we have to remember which
+    // parameters have been set and only send the updated parameters
+    // *after* the plugin has been processed.
+    // For threaded plugins, processing is delayed by one block so we
+    // we need to apply double-buffering. For this purpose, we double
+    // the size of the bitset and swap the two halves.
     ParamBitset *paramBitset_ = nullptr;
-    int paramBitsetSize_ = 0;
+    size_t paramBitsetSize_ = 0;
     SpinLock spinMutex_;
     // events
     struct Event {

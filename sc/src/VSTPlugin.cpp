@@ -1302,17 +1302,17 @@ void VSTPlugin::next(int inNumSamples) {
             bypass_ = bypass;
         }
 
+        int numParams = plugin->info().numParameters();
         // parameter automation
         // (check paramState_ in case RTAlloc failed)
         if (paramState_) {
             int sampleOffset = reblockPhase();
             // automate parameters with mapped control busses
-            int nparams = plugin->info().numParameters();
             for (auto m = paramMappingList_; m != nullptr; m = m->next) {
                 uint32 index = m->index;
                 auto type = m->type();
                 uint32 num = m->bus();
-                assert(index < nparams);
+                assert(index < numParams);
                 if (type == Mapping::Control) {
                     // Control Bus mapping
                     float value = readControlBus(num);
@@ -1355,7 +1355,7 @@ void VSTPlugin::next(int inNumSamples) {
                 int index = control[0]->mBuffer[0];
                 // only if index is not out of range and the parameter is not mapped to a bus
                 // (a negative index effectively deactivates the parameter control)
-                if (index >= 0 && index < nparams && paramMapping_[index] == nullptr){
+                if (index >= 0 && index < numParams && paramMapping_[index] == nullptr){
                     auto calcRate = control[1]->mCalcRate;
                     auto buffer = control[1]->mBuffer;
                     if (calcRate == calc_FullRate) {
@@ -1430,18 +1430,19 @@ void VSTPlugin::next(int inNumSamples) {
         if (delegate().paramBitset_ && paramState_) {
             auto bitset = delegate().paramBitset_;
             auto size = delegate().paramBitsetSize_;
-            auto numbits = VSTPluginDelegate::paramNumBits;
+            auto numbits = ParamBitsetSize;
             auto threaded = delegate().threaded_;
-            // NB: if threaded, dispatch *previous* param changes
-            auto paramChange = threaded ? bitset + size : bitset;
+            // NB: if threaded, dispatch *previous* param changes (second buffer)
+            auto paramChanges = threaded ? bitset + size : bitset;
             for (int i = 0; i < size; ++i) {
-                if (paramChange[i].any()) {
-                    auto numParams = plugin->info().numParameters();
+                if (paramChanges[i] != 0) {
                     for (int j = 0; j < numbits; ++j) {
-                        if (paramChange[i].test(j)) {
-                            // cache and send parameter
-                            // NB: we need to check the parameter count! See update()
+                        if (checkBit(paramChanges[i], j)) {
+                            // cache and send parameter.
                             auto index = i * numbits + j;
+                            // test() should always return false for out-of-range parameters,
+                            // but let's be on the safe side.
+                            assert(index < numParams);
                             if (index < numParams) {
                                 auto value = plugin->getParameter(index);
                                 paramState_[index] = value;
@@ -1450,7 +1451,7 @@ void VSTPlugin::next(int inNumSamples) {
                         }
                     }
                     // clear bitset!
-                    paramChange[i].reset();
+                    paramChanges[i] = 0;
                 }
             }
             if (threaded) {
@@ -1458,16 +1459,14 @@ void VSTPlugin::next(int inNumSamples) {
                 // NB: if any parameter causes outgoing parameter changes, these will
                 // be sent in the *next* process function call, that's why we set
                 // 'isSettingParam_' again.
-                auto newParamChange = bitset;
-                if (std::any_of(newParamChange, newParamChange + size,
-                                [](auto& x) { return x.any(); })) {
+                auto newParamChanges = bitset;
+                if (std::any_of(newParamChanges, newParamChanges + size,
+                                [](auto& x) { return x != 0; })) {
                     delegate().isSettingParam_ = true;
                 }
-                // finally, swap bitsets
-                std::swap_ranges(newParamChange, paramChange, paramChange);
-                // all bits should be zero now!
-                assert(std::all_of(newParamChange, newParamChange + size,
-                                   [](auto& x) { return x.none(); }));
+                // finally, copy new params to old params and zero new params
+                std::copy(newParamChanges, newParamChanges + size, paramChanges);
+                std::fill(newParamChanges, newParamChanges + size, 0);
             }
         }
 
@@ -1737,22 +1736,20 @@ void VSTPluginDelegate::update(){
     isSettingProgram_ = false;
 
     if (paramBitset_) {
-        RTFree(world(),paramBitset_);
+        RTFree(world(), paramBitset_);
         paramBitset_ = nullptr;
         paramBitsetSize_ = 0;
     }
     // allocate parameter bitset if plugin processing is deferred
     auto numParams = plugin()->info().numParameters();
     if (numParams > 0 && plugin()->isBridged() || plugin()->isThreaded()) {
-        auto d = std::div(numParams, paramNumBits);
-        auto size = d.quot + (d.rem > 0);
+        // round up to next multiple of ParamBitsetSize
+        auto size = alignTo(numParams, ParamBitsetSize);
         // threaded plugin needs twice the size for double buffering
         auto realSize = plugin()->isThreaded() ? size * 2 : size;
         auto bitset = (ParamBitset *)RTAlloc(world(), realSize * sizeof(ParamBitset));
         if (bitset) {
-            for (int i = 0; i < realSize; ++i) {
-                new (&bitset[i]) ParamBitset{};
-            }
+            std::fill_n(bitset, realSize, 0);
             paramBitset_ = bitset;
             paramBitsetSize_ = size;
         } else {
@@ -2182,11 +2179,10 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
             plugin_->setParameter(index, value, sampleOffset);
             if (paramBitset_) {
                 // defer! set corresponding bit in parameter bitset
-                auto i = (uint64_t)index / paramNumBits;
-                auto j = (uint64_t)index % paramNumBits;
+                auto i = (size_t)index / ParamBitsetSize;
+                auto j = (size_t)index % ParamBitsetSize;
                 assert(i >= 0 && i < paramBitsetSize_);
-                paramBitset_[i].set(j);
-
+                setBit(paramBitset_[i], j);
             } else {
                 // cache and send immediately; use actual value!
                 float newValue = plugin_->getParameter(index);
@@ -2212,10 +2208,10 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
             }
             if (paramBitset_) {
                 // defer! set corresponding bit in parameter bitset
-                auto i = (uint64_t)index / paramNumBits;
-                auto j = (uint64_t)index % paramNumBits;
+                auto i = (size_t)index / ParamBitsetSize;
+                auto j = (size_t)index % ParamBitsetSize;
                 assert(i >= 0 && i < paramBitsetSize_);
-                paramBitset_[i].set(j);
+                setBit(paramBitset_[i], j);
             } else {
                 // cache and send immediately
                 float newValue = plugin_->getParameter(index);
