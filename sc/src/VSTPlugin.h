@@ -63,7 +63,6 @@ inline bool checkBit(const ParamBitset& bitset, size_t index) {
 
 class VSTPluginDelegate : public IPluginListener
 {
-    friend class VSTPlugin;
     friend class VSTPluginDelegatePtr;
 public:
     VSTPluginDelegate(VSTPlugin& owner);
@@ -167,6 +166,7 @@ public:
         return editor_;
     }
     void update();
+    void handleParameterChanges(int numParams, float* paramState);
     void handleEvents();
 private:
     std::atomic<int32_t> refcount_{0}; // doesn't really have to be atomic...
@@ -307,8 +307,6 @@ private:
 };
 
 class VSTPlugin : public SCUnit {
-    friend class VSTPluginDelegate;
-    friend struct PluginCmdData;
 public:
     VSTPlugin();
     ~VSTPlugin();
@@ -347,6 +345,10 @@ public:
     }
     const Bus * outputBusses() const {
         return ugenOutputs_;
+    }
+
+    void updateParameter(int index, float value) {
+        paramState_[index] = value;
     }
 
     void map(int32 index, int32 bus, bool audio);
