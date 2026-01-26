@@ -1698,7 +1698,8 @@ void VSTPluginDelegate::update(){
     auto numParams = plugin()->info().numParameters();
     if (numParams > 0 && plugin()->isBridged() || plugin()->isThreaded()) {
         // round up to next multiple of ParamBitsetSize
-        auto size = alignTo(numParams, ParamBitsetSize);
+        auto size = (numParams + ParamBitsetSize - 1) / ParamBitsetSize;
+        assert(size > 0);
         // threaded plugin needs twice the size for double buffering
         auto realSize = plugin()->isThreaded() ? size * 2 : size;
         auto bitset = (ParamBitset*)RTAlloc(world(), realSize * sizeof(ParamBitset));
