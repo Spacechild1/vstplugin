@@ -50,10 +50,61 @@ inline void setBit(ParamBitset& bitset, size_t index) {
     bitset |= (size_t)1 << index;
 }
 
-inline bool checkBit(const ParamBitset& bitset, size_t index) {
+inline void clearBit(ParamBitset& bitset, size_t index) {
+    assert(index < ParamBitsetSize);
+    bitset &= ~((size_t)1 << index);
+}
+
+inline bool testBit(const ParamBitset& bitset, size_t index) {
     assert(index < ParamBitsetSize);
     return bitset & ((size_t)1 << index);
 }
+
+enum class BusType {
+    Control = 0,
+    Audio
+};
+
+struct ParamState {
+    // use the highest two bits to encode the type and map state
+    static constexpr const uint32 busMask = ((uint32)1 << 30) - 1;
+    static constexpr const uint32 stateMask = ((uint32)1 << 31);
+    static constexpr const uint32 typeMask = ((uint32)1 << 30);
+
+    void init() {
+    #if 0
+        // breaks floating point comparison on GCC with -ffast-math
+        value = std::numeric_limits<float>::quiet_NaN();
+    #else
+        value = std::numeric_limits<float>::max();
+    #endif
+        data = 0;
+    }
+
+    void map(uint32 bus, BusType type) {
+        data = (uint32)bus | (typeMask * static_cast<uint32>(type)) | stateMask;
+    }
+
+    void unmap() {
+        data = 0;
+    }
+
+    bool isMapped() const {
+        return data & stateMask;
+    }
+
+    BusType busType() const {
+        return static_cast<BusType>(data & typeMask);
+    }
+
+    uint32 busNum() const {
+        return data & busMask;
+    }
+
+    float value;
+    uint32 data;
+};
+
 
 // This class contains all the state that is shared between the UGen (VSTPlugin) and asynchronous commands.
 // It is managed by a rt::shared_ptr and therefore kept alive during the execution of commands, which means
@@ -165,8 +216,8 @@ public:
     bool hasEditor() const {
         return editor_;
     }
-    void update();
-    void handleParameterChanges(int numParams, float* paramState);
+    void resetQueues();
+    void handleParameterChanges(int numParams, ParamState* paramState);
     void handleEvents();
 private:
     std::atomic<int32_t> refcount_{0}; // doesn't really have to be atomic...
@@ -325,9 +376,18 @@ public:
 
     int getBypass() const { return (int)in0(BypassIndex); }
 
-    int blockSize() const;
+    int blockSize() const {
+         return reblock_ ? reblock_->blockSize : bufferSize();
+    }
 
-    int reblockPhase() const;
+    int reblockPhase() const {
+        return reblock_ ? reblock_->phase : 0;
+    }
+
+    // for parameter and MIDI messages
+    int sampleOffset() const {
+        return mWorld->mSampleOffset + reblockPhase();
+    }
 
     struct Bus {
         float** channelData = nullptr;
@@ -348,14 +408,15 @@ public:
     }
 
     void updateParameter(int index, float value) {
-        paramState_[index] = value;
+        paramState_[index].value = value;
     }
 
-    void map(int32 index, int32 bus, bool audio);
-    void unmap(int32 index);
+    void mapUnchecked(int32 index, int32 bus, bool audio);
+    void unmapUnchecked(int32 index);
     void clearMapping();
+    void printMapping();
 
-    void setupPlugin(const int* inputs, int numInputs,
+    void setupPlugin(const IPlugin& plugin, const int* inputs, int numInputs,
                      const int* outputs, int numOutputs);
 private:
     void setInvalid() { mSpecialIndex &= ~Valid; }
@@ -366,9 +427,17 @@ private:
                       int& totalNumChannels, Bus* ugenBusses, int ugenBusCount,
                       const int* speakers, int numSpeakers, float* dummy);
 
+    void readParameterMappings(IPlugin& plugin, int numSamples,
+                               int sampleOffset, bool sampleAccurate);
+    void readParameterInputs(IPlugin& plugin, int numSamples,
+                             int sampleOffset, bool sampleAccurate);
+
     void initReblocker(int reblockSize);
-    bool updateReblocker(int numSamples);
+    bool readReblocker(int numSamples);
+    void writeReblocker(int numSamples);
     void freeReblocker();
+
+    void freeParamMapping();
 
     void performBypass(const Bus* ugenInputs, int numInputs,
                        int numSamples, int phase);
@@ -420,36 +489,25 @@ private:
 
     Reblock* reblock_ = nullptr;
 
+    Bypass bypass_ = Bypass::Off;
     int numParameterControls_ = 0;
     Wire** parameterControls_ = nullptr;
 
-    struct Mapping {
-        enum BusType {
-            Control = 0,
-            Audio
-        };
-        void setBus(uint32 num, BusType type) {
-            // use last bit in bus to encode the type
-            bus_ = num | (static_cast<uint32>(type) << 31);
-        }
-        BusType type() const {
-            return static_cast<BusType>(bus_ >> 31);
-        }
-        uint32 bus() const {
-            return bus_ & 0x7FFFFFFF;
-        }
-        Mapping* prev;
-        Mapping* next;
-        uint32 index;
-    private:
-        uint32 bus_;
-    };
-    Mapping* paramMappingList_ = nullptr;
-    float* paramState_ = nullptr;
-    Mapping** paramMapping_ = nullptr;
-    Bypass bypass_ = Bypass::Off;
+    ParamState* paramState_ = nullptr;
+    int32 numParameters_ = 0;
+    int32 paramMappingBitsetSize_ = 0;
 
-    void printMapping();
+    static constexpr size_t SmallParamBitsetSize = 2;
+    union {
+        // avoid RT allocation for plugins with not so many parameters
+        ParamBitset data[SmallParamBitsetSize];
+        ParamBitset* array;
+    } paramMappingBitset_;
+
+    ParamBitset* paramMappingBitset() {
+        return paramMappingBitsetSize_ > SmallParamBitsetSize ?
+                    paramMappingBitset_.array : paramMappingBitset_.data;
+    }
 };
 
 class VSTPluginDelegate;

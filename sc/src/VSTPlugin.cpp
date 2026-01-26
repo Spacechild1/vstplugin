@@ -821,11 +821,9 @@ VSTPlugin::VSTPlugin(){
     LOG_DEBUG("created VSTPlugin instance");
 }
 
-VSTPlugin::~VSTPlugin(){
-    clearMapping();
-
+VSTPlugin::~VSTPlugin() {
     RTFree(mWorld, paramState_);
-    RTFree(mWorld, paramMapping_);
+    freeParamMapping();
 
     RTFree(mWorld, ugenInputs_);
     RTFree(mWorld, ugenOutputs_);
@@ -873,16 +871,6 @@ void VSTPlugin::queueUnitCmd(UnitCmdFunc fn, sc_msg_iter* args) {
             unitCmdQueue_ = item;
         }
     }
-}
-
-void VSTPlugin::clearMapping() {
-    for (auto m = paramMappingList_; m != nullptr; ){
-        paramMapping_[m->index] = nullptr;
-        auto next = m->next;
-        RTFree(mWorld, m);
-        m = next;
-    }
-    paramMappingList_ = nullptr;
 }
 
 float VSTPlugin::readControlBus(uint32 num) {
@@ -1082,7 +1070,7 @@ void VSTPlugin::initReblocker(int reblockSize){
     }
 }
 
-bool VSTPlugin::updateReblocker(int numSamples){
+bool VSTPlugin::readReblocker(int numSamples) {
     // read input
     for (int i = 0; i < numUgenInputs_; ++i){
         auto& inputs = ugenInputs_[i];
@@ -1105,6 +1093,19 @@ bool VSTPlugin::updateReblocker(int numSamples){
     }
 }
 
+void VSTPlugin::writeReblocker(int numSamples) {
+    // write to outputs
+    for (int i = 0; i < numUgenOutputs_ && i < numPluginOutputs_; ++i){
+        int ugenChannels = ugenOutputs_[i].numChannels;
+        int pluginChannels = pluginOutputs_[i].numChannels;
+        for (int j = 0; j < ugenChannels && j < pluginChannels; ++j){
+            auto src = reblock_->outputs[i].channelData[j] + reblock_->phase;
+            auto dst = ugenOutputs_[i].channelData[j];
+            std::copy(src, src + numSamples, dst);
+        }
+    }
+}
+
 void VSTPlugin::freeReblocker(){
     if (reblock_){
         for (int i = 0; i < reblock_->numInputs; ++i){
@@ -1120,12 +1121,21 @@ void VSTPlugin::freeReblocker(){
     }
 }
 
+void VSTPlugin::freeParamMapping() {
+    if (paramMappingBitsetSize_ > SmallParamBitsetSize) {
+#if 0
+        LOG_DEBUG("VSTPlugin: free param mapping bitset ("
+                  << paramMappingBitsetSize_ << " blocks)");
+#endif
+        RTFree(mWorld, paramMappingBitset_.array);
+    }
+    paramMappingBitsetSize_ = 0;
+}
+
 // update data (after loading a new plugin)
-void VSTPlugin::setupPlugin(const int* inputs, int numInputs,
+void VSTPlugin::setupPlugin(const IPlugin& plugin, const int* inputs, int numInputs,
                             const int* outputs, int numOutputs)
 {
-    delegate().update();
-
     auto inDummy = dummyBuffer_;
     auto outDummy = dummyBuffer_ +
             (reblock_ ? reblock_->blockSize : bufferSize());
@@ -1143,6 +1153,7 @@ void VSTPlugin::setupPlugin(const int* inputs, int numInputs,
         {
             LOG_ERROR("RTRealloc failed!");
             setInvalid();
+            return;
         }
     } else {
         if (!setupBuffers(pluginInputs_, numPluginInputs_,
@@ -1156,104 +1167,198 @@ void VSTPlugin::setupPlugin(const int* inputs, int numInputs,
         {
             LOG_ERROR("RTRealloc failed!");
             setInvalid();
+            return;
         }
     }
 
-    clearMapping();
-
     // parameter states
-    int numParams = delegate().plugin()->info().numParameters();
+    int numParams = plugin.info().numParameters();
     if (numParams > 0) {
-        auto result = (float*)RTRealloc(mWorld,
-            paramState_, numParams * sizeof(float));
-        if (result) {
+        auto params = (ParamState*)RTRealloc(mWorld,
+            paramState_, numParams * sizeof(ParamState));
+        if (params) {
             for (int i = 0; i < numParams; ++i) {
-            #if 0
-                // breaks floating point comparison on GCC with -ffast-math
-                result[i] = std::numeric_limits<float>::quiet_NaN();
-            #else
-                result[i] = std::numeric_limits<float>::max();
-            #endif
+                params[i].init();
             }
-            paramState_ = result;
+            paramState_ = params;
         } else {
             LOG_ERROR("RTRealloc failed!");
             setInvalid();
+            return;
         }
     } else {
         RTFree(mWorld, paramState_);
         paramState_ = nullptr;
     }
+    numParameters_ = numParams;
 
     // parameter mapping
-    if (numParams > 0){
-        auto result = (Mapping**)RTRealloc(mWorld,
-            paramMapping_, numParams * sizeof(Mapping*));
-        if (result) {
-            for (int i = 0; i < numParams; ++i) {
-                result[i] = nullptr;
+    // first free old bitset *array*, if any. Don't bother with RTRealloc;
+    // for most plugins the bitset will be in-place.
+    freeParamMapping();
+    if (numParams > 0) {
+        // now allocate now bitset *array*, if needed
+        auto bitsetSize = (numParams + ParamBitsetSize - 1) / ParamBitsetSize;
+        assert(bitsetSize > 0);
+        ParamBitset* bitset = nullptr;
+        if (bitsetSize > SmallParamBitsetSize) {
+        #if 1
+            LOG_DEBUG("VSTPlugin: allocate param mapping bitset (" << bitsetSize << " blocks)");
+        #endif
+            bitset = (ParamBitset*)RTAlloc(mWorld, bitsetSize * sizeof(ParamBitset));
+            if (bitset) {
+                paramMappingBitset_.array = bitset;
+            } else {
+                LOG_ERROR("RTRealloc failed!");
+                setInvalid();
+                return;
             }
-            paramMapping_ = result;
         } else {
-            LOG_ERROR("RTRealloc failed!");
-            setInvalid();
+            bitset = paramMappingBitset_.data;
         }
-    } else {
-        RTFree(mWorld, paramMapping_);
-        paramMapping_ = nullptr;
+        std::fill(bitset, bitset + bitsetSize, 0);
+        paramMappingBitsetSize_ = bitsetSize;
     }
 }
 
-#if 1
-void VSTPlugin::printMapping(){
-    LOG_DEBUG("mappings:");
-    for (auto mapping = paramMappingList_; mapping; mapping = mapping->next){
-        LOG_DEBUG(mapping->index << " -> " << mapping->bus() << " (" << mapping->type() << ")");
-    }
-}
-#else
-void VSTPlugin::printMapping() {}
-#endif
-
-void VSTPlugin::map(int32 index, int32 bus, bool audio) {
-    Mapping* mapping = paramMapping_[index];
-    if (mapping == nullptr) {
-        mapping = (Mapping*)RTAlloc(mWorld, sizeof(Mapping));
-        if (mapping) {
-            // add to head of linked list
-            mapping->index = index;
-            mapping->prev = nullptr;
-            mapping->next = paramMappingList_;
-            if (paramMappingList_) {
-                paramMappingList_->prev = mapping;
+void VSTPlugin::printMapping() {
+    LOG_DEBUG("parameter mapping:");
+    auto bitset = paramMappingBitset();
+    for (size_t i = 0; i < paramMappingBitsetSize_; ++i) {
+        if (bitset[i] != 0) {
+            for (size_t j = 0; j < ParamBitsetSize; ++j) {
+                if (testBit(bitset[i], j)) {
+                    auto index = i * ParamBitsetSize + j;
+                    auto& state = paramState_[index];
+                    LOG_DEBUG(index << " -> " << state.busNum() << " ("
+                              << (state.busType() == BusType::Audio ? "audio" : "control") << ")");
+                }
             }
-            paramMappingList_ = mapping;
-            paramMapping_[index] = mapping;
-        } else {
-            LOG_ERROR("RTAlloc failed!");
-            return;
         }
     }
-    mapping->setBus(bus, audio ? Mapping::Audio : Mapping::Control);
-    printMapping();
 }
 
-void VSTPlugin::unmap(int32 index) {
-    auto mapping = paramMapping_[index];
-    if (mapping) {
-        // remove from linked list
-        if (mapping->prev) {
-            mapping->prev->next = mapping->next;
-        } else { // head
-            paramMappingList_ = mapping->next;
-        }
-        if (mapping->next) {
-            mapping->next->prev = mapping->prev;
-        }
-        RTFree(mWorld, mapping);
-        paramMapping_[index] = nullptr;
+void VSTPlugin::mapUnchecked(int32 index, int32 bus, bool audio) {
+    paramState_[index].map(bus, audio ? BusType::Audio : BusType::Control);
+
+    auto bitset = paramMappingBitset();
+    auto i = (size_t)index / ParamBitsetSize;
+    auto j = (size_t)index % ParamBitsetSize;
+    assert(i >= 0 && i < paramMappingBitsetSize_);
+    setBit(bitset[i], j);
+}
+
+void VSTPlugin::unmapUnchecked(int32 index) {
+    paramState_[index].unmap();
+
+    auto bitset = paramMappingBitset();
+    auto i = (size_t)index / ParamBitsetSize;
+    auto j = (size_t)index % ParamBitsetSize;
+    assert(i >= 0 && i < paramMappingBitsetSize_);
+    clearBit(bitset[i], j);
+}
+
+void VSTPlugin::clearMapping() {
+    for (int i = 0; i < numParameters_; ++i) {
+        paramState_[i].unmap();
     }
-    printMapping();
+
+    std::fill_n(paramMappingBitset(), paramMappingBitsetSize_, 0);
+}
+
+void VSTPlugin::readParameterMappings(IPlugin& plugin, int numSamples,
+                                      int sampleOffset, bool sampleAccurate) {
+    auto bitset = paramMappingBitset();
+    for (int i = 0; i < paramMappingBitsetSize_; ++i) {
+        if (bitset[i] != 0) {
+            for (size_t j = 0; j < ParamBitsetSize; ++j) {
+                if (testBit(bitset[i], j)) {
+                    // parameter is mapped
+                    auto index = i * ParamBitsetSize + j;
+                    assert(index < numParameters_);
+                    assert(paramState_[index].isMapped());
+                    auto type = paramState_[index].busType();
+                    auto num = paramState_[index].busNum();
+                    if (type == BusType::Control) {
+                        // Control Bus mapping
+                        float value = readControlBus(num);
+                        if (value != paramState_[index].value) {
+                            plugin.setParameter(index, value, sampleOffset);
+                            paramState_[index].value = value;
+                        }
+                    } else if (num < mWorld->mNumAudioBusChannels) {
+                        // Audio Bus mapping
+                    #define unit this
+                        float lastValue = paramState_[index].value;
+                        float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
+                        ACQUIRE_BUS_AUDIO_SHARED(num);
+                        if (sampleAccurate) {
+                            for (int k = 0; k < numSamples; ++k) {
+                                float value = bus[k];
+                                if (value != lastValue) {
+                                    plugin.setParameter(index, value, sampleOffset + k);
+                                    lastValue = value;
+                                }
+                            }
+                        } else {
+                            // pick the first sample
+                            float value = *bus;
+                            if (value != lastValue) {
+                                plugin.setParameter(index, value, sampleOffset);
+                                lastValue = value;
+                            }
+                        }
+                        RELEASE_BUS_AUDIO_SHARED(num);
+                        paramState_[index].value = lastValue;
+                    #undef unit
+                    }
+                }
+            }
+        }
+    }
+}
+
+void VSTPlugin::readParameterInputs(IPlugin& plugin, int numSamples,
+                                    int sampleOffset, bool sampleAccurate) {
+    int numControls = numParameterControls_;
+    for (int i = 0; i < numControls; ++i) {
+        const auto wire = &parameterControls_[i * 2];
+        int index = wire[0]->mBuffer[0];
+        // only if index is not out of range and the parameter is not mapped to a bus
+        // (a negative index effectively deactivates the parameter control)
+        if (index >= 0 && index < numParameters_ && !paramState_[index].isMapped()) {
+            auto calcRate = wire[1]->mCalcRate;
+            auto buffer = wire[1]->mBuffer;
+            if (calcRate == calc_FullRate) {
+                // audio rate
+                float lastValue = paramState_[index].value;
+                if (sampleAccurate) {
+                    for (int k = 0; k < numSamples; ++k) {
+                        float value = buffer[i];
+                        if (value != lastValue) {
+                            plugin.setParameter(index, value, sampleOffset + k);
+                            lastValue = value;
+                        }
+                    }
+                } else {
+                    // pick the first sample
+                    float value = buffer[0];
+                    if (value != lastValue) {
+                        plugin.setParameter(index, value, sampleOffset);
+                        lastValue = value;
+                    }
+                }
+                paramState_[index].value = lastValue;
+            } else {
+                // control rate
+                float value = buffer[0];
+                if (value != paramState_[index].value) {
+                    plugin.setParameter(index, value, sampleOffset);
+                    paramState_[index].value = value;
+                }
+            }
+        }
+    }
 }
 
 // perform routine
@@ -1286,8 +1391,6 @@ void VSTPlugin::next(int inNumSamples) {
     }
 
     if (process) {
-        auto vst3 = plugin->info().type() == PluginType::VST3;
-
         // check bypass state
         Bypass bypass;
         int inBypass = getBypass();
@@ -1303,94 +1406,20 @@ void VSTPlugin::next(int inNumSamples) {
             bypass_ = bypass;
         }
 
-        int numParams = plugin->info().numParameters();
         // parameter automation
-        // (check paramState_ in case RTAlloc failed)
-        if (paramState_) {
-            int sampleOffset = reblockPhase();
-            // automate parameters with mapped control busses
-            for (auto m = paramMappingList_; m != nullptr; m = m->next) {
-                uint32 index = m->index;
-                auto type = m->type();
-                uint32 num = m->bus();
-                assert(index < numParams);
-                if (type == Mapping::Control) {
-                    // Control Bus mapping
-                    float value = readControlBus(num);
-                    if (value != paramState_[index]) {
-                        plugin->setParameter(index, value, sampleOffset);
-                        paramState_[index] = value;
-                    }
-                } else if (num < mWorld->mNumAudioBusChannels){
-                    // Audio Bus mapping
-                #define unit this
-                    float last = paramState_[index];
-                    float* bus = &mWorld->mAudioBus[mWorld->mBufLength * num];
-                    ACQUIRE_BUS_AUDIO_SHARED(num);
-                    if (vst3) {
-                        // VST3: sample accurate
-                        for (int i = 0; i < inNumSamples; ++i) {
-                            float value = bus[i];
-                            if (value != last) {
-                                plugin->setParameter(index, value, sampleOffset + i);
-                                last = value;
-                            }
-                        }
-                    } else {
-                        // VST2: pick the first sample
-                        float value = *bus;
-                        if (value != last) {
-                            plugin->setParameter(index, value); // no offset
-                            last = value;
-                        }
-                    }
-                    RELEASE_BUS_AUDIO_SHARED(num);
-                    paramState_[index] = last;
-                #undef unit
-                }
-            }
-            // automate parameters with UGen inputs
-            auto numControls = numParameterControls_;
-            for (int i = 0; i < numControls; ++i) {
-                auto control = parameterControls_ + i * 2;
-                int index = control[0]->mBuffer[0];
-                // only if index is not out of range and the parameter is not mapped to a bus
-                // (a negative index effectively deactivates the parameter control)
-                if (index >= 0 && index < numParams && paramMapping_[index] == nullptr){
-                    auto calcRate = control[1]->mCalcRate;
-                    auto buffer = control[1]->mBuffer;
-                    if (calcRate == calc_FullRate) {
-                        // audio rate
-                        float last = paramState_[index];
-                        // VST3: sample accurate
-                        if (vst3) {
-                            for (int i = 0; i < inNumSamples; ++i) {
-                                float value = buffer[i];
-                                if (value != last) {
-                                    plugin->setParameter(index, value, sampleOffset + i);
-                                    last = value;
-                                }
-                            }
-                        } else {
-                            // VST2: pick the first sample
-                            float value = buffer[0];
-                            if (value != last) {
-                                plugin->setParameter(index, value); // no offset
-                                last = value;
-                            }
-                        }
-                        paramState_[index] = last;
-                    } else {
-                        // control rate
-                        float value = buffer[0];
-                        if (value != paramState_[index]) {
-                            plugin->setParameter(index, value, sampleOffset);
-                            paramState_[index] = value;
-                        }
-                    }
-                }
-            }
-        }
+        // NB: do not use the sampleOffset() method here!
+        auto sampleAccurate = plugin->info().type() == PluginType::VST3;
+        int sampleOffset = reblockPhase();
+        int numParams = numParameters_;
+        // if RTAlloc() failed, we called setInvalid(), so we should never reach this code.
+        assert(!(numParams > 0 && paramState_ == nullptr));
+
+        // 1. automate parameters with mapped control or audio busses
+        readParameterMappings(*plugin, inNumSamples, sampleOffset, sampleAccurate);
+
+        // 2. automate parameters with UGen inputs
+        readParameterInputs(*plugin, inNumSamples, sampleOffset, sampleAccurate);
+
         // process
         ProcessData data;
         data.precision = ProcessPrecision::Single;
@@ -1401,22 +1430,13 @@ void VSTPlugin::next(int inNumSamples) {
         data.outputs = pluginOutputs_;
 
         if (reblock_){
-            if (updateReblocker(inNumSamples)){
+            if (readReblocker(inNumSamples)){
                 data.numSamples = reblock_->blockSize;
 
                 plugin->process(data);
             }
 
-            // write reblocker output
-            for (int i = 0; i < numUgenOutputs_ && i < numPluginOutputs_; ++i){
-                int ugenChannels = ugenOutputs_[i].numChannels;
-                int pluginChannels = pluginOutputs_[i].numChannels;
-                for (int j = 0; j < ugenChannels && j < pluginChannels; ++j){
-                    auto src = reblock_->outputs[i].channelData[j] + reblock_->phase;
-                    auto dst = ugenOutputs_[i].channelData[j];
-                    std::copy(src, src + inNumSamples, dst);
-                }
-            }
+            writeReblocker(inNumSamples);
         } else {
             data.numSamples = inNumSamples;
 
@@ -1451,7 +1471,7 @@ void VSTPlugin::next(int inNumSamples) {
         if (reblock_){
             // we have to update the reblocker, so that we can stop bypassing
             // anytime and always have valid input data.
-            updateReblocker(inNumSamples);
+            readReblocker(inNumSamples);
 
             performBypass(reblock_->inputs, reblock_->numInputs, inNumSamples, reblock_->phase);
         } else {
@@ -1486,14 +1506,6 @@ void VSTPlugin::performBypass(const Bus* ugenInputs, int numInputs,
             }
         }
     }
-}
-
-int VSTPlugin::blockSize() const {
-    return reblock_ ? reblock_->blockSize : bufferSize();
-}
-
-int VSTPlugin::reblockPhase() const {
-    return reblock_ ? reblock_->phase : 0;
 }
 
 //------------------- VSTPluginDelegate ------------------------------//
@@ -1683,7 +1695,7 @@ bool VSTPluginDelegate::check(bool loud) const {
     return true;
 }
 
-void VSTPluginDelegate::update(){
+void VSTPluginDelegate::resetQueues() {
     if (eventQueue_) eventQueue_->clear();
 
     isSettingParam_ = false; // just to be sure
@@ -1713,7 +1725,7 @@ void VSTPluginDelegate::update(){
     }
 }
 
-void VSTPluginDelegate::handleParameterChanges(int numParams, float* paramState) {
+void VSTPluginDelegate::handleParameterChanges(int numParams, ParamState* paramState) {
     // see VSTPluginDelegate::setParam(), setProgram and parameterAutomated()
     isSettingParam_ = false;
     isSettingProgram_ = false;
@@ -1727,7 +1739,7 @@ void VSTPluginDelegate::handleParameterChanges(int numParams, float* paramState)
         for (int i = 0; i < size; ++i) {
             if (paramChanges[i] != 0) {
                 for (int j = 0; j < ParamBitsetSize; ++j) {
-                    if (checkBit(paramChanges[i], j)) {
+                    if (testBit(paramChanges[i], j)) {
                         // cache and send parameter.
                         auto index = i * ParamBitsetSize + j;
                         // test() should always return false for out-of-range parameters,
@@ -1735,7 +1747,7 @@ void VSTPluginDelegate::handleParameterChanges(int numParams, float* paramState)
                         assert(index < numParams);
                         if (index < numParams) {
                             auto value = plugin_->getParameter(index);
-                            paramState[index] = value;
+                            paramState[index].value = value;
                             sendParameter(index, value);
                         }
                     }
@@ -2052,8 +2064,10 @@ void VSTPluginDelegate::doneOpen(OpenCmdData& cmd){
                         << "' doesn't support single precision processing - bypassing!");
         }
         LOG_DEBUG("opened " << cmd.path);
+        resetQueues();
+
         // setup data structures
-        owner_->setupPlugin(cmd.pluginInputs.data(), cmd.pluginInputs.size(),
+        owner_->setupPlugin(*plugin_, cmd.pluginInputs.data(), cmd.pluginInputs.size(),
                             cmd.pluginOutputs.data(), cmd.pluginOutputs.size());
         // receive events from plugin
         plugin_->setListener(this);
@@ -2178,8 +2192,7 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
             isSettingParam_ = true; // see parameterAutomated()
-            int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
-            plugin_->setParameter(index, value, sampleOffset);
+            plugin_->setParameter(index, value, owner_->sampleOffset());
             if (paramBitset_) {
                 // defer! set corresponding bit in parameter bitset
                 auto i = (size_t)index / ParamBitsetSize;
@@ -2193,7 +2206,7 @@ void VSTPluginDelegate::setParam(int32 index, float value) {
                 sendParameter(index, newValue);
             }
             // NB: isSettingsParam_ will be unset in VSTPlugin::next()!
-            owner_->unmap(index);
+            owner_->unmapUnchecked(index);
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2204,8 +2217,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
     if (check()){
         if (index >= 0 && index < plugin_->info().numParameters()) {
             isSettingParam_ = true; // see parameterAutomated()
-            int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
-            if (!plugin_->setParameter(index, display, sampleOffset)) {
+            if (!plugin_->setParameter(index, display, owner_->sampleOffset())) {
                 LOG_WARNING("VSTPlugin: couldn't set parameter " << index << " to " << display);
                 // NB: some plugins don't just ignore bad string input, but reset the parameter to some value...
             }
@@ -2222,7 +2234,7 @@ void VSTPluginDelegate::setParam(int32 index, const char* display) {
                 sendParameter(index, newValue);
             }
             // NB: isSettingsParam_ will be unset in VSTPlugin::next()!
-            owner_->unmap(index);
+            owner_->unmapUnchecked(index);
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2293,7 +2305,10 @@ void VSTPluginDelegate::getParams(int32 index, int32 count) {
 void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            owner_->map(index, bus, audio);
+            owner_->mapUnchecked(index, bus, audio);
+        #if LOG_LEVEL >= LOG_LEVEL_DEBUG
+            owner_->printMapping();
+        #endif
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2303,7 +2318,10 @@ void VSTPluginDelegate::mapParam(int32 index, int32 bus, bool audio) {
 void VSTPluginDelegate::unmapParam(int32 index) {
     if (check()) {
         if (index >= 0 && index < plugin_->info().numParameters()) {
-            owner_->unmap(index);
+            owner_->unmapUnchecked(index);
+        #if LOG_LEVEL >= LOG_LEVEL_DEBUG
+            owner_->printMapping();
+        #endif
         } else {
             LOG_WARNING("VSTPlugin: parameter index " << index << " out of range!");
         }
@@ -2313,6 +2331,9 @@ void VSTPluginDelegate::unmapParam(int32 index) {
 void VSTPluginDelegate::unmapAll() {
     if (check()) {
         owner_->clearMapping();
+    #if LOG_LEVEL >= LOG_LEVEL_DEBUG
+        owner_->printMapping();
+    #endif
     }
 }
 
@@ -2587,8 +2608,8 @@ fail:
 // midi
 void VSTPluginDelegate::sendMidiMsg(int32 status, int32 data1, int32 data2, float detune) {
     if (check()) {
-        int sampleOffset = owner_->mWorld->mSampleOffset + owner_->reblockPhase();
-        plugin_->sendMidiEvent(MidiEvent(status, data1, data2, sampleOffset, detune));
+        MidiEvent event(status, data1, data2, owner_->sampleOffset(), detune);
+        plugin_->sendMidiEvent(event);
     }
 }
 void VSTPluginDelegate::sendSysexMsg(const char* data, int32 n) {
