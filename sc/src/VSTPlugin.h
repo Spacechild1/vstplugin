@@ -170,7 +170,7 @@ public:
     void handleEvents();
 private:
     std::atomic<int32_t> refcount_{0}; // doesn't really have to be atomic...
-    VSTPlugin *owner_ = nullptr;
+    VSTPlugin* owner_ = nullptr;
     World* world_ = nullptr;
     IPlugin::ptr plugin_;
     bool editor_ = false;
@@ -189,7 +189,7 @@ private:
     // For threaded plugins, processing is delayed by one block so we
     // we need to apply double-buffering. For this purpose, we double
     // the size of the bitset and swap the two halves.
-    ParamBitset *paramBitset_ = nullptr;
+    ParamBitset* paramBitset_ = nullptr;
     size_t paramBitsetSize_ = 0;
     SpinLock spinMutex_;
     // events
@@ -234,7 +234,7 @@ private:
 
 class VSTPluginDelegatePtr {
 public:
-    VSTPluginDelegatePtr(VSTPluginDelegate *ptr = nullptr)
+    VSTPluginDelegatePtr(VSTPluginDelegate* ptr = nullptr)
         : ptr_(ptr) {
         if (ptr) {
             ptr->addRef();
@@ -281,7 +281,7 @@ public:
         return *this;
     }
 
-    void reset(VSTPluginDelegate *ptr) {
+    void reset(VSTPluginDelegate* ptr) {
         if (ptr_) {
             ptr_->release();
         }
@@ -303,7 +303,7 @@ public:
 
     bool operator!=(const VSTPluginDelegatePtr& other) const { return ptr_ != other.ptr_; }
 private:
-    VSTPluginDelegate *ptr_;
+    VSTPluginDelegate* ptr_;
 };
 
 class VSTPlugin : public SCUnit {
@@ -330,7 +330,7 @@ public:
     int reblockPhase() const;
 
     struct Bus {
-        float **channelData = nullptr;
+        float** channelData = nullptr;
         int numChannels = 0;
     };
 
@@ -340,10 +340,10 @@ public:
     int numOutputBusses() const {
         return numUgenOutputs_;
     }
-    const Bus * inputBusses() const {
+    const Bus* inputBusses() const {
         return ugenInputs_;
     }
-    const Bus * outputBusses() const {
+    const Bus* outputBusses() const {
         return ugenOutputs_;
     }
 
@@ -355,22 +355,22 @@ public:
     void unmap(int32 index);
     void clearMapping();
 
-    void setupPlugin(const int *inputs, int numInputs,
-                     const int *outputs, int numOutputs);
+    void setupPlugin(const int* inputs, int numInputs,
+                     const int* outputs, int numOutputs);
 private:
     void setInvalid() { mSpecialIndex &= ~Valid; }
 
     float readControlBus(uint32 num);
 
-    bool setupBuffers(AudioBus *& pluginBusses, int& pluginBusCount,
-                      int& totalNumChannels, Bus *ugenBusses, int ugenBusCount,
-                      const int *speakers, int numSpeakers, float *dummy);
+    bool setupBuffers(AudioBus*& pluginBusses, int& pluginBusCount,
+                      int& totalNumChannels, Bus* ugenBusses, int ugenBusCount,
+                      const int* speakers, int numSpeakers, float* dummy);
 
     void initReblocker(int reblockSize);
     bool updateReblocker(int numSamples);
     void freeReblocker();
 
-    void performBypass(const Bus *ugenInputs, int numInputs,
+    void performBypass(const Bus* ugenInputs, int numInputs,
                        int numSamples, int phase);
 
     static const int Initialized = 1;
@@ -387,12 +387,12 @@ private:
 
     // data members
     struct UnitCmdQueueItem {
-        UnitCmdQueueItem *next;
+        UnitCmdQueueItem* next;
         UnitCmdFunc fn;
         int32 size;
         char data[1];
     };
-    UnitCmdQueueItem *unitCmdQueue_; // initialized *before* constructor
+    UnitCmdQueueItem* unitCmdQueue_; // initialized *before* constructor
 
     VSTPluginDelegatePtr delegate_;
 
@@ -402,26 +402,26 @@ private:
     int numPluginOutputs_ = 0;
     int numPluginInputChannels_ = 0;
     int numPluginOutputChannels_ = 0;
-    Bus *ugenInputs_ = nullptr;
-    Bus *ugenOutputs_ = nullptr;
-    AudioBus *pluginInputs_ = nullptr;
-    AudioBus *pluginOutputs_ = nullptr;
-    float *dummyBuffer_ = nullptr;
+    Bus* ugenInputs_ = nullptr;
+    Bus* ugenOutputs_ = nullptr;
+    AudioBus* pluginInputs_ = nullptr;
+    AudioBus* pluginOutputs_ = nullptr;
+    float* dummyBuffer_ = nullptr;
 
     struct Reblock {
         int blockSize;
         int phase;
         int numInputs;
         int numOutputs;
-        Bus *inputs;
-        Bus *outputs;
-        float *buffer;
+        Bus* inputs;
+        Bus* outputs;
+        float* buffer;
     };
 
-    Reblock *reblock_ = nullptr;
+    Reblock* reblock_ = nullptr;
 
     int numParameterControls_ = 0;
-    Wire ** parameterControls_ = nullptr;
+    Wire** parameterControls_ = nullptr;
 
     struct Mapping {
         enum BusType {
@@ -456,7 +456,7 @@ class VSTPluginDelegate;
 
 struct CmdData {
     template<typename T>
-    static T* create(World * world, int size = 0);
+    static T* create(World* world, int size = 0);
 
     VSTPluginDelegatePtr owner;
     bool alive() const;
@@ -479,8 +479,8 @@ struct OpenCmdData : CmdData {
     ProcessMode processMode;
     int numInputs;
     int numOutputs;
-    int *inputs;
-    int *outputs;
+    int* inputs;
+    int* outputs;
     std::vector<int> pluginInputs;
     std::vector<int> pluginOutputs;
     // flexible array for RT memory
@@ -551,7 +551,7 @@ struct SearchCmdData {
     int32 numExcludePaths = 0;
     // flexibel struct member
     union {
-        char *pathList[1];
+        char* pathList[1];
         char pathBuf[1];
     };
 };
