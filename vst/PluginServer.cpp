@@ -596,16 +596,17 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
         auto cmd = (const ShmCommand *)data;
         switch(cmd->type){
         case Command::SetParamValue:
-            plugin_->setParameter(cmd->paramValue.index, cmd->paramValue.value,
-                                  cmd->paramValue.offset);
-            {
-                // parameter update event
-                Command event(Command::ParameterUpdate);
-                event.paramAutomated.index = cmd->paramValue.index;
-                event.paramAutomated.value = cmd->paramValue.value;
-                events_.push_back(event);
-            }
+        {
+            auto& param = cmd->paramValue;
+            plugin_->setParameter(param.index, param.value, param.offset);
+            // parameter update event
+            // NOTE: send actual parameter value!
+            Command event(Command::ParameterUpdate);
+            event.paramAutomated.index = param.index;
+            event.paramAutomated.value = plugin_->getParameter(param.index);
+            events_.push_back(event);
             break;
+        }
         case Command::SetParamString:
         {
             auto& param = cmd->paramString;
@@ -613,9 +614,8 @@ void PluginHandle::dispatchCommands(ShmChannel& channel){
             if (plugin_->setParameter(param.index, str, param.offset)) {
                 // parameter update event
                 Command event(Command::ParameterUpdate);
-                int index = cmd->paramValue.index;
-                event.paramAutomated.index = index;
-                event.paramAutomated.value = plugin_->getParameter(index);
+                event.paramAutomated.index = param.index;
+                event.paramAutomated.value = plugin_->getParameter(param.index);
                 events_.push_back(event);
             }
             break;
