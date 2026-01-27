@@ -1,7 +1,7 @@
 TITLE:: VSTPluginController
 summary:: Client-side representation of a VSTPlugin UGen instance
 categories:: Server>Abstractions
-related:: Classes/VSTPlugin, Classes/VSTPluginDesc, Classes/VSTPluginGui, Classes/VSTPluginMIDIProxy, Guides/HOA_IEM
+related:: Classes/VSTPlugin, Classes/VSTPluginDesc, Classes/VSTPluginMIDIProxy, Classes/VSTPluginGui, Classes/VSTPluginBrowser,Guides/HOA_IEM
 
 DESCRIPTION::
 
@@ -553,7 +553,7 @@ This will automatically bypass the plugin (i.e. the input is just passed through
 Just like link::#-open::, this method is realtime-safe.
 
 METHOD:: browse
-open the plugin browser dialog.
+open the plugin browser dialog, see link::Classes/VSTPluginBrowser::.
 
 METHOD:: editor
 METHOD:: editorMsg

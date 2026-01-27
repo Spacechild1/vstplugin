@@ -1,7 +1,7 @@
 TITLE:: VSTPluginGui
 summary:: a generic Qt GUI for VSTPluginController
 categories:: GUI
-related:: Classes/VSTPlugin, Classes/VSTPluginController, Classes/VSTPluginDesc
+related:: Classes/VSTPlugin, Classes/VSTPluginController, Classes/VSTPluginDesc, Classes/VSTPluginBrowser
 
 DESCRIPTION::
 This class is the default Qt GUI class for link::Classes/VSTPluginController::, see link::Classes/VSTPluginController#-gui::.
@@ -21,10 +21,7 @@ The GUI also has a simple preset manager and plugin browser.
 
 IMAGE::editor.jpg::
 
-Pressing the "Browse" button will open a dialog where you can browse already loaded plugins, start a new search in the default directories
-(see link::Classes/VSTPlugin#*search::) or load a plugin from a file dialog.
-
-IMAGE::browser.jpg::
+Pressing the "Browse" button will open a link::Classes/VSTPluginBrowser::. See also link::Classes/VSTPluginController#-browse::.
 
 note::You can use the VSTPluginGui together with the VST editor (see link::Classes/VSTPluginController#-editor::)::
 

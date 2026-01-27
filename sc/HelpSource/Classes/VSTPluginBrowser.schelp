@@ -1,0 +1,39 @@
+TITLE:: VSTPluginBrowser
+summary:: a VST plugin browser dialog
+categories:: GUI
+related:: Classes/VSTPlugin, Classes/VSTPluginController, Classes/VSTPluginDesc, Classes/VSTPluginGui
+
+DESCRIPTION::
+This class creates a dialog window where you can browse already loaded plugins, start a new search in the default directories
+(see link::Classes/VSTPlugin#*search::) or load a plugin from a file dialog.
+
+IMAGE::browser.jpg::
+
+CLASSMETHODS::
+
+METHOD:: new
+
+ARGUMENT:: model
+the link::Classes/VSTPluginController:: instance that should open the plugin.
+
+DISCUSSION::
+Typically, you do not create a VSTPluginBrowser yourself. Instead, it is created automatically when you call link::Classes/VSTPluginController#-browse:: or when you press the "Browse" button in link::Classes/VSTPluginGui::.
+
+However, if you create the instance manually, you have more control over the appearance because you have direct access to all the link::Classes/Window:: methods:
+
+code::
+// ~vst is the VSTPluginController
+b = VSTPluginBrowser(~vst);
+// do not destroy on close
+b.view.deleteOnClose = false;
+// show
+b.front;
+// close programmatically
+b.close;
+// show again
+b.front;
+::
+
+INSTANCEMETHODS::
+
+PRIVATE:: init, prSearchDir, prApplyFilter, prBuildGui, prUpdatePlugins, prSearchRunning, prPluginSelected, prSearch, prOpenFile, prClear, prOpenPlugin

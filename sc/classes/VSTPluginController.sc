@@ -385,10 +385,10 @@ VSTPluginController {
 	browse {
 		this.prCheckEmpty(thisMethod);
 		// prevent opening the dialog multiple times
-		browser.isNil.if {
+		if (browser.isNil) {
 			// create dialog
-			browser = VSTPluginGui.prMakePluginBrowser(this);
-			browser.view.addAction({ browser = nil }, 'onClose');
+			browser = VSTPluginBrowser(this);
+			browser.onClose = { browser = nil };
 		};
 		browser.front;
 	}
