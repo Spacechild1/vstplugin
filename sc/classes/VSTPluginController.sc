@@ -382,12 +382,25 @@ VSTPluginController {
 		^this.class.guiClass.new(this).gui(parent, bounds, params);
 	}
 
-	browse {
+	browse { arg dialog=true;
+		var mode;
 		this.prCheckEmpty(thisMethod);
 		// prevent opening the dialog multiple times
 		if (browser.isNil) {
 			// create dialog
-			browser = VSTPluginBrowser(this);
+			mode = if (dialog) { \dialog } { \normal };
+			browser = VSTPluginBrowser(mode, this.synth.server);
+			browser.currentPlugin = this.info;
+			browser.action = { |info, options|
+				if (info.notNil) {
+					// NB: in SC 3.14+ we could actually do the following:
+					// this.performArgs(\open, [ info.key ], options.asKeyValuePairs);
+					this.open(info.key, editor: options.editor ? true,
+						multiThreading: options.multiThreading ? false,
+						mode: options.mode);
+
+				}
+			};
 			browser.onClose = { browser = nil };
 		};
 		browser.front;

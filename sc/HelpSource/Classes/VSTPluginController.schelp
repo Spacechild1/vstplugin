@@ -555,6 +555,11 @@ Just like link::#-open::, this method is realtime-safe.
 METHOD:: browse
 open the plugin browser dialog, see link::Classes/VSTPluginBrowser::.
 
+ARGUMENT:: dialog
+	If code::true::, the browser behaves like a dialog: the window stays on top and closes automatically when the user clicks the "Open" or "Cancel" button.
+
+	If code::false::, the browser behaves like a normal window and does not close when the user clicks the "Open" button.
+
 METHOD:: editor
 METHOD:: editorMsg
 show/hide the VST editor window.

@@ -1202,7 +1202,7 @@ void VSTPlugin::setupPlugin(const IPlugin& plugin, const int* inputs, int numInp
         assert(bitsetSize > 0);
         ParamBitset* bitset = nullptr;
         if (bitsetSize > SmallParamBitsetSize) {
-        #if 1
+        #if 0
             LOG_DEBUG("VSTPlugin: allocate param mapping bitset (" << bitsetSize << " blocks)");
         #endif
             bitset = (ParamBitset*)RTAlloc(mWorld, bitsetSize * sizeof(ParamBitset));

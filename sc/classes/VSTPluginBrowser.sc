@@ -1,15 +1,15 @@
-// TODO: make it work without model, e.g. only for browsing the
-// plugins without actually opening any. In that case, we would
-// have to omit some UI elements and not make it 'alwaysOnTop'.
-// Maybe add VSTPlugin.browse as a shortcut?
-//
-// We might also add methods for setting/recalling the UI state
-// UI state so that VSTPluginController can remember the search
-// filters and plugin options. Another possibility would be to
-// keep the VSTPluginBrowser instance once it has been opened.
+// TODO: add methods for setting/recalling the window state
+// and filter/plugin options.
 VSTPluginBrowser : Window {
-	var model;
-	var server;
+	var <>server;
+	var <>action;
+
+	// data
+	var <currentPlugin;
+	var autoClose;
+	var plugins;
+	var filteredPlugins;
+
 	// widgets
 	var browserView;
 	var statusLabel;
@@ -24,41 +24,62 @@ VSTPluginBrowser : Window {
 	var fxFilter;
 	var synthFilter;
 	var showBridged;
-	// data
-	var plugins;
-	var filteredPlugins;
-	var currentPlugin;
+	var okButton;
 
 	classvar currentDir;
 
-	*new { arg model;
-		^super.new.init(model);
+	*new { arg mode=\normal, server;
+		^super.new.initBrowser(mode, server);
 	}
 
-	init { arg theModel;
-		this.alwaysOnTop = true;
+	initBrowser { arg mode, theServer;
+		if (#[ \normal, \dialog, \browse ].includes(mode).not) {
+			^Error("bad value for 'mode' argument (%)".format(mode)).throw;
+		};
+
 		this.name = "VST plugin browser";
+		// in dialog mode, the window should stay on top to emulate
+		// a modal dialog window. we also automatically close the
+		// window when the user clicks the "Open" button.
+		if (mode == \dialog) {
+			this.alwaysOnTop = true;
+			autoClose = true;
+		} {
+			autoClose = false;
+		};
 
 		plugins = [];
 		filteredPlugins = [];
+		server = theServer ?? { Server.default };
 
-		this.prBuildGui;
-
-		model = theModel;
-		if (model.notNil) {
-			// start at current plugin
-			currentPlugin = model.info;
-			server = model.synth.server;
-		} {
-			server = Server.default;
-		};
-
+		this.prBuildGui(mode);
 		this.prUpdatePlugins;
 	}
 
-	prBuildGui {
+	deleteOnClose { ^view.deleteOnClose }
+	deleteOnClose_ { arg boolean; view.deleteOnClose_(boolean) }
+
+	destroy { view.destroy }
+
+	currentPlugin_ { arg info;
+		currentPlugin = info;
+		// try to select in browser
+		if (info.notNil) {
+			filteredPlugins.do { arg item, index;
+				if (item.key == info.key) {
+					browserView.valueAction_(index);
+					^this;
+				}
+			}
+		};
+		// otherwise deselect
+		browserView.valueAction_(nil);
+		// NB: valueAction_ will trigger prPluginSelected
+	}
+
+	prBuildGui { arg mode;
 		var clearButton, searchButton, searchDirButton;
-		var openFileButton, okButton, cancelButton;
+		var openFileButton, cancelButton;
 
 		// the plugin list
 		browserView = ListView.new.selectionMode_(\single);
@@ -113,21 +134,26 @@ VSTPluginBrowser : Window {
 		.action_({ this.prClear });
 
 		// plugin options
-		editorBox = CheckBox.new(text: "Editor").value_(true);
+		if (mode != \browse) {
+			editorBox = CheckBox.new(text: "Editor").value_(true);
 
-		multiThreadingBox = CheckBox.new(text: "Multi-threading");
+			multiThreadingBox = CheckBox.new(text: "Multi-threading");
 
-		modeBox = PopUpMenu.new.items_(["normal", "sandbox", "bridge"]);
+			modeBox = PopUpMenu.new.items_(["normal", "sandbox", "bridge"]);
+		};
 
-		// cancel/ok
-		cancelButton = Button.new.states_([["Cancel"]])
-		.action = { this.close };
+		// cancel/ok buttons
+		if (mode == \dialog) {
+			cancelButton = Button.new.states_([["Cancel"]])
+			.action_({
+				action.value(nil); // signify cancellation
+				this.close
+			});
+		};
 
-		okButton = Button.new.states_([["Open"]])
-		.action = {
-			if (currentPlugin.notNil) {
-				this.prOpenPlugin(currentPlugin.key);
-			}
+		if (mode != \browse) {
+			okButton = Button.new.states_([["Open"]])
+			.action_({ this.prOpen });
 		};
 
 		this.layout = VLayout(
@@ -149,21 +175,29 @@ VSTPluginBrowser : Window {
 				clearButton, nil, statusLabel
 			),
 			8,
-			HLayout(StaticText.new.string_("Mode:"), modeBox,
-				editorBox, multiThreadingBox, nil, cancelButton, okButton)
+			if (mode != \browse) {
+				HLayout(StaticText.new.string_("Mode:"), modeBox,
+					editorBox, multiThreadingBox, nil, cancelButton, okButton
+				)
+			} { HLayout(nil, cancelButton, okButton) }
 		);
 	}
 
 	// called when a plugin is selected in the browser
 	prPluginSelected { arg index;
 		if (index.notNil) {
+			// do not use this.currentPlugin!
 			currentPlugin = filteredPlugins[index];
 			if (currentPlugin.notNil) {
 				browserView.toolTip = currentPlugin.prToString;
 			};
 		} {
 			currentPlugin = nil;
-			browserView.toolTip = "";
+			browserView.toolTip_(nil);
+		};
+		if (okButton.notNil) {
+			// only enable OK button if a plugin is selected
+			okButton.enabled_(currentPlugin.notNil);
 		}
 	}
 
@@ -217,21 +251,14 @@ VSTPluginBrowser : Window {
 		items = filteredPlugins.collect({ arg item;
 			var vendor = if (item.vendor.size > 0) { item.vendor } { "unknown" };
 			var bridged = if (item.bridged) { "[bridged]" } { "" };
-			"% (%) %".format(item.key, vendor, bridged); // use key instead of name
+			// show key instead of anme
+			"% (%) %".format(item.key, vendor, bridged);
 		});
 
 		browserView.toolTip_(nil);
 		browserView.items = items;
-
 		// restore current plugin
-		if (currentPlugin.notNil) {
-			filteredPlugins.do { arg item, index;
-				(item.key == currentPlugin.key).if { browserView.value_(index) }
-			}
-		};
-
-		// manually call action to trigger plugin selection
-		browserView.action.value;
+		this.currentPlugin = currentPlugin;
 	}
 
 	// called after a new search
@@ -289,13 +316,22 @@ VSTPluginBrowser : Window {
 			VSTPlugin.search(server, dir: dir, verbose: true, action: {
 				{ this.prUpdatePlugins; }.defer;
 			});
+			currentDir = dir;
 		}, nil, 2, 0, true, currentDir);
 	}
 
 	// called when clicking the "File" button
 	prOpenFile {
 		FileDialog.new({ arg path;
-			this.prOpenPlugin(path);
+			currentDir = path.dirname;
+			VSTPlugin.prQuery(server, path, action: { |info|
+				if (info.notNil) {
+					{
+						currentPlugin = info;
+						this.prUpdatePlugins;
+					}.defer;
+				}
+			});
 		}, nil, 1, 0, true, currentDir);
 	}
 
@@ -305,16 +341,26 @@ VSTPluginBrowser : Window {
 		this.prUpdatePlugins.value;
 	}
 
-	prOpenPlugin { arg key;
-		var mode = #[\auto, \sandbox, \bridge][modeBox.value];
-		var editor = editorBox.value;
-		var multiThreading = multiThreadingBox.value;
-		model.open(key, editor: editor, multiThreading: multiThreading,
-			mode: mode, action: { arg obj, success;
-				if (success) {
-					currentDir = obj.info.path.dirname;
-				};
-				{ this.close }.defer;
-		});
+	// called when clicking the "Open" button
+	prOpen {
+		var options;
+		if (currentPlugin.notNil) {
+			// NB: prOpen is never called in \browse mode because
+			// there is no "Open" button.
+			options = ();
+			options[\mode] = #[\auto, \sandbox, \bridge][modeBox.value];
+			options[\editor] = editorBox.value;
+			options[\multiThreading] = multiThreadingBox.value;
+
+			this.action.value(currentPlugin, options);
+
+			if (autoClose) {
+				this.close;
+			}
+		} {
+			// shouldn't really happen because the "Open" button
+			// should be disabled when currentPlugin is nil.
+			"'Open' clicked without plugin! This is a bug!".error;
+		}
 	}
 }

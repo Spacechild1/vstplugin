@@ -445,7 +445,18 @@ VSTPluginGui : ObjectGui {
 		if (model.notNil) {
 			// prevent opening the dialog multiple times
 			if (browser.isNil) {
-				browser = VSTPluginBrowser(model);
+				browser = VSTPluginBrowser(\dialog, model.synth.server);
+				browser.currentPlugin = model.info;
+				browser.action = { |info, options|
+					if (info.notNil) {
+						// NB: in SC 3.14+ we could actually do the following:
+						// this.performArgs(\open, [ info.key ], options.asKeyValuePairs);
+						model.open(info.key, editor: options.editor ? true,
+							multiThreading: options.multiThreading ? false,
+							mode: options.mode);
+
+					}
+				};
 				browser.onClose = { browser = nil };
 			};
 			browser.front;

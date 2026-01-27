@@ -13,8 +13,22 @@ CLASSMETHODS::
 
 METHOD:: new
 
-ARGUMENT:: model
-the link::Classes/VSTPluginController:: instance that should open the plugin.
+ARGUMENT:: mode
+This must be one the following Symbols:
+
+definitionlist::
+## code::\dialog:: ||
+The browser imitates the behavior of a modal dialog window: the window always stays on top and it is automatically closed when the user clicks the "Open" button. (The window is not truely modal, though, because the user can still interact with other SC GUI windows.)
+
+## code::\normal:: ||
+The browser behaves like a regular window. If you click the "Open" button, the action function is called but the window stays open.
+
+## code::\browse:: ||
+You can browse and search for plugins, but there are no controls for opening a plugin.
+::
+
+ARGUMENT:: server
+the Server that is used for searching plugins. If code::nil::, the default Server is assumed.
 
 DISCUSSION::
 Typically, you do not create a VSTPluginBrowser yourself. Instead, it is created automatically when you call link::Classes/VSTPluginController#-browse:: or when you press the "Browse" button in link::Classes/VSTPluginGui::.
@@ -22,18 +36,39 @@ Typically, you do not create a VSTPluginBrowser yourself. Instead, it is created
 However, if you create the instance manually, you have more control over the appearance because you have direct access to all the link::Classes/Window:: methods:
 
 code::
-// ~vst is the VSTPluginController
-b = VSTPluginBrowser(~vst);
+b = VSTPluginBrowser(\normal);
 // do not destroy on close
-b.view.deleteOnClose = false;
+b.deleteOnClose = false;
+// attach custom action
+b.action = { |info, options| "received % with options %".format(info, options).postln };
 // show
 b.front;
 // close programmatically
 b.close;
 // show again
 b.front;
+// really close and destroy
+b.destroy;
 ::
 
 INSTANCEMETHODS::
 
-PRIVATE:: init, prSearchDir, prApplyFilter, prBuildGui, prUpdatePlugins, prSearchRunning, prPluginSelected, prSearch, prOpenFile, prClear, prOpenPlugin
+PRIVATE:: initBrowser, prSearchDir, prApplyFilter, prBuildGui, prUpdatePlugins, prSearchRunning, prSetCurrentPlugin, prPluginSelected, prSearch, prOpenFile, prClear, prOpen
+
+METHOD:: action
+Attach a custom action.
+
+If the user clicks the "Open" button, the action will be called with the selected link::Classes/VSTPluginDesc:: and an link::Classes/Event:: with options that can be passed to link::Classes/VSTPluginController#-open::.
+
+If the user clicks the "Cancel" button, the action will receive code::nil:: instead.
+
+In SC 3.14 and above you can simply pass the options as
+
+METHOD:: deleteOnClose
+Sets or gets whether the window should be destroyed when closed.
+
+METHOD:: destroy
+Close and destroy the window regardless the link::#-deleteOnClose:: propertiy.
+
+METHOD:: currentPlugin
+Sets or gets the currently selected plugin.
