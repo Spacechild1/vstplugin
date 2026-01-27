@@ -52,7 +52,22 @@ VSTPlugin : MultiOutUGen {
 	}
 
 	*pluginKeys { arg server;
-		^this.pluginList(server).collect({ arg i; i.key });
+		^this.pluginList(server).collect(_.key);
+	}
+
+	*find { arg key, server;
+		^this.plugins(server).at(key.asSymbol);
+	}
+
+	*findRegex { arg keyPattern, server;
+		var set = IdentitySet();
+		keyPattern = keyPattern.asString;
+		this.plugins(server).do { |desc|
+			if (keyPattern.matchRegexp(desc.key.asString)) {
+				set.add(desc);
+			}
+		};
+		^set.asArray;
 	}
 
 	*print { arg server;

@@ -201,7 +201,7 @@ VSTPlugin.plugins['AwesomePlugin'].print;
 ::
 
 METHOD:: pluginList
-get all available plugins on a Server.
+get a list of available plugins (on the given Server).
 
 ARGUMENT:: server
 the Server. If code::nil::, the default Server is assumed.
@@ -209,10 +209,10 @@ the Server. If code::nil::, the default Server is assumed.
 ARGUMENT:: sorted
 whether the Array should be sorted alphabetically (by name).
 
-RETURNS:: an Array of link::Classes/VSTPluginDesc:: instances.
+RETURNS:: an Array of link::Classes/VSTPluginDesc:: objects.
 
 METHOD:: pluginKeys
-get the keys of all plugins on a given Server.
+get the keys of all plugins (on a given Server).
 
 ARGUMENT:: server
 the Server. If code::nil::, the default Server is assumed.
@@ -220,9 +220,32 @@ the Server. If code::nil::, the default Server is assumed.
 RETURNS:: an Array of plugin keys.
 
 DISCUSSION::
-This method only considers the keys stored in the plugin descriptions,
-not the additional keys in the plugin dictionary.
+This method only considers the key stored in the plugin desc (link::Classes/VSTPluginDesc#-key::) and ignores all additional keys in the plugin dictionary (such as file paths).
 
+METHOD:: find
+find a plugin (on the given Server).
+
+ARGUMENT:: key
+the plugin key as a String or Symbol.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+RETURNS:: a link::Classes/VSTPluginDesc:: on success or code::nil:: on failure.
+
+METHOD:: findRegex
+find a plugin using a regular expression (on the given Server).
+
+ARGUMENT:: keyPattern
+the plugin key pattern as a String.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+RETURNS:: an Array of link::Classes/VSTPluginDesc:: objects whose key matches the given pattern.
+
+DISCUSSION::
+emphasis::Hint::: this can be useful if you forgot the exact name of a plugin, as a quick alternative to the search bar in the plugin browser (see link::Classes/VSTPluginController#-browse::).
 
 METHOD:: print
 post all available plugins.
