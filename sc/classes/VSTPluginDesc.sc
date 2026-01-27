@@ -71,7 +71,7 @@ VSTPluginDesc {
 
 	printOn { arg stream;
 		stream.atLimit.not.if {
-			stream << this.class.name << "( " << this.name << " )";
+			stream << this.class.name << "( " << this.key << " )";
 		}
 	}
 
