@@ -142,13 +142,13 @@ IMAGE::embed.jpg::
 code::
 (
 // create a Window with a FlowLayout
-~view = Window.new(bounds: 850@450, scroll: true);
-~view.view.decorator = FlowLayout(w.view.bounds);
-~view.front;
+~win = Window.new(bounds: 850@450, scroll: true);
+~win.view.decorator = FlowLayout(~win.view.bounds);
+~win.front;
 )
 // add 2 plugin GUIs
-~fx1.gui(~view); // default size
-~fx2.gui(~view, bounds:300@300); // custom size
+~fx1.gui(~win); // default size
+~fx2.gui(~win, bounds:300@300); // custom size
 ::
 
 SUBSECTION:: Changing Models
