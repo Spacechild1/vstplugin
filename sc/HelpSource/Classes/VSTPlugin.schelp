@@ -247,6 +247,14 @@ RETURNS:: an Array of link::Classes/VSTPluginDesc:: objects whose key matches th
 DISCUSSION::
 emphasis::Hint::: this can be useful if you forgot the exact name of a plugin, as a quick alternative to the search bar in the plugin browser (see link::Classes/VSTPluginController#-browse::).
 
+METHOD:: browse
+creates and shows a link::Classes/VSTPluginBrowser:: that lets you quickly browse through all your plugins.
+
+ARGUMENT:: server
+the Server. If code::nil::, the default Server is assumed.
+
+RETURNS:: a link::Classes/VSTPluginBrowser::.
+
 METHOD:: print
 post all available plugins.
 

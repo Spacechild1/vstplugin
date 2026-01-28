@@ -70,6 +70,10 @@ VSTPlugin : MultiOutUGen {
 		^set.asArray;
 	}
 
+	*browse { arg server;
+		^VSTPluginBrowser(\browse, server).front;
+	}
+
 	*print { arg server;
 		// print plugins sorted by name in ascending order
 		// (together with path to distinguish plugins of the same name)
@@ -432,11 +436,15 @@ VSTPlugin : MultiOutUGen {
 		};
 		server.listSendMsg(this.initDSPThreadsMsg(numThreads));
 	}
+
 	*initDSPThreadsMsg { arg numThreads;
 		^['/cmd', '/vst_dsp_threads', numThreads ?? 0 ];
 	}
 
-	// instance methods
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	/*               UGen instance methods           */
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
 	init { arg id, info, blockSize, bypass, numIn, numOut, numParams ... args;
 		var numInputs, numOutputs, pluginInputs, inputArray, outputArray, paramArray, ugenOutputs, numUgenOutputs;
 		// store id and info (both optional)
