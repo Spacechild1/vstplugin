@@ -96,8 +96,7 @@ template<typename T>
 T* CmdData::create(World* world, int size) {
     auto data = RTAlloc(world, sizeof(T) + size);
     if (data) {
-        new (data)T();
-        return (T*)data;
+        return new (data)T();
     } else {
         LOG_ERROR("RTAlloc failed!");
         return nullptr;
@@ -567,8 +566,7 @@ std::vector<PluginDesc::const_ptr> searchPlugins(const std::string& path,
             if (didSomething){
                 last = now;
             } else {
-                using seconds = std::chrono::duration<double>;
-                auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
+                auto elapsed = std::chrono::duration<double>(now - last).count();
                 if (elapsed > 4.0){
                     for (auto& x : futures){
                         LOG_INFO("Waiting for '" << x.second << "'...");

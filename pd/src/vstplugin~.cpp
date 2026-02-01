@@ -632,8 +632,7 @@ static void searchPlugins(const std::string& path, t_search_data *data){
             if (didSomething){
                 last = now;
             } else {
-                using seconds = std::chrono::duration<double>;
-                auto elapsed = std::chrono::duration_cast<seconds>(now - last).count();
+                auto elapsed = std::chrono::duration<double>(now - last).count();
                 if (elapsed > 4.0){
                     for (auto& x : futures){
                         PdLog<async>() << "waiting for '" << x.second << "'...";

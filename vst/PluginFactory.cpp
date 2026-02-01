@@ -24,6 +24,7 @@
 # include <sys/wait.h>
 #endif
 
+#include <chrono>
 #include <thread>
 #include <algorithm>
 #include <sstream>

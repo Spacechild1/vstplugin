@@ -15,6 +15,7 @@
 using namespace vst;
 
 #include <memory>
+#include <chrono>
 #include <bitset>
 #include <cstdio>
 #include <cstring>

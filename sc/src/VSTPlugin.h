@@ -15,6 +15,7 @@
 using namespace vst;
 
 #include <bitset>
+#include <chrono>
 #include <thread>
 #include <mutex>
 #include <memory>

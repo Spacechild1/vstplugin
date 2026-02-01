@@ -2,6 +2,7 @@
 
 #include "pluginterfaces/vst/vsttypes.h"
 
+#include <string>
 #include <string_view>
 #include <cstdint>
 #include <optional>
